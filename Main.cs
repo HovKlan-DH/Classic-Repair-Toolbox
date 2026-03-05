@@ -370,11 +370,26 @@ namespace Commodore_Repair_Toolbox
                             Panel aboutNotifyPanel = new Panel
                             {
                                 Dock = DockStyle.Top,
-                                Height = 72,
-                                BackColor = Color.WhiteSmoke,
+                                Height = 140,
+                                BackColor = Color.IndianRed,
                                 Name = "panelAutoUpdate",
                             };
 
+                            // Add banner text that states where to manually update new version
+                            aboutNotifyPanel.Controls.Add(
+                                new Label
+                                {
+                                    Text = "\"Commodore Repair Toolbox\" is now considered as \"legacy\" and a new and better product has taken over.\nNo more updates will be given to this, including no more data updates.\n\nPlease go to https://github.com/HovKlan-DH/Classic-Repair-Toolbox and download the new...\n\n\"Classic Repair Toolbox\".",
+                                    AutoSize = false,
+                                    TextAlign = ContentAlignment.MiddleCenter,
+                                    Dock = DockStyle.Fill,
+                                    Font = new Font("Calibri", 12F, FontStyle.Bold),
+                                    ForeColor = Color.White
+                                }
+                            );
+
+
+                            /*
                             Button autoUpdateButton = new Button
                             {
                                 Text = "Auto-install New Version" + Environment.NewLine + versionOnline,
@@ -392,8 +407,9 @@ namespace Commodore_Repair_Toolbox
                             {
                                 AutoUpdater.PerformUpdate(crtNewExecutable, "--fetch-data");
                             };
+                            */
 
-                            aboutNotifyPanel.Controls.Add(autoUpdateButton);
+                            //aboutNotifyPanel.Controls.Add(autoUpdateButton);
 
                             // Draw a solid IndianRed border around the notification panel
                             aboutNotifyPanel.Paint += (s, pe) =>
@@ -1990,14 +2006,17 @@ namespace Commodore_Repair_Toolbox
 
             if (!string.IsNullOrWhiteSpace(versionOnline))
             {
-                sb.Append(@"\cf2 There is a newer version available. Click the above ""{\b Auto-install New Version\b0}"" button to install it, or download it manually from below link.\line ");
-                sb.Append(@"View the {\i Changelog\i0} here, https://github.com/HovKlan-DH/Commodore-Repair-Toolbox/releases\line\line ");
+//                sb.Append(@"\cf2 There is a newer version available. Click the above ""{\b Auto-install New Version\b0}"" button to install it, or download it manually from below link.\line ");
+                sb.Append(@"\cf2 There is a newer version available. Download it manually from below link.\line ");
+//                sb.Append(@"View the {\i Changelog\i0} here, https://github.com/HovKlan-DH/Commodore-Repair-Toolbox/releases\line\line ");
+                sb.Append(@"View the {\i Changelog\i0} here, https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases\line\line ");
                 sb.Append(@"\cf0");
             }
 
             sb.Append(@"All programming done by Dennis Helligsø (dennis@commodore-repair-toolbox.dk).\line\line ");
 
-            sb.Append(@"Visit official project home page at https://github.com/HovKlan-DH/Commodore-Repair-Toolbox\line\line ");
+//            sb.Append(@"Visit official project home page at https://github.com/HovKlan-DH/Commodore-Repair-Toolbox\line\line ");
+            sb.Append(@"Visit official project home page at https://github.com/HovKlan-DH/Classic-Repair-Toolbox\line\line ");
 
             sb.Append(@"------------------------------------------------------------------------------------------------------------------------------------\line\line ");
 

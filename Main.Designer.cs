@@ -46,6 +46,7 @@
             this.tabResources = new System.Windows.Forms.TabPage();
             this.tabConfiguration = new System.Windows.Forms.TabPage();
             this.panel2 = new System.Windows.Forms.Panel();
+            this.checkBoxAlwaysUpdateData = new System.Windows.Forms.CheckBox();
             this.checkBoxKeyboardZoom = new System.Windows.Forms.CheckBox();
             this.textBox3 = new System.Windows.Forms.TextBox();
             this.label12 = new System.Windows.Forms.Label();
@@ -92,7 +93,6 @@
             this.colorDialog1 = new System.Windows.Forms.ColorDialog();
             this.buttonRegionPal = new System.Windows.Forms.Button();
             this.buttonRegionNtsc = new System.Windows.Forms.Button();
-            this.checkBoxAlwaysUpdateData = new System.Windows.Forms.CheckBox();
             this.tabControl.SuspendLayout();
             this.tabSchematics.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainerSchematics)).BeginInit();
@@ -325,6 +325,17 @@
             this.panel2.Name = "panel2";
             this.panel2.Size = new System.Drawing.Size(720, 536);
             this.panel2.TabIndex = 17;
+            // 
+            // checkBoxAlwaysUpdateData
+            // 
+            this.checkBoxAlwaysUpdateData.AutoSize = true;
+            this.checkBoxAlwaysUpdateData.Location = new System.Drawing.Point(20, 97);
+            this.checkBoxAlwaysUpdateData.Name = "checkBoxAlwaysUpdateData";
+            this.checkBoxAlwaysUpdateData.Size = new System.Drawing.Size(452, 25);
+            this.checkBoxAlwaysUpdateData.TabIndex = 21;
+            this.checkBoxAlwaysUpdateData.Text = "Always update data from online source at application launch";
+            this.checkBoxAlwaysUpdateData.UseVisualStyleBackColor = true;
+            this.checkBoxAlwaysUpdateData.Visible = false;
             // 
             // checkBoxKeyboardZoom
             // 
@@ -819,16 +830,6 @@
             this.buttonRegionNtsc.TabIndex = 17;
             this.buttonRegionNtsc.Text = "NTSC";
             this.buttonRegionNtsc.UseVisualStyleBackColor = true;
-            // 
-            // checkBoxAlwaysUpdateData
-            // 
-            this.checkBoxAlwaysUpdateData.AutoSize = true;
-            this.checkBoxAlwaysUpdateData.Location = new System.Drawing.Point(20, 97);
-            this.checkBoxAlwaysUpdateData.Name = "checkBoxAlwaysUpdateData";
-            this.checkBoxAlwaysUpdateData.Size = new System.Drawing.Size(452, 25);
-            this.checkBoxAlwaysUpdateData.TabIndex = 21;
-            this.checkBoxAlwaysUpdateData.Text = "Always update data from online source at application launch";
-            this.checkBoxAlwaysUpdateData.UseVisualStyleBackColor = true;
             // 
             // Main
             // 
