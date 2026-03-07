@@ -164,8 +164,9 @@ There are of course more details to this, but please let me know if this does _n
 
 ### Compiling for Linux
 
-Here is a rudimentary guide to compile _CRT_ on Linux - the below is based on Fedora 43, and there can probably be variations depending on your setup.
+Here is a rudimentary guide to compile _CRT_ on Linux.
 
+For **Fedora** try this:
 - Fork the _CRT_ GitHub repository
 - Clone the fork to your local computer
 - Make sure .NET 10 SDK is installed
@@ -174,6 +175,20 @@ Here is a rudimentary guide to compile _CRT_ on Linux - the below is based on Fe
   - `dotnet publish -c Release -f net10.0 --self-contained`
 - Run application:  
   - `./bin/Debug/net10.0/Classic-Repair-Toolbox`
+
+For **Gentoo** try this:
+- Show all available .NET SDL versions
+  - `eselect dotnet list`
+- Choose .NET10 SDL, which is profile (1) in this example
+  - `eselect dotnet set 1`
+- Reload system environment variables
+  - `. /etc/profile`
+- Verify the active .NET SDK
+  - `dotnet --list-sdks`
+- Compile RELEASE build
+  - `dotnet publish -c Release -f net10.0 --self-contained`
+- Run application:
+  - `bin/Release/net10.0/linux-x64/Classic-Repair-Toolbox`
 
 Note that it is recommened you always create a `RELEASE` version, as it otherwise will not check for a new version online. If this is a `DEBUG` build, it will always show-case a dummy update, to visualize the UI for it.
 
