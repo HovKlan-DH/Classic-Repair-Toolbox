@@ -1,7 +1,7 @@
 # Classic Repair Toolbox
 
 
-## Compiler instructions for OS
+## Compiler instructions for different operating systems
 - [Windows](#windows)
 - [Linux](#linux)
 - [macOS](#macos) 
@@ -9,7 +9,10 @@
 
 ## Windows
 
-Load `Classic-Repair-Toolbox.slnx` in Visual Studio and build it.
+- Load `Classic-Repair-Toolbox.slnx` in Visual Studio
+- Change build to use `RELEASE` instead of `DEBUG`
+- Build it with `Build` > `Build Solution`
+- Executable is now available in `bin\Release\net10.0\Classic-Repair-Toolbox.exe`
 
 
 ## Linux
