@@ -175,7 +175,7 @@ Here is a rudimentary guide to compile _CRT_ on Linux - the below is based on Fe
 - Run application:  
   - `./bin/Debug/net10.0/Classic-Repair-Toolbox`
 
-Note that it is recommened that you always create a RELEASE version, as it otherwise will not check for a new version online.
+Note that it is recommened you always create a `RELEASE` version, as it otherwise will not check for a new version online. If this is a `DEBUG` build, it will always show-case a dummy update, to visualize the UI for it.
 
 
 ### Development tools used
