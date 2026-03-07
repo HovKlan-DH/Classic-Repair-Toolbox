@@ -282,7 +282,7 @@ namespace CRT
             using var progressContent = new ProgressableStreamContent(formContent, percent => progress.Report($"Sending to server... {percent}%"));
 
             //Target URL
-            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("CRT App Client");
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("CRT "+ AppConfig.AppVersionString);
             var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-feedback/", progressContent);
 
             // Read the exact string back from the server

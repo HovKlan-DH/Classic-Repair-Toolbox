@@ -1,2 +1,3 @@
-- Changed format and text for log events
-- Various refactoring in code base
+- Fixed wrong reporting of version when submitting feedback
+- Added `BUILDING.md` file for help on local compilation
+- Removed changelog from "About" tab

@@ -74,6 +74,7 @@
 			</Border>
 
 			<!-- Changelog section -->
+			<!--
 			<TextBlock Text="Changelog:"
                        Margin="0,16,0,6" />
 			<TextBox x:Name="ChangelogTextBox"
@@ -85,6 +86,7 @@
                      MinHeight="120"
                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+			-->
 
 		</StackPanel>
 	</ScrollViewer>

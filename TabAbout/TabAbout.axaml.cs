@@ -26,7 +26,7 @@ namespace CRT
         {
             this.AboutAssemblyTitleText.Text = this.GetAssemblyTitle(assembly);
             this.AppVersionText.Text = versionString ?? "(unknown)";
-            this.ChangelogTextBox.Text = this.LoadTextAsset("Assets/Changelog.txt");
+//            this.ChangelogTextBox.Text = this.LoadTextAsset("Assets/Changelog.txt");
         }
 
         // ###########################################################################################

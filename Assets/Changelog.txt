@@ -1,21 +1,7 @@
-The DEVELOPMENT version will most likely keep running on 0.1.x until final release.
 
-
-# TODO (not in any order)
--------------------------
-* Help tab
-* Better alignment on text sizes
-* All colors must be identified and available in main theme class
-* Fix some of the worst colors being off
-
-
-
-Wishlist (will maybe never realize)
------------------------------------
-* Have a custom theme in settings file so people can modify from there
-* Tables with all data editable for easy contributing data
-* Oscilloscope sync to auto-setup scope like measurement in CRT
-* Labeling of components within CRT
+# 1.0.0, 2026-March-7
+---------------------
+- First public release
 
 
 # 0.1.14, 2026-March-7
