@@ -1,36 +1,73 @@
-name: Build and Release (Windows/Linux/macOS)
+name: Build, Security Scan and Release
 
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+*' # asterisk allows suffixes like -beta or beta.2 or -rc or -rc.2
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Version for this release (ex. 2.0.0)'
+        description: 'Version for release (ex. 1.0.0 or 1.0.0-beta.1 or 1.0.0-rc.1)'
         required: true
-        default: '1.9.0'
+        default: '1.0.0'
+      is_prerelease:
+        description: 'Is this a pre-release?'
+        type: boolean
+        required: true
+        default: true
 
 env:
-  PACK_ID: Commodore-Repair-Toolbox
-  EXE_WINDOWS: Commodore-Repair-Toolbox.exe
-  EXE_UNIX: Commodore-Repair-Toolbox
-  PROJECT: CRT2.csproj
-  DATA_PACK_URL: https://commodore-repair-toolbox.dk/auto-data/Data.zip
+  PACK_ID: Classic-Repair-Toolbox
+  EXE_WINDOWS: Classic-Repair-Toolbox.exe
+  EXE_UNIX: Classic-Repair-Toolbox
+  PROJECT: Classic-Repair-Toolbox.csproj
+  TFM_MODERN: net10.0
+  TFM_LEGACY_X86: net6.0
 
 jobs:
-
   ###############################################################
-  # WINDOWS BUILD (x64)
+  # CODEQL SECURITY SCAN
   ###############################################################
-  build-windows:
-    name: Build Windows (x64)
-    runs-on: self-hosted
+  security-scan:
+    name: CodeQL Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write # Required to upload results to GitHub
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          ref: crt-v2
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'csharp'
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
+
+  ###############################################################
+  # WINDOWS BUILD (x64 with self-contained .NET10)
+  ###############################################################
+  build-windows:
+    name: Build Windows (x64 with self-contained .NET10)
+    runs-on: self-hosted
+    outputs:
+      dotnet_version: ${{ steps.runtime.outputs.dotnet_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set version
         id: ver
@@ -43,14 +80,26 @@ jobs:
         run: |
           dotnet publish ${{ env.PROJECT }} `
             -c Release `
+            -f ${{ env.TFM_MODERN }} `
             -r win-x64 `
             --self-contained `
             -p:Version=${{ steps.ver.outputs.version }} `
             -o publish/windows-x64
 
-      - name: List available certificates
+      - name: Detect bundled .NET version (Windows x64)
+        id: runtime
         shell: powershell
-        run: Get-ChildItem Cert:\CurrentUser\My | Select-Object Subject, Thumbprint
+        run: |
+          $rcPath = "publish/windows-x64/Classic-Repair-Toolbox.runtimeconfig.json"
+          $rc = Get-Content $rcPath -Raw | ConvertFrom-Json
+          $v = "Unknown"
+          if ($null -ne $rc.runtimeOptions.includedFrameworks) {
+              $app = $rc.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' } | Select-Object -First 1
+              if ($null -ne $app) { $v = $app.version }
+          } elseif ($null -ne $rc.runtimeOptions.framework) {
+              $v = $rc.runtimeOptions.framework.version
+          }
+          "dotnet_version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Sign executable
         shell: powershell
@@ -64,11 +113,10 @@ jobs:
             --alg SHA-256 `
             publish/windows-x64/${{ env.EXE_WINDOWS }}
 
-      - name: Download and extract data pack
+      - name: Copy data pack
         shell: powershell
         run: |
-          Invoke-WebRequest "${{ env.DATA_PACK_URL }}" -OutFile data-pack.zip
-          Expand-Archive data-pack.zip -DestinationPath publish/windows-x64/Data/
+          Copy-Item -Path "Assets/Data" -Destination "publish/windows-x64" -Recurse
 
       - name: Install vpk
         shell: powershell
@@ -83,10 +131,9 @@ jobs:
             --packDir publish/windows-x64 `
             --mainExe ${{ env.EXE_WINDOWS }} `
             --noPortable `
-            --icon "Assets/Commodore icon.ico" `
+            --icon "Assets/CRT_icon.ico" `
             --outputDir velopack-output
 
-      # ✅ NEW: Sign the Velopack Setup installer after packing
       - name: Sign Velopack installer
         shell: powershell
         env:
@@ -107,16 +154,113 @@ jobs:
           path: velopack-output/*
 
   ###############################################################
-  # LINUX BUILD (x64)
+  # WINDOWS BUILD (x86 with self-contained .NET6)
   ###############################################################
-  build-linux:
-    name: Build Linux (x64)
-    runs-on: ubuntu-latest
+  build-windows-x86:
+    name: Build Windows (x86 with self-contained .NET6)
+    runs-on: self-hosted
+    outputs:
+      dotnet_version: ${{ steps.runtime.outputs.dotnet_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set version
+        id: ver
+        shell: powershell -ExecutionPolicy Bypass -File "{0}"
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.tag_name }}" } else { "${{ github.ref_name }}" }
+          "version=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Publish Windows (x86)
+        run: |
+          dotnet publish ${{ env.PROJECT }} `
+            -c Release `
+            -f ${{ env.TFM_LEGACY_X86 }} `
+            -r win-x86 `
+            --self-contained `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -o publish/windows-x86
+
+      - name: Detect bundled .NET version (Windows x86)
+        id: runtime
+        shell: powershell
+        run: |
+          $rcPath = "publish/windows-x86/Classic-Repair-Toolbox.runtimeconfig.json"
+          $rc = Get-Content $rcPath -Raw | ConvertFrom-Json
+          $v = "Unknown"
+          if ($null -ne $rc.runtimeOptions.includedFrameworks) {
+              $app = $rc.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' } | Select-Object -First 1
+              if ($null -ne $app) { $v = $app.version }
+          } elseif ($null -ne $rc.runtimeOptions.framework) {
+              $v = $rc.runtimeOptions.framework.version
+          }
+          "dotnet_version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Sign executable
+        shell: powershell
+        env:
+          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
+        run: |
+          java -jar C:\tools\jsign-6.0.jar `
+            --storetype YUBIKEY `
+            --storepass "$env:YUBIKEY_PIN" `
+            --tsaurl http://timestamp.digicert.com `
+            --alg SHA-256 `
+            publish/windows-x86/${{ env.EXE_WINDOWS }}
+
+      - name: Copy data pack
+        shell: powershell
+        run: |
+          Copy-Item -Path "Assets/Data" -Destination "publish/windows-x86" -Recurse
+
+      - name: Install vpk
+        shell: powershell
+        run: dotnet tool install -g vpk
+
+      - name: Pack with Velopack
+        shell: powershell
+        run: |
+          vpk pack `
+            --packId ${{ env.PACK_ID }} `
+            --packVersion ${{ steps.ver.outputs.version }} `
+            --packDir publish/windows-x86 `
+            --mainExe ${{ env.EXE_WINDOWS }} `
+            --channel win-x86 `
+            --noPortable `
+            --icon "Assets/CRT_icon.ico" `
+            --outputDir velopack-output
+
+      - name: Sign Velopack installer
+        shell: powershell
+        env:
+          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
+        run: |
+          $installer = Get-ChildItem velopack-output\*-Setup.exe | Select-Object -First 1
+          java -jar C:\tools\jsign-6.0.jar `
+            --storetype YUBIKEY `
+            --storepass "$env:YUBIKEY_PIN" `
+            --tsaurl http://timestamp.digicert.com `
+            --alg SHA-256 `
+            $installer.FullName
+
+      - name: Upload Velopack artifacts
+        uses: actions/upload-artifact@v4
         with:
-          ref: crt-v2
+          name: velopack-windows-x86
+          path: velopack-output/*
+
+  ###############################################################
+  # LINUX BUILD (x64 with self-contained .NET10)
+  ###############################################################
+  build-linux:
+    name: Build Linux (x64 with self-contained .NET10)
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet_version: ${{ steps.runtime.outputs.dotnet_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -131,20 +275,27 @@ jobs:
           else
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
-    
+
       - name: Publish Linux (x64)
         run: |
           dotnet publish ${{ env.PROJECT }} \
             -c Release \
+            -f ${{ env.TFM_MODERN }} \
             -r linux-x64 \
             --self-contained \
             -p:Version=${{ steps.ver.outputs.version }} \
             -o publish/linux-x64
 
-      - name: Download and extract data pack
+      - name: Detect bundled .NET version (Linux x64)
+        id: runtime
         run: |
-          curl -fsSL "${{ env.DATA_PACK_URL }}" -o data-pack.zip
-          unzip data-pack.zip -d publish/linux-x64/Data/
+          rc_path="publish/linux-x64/Classic-Repair-Toolbox.runtimeconfig.json"
+          v=$(jq -r 'if .runtimeOptions.includedFrameworks then (.runtimeOptions.includedFrameworks[] | select(.name == "Microsoft.NETCore.App") | .version) elif .runtimeOptions.framework then .runtimeOptions.framework.version else "Unknown" end' "$rc_path")
+          echo "dotnet_version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Copy data pack
+        run: |
+          cp -r Assets/Data publish/linux-x64/
 
       - name: Install vpk
         run: dotnet tool install -g vpk
@@ -156,7 +307,7 @@ jobs:
             --packVersion ${{ steps.ver.outputs.version }} \
             --packDir publish/linux-x64 \
             --mainExe ${{ env.EXE_UNIX }} \
-            --icon "Assets/Commodore icon.ico" \
+            --icon "Assets/CRT_icon.ico" \
             --outputDir velopack-output
 
       - name: Upload Velopack artifacts
@@ -166,17 +317,18 @@ jobs:
           path: velopack-output/*
 
   ###############################################################
-  # MACOS BUILD (arm64 + x64 from single runner)
+  # MACOS BUILD (arm64 + x64 with self-contained .NET10)
   ###############################################################
   build-macos:
-    name: Build macOS (arm64 + x64)
+    name: Build macOS (arm64 + x64 with self-contained .NET10)
     runs-on: macos-latest
+    outputs:
+      dotnet_version_arm64: ${{ steps.runtime_arm64.outputs.dotnet_version }}
+      dotnet_version_x64: ${{ steps.runtime_x64.outputs.dotnet_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: crt-v2
-          
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -190,30 +342,45 @@ jobs:
           else
             echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
-    
+
       - name: Publish macOS (arm64)
         run: |
           dotnet publish ${{ env.PROJECT }} \
             -c Release \
+            -f ${{ env.TFM_MODERN }} \
             -r osx-arm64 \
             --self-contained \
             -p:Version=${{ steps.ver.outputs.version }} \
             -o publish/macos-arm64
 
+      - name: Detect bundled .NET version (macOS arm64)
+        id: runtime_arm64
+        run: |
+          rc_path="publish/macos-arm64/Classic-Repair-Toolbox.runtimeconfig.json"
+          v=$(jq -r 'if .runtimeOptions.includedFrameworks then (.runtimeOptions.includedFrameworks[] | select(.name == "Microsoft.NETCore.App") | .version) elif .runtimeOptions.framework then .runtimeOptions.framework.version else "Unknown" end' "$rc_path")
+          echo "dotnet_version=$v" >> "$GITHUB_OUTPUT"
+
       - name: Publish macOS (x64)
         run: |
           dotnet publish ${{ env.PROJECT }} \
             -c Release \
+            -f ${{ env.TFM_MODERN }} \
             -r osx-x64 \
             --self-contained \
             -p:Version=${{ steps.ver.outputs.version }} \
             -o publish/macos-x64
 
-      - name: Download and extract data pack
+      - name: Detect bundled .NET version (macOS x64)
+        id: runtime_x64
         run: |
-          curl -fsSL "${{ env.DATA_PACK_URL }}" -o data-pack.zip
-          unzip data-pack.zip -d publish/macos-arm64/Data/
-          unzip data-pack.zip -d publish/macos-x64/Data/
+          rc_path="publish/macos-x64/Classic-Repair-Toolbox.runtimeconfig.json"
+          v=$(jq -r 'if .runtimeOptions.includedFrameworks then (.runtimeOptions.includedFrameworks[] | select(.name == "Microsoft.NETCore.App") | .version) elif .runtimeOptions.framework then .runtimeOptions.framework.version else "Unknown" end' "$rc_path")
+          echo "dotnet_version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Copy data pack
+        run: |
+          cp -r Assets/Data publish/macos-arm64/
+          cp -r Assets/Data publish/macos-x64/
 
       - name: Install vpk
         run: dotnet tool install -g vpk
@@ -227,7 +394,7 @@ jobs:
             --mainExe ${{ env.EXE_UNIX }} \
             --channel osx-arm64 \
             --noPortable \
-            --icon "Assets/Commodore icon.icns" \
+            --icon "Assets/CRT_icon.icns" \
             --outputDir velopack-output
 
       - name: Pack with Velopack (macOS x64)
@@ -239,7 +406,7 @@ jobs:
             --mainExe ${{ env.EXE_UNIX }} \
             --channel osx-x64 \
             --noPortable \
-            --icon "Assets/Commodore icon.icns" \
+            --icon "Assets/CRT_icon.icns" \
             --outputDir velopack-output
 
       - name: Upload Velopack artifacts
@@ -254,10 +421,13 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-windows-x86, build-linux, build-macos, security-scan]
     permissions:
       contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all Velopack artifacts
         uses: actions/download-artifact@v4
         with:
@@ -273,34 +443,78 @@ jobs:
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
+      # 1. MOVED THIS UP: Determine the release type first
+      - name: Determine if Pre-release
+        id: prerelease_check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IS_PRE="${{ inputs.is_prerelease }}"
+          else
+            if [[ "${{ github.ref_name }}" == *"-"* ]]; then
+              IS_PRE="true"
+            else
+              IS_PRE="false"
+            fi
+          fi
+          
+          echo "is_prerelease=$IS_PRE" >> $GITHUB_OUTPUT
+          
+          if [ "$IS_PRE" = "true" ]; then
+            echo "release_name=BETA - ${{ steps.tag.outputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "release_name=${{ steps.tag.outputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      # 2. UPDATED THIS: Always read CHANGELOG.md and append texts based on release type
+      - name: Read Changelog and append text
+        id: changelog
+        run: |
+          {
+            echo 'content<<EOF'
+            
+            # Read the changelog
+            if [ -f "CHANGELOG.md" ]; then
+              cat CHANGELOG.md
+            else
+              echo "No CHANGELOG.md found."
+            fi
+            
+            echo "" # Empty line for spacing
+            
+            # Print bottom text
+            if [ "${{ steps.prerelease_check.outputs.is_prerelease }}" = "true" ]; then
+              echo "This is a **BETA** release, which means there are some functionalities expected not to work perfectly fine. The release is meant as a test, so do not use this, if you want the most stable experience. Please do report any error you encounter."
+              echo ""
+            fi
+
+            echo "Do note that all versions come with .NET embedded, which means you do not need to install any .NET runtime for this. It also does mean, that it will always use this exact same .NET version, even if your OS has a newer version. Most versions uses the newest available LTS (Long-Term Support) at time of release, but the **Windows x86 is self-contained with .NET6** to be able to support older versions like Windows 7."
+            echo ""
+            echo "> [!CAUTION]"
+            echo "> .NET6 has gone **End-of-Life in 2024**, and has not received any security hotfixes since then!"
+            echo ""
+            echo "You only need to install the **Classic Repair Toolbox** application once, and thereafter you can update directly from inside the application."
+            
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: "DEVELOPMENT - CRT2 ${{ steps.tag.outputs.tag }}"
+          name: ${{ steps.prerelease_check.outputs.release_name }}
           body: |
-            If you are looking for the normal/stable version, then look below and find the next release, **2026-February-21**.
-
-            **CRT2** is a new application built from scratch to natively support **Windows**, **Linux** and **macOS**. There will be many alpha-releases until the final version will be named **2.0.0**. Please support by giving your comments, if this works or not, and what needs improvement.
-            
-            You only need to install the CRT2 application once, and thereafter you can update directly from inside the application.
-            
-            > [!CAUTION]
-            > **DO NOT DOWNLOAD IF YOU DO NOT KNOW WHAT THIS VERSION IS** - use stable version available in below release
-            
-            > [!CAUTION]
-            > **DO NOT REPORT BUGS IN "ISSUES"**, as this is way too early for that. Instead you can participate in the online Discord discussion here, https://discord.gg/HDWct2vxem
-            
+            ${{ steps.changelog.outputs.content }}
             
             ### Direct downloads for different platforms
             | Platform | File |
             |----------|------|
-            | Windows x64 | [Commodore-Repair-Toolbox-win-Setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Commodore-Repair-Toolbox-win-Setup.exe) |
-            | Linux x64 | [Commodore-Repair-Toolbox.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Commodore-Repair-Toolbox.AppImage) |
-            | macOS arm64 Apple Silicon | [Commodore-Repair-Toolbox-osx-arm64-Setup.pkg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Commodore-Repair-Toolbox-osx-arm64-Setup.pkg) |
-            | macOS x64 Intel | [Commodore-Repair-Toolbox-osx-x64-Setup.pkg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Commodore-Repair-Toolbox-osx-x64-Setup.pkg) |
+            | Windows (x64) | [Classic-Repair-Toolbox-win-Setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Classic-Repair-Toolbox-win-Setup.exe)<br/>Self-contained **.NET ${{ needs.build-windows.outputs.dotnet_version }}** |
+            | Windows (x86) | [Classic-Repair-Toolbox-win-x86-Setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Classic-Repair-Toolbox-win-x86-Setup.exe)<br/>Self-contained **.NET ${{ needs.build-windows-x86.outputs.dotnet_version }}** |
+            | Linux (x64) | [Classic-Repair-Toolbox.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Classic-Repair-Toolbox.AppImage)<br/>Self-contained **.NET ${{ needs.build-linux.outputs.dotnet_version }}** |
+            | macOS Apple Silicon (arm64) | [Classic-Repair-Toolbox-osx-arm64-Setup.pkg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Classic-Repair-Toolbox-osx-arm64-Setup.pkg)<br/>Self-contained **.NET ${{ needs.build-macos.outputs.dotnet_version_arm64 }}** |
+            | macOS Intel (x64) | [Classic-Repair-Toolbox-osx-x64-Setup.pkg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/Classic-Repair-Toolbox-osx-x64-Setup.pkg)<br/>Self-contained **.NET ${{ needs.build-macos.outputs.dotnet_version_x64 }}** |
           draft: false
-          prerelease: true
+          prerelease: ${{ steps.prerelease_check.outputs.is_prerelease == 'true' }}
           files: |
             release-assets/*-Setup.exe
             release-assets/*.AppImage
@@ -310,6 +524,7 @@ jobs:
             release-assets/assets.*.json
 
       - name: Delete old pre-releases
+        if: ${{ steps.prerelease_check.outputs.is_prerelease == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT_TAG: ${{ steps.tag.outputs.tag }}
