@@ -156,6 +156,8 @@ Here is a rudimentary guide to compile _CRT_ on Linux - the below is based on Fe
 
 - Fork the _CRT_ GitHub repository
 - Clone the fork to your local computer
+- Make sure .NET 10 SDK is installed
+  - Download from here, https://dotnet.microsoft.com/en-us/download/dotnet/10.0
 - Compile RELEASE build
   - `dotnet publish -c Release -f net10.0 --self-contained`
 - Run application:  
