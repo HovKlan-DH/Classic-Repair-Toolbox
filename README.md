@@ -198,4 +198,20 @@ After a year with _CRT_ and due to several questions about "_is it Windows only_
 
 ## Screenshots
 
-To come when version **1.0.0** gets released ...
+Main schematics:
+<img width="902" height="555" alt="image" src="https://github.com/user-attachments/assets/ec67b241-2e08-46c8-ac27-21c17c795d1a" />
+
+Overview where a lot of component information is garthered:
+<img width="902" height="555" alt="image" src="https://github.com/user-attachments/assets/8db1fab6-55cc-45de-bfa0-3892f3145490" />
+
+Resources relevant to the hardware and board:
+<img width="902" height="555" alt="image" src="https://github.com/user-attachments/assets/bcb695c7-a7e3-414e-8ed0-cd7f43337ac4" />
+
+Configuration options:
+<img width="902" height="555" alt="image" src="https://github.com/user-attachments/assets/06f6a331-5d8a-4766-be01-ad9ee5be2d1a" />
+
+Doing a few manual traces:
+<img width="902" height="727" alt="image" src="https://github.com/user-attachments/assets/8291d990-5a20-4c8b-a537-fc5075a3235c" />
+
+Component information popup:
+<img width="902" height="580" alt="image" src="https://github.com/user-attachments/assets/ec811492-7c13-4542-bc80-a9479ba0d315" />
