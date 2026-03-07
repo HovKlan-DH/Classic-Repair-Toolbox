@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.TabAbout">
+	<ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+		<StackPanel Margin="16">
+
+			<StackPanel Orientation="Horizontal"
+                        Spacing="16"
+                        VerticalAlignment="Center">
+
+				<Image Source="avares://Classic-Repair-Toolbox/Assets/CRT_icon.png"
+                       Width="96"
+                       Height="96" />
+
+				<StackPanel VerticalAlignment="Center"
+                            Spacing="4">
+					<TextBlock x:Name="AboutAssemblyTitleText"
+                               FontSize="24"
+                               FontWeight="SemiBold" />
+
+					<StackPanel Orientation="Horizontal"
+                                Spacing="0">
+						<TextBlock Text="Version "
+                                   FontSize="14" />
+						<TextBlock x:Name="AppVersionText"
+                                   FontSize="14"
+                                   FontWeight="Bold" />
+					</StackPanel>
+				</StackPanel>
+			</StackPanel>
+
+			<TextBlock Margin="0,16,0,0"
+                       VerticalAlignment="Center">
+				<Run Text="Orchestrator for this (primarily) vibe-coded application is" />
+				<Run Text="Dennis Helligsø" FontWeight="SemiBold" />
+			</TextBlock>
+
+			<StackPanel Orientation="Horizontal"
+                        Margin="0,16,0,0"
+                        Spacing="6">
+				<TextBlock Text="GitHub project page:"
+                           VerticalAlignment="Center" />
+				<Button Content="https://github.com/HovKlan-DH/Classic-Repair-Toolbox"
+                        Padding="0"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        Foreground="{DynamicResource AppThemeAccentBrush}"
+                        Click="OnGitHubProjectPageClick" />
+			</StackPanel>
+
+			<StackPanel Orientation="Horizontal"
+                        Margin="0,6,0,0"
+                        Spacing="6">
+				<TextBlock Text="Helper page:"
+                           VerticalAlignment="Center" />
+				<Button Content="https://classic-repair-toolbox.dk"
+                        Padding="0"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        Foreground="{DynamicResource AppThemeAccentBrush}"
+                        Click="OnHelperPageClick" />
+			</StackPanel>
+
+			<!-- Credits section — shown only when the loaded board contains credits -->
+			<Border x:Name="CreditsSectionBorder"
+                    IsVisible="False"
+                    Margin="0,16,0,0">
+				<StackPanel>
+					<TextBlock Text="Credits:"
+                               Margin="0,0,0,6" />
+					<StackPanel x:Name="CreditsPanel" />
+				</StackPanel>
+			</Border>
+
+			<!-- Changelog section -->
+			<TextBlock Text="Changelog:"
+                       Margin="0,16,0,6" />
+			<TextBox x:Name="ChangelogTextBox"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas, Courier New, monospace"
+                     HorizontalAlignment="Stretch"
+                     MinHeight="120"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>

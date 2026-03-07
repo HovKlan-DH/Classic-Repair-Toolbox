@@ -1,0 +1,374 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:CRT"
+             xmlns:ts="clr-namespace:TabSchematics"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="CRT.TabSchematics">
+
+	<Grid x:Name="SchematicsInnerGrid">
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="*" MinWidth="80" />
+			<ColumnDefinition Width="4" />
+			<ColumnDefinition Width="*" MinWidth="100" />
+		</Grid.ColumnDefinitions>
+
+		<Border Grid.Column="0"
+                x:Name="SchematicsContainer"
+                ClipToBounds="True"
+                PointerWheelChanged="OnSchematicsZoom"
+                PointerPressed="OnSchematicsPointerPressed"
+                PointerMoved="OnSchematicsPointerMoved"
+                PointerReleased="OnSchematicsPointerReleased"
+                Padding="0,0,0,0">
+			<Grid>
+				<TextBlock x:Name="SchematicsMissingImageText"
+                           Text="Missing image - please refresh board after sync finishes..."
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource AppThemeSecondaryTextBrush}"
+                           IsVisible="False" />
+
+				<Image x:Name="SchematicsImage"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Top"
+                       RenderTransformOrigin="0%,0%"
+                       RenderOptions.BitmapInterpolationMode="HighQuality">
+					<Image.RenderTransform>
+						<MatrixTransform />
+					</Image.RenderTransform>
+				</Image>
+
+				<ts:SchematicHighlightsOverlay x:Name="SchematicsHighlightsOverlay"
+					  IsHitTestVisible="False"
+					  RenderTransformOrigin="0%,0%">
+					<ts:SchematicHighlightsOverlay.RenderTransform>
+						<MatrixTransform />
+					</ts:SchematicHighlightsOverlay.RenderTransform>
+				</ts:SchematicHighlightsOverlay>
+
+				<Canvas x:Name="SchematicsPolylineCanvas"
+								IsHitTestVisible="False"
+								RenderTransformOrigin="0%,0%"
+								Background="Transparent">
+					<Canvas.RenderTransform>
+						<MatrixTransform />
+					</Canvas.RenderTransform>
+				</Canvas>
+
+				<Canvas x:Name="SchematicsLabelsCanvas"
+												IsHitTestVisible="False"
+												RenderTransformOrigin="0%,0%"
+												Background="Transparent">
+					<Canvas.RenderTransform>
+						<MatrixTransform />
+					</Canvas.RenderTransform>
+				</Canvas>
+
+				<StackPanel Orientation="Horizontal"
+							HorizontalAlignment="Left"
+							VerticalAlignment="Top"
+							Margin="10,10,0,0"
+							Spacing="8"
+							IsHitTestVisible="False">
+
+					<Border x:Name="SchematicsNameBorder"
+							IsVisible="False"
+				Background="{DynamicResource SchematicsName_Bg}"
+				BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				BorderThickness="1"
+				CornerRadius="4"
+				Padding="8,4">
+						<TextBlock x:Name="SchematicsNameLabel"
+					   FontSize="11"
+					   FontWeight="Normal"
+					   Foreground="{DynamicResource SchematicsName_Fg}" />
+					</Border>
+
+					<Border x:Name="SchematicsRegionBorder"
+						IsVisible="False"
+						BorderBrush="{DynamicResource AppThemeBorderBrush}"
+						BorderThickness="1"
+						CornerRadius="4"
+						Padding="8,4">
+						<TextBlock x:Name="SchematicsRegionLabel"
+					   FontSize="11"
+					   FontWeight="Normal" />
+					</Border>
+				</StackPanel>
+
+				<Border x:Name="SchematicsHoverLabelBorder"
+					IsVisible="False"
+					IsHitTestVisible="False"
+					HorizontalAlignment="Left"
+					VerticalAlignment="Top"
+					Margin="10,44,0,0"
+					Background="{DynamicResource SchematicsComponent_Bg}"
+					BorderBrush="{DynamicResource AppThemeBorderBrush}"
+					BorderThickness="1"
+					CornerRadius="4"
+					Padding="8,4">
+					<TextBlock x:Name="SchematicsHoverLabelText"
+						FontSize="11"
+							   FontWeight="Bold"
+							   Foreground="{DynamicResource SchematicsComponent_Fg}" />
+				</Border>
+
+				<!-- LABELS VISIBLE PANEL -->
+				<Border x:Name="LabelsPanel"
+														HorizontalAlignment="Left"
+														VerticalAlignment="Bottom"
+														Margin="10,0,0,10"
+														Background="{DynamicResource SchematicsComponent_Bg}"
+														BorderBrush="{DynamicResource AppThemeBorderBrush}"
+														BorderThickness="1"
+														CornerRadius="4"
+														Padding="8,8">
+					<StackPanel Spacing="6">
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock Text="Labels visible"
+									   FontSize="11"
+									   VerticalAlignment="Center"
+									   FontWeight="Bold"
+									   Foreground="{DynamicResource SchematicsComponent_Fg}" />
+							<Button x:Name="ToggleLabelsPanelButton"
+									Content="Collapse"
+									FontSize="9"
+									Padding="6,2"
+									VerticalAlignment="Center" />
+						</StackPanel>
+						<StackPanel x:Name="LabelsListPanel" Spacing="4">
+							<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelBoardRowClicked">
+								<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+									<CheckBox x:Name="CheckLabelBoard" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
+								</Viewbox>
+								<TextBlock Text="Board label" FontSize="11" Foreground="{DynamicResource SchematicsComponent_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+							</StackPanel>
+
+							<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelTechnicalRowClicked">
+								<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+									<CheckBox x:Name="CheckLabelTechnical" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
+								</Viewbox>
+								<TextBlock Text="Technical name" FontSize="11" Foreground="{DynamicResource SchematicsComponent_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+							</StackPanel>
+
+							<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelFriendlyRowClicked">
+								<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+									<CheckBox x:Name="CheckLabelFriendly" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
+								</Viewbox>
+								<TextBlock Text="Friendly name" FontSize="11" Foreground="{DynamicResource SchematicsComponent_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+							</StackPanel>
+
+							<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelSelectedOnlyRowClicked">
+								<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+									<CheckBox x:Name="CheckLabelSelectedOnly" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
+								</Viewbox>
+								<TextBlock Text="Selected components only" FontSize="11" Foreground="{DynamicResource SchematicsComponent_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+							</StackPanel>
+						</StackPanel>
+					</StackPanel>
+				</Border>
+
+				<!-- DYNAMIC POLYLINE TRACES LIST PANEL -->
+				<Border x:Name="TracesPanel"
+					IsVisible="False"
+					HorizontalAlignment="Right"
+					VerticalAlignment="Bottom"
+					Margin="0,0,10,10"
+					Background="{DynamicResource SchematicsComponent_Bg}"
+					BorderBrush="{DynamicResource AppThemeBorderBrush}"
+					BorderThickness="1"
+					CornerRadius="4"
+					Padding="8,8">
+					<StackPanel Spacing="6">
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock Text="Traces visible"
+									   FontSize="11"
+									   VerticalAlignment="Center"
+									   FontWeight="Bold"
+									   Foreground="{DynamicResource SchematicsComponent_Fg}" />
+							<Button x:Name="ClearTracesButton"
+									Content="Clear All"
+									FontSize="9"
+									Padding="6,2"
+									VerticalAlignment="Center" />
+						</StackPanel>
+						<!-- Code-behind will inject colors here -->
+						<StackPanel x:Name="TracesListPanel" Spacing="4" />
+					</StackPanel>
+				</Border>
+
+				<!-- CONTEXTUAL FLOATING TRACE PALETTE -->
+				<Border x:Name="TraceFloatingPalette"
+					IsVisible="False"
+					HorizontalAlignment="Left"
+					VerticalAlignment="Top"
+					Background="{DynamicResource SchematicsComponent_Bg}"
+					BorderBrush="{DynamicResource AppThemeBorderBrush}"
+					BorderThickness="1"
+					CornerRadius="8"
+					Padding="8,6"
+					BoxShadow="0 4 10 0 #40000000">
+					<StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+
+						<!-- DYNAMIC Color Buttons Array -->
+						<StackPanel x:Name="DynamicPaletteColorsPanel" Orientation="Horizontal" Spacing="10" />
+
+						<Border Width="1" Height="18" Background="{DynamicResource AppThemeBorderBrush}" Margin="2,0"/>
+
+						<!-- Custom Color Wheel mapped as a perfectly round flyout button -->
+						<Button x:Name="CustomColorButton"
+								Width="18" Height="18"
+								CornerRadius="9"
+								Padding="0"
+								Cursor="Hand"
+								Background="White"
+								BorderBrush="White"
+								BorderThickness="1">
+							<!--
+							<Button.Flyout>
+								<Flyout Placement="BottomEdgeAlignedLeft">
+									<ColorView x:Name="TraceColorPicker" Color="White" />
+								</Flyout>
+							</Button.Flyout>
+							-->
+							<Button.Flyout>
+								<Flyout Placement="BottomEdgeAlignedLeft">
+									<ColorView x:Name="TraceColorPicker"
+											   Color="White"
+											   PropertyChanged="OnTraceColorPickerPropertyChanged" />
+								</Flyout>
+							</Button.Flyout>
+						</Button>
+
+						<Border Width="1" Height="18" Background="{DynamicResource AppThemeBorderBrush}" Margin="2,0"/>
+
+						<!-- Delete Trace Button -->
+						<TextBlock Text="🗑"
+								   FontSize="16"
+								   Foreground="IndianRed"
+								   Cursor="Hand"
+								   PointerPressed="OnPaletteDeleteClicked"
+								   VerticalAlignment="Center"
+								   Margin="2,0"/>
+					</StackPanel>
+				</Border>
+
+			</Grid>
+		</Border>
+
+		<GridSplitter x:Name="SchematicsSplitter"
+                      Grid.Column="1"
+                      ResizeDirection="Columns"
+                      HorizontalAlignment="Stretch"
+                      Background="{DynamicResource AppThemeBorderBrush}" />
+
+		<ListBox x:Name="SchematicsThumbnailList"
+                 Grid.Column="2"
+                 Background="Transparent"
+                 SelectionMode="Single"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+
+			<ListBox.Styles>
+				<Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+					<Setter Property="Background" Value="Transparent" />
+				</Style>
+				<Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+					<Setter Property="Background" Value="Transparent" />
+				</Style>
+
+				<Style Selector="ListBoxItem:pointerover">
+					<Setter Property="Cursor" Value="Hand" />
+				</Style>
+
+				<Style Selector="ListBoxItem">
+					<Setter Property="Padding"                     Value="0" />
+					<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+				</Style>
+
+				<Style Selector="ListBoxItem Border.ThumbnailBorder">
+					<Setter
+                        Property="BorderBrush"
+                        Value="{DynamicResource Thumbnail_Border}" />
+					<Setter
+                        Property="BorderThickness"
+                        Value="1" />
+				</Style>
+
+				<Style Selector="ListBoxItem:selected Border.ThumbnailBorder">
+					<Setter
+                        Property="BorderBrush"
+                        Value="{DynamicResource Thumbnail_BorderSelected}" />
+					<Setter
+                        Property="BorderThickness"
+                        Value="3" />
+				</Style>
+
+			</ListBox.Styles>
+			<ListBox.ItemTemplate>
+				<DataTemplate x:DataType="ts:SchematicThumbnail">
+					<Border Classes="ThumbnailBorder"
+                            Margin="4,4,8,4"
+                            CornerRadius="0"
+                            HorizontalAlignment="Stretch"
+                            ClipToBounds="True"
+                            Opacity="{Binding VisualOpacity}">
+						<Grid>
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto" />
+								<RowDefinition Height="*" />
+							</Grid.RowDefinitions>
+
+							<Border Grid.Row="0"
+								Background="{DynamicResource Thumbnail_Bg}"
+								BorderBrush="{DynamicResource Thumbnail_Border}"
+								BorderThickness="0,0,0,1">
+								<Grid>
+									<Border Background="{DynamicResource Thumbnail_Selection_Bg}"
+												Opacity="1.0"
+												IsVisible="{Binding IsMatchForSelection}" />
+									<TextBlock Text="{Binding Name}"
+											   Foreground="{DynamicResource Thumbnail_Txt}"
+											   HorizontalAlignment="Stretch"
+											   TextAlignment="Left"
+											   FontSize="11"
+											   Padding="4,3"
+											   IsVisible="{Binding !IsMatchForSelection}" />
+									<TextBlock Text="{Binding Name}"
+											   Foreground="{DynamicResource Thumbnail_Selection_Txt}"
+											   HorizontalAlignment="Stretch"
+											   TextAlignment="Left"
+											   FontSize="11"
+											   Padding="4,3"
+											   IsVisible="{Binding IsMatchForSelection}" />
+								</Grid>
+							</Border>
+
+							<Grid Grid.Row="1">
+								<TextBlock Text="Missing Image"
+										   HorizontalAlignment="Center"
+										   VerticalAlignment="Center"
+										   Foreground="{DynamicResource AppThemeSecondaryTextBrush}"
+										   FontSize="11"
+										   Padding="8,16"
+										   TextAlignment="Center"
+										   TextWrapping="Wrap"
+										   IsVisible="{Binding ImageSource, Converter={x:Static ObjectConverters.IsNull}}" />
+
+								<Image Source="{Binding ImageSource}"
+									   Stretch="Uniform"
+									   HorizontalAlignment="Stretch"
+									   RenderOptions.BitmapInterpolationMode="HighQuality" />
+							</Grid>
+						</Grid>
+					</Border>
+				</DataTemplate>
+			</ListBox.ItemTemplate>
+		</ListBox>
+
+	</Grid>
+</UserControl>

@@ -1,0 +1,129 @@
+--------------------------------------
+Hardware      : Commodore 128 and 128D
+Board         : 310378
+Revision date : 2026-January-7
+------------------------------
+
+Note that the below measurements are not bulletproof facts - they are concrete measurements done on my system
+at a specific point in time, but there may be many reasons why your readings differ the exact same readings.
+If you know my readings are wrong, then I would appreciate feedback so I can correct it, so future
+users can benefit from it.
+
+
+--------------------
+Tooling requirements
+--------------------
+- Oscilloscope
+- Multimeter
+
+
+---------------------------------------------------
+References for basic must-have voltages and signals
+---------------------------------------------------
+Below are basic first-step approach for measurements, as these signals must be present to have a functional
+system (not 100% sure all are needed, but this is my guide for now at least). If you encounter any issues, then
+refer to the specific measurement on the component itself; e.g. "Scope baseline measurements (U6)".
+You are also highly encouraged to read the "C128 Diagnostic Instruction and Troubleshooting Manual" which
+can be found in the "Resources" tab.
+
+
+-----------
+Power rails
+-----------
++5VDC:
+    - U6, CPU, pin 6
+    - U11, PLA, pin 48
+    - U21, VIC-IIe, pin 48
++12VDC:
+    - U59, 7812, pin 3 (the pin at the left-most position)
+    - U5, SID, pin 28
+9VAC: 
+    - CN9, User port, pin 10+11 (measure using an AC multimeter with one probe on each pin)
+
+
+------------
+Reset signal
+------------
+U6, CPU, pin 40 = At power-on it stays LOW for ~100–500ms, then goes HIGH and stays HIGH
+
+
+-------------
+System clocks
+-------------
+U6, CPU, pin 1, Φ0(IN)        = 985.251 kHz
+U28, 8701, pin 6, ΦDOT        = 7.8820 MHz
+U28, 8701, pin 8, ΦCOLOR      = 17.7345 MHz
+U28, 8701, pin 13, XTAL OUT   = 17.7326 MHz
+U11, PLA, pin 47, CLK         = 1.9705 MHz
+U21, VIC-IIe, pin 18, 1MHz    = 985.250 kHz
+U21, VIC-IIe, pin 23, 2MHz    = 985.251 kHz
+U21, VIC-IIe, pin 25, Z80 PHI = 1.9705 MHz
+U21, VIC-IIe, pin 29, ΦCOLOR  = 17.7345 MHz
+U21, VIC-IIe, pin 30, ΦDOT    = 7.88201 MHz
+U22, VDC, pin 2, DCLK         = 16.0001 MHz
+
+
+-------------------
+Chip select signals
+-------------------
+U11, PLA, pin 29, /SDEN (dynamic RAM chips)               = pulsing
+U11, PLA, pin 33, /FROM (U36, Function ROM)               = HIGH
+U11, PLA, pin 34, /ROM4 (U35, Kernal & 40/80 columns ROM) = pulsing
+U11, PLA, pin 35, /ROM3 (U34, Basic ROM)                  = pulsing, but mostly HIGH
+U11, PLA, pin 36, /ROM2 (U33, Basic ROM)                  = pulsing, but mostly HIGH
+U11, PLA, pin 37, /ROM1 (U32, Kernal & Basic ROM)         = HIGH
+U11, PLA, pin 42, /VIC (U21, VIC-IIe)                     = pulsing, but mostly HIGH
+U11, PLA, pin 43, /IO ACC (various /IO chips)             = pulsing, but mostly HIGH
+U11, PLA, pin 44, /COLRAM (U19 "Color RAM")               = HIGH
+U11, PLA, pin 46, /CHARROM (U18 "Character ROM")          = pulsing
+
+
+----------------------------
+AEC (Address Enable Control)
+----------------------------
+U6, CPU, pin 5 = HIGH
+
+
+-------------
+Address lines
+-------------
+U6, CPU, pin 7, A0   = pulsing
+U6, CPU, pin 8, A1   = pulsing
+U6, CPU, pin 9, A2   = pulsing
+U6, CPU, pin 10, A3  = pulsing
+U6, CPU, pin 11, A4  = pulsing
+U6, CPU, pin 12, A5  = pulsing
+U6, CPU, pin 13, A6  = pulsing
+U6, CPU, pin 14, A7  = pulsing
+U6, CPU, pin 15, A8  = pulsing
+U6, CPU, pin 16, A9  = pulsing
+U6, CPU, pin 17, A10 = pulsing
+U6, CPU, pin 18, A11 = pulsing
+U6, CPU, pin 19, A12 = pulsing
+U6, CPU, pin 20, A13 = pulsing
+U6, CPU, pin 22, A14 = pulsing
+U6, CPU, pin 23, A15 = pulsing
+
+
+----------
+Data lines
+----------
+U6, CPU, pin 31, D7 = pulsing
+U6, CPU, pin 32, D6 = pulsing
+U6, CPU, pin 33, D5 = pulsing
+U6, CPU, pin 34, D4 = pulsing
+U6, CPU, pin 35, D3 = pulsing
+U6, CPU, pin 36, D2 = pulsing
+U6, CPU, pin 37, D1 = pulsing
+U6, CPU, pin 38, D0 = pulsing
+
+
+-----------
+Chroma/Luma
+-----------
+U21, VIC-IIe, pin 16, Color = 3.2V (pulsing from 2.2V to 4.2V)
+U21, VIC-IIe, pin 17, S/LUM = pulsing
+
+
+This is written by the "Commodore Repair Toolbox" developer.
+Connect with me via the "Feedback" tab.

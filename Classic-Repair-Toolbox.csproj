@@ -1,0 +1,97 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+		<Title>Classic Repair Toolbox</Title>
+		<Product>Classic Repair Toolbox</Product>
+		<AssemblyTitle>Classic Repair Toolbox</AssemblyTitle>
+		<Company>HovKlan</Company>
+		<Authors>Dennis Helligsoe</Authors>
+		<Copyright>©2025-2026</Copyright>
+		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
+		<AssemblyVersion>0.1.14</AssemblyVersion>
+        <OutputType>WinExe</OutputType>
+		<TargetFrameworks>net6.0;net10.0</TargetFrameworks>
+		<RollForward>LatestMajor</RollForward>
+        <Nullable>enable</Nullable>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+        <RuntimeIdentifiers>win-x86;win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+        <PackageProjectUrl>https://github.com/HovKlan-DH/Classic-Repair-Toolbox</PackageProjectUrl>
+        <PackageIcon>CRT_icon.png</PackageIcon>
+        <ApplicationIcon>Assets\CRT_icon.ico</ApplicationIcon>
+        <FileVersion>$(AssemblyVersion)</FileVersion>
+        <Version>$(AssemblyVersion)</Version>
+        <Description>A utility tool for classic and retro hardware repairing, troubleshooting and diagnosing.</Description>
+</PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
+	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.12" />
+    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="EPPlus" Version="8.5.0" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="TabFeedback\TabFeedback.axaml.cs">
+      <DependentUpon>TabFeedback.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Main.axaml.cs">
+      <DependentUpon>Main.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="TabOverview\TabOverview.axaml.cs">
+      <DependentUpon>TabOverview.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Update="Splash.axaml.cs">
+      <DependentUpon>Splash.axaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+<!--
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+ </ItemGroup>
+ -->
+	<ItemGroup>
+		<AvaloniaResource Include="Assets\CRT_icon.png" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\CRT_icon.ico" />
+  </ItemGroup>
+
+    <ItemGroup>
+        <AvaloniaResource Include="Assets\Changelog.txt" />
+    </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+    <ItemGroup>
+	    <AvaloniaResource Update="Assets\CRT_icon.png">
+		    <Pack>True</Pack>
+		    <PackagePath>\</PackagePath>
+	    </AvaloniaResource>
+    </ItemGroup>
+
+</Project>

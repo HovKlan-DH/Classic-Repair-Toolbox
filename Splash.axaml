@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.Splash"
+        Width="600" Height="400"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{DynamicResource AppThemeSplashWindowBackgroundBrush}"
+        TransparencyLevelHint="Transparent">
+
+    <Border Background="{DynamicResource AppThemeBackgroundBrush}"
+            BorderBrush="{DynamicResource AppThemeSplashBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            ClipToBounds="True">
+
+		<StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+            Spacing="8" Margin="0,-30,0,0">
+			
+            <Image Source="avares://Classic-Repair-Toolbox/Assets/CRT_icon.png"
+                   Width="128" Height="128" 
+                   Margin="0,0,0,8" />
+
+            <TextBlock Text="Classic Repair Toolbox"
+                       FontSize="36"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource AppThemeTextBrush}"
+                       HorizontalAlignment="Center" />
+
+			<TextBlock x:Name="VersionLabel"
+                       FontSize="12"
+                       Foreground="{DynamicResource AppThemeTextBrush}"
+                       Opacity="0.7"
+                       HorizontalAlignment="Center"
+                       Margin="0,-4,0,36">
+                <Run Text="Version" />
+                <Run x:Name="VersionNumberRun"
+                     Text="(unknown)"
+                     FontWeight="Bold" />
+            </TextBlock>
+
+            <TextBlock x:Name="StatusLabel"
+                       Text="Loading, please wait..."
+                       FontSize="14"
+                       Foreground="{DynamicResource AppThemeTextBrush}"
+                       HorizontalAlignment="Center" />
+            
+            <TextBlock x:Name="FileLabel"
+                       Text=""
+                       FontSize="12"
+                       Foreground="{DynamicResource AppThemeTextBrush}"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       MaxWidth="520"
+                       TextTrimming="CharacterEllipsis"
+                       IsVisible="False" />
+        </StackPanel>
+    </Border>
+
+</Window>

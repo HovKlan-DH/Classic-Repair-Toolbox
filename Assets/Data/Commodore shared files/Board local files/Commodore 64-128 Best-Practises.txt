@@ -1,0 +1,28 @@
+------------------------------------
+Hardware      : Commodore 64 and 128
+Revision date : 2025-October-15
+-------------------------------
+
+
+-----------------------------------------------
+Best-practise to keep your running system alive
+-----------------------------------------------
+If you have your system running, a few components will turn hot - some can even be so hot, that you cannot hold a finger to it. To reduce the stress from the heat, there are a couple of things you can do.
+
+You should remove the built-in RF shield. Sometimes it is just a cardboard enclosure; other times, it is a metal shield. Either way, remove it entirely, as it tends to trap heat and keep the chips warmer because the thermal paste has usually degraded and the surface area for heat conduction is small. Also, the cardboard tends to be one of the biggest "smelling points" of a vintage Commodore, as that old cardboard tends to have all kinds of bad odors.
+
+It is also highly recommended to attach heatsinks for the core components. You do not need to heatsink all components - just the ones that are most expensive and get the hottest. Typically the "glue-chips" (logic IC) can be purchased cheaply from new or there are alternatives. There are of course also newer replacement IC's for the most, but they are typically more expensive than finding something on eBay (but they will probably last longer).
+
+These IC's should have heatsinks, as they are expensive and get hot:
+- VIC-II
+- SID
+- CPU
+- PLA
+- 3 x ROM (Kernal, Basic and Character)
+
+Could have heatsinks, though they normally do not get that hot, but they are equally expensive:
+- 2 x CIA
+
+If you heatsink an IC, it is recommended to write on the bottom-side what type it is; e.g. "6581R3" or "8580R4" for a SID and alike, so you will know if they ever get pulled out again (they most likely will).
+
+Note: The RF shield reduces electromagnetic interference (EMI) and helps with regulatory compliance, but in todays environment it really has no influence, and the "cost" is higher for keeping it, compared to scrapping it. If you do NOT heatsink any IC, then maybe it is better to keep the metal shield, but then at least put some new thermal paste and make sure the metal touches the IC. However, the cardboard shield must be scrapped no matter what - it is a heat trap!

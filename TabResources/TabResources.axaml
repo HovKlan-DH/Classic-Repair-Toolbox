@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TabResources">
+
+	<UserControl.Styles>
+		<!-- Minimal hyperlink button style -->
+		<Style Selector="Button.LinkButton">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="#005A9E" />
+			<Setter Property="Padding" Value="8,4" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="HorizontalAlignment" Value="Left" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Button.LinkButton:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.LinkButton:pointerover TextBlock">
+			<Setter Property="Foreground" Value="#0078D4" />
+		</Style>
+
+		<Style Selector="Button.LinkButton:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+	</UserControl.Styles>
+
+	<ScrollViewer>
+		<StackPanel Margin="16" Spacing="24">
+
+			<TextBlock Text="Resources for troubleshooting and information"
+					   FontSize="18"
+					   FontWeight="Bold" />
+
+			<!-- Local Files Section -->
+			<StackPanel Spacing="8">
+				<TextBlock Text="Local files"
+						   FontSize="14"
+						   FontWeight="Bold" />
+
+				<Border BorderBrush="#CCCCCC" BorderThickness="1">
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto" />
+							<RowDefinition Height="*" />
+						</Grid.RowDefinitions>
+
+						<!-- Header -->
+						<Grid Grid.Row="0" Background="#DDDDDD">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="200" />
+								<ColumnDefinition Width="*" />
+							</Grid.ColumnDefinitions>
+							<TextBlock Grid.Column="0" Text="Category" Padding="8,4" />
+							<TextBlock Grid.Column="1" Text="Name" Padding="8,4" />
+						</Grid>
+
+						<!-- Items -->
+						<ItemsControl Grid.Row="1" x:Name="LocalFilesItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate DataType="local:ResourceItem">
+									<Border BorderBrush="#EEEEEE" BorderThickness="0,0,0,1">
+										<Grid>
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="200" />
+												<ColumnDefinition Width="*" />
+											</Grid.ColumnDefinitions>
+											<TextBlock Grid.Column="0"
+													   Text="{Binding Category}"
+													   Padding="8,4"
+													   VerticalAlignment="Center" />
+											<Button Grid.Column="1"
+													Classes="LinkButton"
+													Command="{Binding OpenCommand}">
+												<TextBlock Text="{Binding Name}" TextDecorations="Underline" />
+											</Button>
+										</Grid>
+									</Border>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</Grid>
+				</Border>
+			</StackPanel>
+
+			<!-- Web Links Section -->
+			<StackPanel Spacing="8">
+				<TextBlock Text="Links"
+						   FontSize="14"
+						   FontWeight="Bold" />
+
+				<Border BorderBrush="#CCCCCC" BorderThickness="1">
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto" />
+							<RowDefinition Height="*" />
+						</Grid.RowDefinitions>
+
+						<!-- Header -->
+						<Grid Grid.Row="0" Background="#DDDDDD">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="200" />
+								<ColumnDefinition Width="*" />
+							</Grid.ColumnDefinitions>
+							<TextBlock Grid.Column="0" Text="Category" Padding="8,4" />
+							<TextBlock Grid.Column="1" Text="Name" Padding="8,4" />
+						</Grid>
+
+						<!-- Items -->
+						<ItemsControl Grid.Row="1" x:Name="WebLinksItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate DataType="local:ResourceItem">
+									<Border BorderBrush="#EEEEEE" BorderThickness="0,0,0,1">
+										<Grid>
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="200" />
+												<ColumnDefinition Width="*" />
+											</Grid.ColumnDefinitions>
+											<TextBlock Grid.Column="0"
+													   Text="{Binding Category}"
+													   Padding="8,4"
+													   VerticalAlignment="Center" />
+											<Button Grid.Column="1"
+													Classes="LinkButton"
+													Command="{Binding OpenCommand}">
+												<TextBlock Text="{Binding Name}" TextDecorations="Underline" />
+											</Button>
+										</Grid>
+									</Border>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</Grid>
+				</Border>
+			</StackPanel>
+
+		</StackPanel>
+	</ScrollViewer>
+</UserControl>

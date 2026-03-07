@@ -1,0 +1,39 @@
+-----------------------------------------------
+Contribution for oscilloscope baseline readings
+-----------------------------------------------
+Revision date : 2025-November-10
+
+
+If you want to contribute by measuring a new oscilloscope baseline for a specific board, then please read these definitions and rules, so you can understand what it implies for doing these measurements.
+
+The intention with the baseline is actually NOT to thoroughly validate each and every IC is working as expected, but to get the computer to a minimum working "Basic" screen. This will both give a good success feeling for the most novice users (getting to this screen), but it will also do a simple validation that the IC's are at least not _completely_ broken, and at least not halting the system.
+
+* Audience is a novice user, wanting to see "what is normal for this pin"
+* Use 1V/DIV for 5V rails
+* Use 2V/DIV for 12V rail
+* Have CH1 marker (0V) placed at second last line in grid
+* Always use "10X" probe
+* When measuring a clear LOW or HIGH, use 1uS (by pressing "9" in numpad when using "ONC")
+• Have trigger level set to ~1.5V
+* Make sure to clear statistics before saving image
+• Make sure to capture frequency for pins with frequency
+• The image should show the overall trend; "what is it the most", so if it is mostly LOW, then it should show that and vice-versa. A signal pulsing should have a fairly high timing, to show the trend
+* Make sure grid is clearly visible in the saved image
+* Make sure waveform/graph is clearly visible in the saved image
+* When measuring a pure LOW or HIGH signal, then do a capture in SINGLE mode to ensure it does never trigger the ~1.5V trigger level set. This is important, as many times the signal can look like it is only LOW or HIGH, but in reality it does pulse
+* The saved image should not show "ghosting", colors, multi-channel readings or alike - look at the current images, and see what is acceptable and currently done
+* Filename format must be (all CAPITALIZED): COMPONENT_PINNUMBER_REGION.png
+	- example: U1_21_NTSC.png
+	- example: U63_1_PAL.png
+	- Recommended to use "Oscilloscope Network Capture", https://github.com/HovKlan-DH/Oscilloscope-Network-Capture
+* Be sure the pin numbering on the saved files are correct, and do use a structured and methodical approach when taking measurements - we must be able to trust the result
+* Visually doublecheck all images before submitting for inclusion!
+* When committing to a baseline, then ALL IC's should be meassured for getting credits
+* If you want to replace an already existing baseline, then please provide a reason why you think your baseline will be better than the existing
+* Make sure to setup the system exactly as described in "Introduction to scope baseline measurements"
+
+As a helper-tool you can use "Oscilloscope Network Capture" (ONC) from here, https://github.com/HovKlan-DH/Oscilloscope-Network-Capture (developed by me for this specific purpose).
+
+Kind regards,
+
+Dennis Helligsø

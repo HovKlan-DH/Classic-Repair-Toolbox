@@ -1,0 +1,481 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:CRT"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="CRT.Main"
+        Title="Classic Repair Toolbox"
+        MinWidth="800"
+        MinHeight="500">
+
+	<Window.Styles>
+
+		<!-- Base tab font size and reduced vertical padding -->
+		<Style Selector="TabItem">
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="Padding" Value="12,4" />
+		</Style>
+
+		<!-- Hover: tint the header text -->
+		<Style Selector="TabItem:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+		</Style>
+
+		<!-- Hover: show a faint underline indicator -->
+		<Style Selector="TabItem:pointerover /template/ Border#PART_SelectedPipe">
+			<Setter Property="IsVisible" Value="True" />
+			<Setter Property="Background" Value="{DynamicResource AppThemeAccentLightBrush}" />
+		</Style>
+
+		<!-- Selected: solid underline indicator -->
+		<Style Selector="TabItem:selected /template/ Border#PART_SelectedPipe">
+			<Setter Property="Background" Value="{DynamicResource AppThemeAccentBrush}" />
+		</Style>
+
+		<!-- Banner install button: explicit hover/pressed backgrounds -->
+		<Style Selector="Button.BannerInstallButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource AppThemeAccentBrush}" />
+		</Style>
+		<Style Selector="Button.BannerInstallButton:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource AppThemeAccentHoverBrush}" />
+		</Style>
+		<Style Selector="Button.BannerInstallButton:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource AppThemeAccentPressedBrush}" />
+		</Style>
+
+		<!-- Banner dismiss button: subtle hover on dark background -->
+		<Style Selector="Button.BannerDismissButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.BannerDismissButton:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource AppThemeBannerDismissHoverBrush}" />
+		</Style>
+		<Style Selector="Button.BannerDismissButton:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource AppThemeBannerDismissPressedBrush}" />
+		</Style>
+
+		<!-- Region toggle buttons -->
+		<Style Selector="Button.RegionToggle.active">
+			<Setter Property="BorderThickness" Value="2" />
+		</Style>
+
+		<!-- PAL active -->
+		<Style Selector="Button#PalRegionButton.RegionToggle.active">
+			<Setter Property="Foreground" Value="{DynamicResource Region_PAL_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_PAL_Bg}" />
+		</Style>
+		<Style Selector="Button#PalRegionButton.RegionToggle.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Region_PAL_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_PAL_Bg}" />
+		</Style>
+
+		<!-- NTSC active -->
+		<Style Selector="Button#NtscRegionButton.RegionToggle.active">
+			<Setter Property="Foreground" Value="{DynamicResource Region_NTSC_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_NTSC_Bg}" />
+		</Style>
+		<Style Selector="Button#NtscRegionButton.RegionToggle.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Region_NTSC_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_NTSC_Bg}" />
+		</Style>
+
+		<!-- Credits contact link button -->
+		<Style Selector="Button.CreditsContactLink">
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<Style Selector="Button.CreditsContactLink /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.CreditsContactLink:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.CreditsContactLink:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentHoverBrush}" />
+		</Style>
+
+	</Window.Styles>
+
+	<Grid x:Name="RootGrid">
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="200" MinWidth="80" />
+			<ColumnDefinition Width="4" />
+			<ColumnDefinition Width="*" MinWidth="100" />
+		</Grid.ColumnDefinitions>
+
+		<Border x:Name="LeftPanel"
+			Grid.Column="0"
+			BorderBrush="{DynamicResource AppThemePanelBorderBrush}"
+			BorderThickness="1"
+			Padding="16">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+					<RowDefinition Height="Auto" />
+				</Grid.RowDefinitions>
+
+				<!-- Hardware, Board and Category selectors -->
+				<Grid Grid.Row="1"
+					  Margin="0,8,0,0">
+					<Grid.RowDefinitions>
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="Auto" />
+						<RowDefinition Height="*" />
+					</Grid.RowDefinitions>
+
+					<TextBlock Grid.Row="0"
+							   Text="Hardware"
+							   FontSize="11"
+							   Foreground="{DynamicResource AppThemeSecondaryTextBrush}" />
+					<ComboBox Grid.Row="1"
+							  x:Name="HardwareComboBox"
+							  HorizontalAlignment="Stretch"
+							  Margin="0,4,0,0" />
+					<TextBlock Grid.Row="2"
+							   Text="Board"
+							   FontSize="11"
+							   Foreground="{DynamicResource AppThemeSecondaryTextBrush}"
+							   Margin="0,8,0,0" />
+					<ComboBox Grid.Row="3"
+							  x:Name="BoardComboBox"
+							  HorizontalAlignment="Stretch"
+							  Margin="0,4,0,0" />
+					<TextBlock Grid.Row="4"
+							   Text="Category"
+							   FontSize="11"
+							   Foreground="{DynamicResource AppThemeSecondaryTextBrush}"
+							   Margin="0,8,0,0" />
+					<ListBox Grid.Row="5"
+							 x:Name="CategoryFilterListBox"
+							 SelectionMode="Multiple,Toggle"
+							 Margin="0,4,0,0"
+							 Background="{DynamicResource AppThemeListBackgroundBrush}"
+							 BorderBrush="{DynamicResource AppThemeBorderBrush}"
+							 BorderThickness="1"
+							 CornerRadius="4"
+							 ClipToBounds="True"
+							 Padding="0"
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+						<ListBox.Styles>
+							<Style Selector="ListBox /template/ Border">
+								<Setter Property="CornerRadius" Value="3" />
+								<Setter Property="ClipToBounds" Value="True" />
+							</Style>
+							<Style Selector="ListBox /template/ ScrollViewer">
+								<Setter Property="CornerRadius" Value="3" />
+								<Setter Property="ClipToBounds" Value="True" />
+							</Style>
+							<Style Selector="ListBoxItem">
+								<Setter Property="Padding" Value="8,3" />
+								<Setter Property="MinHeight" Value="0" />
+								<Setter Property="FontSize" Value="11" />
+							</Style>
+							<Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionHoverBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected">
+								<Setter Property="Foreground" Value="{DynamicResource AppThemeListSelectedTextBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionHoverBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected:pointerover">
+								<Setter Property="Foreground" Value="{DynamicResource AppThemeListSelectedTextBrush}" />
+							</Style>
+						</ListBox.Styles>
+					</ListBox>
+
+					<TextBlock Grid.Row="6"
+							   Text="Component"
+							   FontSize="11"
+							   Foreground="{DynamicResource AppThemeSecondaryTextBrush}"
+							   Margin="0,8,0,0" />
+					<ListBox Grid.Row="7"
+							 x:Name="ComponentFilterListBox"
+							 SelectionMode="Multiple,Toggle"
+							 Margin="0,4,0,0"
+							 Background="{DynamicResource AppThemeListBackgroundBrush}"
+							 BorderBrush="{DynamicResource AppThemeBorderBrush}"
+							 BorderThickness="1"
+							 CornerRadius="4"
+							 ClipToBounds="True"
+							 Padding="0"
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+						<ListBox.Styles>
+							<Style Selector="ListBox /template/ Border">
+								<Setter Property="CornerRadius" Value="3" />
+								<Setter Property="ClipToBounds" Value="True" />
+							</Style>
+							<Style Selector="ListBox /template/ ScrollViewer">
+								<Setter Property="CornerRadius" Value="3" />
+								<Setter Property="ClipToBounds" Value="True" />
+							</Style>
+							<Style Selector="ListBoxItem">
+								<Setter Property="Padding" Value="8,3" />
+								<Setter Property="MinHeight" Value="0" />
+								<Setter Property="FontSize" Value="11" />
+							</Style>
+							<Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionHoverBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected">
+								<Setter Property="Foreground" Value="{DynamicResource AppThemeListSelectedTextBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+								<Setter Property="Background" Value="{DynamicResource AppThemeListSelectionHoverBrush}" />
+							</Style>
+							<Style Selector="ListBoxItem:selected:pointerover">
+								<Setter Property="Foreground" Value="{DynamicResource AppThemeListSelectedTextBrush}" />
+							</Style>
+						</ListBox.Styles>
+					</ListBox>
+				</Grid>
+
+				<!-- Action Controls -->
+				<StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="4">
+					<TextBox x:Name="ComponentSearchTextBox"
+						 FontSize="12"
+						 MinHeight="0"
+						 Padding="4"
+						 VerticalContentAlignment="Center"
+						 TextChanged="OnComponentSearchTextChanged" />
+
+					<!-- Selection Actions -->
+					<Grid ColumnDefinitions="*,4,*">
+						<Button Grid.Column="0"
+								Content="Clear"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnClearComponentsClick" />
+						<Button Grid.Column="2"
+								Content="Mark all"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnMarkAllComponentsClick" />
+					</Grid>
+
+					<!-- Video standard -->
+					<Grid ColumnDefinitions="*,4,*">
+						<Button x:Name="PalRegionButton"
+								Classes="RegionToggle"
+								Grid.Column="0"
+								Content="PAL"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnPalRegionClick" />
+						<Button x:Name="NtscRegionButton"
+								Classes="RegionToggle"
+								Grid.Column="2"
+								Content="NTSC"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnNtscRegionClick" />
+					</Grid>
+
+					<!-- View options -->
+					<Grid ColumnDefinitions="*,4,*">
+						<Button Grid.Column="0"
+								Content="Fullscreen"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4" />
+
+						<CheckBox x:Name="BlinkSelectedCheckBox"
+							  Grid.Column="2"
+							  Content="Blink selected"
+							  HorizontalAlignment="Left"
+							  FontSize="12"
+							  VerticalAlignment="Center"
+							  IsCheckedChanged="OnBlinkSelectedChanged" />
+					</Grid>
+				</StackPanel>
+
+			</Grid>
+		</Border>
+
+		<!-- Left Splitter -->
+		<GridSplitter x:Name="MainSplitter"
+					  Grid.Column="1"
+					  ResizeDirection="Columns"
+					  HorizontalAlignment="Stretch"
+					  Background="{DynamicResource AppThemeBorderBrush}" />
+
+		<!-- Right Panel -->
+		<Border x:Name="RightPanel"
+				Grid.Column="2"
+				BorderBrush="{DynamicResource AppThemeBackgroundBrush}"
+				BorderThickness="1"
+				Padding="0,0,0,0">
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+				</Grid.RowDefinitions>
+
+				<!-- Update notification banner -->
+				<Border x:Name="UpdateBanner"
+						Grid.Row="0"
+						IsVisible="False"
+						Background="{DynamicResource AppThemeBannerBackgroundBrush}"
+						CornerRadius="4"
+						Margin="0,8,0,4"
+						Padding="12,6">
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="Auto" />
+							<ColumnDefinition Width="Auto" />
+							<ColumnDefinition Width="Auto" />
+						</Grid.ColumnDefinitions>
+
+						<TextBlock x:Name="UpdateBannerText"
+								   Grid.Column="0"
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								   FontSize="12" />
+
+						<Button x:Name="UpdateBannerViewNotesButton"
+								Grid.Column="1"
+								Classes="BannerDismissButton"
+								Content="View release notes"
+								Margin="12,0,4,0"
+								Background="Transparent"
+								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								FontSize="11"
+								Padding="6,3"
+								Click="OnViewReleaseNotesClick" />
+
+						<Button x:Name="UpdateBannerInstallButton"
+								Grid.Column="2"
+								Classes="BannerInstallButton"
+								Content="Install"
+								Margin="0,0,4,0"
+								Background="{DynamicResource AppThemeAccentBrush}"
+								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								FontSize="11"
+								Padding="10,3"
+								Click="OnInstallUpdateClick" />
+
+						<Button x:Name="UpdateBannerDismissButton"
+								Grid.Column="3"
+								Classes="BannerDismissButton"
+								Content="✕"
+								Background="Transparent"
+								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								FontSize="11"
+								Padding="6,3"
+								Click="OnUpdateBannerDismiss" />
+					</Grid>
+				</Border>
+
+				<!-- Data sync notification banner -->
+				<Border x:Name="SyncBanner"
+								Grid.Row="1"
+								IsVisible="False"
+								Background="{DynamicResource AppThemeBannerBackgroundBrush}"
+								CornerRadius="4"
+								Margin="0,0,0,4"
+								Padding="12,6"
+								Cursor="Hand"
+								PointerPressed="OnSyncBannerPointerPressed">
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="Auto" />
+							<ColumnDefinition Width="Auto" />
+						</Grid.ColumnDefinitions>
+
+						<TextBlock x:Name="SyncBannerText"
+									Grid.Column="0"
+									VerticalAlignment="Center"
+									Foreground="{DynamicResource AppThemeBannerTextBrush}"
+									FontSize="12" />
+
+						<Button x:Name="SyncBannerRefreshButton"
+								Grid.Column="1"
+								Classes="BannerInstallButton"
+								Content="Refresh Board"
+								IsVisible="False"
+								Margin="12,0,4,0"
+								Background="{DynamicResource AppThemeAccentBrush}"
+								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								FontSize="11"
+								Padding="10,3"
+								Click="OnRefreshBoardClick" />
+
+						<Button x:Name="SyncBannerDismissButton"
+								Grid.Column="2"
+								Classes="BannerDismissButton"
+								Content="✕"
+								Background="Transparent"
+								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								FontSize="11"
+								Padding="6,3"
+								Click="OnSyncBannerDismiss" />
+					</Grid>
+				</Border>
+
+				<TabControl x:Name="MainTabControl" Grid.Row="2" Padding="0">
+
+					<TabItem Header="Schematics">
+						<local:TabSchematics x:Name="TabSchematicsControl" />
+					</TabItem>
+
+					<TabItem Header="Overview">
+						<local:TabOverview x:Name="TabOverview" />
+					</TabItem>
+
+					<TabItem Header="Resources">
+						<local:TabResources x:Name="TabResources" />
+					</TabItem>
+
+					<TabItem Header="Configuration">
+						<local:TabConfiguration x:Name="TabConfiguration" />
+					</TabItem>
+
+					<TabItem Header="Feedback" IsVisible="True">
+						<local:TabFeedback x:Name="TabFeedback" />
+					</TabItem>
+
+					<TabItem Header="Help" IsVisible="False">
+						<local:TabHelp x:Name="TabHelp" />
+					</TabItem>
+
+					<TabItem Header="About">
+						<local:TabAbout x:Name="TabAbout" />
+					</TabItem>
+
+				</TabControl>
+
+			</Grid>
+		</Border>
+
+	</Grid>
+
+</Window>

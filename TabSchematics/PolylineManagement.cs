@@ -1,0 +1,714 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
+using Avalonia.Input;
+using Avalonia.Media;
+using CRT;
+
+namespace Classic_Repair_Toolbox.TabSchematics
+{
+    // ###########################################################################################
+    // Manages the creation, interaction, and rendering of polylines drawn on the schematics.
+    // ###########################################################################################
+    internal class PolylineManagement
+    {
+        private readonly Canvas _canvas;
+        private readonly CRT.TabSchematics _parent;
+        private readonly List<ManagedPolyline> _polylines = new();
+
+        private ManagedPolyline? _activePolyline;
+        private int _draggingNodeIndex = -1;
+
+        private bool _isDrawingNew;
+        private Point _drawingStartPoint;
+        private ManagedPolyline? _tempDrawingLine;
+
+        private readonly Dictionary<Color, bool> _colorVisibilityOptions = new();
+
+        private Color _currentDrawingColor = Colors.Red;
+        public Color CurrentDrawingColor
+        {
+            get => this._currentDrawingColor;
+            set
+            {
+                if (this._currentDrawingColor != value)
+                {
+                    this._currentDrawingColor = value;
+                    this.ActiveColorChanged?.Invoke(value);
+                }
+            }
+        }
+
+        public List<Color> PaletteColors { get; private set; } = new()
+        {
+            Colors.Red, Colors.DodgerBlue, Colors.LimeGreen, Colors.Yellow
+        };
+
+        public event Action<Color>? ActiveColorChanged;
+        public event Action<List<Color>>? PaletteColorsChanged;
+        public event Action<Dictionary<Color, int>>? TraceStatsChanged;
+        public event Action<bool, Point>? PaletteStateChanged;
+        public event Action? TracesModified; // notifies parent to save JSON
+
+        public PolylineManagement(CRT.TabSchematics parent, Canvas canvas)
+        {
+            this._parent = parent;
+            this._canvas = canvas;
+        }
+
+        public void AddOrReplacePaletteColor(Color newColor)
+        {
+            if (this.PaletteColors.Contains(newColor))
+                return;
+
+            var usedColors = this._polylines.Select(p => p.TraceColor).ToHashSet();
+
+            int unusedTargetIndex = -1;
+            for (int i = 0; i < this.PaletteColors.Count; i++)
+            {
+                if (!usedColors.Contains(this.PaletteColors[i]))
+                {
+                    unusedTargetIndex = i;
+                    break;
+                }
+            }
+
+            if (unusedTargetIndex != -1) this.PaletteColors[unusedTargetIndex] = newColor;
+            else this.PaletteColors.Add(newColor);
+
+            this.PaletteColorsChanged?.Invoke(this.PaletteColors);
+        }
+
+        public void ChangeActiveColor(Color color)
+        {
+            this.CurrentDrawingColor = color;
+
+            if (this._activePolyline != null)
+            {
+                this._activePolyline.SetColor(color);
+                this.NotifyStatsChanged();
+                this.TracesModified?.Invoke(); // Trigger save
+            }
+        }
+
+        public void DeleteActivePolyline()
+        {
+            if (this._activePolyline != null)
+            {
+                this._polylines.Remove(this._activePolyline);
+                this._activePolyline.Dispose(this._canvas);
+                this._activePolyline = null;
+
+                this.PaletteStateChanged?.Invoke(false, default);
+                this.NotifyStatsChanged();
+                this.TracesModified?.Invoke(); // Trigger save
+            }
+        }
+
+        public bool GetColorVisibility(Color color)
+        {
+            return this._colorVisibilityOptions.TryGetValue(color, out bool v) ? v : true;
+        }
+
+        public void SetVisibilityByColor(Color targetColor, bool visible)
+        {
+            this._colorVisibilityOptions[targetColor] = visible;
+
+            foreach (var p in this._polylines.Where(x => x.TraceColor == targetColor))
+                p.SetGlobalVisibility(visible);
+
+            if (this._tempDrawingLine != null && this._tempDrawingLine.TraceColor == targetColor)
+                this._tempDrawingLine.SetGlobalVisibility(visible);
+
+            if (!visible && this._activePolyline?.TraceColor == targetColor)
+            {
+                this.PaletteStateChanged?.Invoke(false, default);
+                this.DeselectAll();
+            }
+
+            // Fire the save event so the new 'visible' boolean gets written out to disk immediately
+            this.TracesModified?.Invoke();
+        }
+
+        private void NotifyStatsChanged()
+        {
+            var stats = new Dictionary<Color, int>();
+            foreach (var p in this._polylines)
+            {
+                if (!stats.ContainsKey(p.TraceColor)) stats[p.TraceColor] = 1;
+                else stats[p.TraceColor]++;
+            }
+            this.TraceStatsChanged?.Invoke(stats);
+        }
+
+        public bool OnPointerPressed(Point containerPoint, Point localPoint, PointerPoint pointer, bool isHoveringComponent)
+        {
+            this.PaletteStateChanged?.Invoke(false, default);
+            double scale = this._parent.schematicsMatrix.M11;
+            double hitTolerance = 8.0 / scale;
+
+            if (pointer.Properties.IsRightButtonPressed)
+            {
+                // First check if a specific node marker was right-clicked
+                if (this.GetHitMarker(localPoint, hitTolerance, out var polyline, out int nodeIndex))
+                {
+                    if (!this.GetColorVisibility(polyline!.TraceColor)) return false;
+
+                    polyline!.RemoveNode(nodeIndex);
+                    if (polyline.NodeCount < 2)
+                    {
+                        this._polylines.Remove(polyline);
+                        polyline.Dispose(this._canvas);
+                        if (this._activePolyline == polyline) this._activePolyline = null;
+                    }
+                    this.NotifyStatsChanged();
+                    this.TracesModified?.Invoke(); // Trigger save
+                    return true;
+                }
+
+                // If no marker was hit, check if any line segment was right-clicked to delete the entire line
+                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex))
+                {
+                    if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
+
+                    this._polylines.Remove(polySegment);
+                    polySegment.Dispose(this._canvas);
+
+                    if (this._activePolyline == polySegment)
+                        this._activePolyline = null;
+
+                    this.NotifyStatsChanged();
+                    this.TracesModified?.Invoke(); // Trigger save
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (pointer.Properties.IsLeftButtonPressed)
+            {
+                if (this.GetHitMarker(localPoint, hitTolerance, out var polyMarker, out int nIndex))
+                {
+                    if (!this.GetColorVisibility(polyMarker!.TraceColor)) return false;
+
+                    this.SelectPolyline(polyMarker);
+                    this._activePolyline = polyMarker;
+                    this._draggingNodeIndex = nIndex;
+                    this.CurrentDrawingColor = polyMarker.TraceColor;
+                    return true;
+                }
+
+                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex))
+                {
+                    if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
+
+                    this.SelectPolyline(polySegment);
+                    polySegment!.InsertNode(segmentIndex + 1, this.ClampToImageBounds(localPoint));
+                    this._activePolyline = polySegment;
+                    this._draggingNodeIndex = segmentIndex + 1;
+                    this.CurrentDrawingColor = polySegment.TraceColor;
+                    return true;
+                }
+
+                this.DeselectAll();
+
+                if (!isHoveringComponent)
+                {
+                    this.SetVisibilityByColor(this.CurrentDrawingColor, true);
+                    this._isDrawingNew = true;
+
+                    var clampedPoint = this.ClampToImageBounds(localPoint);
+                    this._drawingStartPoint = clampedPoint;
+
+                    this._tempDrawingLine = new ManagedPolyline(this._drawingStartPoint, clampedPoint, this._parent, this.CurrentDrawingColor);
+                    this._tempDrawingLine.AddToCanvas(this._canvas);
+                    this.SelectPolyline(this._tempDrawingLine);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool OnPointerMoved(Point localPoint, bool shiftDown)
+        {
+            double scale = this._parent.schematicsMatrix.M11;
+            double snapTolerance = 15.0 / scale;
+
+            if (this._isDrawingNew && this._tempDrawingLine != null)
+            {
+                Point p = this.ClampToImageBounds(localPoint);
+                if (shiftDown) p = this.ApplySnapping(p, this._tempDrawingLine, 1, snapTolerance);
+
+                this._tempDrawingLine.MoveNode(1, p);
+                return true;
+            }
+
+            if (this._activePolyline != null && this._draggingNodeIndex != -1)
+            {
+                Point p = this.ClampToImageBounds(localPoint);
+                if (shiftDown) p = this.ApplySnapping(p, this._activePolyline, this._draggingNodeIndex, snapTolerance);
+
+                this._activePolyline.MoveNode(this._draggingNodeIndex, p);
+                return true;
+            }
+
+            return false;
+        }
+
+        // ###########################################################################################
+        // Constraints a point within the valid physical bounds of the image content area.
+        // ###########################################################################################
+        private Point ClampToImageBounds(Point p)
+        {
+            var rect = this._parent.GetImageContentRect();
+            if (rect.Width <= 0 || rect.Height <= 0) return p;
+
+            double nx = Math.Max(rect.Left, Math.Min(rect.Right, p.X));
+            double ny = Math.Max(rect.Top, Math.Min(rect.Bottom, p.Y));
+            return new Point(nx, ny);
+        }
+
+        private Point ApplySnapping(Point current, ManagedPolyline poly, int nodeIndex, double tolerance)
+        {
+            double snapX = current.X;
+            double snapY = current.Y;
+
+            double closestXDist = tolerance;
+            double closestYDist = tolerance;
+
+            var neighbors = new List<Point>();
+            if (nodeIndex > 0) neighbors.Add(poly.GetNode(nodeIndex - 1));
+            if (nodeIndex < poly.NodeCount - 1) neighbors.Add(poly.GetNode(nodeIndex + 1));
+
+            foreach (var n in neighbors)
+            {
+                if (Math.Abs(current.X - n.X) < closestXDist) { snapX = n.X; closestXDist = Math.Abs(current.X - n.X); }
+                if (Math.Abs(current.Y - n.Y) < closestYDist) { snapY = n.Y; closestYDist = Math.Abs(current.Y - n.Y); }
+            }
+
+            return new Point(snapX, snapY);
+        }
+
+        public bool OnPointerReleased(Point containerPoint, Point localPoint)
+        {
+            if (this._isDrawingNew)
+            {
+                this._isDrawingNew = false;
+                if (this._tempDrawingLine != null)
+                {
+                    double scale = this._parent.schematicsMatrix.M11;
+                    if (Distance(this._drawingStartPoint, this._tempDrawingLine.GetNode(1)) > (3.0 / scale))
+                    {
+                        this._polylines.Add(this._tempDrawingLine);
+                        this._activePolyline = this._tempDrawingLine;
+
+                        this.NotifyStatsChanged();
+                        this.PaletteStateChanged?.Invoke(true, containerPoint);
+                        this.TracesModified?.Invoke(); // Trigger save
+                    }
+                    else
+                    {
+                        this._tempDrawingLine.Dispose(this._canvas);
+                        this.SelectPolyline(null);
+                    }
+                    this._tempDrawingLine = null;
+                }
+                return true;
+            }
+
+            if (this._activePolyline != null && this._draggingNodeIndex != -1)
+            {
+                this._draggingNodeIndex = -1;
+                this.PaletteStateChanged?.Invoke(true, containerPoint);
+                this.TracesModified?.Invoke(); // Trigger save
+                return true;
+            }
+
+            return false;
+        }
+
+        public void UpdateScaleFactor(double zoomScale)
+        {
+            this._tempDrawingLine?.UpdateScale(zoomScale);
+            foreach (var polyline in this._polylines) polyline.UpdateScale(zoomScale);
+        }
+
+        // ###########################################################################################
+        // Exports internal engine structures directly into portable JSON friendly models.
+        // ###########################################################################################
+        public List<TraceModel> ExportTraces()
+        {
+            var result = new List<TraceModel>();
+            foreach (var p in this._polylines)
+            {
+                var tm = new TraceModel
+                {
+                    Color = p.TraceColor.ToString(),
+                    Visible = this.GetColorVisibility(p.TraceColor)
+                };
+                for (int i = 0; i < p.NodeCount; i++)
+                {
+                    var n = p.GetNode(i);
+                    tm.Nodes.Add(new PointModel { X = n.X, Y = n.Y });
+                }
+                result.Add(tm);
+            }
+            return result;
+        }
+
+        // ###########################################################################################
+        // Ingests portable JSON friendly models and reconstructs active native elements automatically.
+        // ###########################################################################################
+        public void ImportTraces(List<TraceModel> traces)
+        {
+            this.ResetState(); // Prepare internal board context without firing wipe triggers
+
+            foreach (var tm in traces)
+            {
+                if (Color.TryParse(tm.Color, out Color c) && tm.Nodes.Count >= 2)
+                {
+                    // Restore exact checkbox toggle state from disk
+                    this._colorVisibilityOptions[c] = tm.Visible;
+
+                    var p1 = new Point(tm.Nodes[0].X, tm.Nodes[0].Y);
+                    var p2 = new Point(tm.Nodes[1].X, tm.Nodes[1].Y);
+                    var poly = new ManagedPolyline(p1, p2, this._parent, c);
+
+                    for (int i = 2; i < tm.Nodes.Count; i++)
+                    {
+                        poly.InsertNode(i, new Point(tm.Nodes[i].X, tm.Nodes[i].Y));
+                    }
+
+                    poly.AddToCanvas(this._canvas);
+                    poly.SetGlobalVisibility(this.GetColorVisibility(c));
+                    this._polylines.Add(poly);
+                    this.AddOrReplacePaletteColor(c); // Force this active pin back into the standard dynamic HUD palette 
+                }
+            }
+            this.NotifyStatsChanged();
+        }
+
+        public void ClearAllTracesAndSave()
+        {
+            this.ResetState();
+            this.NotifyStatsChanged();
+            this.TracesModified?.Invoke();
+        }
+
+        public void Reset() // Used for navigation switches; avoids overwriting save context
+        {
+            this.ResetState();
+            this.NotifyStatsChanged();
+        }
+
+        private void ResetState()
+        {
+            this._tempDrawingLine?.Dispose(this._canvas);
+            foreach (var p in this._polylines) p.Dispose(this._canvas);
+
+            this._polylines.Clear();
+            this._colorVisibilityOptions.Clear();
+            this._activePolyline = null;
+            this._isDrawingNew = false;
+            this._draggingNodeIndex = -1;
+            this._tempDrawingLine = null;
+
+            this.CurrentDrawingColor = Colors.Red;
+            this.PaletteColors = new List<Color> { Colors.Red, Colors.DodgerBlue, Colors.LimeGreen, Colors.Yellow };
+            this.PaletteColorsChanged?.Invoke(this.PaletteColors);
+            this.PaletteStateChanged?.Invoke(false, default);
+        }
+
+        private void DeselectAll()
+        {
+            foreach (var poly in this._polylines) poly.SetSelected(false);
+            this._activePolyline = null;
+        }
+
+        private void SelectPolyline(ManagedPolyline? poly)
+        {
+            this.DeselectAll();
+            if (poly != null) poly.SetSelected(true);
+        }
+
+        private bool GetHitMarker(Point localPoint, double tolerance, out ManagedPolyline? hitPolyline, out int nodeIndex)
+        {
+            hitPolyline = null;
+            nodeIndex = -1;
+            double closestLimit = tolerance * tolerance;
+
+            foreach (var poly in this._polylines.Concat(this._tempDrawingLine != null ? new[] { this._tempDrawingLine } : Array.Empty<ManagedPolyline>()))
+            {
+                for (int i = 0; i < poly.NodeCount; i++)
+                {
+                    double distSq = DistanceSquared(poly.GetNode(i), localPoint);
+                    if (distSq <= closestLimit)
+                    {
+                        closestLimit = distSq;
+                        hitPolyline = poly;
+                        nodeIndex = i;
+                    }
+                }
+            }
+            return hitPolyline != null;
+        }
+
+        private bool GetHitSegment(Point localPoint, double tolerance, out ManagedPolyline? hitPolyline, out int segmentIndex)
+        {
+            hitPolyline = null;
+            segmentIndex = -1;
+            double closestLimit = tolerance;
+
+            foreach (var poly in this._polylines)
+            {
+                for (int i = 0; i < poly.NodeCount - 1; i++)
+                {
+                    Point a = poly.GetNode(i);
+                    Point b = poly.GetNode(i + 1);
+                    double distToLine = DistancePointToSegment(localPoint, a, b);
+
+                    if (distToLine <= closestLimit)
+                    {
+                        closestLimit = distToLine;
+                        hitPolyline = poly;
+                        segmentIndex = i;
+                    }
+                }
+            }
+            return hitPolyline != null;
+        }
+
+        private static double Distance(Point a, Point b) => Math.Sqrt(DistanceSquared(a, b));
+        private static double DistanceSquared(Point a, Point b) => (a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y);
+        private static double DistancePointToSegment(Point p, Point v, Point w)
+        {
+            double l2 = DistanceSquared(v, w);
+            if (l2 == 0.0) return Distance(p, v);
+
+            double t = Math.Max(0, Math.Min(1, ((p.X - v.X) * (w.X - v.X) + (p.Y - v.Y) * (w.Y - v.Y)) / l2));
+            Point projection = new Point(v.X + t * (w.X - v.X), v.Y + t * (w.Y - v.Y));
+            return Distance(p, projection);
+        }
+    }
+
+    // ###########################################################################################
+    // Models for portable serialization format natively converting points reliably for JSON.
+    // ###########################################################################################
+    public class TraceModel
+    {
+        public string Color { get; set; } = string.Empty;
+        public bool Visible { get; set; } = true;
+        public List<PointModel> Nodes { get; set; } = new();
+    }
+
+    public class PointModel
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
+    // ###########################################################################################
+    // Global I/O static handler exclusively saving schematic trace layouts accurately to disk.
+    // ###########################################################################################
+    public static class TraceStorage
+    {
+        private static readonly string filePath;
+        private static Dictionary<string, Dictionary<string, List<TraceModel>>> data = new();
+
+        static TraceStorage()
+        {
+            // Matches the path logic found in App.axaml.cs / UserSettings.cs
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var directory = System.IO.Path.Combine(appData, AppConfig.AppFolderName);
+            System.IO.Directory.CreateDirectory(directory);
+            filePath = System.IO.Path.Combine(directory, AppConfig.TracesFileName);
+
+            LoadFromFile();
+        }
+
+        public static void LoadFromFile()
+        {
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    var json = File.ReadAllText(filePath);
+                    data = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, List<TraceModel>>>>(json) ?? new();
+                }
+                catch { data = new(); }
+            }
+        }
+
+        public static void SaveToFile()
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(filePath, json);
+            }
+            catch { }
+        }
+
+        public static List<TraceModel> GetTraces(string boardKey, string schematicName)
+        {
+            if (data.TryGetValue(boardKey, out var boardData) && boardData.TryGetValue(schematicName, out var traces))
+                return traces;
+            return new List<TraceModel>();
+        }
+
+        public static void SaveTraces(string boardKey, string schematicName, List<TraceModel> traces)
+        {
+            if (!data.TryGetValue(boardKey, out var boardData))
+            {
+                boardData = new Dictionary<string, List<TraceModel>>(StringComparer.OrdinalIgnoreCase);
+                data[boardKey] = boardData;
+            }
+            boardData[schematicName] = traces;
+            SaveToFile();
+        }
+    }
+
+    // ###########################################################################################
+    // Represents a single polyline geometry composed of nodes, trace links, and selection objects.
+    // ###########################################################################################
+    internal class ManagedPolyline
+    {
+        private readonly List<Point> _nodes = new();
+        private readonly Polyline _shape;
+        private readonly List<Ellipse> _markers = new();
+        private readonly CRT.TabSchematics _parent;
+
+        public Color TraceColor { get; private set; }
+        private bool _globalVisible = true;
+        private bool _selected = false;
+
+        public int NodeCount => this._nodes.Count;
+
+        public ManagedPolyline(Point p1, Point p2, CRT.TabSchematics parent, Color traceColor)
+        {
+            this._parent = parent;
+            this.TraceColor = traceColor;
+
+            this._nodes.Add(p1);
+            this._nodes.Add(p2);
+
+            this._shape = new Polyline
+            {
+                Stroke = new SolidColorBrush(this.TraceColor),
+                StrokeJoin = PenLineJoin.Round,
+                StrokeLineCap = PenLineCap.Round,
+                StrokeThickness = 3.0 / this.GetCurrentScale(),
+                UseLayoutRounding = false
+            };
+
+            this.SyncShape();
+        }
+
+        public Point GetNode(int index) => this._nodes[index];
+
+        public void SetColor(Color traceColor)
+        {
+            this.TraceColor = traceColor;
+            var targetBrush = new SolidColorBrush(traceColor);
+
+            this._shape.Stroke = targetBrush;
+            foreach (var m in this._markers) m.Stroke = targetBrush;
+        }
+
+        public void MoveNode(int index, Point p) { this._nodes[index] = p; this.SyncShape(); }
+        public void InsertNode(int index, Point p) { this._nodes.Insert(index, p); this.SyncShape(); }
+        public void RemoveNode(int index) { this._nodes.RemoveAt(index); this.SyncShape(); }
+
+        public void AddToCanvas(Canvas canvas)
+        {
+            if (!canvas.Children.Contains(this._shape))
+            {
+                canvas.Children.Add(this._shape);
+                foreach (var m in this._markers) canvas.Children.Add(m);
+            }
+        }
+
+        public void Dispose(Canvas canvas)
+        {
+            canvas.Children.Remove(this._shape);
+            foreach (var m in this._markers) canvas.Children.Remove(m);
+        }
+
+        public void SetGlobalVisibility(bool visible) { this._globalVisible = visible; this.SyncVisibility(); }
+        public void SetSelected(bool selected) { this._selected = selected; this.SyncVisibility(); }
+
+        private void SyncVisibility()
+        {
+            this._shape.IsVisible = this._globalVisible;
+            bool markersVisible = this._globalVisible && this._selected;
+            foreach (var m in this._markers) m.IsVisible = markersVisible;
+        }
+
+        public void UpdateScale(double scale)
+        {
+            this._shape.StrokeThickness = 3.0 / scale;
+            foreach (var m in this._markers)
+            {
+                m.Width = 14.0 / scale;
+                m.Height = 14.0 / scale;
+                m.StrokeThickness = 2.0 / scale;
+            }
+            this.SyncShape();
+        }
+
+        private double GetCurrentScale()
+        {
+            double rawScale = this._parent.schematicsMatrix.M11;
+            return rawScale > 0 ? rawScale : 1.0;
+        }
+
+        private void SyncShape()
+        {
+            this._shape.Points = new Avalonia.Collections.AvaloniaList<Point>(this._nodes);
+
+            if (this._markers.Count != this._nodes.Count)
+            {
+                var panel = this._shape.Parent as Canvas;
+                foreach (var marker in this._markers) panel?.Children.Remove(marker);
+                this._markers.Clear();
+
+                double scale = this.GetCurrentScale();
+                bool markersVisible = this._globalVisible && this._selected;
+                var colorBrush = new SolidColorBrush(this.TraceColor);
+
+                for (int i = 0; i < this._nodes.Count; i++)
+                {
+                    var marker = new Ellipse
+                    {
+                        Width = 14.0 / scale,
+                        Height = 14.0 / scale,
+                        Fill = Brushes.White,
+                        Stroke = colorBrush,
+                        StrokeThickness = 2.0 / scale,
+                        IsVisible = markersVisible,
+                        IsHitTestVisible = false,
+                        UseLayoutRounding = false
+                    };
+
+                    this._markers.Add(marker);
+                    panel?.Children.Add(marker);
+                }
+            }
+
+            for (int i = 0; i < this._nodes.Count; i++)
+            {
+                Point p = this._nodes[i];
+                var m = this._markers[i];
+
+                Canvas.SetLeft(m, p.X - (m.Width / 2.0));
+                Canvas.SetTop(m, p.Y - (m.Height / 2.0));
+            }
+        }
+    }
+}

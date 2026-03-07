@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.TabConfiguration">
+	<StackPanel Spacing="8"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="16">
+
+		<TextBlock Text="Appearance"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,4" />
+
+		<CheckBox x:Name="ThemeToggleSwitch"
+                  Content="Use dark theme" />
+
+		<TextBlock Text="Component Information Popup"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Margin="0,16,0,4" />
+
+		<CheckBox x:Name="MultipleInstancesForComponentPopupToggleSwitch"
+                  Content="Open multiple windows for popup" />
+
+		<TextBlock Text="Application Update"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Margin="0,16,0,4" />
+
+		<CheckBox x:Name="CheckDataOnLaunchCheckBox"
+                  Content="Check for new or updated data at application launch" />
+
+		<CheckBox x:Name="CheckVersionOnLaunchCheckBox"
+                  Content="Check for new version at application launch" />
+
+		<CheckBox x:Name="ShowDevelopmentVersionNotificationCheckBox"
+                  Content="Allow notification for BETA versions" />
+
+		<TextBlock Text="Misc"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Margin="0,16,0,4" />
+
+		<CheckBox x:Name="ValidateDataOnLaunchCheckBox"
+                  Content="Validate data at application launch" />
+
+		<CheckBox x:Name="DebugLoggingCheckBox"
+                  Content="Enable debug logging" />
+
+		<Button x:Name="OpenAppDataFolderButton"
+                Content="Open data/log/settings folder"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Left"
+                Click="OnOpenAppDataFolderClick" />
+
+	</StackPanel>
+</UserControl>

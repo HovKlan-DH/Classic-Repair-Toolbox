@@ -1,0 +1,2 @@
+- Changed format and text for log events
+- Various refactoring in code base

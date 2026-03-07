@@ -1,0 +1,83 @@
+----------------------------
+Hardware      : Commodore 64
+Board         : 250407
+Region        : PAL + NTSC
+Revision date : 2025-October-24
+-------------------------------
+
+The intention with the oscilloscope baseline measurements, is to give some concrete and hands-on readings, as a comparison with your own measurements. It is meant as a way for you to do a quick lookup of what a working system looks like.
+
+Some readings will be slightly different in signal shape from one system to another (even with same board revision), due to different components and factory modifications done by Commodore in different factories and throughout the entire life-span of the production. Also, the readings are not a guarantee the IC is fully working, as in some cases it may not be activated in the actual mode of operation; e.g. when idle in C128 VIC 40-columns mode, then the VDC 80-column mode is not activated etc.
+
+
+------------------------------------
+System used for the PAL measurements
+------------------------------------
+- Assy 250407, artwork 251137 rev. B board
+- Factory non-modified (at last I believe so) fully working board
+- All original components (no modern replacements)
+- Idle in C64 Basic mode (cursor blinking) with no attachments connected at all, except audio/video cable (even no keyboard)
+- Video cable connected only with "CN5" (Audio/Video DIN) to a RetroTink 5X-Pro and a LCD monitor
+- Using new modern PSU from https://www.c64psu.com (not affiliated at all)
+- Country (Denmark) has 230V/50Hz
+- Oscilloscope used is Rigol DS2202A
+
+
+-------------------------------------
+System used for the NTSC measurements
+-------------------------------------
+- Assy 250407, artwork 251137 rev. B board
+- Fully working board, and added factory prescribed protection diodes (view service manual for details)
+- All original components (no modern replacements)
+- Idle in C64 Basic mode (cursor blinking) with no attachments connected at all, except audio/video cable (even no keyboard)
+- Using new modern "RetroPower" PSU from https://www.keelog.com (not affiliated at all)
+- Country (United States) has 120V/60Hz
+- Oscilloscope used is Siglent SDS 1104X-E
+
+
+------------------------------------------------
+Oscilloscope measurements and good-to-know info.
+Below text is identical for C64/C128.
+-------------------------------------
+- Connect scope probe ground (GND) to expansion port chassis via an extension cable - not perfect, but OK to validate and with least risk of short-circuit
+    - Optimal reading is gained from connecting to closest GND, and not the expansion port chassis
+    - Optimal reading is gained by using scope GND pin-clip instead of the probe GND wire
+    - Important: There are considerable more risk of short-circuit when actively handling two pins using both hands AND simultaneously looking at the scope - this is why I personally prefer always using the expansion port chassis as scope GND!
+- Voltage measurement:
+    - +5VDC rails: from minimum 4.6V to maximum 5.3V is most likely OK
+    - +12VDC rail: from minimum 11.6V to maximum 12.4V is most likely OK
+    - 9VAC rail: from minimum 8.6V to maximum 10.7V is most likely OK
+    - Due to a lot of noise and old components the voltages measured should be "approx" values, and of course it ideally must be as close as possible to the rail voltage
+    - Due to variations in manufacturing assembly lines and the nature of Commodore’s production, no two computers are exactly identical in terms of components and factory modifications. This makes it impossible to provide a definitive answer to what the "correct voltage" should be. Some components are more sensitive to voltage than others, so the values provided here are approximate guidelines. This also means, that there are cases where you will see systems working just fine when being outside these above voltage ranges
+    - Voltages depicts a barebone system with no peripherals attached. If peripherals are attached, you can expect voltage drops when these are active
+- Frequency (Hz) measurement:
+    - For clock signals, should be quite accurate (likely 3-4 digits precision with a good scope) - make sure VOLT/DIV setting and trigger point are proper set to get optimal reading
+    - For all other signals, frequency measurement may vary quite a bit between readings because the number of rising and falling edges in any given on-screen trace may be very different
+    - Will differ between PAL and NTSC
+- Signal measurement (LOW/HIGH):
+    - LOW equals below 0.8V
+    - HIGH equals above 2V
+    - "Pulsing" means it pulses between LOW and HIGH
+    - "Floating" means its dominant reading is between logical LOW (0.8V) and HIGH (2V)
+- Trigger point can initially be set to ~1.5V, but expect to change it to get stable reading
+- Probe set to "10x" attenuation, unless mentioned otherwise
+    - Using "10x" attenuation will give less stress to the system, and show a more correct signal... filled with noise
+- Vertical Y-scale (voltage):
+    - 1V/DIV is used everywhere for +5DCV rail
+    - 2V/DIV is used everywhere for +12DCV rail
+- Horizontal X-scale (time):
+    - Depicted measurements tries to show the overall trend for the signal, but it may vary from reading to reading how it looks like
+    - Pay attention to the timing used in the captures, as signals will appear very different at different time scales! The captured images often use different horizontal time scales for different pins
+- If reading is set as "N/A" or "N.C." it means the pin is not applicable, and it is most likely not connected to anything, and its value does not matter
+- Before scope images are "printed" from scope, all values are cleared and then awaiting a couple of seconds for it to settle for new averages
+- It is often not possible to fully characterize signal behavior with a single image, so use the current images as-is, and do your own judgement, if your own scope reading is correct or not
+- Reading will of course be very different when setup or load changes compared to the depicted setup in this documentation
+- I cannot explain the reasoning behind why the reading is as-is, and I am just the "delivery man" of the data :-)
+- You are highly encouraged to read "Sven's Techsite; Scope on the C64" from the "Ressources" tab
+
+
+-----------------------
+AC voltage measurements
+-----------------------
+- It is okay to measure whatever voltage is present on the main motherboard; DC or AC, but ideally you should use a multimeter to measure AC voltages
+- It is highly recommended NOT to do any measurements on the PSU, as 120-240VAC easily can brick your scope, unless you know what you do!!!

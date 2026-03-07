@@ -1,0 +1,334 @@
+﻿using OfficeOpenXml;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace CRT
+{
+    public static class DataManager
+    {
+        private const string DataRootArg = "--data-root=";
+        private const string SheetHardwareBoard = "Hardware & Board";
+
+        // Column header names used for robust, order-independent column mapping
+        private const string ColHardwareName = "Hardware name in drop-down";
+        private const string ColBoardName = "Board name in drop-down";
+        private const string ColExcelDataFile = "Excel data file";
+        private const string ColHardwareNotes = "Hardware notes in \"Overview\" tab";
+
+        private static string _dataRoot = string.Empty;
+        private static List<DataFileEntry>? _syncManifest;
+
+        public static string DataRoot => _dataRoot;
+//        public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = [];
+        public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = new(); // compliant with .NET6
+
+        // Raised with a general status message (e.g. "Checking files...", "Sync complete")
+        public static event Action<string>? StatusChanged;
+
+        // Raised with the relative file path of whichever file is currently being processed
+        public static event Action<string>? FileDownloadChanged;
+
+        // ###########################################################################################
+        // Resolves the data root, ensures the folder exists, syncs all Excel files against the
+        // online manifest, then loads hardware definitions. Images are left for SyncRemainingAsync.
+        // ###########################################################################################
+        public static async Task InitializeAsync(string[] args)
+        {
+            Logger.Info(args.Length > 0
+                ? $"Commandline parameters: [{string.Join(" ", args)}]"
+                : "No commandline parameters given");
+            _dataRoot = ResolveDataRoot(args);
+            Logger.Info($"Data root is [{_dataRoot}]");
+
+            // Create the data root folder, if this is either first-run or using a custom --data-root
+            bool isNewRoot = !Directory.Exists(_dataRoot);
+            Directory.CreateDirectory(_dataRoot);
+            if (isNewRoot)
+            {
+                // Check if this is a first-run with the default "AppData" path
+                var bundledData = Path.Combine(AppContext.BaseDirectory, "Data");
+                if (Directory.Exists(bundledData))
+                {
+                    Logger.Info("Data root folder created — seeding from install package");
+                    RaiseStatus("Seeding data from install package...");
+                    await Task.Run(() => CopyDirectory(bundledData, _dataRoot));
+                    Logger.Info("Data seeded from install package");
+                }
+                else
+                {
+                    Logger.Info("Data root folder created — all files will be downloaded from online source");
+                }
+            }
+            else if (UserSettings.CheckDataOnLaunch)
+            {
+                Logger.Info("Checking online source for new or updated files");
+            }
+
+#if DEBUG
+            if (!AppConfig.DebugSimulateSync)
+            {
+                Logger.Info("DEBUG build - skipping online sync");
+            }
+            else
+            {
+#endif
+                if (UserSettings.CheckDataOnLaunch)
+                {
+                    RaiseStatus("Fetching online file manifest...");
+                    _syncManifest = await OnlineServices.FetchManifestAsync(RaiseStatus);
+
+                    if (_syncManifest != null)
+                    {
+                        // Sync only the main Excel file first — one exact match, no manifest scan
+                        RaiseStatus("Checking main data file...");
+                        await OnlineServices.SyncFilesAsync(
+                            _syncManifest, _dataRoot,
+                            f => string.Equals(f, AppConfig.MainExcelFileName, StringComparison.OrdinalIgnoreCase),
+                            RaiseStatus, RaiseFileDownload,
+                            label: "Main Excel data file");
+                    }
+                }
+                else
+                {
+                    Logger.Info("Online data sync skipped - disabled in settings");
+                }
+#if DEBUG
+            }
+#endif
+
+            // Load main Excel now — HardwareBoards is populated from this point on
+            RaiseStatus("Loading hardware definitions...");
+            await Task.Run(LoadMainExcel);
+
+#if DEBUG
+            if (AppConfig.DebugSimulateSync)
+            {
+#endif
+                if (_syncManifest != null && HardwareBoards.Count > 0)
+                {
+                    // Build an exact set of board Excel paths from the loaded hardware list —
+                    // this is a handful of files, not a broad extension scan of the full manifest
+                    var boardExcelFiles = HardwareBoards
+                        .Select(e => e.ExcelDataFile)
+                        .Where(f => !string.IsNullOrWhiteSpace(f))
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    RaiseStatus("Checking board Excel data files...");
+                    await OnlineServices.SyncFilesAsync(
+                        _syncManifest, _dataRoot,
+                        f => boardExcelFiles.Contains(f),
+                        RaiseStatus, RaiseFileDownload,
+                        label: "board Excel data files");
+                }
+#if DEBUG
+            }
+#endif
+        }
+
+        // Returns true when a background sync manifest is queued and ready to process.
+        public static bool HasPendingSync => _syncManifest != null;
+
+        // ###########################################################################################
+        // Syncs all non-Excel files (images etc.) using the manifest already fetched at startup.
+        // Intended to run silently in the background after the UI has opened.
+        // onStatus: optional callback for general progress messages, fired on the caller's thread.
+        // Returns the number of files that were successfully new or updated.
+        // ###########################################################################################
+        public static async Task<int> SyncRemainingAsync(Action<string>? onStatus = null)
+        {
+            if (_syncManifest == null)
+                return 0;
+
+            var manifest = _syncManifest;
+            _syncManifest = null;
+
+            return await OnlineServices.SyncFilesAsync(
+                manifest, _dataRoot,
+                f => !f.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase),
+                onStatus);
+        }
+
+        // ###########################################################################################
+        // Recursively copies all files and subdirectories from source into destination.
+        // ###########################################################################################
+        private static void CopyDirectory(string source, string destination)
+        {
+            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(source, file);
+                var dest = Path.Combine(destination, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(file, dest, overwrite: true);
+            }
+        }
+
+        // ###########################################################################################
+        // Parses --data-root from args, or falls back to a persistent AppData folder that survives
+        // Velopack updates (which replace the install directory but leave AppData untouched).
+        // ###########################################################################################
+        private static string ResolveDataRoot(string[] args)
+        {
+            foreach (var arg in args)
+            {
+                if (arg.StartsWith(DataRootArg, StringComparison.OrdinalIgnoreCase))
+                    return arg[DataRootArg.Length..].Trim('"', '\'');
+            }
+
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(appData, AppConfig.AppFolderName, "Data");
+        }
+
+        // ###########################################################################################
+        // Reads hardware and board definitions from the main Excel file.
+        // Column positions are resolved by header name so reordering columns is handled gracefully.
+        // Hardware name is carried forward across rows where the cell is empty (merged cell pattern).
+        // ###########################################################################################
+        private static void LoadMainExcel()
+        {
+            var excelPath = Path.Combine(_dataRoot, AppConfig.MainExcelFileName);
+
+            if (!File.Exists(excelPath))
+            {
+                Logger.Warning($"Main Excel data file not found - [{excelPath}]");
+                return;
+            }
+
+            ExcelPackage.License.SetNonCommercialPersonal("Dennis Helligsø");
+
+            try
+            {
+                using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var package = new ExcelPackage(stream);
+                var sheet = package.Workbook.Worksheets[SheetHardwareBoard];
+
+                if (sheet == null)
+                {
+                    Logger.Warning($"Sheet [{SheetHardwareBoard}] not found in main Excel data file");
+                    return;
+                }
+
+                var colMap = FindHeaderRow(sheet, out int headerRow);
+
+                if (colMap == null)
+                {
+                    Logger.Warning("Header row not found in main Excel data file - verify column header names match expected values");
+                    return;
+                }
+
+                var entries = new List<HardwareBoardEntry>();
+                int maxRow = sheet.Dimension?.End.Row ?? 0;
+                string lastHwName = string.Empty;
+
+                for (int row = headerRow + 1; row <= maxRow; row++)
+                {
+                    string hardwareName = GetCellText(sheet, row, colMap[ColHardwareName]);
+                    string boardName = GetCellText(sheet, row, colMap[ColBoardName]);
+                    string excelFile = GetCellText(sheet, row, colMap[ColExcelDataFile]);
+                    string notes = GetCellText(sheet, row, colMap[ColHardwareNotes]);
+
+                    // Carry forward hardware name for merged/empty cells in that column
+                    if (!string.IsNullOrWhiteSpace(hardwareName))
+                        lastHwName = hardwareName;
+                    else
+                        hardwareName = lastHwName;
+
+                    // Skip rows that have neither a board name nor an Excel file reference
+                    if (string.IsNullOrWhiteSpace(boardName) && string.IsNullOrWhiteSpace(excelFile))
+                        continue;
+
+                    entries.Add(new HardwareBoardEntry
+                    {
+                        HardwareName = hardwareName,
+                        BoardName = boardName,
+                        ExcelDataFile = excelFile,
+                        HardwareNotes = notes
+                    });
+                }
+
+                HardwareBoards = entries;
+                Logger.Info($"Checking [{entries.Count}] board Excel data files, extracted from main Excel data file:");
+                foreach (var boardEntry in entries)
+                {
+                    Logger.Info($"    [{boardEntry.ExcelDataFile}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Failed to load main Excel data file - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Lazily loads and caches all sheets from the board-specific Excel file linked to the entry.
+        // Delegates to BoardDataReader for parsing and caching. Returns null on failure.
+        // ###########################################################################################
+        public static async Task<BoardData?> LoadBoardDataAsync(HardwareBoardEntry entry)
+        {
+            var excelPath = Path.Combine(_dataRoot, entry.ExcelDataFile.Replace('/', Path.DirectorySeparatorChar));
+            return await BoardDataReader.LoadAsync(excelPath, entry.ExcelDataFile);
+        }
+
+        // ###########################################################################################
+        // Scans the worksheet for the first row containing all required column header names.
+        // Matching is case-insensitive. Returns a header-name-to-column-index map on success,
+        // or null when not all required headers are found.
+        // ###########################################################################################
+        private static Dictionary<string, int>? FindHeaderRow(ExcelWorksheet sheet, out int headerRow)
+        {
+            headerRow = -1;
+
+            var required = new[] { ColHardwareName, ColBoardName, ColExcelDataFile, ColHardwareNotes };
+            int maxRow = sheet.Dimension?.End.Row ?? 0;
+            int maxCol = sheet.Dimension?.End.Column ?? 0;
+
+            for (int row = 1; row <= maxRow; row++)
+            {
+                var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+                for (int col = 1; col <= maxCol; col++)
+                {
+                    string text = NormalizeHeader(GetCellText(sheet, row, col));
+                    if (!string.IsNullOrWhiteSpace(text))
+                        colMap[text] = col;
+                }
+
+                if (required.All(h => colMap.ContainsKey(h)))
+                {
+                    headerRow = row;
+                    return colMap;
+                }
+            }
+
+            return null;
+        }
+
+        // ###########################################################################################
+        // Collapses Alt+Enter line breaks in Excel cell headers into a single space, then trims.
+        // ###########################################################################################
+        private static string NormalizeHeader(string text)
+        {
+//            var parts = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            var parts = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries); // .NET6 compliant
+            return string.Join(" ", parts).Trim();
+        }
+
+        // ###########################################################################################
+        // Returns the trimmed text value of a worksheet cell, or an empty string if null or blank.
+        // ###########################################################################################
+        private static string GetCellText(ExcelWorksheet sheet, int row, int col)
+            => sheet.Cells[row, col].Text?.Trim() ?? string.Empty;
+
+        // ###########################################################################################
+        // Fires the StatusChanged event with the given message.
+        // ###########################################################################################
+        private static void RaiseStatus(string message) => StatusChanged?.Invoke(message);
+
+        // ###########################################################################################
+        // Fires the FileDownloadChanged event with the given file path.
+        // ###########################################################################################
+        private static void RaiseFileDownload(string filePath) => FileDownloadChanged?.Invoke(filePath);
+    }
+}

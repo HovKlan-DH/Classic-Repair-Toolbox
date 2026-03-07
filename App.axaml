@@ -1,0 +1,195 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.App"
+             RequestedThemeVariant="Default">
+             
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!-- Used in Main.axaml: tab hover/selected accents, active region button fill, About links -->
+                    <SolidColorBrush x:Key="AppThemeAccentBrush">IndianRed</SolidColorBrush>
+                    <!-- Used in Main.axaml: tab hover underline (light accent) -->
+                    <SolidColorBrush x:Key="AppThemeAccentLightBrush">LightCoral</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerInstallButton pointerover background -->
+                    <SolidColorBrush x:Key="AppThemeAccentHoverBrush">#C05050</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerInstallButton pressed background -->
+                    <SolidColorBrush x:Key="AppThemeAccentPressedBrush">#8B2020</SolidColorBrush>
+                    
+                    <!-- Used in Main.axaml: UpdateBanner + SyncBanner background -->
+                    <SolidColorBrush x:Key="AppThemeBannerBackgroundBrush">#4C1515</SolidColorBrush>
+                    <!-- Used in Main.axaml: banner text + banner buttons foreground -->
+                    <SolidColorBrush x:Key="AppThemeBannerTextBrush">White</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerDismissButton pointerover background -->
+                    <SolidColorBrush x:Key="AppThemeBannerDismissHoverBrush">#6B2020</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerDismissButton pressed background -->
+                    <SolidColorBrush x:Key="AppThemeBannerDismissPressedBrush">#4C1515</SolidColorBrush>
+
+                    <!-- Used in Main.axaml + Splash.axaml: default foreground text -->
+                    <SolidColorBrush x:Key="AppThemeTextBrush">Black</SolidColorBrush>
+                    <!-- Used in Main.axaml: secondary labels (Hardware/Board/Category/Component) -->
+                    <SolidColorBrush x:Key="AppThemeSecondaryTextBrush">Gray</SolidColorBrush>
+                    <!-- Used in Main.axaml (RightPanel border tone) and Splash.axaml (root splash background) -->
+                    <SolidColorBrush x:Key="AppThemeBackgroundBrush">White</SolidColorBrush>
+                    <!-- Used in Main.axaml: generic borders/splitters/list borders/hover label border -->
+                    <SolidColorBrush x:Key="AppThemeBorderBrush">Gray</SolidColorBrush>
+                    <!-- Used in Main.axaml: LeftPanel outer border -->
+                    <SolidColorBrush x:Key="AppThemePanelBorderBrush">IndianRed</SolidColorBrush>
+
+                    <!-- Used in Main.axaml: Category/Component list backgrounds -->
+                    <SolidColorBrush x:Key="AppThemeListBackgroundBrush">White</SolidColorBrush>
+                    <!-- Used in Main.axaml: selected ListBoxItem background -->
+                    <SolidColorBrush x:Key="AppThemeListSelectionBrush">LightBlue</SolidColorBrush>
+                    <!-- Used in Main.axaml: list item hover/selected-hover background -->
+                    <SolidColorBrush x:Key="AppThemeListSelectionHoverBrush">SkyBlue</SolidColorBrush>
+                    <!-- Used in Main.axaml: selected ListBoxItem foreground -->
+                    <SolidColorBrush x:Key="AppThemeListSelectedTextBrush">White</SolidColorBrush>
+
+                    <!-- Reserved for status UI surfaces (status-style backgrounds) -->
+                    <SolidColorBrush x:Key="AppThemeStatusBackgroundBrush">LightYellow</SolidColorBrush>
+                    <!-- Reserved for status UI text -->
+                    <SolidColorBrush x:Key="AppThemeStatusTextBrush">DarkBlue</SolidColorBrush>
+
+					<!-- Light, Splash, border -->
+					<SolidColorBrush x:Key="AppThemeSplashBorderBrush">Black</SolidColorBrush>
+
+					<!-- Light, region colors -->
+					<SolidColorBrush x:Key="Region_PAL_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_PAL_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_NTSC_Fg">Black</SolidColorBrush>
+					
+					<!-- Light, Schematics, labels in large schematic image -->
+					<SolidColorBrush x:Key="SchematicsName_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsName_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsRegion_Bg">Red</SolidColorBrush> <!-- should never be seen -->
+					<SolidColorBrush x:Key="SchematicsRegion_Fg">Yellow</SolidColorBrush> <!-- should never be seen -->
+					<SolidColorBrush x:Key="SchematicsComponent_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsComponent_Fg">Black</SolidColorBrush>
+
+					<!-- Light, Thumbnail, border -->
+                    <SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_BorderSelected">Red</SolidColorBrush>
+
+                    <!-- Light, Thumbnail, label -->
+                    <SolidColorBrush x:Key="Thumbnail_Bg">Khaki</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Txt">Black</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Selection_Txt">White</SolidColorBrush>
+					
+					<!-- Light, Component popup, keyboard typing -->
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">#778461</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">White</SolidColorBrush>
+					
+					<!-- Light, Component popup, bullet list -->
+					<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Black</SolidColorBrush>
+
+					<!-- Light, Generic colors -->
+					
+					<!-- -->
+					
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Stylish brown'ish theme -->
+
+                    <!-- Used in Main.axaml: tab hover/selected accents, active region button fill, About links -->
+                    <SolidColorBrush x:Key="AppThemeAccentBrush">#B87352</SolidColorBrush>
+                    <!-- Used in Main.axaml: tab hover underline (light accent) -->
+                    <SolidColorBrush x:Key="AppThemeAccentLightBrush">#CD8B6A</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerInstallButton pointerover background -->
+                    <SolidColorBrush x:Key="AppThemeAccentHoverBrush">#A06346</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerInstallButton pressed background -->
+                    <SolidColorBrush x:Key="AppThemeAccentPressedBrush">#855138</SolidColorBrush>
+                    
+                    <!-- Used in Main.axaml: UpdateBanner + SyncBanner background -->
+                    <SolidColorBrush x:Key="AppThemeBannerBackgroundBrush">#38241A</SolidColorBrush>
+                    <!-- Used in Main.axaml: banner text + banner buttons foreground -->
+                    <SolidColorBrush x:Key="AppThemeBannerTextBrush">#E8E0DA</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerDismissButton pointerover background -->
+                    <SolidColorBrush x:Key="AppThemeBannerDismissHoverBrush">#4F3528</SolidColorBrush>
+                    <!-- Used in Main.axaml: BannerDismissButton pressed background -->
+                    <SolidColorBrush x:Key="AppThemeBannerDismissPressedBrush">#2B1B13</SolidColorBrush>
+
+                    <!-- Used in Main.axaml: default text foregrounds (many labels/blocks) -->
+                    <SolidColorBrush x:Key="AppThemeTextBrush">#E8E0DA</SolidColorBrush>
+                    <!-- Used in Main.axaml: secondary labels (Hardware/Board/Category/Component) -->
+                    <SolidColorBrush x:Key="AppThemeSecondaryTextBrush">#A3938A</SolidColorBrush>
+                    <!-- Used in Main.axaml: RightPanel border brush (theme background tone) -->
+                    <SolidColorBrush x:Key="AppThemeBackgroundBrush">#201C1A</SolidColorBrush>
+                    <!-- Used in Main.axaml: generic borders/splitters/list borders/hover label border -->
+                    <SolidColorBrush x:Key="AppThemeBorderBrush">#524842</SolidColorBrush>
+                    <!-- Used in Main.axaml: LeftPanel outer border -->
+                    <SolidColorBrush x:Key="AppThemePanelBorderBrush">#B87352</SolidColorBrush>
+
+                    <!-- Used in Main.axaml: Category/Component list backgrounds -->
+                    <SolidColorBrush x:Key="AppThemeListBackgroundBrush">#2A2421</SolidColorBrush>
+                    <!-- Used in Main.axaml: selected ListBoxItem background -->
+                    <SolidColorBrush x:Key="AppThemeListSelectionBrush">#5E4334</SolidColorBrush>
+                    <!-- Used in Main.axaml: list item hover/selected-hover background -->
+                    <SolidColorBrush x:Key="AppThemeListSelectionHoverBrush">#735443</SolidColorBrush>
+                    <!-- Used in Main.axaml: selected ListBoxItem foreground -->
+                    <SolidColorBrush x:Key="AppThemeListSelectedTextBrush">#FFFFFF</SolidColorBrush>
+                    
+                    <!-- Reserved for status UI surfaces (status-style backgrounds) -->
+                    <SolidColorBrush x:Key="AppThemeStatusBackgroundBrush">#3D302A</SolidColorBrush>
+                    <!-- Reserved for status UI text -->
+                    <SolidColorBrush x:Key="AppThemeStatusTextBrush">#E8E0DA</SolidColorBrush>
+
+					<!-- Dark, Splash, border -->
+					<SolidColorBrush x:Key="AppThemeSplashBorderBrush">LightGray</SolidColorBrush>
+
+					<!-- Dark, region specific colors -->
+					<SolidColorBrush x:Key="Region_PAL_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_PAL_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
+					<SolidColorBrush x:Key="Region_NTSC_Fg">Black</SolidColorBrush>
+
+					<!-- Dark, Schematics, labels in large schematic image -->
+					<SolidColorBrush x:Key="SchematicsName_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsName_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsRegion_Bg">Red</SolidColorBrush> <!-- should never be seen -->
+					<SolidColorBrush x:Key="SchematicsRegion_Fg">Yellow</SolidColorBrush> <!-- should never be seen -->
+					<SolidColorBrush x:Key="SchematicsComponent_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="SchematicsComponent_Fg">Black</SolidColorBrush>
+					
+                    <!-- Dark, Thumbnail, border -->
+                    <SolidColorBrush x:Key="Thumbnail_Border">LightGray</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_BorderSelected">Red</SolidColorBrush>
+
+                    <!-- Dark, Thumbnail, label -->
+                    <SolidColorBrush x:Key="Thumbnail_Bg">#3D302A</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Txt">LightGray</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+                    <SolidColorBrush x:Key="Thumbnail_Selection_Txt">White</SolidColorBrush>
+
+					<!-- Dark, Component popup, keyboard typing -->
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">DarkOliveGreen</SolidColorBrush>
+
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <!-- Native Avalonia controls themed towards brown/copper -->
+                <ColorPaletteResources x:Key="Dark"
+                                       RegionColor="#201C1A"
+                                       BaseHigh="#E8E0DA"
+                                       BaseLow="#3E342F"
+                                       BaseMedium="#A3938A"
+                                       ChromeLow="#1E1815"
+                                       ChromeMedium="#261E1A"
+                                       ChromeWhite="White"
+                                       Accent="#B87352" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+
+		<!-- Give the ColorPicker in "Schematics" tab its visual layout -->
+		<StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+		
+    </Application.Styles>
+</Application>

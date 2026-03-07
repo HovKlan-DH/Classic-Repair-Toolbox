@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TabOverview"
+             FontSize="11">
+
+	<!-- Use a standard Grid as the root so it obeys the exact viewport width -->
+	<Grid RowDefinitions="Auto,*">
+
+		<!-- Header -->
+		<Border Grid.Row="0"
+				Background="{DynamicResource AppThemeListBackgroundBrush}"
+				BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				BorderThickness="0,0,0,1">
+			<!-- Add a right margin to account for the vertical scrollbar size so columns align perfectly -->
+			<Grid Margin="0,0,16,0">
+				<!-- Shared explicit column sizes so Header and Content align automatically -->
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="80" />
+					<ColumnDefinition Width="130" />
+					<ColumnDefinition Width="150" />
+					<ColumnDefinition Width="120" />
+					<ColumnDefinition Width="220" />
+					<ColumnDefinition Width="*" MinWidth="150"/>
+					<!-- Notes gets remaining space -->
+					<ColumnDefinition Width="150" />
+				</Grid.ColumnDefinitions>
+
+				<TextBlock Grid.Column="0" Text="Component" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="1" Text="Technical name" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="2" Text="Friendly name" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="3" Text="Part-number" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="4" Text="Short description" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="5" Text="Notes" FontWeight="Bold" FontSize="12" Margin="8"/>
+				<TextBlock Grid.Column="6" Text="Links" FontWeight="Bold" FontSize="12" Margin="8"/>
+			</Grid>
+		</Border>
+
+		<!-- Content -->
+		<!-- VerticalScrollBarVisibility is set to Visible so the 16px offset always exists, keeping the items perfectly snapped to the Header -->
+		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
+			<ItemsControl x:Name="OverviewItemsControl">
+				<ItemsControl.ItemTemplate>
+					<DataTemplate x:DataType="local:OverviewRow">
+						<Border BorderBrush="{DynamicResource AppThemeBorderBrush}" BorderThickness="0,0,0,1">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<!-- Same explicit column sizes + * at the same position -->
+									<ColumnDefinition Width="80" />
+									<ColumnDefinition Width="130" />
+									<ColumnDefinition Width="150" />
+									<ColumnDefinition Width="120" />
+									<ColumnDefinition Width="220" />
+									<ColumnDefinition Width="*" MinWidth="150" />
+									<ColumnDefinition Width="150" />
+								</Grid.ColumnDefinitions>
+
+								<Button Grid.Column="0"
+										Margin="8,4,8,8"
+										Padding="0"
+										VerticalAlignment="Top"
+										HorizontalAlignment="Left"
+										Background="Transparent"
+										Cursor="Hand"
+										Click="OnComponentClick">
+									<TextBlock Text="{Binding Component}" TextDecorations="Underline" Foreground="{DynamicResource AppThemeAccentBrush}"/>
+								</Button>
+
+								<SelectableTextBlock Grid.Column="1" Text="{Binding TechnicalName}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top"/>
+								<SelectableTextBlock Grid.Column="2" Text="{Binding FriendlyName}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top"/>
+								<SelectableTextBlock Grid.Column="3" Text="{Binding PartNumber}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top"/>
+								<SelectableTextBlock Grid.Column="4" Text="{Binding ShortDescription}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top"/>
+								<SelectableTextBlock Grid.Column="5" Text="{Binding Notes}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top"/>
+
+								<!-- Merged File and Web links -->
+								<ItemsControl Grid.Column="6" ItemsSource="{Binding Links}" Margin="8,4,8,8" VerticalAlignment="Top">
+									<ItemsControl.ItemTemplate>
+										<DataTemplate x:DataType="local:OverviewLink">
+											<Button Background="Transparent" Padding="0,2" Cursor="Hand" Click="OnLinkClick" HorizontalContentAlignment="Left">
+												<StackPanel Orientation="Horizontal" Spacing="4">
+													<TextBlock Text="📄" IsVisible="{Binding IsLocalFile}"/>
+													<TextBlock Text="🌐" IsVisible="{Binding IsWebLink}"/>
+
+													<TextBlock Text="{Binding Name}" TextDecorations="Underline" Foreground="{DynamicResource AppThemeAccentBrush}" TextWrapping="Wrap"/>
+												</StackPanel>
+											</Button>
+										</DataTemplate>
+									</ItemsControl.ItemTemplate>
+								</ItemsControl>
+
+							</Grid>
+						</Border>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</ScrollViewer>
+	</Grid>
+</UserControl>
