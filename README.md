@@ -170,7 +170,7 @@ Please view the details in [BUILDING.md](https://github.com/HovKlan-DH/Classic-R
 
 ### Development tools used
 
-_CRT_ has been developed in _Visual Studio Community 2026_. Its codebase has been developed primarily with GitHub Copilot, which is why I see myself more as a _conductor_ rather than the pure developer of this application - all credits to the people behind these LLM models 😁 I have primarily used the _Gemini 3.1 Pro_ model but also _Claude Sonnet 4.6_ and in some cases _GPT-5.3-Codex_ (these models will of course change for the future).
+_CRT_ has been developed in _Visual Studio Community 2026_. Where the old _Commodore_ project was primarily self-develpoped, then this new _Classic_ codebase has been developed primarily with GitHub Copilot, which is why I see myself more as a _conductor_ for this project, rather than the pure developer of this application - all credits to the people behind these LLM models 😁 I have primarily used the _Gemini 3.1 Pro_ model, but also _Claude Sonnet 4.6_ and in some cases _GPT-5.3-Codex_ (these models will of course change for the future).
 
 NuGet packages used:
 - [Avalonia](https://avaloniaui.net/)
