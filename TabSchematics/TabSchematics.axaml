@@ -175,15 +175,15 @@
 
 				<!-- DYNAMIC POLYLINE TRACES LIST PANEL -->
 				<Border x:Name="TracesPanel"
-					IsVisible="False"
-					HorizontalAlignment="Right"
-					VerticalAlignment="Bottom"
-					Margin="0,0,10,10"
-					Background="{DynamicResource SchematicsComponent_Bg}"
-					BorderBrush="{DynamicResource AppThemeBorderBrush}"
-					BorderThickness="1"
-					CornerRadius="4"
-					Padding="8,8">
+								IsVisible="False"
+								HorizontalAlignment="Right"
+								VerticalAlignment="Bottom"
+								Margin="0,0,10,10"
+								Background="{DynamicResource SchematicsComponent_Bg}"
+								BorderBrush="{DynamicResource AppThemeBorderBrush}"
+								BorderThickness="1"
+								CornerRadius="4"
+								Padding="8,8">
 					<StackPanel Spacing="6">
 						<StackPanel Orientation="Horizontal" Spacing="6">
 							<TextBlock Text="Traces visible"
@@ -199,6 +199,14 @@
 						</StackPanel>
 						<!-- Code-behind will inject colors here -->
 						<StackPanel x:Name="TracesListPanel" Spacing="4" />
+
+						<Button x:Name="UndoDeletedTraceButton"
+								Content="Undo deletion"
+								FontSize="9"
+								Padding="6,2"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								IsVisible="False" />
 					</StackPanel>
 				</Border>
 

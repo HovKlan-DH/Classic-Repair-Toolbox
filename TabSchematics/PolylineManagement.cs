@@ -1,14 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
 using CRT;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using TabSchematics;
 
 namespace Classic_Repair_Toolbox.TabSchematics
 {
@@ -31,6 +32,22 @@ namespace Classic_Repair_Toolbox.TabSchematics
         private Ellipse? _hoverMarker;
 
         private readonly Dictionary<Color, bool> _colorVisibilityOptions = new();
+        private static readonly Dictionary<string, Stack<TraceModel>> _globalUndoStacks = new();
+
+        private Stack<TraceModel> GetCurrentUndoStack()
+        {
+            var boardKey = this._parent.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
+            var schematicName = (this._parent.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name ?? string.Empty;
+            string key = $"{boardKey}|{schematicName}";
+
+            if (!_globalUndoStacks.TryGetValue(key, out var stack))
+            {
+                stack = new Stack<TraceModel>();
+                _globalUndoStacks[key] = stack;
+            }
+            return stack;
+        }
+
 
         private Color _currentDrawingColor = Colors.Red;
         public Color CurrentDrawingColor
@@ -56,6 +73,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
         public event Action<Dictionary<Color, int>>? TraceStatsChanged;
         public event Action<bool, Point>? PaletteStateChanged;
         public event Action? TracesModified; // notifies parent to save JSON
+        public event Action<bool>? UndoStateChanged;
 
         public PolylineManagement(CRT.TabSchematics parent, Canvas canvas)
         {
@@ -98,10 +116,53 @@ namespace Classic_Repair_Toolbox.TabSchematics
             }
         }
 
+        private TraceModel ExportSingleTrace(ManagedPolyline p)
+        {
+            var tm = new TraceModel
+            {
+                Color = p.TraceColor.ToString(),
+                Visible = this.GetColorVisibility(p.TraceColor)
+            };
+            for (int i = 0; i < p.NodeCount; i++)
+            {
+                var n = p.GetNode(i);
+                tm.Nodes.Add(new PointModel { X = n.X, Y = n.Y });
+            }
+            return tm;
+        }
+
+        private void PushUndo(ManagedPolyline p)
+        {
+            var tm = this.ExportSingleTrace(p);
+            var stack = this.GetCurrentUndoStack();
+            stack.Push(tm);
+            this.UndoStateChanged?.Invoke(true);
+        }
+
+        // ###########################################################################################
+        // Pops the last deleted trace from the temporary undo stack and restores it natively.
+        // ###########################################################################################
+        public void UndoLastDeletion()
+        {
+            var stack = this.GetCurrentUndoStack();
+            if (stack.Count > 0)
+            {
+                var tm = stack.Pop();
+                Logger.Info($"Undo deletion of trace: Color [{tm.Color}], Markers [{tm.Nodes.Count}]");
+                this.AddTraceFromModel(tm);
+                this.NotifyStatsChanged();
+                this.TracesModified?.Invoke();
+                this.UndoStateChanged?.Invoke(stack.Count > 0);
+            }
+        }
+
         public void DeleteActivePolyline()
         {
             if (this._activePolyline != null)
             {
+                this.PushUndo(this._activePolyline);
+                Logger.Info($"Trace deleted (Palette): Color [{this._activePolyline.TraceColor}], Markers [{this._activePolyline.NodeCount}]");
+
                 this._polylines.Remove(this._activePolyline);
                 this._activePolyline.Dispose(this._canvas);
                 this._activePolyline = null;
@@ -164,9 +225,15 @@ namespace Classic_Repair_Toolbox.TabSchematics
                 {
                     if (!this.GetColorVisibility(polyline!.TraceColor)) return false;
 
+                    if (polyline.NodeCount <= 2)
+                    {
+                        this.PushUndo(polyline);
+                    }
+
                     polyline!.RemoveNode(nodeIndex);
                     if (polyline.NodeCount < 2)
                     {
+                        Logger.Info($"Trace deleted (clicked on marker): Color [{polyline.TraceColor}]");
                         this._polylines.Remove(polyline);
                         polyline.Dispose(this._canvas);
                         if (this._activePolyline == polyline) this._activePolyline = null;
@@ -180,6 +247,9 @@ namespace Classic_Repair_Toolbox.TabSchematics
                 if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex, out _))
                 {
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
+
+                    this.PushUndo(polySegment!);
+                    Logger.Info($"Trace deleted (clicked on line): Color [{polySegment!.TraceColor}], Markers [{polySegment.NodeCount}]");
 
                     this._polylines.Remove(polySegment);
                     polySegment.Dispose(this._canvas);
@@ -415,19 +485,49 @@ namespace Classic_Repair_Toolbox.TabSchematics
             var result = new List<TraceModel>();
             foreach (var p in this._polylines)
             {
-                var tm = new TraceModel
-                {
-                    Color = p.TraceColor.ToString(),
-                    Visible = this.GetColorVisibility(p.TraceColor)
-                };
-                for (int i = 0; i < p.NodeCount; i++)
-                {
-                    var n = p.GetNode(i);
-                    tm.Nodes.Add(new PointModel { X = n.X, Y = n.Y });
-                }
-                result.Add(tm);
+                result.Add(this.ExportSingleTrace(p));
             }
             return result;
+        }
+
+        private void AddTraceFromModel(TraceModel tm)
+        {
+            if (Color.TryParse(tm.Color, out Color c) && tm.Nodes.Count >= 2)
+            {
+                // Restore exact checkbox toggle state from disk
+                this._colorVisibilityOptions[c] = tm.Visible;
+
+                bool isLegacy = tm.Nodes.Any(n => n.X > 2.0 || n.Y > 2.0);
+
+                Point ToNormalized(PointModel nm)
+                {
+                    if (!isLegacy) return new Point(nm.X, nm.Y);
+
+                    var rect = this._parent.GetImageContentRect();
+                    if (rect.Width <= 0 || rect.Height <= 0) return new Point(0, 0);
+
+                    return new Point(
+                        Math.Max(0.0, Math.Min(1.0, (nm.X - rect.X) / rect.Width)),
+                        Math.Max(0.0, Math.Min(1.0, (nm.Y - rect.Y) / rect.Height))
+                    );
+                }
+
+                var p1 = ToNormalized(tm.Nodes[0]);
+                var p2 = ToNormalized(tm.Nodes[1]);
+                var poly = new ManagedPolyline(p1, p2, this._parent, c);
+
+                for (int i = 2; i < tm.Nodes.Count; i++)
+                {
+                    poly.InsertNode(i, ToNormalized(tm.Nodes[i]));
+                }
+
+                poly.UpdateScale(this._parent.schematicsMatrix.M11);
+
+                poly.AddToCanvas(this._canvas);
+                poly.SetGlobalVisibility(this.GetColorVisibility(c));
+                this._polylines.Add(poly);
+                this.AddOrReplacePaletteColor(c); // Force this active pin back into the standard dynamic HUD palette 
+            }
         }
 
         // ###########################################################################################
@@ -440,46 +540,21 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
             foreach (var tm in traces)
             {
-                if (Color.TryParse(tm.Color, out Color c) && tm.Nodes.Count >= 2)
-                {
-                    // Restore exact checkbox toggle state from disk
-                    this._colorVisibilityOptions[c] = tm.Visible;
-
-                    bool isLegacy = tm.Nodes.Any(n => n.X > 2.0 || n.Y > 2.0);
-
-                    Point ToNormalized(PointModel nm)
-                    {
-                        if (!isLegacy) return new Point(nm.X, nm.Y);
-
-                        var rect = this._parent.GetImageContentRect();
-                        if (rect.Width <= 0 || rect.Height <= 0) return new Point(0, 0);
-
-                        return new Point(
-                            Math.Max(0.0, Math.Min(1.0, (nm.X - rect.X) / rect.Width)),
-                            Math.Max(0.0, Math.Min(1.0, (nm.Y - rect.Y) / rect.Height))
-                        );
-                    }
-
-                    var p1 = ToNormalized(tm.Nodes[0]);
-                    var p2 = ToNormalized(tm.Nodes[1]);
-                    var poly = new ManagedPolyline(p1, p2, this._parent, c);
-
-                    for (int i = 2; i < tm.Nodes.Count; i++)
-                    {
-                        poly.InsertNode(i, ToNormalized(tm.Nodes[i]));
-                    }
-
-                    poly.AddToCanvas(this._canvas);
-                    poly.SetGlobalVisibility(this.GetColorVisibility(c));
-                    this._polylines.Add(poly);
-                    this.AddOrReplacePaletteColor(c); // Force this active pin back into the standard dynamic HUD palette 
-                }
+                this.AddTraceFromModel(tm);
             }
             this.NotifyStatsChanged();
+
+            var stack = this.GetCurrentUndoStack();
+            this.UndoStateChanged?.Invoke(stack.Count > 0);
         }
 
         public void ClearAllTracesAndSave()
         {
+            // Wipe the internal global undo memory specifically when users trigger absolute clear
+            var stack = this.GetCurrentUndoStack();
+            stack.Clear();
+            this.UndoStateChanged?.Invoke(false);
+
             this.ResetState();
             this.NotifyStatsChanged();
             this.TracesModified?.Invoke();
@@ -503,6 +578,10 @@ namespace Classic_Repair_Toolbox.TabSchematics
             }
 
             this._polylines.Clear();
+
+            // Do not clear _globalUndoStacks here, as it retains internal context across board navigations natively
+            this.UndoStateChanged?.Invoke(false);
+
             this._colorVisibilityOptions.Clear();
             this._activePolyline = null;
             this._isDrawingNew = false;

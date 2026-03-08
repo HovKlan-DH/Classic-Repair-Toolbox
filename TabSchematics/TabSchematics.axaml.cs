@@ -177,22 +177,26 @@ public partial class TabSchematics : UserControl
             });
         };
 
-        /*
-        this.TraceColorPicker.PropertyChanged += (s, e) =>
-        {
-            if (e.Property.Name == "Color" && e.NewValue is Color c)
-            {
-                this._polylineManager?.ChangeActiveColor(c);
-                this._polylineManager?.AddOrReplacePaletteColor(c);
-                this.CustomColorButton.Background = new SolidColorBrush(c);
-            }
-        };
-        */
-
         this.ClearTracesButton.Click += (s, e) =>
         {
             // Execute absolute clearing that triggers our new JSON saver event 
             this.polylineManager?.ClearAllTracesAndSave();
+        };
+
+        this.polylineManager.UndoStateChanged += hasUndo =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                this.UndoDeletedTraceButton.IsVisible = hasUndo;
+
+                // Keep panel populated even when 0 lines remain if undo limit evaluates to valid stack lengths accurately 
+                this.TracesPanel.IsVisible = (this.TracesListPanel.Children.Count > 0) || hasUndo;
+            });
+        };
+
+        this.UndoDeletedTraceButton.Click += (s, e) =>
+        {
+            this.polylineManager?.UndoLastDeletion();
         };
 
         this.SchematicsSplitter.AddHandler(
@@ -461,8 +465,11 @@ public partial class TabSchematics : UserControl
             this.isPanning = true;
             this.panStartPoint = point;
             this.panStartMatrix = this.schematicsMatrix;
-            this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
+
+            // Call hide UI first to avoid overwriting the panning cursor 
             this.HideSchematicsHoverUi();
+            this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
+
             e.Pointer.Capture(this.SchematicsContainer);
             e.Handled = true;
             return;
