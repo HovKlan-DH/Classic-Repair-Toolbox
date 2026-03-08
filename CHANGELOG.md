@@ -1,10 +1,10 @@
 - Fixed traces are displayed correctly after a window resize #69
-- Fixed transparent images did not show correct background color component info popup #79
+- Fixed transparent images did not show correct background color in component info popup #79
 - Fixed `ESCAPE` and mouseclick outside of single-opened component info popup does not close window #68
 - Fixed wrong reporting of version when submitting feedback
 - Added traces will get focus when hovering it with mouse
 - Added drop-down selector in component info popup deciding functionality for mouse scrollwheel
 - Added option to undo deletion of traces
-- Added `BUILDING.md` file for help on local compilation
+- Added `BUILDING.md` file for help on local build compilation
 - Changed it will show mouse movement icon when panning image in "Schematics" tab
 - Removed changelog from "About" tab
