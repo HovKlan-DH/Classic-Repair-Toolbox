@@ -83,6 +83,8 @@
 					
 					<!-- Light, Component popup, bullet list -->
 					<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">White</SolidColorBrush>
+					
 
 					<!-- Light, Generic colors -->
 					
@@ -166,6 +168,9 @@
 					<!-- Dark, Component popup, keyboard typing -->
 					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">Khaki</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">DarkOliveGreen</SolidColorBrush>
+
+					<!-- Dark, Component popup, image transparent background -->
+					<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">#A99F99</SolidColorBrush>
 
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>

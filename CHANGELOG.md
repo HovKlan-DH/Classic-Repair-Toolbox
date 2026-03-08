@@ -1,3 +1,6 @@
+- Fixed traces are displayed correctly after a rezie #69
+- Fixed transparent images did not show correct background color component info popup #79
+- Fixed ESCAPE and mouseclick outside of single-opened component info popup does not close window #68
 - Fixed wrong reporting of version when submitting feedback
 - Added `BUILDING.md` file for help on local compilation
 - Removed changelog from "About" tab

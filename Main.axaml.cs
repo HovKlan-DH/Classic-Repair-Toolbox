@@ -120,11 +120,24 @@ namespace CRT
 );
 
             this.AddHandler(
+                InputElement.KeyDownEvent,
+                this.OnMainKeyDownCloseSinglePopup,
+                RoutingStrategies.Tunnel,
+                handledEventsToo: true
+            );
+
+            this.AddHandler(
                 InputElement.PointerReleasedEvent,
                 (s, e) =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        // Abort stealing focus if another window (like the component popup) is currently active
+                        if (!this.IsActive)
+                        {
+                            return;
+                        }
+
                         // Do not steal focus if we are on tabs that utilize text inputs
                         var selectedTab = this.MainTabControl?.SelectedItem as TabItem;
                         string? tabHeader = selectedTab?.Header?.ToString();
@@ -1146,9 +1159,6 @@ namespace CRT
         // ###########################################################################################
         private void OnMainPointerPressedCloseSinglePopup(object? sender, PointerPressedEventArgs e)
         {
-            if (e.Handled)
-                return;
-
             if (UserSettings.MultipleInstancesForComponentPopup)
                 return;
 
@@ -1160,6 +1170,25 @@ namespace CRT
                 return;
 
             popup.Close();
+        }
+
+        // ###########################################################################################
+        // Closes single popup when pressing Escape while the main window is focused.
+        // ###########################################################################################
+        private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape)
+                return;
+
+            if (UserSettings.MultipleInstancesForComponentPopup)
+                return;
+
+            var popup = this._singleComponentInfoWindow;
+            if (popup == null || !popup.IsVisible)
+                return;
+
+            popup.Close();
+            e.Handled = true;
         }
 
         // ###########################################################################################

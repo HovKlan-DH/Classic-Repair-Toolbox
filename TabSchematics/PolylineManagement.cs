@@ -208,7 +208,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
 
                     this.SelectPolyline(polySegment);
-                    polySegment!.InsertNode(segmentIndex + 1, this.ClampToImageBounds(localPoint));
+                    polySegment!.InsertNode(segmentIndex + 1, this.CanvasToNormalized(localPoint));
                     this._activePolyline = polySegment;
                     this._draggingNodeIndex = segmentIndex + 1;
                     this.CurrentDrawingColor = polySegment.TraceColor;
@@ -222,10 +222,10 @@ namespace Classic_Repair_Toolbox.TabSchematics
                     this.SetVisibilityByColor(this.CurrentDrawingColor, true);
                     this._isDrawingNew = true;
 
-                    var clampedPoint = this.ClampToImageBounds(localPoint);
-                    this._drawingStartPoint = clampedPoint;
+                    var normPoint = this.CanvasToNormalized(localPoint);
+                    this._drawingStartPoint = normPoint;
 
-                    this._tempDrawingLine = new ManagedPolyline(this._drawingStartPoint, clampedPoint, this._parent, this.CurrentDrawingColor);
+                    this._tempDrawingLine = new ManagedPolyline(this._drawingStartPoint, normPoint, this._parent, this.CurrentDrawingColor);
                     this._tempDrawingLine.AddToCanvas(this._canvas);
                     this.SelectPolyline(this._tempDrawingLine);
                     return true;
@@ -242,19 +242,19 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
             if (this._isDrawingNew && this._tempDrawingLine != null)
             {
-                Point p = this.ClampToImageBounds(localPoint);
-                if (shiftDown) p = this.ApplySnapping(p, this._tempDrawingLine, 1, snapTolerance);
+                Point pCanvas = this.NormalizedToCanvas(this.CanvasToNormalized(localPoint));
+                if (shiftDown) pCanvas = this.ApplySnappingCanvas(pCanvas, this._tempDrawingLine, 1, snapTolerance);
 
-                this._tempDrawingLine.MoveNode(1, p);
+                this._tempDrawingLine.MoveNode(1, this.CanvasToNormalized(pCanvas));
                 return true;
             }
 
             if (this._activePolyline != null && this._draggingNodeIndex != -1)
             {
-                Point p = this.ClampToImageBounds(localPoint);
-                if (shiftDown) p = this.ApplySnapping(p, this._activePolyline, this._draggingNodeIndex, snapTolerance);
+                Point pCanvas = this.NormalizedToCanvas(this.CanvasToNormalized(localPoint));
+                if (shiftDown) pCanvas = this.ApplySnappingCanvas(pCanvas, this._activePolyline, this._draggingNodeIndex, snapTolerance);
 
-                this._activePolyline.MoveNode(this._draggingNodeIndex, p);
+                this._activePolyline.MoveNode(this._draggingNodeIndex, this.CanvasToNormalized(pCanvas));
                 return true;
             }
 
@@ -262,34 +262,46 @@ namespace Classic_Repair_Toolbox.TabSchematics
         }
 
         // ###########################################################################################
-        // Constraints a point within the valid physical bounds of the image content area.
+        // Maps an unconstrained layout-canvas coordinate into clamped 0.0 - 1.0 image-normalized boundaries.
         // ###########################################################################################
-        private Point ClampToImageBounds(Point p)
+        private Point CanvasToNormalized(Point p)
         {
             var rect = this._parent.GetImageContentRect();
-            if (rect.Width <= 0 || rect.Height <= 0) return p;
+            if (rect.Width <= 0 || rect.Height <= 0) return new Point(0, 0);
 
-            double nx = Math.Max(rect.Left, Math.Min(rect.Right, p.X));
-            double ny = Math.Max(rect.Top, Math.Min(rect.Bottom, p.Y));
-            return new Point(nx, ny);
+            double nx = (p.X - rect.X) / rect.Width;
+            double ny = (p.Y - rect.Y) / rect.Height;
+
+            return new Point(Math.Max(0.0, Math.Min(1.0, nx)), Math.Max(0.0, Math.Min(1.0, ny)));
         }
 
-        private Point ApplySnapping(Point current, ManagedPolyline poly, int nodeIndex, double tolerance)
+        // ###########################################################################################
+        // Maps a normalized coordinate boundary back exactly into visually accurate layout canvas boundaries.
+        // ###########################################################################################
+        internal Point NormalizedToCanvas(Point norm)
         {
-            double snapX = current.X;
-            double snapY = current.Y;
+            var rect = this._parent.GetImageContentRect();
+            if (rect.Width <= 0 || rect.Height <= 0) return norm;
+
+            return new Point(rect.X + (norm.X * rect.Width), rect.Y + (norm.Y * rect.Height));
+        }
+
+        private Point ApplySnappingCanvas(Point currentCanvas, ManagedPolyline poly, int nodeIndex, double tolerance)
+        {
+            double snapX = currentCanvas.X;
+            double snapY = currentCanvas.Y;
 
             double closestXDist = tolerance;
             double closestYDist = tolerance;
 
             var neighbors = new List<Point>();
-            if (nodeIndex > 0) neighbors.Add(poly.GetNode(nodeIndex - 1));
-            if (nodeIndex < poly.NodeCount - 1) neighbors.Add(poly.GetNode(nodeIndex + 1));
+            if (nodeIndex > 0) neighbors.Add(this.NormalizedToCanvas(poly.GetNode(nodeIndex - 1)));
+            if (nodeIndex < poly.NodeCount - 1) neighbors.Add(this.NormalizedToCanvas(poly.GetNode(nodeIndex + 1)));
 
             foreach (var n in neighbors)
             {
-                if (Math.Abs(current.X - n.X) < closestXDist) { snapX = n.X; closestXDist = Math.Abs(current.X - n.X); }
-                if (Math.Abs(current.Y - n.Y) < closestYDist) { snapY = n.Y; closestYDist = Math.Abs(current.Y - n.Y); }
+                if (Math.Abs(currentCanvas.X - n.X) < closestXDist) { snapX = n.X; closestXDist = Math.Abs(currentCanvas.X - n.X); }
+                if (Math.Abs(currentCanvas.Y - n.Y) < closestYDist) { snapY = n.Y; closestYDist = Math.Abs(currentCanvas.Y - n.Y); }
             }
 
             return new Point(snapX, snapY);
@@ -303,7 +315,10 @@ namespace Classic_Repair_Toolbox.TabSchematics
                 if (this._tempDrawingLine != null)
                 {
                     double scale = this._parent.schematicsMatrix.M11;
-                    if (Distance(this._drawingStartPoint, this._tempDrawingLine.GetNode(1)) > (3.0 / scale))
+                    Point pStart = this.NormalizedToCanvas(this._drawingStartPoint);
+                    Point pEnd = this.NormalizedToCanvas(this._tempDrawingLine.GetNode(1));
+
+                    if (Distance(pStart, pEnd) > (3.0 / scale))
                     {
                         this._polylines.Add(this._tempDrawingLine);
                         this._activePolyline = this._tempDrawingLine;
@@ -364,6 +379,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
         // ###########################################################################################
         // Ingests portable JSON friendly models and reconstructs active native elements automatically.
+        // Also retroactively validates and updates non-compliant legacy native canvas coordinates natively saved mappings. 
         // ###########################################################################################
         public void ImportTraces(List<TraceModel> traces)
         {
@@ -376,13 +392,28 @@ namespace Classic_Repair_Toolbox.TabSchematics
                     // Restore exact checkbox toggle state from disk
                     this._colorVisibilityOptions[c] = tm.Visible;
 
-                    var p1 = new Point(tm.Nodes[0].X, tm.Nodes[0].Y);
-                    var p2 = new Point(tm.Nodes[1].X, tm.Nodes[1].Y);
+                    bool isLegacy = tm.Nodes.Any(n => n.X > 2.0 || n.Y > 2.0);
+
+                    Point ToNormalized(PointModel nm)
+                    {
+                        if (!isLegacy) return new Point(nm.X, nm.Y);
+
+                        var rect = this._parent.GetImageContentRect();
+                        if (rect.Width <= 0 || rect.Height <= 0) return new Point(0, 0);
+
+                        return new Point(
+                            Math.Max(0.0, Math.Min(1.0, (nm.X - rect.X) / rect.Width)),
+                            Math.Max(0.0, Math.Min(1.0, (nm.Y - rect.Y) / rect.Height))
+                        );
+                    }
+
+                    var p1 = ToNormalized(tm.Nodes[0]);
+                    var p2 = ToNormalized(tm.Nodes[1]);
                     var poly = new ManagedPolyline(p1, p2, this._parent, c);
 
                     for (int i = 2; i < tm.Nodes.Count; i++)
                     {
-                        poly.InsertNode(i, new Point(tm.Nodes[i].X, tm.Nodes[i].Y));
+                        poly.InsertNode(i, ToNormalized(tm.Nodes[i]));
                     }
 
                     poly.AddToCanvas(this._canvas);
@@ -447,7 +478,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
             {
                 for (int i = 0; i < poly.NodeCount; i++)
                 {
-                    double distSq = DistanceSquared(poly.GetNode(i), localPoint);
+                    double distSq = DistanceSquared(this.NormalizedToCanvas(poly.GetNode(i)), localPoint);
                     if (distSq <= closestLimit)
                     {
                         closestLimit = distSq;
@@ -469,8 +500,8 @@ namespace Classic_Repair_Toolbox.TabSchematics
             {
                 for (int i = 0; i < poly.NodeCount - 1; i++)
                 {
-                    Point a = poly.GetNode(i);
-                    Point b = poly.GetNode(i + 1);
+                    Point a = this.NormalizedToCanvas(poly.GetNode(i));
+                    Point b = this.NormalizedToCanvas(poly.GetNode(i + 1));
                     double distToLine = DistancePointToSegment(localPoint, a, b);
 
                     if (distToLine <= closestLimit)
@@ -590,13 +621,13 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
         public int NodeCount => this._nodes.Count;
 
-        public ManagedPolyline(Point p1, Point p2, CRT.TabSchematics parent, Color traceColor)
+        public ManagedPolyline(Point p1Norm, Point p2Norm, CRT.TabSchematics parent, Color traceColor)
         {
             this._parent = parent;
             this.TraceColor = traceColor;
 
-            this._nodes.Add(p1);
-            this._nodes.Add(p2);
+            this._nodes.Add(p1Norm);
+            this._nodes.Add(p2Norm);
 
             this._shape = new Polyline
             {
@@ -621,8 +652,8 @@ namespace Classic_Repair_Toolbox.TabSchematics
             foreach (var m in this._markers) m.Stroke = targetBrush;
         }
 
-        public void MoveNode(int index, Point p) { this._nodes[index] = p; this.SyncShape(); }
-        public void InsertNode(int index, Point p) { this._nodes.Insert(index, p); this.SyncShape(); }
+        public void MoveNode(int index, Point pNorm) { this._nodes[index] = pNorm; this.SyncShape(); }
+        public void InsertNode(int index, Point pNorm) { this._nodes.Insert(index, pNorm); this.SyncShape(); }
         public void RemoveNode(int index) { this._nodes.RemoveAt(index); this.SyncShape(); }
 
         public void AddToCanvas(Canvas canvas)
@@ -668,9 +699,26 @@ namespace Classic_Repair_Toolbox.TabSchematics
             return rawScale > 0 ? rawScale : 1.0;
         }
 
+        // ###########################################################################################
+        // Maps native layout boundaries locally scaling standard normalized bounds strictly to runtime configurations internally
+        // ###########################################################################################
+        private Point NormalizedToCanvas(Point norm)
+        {
+            var rect = this._parent.GetImageContentRect();
+            if (rect.Width <= 0 || rect.Height <= 0) return norm;
+
+            return new Point(rect.X + (norm.X * rect.Width), rect.Y + (norm.Y * rect.Height));
+        }
+
         private void SyncShape()
         {
-            this._shape.Points = new Avalonia.Collections.AvaloniaList<Point>(this._nodes);
+            var canvasNodes = new List<Point>(this._nodes.Count);
+            foreach (var n in this._nodes)
+            {
+                canvasNodes.Add(this.NormalizedToCanvas(n));
+            }
+
+            this._shape.Points = new Avalonia.Collections.AvaloniaList<Point>(canvasNodes);
 
             if (this._markers.Count != this._nodes.Count)
             {
@@ -703,7 +751,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
             for (int i = 0; i < this._nodes.Count; i++)
             {
-                Point p = this._nodes[i];
+                Point p = canvasNodes[i];
                 var m = this._markers[i];
 
                 Canvas.SetLeft(m, p.X - (m.Width / 2.0));

@@ -56,7 +56,7 @@
 					<!-- Wrap the Image in a Border to apply the background tightly to the image bounds -->
 					<Border HorizontalAlignment="Center"
 							VerticalAlignment="Center"
-							Background="#A99F99"
+							Background="{DynamicResource ComponentPopup_ImageTransparent_Bg}"
 							CornerRadius="2">
 						<Image x:Name="MainComponentImage"
 							   Stretch="Uniform" />

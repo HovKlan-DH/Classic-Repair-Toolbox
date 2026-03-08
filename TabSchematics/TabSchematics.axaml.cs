@@ -1147,6 +1147,9 @@ public partial class TabSchematics : UserControl
         this.SchematicsHoverLabelBorder.IsVisible = false;
         this.SchematicsHoverLabelText.Text = string.Empty;
         this.SchematicsContainer.Cursor = Cursor.Default;
+
+        if (this.MainWindow != null)
+            this.MainWindow.isHoveringComponent = false;
     }
 
     // ###########################################################################################
