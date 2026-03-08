@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using System;
 using System.Collections.Generic;
@@ -66,6 +67,12 @@ namespace CRT
         private double _normalWidth = 680.0;
         private double _normalHeight = 420.0;
 
+        // Image matrix for zoom and pan capabilities
+        private Matrix _imageMatrix = Matrix.Identity;
+        private bool _isPanningImage = false;
+        private Point _panStartPoint;
+        private Matrix _panStartMatrix;
+
 
         // ###########################################################################################
         // When true, the window closes itself whenever it loses focus to another window.
@@ -100,8 +107,20 @@ namespace CRT
                     this.WindowState = WindowState.Maximized;
             }
 
+            // Restore scroll action state to layout mapping
+            if (string.Equals(UserSettings.ComponentInfoScrollAction, "Image zoom", StringComparison.OrdinalIgnoreCase))
+                this.ScrollActionCombo.SelectedIndex = 1;
+            else
+                this.ScrollActionCombo.SelectedIndex = 0;
+
+            this.ScrollActionCombo.SelectionChanged += this.OnScrollActionComboSelectionChanged;
             this.ThumbnailList.SelectionChanged += this.OnThumbnailSelectionChanged;
-            this.MainComponentImage.PointerPressed += this.OnMainImagePointerPressed;
+
+            // Map the interactions to the expanded top-panel boundaries area instead of the local box
+            this.MainImageClickArea.PointerPressed += this.OnMainImageClickAreaPointerPressed;
+            this.MainImageClickArea.PointerMoved += this.OnMainImageClickAreaPointerMoved;
+            this.MainImageClickArea.PointerReleased += this.OnMainImageClickAreaPointerReleased;
+
             this.LocalFilesList.SelectionChanged += this.OnLocalFilesSelectionChanged;
             this.LinksList.SelectionChanged += this.OnLinksSelectionChanged;
 
@@ -112,11 +131,11 @@ namespace CRT
                 this.OnWindowKeyDown,
                 RoutingStrategies.Tunnel);
 
-            // Tunnel phase: intercepts scroll wheel events window-wide so scrolling always
-            // navigates thumbnails regardless of which control the pointer is over.
-            this.AddHandler(
+            // Tunnel phase: intercepts scroll wheel events on the left panel so scrolling
+            // navigates thumbnails while allowing the right panel's ScrollViewer to work normally.
+            this.LeftPanelGrid.AddHandler(
                 PointerWheelChangedEvent,
-                this.OnWindowPointerWheelChanged,
+                this.OnLeftPanelPointerWheelChanged,
                 RoutingStrategies.Tunnel);
 
             // Keep _normalWidth/_normalHeight up to date so they always reflect the last
@@ -297,6 +316,195 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // Intercepts scroll wheel events at the tunnel phase on the left panel and maps them to
+        // thumbnail navigation. Scroll up → next (right), scroll down → previous (left).
+        // ###########################################################################################
+        private void OnLeftPanelPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+        {
+            var posInContainer = e.GetPosition(this.MainImageClickArea);
+            bool isPointerOverImage = posInContainer.X >= 0 && posInContainer.Y >= 0 &&
+                                      posInContainer.X <= this.MainImageClickArea.Bounds.Width &&
+                                      posInContainer.Y <= this.MainImageClickArea.Bounds.Height;
+
+            if (string.Equals(UserSettings.ComponentInfoScrollAction, "Image zoom", StringComparison.OrdinalIgnoreCase) && isPointerOverImage)
+            {
+                // We base our scaling layout transforms natively on the inner image dimensions accurately.
+                var pos = e.GetPosition(this.MainImageContainer);
+                double delta = e.Delta.Y > 0 ? 1.2 : 0.8333333333333334;
+
+                double newScale = this._imageMatrix.M11 * delta;
+
+                // Stop zooming out past the original 100% boundary limit. Snaps back precisely to exact initial layout matrix limits.
+                if (newScale <= 1.0)
+                {
+                    this.ResetImageZoom();
+                    e.Handled = true;
+                    return;
+                }
+
+                if (newScale > 10.0)
+                    return;
+
+                var zoomMatrix = Matrix.CreateTranslation(-pos.X, -pos.Y)
+                               * Matrix.CreateScale(delta, delta)
+                               * Matrix.CreateTranslation(pos.X, pos.Y);
+
+                this._imageMatrix = zoomMatrix * this._imageMatrix;
+
+                if (this.MainImageContainer.RenderTransform is MatrixTransform mt)
+                    mt.Matrix = this._imageMatrix;
+                else
+                    this.MainImageContainer.RenderTransform = new MatrixTransform(this._imageMatrix);
+
+                e.Handled = true;
+            }
+            else
+            {
+                // Original navigation mode or pointer is located securely over the thumbnail panel
+                if (e.Delta.Y > 0)
+                    this.NavigateThumbnails(1);
+                else if (e.Delta.Y < 0)
+                    this.NavigateThumbnails(-1);
+
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Handles panning setup with right clicks. Left clicks clear zoom and jump to first thumbnail.
+        // ###########################################################################################
+        private void OnMainImageClickAreaPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            var pointer = e.GetCurrentPoint(this.MainImageClickArea);
+
+            if (pointer.Properties.IsRightButtonPressed)
+            {
+                this._isPanningImage = true;
+                this._panStartPoint = e.GetPosition(this.MainImageClickArea);
+                this._panStartMatrix = this._imageMatrix;
+                this.MainImageClickArea.Cursor = new Cursor(StandardCursorType.SizeAll);
+                e.Pointer.Capture(this.MainImageClickArea);
+                e.Handled = true;
+            }
+            else if (pointer.Properties.IsLeftButtonPressed)
+            {
+                this.ThumbnailList.SelectedIndex = 0;
+                this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Performs matrix transforms while capturing mouse to visually drag the zoomed image location.
+        // ###########################################################################################
+        private void OnMainImageClickAreaPointerMoved(object? sender, PointerEventArgs e)
+        {
+            if (this._isPanningImage)
+            {
+                var point = e.GetPosition(this.MainImageClickArea);
+                var delta = point - this._panStartPoint;
+                this._imageMatrix = this._panStartMatrix * Matrix.CreateTranslation(delta.X, delta.Y);
+                if (this.MainImageContainer.RenderTransform is MatrixTransform mt)
+                    mt.Matrix = this._imageMatrix;
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Handles panning setup with right clicks. Left clicks clear zoom and jump to first thumbnail.
+        // ###########################################################################################
+        private void OnMainImageContainerPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            var pointer = e.GetCurrentPoint(this.MainImageContainer);
+
+            if (pointer.Properties.IsRightButtonPressed)
+            {
+                this._isPanningImage = true;
+                this._panStartPoint = e.GetPosition(this.MainImageContainer);
+                this._panStartMatrix = this._imageMatrix;
+                this.MainImageContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
+                e.Pointer.Capture(this.MainImageContainer);
+                e.Handled = true;
+            }
+            else if (pointer.Properties.IsLeftButtonPressed)
+            {
+                this.ThumbnailList.SelectedIndex = 0;
+                this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Performs matrix transforms while capturing mouse to visually drag the zoomed image location.
+        // ###########################################################################################
+        private void OnMainImageContainerPointerMoved(object? sender, PointerEventArgs e)
+        {
+            if (this._isPanningImage)
+            {
+                var point = e.GetPosition(this.MainImageContainer);
+                var delta = point - this._panStartPoint;
+                this._imageMatrix = this._panStartMatrix * Matrix.CreateTranslation(delta.X, delta.Y);
+                ((MatrixTransform)this.MainComponentImage.RenderTransform!).Matrix = this._imageMatrix;
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Securely resets zoom matrices entirely to fit exactly and perfectly bounds back inside margins.
+        // ###########################################################################################
+        private void ResetImageZoom()
+        {
+            this._imageMatrix = Matrix.Identity;
+            if (this.MainImageContainer.RenderTransform is MatrixTransform mt)
+            {
+                mt.Matrix = this._imageMatrix;
+            }
+            else
+            {
+                this.MainImageContainer.RenderTransform = new MatrixTransform(this._imageMatrix);
+            }
+        }
+
+        // ###########################################################################################
+        // Finalizes drag status and releases cursor holds natively back to system expectations.
+        // ###########################################################################################
+        private void OnMainImageClickAreaPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            if (this._isPanningImage)
+            {
+                this._isPanningImage = false;
+                this.MainImageClickArea.Cursor = Cursor.Default;
+                e.Pointer.Capture(null);
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Finalizes drag status and releases cursor holds natively back to system expectations.
+        // ###########################################################################################
+        private void OnMainImageContainerPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            if (this._isPanningImage)
+            {
+                this._isPanningImage = false;
+                this.MainImageContainer.Cursor = Cursor.Default;
+                e.Pointer.Capture(null);
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // Saves off the scroll action dropdown to global standard user settings configurations
+        // ###########################################################################################
+        private void OnScrollActionComboSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (this.ScrollActionCombo.SelectedItem is ComboBoxItem item && item.Content is string action)
+            {
+                UserSettings.ComponentInfoScrollAction = action;
+            }
+        }
+
+        // ###########################################################################################
         // Clicking the main image jumps back to the first thumbnail, identical to pressing Space.
         // ###########################################################################################
         private void OnMainImagePointerPressed(object? sender, PointerPressedEventArgs e)
@@ -379,6 +587,7 @@ namespace CRT
             if (this._suppressThumbnailSelection)
                 return;
 
+            this.ResetImageZoom(); // Wipes previous zoom data clean every time a completely new index overrides selection
             var selected = this.ThumbnailList.SelectedItem as ComponentImageItem;
             this.MainComponentImage.Source = selected?.ImageSource;
             this.NoImageText.IsVisible = selected?.ImageSource == null;

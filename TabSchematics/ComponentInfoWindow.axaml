@@ -40,11 +40,14 @@
 		<!-- Left panel: top image + horizontal splitter + bottom thumbnail gallery -->
 		<Grid x:Name="LeftPanelGrid"
 			  Grid.Column="0"
+			  Background="Transparent"
 			  RowDefinitions="*,4,100">
 
 			<!-- Top: primary component image -->
-			<Border Grid.Row="0"
-					ClipToBounds="True">
+			<Border x:Name="MainImageClickArea"
+					Grid.Row="0"
+					ClipToBounds="True"
+					Background="Transparent">
 				<Grid>
 					<TextBlock x:Name="NoImageText"
 							   Text="No image available"
@@ -54,10 +57,15 @@
 							   Foreground="{DynamicResource AppThemeSecondaryTextBrush}" />
 
 					<!-- Wrap the Image in a Border to apply the background tightly to the image bounds -->
-					<Border HorizontalAlignment="Center"
+					<Border x:Name="MainImageContainer"
+							HorizontalAlignment="Center"
 							VerticalAlignment="Center"
 							Background="{DynamicResource ComponentPopup_ImageTransparent_Bg}"
-							CornerRadius="2">
+							CornerRadius="2"
+							RenderTransformOrigin="0,0">
+						<Border.RenderTransform>
+							<MatrixTransform />
+						</Border.RenderTransform>
 						<Image x:Name="MainComponentImage"
 							   Stretch="Uniform" />
 					</Border>
@@ -440,13 +448,14 @@
 					BorderThickness="0,1,0,0"
 					Padding="0,6,0,0"
 					Margin="0,6,0,0">
-				<Grid ColumnDefinitions="Auto,4,Auto,*,Auto">
+				<Grid ColumnDefinitions="Auto,4,Auto,12,Auto,*,Auto">
 					<Button x:Name="PalRegionButton"
 							Classes="RegionToggle"
 							Grid.Column="0"
 							Content="PAL"
 							FontSize="11"
 							Padding="8,3"
+							MinHeight="0"
 							Click="OnPalRegionClick" />
 					<Button x:Name="NtscRegionButton"
 							Classes="RegionToggle"
@@ -454,8 +463,21 @@
 							Content="NTSC"
 							FontSize="11"
 							Padding="8,3"
+							MinHeight="0"
 							Click="OnNtscRegionClick" />
-					<Button Grid.Column="4"
+
+					<!-- Scroll action behavior toggle -->
+					<ComboBox x:Name="ScrollActionCombo"
+							  Grid.Column="4"
+							  FontSize="11"
+							  Padding="8,3"
+							  MinHeight="0"
+							  VerticalAlignment="Center">
+						<ComboBoxItem FontSize="11">Image change</ComboBoxItem>
+						<ComboBoxItem FontSize="11">Image zoom</ComboBoxItem>
+					</ComboBox>
+
+					<Button Grid.Column="6"
 							Content="Close"
 							HorizontalAlignment="Right"
 							VerticalAlignment="Center"

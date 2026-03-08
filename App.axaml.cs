@@ -108,14 +108,24 @@ namespace CRT
         public const int SplashHeight = 350;
 
         // ###########################################################################################
-        // Builds a display-safe semantic version string in Major.Minor.Build format.
+        // Builds a display-safe semantic version string.
         // ###########################################################################################
         public static readonly string AppVersionString = GetAppVersion();
 
         private static string GetAppVersion()
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
-            return version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "0.0.0";
+
+            if (version == null)
+            {
+                return "0.0.0";
+            }
+
+            // Include the 4th digit (Revision) if it's explicitly set above 0,
+            // otherwise falling back to standard Major.Minor.Build format.
+            return version.Revision > 0
+                ? $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}"
+                : $"{version.Major}.{version.Minor}.{version.Build}";
         }
 
     }

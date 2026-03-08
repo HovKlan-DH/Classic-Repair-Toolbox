@@ -62,6 +62,7 @@ namespace CRT
         [JsonPropertyName("componentInfoWindowHeight")] public double ComponentInfoWindowHeight { get; set; } = 420.0;
         [JsonPropertyName("componentInfoWindowLeftColumnRatio")] public double ComponentInfoWindowLeftColumnRatio { get; set; } = 0.5;
         [JsonPropertyName("componentInfoWindowThumbnailRowHeight")] public double ComponentInfoWindowThumbnailRowHeight { get; set; } = 100.0;
+        [JsonPropertyName("componentInfoScrollAction")] public string ComponentInfoScrollAction { get; set; } = "Image change";
         [JsonPropertyName("schematicsLabelBoard")] public bool SchematicsLabelBoard { get; set; } = false;
         [JsonPropertyName("schematicsLabelTechnical")] public bool SchematicsLabelTechnical { get; set; } = false;
         [JsonPropertyName("schematicsLabelFriendly")] public bool SchematicsLabelFriendly { get; set; } = false;
@@ -230,6 +231,17 @@ namespace CRT
         public static double ComponentInfoWindowLeftColumnRatio => _data.ComponentInfoWindowLeftColumnRatio;
         public static double ComponentInfoWindowThumbnailRowHeight => _data.ComponentInfoWindowThumbnailRowHeight;
 
+        public static string ComponentInfoScrollAction
+        {
+            get => _data.ComponentInfoScrollAction;
+            set
+            {
+                _data.ComponentInfoScrollAction = value;
+                Logger.Info($"Setting changed: [ComponentInfoScrollAction] [{value}]");
+                Save();
+            }
+        }
+
         // ###########################################################################################
         // Saves component info window layout values atomically in a single disk write.
         // ###########################################################################################
@@ -360,6 +372,7 @@ namespace CRT
                     Logger.Info($"    Various other settings:");
                     Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
                     Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}]");
+                    Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
                     Logger.Info($"        [Region] [{Region}]");
                     Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
                     Logger.Info($"        [SchematicsLabelBoard] [{SchematicsLabelBoard}]");

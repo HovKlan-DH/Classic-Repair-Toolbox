@@ -28,6 +28,8 @@ namespace Classic_Repair_Toolbox.TabSchematics
         private Point _drawingStartPoint;
         private ManagedPolyline? _tempDrawingLine;
 
+        private Ellipse? _hoverMarker;
+
         private readonly Dictionary<Color, bool> _colorVisibilityOptions = new();
 
         private Color _currentDrawingColor = Colors.Red;
@@ -152,6 +154,9 @@ namespace Classic_Repair_Toolbox.TabSchematics
             double scale = this._parent.schematicsMatrix.M11;
             double hitTolerance = 8.0 / scale;
 
+            if (this._hoverMarker != null)
+                this._hoverMarker.IsVisible = false;
+
             if (pointer.Properties.IsRightButtonPressed)
             {
                 // First check if a specific node marker was right-clicked
@@ -172,7 +177,7 @@ namespace Classic_Repair_Toolbox.TabSchematics
                 }
 
                 // If no marker was hit, check if any line segment was right-clicked to delete the entire line
-                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex))
+                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex, out _))
                 {
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
 
@@ -203,12 +208,12 @@ namespace Classic_Repair_Toolbox.TabSchematics
                     return true;
                 }
 
-                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex))
+                if (this.GetHitSegment(localPoint, hitTolerance, out var polySegment, out int segmentIndex, out Point splitPoint))
                 {
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
 
                     this.SelectPolyline(polySegment);
-                    polySegment!.InsertNode(segmentIndex + 1, this.CanvasToNormalized(localPoint));
+                    polySegment!.InsertNode(segmentIndex + 1, this.CanvasToNormalized(splitPoint));
                     this._activePolyline = polySegment;
                     this._draggingNodeIndex = segmentIndex + 1;
                     this.CurrentDrawingColor = polySegment.TraceColor;
@@ -240,6 +245,9 @@ namespace Classic_Repair_Toolbox.TabSchematics
             double scale = this._parent.schematicsMatrix.M11;
             double snapTolerance = 15.0 / scale;
 
+            if (this._hoverMarker != null)
+                this._hoverMarker.IsVisible = false;
+
             if (this._isDrawingNew && this._tempDrawingLine != null)
             {
                 Point pCanvas = this.NormalizedToCanvas(this.CanvasToNormalized(localPoint));
@@ -256,6 +264,51 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
                 this._activePolyline.MoveNode(this._draggingNodeIndex, this.CanvasToNormalized(pCanvas));
                 return true;
+            }
+
+            // Control visual hover selection when not drawing or dragging
+            if (!this._isDrawingNew && this._draggingNodeIndex == -1)
+            {
+                double hitTolerance = 8.0 / scale;
+                ManagedPolyline? hoveredPolyline = null;
+
+                if (this.GetHitMarker(localPoint, hitTolerance, out var hoverMarkerLine, out _) && this.GetColorVisibility(hoverMarkerLine!.TraceColor))
+                {
+                    hoveredPolyline = hoverMarkerLine;
+                }
+                else if (this.GetHitSegment(localPoint, hitTolerance, out var hoverSegmentLine, out _, out Point hoverSnapPoint) && this.GetColorVisibility(hoverSegmentLine!.TraceColor))
+                {
+                    hoveredPolyline = hoverSegmentLine;
+
+                    // SHOW phantom marker preview at segment projected line location
+                    if (this._hoverMarker == null)
+                    {
+                        this._hoverMarker = new Ellipse
+                        {
+                            Fill = Brushes.White,
+                            IsHitTestVisible = false,
+                            UseLayoutRounding = false,
+                            ZIndex = 100 // Guarantees the hover marker always renders on top of shapes
+                        };
+                        this._canvas.Children.Add(this._hoverMarker);
+                    }
+
+                    this._hoverMarker.Width = 14.0 / scale;
+                    this._hoverMarker.Height = 14.0 / scale;
+                    this._hoverMarker.StrokeThickness = 2.0 / scale;
+                    this._hoverMarker.Stroke = new SolidColorBrush(hoverSegmentLine.TraceColor);
+                    this._hoverMarker.IsVisible = true;
+
+                    Canvas.SetLeft(this._hoverMarker, hoverSnapPoint.X - (this._hoverMarker.Width / 2.0));
+                    Canvas.SetTop(this._hoverMarker, hoverSnapPoint.Y - (this._hoverMarker.Height / 2.0));
+                }
+
+                foreach (var poly in this._polylines)
+                {
+                    // Allow the hovered line to light up markers, but safely retain markers for lines that are actively being edited with the floating palette.
+                    bool shouldBeVisuallySelected = (poly == hoveredPolyline) || (poly == this._activePolyline);
+                    poly.SetSelected(shouldBeVisuallySelected);
+                }
             }
 
             return false;
@@ -443,6 +496,12 @@ namespace Classic_Repair_Toolbox.TabSchematics
             this._tempDrawingLine?.Dispose(this._canvas);
             foreach (var p in this._polylines) p.Dispose(this._canvas);
 
+            if (this._hoverMarker != null)
+            {
+                this._canvas.Children.Remove(this._hoverMarker);
+                this._hoverMarker = null;
+            }
+
             this._polylines.Clear();
             this._colorVisibilityOptions.Clear();
             this._activePolyline = null;
@@ -490,10 +549,11 @@ namespace Classic_Repair_Toolbox.TabSchematics
             return hitPolyline != null;
         }
 
-        private bool GetHitSegment(Point localPoint, double tolerance, out ManagedPolyline? hitPolyline, out int segmentIndex)
+        private bool GetHitSegment(Point localPoint, double tolerance, out ManagedPolyline? hitPolyline, out int segmentIndex, out Point splitPoint)
         {
             hitPolyline = null;
             segmentIndex = -1;
+            splitPoint = localPoint;
             double closestLimit = tolerance;
 
             foreach (var poly in this._polylines)
@@ -502,13 +562,14 @@ namespace Classic_Repair_Toolbox.TabSchematics
                 {
                     Point a = this.NormalizedToCanvas(poly.GetNode(i));
                     Point b = this.NormalizedToCanvas(poly.GetNode(i + 1));
-                    double distToLine = DistancePointToSegment(localPoint, a, b);
+                    double distToLine = DistancePointToSegment(localPoint, a, b, out Point proj);
 
                     if (distToLine <= closestLimit)
                     {
                         closestLimit = distToLine;
                         hitPolyline = poly;
                         segmentIndex = i;
+                        splitPoint = proj; // Snap exactly to vector geometry limit
                     }
                 }
             }
@@ -517,13 +578,17 @@ namespace Classic_Repair_Toolbox.TabSchematics
 
         private static double Distance(Point a, Point b) => Math.Sqrt(DistanceSquared(a, b));
         private static double DistanceSquared(Point a, Point b) => (a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y);
-        private static double DistancePointToSegment(Point p, Point v, Point w)
+        private static double DistancePointToSegment(Point p, Point v, Point w, out Point projection)
         {
             double l2 = DistanceSquared(v, w);
-            if (l2 == 0.0) return Distance(p, v);
+            if (l2 == 0.0)
+            {
+                projection = v;
+                return Distance(p, v);
+            }
 
             double t = Math.Max(0, Math.Min(1, ((p.X - v.X) * (w.X - v.X) + (p.Y - v.Y) * (w.Y - v.Y)) / l2));
-            Point projection = new Point(v.X + t * (w.X - v.X), v.Y + t * (w.Y - v.Y));
+            projection = new Point(v.X + t * (w.X - v.X), v.Y + t * (w.Y - v.Y));
             return Distance(p, projection);
         }
     }

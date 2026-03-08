@@ -1,6 +1,8 @@
-- Fixed traces are displayed correctly after a rezie #69
+- Fixed traces are displayed correctly after a resize #69
 - Fixed transparent images did not show correct background color component info popup #79
 - Fixed ESCAPE and mouseclick outside of single-opened component info popup does not close window #68
 - Fixed wrong reporting of version when submitting feedback
+- Added traces will get focus when hovering with mouse
+- Added drop-down in component info popup deciding functionality for mouse scrollwheel
 - Added `BUILDING.md` file for help on local compilation
 - Removed changelog from "About" tab
