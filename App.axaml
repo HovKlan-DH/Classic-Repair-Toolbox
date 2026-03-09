@@ -83,8 +83,10 @@
 					<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_NTSC_Fg">Black</SolidColorBrush>
-					<SolidColorBrush x:Key="SchematicsSelectedComponent_Bg">Khaki</SolidColorBrush>
-					<SolidColorBrush x:Key="SchematicsSelectedComponent_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
 					<SolidColorBrush x:Key="SchematicsPanels_Bg">#F2F2F2</SolidColorBrush> <!-- light grey -->
 					<SolidColorBrush x:Key="SchematicsPanels_Fg">Black</SolidColorBrush>
 
@@ -204,8 +206,10 @@
 					<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_NTSC_Fg">Black</SolidColorBrush>
-					<SolidColorBrush x:Key="SchematicsSelectedComponent_Bg">Khaki</SolidColorBrush>
-					<SolidColorBrush x:Key="SchematicsSelectedComponent_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
 					<SolidColorBrush x:Key="SchematicsPanels_Bg">#46403E</SolidColorBrush> <!-- light brown'ish -->
 					<SolidColorBrush x:Key="SchematicsPanels_Fg">#E8E0DA</SolidColorBrush>
 

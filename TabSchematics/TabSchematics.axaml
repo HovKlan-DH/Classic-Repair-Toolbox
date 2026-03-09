@@ -107,7 +107,7 @@
 					HorizontalAlignment="Left"
 					VerticalAlignment="Top"
 					Margin="10,44,0,0"
-					Background="{DynamicResource SchematicsSelectedComponent_Bg}"
+					Background="{DynamicResource Schematics_ComponentHover_Bg}"
 					BorderBrush="{DynamicResource AppThemeBorderBrush}"
 					BorderThickness="1"
 					CornerRadius="4"
@@ -115,7 +115,7 @@
 					<TextBlock x:Name="SchematicsHoverLabelText"
 						FontSize="11"
 							   FontWeight="Bold"
-							   Foreground="{DynamicResource SchematicsSelectedComponent_Fg}" />
+							   Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
 				</Border>
 
 				<!-- LABELS VISIBLE PANEL -->

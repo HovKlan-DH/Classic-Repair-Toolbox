@@ -44,6 +44,9 @@ namespace CRT
         public string LocalRegion => this._localRegion;
         private bool _suppressRegionToggle;
 
+        // Cascading offset for multiple popups
+        private int _popupCascadeOffset = 0;
+
         public Main()
         {
             InitializeComponent();
@@ -1042,6 +1045,56 @@ namespace CRT
             this._suppressRegionToggle = false;
         }
 
+        // ###########################################################################################
+        // Positions a new popup on the same screen as the main window with a slight staggered offset.
+        // ###########################################################################################
+        private void PositionPopupOnSameScreen(Window popup)
+        {
+            popup.WindowStartupLocation = WindowStartupLocation.Manual;
+
+            double scaling = this.RenderScaling > 0 ? this.RenderScaling : 1.0;
+            double w = this.Bounds.Width > 0 ? this.Bounds.Width : this._restoreWidth;
+            double h = this.Bounds.Height > 0 ? this.Bounds.Height : this._restoreHeight;
+
+            int centerX = this.Position.X + (int)((w * scaling) / 2);
+            int centerY = this.Position.Y + (int)((h * scaling) / 2);
+
+            var screen = this.Screens.All.FirstOrDefault(s =>
+                centerX >= s.Bounds.X &&
+                centerY >= s.Bounds.Y &&
+                centerX < s.Bounds.X + s.Bounds.Width &&
+                centerY < s.Bounds.Y + s.Bounds.Height)
+                ?? this.Screens.Primary;
+
+            if (screen != null)
+            {
+                int cascadeStep = (int)(32 * scaling);
+                int maxCascade = (int)(256 * scaling);
+
+                int offsetX = this._popupCascadeOffset * cascadeStep;
+                int offsetY = this._popupCascadeOffset * cascadeStep;
+
+                if (offsetX > maxCascade)
+                {
+                    this._popupCascadeOffset = 0;
+                    offsetX = 0;
+                    offsetY = 0;
+                }
+
+                // Base it off the owner window's position slightly indented
+                int px = this.Position.X + (int)(40 * scaling) + offsetX;
+                int py = this.Position.Y + (int)(40 * scaling) + offsetY;
+
+                // Adjust slightly if it forces itself off the edges of this target screen
+                if (px + (popup.Width * scaling) > screen.Bounds.Right)
+                    px = screen.Bounds.X + offsetX;
+                if (py + (popup.Height * scaling) > screen.Bounds.Bottom)
+                    py = screen.Bounds.Y + offsetY;
+
+                popup.Position = new PixelPoint(px, py);
+                this._popupCascadeOffset++;
+            }
+        }
 
         // ###########################################################################################
         // Opens a component info popup according to user settings.
@@ -1074,9 +1127,14 @@ namespace CRT
                 popup.SetComponent(boardLabel, displayText, componentEntries, images, localFiles, links, UserSettings.Region, DataManager.DataRoot);
 
                 if (!popup.IsVisible)
+                {
+                    this.PositionPopupOnSameScreen(popup);
                     popup.Show(this);
+                }
                 else
+                {
                     popup.Activate();
+                }
 
                 return;
             }
@@ -1091,9 +1149,14 @@ namespace CRT
             this._singleComponentInfoWindow.SetComponent(boardLabel, displayText, componentEntries, images, localFiles, links, UserSettings.Region, DataManager.DataRoot);
 
             if (!this._singleComponentInfoWindow.IsVisible)
+            {
+                this.PositionPopupOnSameScreen(this._singleComponentInfoWindow);
                 this._singleComponentInfoWindow.Show(this);
+            }
             else
+            {
                 this._singleComponentInfoWindow.Activate();
+            }
         }
 
         // ###########################################################################################

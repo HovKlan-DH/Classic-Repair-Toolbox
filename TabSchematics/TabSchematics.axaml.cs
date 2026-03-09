@@ -904,10 +904,6 @@ public partial class TabSchematics : UserControl
 
         var contentRect = this.GetImageContentRect();
 
-        var borderBrushCandidate = this.TryFindResource("AppThemeBorderBrush", out var res) ? res as IBrush : Brushes.Gray;
-        var textForegroundCandidate = this.TryFindResource("SchematicsPanels_Fg", out var textRes) ? textRes as IBrush : Brushes.White;
-        var textBackgroundCandidate = this.TryFindResource("SchematicsPanels_Bg", out var bgRes) ? bgRes as IBrush : new SolidColorBrush(Color.Parse("#CC000000"));
-
         double currentScale = this.schematicsMatrix.M11;
         double inverseScale = currentScale > 0 ? 1.0 / currentScale : 1.0;
 
@@ -951,20 +947,20 @@ public partial class TabSchematics : UserControl
             {
                 Text = string.Join("\n", lines),
                 FontSize = 11,
-                Foreground = textForegroundCandidate,
                 FontWeight = FontWeight.Bold,
                 TextAlignment = TextAlignment.Center
             };
+            tb.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("Schematics_ComponentLabel_Fg"));
 
             var innerBorder = new Border
             {
-                Background = textBackgroundCandidate,
-                BorderBrush = borderBrushCandidate,
                 BorderThickness = new Avalonia.Thickness(1),
                 CornerRadius = new Avalonia.CornerRadius(4),
                 Padding = new Avalonia.Thickness(6, 4),
                 Child = tb
             };
+            innerBorder.Bind(Border.BackgroundProperty, this.GetResourceObservable("Schematics_ComponentLabel_Bg"));
+            innerBorder.Bind(Border.BorderBrushProperty, this.GetResourceObservable("AppThemeBorderBrush"));
 
             var transformGroup = new TransformGroup();
             transformGroup.Children.Add(new ScaleTransform(inverseScale, inverseScale));

@@ -7,6 +7,7 @@
 - Added option to undo deletion of traces
 - Added `BUILDING.md` file for help on local build compilation
 - Changed loading of main Excel data file to support strict binding between application and data versions #80
+- Changed it will show component info popup on same monitor as main application
 - Changed it will show mouse movement icon when panning image in "Schematics" tab
 - Changed standard colors for traces floating panel
 - Changed some themed colors (I believe this will be a long ongoing optimization)
