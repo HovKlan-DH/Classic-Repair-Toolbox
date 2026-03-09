@@ -132,6 +132,7 @@ jobs:
             --mainExe ${{ env.EXE_WINDOWS }} `
             --noPortable `
             --icon "Assets/CRT_icon.ico" `
+            --packTitle "Classic Repair Toolbox" `
             --outputDir velopack-output
 
       - name: Sign Velopack installer
@@ -229,6 +230,7 @@ jobs:
             --channel win-x86 `
             --noPortable `
             --icon "Assets/CRT_icon.ico" `
+            --packTitle "Classic Repair Toolbox" `
             --outputDir velopack-output
 
       - name: Sign Velopack installer
