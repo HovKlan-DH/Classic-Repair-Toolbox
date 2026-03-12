@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Media;
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -10,9 +11,11 @@ namespace TabSchematics
     // ###########################################################################################
     public class SchematicThumbnail : INotifyPropertyChanged
     {
-        private IImage? _imageSource;
-        private double _visualOpacity = 1.0;
-        private bool _isMatchForSelection;
+        private IImage? imageSource;
+        private double visualOpacity = 1.0;
+        private bool isMatchForSelection;
+        private bool isDropPlaceholder;
+        private double placeholderHeight = 120.0;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -23,36 +26,74 @@ namespace TabSchematics
 
         public IImage? ImageSource
         {
-            get => this._imageSource;
+            get => this.imageSource;
             set
             {
-                if (ReferenceEquals(this._imageSource, value))
+                if (ReferenceEquals(this.imageSource, value))
                     return;
-                this._imageSource = value;
+                this.imageSource = value;
                 this.OnPropertyChanged();
             }
         }
 
         public double VisualOpacity
         {
-            get => this._visualOpacity;
+            get => this.visualOpacity;
             set
             {
-                if (this._visualOpacity == value)
+                if (this.visualOpacity == value)
                     return;
-                this._visualOpacity = value;
+                this.visualOpacity = value;
                 this.OnPropertyChanged();
             }
         }
 
         public bool IsMatchForSelection
         {
-            get => this._isMatchForSelection;
+            get => this.isMatchForSelection;
             set
             {
-                if (this._isMatchForSelection == value)
+                if (this.isMatchForSelection == value)
                     return;
-                this._isMatchForSelection = value;
+                this.isMatchForSelection = value;
+                this.OnPropertyChanged();
+            }
+        }
+
+        public bool IsDropPlaceholder
+        {
+            get => this.isDropPlaceholder;
+            set
+            {
+                if (this.isDropPlaceholder == value)
+                    return;
+                this.isDropPlaceholder = value;
+                this.OnPropertyChanged();
+            }
+        }
+
+        public double PlaceholderHeight
+        {
+            get => this.placeholderHeight;
+            set
+            {
+                if (Math.Abs(this.placeholderHeight - value) < 0.01)
+                    return;
+                this.placeholderHeight = value;
+                this.OnPropertyChanged();
+            }
+        }
+
+        private double placeholderWidth = 160.0;
+
+        public double PlaceholderWidth
+        {
+            get => this.placeholderWidth;
+            set
+            {
+                if (Math.Abs(this.placeholderWidth - value) < 0.01)
+                    return;
+                this.placeholderWidth = value;
                 this.OnPropertyChanged();
             }
         }

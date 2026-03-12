@@ -326,59 +326,123 @@
                             CornerRadius="0"
                             HorizontalAlignment="Stretch"
                             ClipToBounds="True"
-                            Opacity="{Binding VisualOpacity}">
+                            Opacity="{Binding VisualOpacity}"
+                            DragDrop.AllowDrop="True"
+                            PointerPressed="OnThumbnailPointerPressed"
+                            PointerMoved="OnThumbnailPointerMoved"
+                            PointerReleased="OnThumbnailPointerReleased">
 						<Grid>
-							<Grid.RowDefinitions>
-								<RowDefinition Height="Auto" />
-								<RowDefinition Height="*" />
-							</Grid.RowDefinitions>
+							<Grid IsVisible="{Binding IsDropPlaceholder}"
+								  Height="{Binding PlaceholderHeight}"
+								  Width="{Binding PlaceholderWidth}"
+								  HorizontalAlignment="Left">
+								<Border BorderBrush="Red"
+										BorderThickness="2"
+										Background="#10FF0000" />
+							</Grid>
+							<Grid IsVisible="{Binding !IsDropPlaceholder}">
+								<Grid.RowDefinitions>
+									<RowDefinition Height="Auto" />
+									<RowDefinition Height="*" />
+								</Grid.RowDefinitions>
 
-							<Border Grid.Row="0"
-								Background="{DynamicResource Thumbnail_Bg}"
-								BorderBrush="{DynamicResource Thumbnail_Border}"
-								BorderThickness="0,0,0,1">
-								<Grid>
-									<Border Background="{DynamicResource Thumbnail_Selection_Bg}"
+								<Border Grid.Row="0"
+									Background="{DynamicResource Thumbnail_Bg}"
+									BorderBrush="{DynamicResource Thumbnail_Border}"
+									BorderThickness="0,0,0,1">
+									<Grid>
+										<Border Background="{DynamicResource Thumbnail_Selection_Bg}"
 												Opacity="1.0"
 												IsVisible="{Binding IsMatchForSelection}" />
-									<TextBlock Text="{Binding Name}"
-											   Foreground="{DynamicResource Thumbnail_Txt}"
-											   HorizontalAlignment="Stretch"
-											   TextAlignment="Left"
+										<TextBlock Text="{Binding Name}"
+												   Foreground="{DynamicResource Thumbnail_Txt}"
+												   HorizontalAlignment="Stretch"
+												   TextAlignment="Left"
+												   FontSize="11"
+												   Padding="4,3"
+												   IsVisible="{Binding !IsMatchForSelection}" />
+										<TextBlock Text="{Binding Name}"
+												   Foreground="{DynamicResource Thumbnail_Selection_Txt}"
+												   HorizontalAlignment="Stretch"
+												   TextAlignment="Left"
+												   FontSize="11"
+												   Padding="4,3"
+												   IsVisible="{Binding IsMatchForSelection}" />
+									</Grid>
+								</Border>
+
+								<Grid Grid.Row="1">
+									<TextBlock Text="Missing Image"
+											   HorizontalAlignment="Center"
+											   VerticalAlignment="Center"
+											   Foreground="{DynamicResource Main_Fg}"
 											   FontSize="11"
-											   Padding="4,3"
-											   IsVisible="{Binding !IsMatchForSelection}" />
-									<TextBlock Text="{Binding Name}"
-											   Foreground="{DynamicResource Thumbnail_Selection_Txt}"
-											   HorizontalAlignment="Stretch"
-											   TextAlignment="Left"
-											   FontSize="11"
-											   Padding="4,3"
-											   IsVisible="{Binding IsMatchForSelection}" />
+											   Padding="8,16"
+											   TextAlignment="Center"
+											   TextWrapping="Wrap"
+											   IsVisible="{Binding ImageSource, Converter={x:Static ObjectConverters.IsNull}}" />
+
+									<Image Source="{Binding ImageSource}"
+										   Stretch="Uniform"
+										   HorizontalAlignment="Stretch"
+										   RenderOptions.BitmapInterpolationMode="HighQuality" />
 								</Grid>
-							</Border>
-
-							<Grid Grid.Row="1">
-								<TextBlock Text="Missing Image"
-										   HorizontalAlignment="Center"
-										   VerticalAlignment="Center"
-										   Foreground="{DynamicResource Main_Fg}"
-										   FontSize="11"
-										   Padding="8,16"
-										   TextAlignment="Center"
-										   TextWrapping="Wrap"
-										   IsVisible="{Binding ImageSource, Converter={x:Static ObjectConverters.IsNull}}" />
-
-								<Image Source="{Binding ImageSource}"
-									   Stretch="Uniform"
-									   HorizontalAlignment="Stretch"
-									   RenderOptions.BitmapInterpolationMode="HighQuality" />
 							</Grid>
 						</Grid>
 					</Border>
 				</DataTemplate>
 			</ListBox.ItemTemplate>
 		</ListBox>
+
+		<Border x:Name="ThumbnailDragGhost"
+				Grid.Column="2"
+				IsVisible="False"
+				IsHitTestVisible="False"
+				HorizontalAlignment="Left"
+				VerticalAlignment="Top"
+				Width="160"
+				Opacity="0.92"
+				ZIndex="1000">
+			<Border.RenderTransform>
+				<TranslateTransform />
+			</Border.RenderTransform>
+
+			<Border.Background>
+				<SolidColorBrush Color="#F2FFFFFF" />
+			</Border.Background>
+
+			<Border.BorderBrush>
+				<SolidColorBrush Color="#CCB00000" />
+			</Border.BorderBrush>
+
+			<Border.BorderThickness>2</Border.BorderThickness>
+			<Border.CornerRadius>2</Border.CornerRadius>
+
+			<Grid>
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+				</Grid.RowDefinitions>
+
+				<Border Grid.Row="0"
+						Background="{DynamicResource Thumbnail_Bg}"
+						BorderBrush="{DynamicResource Thumbnail_Border}"
+						BorderThickness="0,0,0,1">
+					<TextBlock x:Name="ThumbnailDragGhostName"
+							   FontSize="11"
+							   Padding="4,3"
+							   HorizontalAlignment="Stretch"
+							   TextAlignment="Left"
+							   Foreground="{DynamicResource Thumbnail_Txt}" />
+				</Border>
+
+				<Image x:Name="ThumbnailDragGhostImage"
+					   Grid.Row="1"
+					   Stretch="Uniform"
+					   HorizontalAlignment="Stretch"
+					   RenderOptions.BitmapInterpolationMode="HighQuality" />
+			</Grid>
+		</Border>
 
 	</Grid>
 </UserControl>

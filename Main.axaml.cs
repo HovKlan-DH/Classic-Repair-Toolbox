@@ -364,7 +364,7 @@ namespace CRT
                     (thumb.ImageSource as IDisposable)?.Dispose();
                 (thumb.BaseThumbnail as IDisposable)?.Dispose();
             }
-            this.TabSchematicsControl.currentThumbnails = new List<SchematicThumbnail>(); // .NET6 compliant
+            this.TabSchematicsControl.currentThumbnails.Clear();
             this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList")!.ItemsSource = null;
             this.CategoryFilterListBox.ItemsSource = null;
             this.ComponentFilterListBox.ItemsSource = null;
@@ -504,13 +504,13 @@ namespace CRT
                 });
             }
 
-            this.TabSchematicsControl.currentThumbnails = thumbnails;
-            this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList")!.ItemsSource = thumbnails;
+            this.TabSchematicsControl.LoadSortedThumbnails(boardKey, thumbnails);
 
-            if (thumbnails.Count > 0)
+            if (this.TabSchematicsControl.currentThumbnails.Count > 0)
             {
                 var savedSchematic = UserSettings.GetLastSchematicForBoard(boardKey);
-                var savedIndex = string.IsNullOrEmpty(savedSchematic) ? -1 : thumbnails.FindIndex(t =>
+                var orderedThumbnails = this.TabSchematicsControl.currentThumbnails.ToList();
+                var savedIndex = string.IsNullOrEmpty(savedSchematic) ? -1 : orderedThumbnails.FindIndex(t =>
                     string.Equals(t.Name, savedSchematic, StringComparison.OrdinalIgnoreCase));
 
                 this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList")!.SelectedIndex = savedIndex >= 0 ? savedIndex : 0;

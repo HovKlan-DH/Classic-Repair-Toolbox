@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Classic_Repair_Toolbox.TabSchematics;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -24,7 +25,8 @@ public partial class TabSchematics : UserControl
     internal Matrix schematicsMatrix = Matrix.Identity;
 
     // Thumbnails
-    internal List<SchematicThumbnail> currentThumbnails = new(); // compliant with .NET6
+//    internal List<SchematicThumbnail> currentThumbnails = new(); // compliant with .NET6
+    internal ObservableCollection<SchematicThumbnail> currentThumbnails = new();
 
     // Full-res viewer
     internal Bitmap? currentFullResBitmap;
@@ -44,6 +46,20 @@ public partial class TabSchematics : UserControl
 
     // Insert logic class declaration
     internal PolylineManagement? polylineManager;
+
+    // Thumbnail drag/drop reordering
+    private Point thisThumbnailDragStartPoint;
+    private bool thisIsDraggingThumbnail;
+    private SchematicThumbnail? thisDraggedThumbnail;
+    private int thisDraggedThumbnailOriginalIndex = -1;
+    private bool thisDraggedThumbnailWasSelected;
+    private double thisDraggedThumbnailHeight = 120.0;
+    private SchematicThumbnail? thisThumbnailDropPlaceholder;
+    private double thisDraggedThumbnailWidth = 160.0;
+    private Point thisThumbnailDragPointerOffsetInItem;
+    private int thisThumbnailCurrentInsertIndex = -1;
+    private Point thisThumbnailDragStartPointInList;
+    private double thisThumbnailLastPointerYInList = double.NaN;
 
     public TabSchematics()
     {
@@ -101,6 +117,11 @@ public partial class TabSchematics : UserControl
         this.CheckLabelTechnical.IsChecked = UserSettings.SchematicsLabelTechnical;
         this.CheckLabelFriendly.IsChecked = UserSettings.SchematicsLabelFriendly;
         this.CheckLabelSelectedOnly.IsChecked = UserSettings.SchematicsLabelSelectedOnly;
+
+        DragDrop.SetAllowDrop(this.SchematicsThumbnailList, true);
+        this.SchematicsThumbnailList.AddHandler(DragDrop.DragOverEvent, this.OnThumbnailDragOver);
+        this.SchematicsThumbnailList.AddHandler(DragDrop.DropEvent, this.OnThumbnailDrop);
+        this.SchematicsThumbnailList.AddHandler(DragDrop.DragLeaveEvent, this.OnThumbnailDragLeave);
 
         bool isLabelsExpanded = UserSettings.SchematicsLabelsPanelExpanded;
         this.LabelsListPanel.IsVisible = isLabelsExpanded;
@@ -1395,4 +1416,428 @@ public partial class TabSchematics : UserControl
 
         return fallback;
     }
+
+    // ###########################################################################################
+    // Loads thumbnails, applies saved user order, and removes stale saved entries automatically.
+    // ###########################################################################################
+    public void LoadSortedThumbnails(string boardKey, List<SchematicThumbnail> rawList)
+    {
+        var savedOrder = UserSettings.GetSchematicsOrder(boardKey);
+        List<SchematicThumbnail> orderedList;
+
+        if (savedOrder != null && savedOrder.Count > 0)
+        {
+            var orderLookup = savedOrder
+                .Select((name, index) => new { name, index })
+                .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
+
+            orderedList = rawList
+                .OrderBy(x => orderLookup.TryGetValue(x.Name, out int orderIndex) ? orderIndex : int.MaxValue)
+                .ToList();
+
+            var currentNames = orderedList.Select(x => x.Name).ToList();
+            if (!currentNames.SequenceEqual(savedOrder, StringComparer.OrdinalIgnoreCase))
+            {
+                UserSettings.SetSchematicsOrder(boardKey, currentNames);
+            }
+        }
+        else
+        {
+            orderedList = rawList;
+        }
+
+        this.currentThumbnails.Clear();
+        foreach (var thumbnail in orderedList)
+        {
+            this.currentThumbnails.Add(thumbnail);
+        }
+
+        this.SchematicsThumbnailList.ItemsSource = this.currentThumbnails;
+    }
+
+    // ###########################################################################################
+    // Starts tracking a thumbnail for possible drag reorder.
+    // ###########################################################################################
+    private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+
+        if (sender is not Control control || control.DataContext is not SchematicThumbnail thumbnail || thumbnail.IsDropPlaceholder)
+            return;
+
+        this.thisThumbnailDragStartPoint = e.GetPosition(this);
+        this.thisThumbnailDragStartPointInList = e.GetPosition(this.SchematicsThumbnailList);
+        this.thisThumbnailDragPointerOffsetInItem = e.GetPosition(control);
+        this.thisIsDraggingThumbnail = true;
+        this.thisDraggedThumbnail = thumbnail;
+        this.thisDraggedThumbnailWasSelected = ReferenceEquals(this.SchematicsThumbnailList.SelectedItem, thumbnail);
+        this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
+        this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
+    }
+
+    // ###########################################################################################
+    // Begins drag/drop reordering once the pointer has moved far enough.
+    // ###########################################################################################
+    private async void OnThumbnailPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!this.thisIsDraggingThumbnail || this.thisDraggedThumbnail == null)
+            return;
+
+        var point = e.GetPosition(this);
+        var diff = this.thisThumbnailDragStartPoint - point;
+
+        // Slightly higher threshold to avoid accidental detaching on tiny pointer jitter.
+        if (Math.Abs(diff.X) <= 6 && Math.Abs(diff.Y) <= 6)
+            return;
+
+        if (sender is not Control control)
+            return;
+
+        this.thisIsDraggingThumbnail = false;
+
+        this.thisDraggedThumbnailOriginalIndex = this.currentThumbnails.IndexOf(this.thisDraggedThumbnail);
+        if (this.thisDraggedThumbnailOriginalIndex < 0)
+            return;
+
+        this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
+        this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
+
+        var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
+        this.thisThumbnailLastPointerYInList = pointerInList.Y;
+
+        this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
+        this.thisThumbnailCurrentInsertIndex = this.thisDraggedThumbnailOriginalIndex;
+        this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
+        this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
+
+        var dragData = new DataObject();
+        dragData.Set("SchematicThumbnail", this.thisDraggedThumbnail);
+
+        var effect = await DragDrop.DoDragDrop(e, dragData, DragDropEffects.Move);
+
+        if (effect != DragDropEffects.Move && this.thisDraggedThumbnail != null)
+        {
+            this.RestoreDraggedThumbnail();
+        }
+
+        this.HideThumbnailDragGhost();
+        this.ClearThumbnailDropPlaceholder();
+        this.thisDraggedThumbnail = null;
+        this.thisDraggedThumbnailOriginalIndex = -1;
+        this.thisDraggedThumbnailWasSelected = false;
+        this.thisThumbnailCurrentInsertIndex = -1;
+        this.thisThumbnailLastPointerYInList = double.NaN;
+
+        e.Handled = true;
+    }
+
+    // ###########################################################################################
+    // Updates the floating drag ghost to follow the mouse while preserving the original grab point.
+    // ###########################################################################################
+    private void UpdateThumbnailDragGhostPosition(Point pointerInList)
+    {
+        if (!this.ThumbnailDragGhost.IsVisible || this.ThumbnailDragGhost.RenderTransform is not TranslateTransform transform)
+            return;
+
+        transform.X = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
+        transform.Y = Math.Max(0, pointerInList.Y - this.thisThumbnailDragPointerOffsetInItem.Y);
+    }
+
+    // ###########################################################################################
+    // Shows a detached visual thumbnail that follows the mouse during drag.
+    // ###########################################################################################
+    private void ShowThumbnailDragGhost(SchematicThumbnail thumbnail, Point pointerInList)
+    {
+        this.ThumbnailDragGhost.Width = this.thisDraggedThumbnailWidth;
+        this.ThumbnailDragGhostName.Text = thumbnail.Name;
+        this.ThumbnailDragGhostImage.Source = thumbnail.ImageSource ?? thumbnail.BaseThumbnail;
+        this.ThumbnailDragGhost.IsVisible = true;
+        this.UpdateThumbnailDragGhostPosition(pointerInList);
+    }
+
+    // ###########################################################################################
+    // Hides the floating drag ghost after drop or cancel.
+    // ###########################################################################################
+    private void HideThumbnailDragGhost()
+    {
+        this.ThumbnailDragGhost.IsVisible = false;
+        this.ThumbnailDragGhostName.Text = string.Empty;
+        this.ThumbnailDragGhostImage.Source = null;
+
+        if (this.ThumbnailDragGhost.RenderTransform is TranslateTransform transform)
+        {
+            transform.X = 0;
+            transform.Y = 0;
+        }
+    }
+
+    // ###########################################################################################
+    // Stops local drag tracking when the pointer is released.
+    // ###########################################################################################
+    private void OnThumbnailPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        this.thisIsDraggingThumbnail = false;
+    }
+
+    // ###########################################################################################
+    // Resolves the thumbnail container border from the current visual source.
+    // ###########################################################################################
+    private Control? GetThumbnailContainer(Control? start)
+    {
+        Control? current = start;
+
+        while (current != null)
+        {
+            if (current is Border border && border.Classes.Contains("ThumbnailBorder"))
+                return border;
+
+            current = current.Parent as Control;
+        }
+
+        return null;
+    }
+
+    // ###########################################################################################
+    // Creates or moves the temporary placeholder item to the requested insert index.
+    // The provided insert index is already in current collection coordinates, so no extra
+    // reindex adjustment is applied after removing the existing placeholder.
+    // ###########################################################################################
+    private void ShowThumbnailDropPlaceholder(int insertIndex)
+    {
+        if (this.thisThumbnailDropPlaceholder == null)
+        {
+            this.thisThumbnailDropPlaceholder = new SchematicThumbnail
+            {
+                IsDropPlaceholder = true
+            };
+        }
+
+        this.thisThumbnailDropPlaceholder.PlaceholderHeight = this.thisDraggedThumbnailHeight;
+        this.thisThumbnailDropPlaceholder.PlaceholderWidth = this.thisDraggedThumbnailWidth;
+
+        int existingIndex = this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder);
+
+        if (existingIndex == insertIndex)
+        {
+            this.thisThumbnailCurrentInsertIndex = insertIndex;
+            return;
+        }
+
+        if (existingIndex >= 0)
+        {
+            this.currentThumbnails.RemoveAt(existingIndex);
+        }
+
+        insertIndex = Math.Clamp(insertIndex, 0, this.currentThumbnails.Count);
+        this.currentThumbnails.Insert(insertIndex, this.thisThumbnailDropPlaceholder);
+        this.thisThumbnailCurrentInsertIndex = insertIndex;
+    }
+
+    // ###########################################################################################
+    // Removes the temporary placeholder item from the thumbnails list.
+    // ###########################################################################################
+    private void ClearThumbnailDropPlaceholder()
+    {
+        if (this.thisThumbnailDropPlaceholder == null)
+            return;
+
+        int index = this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder);
+        if (index >= 0)
+        {
+            this.currentThumbnails.RemoveAt(index);
+        }
+    }
+
+    // ###########################################################################################
+    // Restores the dragged thumbnail to its original position when no drop occurs.
+    // ###########################################################################################
+    private void RestoreDraggedThumbnail()
+    {
+        if (this.thisDraggedThumbnail == null)
+            return;
+
+        this.ClearThumbnailDropPlaceholder();
+
+        int restoreIndex = this.thisDraggedThumbnailOriginalIndex;
+        if (restoreIndex < 0 || restoreIndex > this.currentThumbnails.Count)
+        {
+            restoreIndex = this.currentThumbnails.Count;
+        }
+
+        this.currentThumbnails.Insert(restoreIndex, this.thisDraggedThumbnail);
+        this.thisThumbnailCurrentInsertIndex = restoreIndex;
+        this.thisThumbnailLastPointerYInList = double.NaN;
+
+        if (this.thisDraggedThumbnailWasSelected)
+        {
+            this.SchematicsThumbnailList.SelectedItem = this.thisDraggedThumbnail;
+        }
+    }
+
+    // ###########################################################################################
+    // Saves the current thumbnail order for the active board, excluding the placeholder item.
+    // ###########################################################################################
+    private void SaveCurrentThumbnailOrder()
+    {
+        var boardKey = this.MainWindow?.GetCurrentBoardKey();
+        if (string.IsNullOrWhiteSpace(boardKey))
+            return;
+
+        var orderedNames = this.currentThumbnails
+            .Where(x => !x.IsDropPlaceholder && !string.IsNullOrWhiteSpace(x.Name))
+            .Select(x => x.Name)
+            .ToList();
+
+        UserSettings.SetSchematicsOrder(boardKey, orderedNames);
+    }
+
+    // ###########################################################################################
+    // Updates the placeholder position while dragging over the thumbnail list.
+    // Swaps immediately when the visual bounds of the dragged ghost intersect neighboring items,
+    // but only in the current drag direction to prevent placeholder bouncing.
+    // ###########################################################################################
+    private void OnThumbnailDragOver(object? sender, DragEventArgs e)
+    {
+        if (!e.Data.Contains("SchematicThumbnail") || this.thisDraggedThumbnail == null)
+        {
+            e.DragEffects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.DragEffects = DragDropEffects.Move;
+
+        var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
+        this.UpdateThumbnailDragGhostPosition(pointerInList);
+
+        int placeholderIndex = this.thisThumbnailDropPlaceholder != null
+            ? this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder)
+            : -1;
+
+        if (placeholderIndex < 0)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (double.IsNaN(this.thisThumbnailLastPointerYInList))
+        {
+            this.thisThumbnailLastPointerYInList = pointerInList.Y;
+            e.Handled = true;
+            return;
+        }
+
+        double deltaY = pointerInList.Y - this.thisThumbnailLastPointerYInList;
+        if (Math.Abs(deltaY) < 0.1)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        bool isMovingUp = deltaY < 0;
+        bool isMovingDown = deltaY > 0;
+
+        // Calculate absolute visual Top/Bottom edges of the dragged ghost, in List space
+        double ghostTopY = pointerInList.Y - this.thisThumbnailDragPointerOffsetInItem.Y;
+        double ghostBottomY = ghostTopY + this.thisDraggedThumbnailHeight;
+
+        if (isMovingUp && placeholderIndex > 0)
+        {
+            var itemAbove = this.SchematicsThumbnailList.ContainerFromIndex(placeholderIndex - 1) as Control;
+            if (itemAbove != null)
+            {
+                var transform = itemAbove.TransformToVisual(this.SchematicsThumbnailList);
+                if (transform.HasValue)
+                {
+                    var boundsAbove = new Rect(itemAbove.Bounds.Size).TransformToAABB(transform.Value);
+
+                    // Move up as soon as the top edge of the dragged thumbnail touches the bottom edge
+                    if (ghostTopY <= boundsAbove.Bottom)
+                    {
+                        this.ShowThumbnailDropPlaceholder(placeholderIndex - 1);
+                        this.thisThumbnailLastPointerYInList = pointerInList.Y;
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (isMovingDown && placeholderIndex < this.currentThumbnails.Count - 1)
+        {
+            var itemBelow = this.SchematicsThumbnailList.ContainerFromIndex(placeholderIndex + 1) as Control;
+            if (itemBelow != null)
+            {
+                var transform = itemBelow.TransformToVisual(this.SchematicsThumbnailList);
+                if (transform.HasValue)
+                {
+                    var boundsBelow = new Rect(itemBelow.Bounds.Size).TransformToAABB(transform.Value);
+
+                    // Move down as soon as the bottom edge of the dragged thumbnail touches the top edge
+                    if (ghostBottomY >= boundsBelow.Top)
+                    {
+                        this.ShowThumbnailDropPlaceholder(placeholderIndex + 1);
+                        this.thisThumbnailLastPointerYInList = pointerInList.Y;
+                        e.Handled = true;
+                        return;
+                    }
+                }
+            }
+        }
+
+        this.thisThumbnailLastPointerYInList = pointerInList.Y;
+        e.Handled = true;
+    }
+
+    // ###########################################################################################
+    // Keeps the placeholder visible even if the drag briefly leaves the list bounds.
+    // ###########################################################################################
+    private void OnThumbnailDragLeave(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    // ###########################################################################################
+    // Finalizes thumbnail reordering by replacing the placeholder with the dragged item.
+    // ###########################################################################################
+    private void OnThumbnailDrop(object? sender, DragEventArgs e)
+    {
+        if (!e.Data.Contains("SchematicThumbnail") || this.thisDraggedThumbnail == null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        int insertIndex = this.thisThumbnailDropPlaceholder != null
+            ? this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder)
+            : this.currentThumbnails.Count;
+
+        this.ClearThumbnailDropPlaceholder();
+
+        if (insertIndex < 0 || insertIndex > this.currentThumbnails.Count)
+        {
+            insertIndex = this.currentThumbnails.Count;
+        }
+
+        this.currentThumbnails.Insert(insertIndex, this.thisDraggedThumbnail);
+        this.thisThumbnailCurrentInsertIndex = insertIndex;
+
+        if (this.thisDraggedThumbnailWasSelected)
+        {
+            this.SchematicsThumbnailList.SelectedItem = this.thisDraggedThumbnail;
+        }
+
+        this.HideThumbnailDragGhost();
+        this.SaveCurrentThumbnailOrder();
+
+        this.thisDraggedThumbnail = null;
+        this.thisDraggedThumbnailOriginalIndex = -1;
+        this.thisDraggedThumbnailWasSelected = false;
+        this.thisThumbnailCurrentInsertIndex = -1;
+        this.thisThumbnailLastPointerYInList = double.NaN;
+
+        e.Handled = true;
+    }
+
 }
