@@ -60,6 +60,8 @@ public partial class TabSchematics : UserControl
     private int thisThumbnailCurrentInsertIndex = -1;
     private Point thisThumbnailDragStartPointInList;
     private double thisThumbnailLastPointerYInList = double.NaN;
+    private double thisThumbnailDragGhostFixedX;
+    private bool thisSuppressThumbnailSelectionChanged;
 
     public TabSchematics()
     {
@@ -621,6 +623,9 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     private async void OnSchematicsThumbnailSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (this.thisSuppressThumbnailSelectionChanged)
+            return;
+
         this.UpdateOverlayLabels();
 
         this.fullResLoadCts?.Cancel();
@@ -1457,6 +1462,7 @@ public partial class TabSchematics : UserControl
 
     // ###########################################################################################
     // Starts tracking a thumbnail for possible drag reorder.
+    // Suppresses immediate ListBox selection so dragging does not replace the large schematic.
     // ###########################################################################################
     private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -1474,6 +1480,9 @@ public partial class TabSchematics : UserControl
         this.thisDraggedThumbnailWasSelected = ReferenceEquals(this.SchematicsThumbnailList.SelectedItem, thumbnail);
         this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
         this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
+        this.thisSuppressThumbnailSelectionChanged = true;
+
+        e.Handled = true;
     }
 
     // ###########################################################################################
@@ -1506,6 +1515,17 @@ public partial class TabSchematics : UserControl
         var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
         this.thisThumbnailLastPointerYInList = pointerInList.Y;
 
+        var transformToList = control.TransformToVisual(this.SchematicsThumbnailList);
+        if (transformToList.HasValue)
+        {
+            var boundsInList = new Rect(control.Bounds.Size).TransformToAABB(transformToList.Value);
+            this.thisThumbnailDragGhostFixedX = Math.Max(0, boundsInList.X);
+        }
+        else
+        {
+            this.thisThumbnailDragGhostFixedX = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
+        }
+
         this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
         this.thisThumbnailCurrentInsertIndex = this.thisDraggedThumbnailOriginalIndex;
         this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
@@ -1534,13 +1554,14 @@ public partial class TabSchematics : UserControl
 
     // ###########################################################################################
     // Updates the floating drag ghost to follow the mouse while preserving the original grab point.
+    // Horizontal movement is locked so the detached thumbnail only moves vertically.
     // ###########################################################################################
     private void UpdateThumbnailDragGhostPosition(Point pointerInList)
     {
         if (!this.ThumbnailDragGhost.IsVisible || this.ThumbnailDragGhost.RenderTransform is not TranslateTransform transform)
             return;
 
-        transform.X = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
+        transform.X = this.thisThumbnailDragGhostFixedX;
         transform.Y = Math.Max(0, pointerInList.Y - this.thisThumbnailDragPointerOffsetInItem.Y);
     }
 
@@ -1564,6 +1585,7 @@ public partial class TabSchematics : UserControl
         this.ThumbnailDragGhost.IsVisible = false;
         this.ThumbnailDragGhostName.Text = string.Empty;
         this.ThumbnailDragGhostImage.Source = null;
+        this.thisThumbnailDragGhostFixedX = 0;
 
         if (this.ThumbnailDragGhost.RenderTransform is TranslateTransform transform)
         {
@@ -1574,9 +1596,20 @@ public partial class TabSchematics : UserControl
 
     // ###########################################################################################
     // Stops local drag tracking when the pointer is released.
+    // If no drag started, treat the interaction as a normal selection click.
     // ###########################################################################################
     private void OnThumbnailPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (this.thisIsDraggingThumbnail &&
+            sender is Control control &&
+            control.DataContext is SchematicThumbnail thumbnail &&
+            !thumbnail.IsDropPlaceholder)
+        {
+            this.thisSuppressThumbnailSelectionChanged = false;
+            this.SchematicsThumbnailList.SelectedItem = thumbnail;
+            e.Handled = true;
+        }
+
         this.thisIsDraggingThumbnail = false;
     }
 
@@ -1673,6 +1706,8 @@ public partial class TabSchematics : UserControl
         {
             this.SchematicsThumbnailList.SelectedItem = this.thisDraggedThumbnail;
         }
+
+        this.thisSuppressThumbnailSelectionChanged = false;
     }
 
     // ###########################################################################################
@@ -1832,6 +1867,7 @@ public partial class TabSchematics : UserControl
         this.thisDraggedThumbnailWasSelected = false;
         this.thisThumbnailCurrentInsertIndex = -1;
         this.thisThumbnailLastPointerYInList = double.NaN;
+        this.thisSuppressThumbnailSelectionChanged = false;
 
         e.Handled = true;
     }
