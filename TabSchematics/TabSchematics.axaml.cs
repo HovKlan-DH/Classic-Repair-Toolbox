@@ -25,7 +25,7 @@ public partial class TabSchematics : UserControl
     internal Matrix schematicsMatrix = Matrix.Identity;
 
     // Thumbnails
-//    internal List<SchematicThumbnail> currentThumbnails = new(); // compliant with .NET6
+    //    internal List<SchematicThumbnail> currentThumbnails = new(); // compliant with .NET6
     internal ObservableCollection<SchematicThumbnail> currentThumbnails = new();
 
     // Full-res viewer
@@ -62,6 +62,13 @@ public partial class TabSchematics : UserControl
     private double thisThumbnailLastPointerYInList = double.NaN;
     private double thisThumbnailDragGhostFixedX;
     private bool thisSuppressThumbnailSelectionChanged;
+
+    // Fullscreen
+    private bool thisIsFullscreenMode;
+    private GridLength thisRestoreLeftColumnWidth = new(1, GridUnitType.Star);
+    private GridLength thisRestoreSplitterColumnWidth = new(4, GridUnitType.Pixel);
+    private GridLength thisRestoreRightColumnWidth = new(1, GridUnitType.Star);
+    private double thisRestoreRightColumnMinWidth = 100.0;
 
     public TabSchematics()
     {
@@ -423,26 +430,33 @@ public partial class TabSchematics : UserControl
 
     // ###########################################################################################
     // Handles mouse wheel zoom on the Schematics image, centered on the cursor position.
+    // The image control already fits the bitmap to the available area, so matrix scale 1.0 is
+    // the true minimum zoom and must not be reduced further.
     // ###########################################################################################
     private void OnSchematicsZoom(object? sender, PointerWheelEventArgs e)
     {
         var pos = e.GetPosition(this.SchematicsImage);
         double delta = e.Delta.Y > 0 ? AppConfig.SchematicsZoomFactor : 1.0 / AppConfig.SchematicsZoomFactor;
 
-        double newScale = this.schematicsMatrix.M11 * delta;
+        double currentScale = this.schematicsMatrix.M11;
+        double newScale = currentScale * delta;
 
         if (newScale > AppConfig.SchematicsMaxZoom)
             return;
 
-        if (newScale < AppConfig.SchematicsMinZoom)
+        // The image is already fully fitted by Stretch="Uniform", so do not allow zooming out
+        // below the baseline matrix scale of 1.0.
+        if (delta < 1.0 && currentScale <= 1.0)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // Snap cleanly back to the fitted baseline when zooming out crosses below 1.0.
+        if (newScale < 1.0)
         {
             this.schematicsMatrix = Matrix.Identity;
-            ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
-            ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
-
-            this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
-            this.SchematicsHighlightsOverlay.InvalidateVisual();
-
+            this.ClampSchematicsMatrix();
             e.Handled = true;
             return;
         }
@@ -598,7 +612,9 @@ public partial class TabSchematics : UserControl
         // Fetch the active local region from the Main window, falling back to UserSettings if not attached
         string rawRegion = this.MainWindow?.LocalRegion?.Trim() ?? UserSettings.Region?.Trim() ?? string.Empty;
         this.SchematicsRegionLabel.Text = string.IsNullOrWhiteSpace(rawRegion) ? "All Regions" : rawRegion;
-        this.SchematicsRegionBorder.IsVisible = this.SchematicsNameBorder.IsVisible;
+
+        bool hasExplicitRegions = this.MainWindow?.CurrentBoardHasExplicitRegionComponents() ?? true;
+        this.SchematicsRegionBorder.IsVisible = this.SchematicsNameBorder.IsVisible && hasExplicitRegions;
 
         string regionKey = rawRegion.ToUpperInvariant();
 
@@ -1870,6 +1886,75 @@ public partial class TabSchematics : UserControl
         this.thisSuppressThumbnailSelectionChanged = false;
 
         e.Handled = true;
+    }
+
+    // ###########################################################################################
+    // Expands the control into image-only mode before it is rehosted in the fullscreen window.
+    // ###########################################################################################
+    public void EnterFullscreenMode()
+    {
+        if (this.thisIsFullscreenMode)
+            return;
+
+        this.thisIsFullscreenMode = true;
+
+        this.thisRestoreLeftColumnWidth = this.SchematicsInnerGrid.ColumnDefinitions[0].Width;
+        this.thisRestoreSplitterColumnWidth = this.SchematicsInnerGrid.ColumnDefinitions[1].Width;
+        this.thisRestoreRightColumnWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].Width;
+        this.thisRestoreRightColumnMinWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth;
+
+        this.thisIsDraggingThumbnail = false;
+        this.ClearThumbnailDropPlaceholder();
+        this.HideThumbnailDragGhost();
+
+        this.SchematicsInnerGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+        this.SchematicsInnerGrid.ColumnDefinitions[1].Width = new GridLength(0, GridUnitType.Pixel);
+        this.SchematicsInnerGrid.ColumnDefinitions[2].Width = new GridLength(0, GridUnitType.Pixel);
+        this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = 0;
+
+        this.SchematicsSplitter.IsVisible = false;
+        this.SchematicsThumbnailList.IsVisible = false;
+
+        this.RefreshAfterHostChanged();
+    }
+
+    // ###########################################################################################
+    // Restores the normal schematics tab layout after leaving fullscreen mode.
+    // ###########################################################################################
+    public void ExitFullscreenMode()
+    {
+        if (!this.thisIsFullscreenMode)
+            return;
+
+        this.thisIsFullscreenMode = false;
+
+        this.SchematicsInnerGrid.ColumnDefinitions[0].Width = this.thisRestoreLeftColumnWidth;
+        this.SchematicsInnerGrid.ColumnDefinitions[1].Width = this.thisRestoreSplitterColumnWidth;
+        this.SchematicsInnerGrid.ColumnDefinitions[2].Width = this.thisRestoreRightColumnWidth;
+        this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = this.thisRestoreRightColumnMinWidth;
+
+        this.SchematicsSplitter.IsVisible = true;
+        this.SchematicsThumbnailList.IsVisible = true;
+
+        this.RefreshAfterHostChanged();
+    }
+
+    // ###########################################################################################
+    // Re-clamps and redraws the viewer after the control is moved between windows.
+    // ###########################################################################################
+    public void RefreshAfterHostChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            this.ClampSchematicsMatrix();
+            this.UpdateOverlayLabels();
+            this.UpdateComponentLabels();
+        }, DispatcherPriority.Background);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            this.ClampSchematicsMatrix();
+        }, DispatcherPriority.Background);
     }
 
 }

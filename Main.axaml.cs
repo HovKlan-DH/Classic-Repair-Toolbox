@@ -47,6 +47,9 @@ namespace CRT
         // Cascading offset for multiple popups
         private int _popupCascadeOffset = 0;
 
+        // Fullscreen
+        private SchematicsFullscreenWindow? _schematicsFullscreenWindow;
+
         public Main()
         {
             InitializeComponent();
@@ -373,6 +376,7 @@ namespace CRT
             this.TabSchematicsControl.schematicByName = new(StringComparer.OrdinalIgnoreCase);
             this.TabSchematicsControl.highlightRectsBySchematicAndLabel = new(StringComparer.OrdinalIgnoreCase);
             this._currentBoardData = null;
+            this.UpdateRegionButtonsState();
 
             this.PopulateBoardInfoSection(null, null);
 
@@ -399,6 +403,7 @@ namespace CRT
                 return;
 
             this._currentBoardData = boardData;
+            this.UpdateRegionButtonsState();
 
             this.PopulateBoardInfoSection(boardData.RevisionDate, boardData.Credits);
 
@@ -808,6 +813,11 @@ namespace CRT
         // ###########################################################################################
         private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
         {
+            if (this._schematicsFullscreenWindow != null)
+            {
+                this._schematicsFullscreenWindow.Close();
+            }
+
             this._blinkSelectedTimer?.Stop();
             this._windowPlacementSaveTimer?.Stop();
             this.CommitWindowPlacement();
@@ -1040,11 +1050,15 @@ namespace CRT
 
         // ###########################################################################################
         // Updates the region toggle and button states to match the current local region.
+        // Hides the entire region toggle area when the current board has no explicit PAL/NTSC components.
         // ###########################################################################################
         private void UpdateRegionButtonsState()
         {
             this._suppressRegionToggle = true;
             bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
+            bool hasExplicitRegionComponents = HasExplicitRegionComponents(this._currentBoardData);
+
+            this.RegionButtonsGrid.IsVisible = hasExplicitRegionComponents;
 
             this.NtscRegionButton.Classes.Set("active", isNtsc);
             this.PalRegionButton.Classes.Set("active", !isNtsc);
@@ -1110,6 +1124,7 @@ namespace CRT
         {
             string componentKey = $"{boardLabel}\u001F{displayText}";
             var boardData = this._currentBoardData;
+            bool hasExplicitRegionComponents = HasExplicitRegionComponents(boardData);
             var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
             var localFiles = boardData?.ComponentLocalFiles ?? new List<ComponentLocalFileEntry>();
             var links = boardData?.ComponentLinks ?? new List<ComponentLinkEntry>();
@@ -1131,7 +1146,16 @@ namespace CRT
                     };
                 }
 
-                popup.SetComponent(boardLabel, displayText, componentEntries, images, localFiles, links, UserSettings.Region, DataManager.DataRoot);
+                popup.SetComponent(
+                    boardLabel,
+                    displayText,
+                    componentEntries,
+                    images,
+                    localFiles,
+                    links,
+                    UserSettings.Region,
+                    DataManager.DataRoot,
+                    hasExplicitRegionComponents);
 
                 if (!popup.IsVisible)
                 {
@@ -1155,7 +1179,16 @@ namespace CRT
             }
 
             this._singleComponentInfoWindow.CloseOnDeactivate = false;
-            this._singleComponentInfoWindow.SetComponent(boardLabel, displayText, componentEntries, images, localFiles, links, UserSettings.Region, DataManager.DataRoot);
+            this._singleComponentInfoWindow.SetComponent(
+                boardLabel,
+                displayText,
+                componentEntries,
+                images,
+                localFiles,
+                links,
+                UserSettings.Region,
+                DataManager.DataRoot,
+                hasExplicitRegionComponents);
 
             if (!this._singleComponentInfoWindow.IsVisible)
             {
@@ -1269,9 +1302,17 @@ namespace CRT
 
         // ###########################################################################################
         // Closes single popup when pressing Escape while the main window is focused.
+        // F11 opens the schematics fullscreen window.
         // ###########################################################################################
         private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
         {
+            if (e.Key == Key.F11)
+            {
+                this.OpenSchematicsFullscreenWindow();
+                e.Handled = true;
+                return;
+            }
+
             if (e.Key != Key.Escape)
                 return;
 
@@ -1397,6 +1438,136 @@ namespace CRT
 
             // Forward the search term to filter the Overview tab's list
             this.TabOverview.ApplyFilter(searchTerm);
+        }
+
+        // ###########################################################################################
+        // Returns true when the current board has at least one component explicitly tagged as PAL or NTSC.
+        // ###########################################################################################
+        internal bool CurrentBoardHasExplicitRegionComponents()
+        {
+            return HasExplicitRegionComponents(this._currentBoardData);
+        }
+
+        // ###########################################################################################
+        // Returns true when the provided board has at least one component explicitly tagged as PAL or NTSC.
+        // ###########################################################################################
+        private static bool HasExplicitRegionComponents(BoardData? boardData)
+        {
+            if (boardData == null)
+                return false;
+
+            return boardData.Components.Any(component =>
+                string.Equals(component.Region?.Trim(), "PAL", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(component.Region?.Trim(), "NTSC", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // ###########################################################################################
+        // Creates placeholder content shown in the Schematics tab while fullscreen mode is active.
+        // ###########################################################################################
+        private Control CreateSchematicsFullscreenPlaceholder()
+        {
+            var textBlock = new TextBlock
+            {
+                Text = "Fullscreen mode active...",
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                FontSize = 16,
+                FontWeight = Avalonia.Media.FontWeight.SemiBold
+            };
+            textBlock.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("Main_Fg"));
+
+            return new Border
+            {
+                Child = textBlock
+            };
+        }
+
+        // ###########################################################################################
+        // Opens the existing schematics viewer in a separate maximized window.
+        // ###########################################################################################
+        private void OpenSchematicsFullscreenWindow()
+        {
+            if (this._schematicsFullscreenWindow != null)
+            {
+                if (this._schematicsFullscreenWindow.WindowState == Avalonia.Controls.WindowState.Minimized)
+                    this._schematicsFullscreenWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+
+                this._schematicsFullscreenWindow.WindowState = Avalonia.Controls.WindowState.Maximized;
+                this._schematicsFullscreenWindow.Activate();
+                this._schematicsFullscreenWindow.Focus();
+                return;
+            }
+
+            this.TabSchematicsControl.EnterFullscreenMode();
+            this.SchematicsTabItem.Content = this.CreateSchematicsFullscreenPlaceholder();
+
+            this._schematicsFullscreenWindow = new SchematicsFullscreenWindow(
+                this.TabSchematicsControl,
+                this.RestoreSchematicsTabContent);
+
+            this._schematicsFullscreenWindow.Closed += (_, _) =>
+            {
+                this._schematicsFullscreenWindow = null;
+            };
+
+            this.PositionFullscreenWindowOnSameScreen(this._schematicsFullscreenWindow);
+            this._schematicsFullscreenWindow.WindowState = Avalonia.Controls.WindowState.Maximized;
+            this._schematicsFullscreenWindow.Show();
+
+            this.TabSchematicsControl.RefreshAfterHostChanged();
+            this._schematicsFullscreenWindow.Focus();
+        }
+
+        // ###########################################################################################
+        // Opens schematics fullscreen from the left-side button.
+        // ###########################################################################################
+        private void OnFullscreenSchematicsClick(object? sender, RoutedEventArgs e)
+        {
+            this.OpenSchematicsFullscreenWindow();
+        }
+
+        // ###########################################################################################
+        // Restores the schematics control back into the normal tab after fullscreen closes.
+        // ###########################################################################################
+        private void RestoreSchematicsTabContent(Control hostedContent)
+        {
+            if (!ReferenceEquals(hostedContent, this.TabSchematicsControl))
+                return;
+
+            if (!ReferenceEquals(this.SchematicsTabItem.Content, hostedContent))
+                this.SchematicsTabItem.Content = hostedContent;
+
+            this.TabSchematicsControl.ExitFullscreenMode();
+            this.TabSchematicsControl.RefreshAfterHostChanged();
+        }
+
+        // ###########################################################################################
+        // Places the fullscreen window on the same screen as the main window before maximizing it.
+        // ###########################################################################################
+        private void PositionFullscreenWindowOnSameScreen(Window window)
+        {
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+
+            double scaling = this.RenderScaling > 0 ? this.RenderScaling : 1.0;
+            double w = this.Bounds.Width > 0 ? this.Bounds.Width : this._restoreWidth;
+            double h = this.Bounds.Height > 0 ? this.Bounds.Height : this._restoreHeight;
+
+            int centerX = this.Position.X + (int)((w * scaling) / 2);
+            int centerY = this.Position.Y + (int)((h * scaling) / 2);
+
+            var screen = this.Screens.All.FirstOrDefault(s =>
+                centerX >= s.Bounds.X &&
+                centerY >= s.Bounds.Y &&
+                centerX < s.Bounds.X + s.Bounds.Width &&
+                centerY < s.Bounds.Y + s.Bounds.Height)
+                ?? this.Screens.Primary;
+
+            if (screen != null)
+            {
+                window.Position = new PixelPoint(
+                    screen.Bounds.X + 100,
+                    screen.Bounds.Y + 100);
+            }
         }
 
     }

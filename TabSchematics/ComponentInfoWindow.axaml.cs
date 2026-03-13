@@ -66,6 +66,7 @@ namespace CRT
         private bool _suppressRegionToggle = false;
         private double _normalWidth = 680.0;
         private double _normalHeight = 420.0;
+        private bool _hasExplicitRegionComponents = false;
 
         // Image matrix for zoom and pan capabilities
         private Matrix _imageMatrix = Matrix.Identity;
@@ -529,7 +530,8 @@ namespace CRT
             List<ComponentLocalFileEntry> localFiles,
             List<ComponentLinkEntry> links,
             string region,
-            string dataRoot)
+            string dataRoot,
+            bool hasExplicitRegionComponents)
         {
             // Reset pin navigation state whenever a new component is loaded
             this._pinBufferCts?.Cancel();
@@ -576,6 +578,7 @@ namespace CRT
             this._allComponentImages = componentImages;
             this._dataRoot = dataRoot;
             this._localRegion = region;
+            this._hasExplicitRegionComponents = hasExplicitRegionComponents;
             this.UpdateRegionButtonsState();
 
             // Reset selection on initial load so a lingering pin from a previous component
@@ -852,6 +855,40 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // Returns true when an image is visible for the requested region.
+        // Empty image regions are treated as shared and count for both PAL and NTSC.
+        // ###########################################################################################
+        private static bool IsImageVisibleInRegion(ComponentImageEntry image, string region)
+        {
+            return string.IsNullOrWhiteSpace(image.Region) ||
+                   string.Equals(image.Region.Trim(), region, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // Counts how many images belong to the current component for the requested region.
+        // Empty image regions are included in both counters.
+        // ###########################################################################################
+        private int CountImagesForRegion(string region)
+        {
+            return this._allComponentImages.Count(img =>
+                string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                IsImageVisibleInRegion(img, region));
+        }
+
+        // ###########################################################################################
+        // Updates the PAL and NTSC button captions with per-region image counters.
+        // Empty image regions are included in both counters.
+        // ###########################################################################################
+        private void UpdateRegionButtonCounters()
+        {
+            int palCount = this.CountImagesForRegion("PAL");
+            int ntscCount = this.CountImagesForRegion("NTSC");
+
+            this.PalRegionButton.Content = $"PAL ({palCount})";
+            this.NtscRegionButton.Content = $"NTSC ({ntscCount})";
+        }
+
+        // ###########################################################################################
         // Re-filters the stored image list for the current local region and triggers an async reload.
         // ###########################################################################################
         private void RefreshImages(bool resetSelection = false)
@@ -866,8 +903,7 @@ namespace CRT
             var matchingEntries = this._allComponentImages
                 .Where(img =>
                     string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
-                    (string.IsNullOrWhiteSpace(img.Region) ||
-                     string.Equals(img.Region, this._localRegion, StringComparison.OrdinalIgnoreCase)))
+                    IsImageVisibleInRegion(img, this._localRegion))
                 .ToList();
             this.LoadImagesAsync(matchingEntries, this._dataRoot, currentPin);
         }
@@ -898,11 +934,36 @@ namespace CRT
 
         // ###########################################################################################
         // Updates the region toggle and button states to match the current local region.
+        // Hides only the region buttons when the board has no explicit PAL/NTSC components,
+        // while keeping the scroll-action selector and Close button left-aligned and visible.
         // ###########################################################################################
         private void UpdateRegionButtonsState()
         {
             this._suppressRegionToggle = true;
             bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
+
+            this.PalRegionButton.IsVisible = this._hasExplicitRegionComponents;
+            this.NtscRegionButton.IsVisible = this._hasExplicitRegionComponents;
+            this.UpdateRegionButtonCounters();
+
+            if (this.PalRegionButton.Parent is Grid footerGrid && footerGrid.ColumnDefinitions.Count >= 7)
+            {
+                footerGrid.ColumnDefinitions[0].Width = this._hasExplicitRegionComponents
+                    ? GridLength.Auto
+                    : new GridLength(0, GridUnitType.Pixel);
+
+                footerGrid.ColumnDefinitions[1].Width = this._hasExplicitRegionComponents
+                    ? new GridLength(4, GridUnitType.Pixel)
+                    : new GridLength(0, GridUnitType.Pixel);
+
+                footerGrid.ColumnDefinitions[2].Width = this._hasExplicitRegionComponents
+                    ? GridLength.Auto
+                    : new GridLength(0, GridUnitType.Pixel);
+
+                footerGrid.ColumnDefinitions[3].Width = this._hasExplicitRegionComponents
+                    ? new GridLength(12, GridUnitType.Pixel)
+                    : new GridLength(0, GridUnitType.Pixel);
+            }
 
             this.NtscRegionButton.Classes.Set("active", isNtsc);
             this.PalRegionButton.Classes.Set("active", !isNtsc);
@@ -925,7 +986,7 @@ namespace CRT
             };
 
             this.InfoRegionText.Text = this._localRegion;
-            this.InfoRegionBorder.IsVisible = true;
+            this.InfoRegionBorder.IsVisible = this._hasExplicitRegionComponents;
 
             this.InfoRegionBorder.Bind(
                 Border.BackgroundProperty,

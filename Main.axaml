@@ -312,7 +312,7 @@
 					</Grid>
 
 					<!-- Video standard -->
-					<Grid ColumnDefinitions="*,4,*">
+					<Grid x:Name="RegionButtonsGrid" ColumnDefinitions="*,4,*">
 						<Button x:Name="PalRegionButton"
 								Classes="RegionToggle"
 								Grid.Column="0"
@@ -340,7 +340,8 @@
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"
 								FontSize="12"
-								Padding="4" />
+								Padding="4"
+								Click="OnFullscreenSchematicsClick" />
 
 						<CheckBox x:Name="BlinkSelectedCheckBox"
 							  Grid.Column="2"
@@ -477,7 +478,7 @@
 
 				<TabControl x:Name="MainTabControl" Grid.Row="2" Padding="0">
 
-					<TabItem Header="Schematics">
+					<TabItem x:Name="SchematicsTabItem" Header="Schematics">
 						<local:TabSchematics x:Name="TabSchematicsControl" />
 					</TabItem>
 

@@ -443,28 +443,29 @@
 			</ScrollViewer>
 
 			<!-- Region toggle: local PAL / NTSC buttons (does not affect the global region setting) -->
-			<Border Grid.Row="2"
+			<Border x:Name="RegionControlsBorder"
+					Grid.Row="2"
 					BorderBrush="{DynamicResource AppThemeBorderBrush}"
 					BorderThickness="0,1,0,0"
 					Padding="0,6,0,0"
 					Margin="0,6,0,0">
 				<Grid ColumnDefinitions="Auto,4,Auto,12,Auto,*,Auto">
 					<Button x:Name="PalRegionButton"
-							Classes="RegionToggle"
-							Grid.Column="0"
-							Content="PAL"
-							FontSize="11"
-							Padding="8,3"
-							MinHeight="0"
-							Click="OnPalRegionClick" />
+					Classes="RegionToggle"
+					Grid.Column="0"
+					Content="PAL (0)"
+					FontSize="11"
+					Padding="8,3"
+					MinHeight="0"
+					Click="OnPalRegionClick" />
 					<Button x:Name="NtscRegionButton"
-							Classes="RegionToggle"
-							Grid.Column="2"
-							Content="NTSC"
-							FontSize="11"
-							Padding="8,3"
-							MinHeight="0"
-							Click="OnNtscRegionClick" />
+										Classes="RegionToggle"
+										Grid.Column="2"
+										Content="NTSC (0)"
+										FontSize="11"
+										Padding="8,3"
+										MinHeight="0"
+										Click="OnNtscRegionClick" />
 
 					<!-- Scroll action behavior toggle -->
 					<ComboBox x:Name="ScrollActionCombo"
