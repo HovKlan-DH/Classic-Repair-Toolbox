@@ -5,104 +5,262 @@
              FontSize="11">
 
 	<UserControl.Styles>
-		<!-- Add hover effect for table rows -->
 		<Style Selector="Border.OverviewRow">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
 		<Style Selector="Border.OverviewRow:pointerover">
 			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
 		</Style>
+
+		<Style Selector="Button.OverviewTextButton">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+			<Setter Property="HorizontalContentAlignment" Value="Left" />
+			<Setter Property="VerticalContentAlignment" Value="Top" />
+		</Style>
+
+		<Style Selector="Button.OverviewTextButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Button.OverviewTextButton:pointerover">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Button.OverviewTextButton:pressed">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+		</Style>
+
+		<Style Selector="TextBlock.OverviewHeaderText">
+			<Setter Property="FontWeight" Value="Bold" />
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_Header_Fg}" />
+		</Style>
 	</UserControl.Styles>
 
-	<!-- Use a standard Grid as the root so it obeys the exact viewport width -->
-	<Grid RowDefinitions="Auto,*">
+	<Grid>
+		<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+		        BorderThickness="1"
+		        CornerRadius="6"
+		        ClipToBounds="True"
+		        Background="{DynamicResource Table_Bg}">
+			<Grid RowDefinitions="Auto,*">
 
-		<!-- Header -->
-		<Border Grid.Row="0"
-				Background="{DynamicResource Table_Header_Bg}"
-				BorderBrush="{DynamicResource Table_BorderRowLine}"
-				BorderThickness="0,0,0,1">
-			<!-- Add a right margin to account for the vertical scrollbar size so columns align perfectly -->
-			<Grid Margin="0,0,16,0">
-				<!-- Shared explicit column sizes so Header and Content align automatically -->
-				<Grid.ColumnDefinitions>
-					<ColumnDefinition Width="80" />
-					<ColumnDefinition Width="130" />
-					<ColumnDefinition Width="150" />
-					<ColumnDefinition Width="120" />
-					<ColumnDefinition Width="220" />
-					<ColumnDefinition Width="*" MinWidth="150"/>
-					<!-- Notes gets remaining space -->
-					<ColumnDefinition Width="150" />
-				</Grid.ColumnDefinitions>
+				<Border Grid.Row="0"
+						Background="{DynamicResource Table_Bg}"
+						Padding="0,12,0,0">
+					<Grid Margin="0,0,16,0">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="96" />
+							<ColumnDefinition Width="130" />
+							<ColumnDefinition Width="150" />
+							<ColumnDefinition Width="120" />
+							<ColumnDefinition Width="220" />
+							<ColumnDefinition Width="*" MinWidth="150" />
+							<ColumnDefinition Width="150" />
+						</Grid.ColumnDefinitions>
 
-				<TextBlock Grid.Column="0" Text="Component" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="1" Text="Technical name" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="2" Text="Friendly name" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="3" Text="Part-number" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="4" Text="Short description" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="5" Text="Notes" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
-				<TextBlock Grid.Column="6" Text="Files and links" FontWeight="Bold" FontSize="12" Margin="8" Foreground="{DynamicResource Table_Header_Fg}"/>
+						<Grid Grid.Column="0">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Component"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="1">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Technical name"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="2">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Friendly name"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="3">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Part-number"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="4">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Short description"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="5">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Notes"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="6">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Files and links"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+					</Grid>
+				</Border>
+
+				<ScrollViewer Grid.Row="1"
+				              VerticalScrollBarVisibility="Visible"
+				              HorizontalScrollBarVisibility="Disabled">
+					<ItemsControl x:Name="OverviewItemsControl"
+					              Background="{DynamicResource Table_Bg}">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:OverviewRow">
+								<Border Classes="OverviewRow"
+								        BorderBrush="{DynamicResource Table_BorderRowLine}"
+								        BorderThickness="0,0,0,1"
+								        Padding="0,4">
+									<Grid>
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="96" />
+											<ColumnDefinition Width="130" />
+											<ColumnDefinition Width="150" />
+											<ColumnDefinition Width="120" />
+											<ColumnDefinition Width="220" />
+											<ColumnDefinition Width="*" MinWidth="150" />
+											<ColumnDefinition Width="150" />
+										</Grid.ColumnDefinitions>
+
+										<Button Grid.Column="0"
+											Classes="OverviewTextButton"
+											Margin="8,4,8,4"
+											VerticalAlignment="Top"
+											Cursor="Hand"
+											Click="OnComponentClick">
+											<TextBlock Text="{Binding Component}"
+													   TextDecorations="Underline"
+													   Foreground="{DynamicResource AppThemeAccentBrush}" />
+										</Button>
+
+										<SelectableTextBlock Grid.Column="1"
+										                     Text="{Binding TechnicalName}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<SelectableTextBlock Grid.Column="2"
+										                     Text="{Binding FriendlyName}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<SelectableTextBlock Grid.Column="3"
+										                     Text="{Binding PartNumber}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<SelectableTextBlock Grid.Column="4"
+										                     Text="{Binding ShortDescription}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<SelectableTextBlock Grid.Column="5"
+										                     Text="{Binding Notes}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<ItemsControl Grid.Column="6"
+										              ItemsSource="{Binding Links}"
+										              Margin="8,4,8,4"
+										              VerticalAlignment="Top">
+											<ItemsControl.ItemTemplate>
+												<DataTemplate x:DataType="local:OverviewLink">
+													<Button Classes="OverviewTextButton"
+													        Margin="0,0,0,2"
+													        Cursor="Hand"
+													        Click="OnLinkClick">
+														<StackPanel Orientation="Horizontal" Spacing="4">
+															<TextBlock Text="F:"
+															           IsVisible="{Binding IsLocalFile}"
+															           Foreground="{DynamicResource Table_Fg}" />
+															<TextBlock Text="W:"
+															           IsVisible="{Binding IsWebLink}"
+															           Foreground="{DynamicResource Table_Fg}" />
+															<TextBlock Text="{Binding Name}"
+															           TextDecorations="Underline"
+															           Foreground="{DynamicResource AppThemeAccentBrush}"
+															           TextWrapping="Wrap" />
+														</StackPanel>
+													</Button>
+												</DataTemplate>
+											</ItemsControl.ItemTemplate>
+										</ItemsControl>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</ScrollViewer>
 			</Grid>
 		</Border>
-
-		<!-- Content -->
-		<!-- VerticalScrollBarVisibility is set to Visible so the 16px offset always exists, keeping the items perfectly snapped to the Header -->
-		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
-			<ItemsControl x:Name="OverviewItemsControl" Background="{DynamicResource Table_Bg}">
-				<ItemsControl.ItemTemplate>
-					<DataTemplate x:DataType="local:OverviewRow">
-						<Border Classes="OverviewRow" BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="0,0,0,1">
-							<Grid>
-								<Grid.ColumnDefinitions>
-									<!-- Same explicit column sizes + * at the same position -->
-									<ColumnDefinition Width="80" />
-									<ColumnDefinition Width="130" />
-									<ColumnDefinition Width="150" />
-									<ColumnDefinition Width="120" />
-									<ColumnDefinition Width="220" />
-									<ColumnDefinition Width="*" MinWidth="150" />
-									<ColumnDefinition Width="150" />
-								</Grid.ColumnDefinitions>
-
-								<Button Grid.Column="0"
-										Margin="8,4,8,8"
-										Padding="0"
-										VerticalAlignment="Top"
-										HorizontalAlignment="Left"
-										Background="Transparent"
-										Cursor="Hand"
-										Click="OnComponentClick">
-									<TextBlock Text="{Binding Component}" TextDecorations="Underline" Foreground="{DynamicResource AppThemeAccentBrush}"/>
-								</Button>
-
-								<SelectableTextBlock Grid.Column="1" Text="{Binding TechnicalName}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top" Foreground="{DynamicResource Table_Fg}"/>
-								<SelectableTextBlock Grid.Column="2" Text="{Binding FriendlyName}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top" Foreground="{DynamicResource Table_Fg}"/>
-								<SelectableTextBlock Grid.Column="3" Text="{Binding PartNumber}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top" Foreground="{DynamicResource Table_Fg}"/>
-								<SelectableTextBlock Grid.Column="4" Text="{Binding ShortDescription}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top" Foreground="{DynamicResource Table_Fg}"/>
-								<SelectableTextBlock Grid.Column="5" Text="{Binding Notes}" TextWrapping="Wrap" Margin="8" VerticalAlignment="Top" Foreground="{DynamicResource Table_Fg}"/>
-
-								<!-- Merged File and Web links -->
-								<ItemsControl Grid.Column="6" ItemsSource="{Binding Links}" Margin="8,4,8,8" VerticalAlignment="Top">
-									<ItemsControl.ItemTemplate>
-										<DataTemplate x:DataType="local:OverviewLink">
-											<Button Background="Transparent" Padding="0,2" Cursor="Hand" Click="OnLinkClick" HorizontalContentAlignment="Left">
-												<StackPanel Orientation="Horizontal" Spacing="4">
-													<TextBlock Text="F:" IsVisible="{Binding IsLocalFile}" Foreground="{DynamicResource Table_Fg}"/>
-													<TextBlock Text="W:" IsVisible="{Binding IsWebLink}" Foreground="{DynamicResource Table_Fg}"/>
-
-													<TextBlock Text="{Binding Name}" TextDecorations="Underline" Foreground="{DynamicResource AppThemeAccentBrush}" TextWrapping="Wrap"/>
-												</StackPanel>
-											</Button>
-										</DataTemplate>
-									</ItemsControl.ItemTemplate>
-								</ItemsControl>
-
-							</Grid>
-						</Border>
-					</DataTemplate>
-				</ItemsControl.ItemTemplate>
-			</ItemsControl>
-		</ScrollViewer>
 	</Grid>
 </UserControl>

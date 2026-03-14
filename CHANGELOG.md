@@ -1,3 +1,8 @@
+- Fixed vertical table header/cell misalignment in "Overview" tab
+- Added "Contribute" tab
+- Refactored various code and texts
+
+#OLD CHANGELOG
 - Fixed it did show some board labels in wrong position in schematic image
 - Fixed it did not save main region selection
 - Fixed `ESCAPE` did not close active component info popup, if set to "Open multiple windows for popup" #84

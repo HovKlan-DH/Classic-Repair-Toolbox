@@ -13,11 +13,21 @@
 			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
 			<Setter Property="Cursor" Value="Hand" />
 		</Style>
+
 		<Style Selector="Button.ComponentEntryButton /template/ ContentPresenter">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
 		<Style Selector="Button.ComponentEntryButton:pointerover">
 			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentHoverBrush}" />
+		</Style>
+
+		<Style Selector="Border.ContributeRow">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Border.ContributeRow:pointerover">
+			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
 		</Style>
 	</UserControl.Styles>
 
@@ -82,12 +92,14 @@
 									<ItemsControl ItemsSource="{Binding Components}">
 										<ItemsControl.ItemTemplate>
 											<DataTemplate x:DataType="local:ContributeComponentItem">
-												<Button Classes="ComponentEntryButton"
-												        Content="{Binding DisplayText}"
-												        Tag="{Binding}"
-												        ToolTip.Tip="{Binding ToolTipText}"
-												        Margin="0,2,0,2"
-												        Click="OnComponentClick" />
+												<Border Classes="ContributeRow"
+												        Margin="0,2,0,2">
+													<Button Classes="ComponentEntryButton"
+													        Content="{Binding DisplayText}"
+													        Tag="{Binding}"
+													        ToolTip.Tip="{Binding ToolTipText}"
+													        Click="OnComponentClick" />
+												</Border>
 											</DataTemplate>
 										</ItemsControl.ItemTemplate>
 									</ItemsControl>

@@ -157,8 +157,8 @@ namespace CRT
 
             this.ComponentTitleTextBlock.Text = this.thisComponentDisplayText;
             this.HardwareContextTextBlock.Text = $"Hardware: {this.thisHardwareName}";
-            this.BoardContextTextBlock.Text = $"Board: {this.thisBoardName}";
-            this.RegionContextTextBlock.Text = $"Region: {this.thisLocalRegion}";
+            this.BoardContextTextBlock.Text = $"Board...: {this.thisBoardName}";
+            this.RegionContextTextBlock.Text = $"Region..: {this.thisLocalRegion}";
             this.ComponentImagesRegionTextBlock.Text = $"Component images relevant for the {this.thisLocalRegion} region";
         }
 

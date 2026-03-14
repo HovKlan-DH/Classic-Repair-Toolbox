@@ -57,14 +57,17 @@
 					           FontWeight="SemiBold"
 					           Foreground="{DynamicResource Main_Header_Fg}" />
 					<TextBlock x:Name="HardwareContextTextBlock"
-					           FontSize="12"
-					           Foreground="{DynamicResource Main_Header_Fg}" />
+							   FontSize="12"
+							   FontFamily="Consolas,Courier New,monospace"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
 					<TextBlock x:Name="BoardContextTextBlock"
-						   FontSize="12"
-						   Foreground="{DynamicResource Main_Header_Fg}" />
+							   FontSize="12"
+							   FontFamily="Consolas,Courier New,monospace"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
 					<TextBlock x:Name="RegionContextTextBlock"
-					           FontSize="12"
-					           Foreground="{DynamicResource Main_Header_Fg}" />
+							   FontSize="12"
+							   FontFamily="Consolas,Courier New,monospace"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
 				</StackPanel>
 			</Grid>
 		</Border>

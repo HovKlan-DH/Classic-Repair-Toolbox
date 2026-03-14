@@ -4,20 +4,27 @@
              x:Class="CRT.TabResources">
 
 	<UserControl.Styles>
-		<!-- Minimal hyperlink button style -->
 		<Style Selector="Button.LinkButton">
 			<Setter Property="Background" Value="Transparent" />
 			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
-			<Setter Property="Padding" Value="8,4" />
+			<Setter Property="Padding" Value="0" />
 			<Setter Property="BorderThickness" Value="0" />
 			<Setter Property="Cursor" Value="Hand" />
 			<Setter Property="HorizontalAlignment" Value="Left" />
-			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="HorizontalContentAlignment" Value="Left" />
+			<Setter Property="VerticalAlignment" Value="Top" />
+			<Setter Property="VerticalContentAlignment" Value="Top" />
+			<Setter Property="MinHeight" Value="0" />
+		</Style>
+
+		<Style Selector="Button.LinkButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
 		</Style>
 
 		<Style Selector="Button.LinkButton:pointerover /template/ ContentPresenter">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
 		<Style Selector="Button.LinkButton:pointerover TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentLightBrush}" />
 		</Style>
@@ -29,8 +36,15 @@
 		<Style Selector="Border.ResourceRow">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
 		<Style Selector="Border.ResourceRow:pointerover">
 			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
+		</Style>
+
+		<Style Selector="TextBlock.ResourceHeaderText">
+			<Setter Property="FontWeight" Value="Bold" />
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_Header_Fg}" />
 		</Style>
 	</UserControl.Styles>
 
@@ -46,45 +60,71 @@
 						   FontSize="14"
 						   FontWeight="Bold" />
 
-				<Border BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="1">
-					<Grid>
-						<Grid.RowDefinitions>
-							<RowDefinition Height="Auto" />
-							<RowDefinition Height="*" />
-						</Grid.RowDefinitions>
+					<Grid RowDefinitions="Auto,*">
 
-						<!-- Header -->
-						<Grid Grid.Row="0" Background="{DynamicResource Table_Header_Bg}">
-							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="200" />
-								<ColumnDefinition Width="*" />
-							</Grid.ColumnDefinitions>
-							<TextBlock Grid.Column="0" Text="Category" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-							<TextBlock Grid.Column="1" Text="Name" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-						</Grid>
+						<Border Grid.Row="0"
+						        Background="{DynamicResource Table_Bg}"
+						        Padding="0,12,0,0">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="200" />
+									<ColumnDefinition Width="*" />
+								</Grid.ColumnDefinitions>
 
-						<!-- Items -->
-						<ItemsControl 
-							Grid.Row="1" 
-							Background="{DynamicResource Table_Bg}"
-							x:Name="LocalFilesItemsControl">
+								<Grid Grid.Column="0">
+									<Grid RowDefinitions="Auto,Auto">
+										<TextBlock Grid.Row="0"
+										           Classes="ResourceHeaderText"
+										           Text="Category"
+										           Margin="8,0,8,0" />
+										<Border Grid.Row="1"
+										        Height="1"
+										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Margin="8,4,8,8" />
+									</Grid>
+								</Grid>
+
+								<Grid Grid.Column="1">
+									<Grid RowDefinitions="Auto,Auto">
+										<TextBlock Grid.Row="0"
+										           Classes="ResourceHeaderText"
+										           Text="Name"
+										           Margin="8,0,8,0" />
+										<Border Grid.Row="1"
+										        Height="1"
+										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Margin="8,4,8,8" />
+									</Grid>
+								</Grid>
+							</Grid>
+						</Border>
+
+						<ItemsControl Grid.Row="1"
+						              x:Name="LocalFilesItemsControl"
+						              Background="{DynamicResource Table_Bg}">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate DataType="local:ResourceItem">
-									<Border Classes="ResourceRow" BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="0,0,0,1">
+									<Border Classes="ResourceRow"
+									        BorderBrush="{DynamicResource Table_BorderRowLine}"
+									        BorderThickness="0,0,0,1"
+									        Padding="0,4">
 										<Grid>
 											<Grid.ColumnDefinitions>
 												<ColumnDefinition Width="200" />
 												<ColumnDefinition Width="*" />
 											</Grid.ColumnDefinitions>
-											<TextBlock Grid.Column="0"
-													   Text="{Binding Category}"
-													   Foreground="{DynamicResource Table_Fg}"
-													   Padding="8,4"
-													   VerticalAlignment="Center" />
+											<SelectableTextBlock Grid.Column="0"
+											                     Text="{Binding Category}"
+											                     Foreground="{DynamicResource Table_Fg}"
+											                     Margin="8,4,8,4"
+											                     VerticalAlignment="Top"
+											                     TextWrapping="Wrap" />
 											<Button Grid.Column="1"
-													Classes="LinkButton"
-													Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}" TextDecorations="Underline" />
+											        Classes="LinkButton"
+											        Margin="8,4,8,4"
+											        Command="{Binding OpenCommand}">
+												<TextBlock Text="{Binding Name}"
+												           TextDecorations="Underline" />
 											</Button>
 										</Grid>
 									</Border>
@@ -92,7 +132,7 @@
 							</ItemsControl.ItemTemplate>
 						</ItemsControl>
 					</Grid>
-				</Border>
+
 			</StackPanel>
 
 			<!-- Web Links Section -->
@@ -101,46 +141,71 @@
 						   FontSize="14"
 						   FontWeight="Bold" />
 
-				<Border BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="1">
-					<Grid>
-						<Grid.RowDefinitions>
-							<RowDefinition Height="Auto" />
-							<RowDefinition Height="*" />
-						</Grid.RowDefinitions>
+					<Grid RowDefinitions="Auto,*">
 
-						<!-- Header -->
-						<Grid Grid.Row="0" Background="{DynamicResource Table_Header_Bg}">
-							<Grid.ColumnDefinitions>
-								<ColumnDefinition Width="200" />
-								<ColumnDefinition Width="*" />
-							</Grid.ColumnDefinitions>
-							<TextBlock Grid.Column="0" Text="Category" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-							<TextBlock Grid.Column="1" Text="Name" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-						</Grid>
+						<Border Grid.Row="0"
+						        Background="{DynamicResource Table_Bg}"
+						        Padding="0,12,0,0">
+							<Grid>
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="200" />
+									<ColumnDefinition Width="*" />
+								</Grid.ColumnDefinitions>
 
-						<!-- Items -->
-						<ItemsControl 
-							Grid.Row="1" 
-							x:Name="WebLinksItemsControl"
-							Background="{DynamicResource Table_Bg}"
-							>
+								<Grid Grid.Column="0">
+									<Grid RowDefinitions="Auto,Auto">
+										<TextBlock Grid.Row="0"
+										           Classes="ResourceHeaderText"
+										           Text="Category"
+										           Margin="8,0,8,0" />
+										<Border Grid.Row="1"
+										        Height="1"
+										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Margin="8,4,8,8" />
+									</Grid>
+								</Grid>
+
+								<Grid Grid.Column="1">
+									<Grid RowDefinitions="Auto,Auto">
+										<TextBlock Grid.Row="0"
+										           Classes="ResourceHeaderText"
+										           Text="Name"
+										           Margin="8,0,8,0" />
+										<Border Grid.Row="1"
+										        Height="1"
+										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Margin="8,4,8,8" />
+									</Grid>
+								</Grid>
+							</Grid>
+						</Border>
+
+						<ItemsControl Grid.Row="1"
+						              x:Name="WebLinksItemsControl"
+						              Background="{DynamicResource Table_Bg}">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate DataType="local:ResourceItem">
-									<Border Classes="ResourceRow" BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="0,0,0,1">
+									<Border Classes="ResourceRow"
+									        BorderBrush="{DynamicResource Table_BorderRowLine}"
+									        BorderThickness="0,0,0,1"
+									        Padding="0,4">
 										<Grid>
 											<Grid.ColumnDefinitions>
 												<ColumnDefinition Width="200" />
 												<ColumnDefinition Width="*" />
 											</Grid.ColumnDefinitions>
-											<TextBlock Grid.Column="0"
-													   Text="{Binding Category}"
-													   Foreground="{DynamicResource Table_Fg}"
-													   Padding="8,4"
-													   VerticalAlignment="Center" />
+											<SelectableTextBlock Grid.Column="0"
+											                     Text="{Binding Category}"
+											                     Foreground="{DynamicResource Table_Fg}"
+											                     Margin="8,4,8,4"
+											                     VerticalAlignment="Top"
+											                     TextWrapping="Wrap" />
 											<Button Grid.Column="1"
-													Classes="LinkButton"
-													Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}" TextDecorations="Underline" />
+											        Classes="LinkButton"
+											        Margin="8,4,8,4"
+											        Command="{Binding OpenCommand}">
+												<TextBlock Text="{Binding Name}"
+												           TextDecorations="Underline" />
 											</Button>
 										</Grid>
 									</Border>
@@ -148,7 +213,6 @@
 							</ItemsControl.ItemTemplate>
 						</ItemsControl>
 					</Grid>
-				</Border>
 			</StackPanel>
 
 		</StackPanel>
