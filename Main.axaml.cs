@@ -59,6 +59,7 @@ namespace CRT
 
             this.TabSchematicsControl.Initialize(this);
             this.TabOverview.Initialize(this);
+            this.TabContribute.Initialize(this);
 
             // Restore left panel width from settings
             this.RootGrid.ColumnDefinitions[0].Width = new GridLength(UserSettings.LeftPanelWidth);
@@ -547,6 +548,7 @@ namespace CRT
 
             this.TabResources.LoadData(localFiles, webLinks);
             this.TabOverview.LoadData(boardData);
+            this.TabContribute.LoadData(boardData, this._localRegion);
 
             // Sync any existing search filter right away if applied
             this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
@@ -1402,6 +1404,7 @@ namespace CRT
             }
 
             this.TabSchematicsControl.UpdateHighlightsForComponents(survivingLabels);
+            this.TabContribute.LoadData(this._currentBoardData, this._localRegion);
         }
 
         // ###########################################################################################
@@ -1573,5 +1576,34 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
+        // Opens a maximized contribution editor window for the selected component.
+        // ###########################################################################################
+        internal void OpenComponentContributionWindow(string boardLabel)
+        {
+            if (this._currentBoardData == null || string.IsNullOrWhiteSpace(boardLabel))
+            {
+                return;
+            }
+
+            var hardwareName = this.HardwareComboBox.SelectedItem as string ?? string.Empty;
+            var boardName = this.BoardComboBox.SelectedItem as string ?? string.Empty;
+
+            var window = new ComponentContributionWindow();
+            window.LoadComponent(
+                this._currentBoardData,
+                DataManager.DataRoot,
+                hardwareName,
+                boardName,
+                this._localRegion,
+                boardLabel);
+
+            this.PositionFullscreenWindowOnSameScreen(window);
+            window.WindowState = Avalonia.Controls.WindowState.Maximized;
+            window.Show(this);
+            window.Focus();
+        }
+
+        // ###########################################################################################
     }
 }

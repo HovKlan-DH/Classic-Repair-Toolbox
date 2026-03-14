@@ -1,0 +1,538 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.ComponentContributionWindow"
+        Title="Component contribution"
+        Width="1400"
+        Height="900"
+        MinWidth="900"
+        MinHeight="600"
+        Background="{DynamicResource Main_Bg}"
+        Foreground="{DynamicResource Main_Fg}">
+
+	<Window.Styles>
+		<Style Selector="Expander">
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+			<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
+		</Style>
+
+		<Style Selector="Expander /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
+		</Style>
+
+		<Style Selector="Expander /template/ ToggleButton">
+			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
+		</Style>
+
+		<Style Selector="Expander /template/ Border">
+			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
+		</Style>
+	</Window.Styles>
+	
+	<Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+		<Border Grid.Row="0"
+		        BorderBrush="{DynamicResource AppThemeBorderBrush}"
+		        BorderThickness="1"
+		        CornerRadius="6"
+		        Padding="12"
+		        Margin="0,0,0,12">
+			<Grid ColumnDefinitions="*,24,*">
+				<StackPanel Grid.Column="0" Spacing="4">
+					<TextBlock Text="Component contribution editor"
+					           FontSize="20"
+					           FontWeight="Bold" />
+					<TextBlock x:Name="ComponentTitleTextBlock"
+					           FontSize="14"
+					           FontWeight="SemiBold"
+					           Foreground="{DynamicResource Main_Header_Fg}" />
+					<TextBlock x:Name="BoardContextTextBlock"
+					           FontSize="12"
+					           Foreground="{DynamicResource Main_Header_Fg}" />
+					<TextBlock x:Name="RegionContextTextBlock"
+					           FontSize="12"
+					           Foreground="{DynamicResource Main_Header_Fg}" />
+				</StackPanel>
+
+				<StackPanel Grid.Column="2" Spacing="4">
+					<TextBlock Text="Email address (optional, but required if you want a reply):"
+					           FontSize="12" />
+					<TextBox x:Name="EmailTextBox"
+					         Watermark="your.email@example.com"
+					         Background="{DynamicResource Main_InputField_Bg}"
+					         Foreground="{DynamicResource Main_InputField_Fg}" />
+					<TextBlock Text="Edit the data below, then describe your changes in the mandatory comment field."
+					           FontSize="11"
+					           TextWrapping="Wrap"
+					           Foreground="{DynamicResource Main_Header_Fg}" />
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<ScrollViewer Grid.Row="1"
+		              VerticalScrollBarVisibility="Auto"
+		              HorizontalScrollBarVisibility="Disabled">
+			<StackPanel Spacing="16">
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<StackPanel Spacing="6">
+						<TextBlock Text="How this works"
+						           FontSize="15"
+						           FontWeight="Bold" />
+						<TextBlock TextWrapping="Wrap"
+						           Foreground="{DynamicResource Main_Fg}">
+							All rows below are editable suggestions. The current values are preloaded from the board data. When submitted, the full edited payload is sent to the developer for review together with your mandatory comment.
+						</TextBlock>
+					</StackPanel>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="True">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Components"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+							Margin="0,10,0,0"
+							HorizontalAlignment="Stretch">
+							<TextBlock Text="Existing component rows"
+							   FontSize="12"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
+
+							<ItemsControl x:Name="ComponentRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionComponentRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="1"
+										        CornerRadius="4"
+										        Padding="8"
+										        Margin="0,0,0,8">
+											<Grid ColumnDefinitions="*,12,*">
+												<StackPanel Grid.Column="0" Spacing="4">
+													<TextBlock Text="Board label" FontSize="11" />
+													<TextBox Text="{Binding BoardLabel}" />
+
+													<TextBlock Text="Friendly name" FontSize="11" />
+													<TextBox Text="{Binding FriendlyName}" />
+
+													<TextBlock Text="Technical name or value" FontSize="11" />
+													<TextBox Text="{Binding TechnicalNameOrValue}" />
+
+													<TextBlock Text="Part-number" FontSize="11" />
+													<TextBox Text="{Binding PartNumber}" />
+												</StackPanel>
+
+												<StackPanel Grid.Column="2" Spacing="4">
+													<TextBlock Text="Category" FontSize="11" />
+													<TextBox Text="{Binding Category}" />
+
+													<TextBlock Text="Region" FontSize="11" />
+													<TextBox Text="{Binding Region}" />
+
+													<TextBlock Text="Short description" FontSize="11" />
+													<TextBox Text="{Binding Description}"
+													         AcceptsReturn="True"
+													         TextWrapping="Wrap"
+													         MinHeight="84" />
+
+													<Button Content="Remove row"
+													        HorizontalAlignment="Right"
+													        Tag="{Binding}"
+													        Click="OnRemoveComponentRowClick" />
+												</StackPanel>
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="True">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Component images"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+								Margin="0,10,0,0"
+								HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+								<TextBlock Text="Image rows"
+								           FontSize="12"
+								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<Button Grid.Column="1"
+								        Content="Add row"
+								        Click="OnAddComponentImageRowClick" />
+							</Grid>
+
+							<ItemsControl x:Name="ComponentImageRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionComponentImageRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="1"
+										        CornerRadius="4"
+										        Padding="8"
+										        Margin="0,0,0,8">
+											<Grid ColumnDefinitions="220,12,*">
+												<Grid Grid.Column="0"
+													  Height="180"
+													  ClipToBounds="True"
+													  Background="{DynamicResource Main_Bg}">
+													<Image Source="{Binding PreviewImage}"
+														   Stretch="Uniform"
+														   HorizontalAlignment="Stretch"
+														   VerticalAlignment="Stretch" />
+												</Grid>
+
+												<Grid Grid.Column="2" ColumnDefinitions="*,12,*">
+													<StackPanel Grid.Column="0" Spacing="4">
+														<TextBlock Text="Board label" FontSize="11" />
+														<TextBox Text="{Binding BoardLabel}" />
+
+														<TextBlock Text="Region" FontSize="11" />
+														<TextBox Text="{Binding Region}" />
+
+														<TextBlock Text="Pin" FontSize="11" />
+														<TextBox Text="{Binding Pin}" />
+
+														<TextBlock Text="Name" FontSize="11" />
+														<TextBox Text="{Binding Name}" />
+													</StackPanel>
+
+													<StackPanel Grid.Column="2" Spacing="4">
+														<TextBlock Text="Expected oscilloscope reading" FontSize="11" />
+														<TextBox Text="{Binding ExpectedOscilloscopeReading}" />
+
+														<TextBlock Text="File" FontSize="11" />
+														<TextBox Text="{Binding File}"
+															 Tag="{Binding}"
+															 IsReadOnly="True"
+															 Cursor="Hand"
+															 PointerPressed="OnFileTextBoxPointerPressed" />
+
+														<TextBlock Text="Note" FontSize="11" />
+														<TextBox Text="{Binding Note}"
+														         AcceptsReturn="True"
+														         TextWrapping="Wrap"
+														         MinHeight="84" />
+
+														<Button Content="Remove row"
+														        HorizontalAlignment="Right"
+														        Tag="{Binding}"
+														        Click="OnRemoveComponentImageRowClick" />
+													</StackPanel>
+												</Grid>
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="False">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Component local files"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+								Margin="0,10,0,0"
+								HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+								<TextBlock Text="One row equals one data point"
+								           FontSize="12"
+								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<Button Grid.Column="1"
+								        Content="Add row"
+								        Click="OnAddComponentLocalFileRowClick" />
+							</Grid>
+
+							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+								  Margin="0,0,0,6"
+								  HorizontalAlignment="Stretch">
+								<TextBlock Text="Board label" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="File" FontSize="11" FontWeight="Bold" />
+							</Grid>
+
+							<ItemsControl x:Name="ComponentLocalFileRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionComponentLocalFileRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="0,0,0,1"
+										        Padding="0,6">
+											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+												  Margin="0,0,0,6"
+												  HorizontalAlignment="Stretch">
+												<TextBox Text="{Binding BoardLabel}" />
+												<TextBox Grid.Column="2" Text="{Binding Name}" />
+												<TextBox Grid.Column="4"
+													 Text="{Binding File}"
+													 Tag="{Binding}"
+													 IsReadOnly="True"
+													 Cursor="Hand"
+													 PointerPressed="OnFileTextBoxPointerPressed" />
+												<Button Grid.Column="6"
+												        Content="Remove"
+												        Tag="{Binding}"
+												        Click="OnRemoveComponentLocalFileRowClick" />
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="False">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Component links"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+								Margin="0,10,0,0"
+								HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+								<TextBlock Text="One row equals one data point"
+								           FontSize="12"
+								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<Button Grid.Column="1"
+								        Content="Add row"
+								        Click="OnAddComponentLinkRowClick" />
+							</Grid>
+
+							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+								  Margin="0,0,0,6"
+								  HorizontalAlignment="Stretch">
+								<TextBlock Text="Board label" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="URL" FontSize="11" FontWeight="Bold" />
+							</Grid>
+
+							<ItemsControl x:Name="ComponentLinkRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionComponentLinkRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="0,0,0,1"
+										        Padding="0,6">
+											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+												  Margin="0,0,0,6"
+												  HorizontalAlignment="Stretch">
+												<TextBox Text="{Binding BoardLabel}" />
+												<TextBox Grid.Column="2" Text="{Binding Name}" />
+												<TextBox Grid.Column="4" Text="{Binding Url}" />
+												<Button Grid.Column="6"
+												        Content="Remove"
+												        Tag="{Binding}"
+												        Click="OnRemoveComponentLinkRowClick" />
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="False">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Board local files"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+								Margin="0,10,0,0"
+								HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+								<TextBlock Text="One row equals one data point"
+								           FontSize="12"
+								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<Button Grid.Column="1"
+								        Content="Add row"
+								        Click="OnAddBoardLocalFileRowClick" />
+							</Grid>
+
+							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+								  Margin="0,0,0,6"
+								  HorizontalAlignment="Stretch">
+								<TextBlock Text="Category" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="File" FontSize="11" FontWeight="Bold" />
+							</Grid>
+
+							<ItemsControl x:Name="BoardLocalFileRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionBoardLocalFileRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="0,0,0,1"
+										        Padding="0,6">
+											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+												  Margin="0,0,0,6"
+												  HorizontalAlignment="Stretch">
+												<TextBox Text="{Binding Category}" />
+												<TextBox Grid.Column="2" Text="{Binding Name}" />
+												<TextBox Grid.Column="4"
+														 Text="{Binding File}"
+														 Tag="{Binding}"
+														 IsReadOnly="True"
+														 Cursor="Hand"
+														 PointerPressed="OnFileTextBoxPointerPressed" />
+												<Button Grid.Column="6"
+												        Content="Remove"
+												        Tag="{Binding}"
+												        Click="OnRemoveBoardLocalFileRowClick" />
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12">
+					<Expander IsExpanded="False">
+						<Expander.Header>
+							<TextBlock Text='Sheet "Board links"'
+							           FontSize="15"
+							           FontWeight="Bold" />
+						</Expander.Header>
+
+						<StackPanel Spacing="10"
+								Margin="0,10,0,0"
+								HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+								<TextBlock Text="One row equals one data point"
+								           FontSize="12"
+								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<Button Grid.Column="1"
+								        Content="Add row"
+								        Click="OnAddBoardLinkRowClick" />
+							</Grid>
+
+							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+								  Margin="0,0,0,6"
+								  HorizontalAlignment="Stretch">
+								<TextBlock Text="Category" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="URL" FontSize="11" FontWeight="Bold" />
+							</Grid>
+
+							<ItemsControl x:Name="BoardLinkRowsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributionBoardLinkRow">
+										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										        BorderThickness="0,0,0,1"
+										        Padding="0,6">
+											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+												  Margin="0,0,0,6"
+												  HorizontalAlignment="Stretch">
+												<TextBox Text="{Binding Category}" />
+												<TextBox Grid.Column="2" Text="{Binding Name}" />
+												<TextBox Grid.Column="4" Text="{Binding Url}" />
+												<Button Grid.Column="6"
+												        Content="Remove"
+												        Tag="{Binding}"
+												        Click="OnRemoveBoardLinkRowClick" />
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</StackPanel>
+					</Expander>
+				</Border>
+
+				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				        BorderThickness="1"
+				        CornerRadius="6"
+				        Padding="12"
+				        Margin="0,0,0,4">
+					<StackPanel Spacing="6">
+						<TextBlock Text="Mandatory change comment"
+						           FontSize="15"
+						           FontWeight="Bold" />
+						<TextBlock Text="Describe what you changed, what was wrong or missing, and anything the developer should verify."
+						           FontSize="11"
+						           Foreground="{DynamicResource Main_Header_Fg}"
+						           TextWrapping="Wrap" />
+						<TextBox x:Name="MandatoryCommentTextBox"
+						         AcceptsReturn="True"
+						         TextWrapping="Wrap"
+						         MinHeight="180"
+						         Background="{DynamicResource Main_TextField_Bg}"
+						         Foreground="{DynamicResource Main_TextField_Fg}" />
+					</StackPanel>
+				</Border>
+
+			</StackPanel>
+		</ScrollViewer>
+
+		<Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+			<TextBlock x:Name="StatusTextBlock"
+			           Grid.Column="0"
+			           VerticalAlignment="Center"
+			           FontWeight="Bold"
+			           IsVisible="False">
+				<TextBlock.Styles>
+					<Style Selector="TextBlock.success">
+						<Setter Property="Foreground" Value="{DynamicResource Feedback_SubmittedOk_Fg}" />
+					</Style>
+					<Style Selector="TextBlock.error">
+						<Setter Property="Foreground" Value="{DynamicResource Feedback_SubmittedFail_Fg}" />
+					</Style>
+				</TextBlock.Styles>
+			</TextBlock>
+
+			<StackPanel Grid.Column="1"
+			            Orientation="Horizontal"
+			            Spacing="8">
+				<Button Content="Cancel"
+				        Click="OnCancelClick" />
+				<Button x:Name="SubmitButton"
+				        Content="Send contribution"
+				        Background="{DynamicResource AppThemeAccentBrush}"
+				        Foreground="{DynamicResource Feedback_Submit_Fg}"
+				        Click="OnSubmitClick" />
+			</StackPanel>
+		</Grid>
+	</Grid>
+</Window>

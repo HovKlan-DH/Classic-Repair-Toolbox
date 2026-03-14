@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TabContribute">
+
+	<UserControl.Styles>
+		<Style Selector="Button.ComponentEntryButton">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+			<Setter Property="HorizontalContentAlignment" Value="Left" />
+			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<Style Selector="Button.ComponentEntryButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.ComponentEntryButton:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentHoverBrush}" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<TextBlock Grid.Row="0" Margin="12,12,12,12" TextWrapping="Wrap" Foreground="{DynamicResource Main_Fg}">
+			To contribute and enhance the data quality for this board, then you can select an existing component and give feedback where data is wrong or missing. Your contribution will be seen as a "suggestion for changes" and will be sent directly to the developer, who will incorporate it in to the backend data set. You will get informed of decission, if you have provided your email address.
+		</TextBlock>
+
+		<ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+			<Grid VerticalAlignment="Stretch">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto" />
+					<RowDefinition Height="*" />
+				</Grid.RowDefinitions>
+
+				<ItemsControl Grid.Row="0" x:Name="CategoriesHeaderControl" Margin="12,0,12,0">
+					<ItemsControl.ItemsPanel>
+						<ItemsPanelTemplate>
+							<StackPanel Orientation="Horizontal" Spacing="30" />
+						</ItemsPanelTemplate>
+					</ItemsControl.ItemsPanel>
+					<ItemsControl.ItemTemplate>
+						<DataTemplate x:DataType="local:CategoryColumn">
+							<Grid Width="140">
+								<Grid.RowDefinitions>
+									<RowDefinition Height="Auto"/>
+									<RowDefinition Height="Auto"/>
+								</Grid.RowDefinitions>
+								<TextBlock Grid.Row="0"
+								           Text="{Binding CategoryName}"
+								           FontWeight="Bold"
+								           FontSize="14"
+								           Foreground="{DynamicResource Main_Header_Fg}"
+								           TextTrimming="CharacterEllipsis"/>
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Margin="0,4,0,8" />
+							</Grid>
+						</DataTemplate>
+					</ItemsControl.ItemTemplate>
+				</ItemsControl>
+
+				<ScrollViewer Grid.Row="1"
+				              VerticalScrollBarVisibility="Auto"
+				              HorizontalScrollBarVisibility="Disabled"
+				              Margin="0,0,0,12">
+					<ItemsControl x:Name="CategoriesItemsControl" Margin="12,0,12,0">
+						<ItemsControl.ItemsPanel>
+							<ItemsPanelTemplate>
+								<StackPanel Orientation="Horizontal" Spacing="30" />
+							</ItemsPanelTemplate>
+						</ItemsControl.ItemsPanel>
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:CategoryColumn">
+								<Grid Width="140" VerticalAlignment="Top">
+									<ItemsControl ItemsSource="{Binding Components}">
+										<ItemsControl.ItemTemplate>
+											<DataTemplate x:DataType="local:ContributeComponentItem">
+												<Button Classes="ComponentEntryButton"
+												        Content="{Binding DisplayText}"
+												        Tag="{Binding}"
+												        ToolTip.Tip="{Binding ToolTipText}"
+												        Margin="0,2,0,2"
+												        Click="OnComponentClick" />
+											</DataTemplate>
+										</ItemsControl.ItemTemplate>
+									</ItemsControl>
+								</Grid>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</ScrollViewer>
+			</Grid>
+		</ScrollViewer>
+	</Grid>
+</UserControl>

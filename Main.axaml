@@ -490,6 +490,10 @@
 						<local:TabResources x:Name="TabResources" />
 					</TabItem>
 
+					<TabItem Header="Contribute">
+						<local:TabContribute x:Name="TabContribute" />
+					</TabItem>
+
 					<TabItem Header="Configuration">
 						<local:TabConfiguration x:Name="TabConfiguration" />
 					</TabItem>
