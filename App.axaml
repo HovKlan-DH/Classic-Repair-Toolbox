@@ -74,6 +74,8 @@
 					<SolidColorBrush x:Key="Table_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_BorderRowLine">#EEEEEE</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_RowHover_Bg">#E1F0FA</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
 
                     <!-- Light, Schematics tab -->
                     <SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>
@@ -182,6 +184,8 @@
 					<SolidColorBrush x:Key="Table_Fg">#E8DDCF</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_BorderRowLine">#3E342F</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_RowHover_Bg">#3C2F28</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Bg">#B87352</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
 
                     <!-- Dark, Schematics tab -->
                     <SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>

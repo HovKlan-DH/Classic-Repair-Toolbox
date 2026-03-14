@@ -70,6 +70,7 @@ namespace CRT
         [JsonPropertyName("schematicsLabelsPanelExpanded")] public bool SchematicsLabelsPanelExpanded { get; set; } = true;
         [JsonPropertyName("blinkSelected")] public bool BlinkSelected { get; set; } = false;
         [JsonPropertyName("schematicsOrderByBoard")] public Dictionary<string, List<string>> SchematicsOrderByBoard { get; set; } = new();
+        [JsonPropertyName("contactEmail")] public string ContactEmail { get; set; } = string.Empty;
 
     }
 
@@ -167,6 +168,22 @@ namespace CRT
             {
                 _data.ThemeVariant = value;
                 Logger.Info($"Setting changed: [Theme] [{value}]");
+                Save();
+            }
+        }
+
+        public static string ContactEmail
+        {
+            get => _data.ContactEmail ?? string.Empty;
+            set
+            {
+                string normalized = value?.Trim() ?? string.Empty;
+
+                if (string.Equals(_data.ContactEmail, normalized, StringComparison.Ordinal))
+                    return;
+
+                _data.ContactEmail = normalized;
+                Logger.Info($"Setting changed: [ContactEmail] [{(string.IsNullOrWhiteSpace(normalized) ? "empty" : "set")}]");
                 Save();
             }
         }
@@ -383,10 +400,11 @@ namespace CRT
                     Logger.Info($"        [ValidateDataOnLaunch] [{ValidateDataOnLaunch}]");
                     Logger.Info($"        [DebugLogging] [{DebugLogging}]");
                     Logger.Info($"    Various other settings:");
-                    Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
                     Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
                     Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}]");
                     Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
+                    Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
+                    Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
                     Logger.Info($"        [Region] [{Region}]");
                     Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
                     Logger.Info($"        [SchematicsLabelBoard] [{SchematicsLabelBoard}]");

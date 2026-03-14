@@ -23,10 +23,26 @@ namespace CRT
         {
             this.InitializeComponent();
             this.AttachmentsListBox.ItemsSource = this._customAttachments;
+            this.EmailTextBox.Text = UserSettings.ContactEmail;
+            this.EmailTextBox.LostFocus += this.OnEmailTextBoxLostFocus;
+
             this._customAttachments.CollectionChanged += (s, e) =>
             {
                 this.ClearAttachmentsButton.IsEnabled = this._customAttachments.Count > 0;
             };
+        }
+
+        // ###########################################################################################
+        // Persists the shared email address when the field loses focus and the value is valid.
+        // ###########################################################################################
+        private void OnEmailTextBoxLostFocus(object? sender, RoutedEventArgs e)
+        {
+            string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrEmpty(email) || Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            {
+                UserSettings.ContactEmail = email;
+            }
         }
 
         // ###########################################################################################
@@ -109,6 +125,8 @@ namespace CRT
                 return;
             }
 
+            UserSettings.ContactEmail = email;
+
             if (string.IsNullOrEmpty(feedback))
             {
                 this.ShowStatus("Please provide a description of your issue or suggestion before sending", isError: true);
@@ -124,15 +142,14 @@ namespace CRT
 
             progress.Report("Preparing payload...");
 
-            // Fetch UI state BEFORE jumping onto a background thread
             bool attachLogs = this.AttachLogfileCheckBox.IsChecked == true;
             bool attachConfig = this.AttachConfigsCheckBox.IsChecked == true;
             var customPaths = this._customAttachments.ToList();
 
             try
             {
-                // Run heavy zip operations and HTTP network request on thread pool
-                var (success, statusCode, responseBody) = await Task.Run(() => this.ProcessAndSendFeedbackAsync(email, feedback, attachLogs, attachConfig, customPaths, progress));
+                var (success, statusCode, responseBody) = await Task.Run(() =>
+                    this.ProcessAndSendFeedbackAsync(email, feedback, attachLogs, attachConfig, customPaths, progress));
 
                 if (success)
                 {
@@ -144,10 +161,8 @@ namespace CRT
                 }
                 else
                 {
-                    // Log the detailed response, including any HTML dumps like 404 pages, directly to the log file
                     Logger.Warning($"Feedback submission failed. HTTP {(int)statusCode}. Server responded with: {responseBody}");
 
-                    // Show a clean, user-friendly error in the UI
                     if (statusCode == 404)
                     {
                         this.ShowStatus("Failed to send feedback: Server endpoint not found (HTTP 404)", isError: true);
@@ -160,7 +175,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Exception while sending feedback: {ex.ToString()}");
+                Logger.Warning($"Exception while sending feedback: {ex}");
                 this.ShowStatus("Network or system error while sending feedback - please try again later...", isError: true);
             }
             finally
@@ -397,5 +412,6 @@ namespace CRT
             }
             base.Dispose(disposing);
         }
+
     }
 }

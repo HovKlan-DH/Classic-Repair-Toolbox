@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
@@ -84,6 +85,7 @@ namespace CRT
         public DateTimeOffset SubmittedUtc { get; set; }
         public List<ContributionComponentRow> Components { get; set; } = new();
         public List<ContributionComponentImageRow> ComponentImages { get; set; } = new();
+        public List<ComponentHighlightEntry> ComponentHighlights { get; set; } = new();
         public List<ContributionComponentLocalFileRow> ComponentLocalFiles { get; set; } = new();
         public List<ContributionComponentLinkRow> ComponentLinks { get; set; } = new();
         public List<ContributionBoardLocalFileRow> BoardLocalFiles { get; set; } = new();
@@ -98,6 +100,7 @@ namespace CRT
         private readonly ObservableCollection<ContributionComponentLinkRow> thisComponentLinkRows = new();
         private readonly ObservableCollection<ContributionBoardLocalFileRow> thisBoardLocalFileRows = new();
         private readonly ObservableCollection<ContributionBoardLinkRow> thisBoardLinkRows = new();
+        private readonly List<ComponentHighlightEntry> thisComponentHighlightRows = new();
 
         private string thisHardwareName = string.Empty;
         private string thisBoardName = string.Empty;
@@ -117,7 +120,10 @@ namespace CRT
             this.BoardLocalFileRowsItemsControl.ItemsSource = this.thisBoardLocalFileRows;
             this.BoardLinkRowsItemsControl.ItemsSource = this.thisBoardLinkRows;
 
+            this.EmailTextBox.Text = UserSettings.ContactEmail;
             this.Closed += this.OnWindowClosed;
+
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -150,8 +156,10 @@ namespace CRT
                 : $"Component contribution - {this.thisBoardLabel}";
 
             this.ComponentTitleTextBlock.Text = this.thisComponentDisplayText;
-            this.BoardContextTextBlock.Text = $"Hardware: {this.thisHardwareName}    Board: {this.thisBoardName}";
-            this.RegionContextTextBlock.Text = $"Current region context: {this.thisLocalRegion}";
+            this.HardwareContextTextBlock.Text = $"Hardware: {this.thisHardwareName}";
+            this.BoardContextTextBlock.Text = $"Board: {this.thisBoardName}";
+            this.RegionContextTextBlock.Text = $"Region: {this.thisLocalRegion}";
+            this.ComponentImagesRegionTextBlock.Text = $"Component images relevant for the {this.thisLocalRegion} region";
         }
 
         // ###########################################################################################
@@ -170,6 +178,7 @@ namespace CRT
             this.thisComponentLinkRows.Clear();
             this.thisBoardLocalFileRows.Clear();
             this.thisBoardLinkRows.Clear();
+            this.thisComponentHighlightRows.Clear();
 
             foreach (var row in boardData.Components.Where(c =>
                 string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase)))
@@ -187,7 +196,9 @@ namespace CRT
             }
 
             foreach (var row in boardData.ComponentImages.Where(c =>
-                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(c.Region) ||
+                 string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
                 this.thisComponentImageRows.Add(new ContributionComponentImageRow
                 {
@@ -198,6 +209,20 @@ namespace CRT
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading,
                     File = row.File,
                     Note = row.Note
+                });
+            }
+
+            foreach (var row in boardData.ComponentHighlights.Where(c =>
+                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase)))
+            {
+                this.thisComponentHighlightRows.Add(new ComponentHighlightEntry
+                {
+                    SchematicName = row.SchematicName,
+                    BoardLabel = row.BoardLabel,
+                    X = row.X,
+                    Y = row.Y,
+                    Width = row.Width,
+                    Height = row.Height
                 });
             }
 
@@ -244,6 +269,7 @@ namespace CRT
             }
 
             this.RefreshAllComponentImagePreviews();
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -303,9 +329,10 @@ namespace CRT
                 Region = this.thisLocalRegion
             };
 
-            this.thisComponentImageRows.Add(row);
+            InsertRowAtTop(this.thisComponentImageRows, row);
             this.RefreshComponentImagePreview(row);
             this.RefreshComponentImageRowsItemsControl();
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -317,6 +344,7 @@ namespace CRT
             {
                 this.DisposeComponentImagePreview(row);
                 this.thisComponentImageRows.Remove(row);
+                this.UpdateSectionCounters();
             }
         }
 
@@ -325,10 +353,12 @@ namespace CRT
         // ###########################################################################################
         private void OnAddComponentLocalFileRowClick(object? sender, RoutedEventArgs e)
         {
-            this.thisComponentLocalFileRows.Add(new ContributionComponentLocalFileRow
+            InsertRowAtTop(this.thisComponentLocalFileRows, new ContributionComponentLocalFileRow
             {
                 BoardLabel = this.thisBoardLabel
             });
+
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -339,6 +369,7 @@ namespace CRT
             if (sender is Button { Tag: ContributionComponentLocalFileRow row })
             {
                 this.thisComponentLocalFileRows.Remove(row);
+                this.UpdateSectionCounters();
             }
         }
 
@@ -347,10 +378,12 @@ namespace CRT
         // ###########################################################################################
         private void OnAddComponentLinkRowClick(object? sender, RoutedEventArgs e)
         {
-            this.thisComponentLinkRows.Add(new ContributionComponentLinkRow
+            InsertRowAtTop(this.thisComponentLinkRows, new ContributionComponentLinkRow
             {
                 BoardLabel = this.thisBoardLabel
             });
+
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -361,6 +394,7 @@ namespace CRT
             if (sender is Button { Tag: ContributionComponentLinkRow row })
             {
                 this.thisComponentLinkRows.Remove(row);
+                this.UpdateSectionCounters();
             }
         }
 
@@ -369,7 +403,8 @@ namespace CRT
         // ###########################################################################################
         private void OnAddBoardLocalFileRowClick(object? sender, RoutedEventArgs e)
         {
-            this.thisBoardLocalFileRows.Add(new ContributionBoardLocalFileRow());
+            InsertRowAtTop(this.thisBoardLocalFileRows, new ContributionBoardLocalFileRow());
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -380,6 +415,7 @@ namespace CRT
             if (sender is Button { Tag: ContributionBoardLocalFileRow row })
             {
                 this.thisBoardLocalFileRows.Remove(row);
+                this.UpdateSectionCounters();
             }
         }
 
@@ -388,7 +424,8 @@ namespace CRT
         // ###########################################################################################
         private void OnAddBoardLinkRowClick(object? sender, RoutedEventArgs e)
         {
-            this.thisBoardLinkRows.Add(new ContributionBoardLinkRow());
+            InsertRowAtTop(this.thisBoardLinkRows, new ContributionBoardLinkRow());
+            this.UpdateSectionCounters();
         }
 
         // ###########################################################################################
@@ -399,6 +436,7 @@ namespace CRT
             if (sender is Button { Tag: ContributionBoardLinkRow row })
             {
                 this.thisBoardLinkRows.Remove(row);
+                this.UpdateSectionCounters();
             }
         }
 
@@ -411,9 +449,9 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Validates the edited payload, but defers submission until the backend endpoint exists.
+        // Validates the edited payload and submits it to the contribution backend.
         // ###########################################################################################
-        private void OnSubmitClick(object? sender, RoutedEventArgs e)
+        private async void OnSubmitClick(object? sender, RoutedEventArgs e)
         {
             string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
             string comment = this.MandatoryCommentTextBox.Text?.Trim() ?? string.Empty;
@@ -430,7 +468,45 @@ namespace CRT
                 return;
             }
 
-            this.ShowStatus("Contribution backend is not implemented yet. The editor UI and file selection are ready, but sending is currently disabled.", false);
+            UserSettings.ContactEmail = email;
+            this.SubmitButton.IsEnabled = false;
+
+            try
+            {
+                IProgress<string> progress = new Progress<string>(statusMessage =>
+                {
+                    this.ShowStatus(statusMessage, false);
+                });
+
+                var result = await this.ProcessAndSendContributionAsync(email, comment, progress);
+
+                if (result.Success)
+                {
+                    this.ShowStatus("Contribution submitted successfully - thank you :-)", false);
+                }
+                else
+                {
+                    Logger.Warning($"Component contribution submission failed. HTTP {result.StatusCode}. Server responded with: {result.ResponseBody}");
+
+                    if (result.StatusCode == 404)
+                    {
+                        this.ShowStatus("Failed to send contribution: Server endpoint not found (HTTP 404)", true);
+                    }
+                    else
+                    {
+                        this.ShowStatus($"Failed to send contribution (HTTP {result.StatusCode}) - please check the logfile for details", true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Exception while sending component contribution: {ex}");
+                this.ShowStatus("Network or system error while sending contribution - please try again later...", true);
+            }
+            finally
+            {
+                this.SubmitButton.IsEnabled = true;
+            }
         }
 
         // ###########################################################################################
@@ -482,7 +558,7 @@ namespace CRT
 
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(AppConfig.AppShortName + " " + AppConfig.AppVersionString);
 
-            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-feedback/", progressContent);
+            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-contribution/", progressContent);
             string responseBody = await response.Content.ReadAsStringAsync();
             bool isSuccess = response.IsSuccessStatusCode &&
                              responseBody.Trim().StartsWith("Success", StringComparison.OrdinalIgnoreCase);
@@ -525,6 +601,15 @@ namespace CRT
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
                     Note = row.Note?.Trim() ?? string.Empty
+                }).ToList(),
+                ComponentHighlights = this.thisComponentHighlightRows.Select(row => new ComponentHighlightEntry
+                {
+                    SchematicName = row.SchematicName?.Trim() ?? string.Empty,
+                    BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
+                    X = row.X?.Trim() ?? string.Empty,
+                    Y = row.Y?.Trim() ?? string.Empty,
+                    Width = row.Width?.Trim() ?? string.Empty,
+                    Height = row.Height?.Trim() ?? string.Empty
                 }).ToList(),
                 ComponentLocalFiles = this.thisComponentLocalFileRows.Select(row => new ContributionComponentLocalFileRow
                 {
@@ -833,6 +918,149 @@ namespace CRT
                     boardLocalFileRow.File = selectedPath;
                     break;
             }
+        }
+
+        // ###########################################################################################
+        // Opens a file picker for any file-backed row and applies the selected path.
+        // ###########################################################################################
+        private async void OnFileTextBoxPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            e.Handled = true;
+
+            if (sender is not TextBox textBox)
+            {
+                return;
+            }
+
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel == null)
+            {
+                return;
+            }
+
+            string? currentPath = this.GetCurrentFilePath(textBox.Tag);
+            string? suggestedStartLocation = this.GetSuggestedStartLocation(currentPath);
+
+            var options = new FilePickerOpenOptions
+            {
+                Title = "Select file",
+                AllowMultiple = false
+            };
+
+            if (!string.IsNullOrWhiteSpace(suggestedStartLocation) && Directory.Exists(suggestedStartLocation))
+            {
+                try
+                {
+                    options.SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(suggestedStartLocation);
+                }
+                catch
+                {
+                }
+            }
+
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(options);
+            if (files == null || files.Count == 0)
+            {
+                return;
+            }
+
+            string selectedPath = files[0].Path.LocalPath;
+            textBox.Text = selectedPath;
+            this.ApplySelectedFilePath(textBox.Tag, selectedPath);
+        }
+
+        // ###########################################################################################
+        // Returns the current file path for the given tagged row object.
+        // ###########################################################################################
+        private string? GetCurrentFilePath(object? tag)
+        {
+            return tag switch
+            {
+                ContributionComponentImageRow componentImageRow => componentImageRow.File,
+                ContributionComponentLocalFileRow componentLocalFileRow => componentLocalFileRow.File,
+                ContributionBoardLocalFileRow boardLocalFileRow => boardLocalFileRow.File,
+                _ => null
+            };
+        }
+
+        // ###########################################################################################
+        // Computes the best starting directory for the file picker based on the current file value.
+        // ###########################################################################################
+        private string? GetSuggestedStartLocation(string? currentPath)
+        {
+            string trimmed = currentPath?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return Directory.Exists(this.thisDataRoot) ? this.thisDataRoot : null;
+            }
+
+            if (Path.IsPathRooted(trimmed))
+            {
+                string? rootedDirectory = Path.GetDirectoryName(trimmed);
+                if (!string.IsNullOrWhiteSpace(rootedDirectory) && Directory.Exists(rootedDirectory))
+                {
+                    return rootedDirectory;
+                }
+            }
+
+            string combinedPath = Path.Combine(this.thisDataRoot, trimmed.Replace('/', Path.DirectorySeparatorChar));
+            string? combinedDirectory = Path.GetDirectoryName(combinedPath);
+            if (!string.IsNullOrWhiteSpace(combinedDirectory) && Directory.Exists(combinedDirectory))
+            {
+                return combinedDirectory;
+            }
+
+            return Directory.Exists(this.thisDataRoot) ? this.thisDataRoot : null;
+        }
+
+        // ###########################################################################################
+        // Persists the shared email address when the field loses focus and the value is valid.
+        // ###########################################################################################
+        private void OnEmailTextBoxLostFocus(object? sender, RoutedEventArgs e)
+        {
+            string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrEmpty(email) || Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            {
+                UserSettings.ContactEmail = email;
+            }
+        }
+
+        // ###########################################################################################
+        // Inserts a new row at the top of a collection so it becomes visible immediately.
+        // ###########################################################################################
+        private static void InsertRowAtTop<T>(ObservableCollection<T> collection, T row)
+        {
+            collection.Insert(0, row);
+        }
+
+        // ###########################################################################################
+        // Scrolls the contribution editor to the top of the main content area.
+        // ###########################################################################################
+        private void OnScrollToTopClick(object? sender, RoutedEventArgs e)
+        {
+            this.MainScrollViewer.Offset = new Vector(this.MainScrollViewer.Offset.X, 0);
+        }
+
+        // ###########################################################################################
+        // Scrolls the contribution editor to the bottom of the main content area.
+        // ###########################################################################################
+        private void OnScrollToBottomClick(object? sender, RoutedEventArgs e)
+        {
+            double bottomOffset = Math.Max(0, this.MainScrollViewer.Extent.Height - this.MainScrollViewer.Viewport.Height);
+            this.MainScrollViewer.Offset = new Vector(this.MainScrollViewer.Offset.X, bottomOffset);
+        }
+
+        // ###########################################################################################
+        // Updates the visible row counters for the editable contribution sections.
+        // ###########################################################################################
+        private void UpdateSectionCounters()
+        {
+            this.ComponentImagesCountTextBlock.Text = $"({this.thisComponentImageRows.Count})";
+            this.ComponentLocalFilesCountTextBlock.Text = $"({this.thisComponentLocalFileRows.Count})";
+            this.ComponentLinksCountTextBlock.Text = $"({this.thisComponentLinkRows.Count})";
+            this.BoardLocalFilesCountTextBlock.Text = $"({this.thisBoardLocalFileRows.Count})";
+            this.BoardLinksCountTextBlock.Text = $"({this.thisBoardLinkRows.Count})";
         }
 
     }

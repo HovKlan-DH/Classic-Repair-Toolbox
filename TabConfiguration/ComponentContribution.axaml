@@ -17,19 +17,28 @@
 			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
 		</Style>
 
+		<!-- Content area stays on the normal window background -->
 		<Style Selector="Expander /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
 		</Style>
 
+		<!-- Only the top expand/collapse header gets the alternate background -->
 		<Style Selector="Expander /template/ ToggleButton">
-			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
+			<Setter Property="Background" Value="{DynamicResource Table_Header_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Table_Header_Fg}" />
 		</Style>
 
 		<Style Selector="Expander /template/ Border">
 			<Setter Property="Background" Value="{DynamicResource Main_Bg}" />
 		</Style>
+
+		<Style Selector="Button.HighlightAddRowButton">
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
+			<Setter Property="Padding" Value="14,8" />
+		</Style>
 	</Window.Styles>
-	
+
 	<Grid RowDefinitions="Auto,*,Auto" Margin="16">
 
 		<Border Grid.Row="0"
@@ -47,32 +56,23 @@
 					           FontSize="14"
 					           FontWeight="SemiBold"
 					           Foreground="{DynamicResource Main_Header_Fg}" />
-					<TextBlock x:Name="BoardContextTextBlock"
+					<TextBlock x:Name="HardwareContextTextBlock"
 					           FontSize="12"
 					           Foreground="{DynamicResource Main_Header_Fg}" />
+					<TextBlock x:Name="BoardContextTextBlock"
+						   FontSize="12"
+						   Foreground="{DynamicResource Main_Header_Fg}" />
 					<TextBlock x:Name="RegionContextTextBlock"
 					           FontSize="12"
-					           Foreground="{DynamicResource Main_Header_Fg}" />
-				</StackPanel>
-
-				<StackPanel Grid.Column="2" Spacing="4">
-					<TextBlock Text="Email address (optional, but required if you want a reply):"
-					           FontSize="12" />
-					<TextBox x:Name="EmailTextBox"
-					         Watermark="your.email@example.com"
-					         Background="{DynamicResource Main_InputField_Bg}"
-					         Foreground="{DynamicResource Main_InputField_Fg}" />
-					<TextBlock Text="Edit the data below, then describe your changes in the mandatory comment field."
-					           FontSize="11"
-					           TextWrapping="Wrap"
 					           Foreground="{DynamicResource Main_Header_Fg}" />
 				</StackPanel>
 			</Grid>
 		</Border>
 
-		<ScrollViewer Grid.Row="1"
-		              VerticalScrollBarVisibility="Auto"
-		              HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer x:Name="MainScrollViewer"
+				  Grid.Row="1"
+				  VerticalScrollBarVisibility="Auto"
+				  HorizontalScrollBarVisibility="Disabled">
 			<StackPanel Spacing="16">
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
@@ -85,7 +85,7 @@
 						           FontWeight="Bold" />
 						<TextBlock TextWrapping="Wrap"
 						           Foreground="{DynamicResource Main_Fg}">
-							All rows below are editable suggestions. The current values are preloaded from the board data. When submitted, the full edited payload is sent to the developer for review together with your mandatory comment.
+							All data below is editable suggestions. The current values are preloaded from the board data. When submitted, the full edited payload is sent to the developer for review together with your comment. Please do provide your email, in case of any follow-up questions or confirmations that this has been accepted or rejected.
 						</TextBlock>
 					</StackPanel>
 				</Border>
@@ -96,17 +96,17 @@
 				        Padding="12">
 					<Expander IsExpanded="True">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Components"'
+							<TextBlock Text='Component'
 							           FontSize="15"
 							           FontWeight="Bold" />
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-							Margin="0,10,0,0"
-							HorizontalAlignment="Stretch">
-							<TextBlock Text="Existing component rows"
-							   FontSize="12"
-							   Foreground="{DynamicResource Main_Header_Fg}" />
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
+							<TextBlock Text="Component"
+							           FontSize="12"
+							           Foreground="{DynamicResource Main_Header_Fg}" />
 
 							<ItemsControl x:Name="ComponentRowsItemsControl">
 								<ItemsControl.ItemTemplate>
@@ -143,11 +143,6 @@
 													         AcceptsReturn="True"
 													         TextWrapping="Wrap"
 													         MinHeight="84" />
-
-													<Button Content="Remove row"
-													        HorizontalAlignment="Right"
-													        Tag="{Binding}"
-													        Click="OnRemoveComponentRowClick" />
 												</StackPanel>
 											</Grid>
 										</Border>
@@ -159,25 +154,35 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12">
-					<Expander IsExpanded="True">
+						BorderThickness="1"
+						CornerRadius="6"
+						Padding="12">
+					<Expander IsExpanded="False">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Component images"'
-							           FontSize="15"
-							           FontWeight="Bold" />
+							<StackPanel Orientation="Horizontal" Spacing="4">
+								<TextBlock Text="Component images"
+										   FontSize="15"
+										   FontWeight="Bold" />
+								<TextBlock x:Name="ComponentImagesCountTextBlock"
+										   Text="(0)"
+										   FontSize="15"
+										   FontWeight="Bold" />
+							</StackPanel>
 						</Expander.Header>
 
-						<StackPanel Spacing="10"
-								Margin="0,10,0,0"
-								HorizontalAlignment="Stretch">
-							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
-								<TextBlock Text="Image rows"
-								           FontSize="12"
-								           Foreground="{DynamicResource Main_Header_Fg}" />
+					<StackPanel Spacing="10"
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="*,Auto"
+							      HorizontalAlignment="Stretch"
+							      Margin="0,0,0,16">
+								<TextBlock x:Name="ComponentImagesRegionTextBlock"
+									   FontSize="12"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Header_Fg}" />
 								<Button Grid.Column="1"
-								        Content="Add row"
+								        Classes="HighlightAddRowButton"
+								        Content="Add new component image"
 								        Click="OnAddComponentImageRowClick" />
 							</Grid>
 
@@ -189,15 +194,20 @@
 										        CornerRadius="4"
 										        Padding="8"
 										        Margin="0,0,0,8">
-											<Grid ColumnDefinitions="220,12,*">
+											<Grid ColumnDefinitions="320,16,*">
 												<Grid Grid.Column="0"
-													  Height="180"
+													  Height="260"
+													  Margin="6"
 													  ClipToBounds="True"
-													  Background="{DynamicResource Main_Bg}">
-													<Image Source="{Binding PreviewImage}"
-														   Stretch="Uniform"
-														   HorizontalAlignment="Stretch"
-														   VerticalAlignment="Stretch" />
+													  Background="Transparent">
+													<Viewbox Stretch="Uniform"
+															 HorizontalAlignment="Stretch"
+															 VerticalAlignment="Stretch">
+														<Border Background="{DynamicResource ComponentPopup_ImageTransparent_Bg}">
+															<Image Source="{Binding PreviewImage}"
+																   Stretch="None" />
+														</Border>
+													</Viewbox>
 												</Grid>
 
 												<Grid Grid.Column="2" ColumnDefinitions="*,12,*">
@@ -221,10 +231,10 @@
 
 														<TextBlock Text="File" FontSize="11" />
 														<TextBox Text="{Binding File}"
-															 Tag="{Binding}"
-															 IsReadOnly="True"
-															 Cursor="Hand"
-															 PointerPressed="OnFileTextBoxPointerPressed" />
+														         Tag="{Binding}"
+														         IsReadOnly="True"
+														         Cursor="Hand"
+														         PointerReleased="OnFileTextBoxPointerReleased" />
 
 														<TextBlock Text="Note" FontSize="11" />
 														<TextBox Text="{Binding Note}"
@@ -232,7 +242,7 @@
 														         TextWrapping="Wrap"
 														         MinHeight="84" />
 
-														<Button Content="Remove row"
+														<Button Content="Remove image"
 														        HorizontalAlignment="Right"
 														        Tag="{Binding}"
 														        Click="OnRemoveComponentImageRowClick" />
@@ -248,31 +258,44 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12">
+						BorderThickness="1"
+						CornerRadius="6"
+						Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Component local files"'
-							           FontSize="15"
-							           FontWeight="Bold" />
+							<StackPanel Orientation="Horizontal" Spacing="4">
+								<TextBlock Text="Component local files"
+										   FontSize="15"
+										   FontWeight="Bold" />
+								<TextBlock x:Name="ComponentLocalFilesCountTextBlock"
+										   Text="(0)"
+										   FontSize="15"
+										   FontWeight="Bold" />
+							</StackPanel>
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-								Margin="0,10,0,0"
-								HorizontalAlignment="Stretch">
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
-								<TextBlock Text="One row equals one data point"
-								           FontSize="12"
-								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<StackPanel Grid.Column="0" Spacing="2">
+									<TextBlock Text="Describe all files specifically for this component."
+											   FontSize="12"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+									<TextBlock Text="This could e.g. be datasheets, technical instructions, manuals or whatever is relevant specifically for this component."
+											   FontSize="12"
+											   TextWrapping="Wrap"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+								</StackPanel>
 								<Button Grid.Column="1"
-								        Content="Add row"
-								        Click="OnAddComponentLocalFileRowClick" />
+										Classes="HighlightAddRowButton"
+										Content="Add new component file"
+										Click="OnAddComponentLocalFileRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-								  Margin="0,0,0,6"
-								  HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+									  Margin="0,0,0,6"
+									  HorizontalAlignment="Stretch">
 								<TextBlock Text="Board label" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="4" Text="File" FontSize="11" FontWeight="Bold" />
@@ -281,20 +304,19 @@
 							<ItemsControl x:Name="ComponentLocalFileRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionComponentLocalFileRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-										        BorderThickness="0,0,0,1"
-										        Padding="0,6">
-											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-												  Margin="0,0,0,6"
-												  HorizontalAlignment="Stretch">
+										<Border BorderThickness="0"
+										        Background="Transparent"
+										        Padding="0,4">
+											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+											      HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding BoardLabel}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4"
-													 Text="{Binding File}"
-													 Tag="{Binding}"
-													 IsReadOnly="True"
-													 Cursor="Hand"
-													 PointerPressed="OnFileTextBoxPointerPressed" />
+												         Text="{Binding File}"
+												         Tag="{Binding}"
+												         IsReadOnly="True"
+												         Cursor="Hand"
+												         PointerReleased="OnFileTextBoxPointerReleased" />
 												<Button Grid.Column="6"
 												        Content="Remove"
 												        Tag="{Binding}"
@@ -309,29 +331,42 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12">
+						BorderThickness="1"
+						CornerRadius="6"
+						Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Component links"'
-							           FontSize="15"
-							           FontWeight="Bold" />
+							<StackPanel Orientation="Horizontal" Spacing="4">
+								<TextBlock Text="Component links"
+										   FontSize="15"
+										   FontWeight="Bold" />
+								<TextBlock x:Name="ComponentLinksCountTextBlock"
+										   Text="(0)"
+										   FontSize="15"
+										   FontWeight="Bold" />
+							</StackPanel>
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-								Margin="0,10,0,0"
-								HorizontalAlignment="Stretch">
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
-								<TextBlock Text="One row equals one data point"
-								           FontSize="12"
-								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<StackPanel Grid.Column="0" Spacing="2">
+									<TextBlock Text="Describe all links specifically for this component."
+											   FontSize="12"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+									<TextBlock Text="This could links for technical instructions or basically any link relevant specifically for this component."
+											   FontSize="12"
+											   TextWrapping="Wrap"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+								</StackPanel>
 								<Button Grid.Column="1"
-								        Content="Add row"
-								        Click="OnAddComponentLinkRowClick" />
+										Classes="HighlightAddRowButton"
+										Content="Add new component link"
+										Click="OnAddComponentLinkRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
 								  Margin="0,0,0,6"
 								  HorizontalAlignment="Stretch">
 								<TextBlock Text="Board label" FontSize="11" FontWeight="Bold" />
@@ -342,12 +377,11 @@
 							<ItemsControl x:Name="ComponentLinkRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionComponentLinkRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-										        BorderThickness="0,0,0,1"
-										        Padding="0,6">
-											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-												  Margin="0,0,0,6"
-												  HorizontalAlignment="Stretch">
+										<Border BorderThickness="0"
+										        Background="Transparent"
+										        Padding="0,4">
+											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+												HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding BoardLabel}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4" Text="{Binding Url}" />
@@ -365,29 +399,42 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12">
+						BorderThickness="1"
+						CornerRadius="6"
+						Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Board local files"'
-							           FontSize="15"
-							           FontWeight="Bold" />
+							<StackPanel Orientation="Horizontal" Spacing="4">
+								<TextBlock Text="Board local files"
+										   FontSize="15"
+										   FontWeight="Bold" />
+								<TextBlock x:Name="BoardLocalFilesCountTextBlock"
+										   Text="(0)"
+										   FontSize="15"
+										   FontWeight="Bold" />
+							</StackPanel>
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-								Margin="0,10,0,0"
-								HorizontalAlignment="Stretch">
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
-								<TextBlock Text="One row equals one data point"
-								           FontSize="12"
-								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<StackPanel Grid.Column="0" Spacing="2">
+									<TextBlock Text="Describe all files specifically for the board."
+											   FontSize="12"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+									<TextBlock Text="These files are more generic and cover e.g. service or troubleshooting manuals, that can be used for the entire board."
+											   FontSize="12"
+											   TextWrapping="Wrap"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+								</StackPanel>
 								<Button Grid.Column="1"
-								        Content="Add row"
-								        Click="OnAddBoardLocalFileRowClick" />
+										Classes="HighlightAddRowButton"
+										Content="Add new board file"
+										Click="OnAddBoardLocalFileRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
+							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
 								  Margin="0,0,0,6"
 								  HorizontalAlignment="Stretch">
 								<TextBlock Text="Category" FontSize="11" FontWeight="Bold" />
@@ -398,20 +445,19 @@
 							<ItemsControl x:Name="BoardLocalFileRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionBoardLocalFileRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-										        BorderThickness="0,0,0,1"
-										        Padding="0,6">
-											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-												  Margin="0,0,0,6"
-												  HorizontalAlignment="Stretch">
+										<Border BorderThickness="0"
+										        Background="Transparent"
+										        Padding="0,4">
+											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+												HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding Category}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4"
-														 Text="{Binding File}"
-														 Tag="{Binding}"
-														 IsReadOnly="True"
-														 Cursor="Hand"
-														 PointerPressed="OnFileTextBoxPointerPressed" />
+												         Text="{Binding File}"
+												         Tag="{Binding}"
+												         IsReadOnly="True"
+												         Cursor="Hand"
+												         PointerReleased="OnFileTextBoxPointerReleased" />
 												<Button Grid.Column="6"
 												        Content="Remove"
 												        Tag="{Binding}"
@@ -426,31 +472,44 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12">
+						BorderThickness="1"
+						CornerRadius="6"
+						Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
-							<TextBlock Text='Sheet "Board links"'
-							           FontSize="15"
-							           FontWeight="Bold" />
+							<StackPanel Orientation="Horizontal" Spacing="4">
+								<TextBlock Text="Board links"
+										   FontSize="15"
+										   FontWeight="Bold" />
+								<TextBlock x:Name="BoardLinksCountTextBlock"
+										   Text="(0)"
+										   FontSize="15"
+										   FontWeight="Bold" />
+							</StackPanel>
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-								Margin="0,10,0,0"
-								HorizontalAlignment="Stretch">
+						            Margin="0,10,0,0"
+						            HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
-								<TextBlock Text="One row equals one data point"
-								           FontSize="12"
-								           Foreground="{DynamicResource Main_Header_Fg}" />
+								<StackPanel Grid.Column="0" Spacing="2">
+									<TextBlock Text="Describe all links specifically for the board."
+											   FontSize="12"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+									<TextBlock Text="These links could typically be for content covering this board, e.g. board repairing histories or YouTube videos specifically for this board."
+											   FontSize="12"
+											   TextWrapping="Wrap"
+											   Foreground="{DynamicResource Main_Header_Fg}" />
+								</StackPanel>
 								<Button Grid.Column="1"
-								        Content="Add row"
-								        Click="OnAddBoardLinkRowClick" />
+										Classes="HighlightAddRowButton"
+										Content="Add new board link"
+										Click="OnAddBoardLinkRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-								  Margin="0,0,0,6"
-								  HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+									  Margin="0,0,0,6"
+									  HorizontalAlignment="Stretch">
 								<TextBlock Text="Category" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="4" Text="URL" FontSize="11" FontWeight="Bold" />
@@ -459,12 +518,11 @@
 							<ItemsControl x:Name="BoardLinkRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionBoardLinkRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
-										        BorderThickness="0,0,0,1"
-										        Padding="0,6">
-											<Grid ColumnDefinitions="180,12,220,12,*,12,Auto"
-												  Margin="0,0,0,6"
-												  HorizontalAlignment="Stretch">
+										<Border BorderThickness="0"
+										        Background="Transparent"
+										        Padding="0,4">
+											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+												HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding Category}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4" Text="{Binding Url}" />
@@ -487,13 +545,17 @@
 				        Padding="12"
 				        Margin="0,0,0,4">
 					<StackPanel Spacing="6">
-						<TextBlock Text="Mandatory change comment"
+						<TextBlock Text="Mandatory comment for your changes"
 						           FontSize="15"
 						           FontWeight="Bold" />
-						<TextBlock Text="Describe what you changed, what was wrong or missing, and anything the developer should verify."
+						<TextBlock Text="Describe what you have changed, what was wrong or missing, and anything the developer should verify."
 						           FontSize="11"
 						           Foreground="{DynamicResource Main_Header_Fg}"
 						           TextWrapping="Wrap" />
+						<TextBlock Text="Also do document your specific board revision, as that maybe be important (if board has more revisions)."
+								   FontSize="11"
+								   Foreground="{DynamicResource Main_Header_Fg}"
+								   TextWrapping="Wrap" />
 						<TextBox x:Name="MandatoryCommentTextBox"
 						         AcceptsReturn="True"
 						         TextWrapping="Wrap"
@@ -506,12 +568,26 @@
 			</StackPanel>
 		</ScrollViewer>
 
-		<Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+		<Grid Grid.Row="2" ColumnDefinitions="Auto,320,16,*,Auto" Margin="0,12,0,0">
+			<TextBlock Grid.Column="0"
+					   Text="Email address:"
+					   VerticalAlignment="Center"
+					   FontSize="12"
+					   Margin="0,0,8,0" />
+
+			<TextBox x:Name="EmailTextBox"
+					 Grid.Column="1"
+					 Watermark="your.email@example.com"
+					 Background="{DynamicResource Main_InputField_Bg}"
+					 Foreground="{DynamicResource Main_InputField_Fg}"
+					 VerticalAlignment="Center"
+					 LostFocus="OnEmailTextBoxLostFocus" />
+
 			<TextBlock x:Name="StatusTextBlock"
-			           Grid.Column="0"
-			           VerticalAlignment="Center"
-			           FontWeight="Bold"
-			           IsVisible="False">
+					   Grid.Column="3"
+					   VerticalAlignment="Center"
+					   FontWeight="Bold"
+					   IsVisible="False">
 				<TextBlock.Styles>
 					<Style Selector="TextBlock.success">
 						<Setter Property="Foreground" Value="{DynamicResource Feedback_SubmittedOk_Fg}" />
@@ -522,16 +598,20 @@
 				</TextBlock.Styles>
 			</TextBlock>
 
-			<StackPanel Grid.Column="1"
-			            Orientation="Horizontal"
-			            Spacing="8">
+			<StackPanel Grid.Column="4"
+						Orientation="Horizontal"
+						Spacing="8">
+				<Button Content="▲"
+						Click="OnScrollToTopClick" />
+				<Button Content="▼"
+						Click="OnScrollToBottomClick" />
 				<Button Content="Cancel"
-				        Click="OnCancelClick" />
+						Click="OnCancelClick" />
 				<Button x:Name="SubmitButton"
-				        Content="Send contribution"
-				        Background="{DynamicResource AppThemeAccentBrush}"
-				        Foreground="{DynamicResource Feedback_Submit_Fg}"
-				        Click="OnSubmitClick" />
+						Content="Send contribution update"
+						Background="{DynamicResource AppThemeAccentBrush}"
+						Foreground="{DynamicResource Feedback_Submit_Fg}"
+						Click="OnSubmitClick" />
 			</StackPanel>
 		</Grid>
 	</Grid>

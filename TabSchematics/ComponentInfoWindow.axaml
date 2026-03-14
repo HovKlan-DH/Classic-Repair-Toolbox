@@ -323,7 +323,7 @@
 								BorderThickness="0,0,0,1"
 								Padding="0,0,0,4"
 								Margin="0,4,0,2">
-							<StackPanel Orientation="Horizontal" Spacing="5">
+							<StackPanel Orientation="Horizontal" Spacing="4">
 								<TextBlock Text="📁"
 										   FontSize="11"
 										   VerticalAlignment="Center" />
@@ -385,7 +385,7 @@
 								BorderThickness="0,0,0,1"
 								Padding="0,0,0,4"
 								Margin="0,4,0,2">
-							<StackPanel Orientation="Horizontal" Spacing="5">
+							<StackPanel Orientation="Horizontal" Spacing="4">
 								<TextBlock Text="🔗"
 										   FontSize="11"
 										   VerticalAlignment="Center" />
