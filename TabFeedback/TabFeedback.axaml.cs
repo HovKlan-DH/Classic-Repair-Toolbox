@@ -105,13 +105,13 @@ namespace CRT
 
             if (!string.IsNullOrEmpty(email) && !Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             {
-                this.ShowStatus("Please enter a valid email address.", isError: true);
+                this.ShowStatus("Please enter a valid email address", isError: true);
                 return;
             }
 
             if (string.IsNullOrEmpty(feedback))
             {
-                this.ShowStatus("Please provide a description of your issue or suggestion before sending.", isError: true);
+                this.ShowStatus("Please provide a description of your issue or suggestion before sending", isError: true);
                 return;
             }
 

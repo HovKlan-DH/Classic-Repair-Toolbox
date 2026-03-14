@@ -1,4 +1,41 @@
 
+# 1.2.0, 2026-March-14
+----------------------
+- Fixed it did show some board labels in wrong position in schematic image
+- Fixed it did not save main region selection
+- Fixed `ESCAPE` did not close active component info popup, if set to "Open multiple windows for popup" #84
+- Added possibility to reorder schematic thumbnails with mouse drag/drop
+- Added fullscreen mode - can also be enabled with `F11`
+- Added image counter per region in component info popup
+- Changed "Blink selected" checkbox is saved
+- Changed region buttons and labels will get removed if no region data present
+- Changed "About" tab
+- Changed a few colors - still an ongoing thing
+- Changed format for some logged events
+- Changed application icon
+- Changed display name in Windows from `Classic-Repair-Toolbox` to `Classic Repair Toolbox`
+- Refactored various code and texts
+
+
+# 1.1.0, 2026-March-9
+---------------------
+- Fixed traces are displayed correctly after a window resize #69
+- Fixed transparent images did not show correct background color in component info popup #79
+- Fixed `ESCAPE` and mouseclick outside of single-opened component info popup does not close window #68
+- Fixed wrong reporting of version when submitting feedback
+- Added traces will get focus when hovering it with mouse
+- Added drop-down selector in component info popup deciding functionality for mouse scrollwheel
+- Added option to undo deletion of traces
+- Added `BUILDING.md` file for help on local build compilation
+- Changed loading of main Excel data file to support strict binding between application and data versions #80
+- Changed it will show component info popup on same monitor as main application
+- Changed it will show mouse movement icon when panning image in "Schematics" tab
+- Changed standard colors for traces floating panel
+- Changed some themed colors (I believe this will be a long ongoing optimization)
+- Changed format for some logged events
+- Removed changelog from "About" tab
+
+
 # 1.0.0, 2026-March-7
 ---------------------
 - First public release
@@ -6,120 +43,120 @@
 
 # 0.1.14, 2026-March-7
 ----------------------
-* Changed format and text for log events
-* Various refactoring in code base
+- Changed format and text for log events
+- Various refactoring in code base
 
 
 # 0.1.13, 2026-March-7
 ----------------------
-* Various refactoring in code base
+- Various refactoring in code base
 
 
 # 0.1.12, 2026-March-6
 ----------------------
-* Fixed that full width is used in "Schematics" tab
-* Fixed manual trace could go beyond image area
-* Fixed transparent images in component info popup where black text could not be seen
-* Fixed CPU was not providing CPU architechture in the online check-in
-* Added "Feedback" tab
-* Added filtering of components in "Overview" tab
-* Removed "Type" column from table "Overview" tab
-* Removed "Help" tab (for now)
+- Fixed that full width is used in "Schematics" tab
+- Fixed manual trace could go beyond image area
+- Fixed transparent images in component info popup where black text could not be seen
+- Fixed CPU was not providing CPU architechture in the online check-in
+- Added "Feedback" tab
+- Added filtering of components in "Overview" tab
+- Removed "Type" column from table "Overview" tab
+- Removed "Help" tab (for now)
 
 
 # 0.1.11, 2026-March-6
 ----------------------
-* Fixed some compiler warnings
+- Fixed some compiler warnings
 
 
 # 0.1.9, 2026-March-6
 ---------------------
-* Fixed holding down right mouse button over component will not toggle selction in "Schematics" tab
-* Added option for manual traces in "Schematics" tab
-* Added component labelling in "Schematics" tab
-* Added option to use development relases
+- Fixed holding down right mouse button over component will not toggle selction in "Schematics" tab
+- Added option for manual traces in "Schematics" tab
+- Added component labelling in "Schematics" tab
+- Added option to use development relases
 
 
 # 0.1.8, 2026-March-5
 ---------------------
-* Added content in "Resources" tab
-* Added content in "Overview" tab
-* Add component input filter
-* Added region label in component info popup
-* Changed region buttons are static in size and move along with splitter in component info popup
-* Removed "Feedback" tab (for now)
-* Various refactoring in code base
+- Added content in "Resources" tab
+- Added content in "Overview" tab
+- Add component input filter
+- Added region label in component info popup
+- Changed region buttons are static in size and move along with splitter in component info popup
+- Removed "Feedback" tab (for now)
+- Various refactoring in code base
 
 
 # 0.1.7, 2026-March-4
 ---------------------
-* Added close button in component info popup
-* Added border to splashscreen
-* Added credits in "About" tab
-* Added top-left labels in "Schematics" tab
-* Added color for the two region buttons
-* Added link to release notes on new version
-* Changed region checkbox to buttons in component info popup
-* Changed window title for component info popup
-* Added that ENTER works similarly as SPACE in component info popup
-* Various minor UI and text changes
-* Various refactoring in code base
+- Added close button in component info popup
+- Added border to splashscreen
+- Added credits in "About" tab
+- Added top-left labels in "Schematics" tab
+- Added color for the two region buttons
+- Added link to release notes on new version
+- Changed region checkbox to buttons in component info popup
+- Changed window title for component info popup
+- Added that ENTER works similarly as SPACE in component info popup
+- Various minor UI and text changes
+- Various refactoring in code base
 
 
 # 0.1.6, 2026-March-3
 ---------------------
-* Added all data and (most) functionality to component info popup
-* Added it will log CPU architechture in the online check-in
-* Changed format and text for log events
-* Removed checkbox for "Open popup in maximized mode" in "Configuration" tab
+- Added all data and (most) functionality to component info popup
+- Added it will log CPU architechture in the online check-in
+- Changed format and text for log events
+- Removed checkbox for "Open popup in maximized mode" in "Configuration" tab
 
 
 # 0.1.5, 2026-March-2
 ---------------------
-* Changed from .NET10 to .NET6 (or newer)
-* Changed from x64 only to both x86+x64 (Windows)
+- Changed from .NET10 to .NET6 (or newer)
+- Changed from x64 only to both x86+x64 (Windows)
 
 
 # 0.1.4, 2026-March-2
 ---------------------
-* Fixed splashscreen is shown as early as possible in launch sequence
-* Fixed it did not remember last used monitor
-* Fixed some unhandled exceptions and added an "throw exception" as debug to logfile
-* Fixed it auto-closes open component info popup(s) when closing application
-* Added "Data" folder as part of GitHub project
-* Added information for missing images that needs to be fetched via online sync
-* Added refresh button after online sync and there were changes
-* Added checkbox for data validation in "Configuration" tab (only relevant when contributing with Excel files)
-* Added checkbox for debug log in "Configuration" tab
-* Added closure of component info popup when clicking mouse outside of window
-* Changed format and text for log events
+- Fixed splashscreen is shown as early as possible in launch sequence
+- Fixed it did not remember last used monitor
+- Fixed some unhandled exceptions and added an "throw exception" as debug to logfile
+- Fixed it auto-closes open component info popup(s) when closing application
+- Added "Data" folder as part of GitHub project
+- Added information for missing images that needs to be fetched via online sync
+- Added refresh button after online sync and there were changes
+- Added checkbox for data validation in "Configuration" tab (only relevant when contributing with Excel files)
+- Added checkbox for debug log in "Configuration" tab
+- Added closure of component info popup when clicking mouse outside of window
+- Changed format and text for log events
 
 
 # 0.1.3, 2026-March-1
 ---------------------
-* Fixed highlighting in schematic image was bound to "PAL" region only
-* Added functionality for blink button
-* Changed right-click in schematic will toggle component selection
-* Changed schematic thumbnails will dimm thumbnails without selected components
+- Fixed highlighting in schematic image was bound to "PAL" region only
+- Added functionality for blink button
+- Changed right-click in schematic will toggle component selection
+- Changed schematic thumbnails will dimm thumbnails without selected components
 
 
 # 0.1.2, 2026-March-1
 ---------------------
-* Renamed project to "Classic Repair Toolbox"
+- Renamed project to "Classic Repair Toolbox"
 
 
 # 0.1.1, 2026-March-1
 ---------------------
-* Fixed splashscreen would show a static text for version
-* Added two checkboxes for component information popup in "Configuration" tab
-* Added hovering on components in "Schematics" tab:
+- Fixed splashscreen would show a static text for version
+- Added two checkboxes for component information popup in "Configuration" tab
+- Added hovering on components in "Schematics" tab:
   - Label will show component name
   - Click to select component and open component information popup
   - Right-click to deselect component
-* Changed appearance switch to be a checkbox instead in "Configuration"
-* Various minor UI and text changes
+- Changed appearance switch to be a checkbox instead in "Configuration"
+- Various minor UI and text changes
 
 
 # 0.1.0, 2026-February-28
 -------------------------
-* Initial pre-release
+- Initial pre-release

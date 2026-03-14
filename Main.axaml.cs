@@ -1,4 +1,7 @@
 using Avalonia;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Media;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -177,7 +180,7 @@ namespace CRT
             else if (DataManager.DataUpdateRequiresAppUpdate)
             {
                 // Notify if they aren't checking for app updates but missing critical data updates
-                this.UpdateBannerText.Text = "Newer main Excel data file is available, but requires a newer application version. No more data updates will be given for this version.";
+                this.UpdateBannerText.Text = "Newer main Excel data file is available, but requires a newer application version. No more data updates will be given for this version";
                 this.UpdateBannerInstallButton.IsVisible = false;
                 this.UpdateBannerViewNotesButton.IsVisible = false;
                 this.UpdateBanner.IsVisible = true;
@@ -201,7 +204,7 @@ namespace CRT
             else if (DataManager.DataUpdateRequiresAppUpdate)
             {
                 // App Velopack doesn't see an update, but manifest demands one.
-                this.UpdateBannerText.Text = "Newer main Excel data file is available, but requires a newer application version. No more data updates will be given for this version.";
+                this.UpdateBannerText.Text = "Newer main Excel data file is available, but requires a newer application version. No more data updates will be given for this version";
                 this.UpdateBannerInstallButton.IsVisible = false;
                 this.UpdateBannerViewNotesButton.IsVisible = false;
                 this.UpdateBanner.IsVisible = true;
@@ -422,7 +425,7 @@ namespace CRT
                 }
                 catch (OutOfMemoryException ex)
                 {
-                    Logger.Debug(ex, "Failed to apply default category selection - group was too large to select.");
+                    Logger.Debug(ex, "Failed to apply default category selection - group was too large to select");
                 }
             }
             else
@@ -1012,7 +1015,7 @@ namespace CRT
             }
             catch (OutOfMemoryException ex)
             {
-                Logger.Debug(ex, "Failed to mark all components. The selection was too large to process.");
+                Logger.Debug(ex, "Failed to mark all components. The selection was too large to process");
             }
         }
 
@@ -1462,24 +1465,24 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Creates placeholder content shown in the Schematics tab while fullscreen mode is active.
+        // Creates placeholder content for the Schematics tab while fullscreen mode is active.
+        // Keeps the thumbnail list available so another schematic can be selected without closing
+        // the fullscreen window first.
         // ###########################################################################################
         private Control CreateSchematicsFullscreenPlaceholder()
         {
-            var textBlock = new TextBlock
+            double ratio = 0.70;
+            var boardKey = this.GetCurrentBoardKey();
+            if (!string.IsNullOrWhiteSpace(boardKey))
             {
-                Text = "Fullscreen mode active...",
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                FontSize = 16,
-                FontWeight = Avalonia.Media.FontWeight.SemiBold
-            };
-            textBlock.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("Main_Fg"));
+                ratio = Math.Clamp(UserSettings.GetSchematicsSplitterRatio(boardKey), 0.1, 0.9);
+            }
 
-            return new Border
-            {
-                Child = textBlock
-            };
+            var hostedThumbnailList = this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList");
+
+            var placeholder = new SchematicsFullscreenPlaceholder();
+            placeholder.Initialize(this.TabSchematicsControl.currentThumbnails, hostedThumbnailList, ratio);
+            return placeholder;
         }
 
         // ###########################################################################################

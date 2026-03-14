@@ -336,7 +336,7 @@
 								  Height="{Binding PlaceholderHeight}"
 								  Width="{Binding PlaceholderWidth}"
 								  HorizontalAlignment="Left">
-								<Border BorderBrush="Red"
+								<Border BorderBrush="{DynamicResource Thumbnail_BorderSelected}"
 										BorderThickness="2"
 										Background="#10FF0000" />
 							</Grid>

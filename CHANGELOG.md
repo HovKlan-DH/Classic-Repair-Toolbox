@@ -1,28 +1,14 @@
-- Fixed it showed some board labels in wrong position in schematric image
+- Fixed it did show some board labels in wrong position in schematic image
 - Fixed it did not save main region selection
 - Fixed `ESCAPE` did not close active component info popup, if set to "Open multiple windows for popup" #84
 - Added possibility to reorder schematic thumbnails with mouse drag/drop
-- Changed "Blink selected" checkbox is saved to settings
-- Changed display name in Windows from `Classic-Repair-Toolbox` to `Classic Repair Toolbox`
-- Changed a few colors
-- Changed format for some logged events
-- changed application icon
+- Added fullscreen mode - can also be enabled with `F11`
+- Added image counter per region in component info popup
+- Changed "Blink selected" checkbox is saved
+- Changed region buttons and labels will get removed if no region data present
 - Changed "About" tab
-- Refactored various code and texts
-
-OLD RELEASE - REMOVE:
-- Fixed traces are displayed correctly after a window resize #69
-- Fixed transparent images did not show correct background color in component info popup #79
-- Fixed `ESCAPE` and mouseclick outside of single-opened component info popup does not close window #68
-- Fixed wrong reporting of version when submitting feedback
-- Added traces will get focus when hovering it with mouse
-- Added drop-down selector in component info popup deciding functionality for mouse scrollwheel
-- Added option to undo deletion of traces
-- Added `BUILDING.md` file for help on local build compilation
-- Changed loading of main Excel data file to support strict binding between application and data versions #80
-- Changed it will show component info popup on same monitor as main application
-- Changed it will show mouse movement icon when panning image in "Schematics" tab
-- Changed standard colors for traces floating panel
-- Changed some themed colors (I believe this will be a long ongoing optimization)
+- Changed a few colors - still an ongoing thing
 - Changed format for some logged events
-- Removed changelog from "About" tab
+- Changed application icon
+- Changed display name in Windows from `Classic-Repair-Toolbox` to `Classic Repair Toolbox`
+- Refactored various code and texts
