@@ -1,6 +1,6 @@
 # Classic Repair Toolbox
 
-_Classic Repair Toolbox_ (or **CRT** hence forward) is a utility tool for repairing and diagnosing vintage computers and peripherals.
+_Classic Repair Toolbox_ (or **CRT** hence forward) is a cross-platform desktop application to assist hardware enthusiasts in diagnosing, troubleshooting, and repairing vintage computers and peripherals.
 
 The project is a direct spin-off from an older project, **Commodore Repair Toolbox** which now resides in a faint and distant memory only. The new _Classic_ project (compared to _Commodore_) was realized as a complete rewrite, to be able to natively support **Linux** and **macOS**, but also to be able to support more hardware and not focus primarily on Commodore (Amstrad, Spectrum?).
 
