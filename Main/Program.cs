@@ -2,7 +2,7 @@
 using Avalonia;
 using System;
 
-namespace Classic_Repair_Toolbox
+namespace Main
 {
     internal class Program
     {

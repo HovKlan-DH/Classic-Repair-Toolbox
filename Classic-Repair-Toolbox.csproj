@@ -44,7 +44,7 @@
     <Compile Update="Tabs\Feedback\TabFeedback.axaml.cs">
       <DependentUpon>TabFeedback.axaml</DependentUpon>
     </Compile>
-    <Compile Update="Main.axaml.cs">
+    <Compile Update="Main\Main.axaml.cs">
       <DependentUpon>Main.axaml</DependentUpon>
     </Compile>
     <Compile Update="Tabs\Overview\TabOverview.axaml.cs">
@@ -55,7 +55,7 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <Compile Update="Splash.axaml.cs">
+    <Compile Update="Main\Splash.axaml.cs">
       <DependentUpon>Splash.axaml</DependentUpon>
     </Compile>
   </ItemGroup>
