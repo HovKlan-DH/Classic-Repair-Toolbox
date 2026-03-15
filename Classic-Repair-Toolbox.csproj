@@ -41,7 +41,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="TabFeedback\TabFeedback.axaml.cs">
+    <Compile Update="Tabs\Feedback\TabFeedback.axaml.cs">
       <DependentUpon>TabFeedback.axaml</DependentUpon>
     </Compile>
     <Compile Update="Main.axaml.cs">
