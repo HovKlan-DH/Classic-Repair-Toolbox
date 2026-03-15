@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Classic_Repair_Toolbox.TabSchematics;
+using DataHandling;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -1547,10 +1548,9 @@ public partial class TabSchematics : UserControl
         this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
         this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
 
-        var dragData = new DataObject();
-        dragData.Set("SchematicThumbnail", this.thisDraggedThumbnail);
+        var dragData = new DataTransfer();
 
-        var effect = await DragDrop.DoDragDrop(e, dragData, DragDropEffects.Move);
+        var effect = await DragDrop.DoDragDropAsync(e, dragData, DragDropEffects.Move);
 
         if (effect != DragDropEffects.Move && this.thisDraggedThumbnail != null)
         {
@@ -1749,7 +1749,7 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     private void OnThumbnailDragOver(object? sender, DragEventArgs e)
     {
-        if (!e.Data.Contains("SchematicThumbnail") || this.thisDraggedThumbnail == null)
+        if (this.thisDraggedThumbnail == null)
         {
             e.DragEffects = DragDropEffects.None;
             e.Handled = true;
@@ -1850,7 +1850,7 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     private void OnThumbnailDrop(object? sender, DragEventArgs e)
     {
-        if (!e.Data.Contains("SchematicThumbnail") || this.thisDraggedThumbnail == null)
+        if (this.thisDraggedThumbnail == null)
         {
             e.Handled = true;
             return;

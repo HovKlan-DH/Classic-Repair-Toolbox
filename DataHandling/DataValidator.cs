@@ -2,7 +2,7 @@
 using System.IO;
 using System.Threading.Tasks;
 
-namespace CRT
+namespace DataHandling
 {
     public static class DataValidator
     {

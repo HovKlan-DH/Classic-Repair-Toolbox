@@ -1,4 +1,4 @@
-﻿namespace CRT
+﻿namespace DataHandling
 {
     // ###########################################################################################
     // Represents a single hardware/board entry from the main Excel data file.

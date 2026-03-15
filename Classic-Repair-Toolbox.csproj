@@ -11,6 +11,7 @@
         <OutputType>WinExe</OutputType>
 		<TargetFrameworks>net6.0;net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>
+		<NoWarn>$(NoWarn);NETSDK1138</NoWarn>
         <Nullable>enable</Nullable>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>

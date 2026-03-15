@@ -1,5 +1,6 @@
 - Fixed vertical table header/cell misalignment in "Overview" tab
 - Added "Contribute" tab
+- Added (experimental) YouTube channel for showcasing specific functionalities
 - Refactored various code and texts
 
 #OLD CHANGELOG

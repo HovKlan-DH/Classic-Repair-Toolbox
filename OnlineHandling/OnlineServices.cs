@@ -1,4 +1,6 @@
-﻿using System;
+﻿using CRT;
+using DataHandling;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -9,7 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace CRT
+namespace OnlineHandling
 {
     internal sealed class DataFileEntry
     {

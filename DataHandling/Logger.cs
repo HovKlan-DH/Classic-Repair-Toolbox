@@ -1,8 +1,9 @@
-﻿using System;
+﻿using CRT;
+using System;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace CRT
+namespace DataHandling
 {
     public enum LogCategory
     {

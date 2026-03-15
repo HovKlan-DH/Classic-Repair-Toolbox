@@ -17,6 +17,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using DataHandling;
 
 namespace CRT
 {
@@ -108,6 +109,11 @@ namespace CRT
         private string thisBoardLabel = string.Empty;
         private string thisComponentDisplayText = string.Empty;
         private string thisDataRoot = string.Empty;
+
+        private static readonly JsonSerializerOptions thisContributionPayloadJsonOptions = new()
+        {
+            WriteIndented = true
+        };
 
         public ComponentContributionWindow()
         {
@@ -517,10 +523,7 @@ namespace CRT
             progress.Report("Preparing contribution payload...");
 
             var payload = this.BuildPayload(email, comment);
-            string payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            string payloadJson = JsonSerializer.Serialize(payload, thisContributionPayloadJsonOptions);
 
             using var memoryStream = new MemoryStream();
 

@@ -16,6 +16,8 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using TabSchematics;
+using DataHandling;
+using OnlineHandling;
 
 namespace CRT
 {

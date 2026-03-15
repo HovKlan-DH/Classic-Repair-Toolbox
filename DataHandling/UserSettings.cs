@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CRT;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace CRT
+namespace DataHandling
 {
     // ###########################################################################################
     // Persisted user preferences model. Defaults to enabled for all online features.

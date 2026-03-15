@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace CRT
+namespace DataHandling
 {
     internal static class BoardDataReader
     {

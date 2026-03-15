@@ -1,9 +1,11 @@
-﻿using System;
+﻿using CRT;
+using DataHandling;
+using System;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
 
-namespace CRT
+namespace OnlineHandling
 {
     // ###########################################################################################
     // Handles checking for, downloading, and applying application updates via Velopack.
