@@ -134,7 +134,7 @@ I want to be transparent here, and inform that I am gathering information about 
   - Used for pinning countries on a worldmap
 - Operating system version
   - Ex. `Microsoft Windows 10.0.19045`
-  - Used for knowing where to put the most effort
+  - Used for knowing if my rewrite to natively support Linux and macOS was worth it
 - CPU architechture used (32-bit or 64-bit)
   - Ex. `64-bit`
   - Used for knowing how wide usage that pesky self-contained .NET6 has
