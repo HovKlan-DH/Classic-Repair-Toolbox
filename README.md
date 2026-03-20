@@ -172,6 +172,13 @@ One possibility to contribute data is by submitting it directly to the GitHub re
 There are of course more details to this, but please let me know if this does _not_ work for you.
 
 
+### Installing in Linux
+
+As per default the Linux package is a one-large binary package that can be run directly from whereever you have downloaded it - it will not install anything on system. If you want to have the _CRT_ application and icon available in your "Start" menu (not sure what this is called in Linux?), then you can install it with an application manager like e.g. **Gear Lever**. Just open **Gear Lever** and drag the _CRT_ file in to it, and afterwards you will be able to access it nice and easily:
+
+<img width="902" height="578" alt="image" src="https://github.com/user-attachments/assets/13edb9d5-8b61-4259-bcc7-e0986d88ed51" />
+
+
 ### Compiling yourself
 
 You can view the details in [BUILDING.md](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/BUILDING.md)
