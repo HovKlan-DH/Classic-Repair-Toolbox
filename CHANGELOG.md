@@ -1,3 +1,6 @@
+
+# OLD CHANGELOG
+
 - Fixed deselecting component from a filtered list did not remove highligting in schematic image
 - Fixed vertical table header/cell misalignment in "Overview" tab
 - Fixed thumbnails in component info popup also shows a lighter background color on transparent images
