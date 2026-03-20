@@ -306,10 +306,11 @@ jobs:
         run: |
           vpk pack \
             --packId ${{ env.PACK_ID }} \
+            --packTitle "Classic Repair Toolbox" \
             --packVersion ${{ steps.ver.outputs.version }} \
             --packDir publish/linux-x64 \
             --mainExe ${{ env.EXE_UNIX }} \
-            --icon "Assets/CRT_icon.ico" \
+            --icon "Assets/CRT_icon.png" \
             --outputDir velopack-output
 
       - name: Upload Velopack artifacts
@@ -391,6 +392,7 @@ jobs:
         run: |
           vpk pack \
             --packId ${{ env.PACK_ID }} \
+            --packTitle "Classic Repair Toolbox" \
             --packVersion ${{ steps.ver.outputs.version }} \
             --packDir publish/macos-arm64 \
             --mainExe ${{ env.EXE_UNIX }} \
@@ -403,6 +405,7 @@ jobs:
         run: |
           vpk pack \
             --packId ${{ env.PACK_ID }} \
+            --packTitle "Classic Repair Toolbox" \
             --packVersion ${{ steps.ver.outputs.version }} \
             --packDir publish/macos-x64 \
             --mainExe ${{ env.EXE_UNIX }} \

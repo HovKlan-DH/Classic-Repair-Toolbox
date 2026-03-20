@@ -1,8 +1,8 @@
 # Classic Repair Toolbox
 
-_Classic Repair Toolbox_ (or **CRT** hence forward) is a utility tool for repairing and diagnosing vintage computers and peripherals.
+_Classic Repair Toolbox_ (or **CRT** hence forward) is a cross-platform desktop application to assist hardware enthusiasts in diagnosing, troubleshooting, and repairing vintage computers and peripherals.
 
-The project is a direct spin-off from an older project, **Commodore Repair Toolbox** which now resides in a faint and distant memory only. The new _Classic_ project (compared to _Commodore_) was realized as a complete rewrite, to be able to natively support **Linux** and **macOS**, but also to be able to support more hardware and not focus primarily on Commodore (Amstrad, Spectrum?).
+The project is a direct spin-off from an older project, **Commodore Repair Toolbox** which now resides in a faint and distant memory only. The new _Classic_ project (compared to _Commodore_) was realized as a complete rewrite, to be able to add natively support for **Linux** and **macOS**, but also to be able to support more hardware and not focus primarily on Commodore (Amstrad, Spectrum?).
 
 
 ## What is it?
@@ -21,12 +21,12 @@ It is (for now) primarily dedicated to Commodore, and have several built-in prof
 - [Help wanted](#help-wanted)
 - [Contact developer](#contact-developer)
 - [Technical topics](#technical-topics)
-- [YouTube videos available as quick-help](#youtube-videos-available-as-quick-help)
-- [Information automatically collected by CRT](#information-automatically-collected-by-crt)
-- [Commandline parameters](#commandline-parameters)
-- [How to contribute with data to CRT GitHub repository?](#how-to-contribute-with-data-to-crt-github-repository)
-- [Compiling for Linux](#compiling-for-linux)
-- [Development tools used](#development-tools-used)
+  - [YouTube Quick-Help videos available](#youtube-quick-help-videos-available)
+  - [Information automatically collected by CRT](#information-automatically-collected-by-crt)
+  - [Commandline parameters](#commandline-parameters)
+  - [How to contribute with data to CRT GitHub repository?](#how-to-contribute-with-data-to-crt-github-repository)
+  - [Compiling yourself](#compiling-yourself)
+  - [Development tools used](#development-tools-used)
 - [Inspiration for building this application](#inspiration-for-building-this-application)
 - [Screenshots](#screenshots)
 
@@ -89,7 +89,7 @@ When a new version is released it will be shown to you in the application, and y
 Note that .NET is embedded in application, which means you do not need to have this installed. It also does mean that even if you have .NET installed on your computer, then it will still use the one embedded in application. As .NET6 is the newest version supported on **Windows 7**, then this is the .NET version included with the Windows 32-bit installer.
 
 > [!CAUTION]
-> .NET6 has gone **End-of-Life in 2024**, and has not received any security hotfixes since then!
+> .NET6 used for Windows 32-bit has gone **End-of-Life in 2024**, and has not received any security hotfixes since then!
 
 If possible then you should use the newer _CRT_ 64-bit installer, which embeds the newest available [.NET10 LTS](https://github.com/dotnet/core/blob/main/release-notes/10.0/README.md) (Long-Term-Support) at release date.
 
@@ -118,11 +118,12 @@ There are several ways to get in contact with the developer:
 
 ## Technical topics
 
-### YouTube videos available as quick-help
+### YouTube Quick-Help videos available
 
-You can view this (one only for now) YouTube video as a helper for specific topics in _CRT_:
+You can view the below _Quick Help_ videos for introduction to specific topics in _CRT_:
 
-- [How to do manual traces](https://youtu.be/fHSua0hHZ5E)
+- [Short introduction](https://youtu.be/B36etv0zOMo)
+- [How to do manual traces](https://youtu.be/JUNXeCHsrME)
 
 
 ### Information automatically collected by CRT
@@ -134,12 +135,12 @@ I want to be transparent here, and inform that I am gathering information about 
   - Used for pinning countries on a worldmap
 - Operating system version
   - Ex. `Microsoft Windows 10.0.19045`
-  - Used for knowing where to put the most effort
+  - Used for knowing if my rewrite to natively support Linux and macOS was worth it
 - CPU architechture used (32-bit or 64-bit)
   - Ex. `64-bit`
   - Used for knowing how wide usage that pesky self-contained .NET6 has
 
-I am allowing myself to gather this data for me to build the [CRT Fun facts](https://commodore-repair-toolbox.dk/funfacts/) page, which is some statistics on usage. As a developer, this is a personal motivational point to see countries using my application and of course one always hope for that "upwards trend usage"... which never happens 🤣 I find this limited non-personal data a fair amount to "pay" for using this application, taking in consideration for the effort being put in to this.
+I am allowing myself to gather this data for me to build the [CRT Fun facts](https://classic-repair-toolbox.dk/funfacts/) page, which is some statistics on usage. As a developer, this is a personal motivational point to see countries using my application and of course one always hope for that "upwards trend usage"... which never happens 🤣 I find this limited non-personal data a fair amount to "pay" for using this application, taking in consideration for the effort being put in to this.
 
 
 ### Commandline parameters
