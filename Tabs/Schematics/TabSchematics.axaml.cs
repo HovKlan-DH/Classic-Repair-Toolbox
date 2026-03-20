@@ -349,7 +349,7 @@ public partial class TabSchematics : UserControl
             };
 
             // Set DynamicResource for BorderBrush
-            border.Bind(Border.BorderBrushProperty, this.GetResourceObservable("AppThemeBorderBrush"));
+            border.Bind(Border.BorderBrushProperty, this.GetResourceObservable("Schematics_Panel_TracesVisible_Trace_Border"));
 
             var txt = new TextBlock
             {
@@ -628,6 +628,10 @@ public partial class TabSchematics : UserControl
         this.SchematicsRegionBorder.Bind(
             Border.BackgroundProperty,
             this.GetResourceObservable($"{colorPrefix}_Bg"));
+
+        this.SchematicsRegionBorder.Bind(
+            Border.BorderBrushProperty,
+            this.GetResourceObservable($"{colorPrefix}_Border"));
 
         this.SchematicsRegionLabel.Bind(
             TextBlock.ForegroundProperty,
@@ -994,7 +998,7 @@ public partial class TabSchematics : UserControl
                     Child = tb
                 };
                 innerBorder.Bind(Border.BackgroundProperty, this.GetResourceObservable("Schematics_ComponentLabel_Bg"));
-                innerBorder.Bind(Border.BorderBrushProperty, this.GetResourceObservable("AppThemeBorderBrush"));
+                innerBorder.Bind(Border.BorderBrushProperty, this.GetResourceObservable("Schematics_ComponentLabel_Border"));
 
                 var transformGroup = new TransformGroup();
                 transformGroup.Children.Add(new ScaleTransform(inverseScale, inverseScale));

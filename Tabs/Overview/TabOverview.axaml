@@ -46,7 +46,7 @@
 	</UserControl.Styles>
 
 	<Grid>
-		<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+		<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
 		        BorderThickness="1"
 		        CornerRadius="6"
 		        ClipToBounds="True"
@@ -75,7 +75,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -88,7 +88,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -101,7 +101,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -114,7 +114,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -127,7 +127,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -140,7 +140,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -153,7 +153,7 @@
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="8,4,8,8" />
 							</Grid>
 						</Grid>
@@ -189,8 +189,7 @@
 											Cursor="Hand"
 											Click="OnComponentClick">
 											<TextBlock Text="{Binding Component}"
-													   TextDecorations="Underline"
-													   Foreground="{DynamicResource AppThemeAccentBrush}" />
+													   Foreground="{DynamicResource Main_Link_Fg}" />
 										</Button>
 
 										<SelectableTextBlock Grid.Column="1"
@@ -246,8 +245,7 @@
 															           IsVisible="{Binding IsWebLink}"
 															           Foreground="{DynamicResource Table_Fg}" />
 															<TextBlock Text="{Binding Name}"
-															           TextDecorations="Underline"
-															           Foreground="{DynamicResource AppThemeAccentBrush}"
+															           Foreground="{DynamicResource Main_Link_Fg}"
 															           TextWrapping="Wrap" />
 														</StackPanel>
 													</Button>

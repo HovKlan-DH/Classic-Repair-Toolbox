@@ -127,9 +127,6 @@ namespace CRT
             this.MainImageClickArea.PointerMoved += this.OnMainImageClickAreaPointerMoved;
             this.MainImageClickArea.PointerReleased += this.OnMainImageClickAreaPointerReleased;
 
-            this.LocalFilesList.SelectionChanged += this.OnLocalFilesSelectionChanged;
-            this.LinksList.SelectionChanged += this.OnLinksSelectionChanged;
-
             // Tunnel phase: intercepts key events before any child control (e.g. TextBox) sees them,
             // so arrow key navigation always works regardless of which control has focus.
             this.AddHandler(
@@ -546,7 +543,7 @@ namespace CRT
                 .ToList();
             bool hasLocalFiles = matchingLocalFiles.Count > 0;
             this.LocalFilesSection.IsVisible = hasLocalFiles;
-            this.LocalFilesList.ItemsSource = hasLocalFiles
+            this.LocalFilesItemsControl.ItemsSource = hasLocalFiles
                 ? matchingLocalFiles
                     .Select(f => new ComponentLocalFileItem
                     {
@@ -562,7 +559,7 @@ namespace CRT
                 .ToList();
             bool hasLinks = matchingLinks.Count > 0;
             this.LinksSection.IsVisible = hasLinks;
-            this.LinksList.ItemsSource = hasLinks
+            this.LinksItemsControl.ItemsSource = hasLinks
                 ? matchingLinks
                     .Select(l => new ComponentLinkItem
                     {
@@ -605,43 +602,47 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the selected local file in the OS default application, then clears the selection.
+        // Opens the clicked component local file in the OS default application.
         // ###########################################################################################
-        private void OnLocalFilesSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private void OnLocalFileButtonClick(object? sender, RoutedEventArgs e)
         {
-            if (this.LocalFilesList.SelectedItem is not ComponentLocalFileItem item)
+            if (sender is not Button { Tag: ComponentLocalFileItem item })
                 return;
 
-            this.LocalFilesList.SelectedIndex = -1;
-
-            if (string.IsNullOrWhiteSpace(item.FullPath))
-                return;
-
-            try
-            {
-                Process.Start(new ProcessStartInfo(item.FullPath) { UseShellExecute = true });
-            }
-            catch { }
+            this.OpenExternalTarget(item.FullPath);
         }
 
         // ###########################################################################################
-        // Opens the selected link URL in the OS default browser, then clears the selection.
+        // Opens the clicked component link in the OS default browser.
         // ###########################################################################################
-        private void OnLinksSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private void OnLinkButtonClick(object? sender, RoutedEventArgs e)
         {
-            if (this.LinksList.SelectedItem is not ComponentLinkItem item)
+            if (sender is not Button { Tag: ComponentLinkItem item })
                 return;
 
-            this.LinksList.SelectedIndex = -1;
+            this.OpenExternalTarget(item.Url);
+        }
 
-            if (string.IsNullOrWhiteSpace(item.Url))
+        // ###########################################################################################
+        // Opens a file path or URL using the operating system's default handler.
+        // ###########################################################################################
+        private void OpenExternalTarget(string target)
+        {
+            if (string.IsNullOrWhiteSpace(target))
                 return;
 
             try
             {
-                Process.Start(new ProcessStartInfo(item.Url) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = target,
+                    UseShellExecute = true
+                });
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to open target {target}: {ex.Message}");
+            }
         }
 
         // ###########################################################################################
@@ -992,6 +993,10 @@ namespace CRT
             this.InfoRegionBorder.Bind(
                 Border.BackgroundProperty,
                 this.GetResourceObservable($"{colorPrefix}_Bg"));
+
+            this.InfoRegionBorder.Bind(
+                Border.BorderBrushProperty,
+                this.GetResourceObservable($"{colorPrefix}_Border"));
 
             this.InfoRegionText.Bind(
                 TextBlock.ForegroundProperty,

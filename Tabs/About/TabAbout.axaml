@@ -7,7 +7,7 @@
 		<!-- Minimal hyperlink button style -->
 		<Style Selector="Button.LinkButton">
 			<Setter Property="Background" Value="Transparent" />
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_Link_Fg}" />
 			<Setter Property="Padding" Value="8,4" />
 			<Setter Property="BorderThickness" Value="0" />
 			<Setter Property="Cursor" Value="Hand" />
@@ -19,7 +19,7 @@
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
 		<Style Selector="Button.LinkButton:pointerover TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentLightBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_LinkHover_Fg}" />
 		</Style>
 
 		<Style Selector="Button.LinkButton:pressed /template/ ContentPresenter">
@@ -66,7 +66,7 @@
 			<TextBlock Margin="0,16,0,0"
                        VerticalAlignment="Center">
 				<Run Text="Orchestrator for this (primarily) vibe-coded application is" />
-				<Run Text="Dennis Helligsø" FontWeight="SemiBold" />
+				<Run Text="Dennis Helligsø¸" FontWeight="SemiBold" />
 			</TextBlock>
 
 			<StackPanel Orientation="Horizontal"
@@ -77,8 +77,9 @@
 				<Button Content="https://github.com/HovKlan-DH/Classic-Repair-Toolbox"
                         Padding="0"
                         BorderThickness="0"
+						Cursor="Hand"
                         Background="Transparent"
-                        Foreground="{DynamicResource AppThemeAccentBrush}"
+                        Foreground="{DynamicResource Main_Link_Fg}"
                         Click="OnGitHubProjectPageClick" />
 			</StackPanel>
 
@@ -90,8 +91,9 @@
 				<Button Content="https://classic-repair-toolbox.dk"
 						Padding="0"
 						BorderThickness="0"
+						Cursor="Hand"
 						Background="Transparent"
-						Foreground="{DynamicResource AppThemeAccentBrush}"
+						Foreground="{DynamicResource Main_Link_Fg}"
 						Click="OnHelperPageClick" />
 			</StackPanel>
 
@@ -108,7 +110,7 @@
 						   FontWeight="Bold" />
 			</StackPanel>
 
-			<!-- Credits section — shown only when the loaded board contains credits -->
+			<!-- Credits section â€” shown only when the loaded board contains credits -->
 			<Border x:Name="CreditsSectionBorder"
 					IsVisible="False"
 					Margin="0,16,0,0">
@@ -180,7 +182,7 @@
 													<Button Classes="LinkButton"
 															Command="{Binding OpenContactCommand}"
 															IsVisible="{Binding IsLink}">
-														<TextBlock Text="{Binding Contact}" TextDecorations="Underline" TextTrimming="CharacterEllipsis" />
+														<TextBlock Text="{Binding Contact}" TextTrimming="CharacterEllipsis" />
 													</Button>
 												</Panel>
 											</Grid>

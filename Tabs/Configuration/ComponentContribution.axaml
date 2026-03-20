@@ -42,7 +42,7 @@
 	<Grid RowDefinitions="Auto,*,Auto" Margin="16">
 
 		<Border Grid.Row="0"
-		        BorderBrush="{DynamicResource AppThemeBorderBrush}"
+		        BorderBrush="{DynamicResource Panel_Border}"
 		        BorderThickness="1"
 		        CornerRadius="6"
 		        Padding="12"
@@ -78,7 +78,7 @@
 				  HorizontalScrollBarVisibility="Disabled">
 			<StackPanel Spacing="16">
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 				        BorderThickness="1"
 				        CornerRadius="6"
 				        Padding="12">
@@ -93,7 +93,7 @@
 					</StackPanel>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 				        BorderThickness="1"
 				        CornerRadius="6"
 				        Padding="12">
@@ -114,7 +114,7 @@
 							<ItemsControl x:Name="ComponentRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionComponentRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										<Border BorderBrush="{DynamicResource Panel_Border}"
 										        BorderThickness="1"
 										        CornerRadius="4"
 										        Padding="8"
@@ -156,7 +156,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 						BorderThickness="1"
 						CornerRadius="6"
 						Padding="12">
@@ -192,7 +192,7 @@
 							<ItemsControl x:Name="ComponentImageRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionComponentImageRow">
-										<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+										<Border BorderBrush="{DynamicResource Panel_Border}"
 										        BorderThickness="1"
 										        CornerRadius="4"
 										        Padding="8"
@@ -260,7 +260,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 						BorderThickness="1"
 						CornerRadius="6"
 						Padding="12">
@@ -333,7 +333,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 						BorderThickness="1"
 						CornerRadius="6"
 						Padding="12">
@@ -401,7 +401,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 						BorderThickness="1"
 						CornerRadius="6"
 						Padding="12">
@@ -474,7 +474,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 						BorderThickness="1"
 						CornerRadius="6"
 						Padding="12">
@@ -542,7 +542,7 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				<Border BorderBrush="{DynamicResource Panel_Border}"
 				        BorderThickness="1"
 				        CornerRadius="6"
 				        Padding="12"
@@ -573,14 +573,14 @@
 
 		<Grid Grid.Row="2" ColumnDefinitions="Auto,320,16,*,Auto" Margin="0,12,0,0">
 			<TextBlock Grid.Column="0"
-					   Text="Email address:"
+					   Text="Email address *:"
 					   VerticalAlignment="Center"
 					   FontSize="12"
 					   Margin="0,0,8,0" />
 
 			<TextBox x:Name="EmailTextBox"
 					 Grid.Column="1"
-					 Watermark="your.email@example.com"
+					 Watermark="required@example.com"
 					 Background="{DynamicResource Main_InputField_Bg}"
 					 Foreground="{DynamicResource Main_InputField_Fg}"
 					 VerticalAlignment="Center"
@@ -612,7 +612,7 @@
 						Click="OnCancelClick" />
 				<Button x:Name="SubmitButton"
 						Content="Send contribution update"
-						Background="{DynamicResource AppThemeAccentBrush}"
+						Background="{DynamicResource Button_Highlighted_Bg}"
 						Foreground="{DynamicResource Feedback_Submit_Fg}"
 						Click="OnSubmitClick" />
 			</StackPanel>

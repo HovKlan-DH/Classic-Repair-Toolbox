@@ -83,7 +83,7 @@
 			</StackPanel>
 			<ListBox x:Name="AttachmentsListBox" Height="160"
 			         Background="{DynamicResource List_Bg}"
-			         BorderBrush="{DynamicResource AppThemeBorderBrush}" BorderThickness="1" CornerRadius="4">
+			         BorderBrush="{DynamicResource Panel_Border}" BorderThickness="1" CornerRadius="4">
 				<ListBox.Styles>
 					<Style Selector="ListBoxItem">
 						<Setter Property="Padding" Value="2,1" />
@@ -122,7 +122,7 @@
 			Content="Send feedback"
 			HorizontalAlignment="Right"
 			Padding="16,8"
-			Background="{DynamicResource AppThemeAccentBrush}"
+			Background="{DynamicResource Button_Highlighted_Bg}"
 			Foreground="{DynamicResource Feedback_Submit_Fg}"
 			Click="OnSubmitClick" />
 	</Grid>

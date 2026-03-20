@@ -17,47 +17,37 @@
 			<Setter Property="Padding" Value="12,4" />
 		</Style>
 
-		<!-- Hover: tint the header text -->
-		<Style Selector="TabItem:pointerover">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
-		</Style>
-
 		<!-- Hover: show a faint underline indicator -->
 		<Style Selector="TabItem:pointerover /template/ Border#PART_SelectedPipe">
 			<Setter Property="IsVisible" Value="True" />
-			<Setter Property="Background" Value="{DynamicResource AppThemeAccentLightBrush}" />
+			<Setter Property="Background" Value="{DynamicResource Main_TabUnderline_Hover}" />
 		</Style>
 
 		<!-- Selected: solid underline indicator -->
 		<Style Selector="TabItem:selected /template/ Border#PART_SelectedPipe">
-			<Setter Property="Background" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Background" Value="{DynamicResource Main_TabUnderline_Selected}" />
 		</Style>
 
 		<!-- Banner install button: explicit hover/pressed backgrounds -->
 		<Style Selector="Button.BannerInstallButton">
-			<Setter Property="Background" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
 		</Style>
 		<Style Selector="Button.BannerInstallButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource AppThemeAccentHoverBrush}" />
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
 		</Style>
 		<Style Selector="Button.BannerInstallButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource AppThemeAccentPressedBrush}" />
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
 		</Style>
-
+		
 		<!-- Banner dismiss button: subtle hover on dark background -->
 		<Style Selector="Button.BannerDismissButton">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeBannerTextBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource MainBanner_Fg}" />
 			<Setter Property="Background" Value="Transparent" />
 			<Setter Property="BorderThickness" Value="0" />
 		</Style>
 		<Style Selector="Button.BannerDismissButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource MainBannerHover_Bg}" />
-			<Setter Property="Foreground" Value="{DynamicResource MainBannerHover_Fg}" />
-		</Style>
-		<Style Selector="Button.BannerDismissButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource AppThemeBannerDismissPressedBrush}" />
-			<!-- Stay standard text color when clicking -->
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeBannerTextBrush}" />
+			<Setter Property="Background" Value="{DynamicResource MainBannerButtonsHover_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource MainBannerButtonsHover_Fg}" />
 		</Style>
 
 		<!-- Region toggle buttons -->
@@ -84,25 +74,7 @@
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
 		</Style>
-
-		<!-- Credits contact link button -->
-		<Style Selector="Button.CreditsContactLink">
-			<Setter Property="Padding" Value="0" />
-			<Setter Property="BorderThickness" Value="0" />
-			<Setter Property="Background" Value="Transparent" />
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
-			<Setter Property="Cursor" Value="Hand" />
-		</Style>
-		<Style Selector="Button.CreditsContactLink /template/ ContentPresenter">
-			<Setter Property="Background" Value="Transparent" />
-		</Style>
-		<Style Selector="Button.CreditsContactLink:pointerover /template/ ContentPresenter">
-			<Setter Property="Background" Value="Transparent" />
-		</Style>
-		<Style Selector="Button.CreditsContactLink:pointerover">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentHoverBrush}" />
-		</Style>
-
+	
 	</Window.Styles>
 
 	<Grid x:Name="RootGrid">
@@ -114,8 +86,6 @@
 
 		<Border x:Name="LeftPanel"
 			Grid.Column="0"
-			BorderBrush="{DynamicResource AppThemePanelBorderBrush}"
-			BorderThickness="1"
 			Padding="16">
 			<Grid>
 				<Grid.RowDefinitions>
@@ -165,7 +135,7 @@
 							 SelectionMode="Multiple,Toggle"
 							 Margin="0,4,0,0"
 							 Background="{DynamicResource List_Bg}"
-							 BorderBrush="{DynamicResource AppThemeBorderBrush}"
+							 BorderBrush="{DynamicResource List_Border}"
 							 BorderThickness="1"
 							 CornerRadius="4"
 							 ClipToBounds="True"
@@ -213,7 +183,7 @@
 							 SelectionMode="Multiple,Toggle"
 							 Margin="0,4,0,0"
 							 Background="{DynamicResource List_Bg}"
-							 BorderBrush="{DynamicResource AppThemeBorderBrush}"
+							 BorderBrush="{DynamicResource List_Border}"
 							 BorderThickness="1"
 							 CornerRadius="4"
 							 ClipToBounds="True"
@@ -361,7 +331,7 @@
 					  Grid.Column="1"
 					  ResizeDirection="Columns"
 					  HorizontalAlignment="Stretch"
-					  Background="{DynamicResource AppThemeBorderBrush}" />
+					  Background="{DynamicResource Main_Splitter}" />
 
 		<!-- Right Panel -->
 		<Border x:Name="RightPanel"
@@ -380,7 +350,7 @@
 				<Border x:Name="UpdateBanner"
 									Grid.Row="0"
 									IsVisible="False"
-									Background="{DynamicResource AppThemeBannerBackgroundBrush}"
+									Background="{DynamicResource MainBanner_Bg}"
 									CornerRadius="4"
 									Margin="0,8,0,4"
 									Padding="12,6">
@@ -395,7 +365,7 @@
 						<TextBlock x:Name="UpdateBannerText"
 								   Grid.Column="0"
 								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								   Foreground="{DynamicResource MainBanner_Fg}"
 								   FontSize="12" />
 
 						<Button x:Name="UpdateBannerViewNotesButton"
@@ -413,8 +383,8 @@
 								Classes="BannerInstallButton"
 								Content="Install"
 								Margin="0,0,4,0"
-								Background="{DynamicResource AppThemeAccentBrush}"
-								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								Background="{DynamicResource Button_Highlighted_Bg}"
+								Foreground="{DynamicResource MainBanner_Fg}"
 								FontSize="11"
 								Padding="10,3"
 								Click="OnInstallUpdateClick" />
@@ -434,7 +404,7 @@
 				<Border x:Name="SyncBanner"
 											Grid.Row="1"
 											IsVisible="False"
-											Background="{DynamicResource AppThemeBannerBackgroundBrush}"
+											Background="{DynamicResource MainBanner_Bg}"
 											CornerRadius="4"
 											Margin="0,0,0,4"
 											Padding="12,6"
@@ -450,7 +420,7 @@
 						<TextBlock x:Name="SyncBannerText"
 									Grid.Column="0"
 									VerticalAlignment="Center"
-									Foreground="{DynamicResource AppThemeBannerTextBrush}"
+									Foreground="{DynamicResource MainBanner_Fg}"
 									FontSize="12" />
 
 						<Button x:Name="SyncBannerRefreshButton"
@@ -459,8 +429,8 @@
 								Content="Refresh Board"
 								IsVisible="False"
 								Margin="12,0,4,0"
-								Background="{DynamicResource AppThemeAccentBrush}"
-								Foreground="{DynamicResource AppThemeBannerTextBrush}"
+								Background="{DynamicResource Button_Highlighted_Bg}"
+								Foreground="{DynamicResource MainBanner_Fg}"
 								FontSize="11"
 								Padding="10,3"
 								Click="OnRefreshBoardClick" />

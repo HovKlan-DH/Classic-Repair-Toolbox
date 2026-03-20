@@ -79,7 +79,7 @@
 					<Border x:Name="SchematicsNameBorder"
 							IsVisible="False"
 				Background="{DynamicResource Schematics_Name_Bg}"
-				BorderBrush="{DynamicResource AppThemeBorderBrush}"
+				BorderBrush="{DynamicResource Schematics_Name_Border}"
 				BorderThickness="1"
 				CornerRadius="4"
 				Padding="8,4">
@@ -91,7 +91,6 @@
 
 					<Border x:Name="SchematicsRegionBorder"
 						IsVisible="False"
-						BorderBrush="{DynamicResource AppThemeBorderBrush}"
 						BorderThickness="1"
 						CornerRadius="4"
 						Padding="8,4">
@@ -108,7 +107,7 @@
 					VerticalAlignment="Top"
 					Margin="10,44,0,0"
 					Background="{DynamicResource Schematics_ComponentHover_Bg}"
-					BorderBrush="{DynamicResource AppThemeBorderBrush}"
+					BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
 					BorderThickness="1"
 					CornerRadius="4"
 					Padding="8,4">
@@ -124,7 +123,7 @@
 														VerticalAlignment="Bottom"
 														Margin="10,0,0,10"
 														Background="{DynamicResource Schematics_Panels_Bg}"
-														BorderBrush="{DynamicResource AppThemeBorderBrush}"
+														BorderBrush="{DynamicResource Schematics_Panels_Border}"
 														BorderThickness="1"
 														CornerRadius="4"
 														Padding="8,8">
@@ -180,7 +179,7 @@
 								VerticalAlignment="Bottom"
 								Margin="0,0,10,10"
 								Background="{DynamicResource Schematics_Panels_Bg}"
-								BorderBrush="{DynamicResource AppThemeBorderBrush}"
+								BorderBrush="{DynamicResource Schematics_Panels_Border}"
 								BorderThickness="1"
 								CornerRadius="4"
 								Padding="8,8">
@@ -216,7 +215,7 @@
 					HorizontalAlignment="Left"
 					VerticalAlignment="Top"
 					Background="{DynamicResource Schematics_Panels_Bg}"
-					BorderBrush="{DynamicResource AppThemeBorderBrush}"
+					BorderBrush="{DynamicResource Schematics_Panels_Border}"
 					BorderThickness="1"
 					CornerRadius="8"
 					Padding="8,6"
@@ -275,7 +274,7 @@
                       Grid.Column="1"
                       ResizeDirection="Columns"
                       HorizontalAlignment="Stretch"
-                      Background="{DynamicResource AppThemeBorderBrush}" />
+                      Background="{DynamicResource Main_Splitter}" />
 
 		<ListBox x:Name="SchematicsThumbnailList"
                  Grid.Column="2"
@@ -355,14 +354,14 @@
 												Opacity="1.0"
 												IsVisible="{Binding IsMatchForSelection}" />
 										<TextBlock Text="{Binding Name}"
-												   Foreground="{DynamicResource Thumbnail_Txt}"
+												   Foreground="{DynamicResource Thumbnail_Fg}"
 												   HorizontalAlignment="Stretch"
 												   TextAlignment="Left"
 												   FontSize="11"
 												   Padding="4,3"
 												   IsVisible="{Binding !IsMatchForSelection}" />
 										<TextBlock Text="{Binding Name}"
-												   Foreground="{DynamicResource Thumbnail_Selection_Txt}"
+												   Foreground="{DynamicResource Thumbnail_Selection_Fg}"
 												   HorizontalAlignment="Stretch"
 												   TextAlignment="Left"
 												   FontSize="11"
@@ -433,7 +432,7 @@
 							   Padding="4,3"
 							   HorizontalAlignment="Stretch"
 							   TextAlignment="Left"
-							   Foreground="{DynamicResource Thumbnail_Txt}" />
+							   Foreground="{DynamicResource Thumbnail_Fg}" />
 				</Border>
 
 				<Image x:Name="ThumbnailDragGhostImage"

@@ -6,7 +6,7 @@
 	<UserControl.Styles>
 		<Style Selector="Button.LinkButton">
 			<Setter Property="Background" Value="Transparent" />
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_Link_Fg}" />
 			<Setter Property="Padding" Value="0" />
 			<Setter Property="BorderThickness" Value="0" />
 			<Setter Property="Cursor" Value="Hand" />
@@ -26,7 +26,7 @@
 		</Style>
 
 		<Style Selector="Button.LinkButton:pointerover TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentLightBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_LinkHover_Fg}" />
 		</Style>
 
 		<Style Selector="Button.LinkButton:pressed /template/ ContentPresenter">
@@ -79,7 +79,7 @@
 										           Margin="8,0,8,0" />
 										<Border Grid.Row="1"
 										        Height="1"
-										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Background="{DynamicResource Table_BorderRowLine}"
 										        Margin="8,4,8,8" />
 									</Grid>
 								</Grid>
@@ -92,7 +92,7 @@
 										           Margin="8,0,8,0" />
 										<Border Grid.Row="1"
 										        Height="1"
-										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Background="{DynamicResource Table_BorderRowLine}"
 										        Margin="8,4,8,8" />
 									</Grid>
 								</Grid>
@@ -123,8 +123,7 @@
 											        Classes="LinkButton"
 											        Margin="8,4,8,4"
 											        Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}"
-												           TextDecorations="Underline" />
+												<TextBlock Text="{Binding Name}" />
 											</Button>
 										</Grid>
 									</Border>
@@ -160,7 +159,7 @@
 										           Margin="8,0,8,0" />
 										<Border Grid.Row="1"
 										        Height="1"
-										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Background="{DynamicResource Table_BorderRowLine}"
 										        Margin="8,4,8,8" />
 									</Grid>
 								</Grid>
@@ -173,7 +172,7 @@
 										           Margin="8,0,8,0" />
 										<Border Grid.Row="1"
 										        Height="1"
-										        Background="{DynamicResource AppThemeBorderBrush}"
+										        Background="{DynamicResource Table_BorderRowLine}"
 										        Margin="8,4,8,8" />
 									</Grid>
 								</Grid>
@@ -204,8 +203,7 @@
 											        Classes="LinkButton"
 											        Margin="8,4,8,4"
 											        Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}"
-												           TextDecorations="Underline" />
+												<TextBlock Text="{Binding Name}" />
 											</Button>
 										</Grid>
 									</Border>

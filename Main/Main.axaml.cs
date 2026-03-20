@@ -569,19 +569,8 @@ namespace CRT
                 .Cast<ComponentListItem>()
                 .Select(item => item.BoardLabel)
                 .Where(l => !string.IsNullOrEmpty(l))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? new List<string>();
-
-            if (!string.IsNullOrWhiteSpace(this.ComponentSearchTextBox?.Text))
-            {
-                var allItems = this.ComponentFilterListBox.ItemsSource?.Cast<ComponentListItem>();
-                if (allItems != null)
-                {
-                    boardLabels = allItems
-                        .Select(item => item.BoardLabel)
-                        .Where(l => !string.IsNullOrEmpty(l))
-                        .ToList();
-                }
-            }
 
             this.TabSchematicsControl.UpdateHighlightsForComponents(boardLabels);
         }

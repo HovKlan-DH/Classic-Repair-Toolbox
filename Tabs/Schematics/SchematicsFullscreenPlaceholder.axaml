@@ -22,8 +22,9 @@
 					   Foreground="{DynamicResource Main_Fg}" />
 		</Border>
 
+		<!-- Splitter shown when showing fullscreen image -->
 		<Border Grid.Column="1"
-				Background="{DynamicResource AppThemeBorderBrush}" />
+				Background="{DynamicResource Main_Splitter}" />
 
 		<ListBox x:Name="SchematicsThumbnailListPlaceholder"
                  Grid.Column="2"
@@ -83,14 +84,14 @@
 												Opacity="1.0"
 												IsVisible="{Binding IsMatchForSelection}" />
 										<TextBlock Text="{Binding Name}"
-												   Foreground="{DynamicResource Thumbnail_Txt}"
+												   Foreground="{DynamicResource Thumbnail_Fg}"
 												   HorizontalAlignment="Stretch"
 												   TextAlignment="Left"
 												   FontSize="11"
 												   Padding="4,3"
 												   IsVisible="{Binding !IsMatchForSelection}" />
 										<TextBlock Text="{Binding Name}"
-												   Foreground="{DynamicResource Thumbnail_Selection_Txt}"
+												   Foreground="{DynamicResource Thumbnail_Selection_Fg}"
 												   HorizontalAlignment="Stretch"
 												   TextAlignment="Left"
 												   FontSize="11"

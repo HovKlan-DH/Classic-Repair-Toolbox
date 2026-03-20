@@ -31,10 +31,13 @@ namespace CRT
         {
             if (boardData == null)
             {
+                this.UpdateRevisionDate(null);
                 this.CategoriesHeaderControl.ItemsSource = null;
                 this.CategoriesItemsControl.ItemsSource = null;
                 return;
             }
+
+            this.UpdateRevisionDate(boardData.RevisionDate);
 
             var componentsList = boardData.Components
                 .Where(c =>
@@ -91,6 +94,22 @@ namespace CRT
 
             this.CategoriesHeaderControl.ItemsSource = columns;
             this.CategoriesItemsControl.ItemsSource = columns;
+        }
+
+        // ###########################################################################################
+        // Shows or hides the board revision date text for the currently loaded board.
+        // ###########################################################################################
+        private void UpdateRevisionDate(string? revisionDate)
+        {
+            if (string.IsNullOrWhiteSpace(revisionDate))
+            {
+                this.RevisionDateText.Text = string.Empty;
+                this.RevisionDatePanel.IsVisible = false;
+                return;
+            }
+
+            this.RevisionDateText.Text = revisionDate;
+            this.RevisionDatePanel.IsVisible = true;
         }
 
         // ###########################################################################################

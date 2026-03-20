@@ -10,16 +10,12 @@
 			<Setter Property="Padding" Value="0" />
 			<Setter Property="HorizontalAlignment" Value="Stretch" />
 			<Setter Property="HorizontalContentAlignment" Value="Left" />
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentBrush}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_Link_Fg}" />
 			<Setter Property="Cursor" Value="Hand" />
 		</Style>
 
 		<Style Selector="Button.ComponentEntryButton /template/ ContentPresenter">
 			<Setter Property="Background" Value="Transparent" />
-		</Style>
-
-		<Style Selector="Button.ComponentEntryButton:pointerover">
-			<Setter Property="Foreground" Value="{DynamicResource AppThemeAccentHoverBrush}" />
 		</Style>
 
 		<Style Selector="Border.ContributeRow">
@@ -34,14 +30,34 @@
 	<Grid>
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
 		</Grid.RowDefinitions>
 
-		<TextBlock Grid.Row="0" Margin="12,12,12,12" TextWrapping="Wrap" Foreground="{DynamicResource Main_Fg}">
+		<TextBlock Grid.Row="0"
+				   Margin="12,12,12,12"
+				   TextWrapping="Wrap"
+				   Foreground="{DynamicResource Main_Fg}">
 			To contribute and enhance the data quality for this board, then you can select an existing component and give feedback where data is wrong or missing. Your contribution will be seen as a "suggestion for changes" and will be sent directly to the developer, who will incorporate it in to the backend data set. You will get informed of decission, if you have provided your email address.
 		</TextBlock>
 
-		<ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+		<!-- Board revision date section -->
+		<StackPanel x:Name="RevisionDatePanel"
+					Grid.Row="1"
+					Orientation="Horizontal"
+					Spacing="4"
+					Margin="12,0,12,12"
+					IsVisible="False">
+			<TextBlock Text="Board Excel data last revisioned:"
+					   FontSize="14" />
+			<TextBlock x:Name="RevisionDateText"
+					   FontSize="14"
+					   FontWeight="Bold" />
+		</StackPanel>
+
+		<ScrollViewer Grid.Row="2"
+					  HorizontalScrollBarVisibility="Auto"
+					  VerticalScrollBarVisibility="Disabled">
 			<Grid VerticalAlignment="Stretch">
 				<Grid.RowDefinitions>
 					<RowDefinition Height="Auto" />
@@ -69,7 +85,7 @@
 								           TextTrimming="CharacterEllipsis"/>
 								<Border Grid.Row="1"
 								        Height="1"
-								        Background="{DynamicResource AppThemeBorderBrush}"
+								        Background="{DynamicResource Table_BorderRowLine}"
 								        Margin="0,4,0,8" />
 							</Grid>
 						</DataTemplate>

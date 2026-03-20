@@ -462,7 +462,13 @@ namespace CRT
             string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
             string comment = this.MandatoryCommentTextBox.Text?.Trim() ?? string.Empty;
 
-            if (!string.IsNullOrEmpty(email) && !Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                this.ShowStatus("Please provide your email address before sending", true);
+                return;
+            }
+
+            if (!Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             {
                 this.ShowStatus("Please enter a valid email address", true);
                 return;
