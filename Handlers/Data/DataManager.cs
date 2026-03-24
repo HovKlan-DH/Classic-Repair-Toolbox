@@ -13,6 +13,7 @@ namespace Handlers.DataHandling
     {
         private const string DataRootArg = "--data-root=";
         private const string SheetHardwareBoard = "Hardware & Board";
+        private const string SheetOscilloscope = "Oscilloscope";
 
         // Column header names used for robust, order-independent column mapping
         private const string ColHardwareName = "Hardware name in drop-down";
@@ -20,12 +21,37 @@ namespace Handlers.DataHandling
         private const string ColExcelDataFile = "Excel data file";
         private const string ColHardwareNotes = "Hardware notes in \"Overview\" tab";
 
+        // Column headers for Oscilloscope
+        private const string ColBrand = "Brand";
+        private const string ColSeriesOrModel = "Series or model";
+        private const string ColPort = "Port";
+        private const string ColIdentify = "Identify";
+        private const string ColDrainErrorQueue = "DrainErrorQueue";
+        private const string ColOperationComplete = "Operation-Complete";
+        private const string ColClearStatistics = "Clear-Statistics";
+        private const string ColQueryActiveTrigger = "QueryActiveTrigger";
+        private const string ColStop = "Stop";
+        private const string ColSingle = "Single";
+        private const string ColRun = "Run";
+        private const string ColQueryTriggerMode = "QueryTriggerMode";
+        private const string ColQueryTriggerLevel = "QueryTriggerLevel";
+        private const string ColSetTriggerLevel = "SetTriggerLevel";
+        private const string ColQueryTimeDiv = "QueryTimeDiv";
+        private const string ColSetTimeDiv = "SetTimeDiv";
+        private const string ColQueryVoltsDiv = "QueryVoltsDiv";
+        private const string ColSetVoltsDiv = "SetVoltsDiv";
+        private const string ColDumpImage = "DumpImage";
+        private const string ColTimeDiv = "TIME/DIV";
+        private const string ColVoltsDiv = "VOLTS/DIV";
+        private const string ColDebounceTime = "Debounce-Time";
+
         private static string _dataRoot = string.Empty;
         private static List<DataFileEntry>? _syncManifest;
 
         public static string DataRoot => _dataRoot;
         //        public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = [];
         public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = new(); // compliant with .NET6
+        public static List<OscilloscopeEntry> Oscilloscopes { get; private set; } = new();
 
         public static string ResolvedMainExcelFileName { get; private set; } = string.Empty;
         public static bool DataUpdateRequiresAppUpdate { get; private set; }
@@ -304,11 +330,12 @@ namespace Handlers.DataHandling
                     return;
                 }
 
-                var colMap = FindHeaderRow(sheet, out int headerRow);
+                var hardwareRequiredCols = new[] { ColHardwareName, ColBoardName, ColExcelDataFile, ColHardwareNotes };
+                var colMap = FindHeaderRow(sheet, hardwareRequiredCols, out int headerRow);
 
                 if (colMap == null)
                 {
-                    Logger.Warning("Header row not found in main Excel data file - verify column header names match expected values");
+                    Logger.Warning($"Header row not found in [{SheetHardwareBoard}] sheet - verify column header names match expected values");
                     return;
                 }
 
@@ -348,6 +375,71 @@ namespace Handlers.DataHandling
                 {
                     Logger.Info($"    [{boardEntry.ExcelDataFile}]");
                 }
+
+                var oscSheet = package.Workbook.Worksheets[SheetOscilloscope];
+                if (oscSheet == null)
+                {
+                    Logger.Warning($"Sheet [{SheetOscilloscope}] not found in main Excel data file");
+                }
+                else
+                {
+                    var oscRequiredCols = new[] { ColBrand, ColSeriesOrModel, ColPort };
+                    var oscColMap = FindHeaderRow(oscSheet, oscRequiredCols, out int oscHeaderRow);
+
+                    if (oscColMap == null)
+                    {
+                        Logger.Warning($"Header row not found in [{SheetOscilloscope}] sheet - verify column header names match expected values");
+                    }
+                    else
+                    {
+                        var oscEntries = new List<OscilloscopeEntry>();
+                        int oscMaxRow = oscSheet.Dimension?.End.Row ?? 0;
+                        string lastBrandName = string.Empty;
+
+                        for (int row = oscHeaderRow + 1; row <= oscMaxRow; row++)
+                        {
+                            string brand = GetCellTextSafe(oscSheet, row, oscColMap, ColBrand);
+                            string series = GetCellTextSafe(oscSheet, row, oscColMap, ColSeriesOrModel);
+
+                            if (!string.IsNullOrWhiteSpace(brand))
+                                lastBrandName = brand;
+                            else
+                                brand = lastBrandName;
+
+                            if (string.IsNullOrWhiteSpace(series))
+                                continue;
+
+                            oscEntries.Add(new OscilloscopeEntry
+                            {
+                                Brand = brand,
+                                SeriesOrModel = series,
+                                Port = GetCellTextSafe(oscSheet, row, oscColMap, ColPort),
+                                Identify = GetCellTextSafe(oscSheet, row, oscColMap, ColIdentify),
+                                DrainErrorQueue = GetCellTextSafe(oscSheet, row, oscColMap, ColDrainErrorQueue),
+                                OperationComplete = GetCellTextSafe(oscSheet, row, oscColMap, ColOperationComplete),
+                                ClearStatistics = GetCellTextSafe(oscSheet, row, oscColMap, ColClearStatistics),
+                                QueryActiveTrigger = GetCellTextSafe(oscSheet, row, oscColMap, ColQueryActiveTrigger),
+                                Stop = GetCellTextSafe(oscSheet, row, oscColMap, ColStop),
+                                Single = GetCellTextSafe(oscSheet, row, oscColMap, ColSingle),
+                                Run = GetCellTextSafe(oscSheet, row, oscColMap, ColRun),
+                                QueryTriggerMode = GetCellTextSafe(oscSheet, row, oscColMap, ColQueryTriggerMode),
+                                QueryTriggerLevel = GetCellTextSafe(oscSheet, row, oscColMap, ColQueryTriggerLevel),
+                                SetTriggerLevel = GetCellTextSafe(oscSheet, row, oscColMap, ColSetTriggerLevel),
+                                QueryTimeDiv = GetCellTextSafe(oscSheet, row, oscColMap, ColQueryTimeDiv),
+                                SetTimeDiv = GetCellTextSafe(oscSheet, row, oscColMap, ColSetTimeDiv),
+                                QueryVoltsDiv = GetCellTextSafe(oscSheet, row, oscColMap, ColQueryVoltsDiv),
+                                SetVoltsDiv = GetCellTextSafe(oscSheet, row, oscColMap, ColSetVoltsDiv),
+                                DumpImage = GetCellTextSafe(oscSheet, row, oscColMap, ColDumpImage),
+                                TimeDivList = GetCellTextSafe(oscSheet, row, oscColMap, ColTimeDiv),
+                                VoltsDivList = GetCellTextSafe(oscSheet, row, oscColMap, ColVoltsDiv),
+                                DebounceTime = GetCellTextSafe(oscSheet, row, oscColMap, ColDebounceTime)
+                            });
+                        }
+
+                        Oscilloscopes = oscEntries;
+                        Logger.Info($"Loaded [{oscEntries.Count}] oscilloscope definitions from main Excel data file");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -370,11 +462,10 @@ namespace Handlers.DataHandling
         // Matching is case-insensitive. Returns a header-name-to-column-index map on success,
         // or null when not all required headers are found.
         // ###########################################################################################
-        private static Dictionary<string, int>? FindHeaderRow(ExcelWorksheet sheet, out int headerRow)
+        private static Dictionary<string, int>? FindHeaderRow(ExcelWorksheet sheet, string[] required, out int headerRow)
         {
             headerRow = -1;
 
-            var required = new[] { ColHardwareName, ColBoardName, ColExcelDataFile, ColHardwareNotes };
             int maxRow = sheet.Dimension?.End.Row ?? 0;
             int maxCol = sheet.Dimension?.End.Column ?? 0;
 
@@ -407,6 +498,17 @@ namespace Handlers.DataHandling
 //            var parts = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
             var parts = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries); // .NET6 compliant
             return string.Join(" ", parts).Trim();
+        }
+
+        // ###########################################################################################
+        // Safely retrieves the trimmed text value of a worksheet cell if the column exists in the map.
+        // ###########################################################################################
+        private static string GetCellTextSafe(ExcelWorksheet sheet, int row, Dictionary<string, int> colMap, string columnName)
+        {
+            if (colMap.TryGetValue(columnName, out int col))
+                return GetCellText(sheet, row, col);
+
+            return string.Empty;
         }
 
         // ###########################################################################################

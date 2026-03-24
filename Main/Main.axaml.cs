@@ -55,6 +55,9 @@ namespace CRT
         // Fullscreen
         private SchematicsFullscreenWindow? _schematicsFullscreenWindow;
 
+        // Exposes the Oscilloscope tab control so other UI windows can route scope actions through it.
+        public TabOscilloscope TabOscilloscopeControl => this.TabOscilloscope;
+
         public Main()
         {
             InitializeComponent();
@@ -191,6 +194,7 @@ namespace CRT
 
             this.StartBackgroundSyncAsync();
         }
+
 
         // ###########################################################################################
         // Checks for an available update on startup and shows the banner if one is found.

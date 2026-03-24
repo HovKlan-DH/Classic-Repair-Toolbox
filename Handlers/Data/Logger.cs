@@ -18,7 +18,7 @@ namespace Handlers.DataHandling
         private static string _logFilePath = string.Empty;
         private static readonly object _lock = new();
 
-        // Controls whether DEBG-level entries are written to the log file.
+        // Controls whether DEBUG-level entries are written to the log file.
         // Set from UserSettings after settings are loaded.
         public static bool IsDebugEnabled { get; set; } = false;
 
@@ -73,7 +73,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Formats and appends a single timestamped log line to the log file in a thread-safe manner.
-        // DEBG entries are silently suppressed when IsDebugEnabled is false.
+        // DEBUG entries are silently suppressed when IsDebugEnabled is false.
         // ###########################################################################################
         private static void Write(LogCategory category, string message)
         {

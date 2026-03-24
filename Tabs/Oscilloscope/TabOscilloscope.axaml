@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.TabOscilloscope">
+
+	<Grid>
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="260" MinWidth="220" />
+			<ColumnDefinition Width="4" />
+			<ColumnDefinition Width="*" MinWidth="200" />
+		</Grid.ColumnDefinitions>
+
+		<Border Grid.Column="0"
+				Padding="16">
+			<Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+
+				<TextBlock Grid.Row="0"
+						   Text="Vendor"
+						   FontSize="11"
+						   Foreground="{DynamicResource Main_Header_Fg}" />
+				<ComboBox Grid.Row="1"
+						  x:Name="VendorComboBox"
+						  HorizontalAlignment="Stretch"
+						  Margin="0,4,0,0" />
+
+				<TextBlock Grid.Row="2"
+						   Text="Series or model"
+						   FontSize="11"
+						   Foreground="{DynamicResource Main_Header_Fg}"
+						   Margin="0,12,0,0" />
+				<ComboBox Grid.Row="3"
+						  x:Name="SeriesOrModelComboBox"
+						  HorizontalAlignment="Stretch"
+						  Margin="0,4,0,0" />
+
+				<StackPanel Grid.Row="4"
+							Margin="0,12,0,0"
+							Spacing="8">
+
+					<TextBlock Text="IP address or FQDN"
+							   FontSize="11"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
+					<TextBox x:Name="HostTextBox"
+							 FontSize="12"
+							 MinHeight="0"
+							 Padding="6,4"
+							 Background="{DynamicResource Main_InputField_Bg}"
+							 Foreground="{DynamicResource Main_InputField_Fg}"
+							 VerticalContentAlignment="Center"
+							 Watermark="192.168.1.100 or scope.local" />
+
+					<TextBlock Text="TCP port"
+							   FontSize="11"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
+					<NumericUpDown x:Name="PortNumericUpDown"
+						   FontSize="12"
+						   Minimum="1"
+						   Maximum="65535"
+						   Increment="1"
+						   Value="5025"
+						   FormatString="0"
+						   ShowButtonSpinner="False"
+						   TextInput="OnPortNumericUpDownTextInput"
+						   LostFocus="OnPortNumericUpDownLostFocus"
+						   HorizontalAlignment="Stretch" />
+
+					<Button x:Name="ConnectToOscilloscopeButton"
+							Content="Connect to oscilloscope"
+							HorizontalAlignment="Stretch"
+							HorizontalContentAlignment="Center"
+							FontSize="12"
+							Padding="4"
+							Margin="0,8,0,0"
+							Click="OnConnectToOscilloscopeClick" />
+
+					<Button x:Name="RunFullTestSuiteButton"
+							Content="Run full test suite"
+							HorizontalAlignment="Stretch"
+							HorizontalContentAlignment="Center"
+							FontSize="12"
+							Padding="4"
+							Click="OnRunFullTestSuiteClick" />
+				</StackPanel>
+
+			</Grid>
+		</Border>
+
+		<GridSplitter Grid.Column="1"
+					  ResizeDirection="Columns"
+					  HorizontalAlignment="Stretch"
+					  Background="{DynamicResource Main_Splitter}" />
+
+		<Border Grid.Column="2"
+				Padding="16">
+			<Grid RowDefinitions="Auto,*">
+				<TextBlock Grid.Row="0"
+						   Text="Output"
+						   FontSize="11"
+						   Foreground="{DynamicResource Main_Header_Fg}" />
+
+				<TextBox Grid.Row="1"
+					 x:Name="OutputTextBox"
+					 Margin="0,4,0,0"
+					 IsReadOnly="True"
+					 AcceptsReturn="True"
+					 TextWrapping="Wrap"
+					 VerticalAlignment="Stretch"
+					 HorizontalAlignment="Stretch"
+					 FontFamily="Consolas"
+					 FontSize="12"
+					 ScrollViewer.VerticalScrollBarVisibility="Auto"
+					 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+					 Background="Black"
+					 Foreground="#69de85">
+
+					<TextBox.Styles>
+						<!-- Prevent hover background change -->
+						<Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+							<Setter Property="Background" Value="Black" />
+						</Style>
+
+						<!-- Prevent focus background change -->
+						<Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+							<Setter Property="Background" Value="Black" />
+						</Style>
+
+						<!-- Keep text color on hover -->
+						<Style Selector="TextBox:pointerover">
+							<Setter Property="Foreground" Value="LightGreen" />
+						</Style>
+
+						<!-- Keep text color on focus -->
+						<Style Selector="TextBox:focus">
+							<Setter Property="Foreground" Value="LightGreen" />
+						</Style>
+					</TextBox.Styles>
+				</TextBox>
+			</Grid>
+		</Border>
+	</Grid>
+
+</UserControl>

@@ -73,6 +73,11 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsOrderByBoard")] public Dictionary<string, List<string>> SchematicsOrderByBoard { get; set; } = new();
         [JsonPropertyName("contactEmail")] public string ContactEmail { get; set; } = string.Empty;
 
+        [JsonPropertyName("lastOscilloscopeVendor")] public string LastOscilloscopeVendor { get; set; } = string.Empty;
+        [JsonPropertyName("lastOscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
+        [JsonPropertyName("oscilloscopeHost")] public string OscilloscopeHost { get; set; } = "192.168.0.100";
+        [JsonPropertyName("oscilloscopePort")] public int OscilloscopePort { get; set; } = 5025;
+
     }
 
     // ###########################################################################################
@@ -419,6 +424,10 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [LastSchematicByBoard] [{_data.LastSchematicByBoard.Count} entries]");
                     Logger.Info($"        [SchematicsSplitterRatios] [{_data.SchematicsSplitterRatios.Count} entries]");
                     Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
+                    Logger.Info($"        [LastOscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
+                    Logger.Info($"        [LastOscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
+                    Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");
+                    Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
                 }
             }
             catch (Exception ex)
@@ -539,6 +548,98 @@ namespace Handlers.DataHandling
 
             _data.LastSchematicByBoard[boardKey] = schematicName;
             Logger.Info($"Setting changed: [LastSchematicByBoard] [{boardKey}] [{schematicName}]");
+            Save();
+        }
+
+        public static string OscilloscopeHost
+        {
+            get => string.IsNullOrWhiteSpace(_data.OscilloscopeHost) ? "192.168.0.100" : _data.OscilloscopeHost;
+            set
+            {
+                if (string.Equals(_data.OscilloscopeHost, value, StringComparison.Ordinal))
+                    return;
+
+                _data.OscilloscopeHost = value;
+                Logger.Info($"Setting changed: [OscilloscopeHost] [{(string.IsNullOrWhiteSpace(value) ? "empty" : value)}]");
+                Save();
+            }
+        }
+
+        public static int OscilloscopePort
+        {
+            get => _data.OscilloscopePort;
+            set
+            {
+                if (_data.OscilloscopePort == value)
+                    return;
+
+                _data.OscilloscopePort = value;
+                Logger.Info($"Setting changed: [OscilloscopePort] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // Returns the last selected vendor name, or empty when none has been saved.
+        // ###########################################################################################
+        public static string GetLastOscilloscopeVendor()
+            => _data.LastOscilloscopeVendor ?? string.Empty;
+
+        // ###########################################################################################
+        // Persists the last selected vendor name.
+        // ###########################################################################################
+        public static void SetLastOscilloscopeVendor(string vendorName)
+        {
+            if (string.IsNullOrWhiteSpace(vendorName))
+                return;
+
+            if (string.Equals(_data.LastOscilloscopeVendor, vendorName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _data.LastOscilloscopeVendor = vendorName;
+            Logger.Info($"Setting changed: [LastOscilloscopeVendor] [{vendorName}]");
+            Save();
+        }
+
+        // ###########################################################################################
+        // Returns the saved last series for a vendor, or null when not found.
+        // ###########################################################################################
+        public static string? GetLastOscilloscopeSeriesForVendor(string vendorName)
+        {
+            if (string.IsNullOrWhiteSpace(vendorName))
+                return null;
+
+            var match = _data.LastOscilloscopeSeriesByVendor.FirstOrDefault(kvp =>
+                string.Equals(kvp.Key, vendorName, StringComparison.OrdinalIgnoreCase));
+
+            return string.IsNullOrEmpty(match.Key) ? null : match.Value;
+        }
+
+        // ###########################################################################################
+        // Persists the last selected series for a specific vendor.
+        // ###########################################################################################
+        public static void SetLastOscilloscopeSeriesForVendor(string vendorName, string seriesName)
+        {
+            if (string.IsNullOrWhiteSpace(vendorName) || string.IsNullOrWhiteSpace(seriesName))
+                return;
+
+            var existingKey = _data.LastOscilloscopeSeriesByVendor.Keys.FirstOrDefault(k =>
+                string.Equals(k, vendorName, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrEmpty(existingKey) &&
+                string.Equals(_data.LastOscilloscopeSeriesByVendor[existingKey], seriesName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(existingKey) &&
+                !string.Equals(existingKey, vendorName, StringComparison.Ordinal))
+            {
+                _data.LastOscilloscopeSeriesByVendor.Remove(existingKey);
+            }
+
+            _data.LastOscilloscopeSeriesByVendor[vendorName] = seriesName;
+            Logger.Info($"Setting changed: [LastOscilloscopeSeriesByVendor] [{vendorName}] [{seriesName}]");
             Save();
         }
 

@@ -46,6 +46,9 @@ namespace Handlers.DataHandling
         private const string ColPin = "Pin";
         private const string ColExpectedOscilloscopeReading = "Expected oscilloscope reading";
         private const string ColNote = "Note";
+        private const string ColTimeDiv = "T/DIV";
+        private const string ColVoltsDiv = "V/DIV";
+        private const string ColTriggerLevelVolts = "T.Level";
 
         // Component highlights columns
         private const string ColX = "X";
@@ -59,21 +62,10 @@ namespace Handlers.DataHandling
         private const string ColContact = "Contact (email or web page)";
 
         // Required header sets per sheet - used for robust, order-independent column mapping
-        /*
-        private static readonly string[] SchematicsHeaders = [ColSchematicName, ColSchematicImageFile, ColMainImageHighlightColor, ColMainHighlightOpacity, ColThumbnailImageHighlightColor, ColThumbnailHighlightOpacity];
-        private static readonly string[] ComponentsHeaders = [ColBoardLabel, ColFriendlyName, ColTechnicalNameOrValue, ColPartNumber, ColCategory, ColRegion, ColDescription];
-        private static readonly string[] ComponentImagesHeaders = [ColBoardLabel, ColRegion, ColPin, ColName, ColExpectedOscilloscopeReading, ColFile, ColNote];
-        private static readonly string[] ComponentHighlightsHeaders = [ColSchematicName, ColBoardLabel, ColX, ColY, ColWidth, ColHeight];
-        private static readonly string[] ComponentLocalFilesHeaders = [ColBoardLabel, ColName, ColFile];
-        private static readonly string[] ComponentLinksHeaders = [ColBoardLabel, ColName, ColUrl];
-        private static readonly string[] BoardLocalFilesHeaders = [ColCategory, ColName, ColFile];
-        private static readonly string[] BoardLinksHeaders = [ColCategory, ColName, ColUrl];
-        private static readonly string[] CreditsHeaders = [ColCategory, ColSubCategory, ColNameOrHandle, ColContact];
-        */
         // Compliant with .NET6
         private static readonly string[] SchematicsHeaders = new[] { ColSchematicName, ColSchematicImageFile, ColMainImageHighlightColor, ColMainHighlightOpacity, ColThumbnailImageHighlightColor, ColThumbnailHighlightOpacity };
         private static readonly string[] ComponentsHeaders = new[] { ColBoardLabel, ColFriendlyName, ColTechnicalNameOrValue, ColPartNumber, ColCategory, ColRegion, ColDescription };
-        private static readonly string[] ComponentImagesHeaders = new[] { ColBoardLabel, ColRegion, ColPin, ColName, ColExpectedOscilloscopeReading, ColFile, ColNote };
+        private static readonly string[] ComponentImagesHeaders = new[] { ColBoardLabel, ColRegion, ColPin, ColName, ColExpectedOscilloscopeReading, ColFile, ColNote, ColTimeDiv, ColVoltsDiv, ColTriggerLevelVolts };
         private static readonly string[] ComponentHighlightsHeaders = new[] { ColSchematicName, ColBoardLabel, ColX, ColY, ColWidth, ColHeight };
         private static readonly string[] ComponentLocalFilesHeaders = new[] { ColBoardLabel, ColName, ColFile };
         private static readonly string[] ComponentLinksHeaders = new[] { ColBoardLabel, ColName, ColUrl };
@@ -264,7 +256,10 @@ namespace Handlers.DataHandling
                 Name = Val(r, ColName),
                 ExpectedOscilloscopeReading = Val(r, ColExpectedOscilloscopeReading),
                 File = Val(r, ColFile),
-                Note = Val(r, ColNote)
+                Note = Val(r, ColNote),
+                TimeDiv = Val(r, ColTimeDiv),
+                VoltsDiv = Val(r, ColVoltsDiv),
+                TriggerLevelVolts = Val(r, ColTriggerLevelVolts)
             }).ToList();
 
         private static List<ComponentHighlightEntry> MapComponentHighlights(List<Dictionary<string, string>> rows)

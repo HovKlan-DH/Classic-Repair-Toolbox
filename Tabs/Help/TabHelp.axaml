@@ -1,7 +1,0 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="CRT.TabHelp">
-	<TextBlock Text="Details content goes here"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center" />
-</UserControl>

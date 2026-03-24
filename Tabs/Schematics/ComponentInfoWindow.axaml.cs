@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Handlers.DataHandling;
+using Handlers.Oscilloscope;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+
 
 namespace CRT
 {
@@ -26,6 +28,7 @@ namespace CRT
         public string Name { get; set; } = string.Empty;
         public string ExpectedOscilloscopeReading { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
+        public ComponentImageEntry? SourceEntry { get; set; }
         public bool LabelVisible => !string.IsNullOrEmpty(this.Label);
     }
 
@@ -74,6 +77,9 @@ namespace CRT
         private bool _isPanningImage = false;
         private Point _panStartPoint;
         private Matrix _panStartMatrix;
+
+        private CancellationTokenSource? _scopeImageSyncCts;
+        private string _lastScopeImageSyncSignature = string.Empty;
 
 
         // ###########################################################################################
@@ -192,6 +198,8 @@ namespace CRT
                 foreach (var bmp in this._loadedBitmaps)
                     bmp.Dispose();
                 this._loadedBitmaps.Clear();
+                this._scopeImageSyncCts?.Cancel();
+                this._scopeImageSyncCts?.Dispose();
             };
         }
 
@@ -586,6 +594,7 @@ namespace CRT
 
         // ###########################################################################################
         // Updates the main image, NoImageText, info overlay, counter and note when selection changes.
+        // Also schedules a debounced oscilloscope auto-sync when the selected image contains scope data.
         // ###########################################################################################
         private void OnThumbnailSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
@@ -599,6 +608,7 @@ namespace CRT
             this.UpdateInfoOverlay();
             this.UpdateImageCounter();
             this.UpdateImageNote(selected);
+            this.ScheduleSelectedOscilloscopeImageSync(selected);
         }
 
         // ###########################################################################################
@@ -733,6 +743,7 @@ namespace CRT
             if (entries.Count == 0)
             {
                 this.DisposeLoadedBitmaps();
+                this.ScheduleSelectedOscilloscopeImageSync(null);
                 return;
             }
 
@@ -791,7 +802,8 @@ namespace CRT
                     Pin = x.Entry.Pin.Trim(),
                     Name = x.Entry.Name,
                     ExpectedOscilloscopeReading = x.Entry.ExpectedOscilloscopeReading,
-                    Note = x.Entry.Note
+                    Note = x.Entry.Note,
+                    SourceEntry = x.Entry
                 })
                 .ToList();
 
@@ -823,6 +835,7 @@ namespace CRT
             this.UpdateInfoOverlay();
             this.UpdateImageCounter();
             this.UpdateImageNote(selected);
+            this.ScheduleSelectedOscilloscopeImageSync(selected);
 
             // Dispose the previous bitmaps only after the UI has fully transitioned to the new set
             foreach (var bmp in oldBitmaps)
@@ -1076,6 +1089,41 @@ namespace CRT
         {
             this.Close();
         }
+
+        // ###########################################################################################
+        // Queues oscilloscope auto-sync for the currently selected image.
+        // The oscilloscope tab handles debounce and latest-wins processing.
+        // ###########################################################################################
+        private void ScheduleSelectedOscilloscopeImageSync(ComponentImageItem? selectedItem)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            if (!IsOscilloscopeImage(selectedItem?.SourceEntry))
+            {
+                mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(null);
+                return;
+            }
+
+            mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(selectedItem.SourceEntry);
+        }
+
+        // ###########################################################################################
+        // Returns true when the selected component image represents an oscilloscope reference image.
+        // This requires a Pin value and at least one oscilloscope setting column to be populated.
+        // ###########################################################################################
+        private static bool IsOscilloscopeImage(ComponentImageEntry? componentImageEntry)
+        {
+            return componentImageEntry != null &&
+                   !string.IsNullOrWhiteSpace(componentImageEntry.Pin) &&
+                   (!string.IsNullOrWhiteSpace(componentImageEntry.TimeDiv) ||
+                    !string.IsNullOrWhiteSpace(componentImageEntry.VoltsDiv) ||
+                    !string.IsNullOrWhiteSpace(componentImageEntry.TriggerLevelVolts));
+        }
+                
+
 
     }
 }

@@ -460,6 +460,10 @@
 						<local:TabResources x:Name="TabResources" />
 					</TabItem>
 
+					<TabItem Header="Oscilloscope" IsVisible="True">
+						<local:TabOscilloscope x:Name="TabOscilloscope" />
+					</TabItem>
+					
 					<TabItem Header="Contribute">
 						<local:TabContribute x:Name="TabContribute" />
 					</TabItem>
@@ -470,10 +474,6 @@
 
 					<TabItem Header="Feedback" IsVisible="True">
 						<local:TabFeedback x:Name="TabFeedback" />
-					</TabItem>
-
-					<TabItem Header="Help" IsVisible="False">
-						<local:TabHelp x:Name="TabHelp" />
 					</TabItem>
 
 					<TabItem Header="About">
