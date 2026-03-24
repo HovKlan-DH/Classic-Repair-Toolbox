@@ -122,13 +122,17 @@ namespace CRT
                     this.WindowState = WindowState.Maximized;
             }
 
-            // Restore scroll action state to layout mapping
-            if (string.Equals(UserSettings.ComponentInfoScrollAction, "Image zoom", StringComparison.OrdinalIgnoreCase))
-                this.ScrollActionCombo.SelectedIndex = 1;
-            else
-                this.ScrollActionCombo.SelectedIndex = 0;
+            // Restore switch states from persisted settings
+            this.MousewheelZoomSwitch.IsChecked =
+                string.Equals(UserSettings.ComponentInfoScrollAction, "Image zoom", StringComparison.OrdinalIgnoreCase);
 
-            this.ScrollActionCombo.SelectionChanged += this.OnScrollActionComboSelectionChanged;
+            this.NumpadOscilloscopeSwitch.IsChecked =
+                string.Equals(UserSettings.ComponentInfoKeyboardHandling, "Control oscilloscope", StringComparison.OrdinalIgnoreCase);
+
+            this.MousewheelZoomSwitch.Checked += this.OnMousewheelZoomSwitchChanged;
+            this.MousewheelZoomSwitch.Unchecked += this.OnMousewheelZoomSwitchChanged;
+            this.NumpadOscilloscopeSwitch.Checked += this.OnNumpadOscilloscopeSwitchChanged;
+            this.NumpadOscilloscopeSwitch.Unchecked += this.OnNumpadOscilloscopeSwitchChanged;
             this.ThumbnailList.SelectionChanged += this.OnThumbnailSelectionChanged;
 
             // Map the interactions to the expanded top-panel boundaries area instead of the local box
@@ -241,12 +245,18 @@ namespace CRT
                 return;
             }
 
-            // Digit keys (top row and numpad): accumulate into a pin number and navigate to the matching image
+            // Digit keys: top-row digits always control pin selection.
+            // Numpad digits do the same only when numpad-to-oscilloscope control is disabled.
             int digitValue = -1;
             if (e.Key >= Key.D0 && e.Key <= Key.D9)
                 digitValue = (int)e.Key - (int)Key.D0;
             else if (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9)
+            {
+                if (this.NumpadOscilloscopeSwitch.IsChecked == true)
+                    return;
+
                 digitValue = (int)e.Key - (int)Key.NumPad0;
+            }
 
             if (digitValue >= 0)
             {
@@ -508,14 +518,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Saves off the scroll action dropdown to global standard user settings configurations
+        // Saves the mousewheel zoom switch state to the persisted component info settings.
         // ###########################################################################################
-        private void OnScrollActionComboSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private void OnMousewheelZoomSwitchChanged(object? sender, RoutedEventArgs e)
         {
-            if (this.ScrollActionCombo.SelectedItem is ComboBoxItem item && item.Content is string action)
-            {
-                UserSettings.ComponentInfoScrollAction = action;
-            }
+            UserSettings.ComponentInfoScrollAction =
+                this.MousewheelZoomSwitch.IsChecked == true
+                    ? "Image zoom"
+                    : "Image change";
         }
 
         // ###########################################################################################
@@ -953,7 +963,7 @@ namespace CRT
         // ###########################################################################################
         // Updates the region toggle and button states to match the current local region.
         // Hides only the region buttons when the board has no explicit PAL/NTSC components,
-        // while keeping the scroll-action selector and Close button left-aligned and visible.
+        // while keeping the switches and Close button visible.
         // ###########################################################################################
         private void UpdateRegionButtonsState()
         {
@@ -964,21 +974,13 @@ namespace CRT
             this.NtscRegionButton.IsVisible = this._hasExplicitRegionComponents;
             this.UpdateRegionButtonCounters();
 
-            if (this.PalRegionButton.Parent is Grid footerGrid && footerGrid.ColumnDefinitions.Count >= 7)
+            if (this.PalRegionButton.Parent is Grid footerGrid && footerGrid.ColumnDefinitions.Count >= 5)
             {
                 footerGrid.ColumnDefinitions[0].Width = this._hasExplicitRegionComponents
                     ? GridLength.Auto
                     : new GridLength(0, GridUnitType.Pixel);
 
                 footerGrid.ColumnDefinitions[1].Width = this._hasExplicitRegionComponents
-                    ? new GridLength(4, GridUnitType.Pixel)
-                    : new GridLength(0, GridUnitType.Pixel);
-
-                footerGrid.ColumnDefinitions[2].Width = this._hasExplicitRegionComponents
-                    ? GridLength.Auto
-                    : new GridLength(0, GridUnitType.Pixel);
-
-                footerGrid.ColumnDefinitions[3].Width = this._hasExplicitRegionComponents
                     ? new GridLength(12, GridUnitType.Pixel)
                     : new GridLength(0, GridUnitType.Pixel);
             }
@@ -1086,14 +1088,6 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Closes the window when the Close button is clicked.
-        // ###########################################################################################
-        private void OnCloseButtonClick(object? sender, RoutedEventArgs e)
-        {
-            this.Close();
-        }
-
-        // ###########################################################################################
         // Queues oscilloscope auto-sync for the currently selected image.
         // The oscilloscope tab handles debounce and latest-wins processing.
         // ###########################################################################################
@@ -1190,6 +1184,34 @@ namespace CRT
             return windowTitle;
         }
 
+        // ###########################################################################################
+        // Saves the numpad oscilloscope control switch state to the persisted component info settings.
+        // ###########################################################################################
+        private void OnNumpadOscilloscopeSwitchChanged(object? sender, RoutedEventArgs e)
+        {
+            UserSettings.ComponentInfoKeyboardHandling =
+                this.NumpadOscilloscopeSwitch.IsChecked == true
+                    ? "Control oscilloscope"
+                    : "Control image pin selection";
+        }
+
+        // ###########################################################################################
+        // Toggles the mousewheel zoom switch when its descriptive text is clicked.
+        // ###########################################################################################
+        private void OnMousewheelZoomTextPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            this.MousewheelZoomSwitch.IsChecked = this.MousewheelZoomSwitch.IsChecked != true;
+            e.Handled = true;
+        }
+
+        // ###########################################################################################
+        // Toggles the numpad oscilloscope switch when its descriptive text is clicked.
+        // ###########################################################################################
+        private void OnNumpadOscilloscopeTextPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            this.NumpadOscilloscopeSwitch.IsChecked = this.NumpadOscilloscopeSwitch.IsChecked != true;
+            e.Handled = true;
+        }
 
     }
 }

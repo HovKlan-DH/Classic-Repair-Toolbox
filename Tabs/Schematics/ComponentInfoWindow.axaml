@@ -454,50 +454,92 @@
 				</StackPanel>
 			</ScrollViewer>
 
-			<!-- Region toggle: local PAL / NTSC buttons (does not affect the global region setting) -->
+			<!-- Footer controls: local region, mousewheel behavior, keyboard handling, close -->
 			<Border x:Name="RegionControlsBorder"
 					Grid.Row="2"
 					BorderBrush="{DynamicResource Main_Divider}"
 					BorderThickness="0,1,0,0"
 					Padding="0,6,0,0"
 					Margin="0,6,0,0">
-				<Grid ColumnDefinitions="Auto,4,Auto,12,Auto,*,Auto">
+				<Grid ColumnDefinitions="Auto,10,Auto,*,Auto"
+					  RowDefinitions="28,4,28">
+
 					<Button x:Name="PalRegionButton"
-					Classes="RegionToggle"
-					Grid.Column="0"
-					Content="PAL (0)"
-					FontSize="11"
-					Padding="8,3"
-					MinHeight="0"
-					Click="OnPalRegionClick" />
-					<Button x:Name="NtscRegionButton"
-										Classes="RegionToggle"
-										Grid.Column="2"
-										Content="NTSC (0)"
-										FontSize="11"
-										Padding="8,3"
-										MinHeight="0"
-										Click="OnNtscRegionClick" />
-
-					<!-- Scroll action behavior toggle -->
-					<ComboBox x:Name="ScrollActionCombo"
-							  Grid.Column="4"
-							  FontSize="11"
-							  Padding="8,3"
-							  MinHeight="0"
-							  VerticalAlignment="Center">
-						<ComboBoxItem FontSize="11">Image change</ComboBoxItem>
-						<ComboBoxItem FontSize="11">Image zoom</ComboBoxItem>
-					</ComboBox>
-
-					<Button Grid.Column="6"
-							Content="Close"
-							HorizontalAlignment="Right"
+							Classes="RegionToggle"
+							Grid.Column="0"
+							Grid.Row="0"
+							Content="PAL (0)"
+							Width="60"
+							Height="24"
+							MinHeight="24"
+							FontSize="10"
+							Padding="6,2"
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center"
 							VerticalAlignment="Center"
-							FontSize="12"
-							Padding="12,4"
-							Margin="12,0,0,0"
-							Click="OnCloseButtonClick" />
+							Click="OnPalRegionClick" />
+
+					<Button x:Name="NtscRegionButton"
+							Classes="RegionToggle"
+							Grid.Column="0"
+							Grid.Row="2"
+							Content="NTSC (0)"
+							Width="60"
+							Height="24"
+							MinHeight="24"
+							FontSize="10"
+							Padding="6,2"
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center"
+							VerticalAlignment="Center"
+							Click="OnNtscRegionClick" />
+
+					<Grid Grid.Column="2"
+						  Grid.Row="0"
+						  Height="28"
+						  ColumnDefinitions="Auto,4,Auto"
+						  VerticalAlignment="Center">
+						<ToggleSwitch x:Name="MousewheelZoomSwitch"
+									  Grid.Column="0"
+									  MinWidth="36"
+									  Padding="0"
+									  Margin="0,-5,0,0"
+									  OnContent="{x:Null}"
+									  OffContent="{x:Null}"
+									  HorizontalAlignment="Left"
+									  VerticalAlignment="Center" />
+						<TextBlock Grid.Column="2"
+								   Text="Mousewheel will zoom image"
+								   FontSize="11"
+								   Margin="-12,0,0,0"
+								   VerticalAlignment="Center"
+								   Cursor="Hand"
+								   PointerPressed="OnMousewheelZoomTextPointerPressed" />
+					</Grid>
+
+					<Grid Grid.Column="2"
+						  Grid.Row="2"
+						  Height="28"
+						  ColumnDefinitions="Auto,4,Auto"
+						  VerticalAlignment="Center">
+						<ToggleSwitch x:Name="NumpadOscilloscopeSwitch"
+									  Grid.Column="0"
+									  MinWidth="36"
+									  Padding="0"
+									  Margin="0,-5,0,0"
+									  OnContent="{x:Null}"
+									  OffContent="{x:Null}"
+									  HorizontalAlignment="Left"
+									  VerticalAlignment="Center" />
+						<TextBlock Grid.Column="2"
+								   Text="Numpad will control oscilloscope"
+								   FontSize="11"
+								   Margin="-11,0,0,0"
+								   VerticalAlignment="Center"
+								   Cursor="Hand"
+								   PointerPressed="OnNumpadOscilloscopeTextPointerPressed" />
+					</Grid>
+
 				</Grid>
 			</Border>
 

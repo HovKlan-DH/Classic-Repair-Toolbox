@@ -77,6 +77,7 @@ namespace Handlers.DataHandling
         [JsonPropertyName("lastOscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
         [JsonPropertyName("oscilloscopeHost")] public string OscilloscopeHost { get; set; } = "192.168.0.100";
         [JsonPropertyName("oscilloscopePort")] public int OscilloscopePort { get; set; } = 5025;
+        [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control image pin selection";
 
     }
 
@@ -96,6 +97,17 @@ namespace Handlers.DataHandling
             {
                 _data.CheckVersionOnLaunch = value;
                 Logger.Info($"Setting changed: [CheckVersionOnLaunch] [{value}]");
+                Save();
+            }
+        }
+
+        public static string ComponentInfoKeyboardHandling
+        {
+            get => _data.ComponentInfoKeyboardHandling;
+            set
+            {
+                _data.ComponentInfoKeyboardHandling = value;
+                Logger.Info($"Setting changed: [ComponentInfoKeyboardHandling] [{value}]");
                 Save();
             }
         }
@@ -408,6 +420,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"    Various other settings:");
                     Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
                     Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}]");
+                    Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                     Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
                     Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
                     Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");

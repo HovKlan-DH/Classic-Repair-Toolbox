@@ -102,13 +102,13 @@
 					 Margin="0,4,0,0"
 					 IsReadOnly="True"
 					 AcceptsReturn="True"
-					 TextWrapping="Wrap"
+					 TextWrapping="WrapWithOverflow"
 					 VerticalAlignment="Stretch"
 					 HorizontalAlignment="Stretch"
 					 FontFamily="Consolas"
 					 FontSize="12"
 					 ScrollViewer.VerticalScrollBarVisibility="Auto"
-					 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+					 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
 					 Background="Black"
 					 Foreground="#69de85">
 
