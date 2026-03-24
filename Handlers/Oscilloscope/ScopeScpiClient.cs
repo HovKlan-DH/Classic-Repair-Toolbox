@@ -28,7 +28,7 @@ namespace Handlers.Oscilloscope
         {
             if (this.thisStream == null)
             {
-                throw new InvalidOperationException("No active oscilloscope session exists.");
+                throw new InvalidOperationException("No active oscilloscope session exists");
             }
 
             string normalizedCommand = commandText.EndsWith("\n", StringComparison.Ordinal)
@@ -57,7 +57,7 @@ namespace Handlers.Oscilloscope
         {
             if (this.thisStream == null)
             {
-                throw new InvalidOperationException("No active oscilloscope session exists.");
+                throw new InvalidOperationException("No active oscilloscope session exists");
             }
 
             await this.SendAsync(commandText, cancellationToken);
@@ -65,7 +65,7 @@ namespace Handlers.Oscilloscope
             byte[] hashByte = await this.ReadExactlyAsync(1, cancellationToken);
             if (hashByte[0] != (byte)'#')
             {
-                throw new InvalidOperationException("Expected SCPI binary block response.");
+                throw new InvalidOperationException("Expected SCPI binary block response");
             }
 
             byte[] lengthDigitsByte = await this.ReadExactlyAsync(1, cancellationToken);
@@ -73,7 +73,7 @@ namespace Handlers.Oscilloscope
 
             if (lengthDigits < 1 || lengthDigits > 9)
             {
-                throw new InvalidOperationException("Invalid SCPI binary block length header.");
+                throw new InvalidOperationException("Invalid SCPI binary block length header");
             }
 
             byte[] payloadLengthBytes = await this.ReadExactlyAsync(lengthDigits, cancellationToken);
@@ -81,7 +81,7 @@ namespace Handlers.Oscilloscope
 
             if (!int.TryParse(payloadLengthText, out int payloadLength) || payloadLength < 0)
             {
-                throw new InvalidOperationException("Invalid SCPI binary block payload length.");
+                throw new InvalidOperationException("Invalid SCPI binary block payload length");
             }
 
             byte[] payloadBytes = await this.ReadExactlyAsync(payloadLength, cancellationToken);
@@ -104,7 +104,7 @@ namespace Handlers.Oscilloscope
         {
             if (this.thisStream == null)
             {
-                throw new InvalidOperationException("No active oscilloscope session exists.");
+                throw new InvalidOperationException("No active oscilloscope session exists");
             }
 
             if (!this.thisStream.DataAvailable)
@@ -125,7 +125,7 @@ namespace Handlers.Oscilloscope
                 if (terminatorBuffer[0] != (byte)'\r' &&
                     terminatorBuffer[0] != (byte)'\n')
                 {
-                    throw new InvalidOperationException("Unexpected extra data after SCPI binary block.");
+                    throw new InvalidOperationException("Unexpected extra data after SCPI binary block");
                 }
             }
         }
@@ -137,7 +137,7 @@ namespace Handlers.Oscilloscope
         {
             if (this.thisStream == null)
             {
-                throw new InvalidOperationException("No active oscilloscope session exists.");
+                throw new InvalidOperationException("No active oscilloscope session exists");
             }
 
             var bytes = new List<byte>();
@@ -173,7 +173,7 @@ namespace Handlers.Oscilloscope
         {
             if (this.thisStream == null)
             {
-                throw new InvalidOperationException("No active oscilloscope session exists.");
+                throw new InvalidOperationException("No active oscilloscope session exists");
             }
 
             var buffer = new byte[byteCount];
@@ -187,7 +187,7 @@ namespace Handlers.Oscilloscope
 
                 if (read == 0)
                 {
-                    throw new InvalidOperationException("Unexpected end of SCPI network stream.");
+                    throw new InvalidOperationException("Unexpected end of SCPI network stream");
                 }
 
                 offset += read;

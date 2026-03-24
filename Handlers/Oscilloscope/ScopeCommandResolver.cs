@@ -28,7 +28,7 @@ namespace Handlers.Oscilloscope
                 ScopeCommand.QueryVoltsDiv => oscilloscopeEntry.QueryVoltsDiv,
                 ScopeCommand.SetVoltsDiv => oscilloscopeEntry.SetVoltsDiv,
                 ScopeCommand.DumpImage => oscilloscopeEntry.DumpImage,
-                _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown scope command.")
+                _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown scope command")
             };
         }
 

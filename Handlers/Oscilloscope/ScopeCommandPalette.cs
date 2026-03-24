@@ -159,7 +159,7 @@ namespace Handlers.Oscilloscope
                 return commands;
             }
 
-            throw new ArgumentOutOfRangeException(nameof(palette), palette, "Unknown scope command palette.");
+            throw new ArgumentOutOfRangeException(nameof(palette), palette, "Unknown scope command palette");
         }
 
         // ###########################################################################################

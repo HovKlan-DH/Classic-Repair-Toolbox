@@ -36,6 +36,9 @@ namespace CRT
         private readonly object thisPendingOutputLinesLock = new();
         private readonly List<string> thisPendingOutputLines = new();
         private bool thisOutputFlushScheduled;
+        private bool thisShouldAutoReconnectEstablishedOscilloscopeSession;
+        private int thisAutoReconnectAttemptInProgress;
+        private DateTime thisLastAutoReconnectAttemptUtc = DateTime.MinValue;
 
 
         public TabOscilloscope()
@@ -218,6 +221,13 @@ namespace CRT
         // ###########################################################################################
         private OscilloscopeSelectionSnapshot CreateOscilloscopeSelectionSnapshot()
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                return Dispatcher.UIThread.InvokeAsync(
+                    this.CreateOscilloscopeSelectionSnapshot,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+            }
+
             const int defaultDelayMilliseconds = 250;
 
             var selectedOscilloscope = this.GetSelectedOscilloscope();
@@ -264,7 +274,7 @@ namespace CRT
             {
                 if (writeWarnings)
                 {
-                    this.AppendOutputLine("Warning", "Select a vendor and series or model first.");
+                    this.AppendOutputLine("Warning", "Select a vendor and series or model first");
                 }
 
                 return false;
@@ -274,7 +284,7 @@ namespace CRT
             {
                 if (writeWarnings)
                 {
-                    this.AppendOutputLine("Warning", "Enter an IP address or FQDN first.");
+                    this.AppendOutputLine("Warning", "Enter an IP address or FQDN first");
                 }
 
                 return false;
@@ -284,7 +294,7 @@ namespace CRT
             {
                 if (writeWarnings)
                 {
-                    this.AppendOutputLine("Warning", "TCP port must be within 1-65535.");
+                    this.AppendOutputLine("Warning", "TCP port must be within 1-65535");
                 }
 
                 return false;
@@ -296,11 +306,14 @@ namespace CRT
         // ###########################################################################################
         // Creates and stores one persistent SCPI client session after an explicit user connect.
         // The connection stays alive and is reused by later popup image auto-sync operations.
+        // Automatic reconnect attempts can reuse the same path with different log text.
         // ###########################################################################################
-        private async Task<bool> ConnectSelectedOscilloscopeAsync(CancellationToken externalCancellationToken)
+        private async Task<bool> ConnectSelectedOscilloscopeAsync(
+            CancellationToken externalCancellationToken,
+            bool isAutomaticReconnect = false)
         {
             OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
-            if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: true))
+            if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: !isAutomaticReconnect))
             {
                 return false;
             }
@@ -311,7 +324,11 @@ namespace CRT
 
             this.SetOscilloscopeButtonsEnabled(false);
             this.AppendOutputLine("Debug", "---");
-            this.AppendOutputLine("Info", $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}.");
+            this.AppendOutputLine(
+                "Info",
+                isAutomaticReconnect
+                    ? $"Automatically reconnecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}"
+                    : $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}");
 
             try
             {
@@ -326,9 +343,12 @@ namespace CRT
                 await this.DisposeConnectedScopeClientCoreAsync();
 
                 newScopeClient = new ScopeScpiClient();
-                await newScopeClient.ConnectAsync(selectionSnapshot.Host, selectionSnapshot.Port, linkedCts.Token).ConfigureAwait(false);
+                await newScopeClient.ConnectAsync(
+                    selectionSnapshot.Host,
+                    selectionSnapshot.Port,
+                    linkedCts.Token).ConfigureAwait(false);
 
-                this.AppendOutputLine("Info", "Network session established.");
+                this.AppendOutputLine("Info", "Network session established");
 
                 await this.ExecutePaletteAsync(
                     newScopeClient,
@@ -340,12 +360,20 @@ namespace CRT
                 newScopeClient = null;
 
                 this.thisHasEstablishedOscilloscopeSession = true;
+                this.thisShouldAutoReconnectEstablishedOscilloscopeSession = true;
+                this.thisLastOscilloscopeConnectionState = true;
                 this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                this.AppendOutputLine(
+                    "Info",
+                    isAutomaticReconnect
+                        ? "Oscilloscope session re-established automatically"
+                        : "Oscilloscope session established");
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     this.StartOscilloscopeConnectionMonitoring();
-                    this.UpdateMainWindowOscilloscopeConnectionState(true);
+                    this.UpdateMainWindowOscilloscopeSessionState();
                 },
                 DispatcherPriority.Background);
 
@@ -357,11 +385,19 @@ namespace CRT
             }
             catch (OperationCanceledException)
             {
-                this.AppendOutputLine("Warning", "Connection or SCPI communication timed out.");
+                this.AppendOutputLine(
+                    "Warning",
+                    isAutomaticReconnect
+                        ? "Automatic reconnect timed out"
+                        : "Connection or SCPI communication timed out");
             }
             catch (Exception ex)
             {
-                this.AppendOutputLine("Critical", $"Oscilloscope communication failed: {ex.Message}");
+                this.AppendOutputLine(
+                    isAutomaticReconnect ? "Warning" : "Critical",
+                    isAutomaticReconnect
+                        ? $"Automatic reconnect failed: {ex.Message}"
+                        : $"Oscilloscope communication failed: {ex.Message}");
             }
             finally
             {
@@ -410,7 +446,7 @@ namespace CRT
                 {
                     if (writeWarnings)
                     {
-                        this.AppendOutputLine("Warning", "Connect to oscilloscope first.");
+                        this.AppendOutputLine("Warning", "Connect to oscilloscope first");
                     }
 
                     return;
@@ -435,7 +471,7 @@ namespace CRT
             }
             catch (OperationCanceledException)
             {
-                await this.HandleOscilloscopeSessionFailureCoreAsync("Connection or SCPI communication timed out.");
+                await this.HandleOscilloscopeSessionFailureCoreAsync("Connection or SCPI communication timed out");
             }
             catch (Exception ex)
             {
@@ -477,7 +513,9 @@ namespace CRT
         // ###########################################################################################
         private async void OnConnectToOscilloscopeClick(object? sender, RoutedEventArgs e)
         {
-            await this.ConnectSelectedOscilloscopeAsync(CancellationToken.None);
+            await this.ConnectSelectedOscilloscopeAsync(
+                CancellationToken.None,
+                isAutomaticReconnect: false);
         }
 
         // ###########################################################################################
@@ -531,14 +569,14 @@ namespace CRT
 
                 if (string.IsNullOrWhiteSpace(commandText))
                 {
-                    throw new InvalidOperationException($"No SCPI command text is defined for {command}.");
+                    throw new InvalidOperationException($"No SCPI command text is defined for {command}");
                 }
 
                 string effectiveCommandText = this.BuildEffectiveCommandText(command, commandText);
 
                 if (string.IsNullOrWhiteSpace(effectiveCommandText))
                 {
-                    throw new InvalidOperationException($"No test value is available for {command}.");
+                    throw new InvalidOperationException($"No test value is available for {command}");
                 }
 
                 this.AppendOutputLine("Debug", $"SCPI >> {effectiveCommandText}");
@@ -588,7 +626,7 @@ namespace CRT
             string dumpImageCommand = ScopeCommandResolver.GetCommandText(selectedOscilloscope, ScopeCommand.DumpImage);
             if (string.IsNullOrWhiteSpace(dumpImageCommand))
             {
-                throw new InvalidOperationException("No SCPI command text is defined for DumpImage.");
+                throw new InvalidOperationException("No SCPI command text is defined for DumpImage");
             }
 
             this.AppendOutputLine("Debug", $"SCPI >> {dumpImageCommand}");
@@ -624,9 +662,17 @@ namespace CRT
 
         // ###########################################################################################
         // Returns the currently selected oscilloscope definition from the loaded Excel data.
+        // Marshals to the UI thread when called from background code.
         // ###########################################################################################
         private OscilloscopeEntry? GetSelectedOscilloscope()
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                return Dispatcher.UIThread.InvokeAsync(
+                    this.GetSelectedOscilloscope,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+            }
+
             var selectedVendor = this.VendorComboBox.SelectedItem as string;
             var selectedSeries = this.SeriesOrModelComboBox.SelectedItem as string;
 
@@ -859,6 +905,14 @@ namespace CRT
         // ###########################################################################################
         private void SetOscilloscopeButtonsEnabled(bool isEnabled)
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    () => this.SetOscilloscopeButtonsEnabled(isEnabled),
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
             this.ConnectToOscilloscopeButton.IsEnabled = isEnabled;
             this.RunFullTestSuiteButton.IsEnabled = isEnabled &&
                 this.thisLastOscilloscopeConnectionState == true;
@@ -1044,6 +1098,14 @@ namespace CRT
         // ###########################################################################################
         private void StartOscilloscopeConnectionMonitoring()
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.StartOscilloscopeConnectionMonitoring,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
             string host = this.HostTextBox.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(host))
             {
@@ -1070,6 +1132,14 @@ namespace CRT
         // ###########################################################################################
         private void StopOscilloscopeConnectionMonitoring()
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.StopOscilloscopeConnectionMonitoring,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
             if (this.thisOscilloscopeMonitorCancellationTokenSource != null)
             {
                 try
@@ -1084,22 +1154,14 @@ namespace CRT
                 this.thisOscilloscopeMonitorCancellationTokenSource = null;
             }
 
-            if (TopLevel.GetTopLevel(this) is Window window)
-            {
-                string baseTitle = this.GetMainWindowTitleBase(window.Title ?? string.Empty);
-                if (!string.Equals(window.Title, baseTitle, StringComparison.Ordinal))
-                {
-                    window.Title = baseTitle;
-                }
-            }
-
-            this.RunFullTestSuiteButton.IsEnabled = false;
             this.thisLastOscilloscopeConnectionState = null;
             this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+            this.UpdateMainWindowOscilloscopeSessionState();
         }
 
         // ###########################################################################################
-        // Repeatedly pings the oscilloscope host and updates the main window title on state changes.
+        // Repeatedly pings the oscilloscope host, updates the main window title on state changes,
+        // and triggers automatic reconnect attempts when the host becomes reachable again.
         // ###########################################################################################
         private async Task RunOscilloscopeConnectionMonitoringAsync(string host, CancellationToken cancellationToken)
         {
@@ -1107,9 +1169,16 @@ namespace CRT
             {
                 bool isConnected = await this.PingOscilloscopeAsync(host);
 
-                await Dispatcher.UIThread.InvokeAsync(
-                    () => this.UpdateMainWindowOscilloscopeConnectionState(isConnected),
-                    DispatcherPriority.Background);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    this.UpdateMainWindowOscilloscopeConnectionState(isConnected);
+
+                    if (isConnected)
+                    {
+                        this.QueueAutomaticOscilloscopeReconnectIfNeeded();
+                    }
+                },
+                DispatcherPriority.Background);
 
                 try
                 {
@@ -1140,47 +1209,49 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Updates the main window title with the current oscilloscope connection state.
-        // Only applies changes when the state text actually changed.
+        // Updates ping reachability state for the oscilloscope.
+        // Ping state now drives logging and reconnect behavior, while the main window title reflects
+        // the actual SCPI session state through UpdateMainWindowOscilloscopeSessionState().
         // ###########################################################################################
         private void UpdateMainWindowOscilloscopeConnectionState(bool isConnected)
         {
-            if (this.thisLastOscilloscopeConnectionState == isConnected)
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    () => this.UpdateMainWindowOscilloscopeConnectionState(isConnected),
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            bool? previousConnectionState = this.thisLastOscilloscopeConnectionState;
+
+            if (previousConnectionState == isConnected)
             {
                 return;
             }
 
-            if (TopLevel.GetTopLevel(this) is not Window window)
+            if (previousConnectionState == true && !isConnected)
             {
-                return;
+                this.AppendOutputLine("Warning", "Oscilloscope disconnected");
             }
-
-            if (string.IsNullOrWhiteSpace(this.thisMainWindowTitleBase))
+            else if (previousConnectionState == false && isConnected)
             {
-                this.thisMainWindowTitleBase = this.GetMainWindowTitleBase(window.Title ?? string.Empty);
-            }
-
-            string suffix = isConnected
-                ? " (oscilloscope connected)"
-                : " (oscilloscope disconnected)";
-
-            string newTitle = this.thisMainWindowTitleBase + suffix;
-
-            if (!string.Equals(window.Title, newTitle, StringComparison.Ordinal))
-            {
-                window.Title = newTitle;
-            }
-
-            this.RunFullTestSuiteButton.IsEnabled = isConnected;
-
-            if (!isConnected)
-            {
-                this.thisHasEstablishedOscilloscopeSession = false;
-                this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-                _ = this.DisposeConnectedScopeClientAsync();
+                this.AppendOutputLine("Info", "Oscilloscope reachable again");
             }
 
             this.thisLastOscilloscopeConnectionState = isConnected;
+
+            if (!isConnected)
+            {
+                if (this.thisHasEstablishedOscilloscopeSession || this.thisConnectedScopeClient != null)
+                {
+                    this.thisHasEstablishedOscilloscopeSession = false;
+                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+                    _ = this.DisposeConnectedScopeClientAsync();
+                }
+            }
+
+            this.UpdateMainWindowOscilloscopeSessionState();
         }
 
         // ###########################################################################################
@@ -1279,7 +1350,7 @@ namespace CRT
                     }
                     else
                     {
-                        this.AppendOutputLine("Warning", $"Could not map image T/DIV value [{componentImageEntry.TimeDiv}] to a supported oscilloscope value.");
+                        this.AppendOutputLine("Warning", $"Could not map image T/DIV value [{componentImageEntry.TimeDiv}] to a supported oscilloscope value");
                     }
                 }
 
@@ -1292,7 +1363,7 @@ namespace CRT
                     }
                     else
                     {
-                        this.AppendOutputLine("Warning", $"Could not map image VOLTS/DIV value [{componentImageEntry.VoltsDiv}] to a supported oscilloscope value.");
+                        this.AppendOutputLine("Warning", $"Could not map image VOLTS/DIV value [{componentImageEntry.VoltsDiv}] to a supported oscilloscope value");
                     }
                 }
 
@@ -1305,7 +1376,7 @@ namespace CRT
                     }
                     else
                     {
-                        this.AppendOutputLine("Warning", $"Could not parse image trigger level value [{componentImageEntry.TriggerLevelVolts}].");
+                        this.AppendOutputLine("Warning", $"Could not parse image trigger level value [{componentImageEntry.TriggerLevelVolts}]");
                     }
                 }
 
@@ -1329,21 +1400,21 @@ namespace CRT
                 }
 
                 this.AppendOutputLine("Debug", "---");
-                this.AppendOutputLine("Info", $"Auto-syncing oscilloscope settings from image pin [{componentImageEntry.Pin.Trim()}].");
+                this.AppendOutputLine("Info", $"Auto-syncing oscilloscope settings from image pin [{componentImageEntry.Pin.Trim()}]");
 
                 if (mappedTimeDiv != null)
                 {
-                    this.AppendOutputLine("Info", $"Image TIME/DIV [{mappedTimeDiv.RawValue}] mapped to scope value [{mappedTimeDiv.MatchedDisplayValue}].");
+                    this.AppendOutputLine("Info", $"Image TIME/DIV [{mappedTimeDiv.RawValue}] mapped to scope value [{mappedTimeDiv.MatchedDisplayValue}]");
                 }
 
                 if (mappedVoltsDiv != null)
                 {
-                    this.AppendOutputLine("Info", $"Image VOLTS/DIV [{mappedVoltsDiv.RawValue}] mapped to scope value [{mappedVoltsDiv.MatchedDisplayValue}].");
+                    this.AppendOutputLine("Info", $"Image VOLTS/DIV [{mappedVoltsDiv.RawValue}] mapped to scope value [{mappedVoltsDiv.MatchedDisplayValue}]");
                 }
 
                 if (mappedTriggerLevel != null)
                 {
-                    this.AppendOutputLine("Info", $"Image trigger level [{mappedTriggerLevel.RawValue}] mapped to SCPI value [{mappedTriggerLevel.ScpiValue}].");
+                    this.AppendOutputLine("Info", $"Image trigger level [{mappedTriggerLevel.RawValue}] mapped to SCPI value [{mappedTriggerLevel.ScpiValue}]");
                 }
 
                 await this.RunWithEstablishedOscilloscopeSessionAsync(
@@ -1442,7 +1513,9 @@ namespace CRT
         private async void InvalidateEstablishedOscilloscopeSession()
         {
             this.thisHasEstablishedOscilloscopeSession = false;
+            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = false;
             this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+            Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
             this.StopOscilloscopeConnectionMonitoring();
             await this.DisposeConnectedScopeClientAsync();
         }
@@ -1498,15 +1571,16 @@ namespace CRT
 
         // ###########################################################################################
         // Tears down the persistent session after a communication failure and reports the failure in
-        // the output pane so the next operation requires an explicit reconnect.
+        // the output pane. Connectivity monitoring remains active so automatic reconnect can occur
+        // once the oscilloscope becomes reachable again.
         // ###########################################################################################
         private async Task HandleOscilloscopeSessionFailureCoreAsync(string message)
         {
             this.AppendOutputLine("Critical", $"Oscilloscope communication failed: {message}");
             this.thisHasEstablishedOscilloscopeSession = false;
             this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-            this.StopOscilloscopeConnectionMonitoring();
             await this.DisposeConnectedScopeClientCoreAsync();
+            this.UpdateMainWindowOscilloscopeSessionState();
         }
 
         // ###########################################################################################
@@ -1658,6 +1732,147 @@ namespace CRT
         {
             public ComponentImageEntry ComponentImageEntry { get; init; } = new();
             public OscilloscopeSelectionSnapshot SelectionSnapshot { get; init; } = new();
+        }
+
+        // ###########################################################################################
+        // Queues an automatic reconnect attempt when the oscilloscope has previously been connected,
+        // is reachable again over ping, and no active SCPI session currently exists.
+        // ###########################################################################################
+        private void QueueAutomaticOscilloscopeReconnectIfNeeded()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.QueueAutomaticOscilloscopeReconnectIfNeeded,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            if (!this.thisShouldAutoReconnectEstablishedOscilloscopeSession)
+            {
+                return;
+            }
+
+            if (this.thisConnectedScopeClient != null || this.thisHasEstablishedOscilloscopeSession)
+            {
+                return;
+            }
+
+            if (DateTime.UtcNow - this.thisLastAutoReconnectAttemptUtc < TimeSpan.FromSeconds(3))
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref this.thisAutoReconnectAttemptInProgress, 1, 0) != 0)
+            {
+                return;
+            }
+
+            this.thisLastAutoReconnectAttemptUtc = DateTime.UtcNow;
+            this.AppendOutputLine("Info", "Oscilloscope reachable - attempting automatic reconnect");
+
+            _ = this.RunAutomaticOscilloscopeReconnectAsync();
+        }
+
+        // ###########################################################################################
+        // Runs one automatic reconnect attempt and releases the reconnect gate afterward so future
+        // retries can occur if the oscilloscope is still not ready for SCPI connections.
+        // ###########################################################################################
+        private async Task RunAutomaticOscilloscopeReconnectAsync()
+        {
+            try
+            {
+                await this.ConnectSelectedOscilloscopeAsync(
+                    CancellationToken.None,
+                    isAutomaticReconnect: true);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
+            }
+        }
+
+        // ###########################################################################################
+        // Updates the main window title and button state based on the actual SCPI session state
+        // instead of raw ping reachability.
+        // ###########################################################################################
+        private void UpdateMainWindowOscilloscopeSessionState()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.UpdateMainWindowOscilloscopeSessionState,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            bool hasEstablishedSession =
+                this.thisHasEstablishedOscilloscopeSession &&
+                this.thisConnectedScopeClient != null;
+
+            this.RunFullTestSuiteButton.IsEnabled = hasEstablishedSession;
+
+            if (TopLevel.GetTopLevel(this) is Window window)
+            {
+                if (string.IsNullOrWhiteSpace(this.thisMainWindowTitleBase))
+                {
+                    this.thisMainWindowTitleBase = this.GetMainWindowTitleBase(window.Title ?? string.Empty);
+                }
+
+                string suffix = hasEstablishedSession
+                    ? " (oscilloscope connected)"
+                    : " (oscilloscope disconnected)";
+
+                string newTitle = this.thisMainWindowTitleBase + suffix;
+
+                if (!string.Equals(window.Title, newTitle, StringComparison.Ordinal))
+                {
+                    window.Title = newTitle;
+                }
+            }
+
+            this.NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState();
+        }
+
+        // ###########################################################################################
+        // Returns true once the oscilloscope has had an established session for the current target,
+        // allowing other windows to decide whether a connection-status suffix should be shown.
+        // ###########################################################################################
+        public bool HasSeenEstablishedOscilloscopeSessionForTitleState()
+        {
+            return this.thisShouldAutoReconnectEstablishedOscilloscopeSession;
+        }
+
+        // ###########################################################################################
+        // Returns true only when an active established SCPI session currently exists so other
+        // windows can mirror the same connected/disconnected title state.
+        // ###########################################################################################
+        public bool HasActiveEstablishedOscilloscopeSessionForTitleState()
+        {
+            return this.thisHasEstablishedOscilloscopeSession &&
+                   this.thisConnectedScopeClient != null;
+        }
+
+        // ###########################################################################################
+        // Pushes the current oscilloscope session title state into any open component info popup
+        // windows owned by the main window.
+        // ###########################################################################################
+        private void NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            {
+                mainWindow.UpdateComponentInfoWindowsOscilloscopeSessionState(
+                    this.HasSeenEstablishedOscilloscopeSessionForTitleState(),
+                    this.HasActiveEstablishedOscilloscopeSessionForTitleState());
+            }
         }
 
     }

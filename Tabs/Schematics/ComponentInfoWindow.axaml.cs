@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.Oscilloscope;
 using System;
@@ -80,6 +81,8 @@ namespace CRT
 
         private CancellationTokenSource? _scopeImageSyncCts;
         private string _lastScopeImageSyncSignature = string.Empty;
+        private bool _hasSeenOscilloscopeSessionTitleState;
+        private bool _hasActiveOscilloscopeSessionTitleState;
 
 
         // ###########################################################################################
@@ -1060,7 +1063,7 @@ namespace CRT
                 : this._displayTextFallback;
 
             this.TitleText.Text = titleText;
-            this.Title = titleText;
+            this.ApplyOscilloscopeSessionTitleState();
 
             // Category | Part-number
             string category = entry?.Category ?? string.Empty;
@@ -1122,7 +1125,70 @@ namespace CRT
                     !string.IsNullOrWhiteSpace(componentImageEntry.VoltsDiv) ||
                     !string.IsNullOrWhiteSpace(componentImageEntry.TriggerLevelVolts));
         }
-                
+
+        // ###########################################################################################
+        // Updates the popup window title with the oscilloscope session suffix when the oscilloscope
+        // has been connected at least once for the current app session.
+        // ###########################################################################################
+        public void UpdateOscilloscopeSessionTitleState(bool hasSeenOscilloscopeSession, bool hasActiveOscilloscopeSession)
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    () => this.UpdateOscilloscopeSessionTitleState(hasSeenOscilloscopeSession, hasActiveOscilloscopeSession),
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            this._hasSeenOscilloscopeSessionTitleState = hasSeenOscilloscopeSession;
+            this._hasActiveOscilloscopeSessionTitleState = hasActiveOscilloscopeSession;
+            this.ApplyOscilloscopeSessionTitleState();
+        }
+
+        // ###########################################################################################
+        // Applies the oscilloscope session suffix to the popup title while preserving the current
+        // component-specific base title text.
+        // ###########################################################################################
+        private void ApplyOscilloscopeSessionTitleState()
+        {
+            string baseTitle = !string.IsNullOrWhiteSpace(this.TitleText.Text)
+                ? this.TitleText.Text
+                : this.GetOscilloscopeTitleBase(this.Title ?? string.Empty);
+
+            if (!this._hasSeenOscilloscopeSessionTitleState)
+            {
+                this.Title = baseTitle;
+                return;
+            }
+
+            string suffix = this._hasActiveOscilloscopeSessionTitleState
+                ? " (oscilloscope connected)"
+                : " (oscilloscope disconnected)";
+
+            this.Title = baseTitle + suffix;
+        }
+
+        // ###########################################################################################
+        // Removes any oscilloscope connection suffix from a popup window title so the component
+        // title can be rebuilt cleanly before a fresh session suffix is applied.
+        // ###########################################################################################
+        private string GetOscilloscopeTitleBase(string windowTitle)
+        {
+            const string connectedSuffix = " (oscilloscope connected)";
+            const string disconnectedSuffix = " (oscilloscope disconnected)";
+
+            if (windowTitle.EndsWith(connectedSuffix, StringComparison.Ordinal))
+            {
+                return windowTitle[..^connectedSuffix.Length];
+            }
+
+            if (windowTitle.EndsWith(disconnectedSuffix, StringComparison.Ordinal))
+            {
+                return windowTitle[..^disconnectedSuffix.Length];
+            }
+
+            return windowTitle;
+        }
 
 
     }

@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     public enum LogCategory
     {
-        DEBG,
+        DBUG,
         INFO,
         WARN,
         CRIT
@@ -45,7 +45,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Writes a Debug-level log entry.
         // ###########################################################################################
-        public static void Debug(string message) => Write(LogCategory.DEBG, message);
+        public static void Debug(string message) => Write(LogCategory.DBUG, message);
 
         // ###########################################################################################
         // Writes a Debug-level log entry directly from an exception to include the raw stack trace.
@@ -53,7 +53,7 @@ namespace Handlers.DataHandling
         public static void Debug(Exception ex, string message = "")
         {
             var msg = string.IsNullOrEmpty(message) ? ex.ToString() : $"{message} - {ex}";
-            Write(LogCategory.DEBG, msg);
+            Write(LogCategory.DBUG, msg);
         }
 
         // ###########################################################################################
@@ -80,7 +80,7 @@ namespace Handlers.DataHandling
             if (string.IsNullOrEmpty(_logFilePath))
                 return;
 
-            if (category == LogCategory.DEBG && !IsDebugEnabled)
+            if (category == LogCategory.DBUG && !IsDebugEnabled)
                 return;
 
             var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {category} {message}";

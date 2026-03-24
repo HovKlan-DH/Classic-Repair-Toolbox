@@ -1157,6 +1157,10 @@ namespace CRT
                     DataManager.DataRoot,
                     hasExplicitRegionComponents);
 
+                popup.UpdateOscilloscopeSessionTitleState(
+                    this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
+                    this.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
+
                 if (!popup.IsVisible)
                 {
                     this.PositionPopupOnSameScreen(popup);
@@ -1189,6 +1193,10 @@ namespace CRT
                 UserSettings.Region,
                 DataManager.DataRoot,
                 hasExplicitRegionComponents);
+
+            this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
+                this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
+                this.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
 
             if (!this._singleComponentInfoWindow.IsVisible)
             {
@@ -1597,6 +1605,26 @@ namespace CRT
             window.WindowState = Avalonia.Controls.WindowState.Maximized;
             window.Show(this);
             window.Focus();
+        }
+
+        // ###########################################################################################
+        // Pushes the current oscilloscope session title state into any open component info popup
+        // windows so their title suffix stays aligned with the oscilloscope tab.
+        // ###########################################################################################
+        internal void UpdateComponentInfoWindowsOscilloscopeSessionState(
+            bool hasSeenOscilloscopeSession,
+            bool hasActiveOscilloscopeSession)
+        {
+            this._singleComponentInfoWindow?.UpdateOscilloscopeSessionTitleState(
+                hasSeenOscilloscopeSession,
+                hasActiveOscilloscopeSession);
+
+            foreach (var popup in this._componentInfoWindowsByKey.Values)
+            {
+                popup.UpdateOscilloscopeSessionTitleState(
+                    hasSeenOscilloscopeSession,
+                    hasActiveOscilloscopeSession);
+            }
         }
 
         // ###########################################################################################

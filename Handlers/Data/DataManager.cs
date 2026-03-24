@@ -304,7 +304,7 @@ namespace Handlers.DataHandling
         {
             if (string.IsNullOrEmpty(ResolvedMainExcelFileName))
             {
-                Logger.Warning("No compatible main Excel data file matched the current application version.");
+                Logger.Warning("No compatible main Excel data file matched the current application version");
                 return;
             }
 
