@@ -76,7 +76,7 @@ When a new version is released it will be shown to you in the application, and y
 
 ### Data contributions being worked on currently
 
-- @SX64man is doing an oscilloscope baseline for **VIC-20 NTSC**
+- **@SX64man** is doing an oscilloscope baseline for **VIC-20 NTSC**
 - Please let me know if you want to contribute with something, so it can be visualized here to avoid duplicate work.
     
 
