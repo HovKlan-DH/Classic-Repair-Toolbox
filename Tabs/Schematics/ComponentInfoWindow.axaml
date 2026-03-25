@@ -469,10 +469,10 @@
 							Grid.Column="0"
 							Grid.Row="0"
 							Content="PAL (0)"
-							Width="60"
+							Width="70"
 							Height="24"
 							MinHeight="24"
-							FontSize="10"
+							FontSize="11"
 							Padding="6,2"
 							HorizontalContentAlignment="Center"
 							VerticalContentAlignment="Center"
@@ -484,10 +484,10 @@
 							Grid.Column="0"
 							Grid.Row="2"
 							Content="NTSC (0)"
-							Width="60"
+							Width="70"
 							Height="24"
 							MinHeight="24"
-							FontSize="10"
+							FontSize="11"
 							Padding="6,2"
 							HorizontalContentAlignment="Center"
 							VerticalContentAlignment="Center"
@@ -499,22 +499,10 @@
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
-						<ToggleSwitch x:Name="MousewheelZoomSwitch"
-									  Grid.Column="0"
-									  MinWidth="36"
-									  Padding="0"
-									  Margin="0,-5,0,0"
-									  OnContent="{x:Null}"
-									  OffContent="{x:Null}"
-									  HorizontalAlignment="Left"
-									  VerticalAlignment="Center" />
-						<TextBlock Grid.Column="2"
-								   Text="Mousewheel will zoom image"
-								   FontSize="11"
-								   Margin="-12,0,0,0"
-								   VerticalAlignment="Center"
-								   Cursor="Hand"
-								   PointerPressed="OnMousewheelZoomTextPointerPressed" />
+						<CheckBox x:Name="MousewheelZoomCheckBox"
+							  Content="Mousewheel will zoom image"
+							  FontSize="11"
+							  VerticalAlignment="Center" />
 					</Grid>
 
 					<Grid Grid.Column="2"
@@ -522,22 +510,10 @@
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
-						<ToggleSwitch x:Name="NumpadOscilloscopeSwitch"
-									  Grid.Column="0"
-									  MinWidth="36"
-									  Padding="0"
-									  Margin="0,-5,0,0"
-									  OnContent="{x:Null}"
-									  OffContent="{x:Null}"
-									  HorizontalAlignment="Left"
-									  VerticalAlignment="Center" />
-						<TextBlock Grid.Column="2"
-								   Text="Numpad will control oscilloscope"
-								   FontSize="11"
-								   Margin="-11,0,0,0"
-								   VerticalAlignment="Center"
-								   Cursor="Hand"
-								   PointerPressed="OnNumpadOscilloscopeTextPointerPressed" />
+						<CheckBox x:Name="NumpadOscilloscopeSwitch"
+								  Content="Numpad will control oscilloscope"
+								  FontSize="11"
+								  VerticalAlignment="Center" />
 					</Grid>
 
 				</Grid>

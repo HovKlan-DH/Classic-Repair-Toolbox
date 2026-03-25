@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -39,7 +40,28 @@ namespace CRT
         private bool thisShouldAutoReconnectEstablishedOscilloscopeSession;
         private int thisAutoReconnectAttemptInProgress;
         private DateTime thisLastAutoReconnectAttemptUtc = DateTime.MinValue;
+        private bool thisHasSeenEstablishedOscilloscopeSession;
+        private CancellationTokenSource? thisOscilloscopeAutoConnectCancellationTokenSource;
+        private Task? thisOscilloscopeAutoConnectTask;
+        private bool thisHasLoggedAutomaticConnectPendingMessage;
 
+        private readonly SemaphoreSlim thisTriggerLevelKeyboardSignal = new(0);
+        private CancellationTokenSource? thisTriggerLevelKeyboardWorkerCts;
+        private Task? thisTriggerLevelKeyboardWorkerTask;
+        private int thisPendingTriggerLevelKeyboardSteps;
+
+        private readonly SemaphoreSlim thisTimeDivKeyboardSignal = new(0);
+        private CancellationTokenSource? thisTimeDivKeyboardWorkerCts;
+        private Task? thisTimeDivKeyboardWorkerTask;
+        private int thisPendingTimeDivKeyboardSteps;
+
+        private readonly object thisPendingVoltsDivKeyboardLock = new();
+        private double? thisPendingVoltsDivKeyboardTargetVolts;
+        private readonly SemaphoreSlim thisVoltsDivKeyboardSignal = new(0);
+        private CancellationTokenSource? thisVoltsDivKeyboardWorkerCts;
+        private Task? thisVoltsDivKeyboardWorkerTask;
+
+        private Main? thisMainWindow;
 
         public TabOscilloscope()
         {
@@ -52,6 +74,10 @@ namespace CRT
 
             this.PortNumericUpDown.Value = UserSettings.OscilloscopePort;
             this.PortNumericUpDown.ValueChanged += this.OnPortValueChanged;
+
+            this.AutoConnectOscilloscopeCheckBox.IsChecked = UserSettings.OscilloscopeAutoConnect;
+            this.AutoConnectOscilloscopeCheckBox.Checked += this.OnAutoConnectOscilloscopeCheckBoxChanged;
+            this.AutoConnectOscilloscopeCheckBox.Unchecked += this.OnAutoConnectOscilloscopeCheckBoxChanged;
 
             this.VendorComboBox.SelectionChanged += this.OnVendorSelectionChanged;
             this.SeriesOrModelComboBox.SelectionChanged += this.OnSeriesOrModelSelectionChanged;
@@ -321,21 +347,33 @@ namespace CRT
             bool enteredSemaphore = false;
             ScopeScpiClient? newScopeClient = null;
             OscilloscopeEntry selectedOscilloscope = selectionSnapshot.SelectedOscilloscope!;
+            bool isReestablishingSession = this.thisHasSeenEstablishedOscilloscopeSession;
 
             this.SetOscilloscopeButtonsEnabled(false);
-            this.AppendOutputLine("Debug", "---");
-            this.AppendOutputLine(
-                "Info",
-                isAutomaticReconnect
-                    ? $"Automatically reconnecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}"
-                    : $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}");
+
+            if (!isAutomaticReconnect)
+            {
+                this.AppendOutputLine("Debug", "---");
+                this.AppendOutputLine(
+                    "Info",
+                    $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}");
+            }
+            else if (!this.thisHasLoggedAutomaticConnectPendingMessage)
+            {
+                this.AppendOutputLine("Debug", "---");
+                this.AppendOutputLine(
+                    "Info",
+                    $"Automatically connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port} ...");
+                this.thisHasLoggedAutomaticConnectPendingMessage = true;
+            }
 
             try
             {
                 await this.thisOscilloscopeSessionSemaphore.WaitAsync(externalCancellationToken);
                 enteredSemaphore = true;
 
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                using var timeoutCts = new CancellationTokenSource(
+                    this.GetOscilloscopeConnectionAttemptTimeout(isAutomaticReconnect));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                     timeoutCts.Token,
                     externalCancellationToken);
@@ -360,14 +398,21 @@ namespace CRT
                 newScopeClient = null;
 
                 this.thisHasEstablishedOscilloscopeSession = true;
-                this.thisShouldAutoReconnectEstablishedOscilloscopeSession = true;
+                this.thisHasSeenEstablishedOscilloscopeSession = true;
+                this.thisShouldAutoReconnectEstablishedOscilloscopeSession = UserSettings.OscilloscopeAutoConnect;
                 this.thisLastOscilloscopeConnectionState = true;
                 this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+                this.thisHasLoggedAutomaticConnectPendingMessage = false;
+                this.InvalidateCachedTriggerLevelVolts();
+                this.InvalidateCachedTimeDivSeconds();
+                this.thisLastVoltsDivVolts = null;
 
                 this.AppendOutputLine(
                     "Info",
                     isAutomaticReconnect
-                        ? "Oscilloscope session re-established automatically"
+                        ? (isReestablishingSession
+                            ? "Oscilloscope session re-established automatically"
+                            : "Oscilloscope session established automatically")
                         : "Oscilloscope session established");
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
@@ -385,19 +430,17 @@ namespace CRT
             }
             catch (OperationCanceledException)
             {
-                this.AppendOutputLine(
-                    "Warning",
-                    isAutomaticReconnect
-                        ? "Automatic reconnect timed out"
-                        : "Connection or SCPI communication timed out");
+                if (!isAutomaticReconnect)
+                {
+                    this.AppendOutputLine("Warning", "Connection or SCPI communication timed out");
+                }
             }
             catch (Exception ex)
             {
-                this.AppendOutputLine(
-                    isAutomaticReconnect ? "Warning" : "Critical",
-                    isAutomaticReconnect
-                        ? $"Automatic reconnect failed: {ex.Message}"
-                        : $"Oscilloscope communication failed: {ex.Message}");
+                if (!isAutomaticReconnect)
+                {
+                    this.AppendOutputLine("Critical", $"Oscilloscope communication failed: {ex.Message}");
+                }
             }
             finally
             {
@@ -417,6 +460,25 @@ namespace CRT
             }
 
             return false;
+        }
+
+        // ###########################################################################################
+        // Returns the timeout to use for one oscilloscope connection attempt.
+        // Automatic background retries use a shorter timeout than manual connects.
+        // ###########################################################################################
+        private TimeSpan GetOscilloscopeConnectionAttemptTimeout(bool isAutomaticReconnect)
+        {
+            return isAutomaticReconnect
+                ? TimeSpan.FromSeconds(5)
+                : TimeSpan.FromSeconds(30);
+        }
+
+        // ###########################################################################################
+        // Returns the delay between automatic oscilloscope reconnect attempts.
+        // ###########################################################################################
+        private TimeSpan GetOscilloscopeAutoConnectRetryDelay()
+        {
+            return TimeSpan.FromSeconds(1);
         }
 
         // ###########################################################################################
@@ -1114,7 +1176,8 @@ namespace CRT
 
             this.StopOscilloscopeConnectionMonitoring();
 
-            if (TopLevel.GetTopLevel(this) is Window window)
+            Window? window = this.thisMainWindow ?? TopLevel.GetTopLevel(this) as Window;
+            if (window != null)
             {
                 this.thisMainWindowTitleBase = this.GetMainWindowTitleBase(window.Title ?? string.Empty);
             }
@@ -1247,6 +1310,9 @@ namespace CRT
                 {
                     this.thisHasEstablishedOscilloscopeSession = false;
                     this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+                    this.thisHasLoggedAutomaticConnectPendingMessage = false;
+                    this.InvalidateCachedTriggerLevelVolts();
+                    this.StopTriggerLevelKeyboardWorker();
                     _ = this.DisposeConnectedScopeClientAsync();
                 }
             }
@@ -1513,8 +1579,16 @@ namespace CRT
         private async void InvalidateEstablishedOscilloscopeSession()
         {
             this.thisHasEstablishedOscilloscopeSession = false;
+            this.thisHasSeenEstablishedOscilloscopeSession = false;
             this.thisShouldAutoReconnectEstablishedOscilloscopeSession = false;
             this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+            this.thisHasLoggedAutomaticConnectPendingMessage = false;
+            this.InvalidateCachedTriggerLevelVolts();
+            this.InvalidateCachedTimeDivSeconds();
+            this.thisLastVoltsDivVolts = null;
+            this.StopTriggerLevelKeyboardWorker();
+            this.StopTimeDivKeyboardWorker();
+            this.StopVoltsDivKeyboardWorker();
             Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
             this.StopOscilloscopeConnectionMonitoring();
             await this.DisposeConnectedScopeClientAsync();
@@ -1579,6 +1653,13 @@ namespace CRT
             this.AppendOutputLine("Critical", $"Oscilloscope communication failed: {message}");
             this.thisHasEstablishedOscilloscopeSession = false;
             this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+            this.thisHasLoggedAutomaticConnectPendingMessage = false;
+            this.InvalidateCachedTriggerLevelVolts();
+            this.InvalidateCachedTimeDivSeconds();
+            this.thisLastVoltsDivVolts = null;
+            this.StopTriggerLevelKeyboardWorker();
+            this.StopTimeDivKeyboardWorker();
+            this.StopVoltsDivKeyboardWorker();
             await this.DisposeConnectedScopeClientCoreAsync();
             this.UpdateMainWindowOscilloscopeSessionState();
         }
@@ -1748,6 +1829,11 @@ namespace CRT
                 return;
             }
 
+            if (UserSettings.OscilloscopeAutoConnect)
+            {
+                return;
+            }
+
             if (!this.thisShouldAutoReconnectEstablishedOscilloscopeSession)
             {
                 return;
@@ -1812,7 +1898,8 @@ namespace CRT
 
             this.RunFullTestSuiteButton.IsEnabled = hasEstablishedSession;
 
-            if (TopLevel.GetTopLevel(this) is Window window)
+            Window? window = this.thisMainWindow ?? TopLevel.GetTopLevel(this) as Window;
+            if (window != null)
             {
                 if (string.IsNullOrWhiteSpace(this.thisMainWindowTitleBase))
                 {
@@ -1840,7 +1927,7 @@ namespace CRT
         // ###########################################################################################
         public bool HasSeenEstablishedOscilloscopeSessionForTitleState()
         {
-            return this.thisShouldAutoReconnectEstablishedOscilloscopeSession;
+            return this.thisHasSeenEstablishedOscilloscopeSession;
         }
 
         // ###########################################################################################
@@ -1867,12 +1954,963 @@ namespace CRT
                 return;
             }
 
-            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            Main? mainWindow = this.thisMainWindow ?? TopLevel.GetTopLevel(this) as Main;
+            if (mainWindow != null)
             {
                 mainWindow.UpdateComponentInfoWindowsOscilloscopeSessionState(
                     this.HasSeenEstablishedOscilloscopeSessionForTitleState(),
                     this.HasActiveEstablishedOscilloscopeSessionForTitleState());
             }
+        }
+
+        // ###########################################################################################
+        // Queries the current TIME/DIV, resolves the previous or next supported value from the main
+        // oscilloscope Excel definition, and sends the SetTimeDiv palette over the active session.
+        // ###########################################################################################
+        public async Task StepTimeDivAsync(int offset, CancellationToken cancellationToken)
+        {
+            if (offset == 0)
+            {
+                return;
+            }
+
+            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+            await this.RunWithEstablishedOscilloscopeSessionAsync(
+                selectionSnapshot,
+                async (scopeClient, oscilloscopeEntry, token) =>
+                {
+                    this.thisLastTimeDivSeconds = null;
+
+                    await this.ExecutePaletteAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        ScopeCommandPalette.QueryTimeDiv,
+                        token).ConfigureAwait(false);
+
+                    if (!this.thisLastTimeDivSeconds.HasValue)
+                    {
+                        this.AppendOutputLine("Warning", "Could not read current TIME/DIV from oscilloscope");
+                        return;
+                    }
+
+                    double currentTimeDivSeconds = this.thisLastTimeDivSeconds.Value;
+
+                    if (!ScopeValueMapper.TryGetAdjacentTimeDivValue(
+                        oscilloscopeEntry,
+                        currentTimeDivSeconds,
+                        offset,
+                        out ScopeMappedValue mappedTimeDiv))
+                    {
+                        string directionLabel = offset < 0 ? "previous" : "next";
+                        this.AppendOutputLine(
+                            "Warning",
+                            $"Could not resolve the {directionLabel} TIME/DIV value from the oscilloscope definition list");
+                        return;
+                    }
+
+                    this.AppendOutputLine(
+                        "Info",
+                        $"Keyboard TIME/DIV step: {this.FormatTime(currentTimeDivSeconds)} -> {mappedTimeDiv.MatchedDisplayValue}");
+
+                    this.thisLastTimeDivSeconds = mappedTimeDiv.NumericValue;
+                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                    await this.ExecutePaletteAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        ScopeCommandPalette.SetTimeDiv,
+                        token).ConfigureAwait(false);
+                },
+                cancellationToken,
+                writeWarnings: true).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Uses a cached trigger level for keyboard stepping whenever possible so repeated Up/Down
+        // keypresses only send SetTriggerLevel instead of querying the oscilloscope each time.
+        // ###########################################################################################
+        public async Task StepTriggerLevelAsync(int direction, CancellationToken cancellationToken)
+        {
+            if (direction == 0)
+            {
+                return;
+            }
+
+            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+            await this.RunWithEstablishedOscilloscopeSessionAsync(
+                selectionSnapshot,
+                async (scopeClient, oscilloscopeEntry, token) =>
+                {
+                    if (!await this.EnsureCachedTriggerLevelVoltsAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        token).ConfigureAwait(false))
+                    {
+                        this.AppendOutputLine("Warning", "Could not read current trigger level from oscilloscope");
+                        return;
+                    }
+
+                    double currentTriggerLevelVolts = this.thisLastTriggerLevelVolts!.Value;
+                    double targetTriggerLevelVolts = this.GetNextSnappedTriggerLevelVolts(
+                        currentTriggerLevelVolts,
+                        direction);
+
+                    await this.SendTriggerLevelFastAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        targetTriggerLevelVolts,
+                        token).ConfigureAwait(false);
+
+                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                    this.AppendOutputLine(
+                        "Info",
+                        $"Keyboard trigger level step: {this.FormatVoltage(currentTriggerLevelVolts)} -> {this.FormatVoltage(targetTriggerLevelVolts)}");
+                },
+                cancellationToken,
+                writeWarnings: true).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Snaps a trigger level to the next 0.25V boundary in the requested direction so keyboard
+        // stepping always moves predictably even when the current level is slightly off-grid.
+        // ###########################################################################################
+        private double GetNextSnappedTriggerLevelVolts(double currentTriggerLevelVolts, int direction)
+        {
+            const double triggerLevelStepVolts = 0.25;
+            const double stepTolerance = 1e-6;
+
+            double scaledValue = currentTriggerLevelVolts / triggerLevelStepVolts;
+            double nearestWholeStep = Math.Round(scaledValue, MidpointRounding.AwayFromZero);
+            bool isNearWholeStep = Math.Abs(scaledValue - nearestWholeStep) <= stepTolerance;
+
+            if (direction > 0)
+            {
+                double targetStep = isNearWholeStep
+                    ? nearestWholeStep + 1.0
+                    : Math.Ceiling(scaledValue);
+
+                return targetStep * triggerLevelStepVolts;
+            }
+
+            double downTargetStep = isNearWholeStep
+                ? nearestWholeStep - 1.0
+                : Math.Floor(scaledValue);
+
+            return downTargetStep * triggerLevelStepVolts;
+        }
+
+        // ###########################################################################################
+        // Resolves a fixed VOLTS/DIV value from the oscilloscope definition list and sends the
+        // SetVoltsDiv palette over the active session.
+        // ###########################################################################################
+        public async Task SetVoltsDivAsync(double targetVoltsDivVolts, CancellationToken cancellationToken)
+        {
+            if (targetVoltsDivVolts <= 0)
+            {
+                return;
+            }
+
+            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+            await this.RunWithEstablishedOscilloscopeSessionAsync(
+                selectionSnapshot,
+                async (scopeClient, oscilloscopeEntry, token) =>
+                {
+                    if (!ScopeValueMapper.TryGetSupportedVoltsDivValue(
+                        oscilloscopeEntry,
+                        targetVoltsDivVolts,
+                        out ScopeMappedValue mappedVoltsDiv))
+                    {
+                        this.AppendOutputLine(
+                            "Warning",
+                            $"Could not resolve keyboard VOLTS/DIV value [{this.FormatVoltage(targetVoltsDivVolts)}] from the oscilloscope definition list");
+                        return;
+                    }
+
+                    this.AppendOutputLine(
+                        "Info",
+                        $"Keyboard VOLTS/DIV set: {mappedVoltsDiv.MatchedDisplayValue} per division");
+
+                    this.thisLastVoltsDivVolts = mappedVoltsDiv.NumericValue;
+                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                    await this.ExecutePaletteAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        ScopeCommandPalette.SetVoltsDiv,
+                        token).ConfigureAwait(false);
+                },
+                cancellationToken,
+                writeWarnings: true).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Executes one named oscilloscope command palette on the already established session so
+        // keyboard shortcuts can reuse the normal SCPI logging and palette behavior.
+        // ###########################################################################################
+        public async Task RunPaletteAsync(ScopeCommandPalette palette, CancellationToken cancellationToken)
+        {
+            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+            await this.RunWithEstablishedOscilloscopeSessionAsync(
+                selectionSnapshot,
+                async (scopeClient, oscilloscopeEntry, token) =>
+                {
+                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                    await this.ExecutePaletteAsync(
+                        scopeClient,
+                        oscilloscopeEntry,
+                        palette,
+                        token).ConfigureAwait(false);
+                },
+                cancellationToken,
+                writeWarnings: true).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Persists the auto-connect checkbox state and starts or stops the background auto-connect loop.
+        // ###########################################################################################
+        private void OnAutoConnectOscilloscopeCheckBoxChanged(object? sender, RoutedEventArgs e)
+        {
+            bool isEnabled = this.AutoConnectOscilloscopeCheckBox.IsChecked == true;
+
+            UserSettings.OscilloscopeAutoConnect = isEnabled;
+            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
+
+            if (isEnabled)
+            {
+                this.StartOscilloscopeAutoConnectLoop();
+            }
+            else
+            {
+                this.StopOscilloscopeAutoConnectLoop();
+            }
+        }
+
+        // ###########################################################################################
+        // Starts one background loop that continuously retries oscilloscope connection while enabled.
+        // ###########################################################################################
+        private void StartOscilloscopeAutoConnectLoop()
+        {
+            if (this.thisOscilloscopeAutoConnectTask != null &&
+                !this.thisOscilloscopeAutoConnectTask.IsCompleted)
+            {
+                return;
+            }
+
+            this.thisOscilloscopeAutoConnectCancellationTokenSource?.Cancel();
+            this.thisOscilloscopeAutoConnectCancellationTokenSource?.Dispose();
+            this.thisOscilloscopeAutoConnectCancellationTokenSource = new CancellationTokenSource();
+            this.thisOscilloscopeAutoConnectTask = this.RunOscilloscopeAutoConnectLoopAsync(
+                this.thisOscilloscopeAutoConnectCancellationTokenSource.Token);
+        }
+
+        // ###########################################################################################
+        // Stops the background oscilloscope auto-connect retry loop.
+        // ###########################################################################################
+        private void StopOscilloscopeAutoConnectLoop()
+        {
+            if (this.thisOscilloscopeAutoConnectCancellationTokenSource == null)
+            {
+                this.thisHasLoggedAutomaticConnectPendingMessage = false;
+                return;
+            }
+
+            try
+            {
+                this.thisOscilloscopeAutoConnectCancellationTokenSource.Cancel();
+            }
+            catch
+            {
+            }
+
+            this.thisOscilloscopeAutoConnectCancellationTokenSource.Dispose();
+            this.thisOscilloscopeAutoConnectCancellationTokenSource = null;
+            this.thisOscilloscopeAutoConnectTask = null;
+            this.thisHasLoggedAutomaticConnectPendingMessage = false;
+        }
+
+        // ###########################################################################################
+        // Continuously retries oscilloscope connection while auto-connect is enabled and no active
+        // established session currently exists.
+        // ###########################################################################################
+        private async Task RunOscilloscopeAutoConnectLoopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+                    if (!UserSettings.OscilloscopeAutoConnect)
+                    {
+                        await Task.Delay(
+                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (selectionSnapshot.HasActiveEstablishedSession ||
+                        this.thisHasEstablishedOscilloscopeSession ||
+                        this.thisConnectedScopeClient != null)
+                    {
+                        await Task.Delay(
+                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: false))
+                    {
+                        await Task.Delay(
+                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (Interlocked.CompareExchange(ref this.thisAutoReconnectAttemptInProgress, 1, 0) != 0)
+                    {
+                        await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    try
+                    {
+                        this.thisLastAutoReconnectAttemptUtc = DateTime.UtcNow;
+
+                        await this.ConnectSelectedOscilloscopeAsync(
+                            cancellationToken,
+                            isAutomaticReconnect: true).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
+                    }
+
+                    await Task.Delay(
+                        this.GetOscilloscopeAutoConnectRetryDelay(),
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        // ###########################################################################################
+        // Initializes the oscilloscope tab against the main window so background auto-connect and
+        // title updates continue even when the Oscilloscope tab is not the currently selected tab.
+        // ###########################################################################################
+        public void InitializeForMainWindow(Main mainWindow)
+        {
+            this.thisMainWindow = mainWindow;
+            this.UpdateMainWindowOscilloscopeSessionState();
+
+            if (UserSettings.OscilloscopeAutoConnect)
+            {
+                this.thisShouldAutoReconnectEstablishedOscilloscopeSession = true;
+                this.StartOscilloscopeAutoConnectLoop();
+            }
+        }
+
+        // ###########################################################################################
+        // Clears the cached trigger level so the next keyboard-driven trigger step will refresh it
+        // from the oscilloscope before sending a new SetTriggerLevel command.
+        // ###########################################################################################
+        private void InvalidateCachedTriggerLevelVolts()
+        {
+            this.thisLastTriggerLevelVolts = null;
+        }
+
+        // ###########################################################################################
+        // Ensures a cached trigger level is available for keyboard stepping. When the cache is empty,
+        // it performs one QueryTriggerLevel palette execution and stores the returned value.
+        // ###########################################################################################
+        private async Task<bool> EnsureCachedTriggerLevelVoltsAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry oscilloscopeEntry,
+            CancellationToken cancellationToken)
+        {
+            if (this.thisLastTriggerLevelVolts.HasValue)
+            {
+                return true;
+            }
+
+            await this.ExecutePaletteAsync(
+                scopeClient,
+                oscilloscopeEntry,
+                ScopeCommandPalette.QueryTriggerLevel,
+                cancellationToken).ConfigureAwait(false);
+
+            return this.thisLastTriggerLevelVolts.HasValue;
+        }
+
+        // ###########################################################################################
+        // Queues one keyboard-driven trigger-level step and starts the dedicated background worker
+        // that drains pending Up/Down requests without dropping held-key repeats.
+        // ###########################################################################################
+        public void QueueTriggerLevelKeyboardStep(int direction)
+        {
+            if (direction == 0)
+            {
+                return;
+            }
+
+            Interlocked.Add(
+                ref this.thisPendingTriggerLevelKeyboardSteps,
+                direction > 0 ? 1 : -1);
+
+            this.EnsureTriggerLevelKeyboardWorkerStarted();
+
+            if (this.thisTriggerLevelKeyboardSignal.CurrentCount == 0)
+            {
+                this.thisTriggerLevelKeyboardSignal.Release();
+            }
+        }
+
+        // ###########################################################################################
+        // Starts the dedicated trigger-level keyboard worker once so held Up/Down keys can be
+        // processed as a latest-pending batch instead of being dropped by the popup window.
+        // ###########################################################################################
+        private void EnsureTriggerLevelKeyboardWorkerStarted()
+        {
+            if (this.thisTriggerLevelKeyboardWorkerTask != null &&
+                !this.thisTriggerLevelKeyboardWorkerTask.IsCompleted)
+            {
+                return;
+            }
+
+            this.thisTriggerLevelKeyboardWorkerCts?.Cancel();
+            this.thisTriggerLevelKeyboardWorkerCts?.Dispose();
+            this.thisTriggerLevelKeyboardWorkerCts = new CancellationTokenSource();
+            this.thisTriggerLevelKeyboardWorkerTask = this.RunTriggerLevelKeyboardWorkerAsync(
+                this.thisTriggerLevelKeyboardWorkerCts.Token);
+        }
+
+        // ###########################################################################################
+        // Stops any queued keyboard trigger stepping and shuts down the dedicated background worker.
+        // ###########################################################################################
+        private void StopTriggerLevelKeyboardWorker()
+        {
+            Interlocked.Exchange(ref this.thisPendingTriggerLevelKeyboardSteps, 0);
+
+            if (this.thisTriggerLevelKeyboardWorkerCts == null)
+            {
+                return;
+            }
+
+            try
+            {
+                this.thisTriggerLevelKeyboardWorkerCts.Cancel();
+            }
+            catch
+            {
+            }
+
+            this.thisTriggerLevelKeyboardWorkerCts.Dispose();
+            this.thisTriggerLevelKeyboardWorkerCts = null;
+            this.thisTriggerLevelKeyboardWorkerTask = null;
+        }
+
+        // ###########################################################################################
+        // Drains queued keyboard trigger steps in batches so repeated Up/Down keypresses remain
+        // responsive even while one SCPI write is still in flight.
+        // ###########################################################################################
+        private async Task RunTriggerLevelKeyboardWorkerAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await this.thisTriggerLevelKeyboardSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        int pendingSteps = Interlocked.Exchange(ref this.thisPendingTriggerLevelKeyboardSteps, 0);
+                        if (pendingSteps == 0)
+                        {
+                            break;
+                        }
+
+                        int direction = Math.Sign(pendingSteps);
+                        int stepCount = Math.Abs(pendingSteps);
+                        OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+                        await this.RunWithEstablishedOscilloscopeSessionAsync(
+                            selectionSnapshot,
+                            async (scopeClient, oscilloscopeEntry, token) =>
+                            {
+                                if (!await this.EnsureCachedTriggerLevelVoltsAsync(
+                                    scopeClient,
+                                    oscilloscopeEntry,
+                                    token).ConfigureAwait(false))
+                                {
+                                    this.AppendOutputLine("Warning", "Could not read current trigger level from oscilloscope");
+                                    return;
+                                }
+
+                                double startingTriggerLevelVolts = this.thisLastTriggerLevelVolts!.Value;
+                                double currentTriggerLevelVolts = startingTriggerLevelVolts;
+
+                                for (int i = 0; i < stepCount; i++)
+                                {
+                                    double targetTriggerLevelVolts = this.GetNextSnappedTriggerLevelVolts(
+                                        currentTriggerLevelVolts,
+                                        direction);
+
+                                    await this.SendTriggerLevelFastAsync(
+                                        scopeClient,
+                                        oscilloscopeEntry,
+                                        targetTriggerLevelVolts,
+                                        token).ConfigureAwait(false);
+
+                                    currentTriggerLevelVolts = targetTriggerLevelVolts;
+                                }
+
+                                this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                                this.AppendOutputLine(
+                                    "Info",
+                                    stepCount == 1
+                                        ? $"Keyboard trigger level step: {this.FormatVoltage(startingTriggerLevelVolts)} -> {this.FormatVoltage(currentTriggerLevelVolts)}"
+                                        : $"Keyboard trigger level step: {this.FormatVoltage(startingTriggerLevelVolts)} -> {this.FormatVoltage(currentTriggerLevelVolts)} ({stepCount} steps)");
+                            },
+                            cancellationToken,
+                            writeWarnings: true).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        // ###########################################################################################
+        // Sends one trigger-level Set command through a lightweight SCPI fast path so repeated
+        // keyboard stepping avoids the heavier full palette logging pipeline.
+        // ###########################################################################################
+        private async Task SendTriggerLevelFastAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry oscilloscopeEntry,
+            double targetTriggerLevelVolts,
+            CancellationToken cancellationToken)
+        {
+            this.thisLastTriggerLevelVolts = targetTriggerLevelVolts;
+
+            string commandText = ScopeCommandResolver.GetCommandText(
+                oscilloscopeEntry,
+                ScopeCommand.SetTriggerLevel);
+
+            if (string.IsNullOrWhiteSpace(commandText))
+            {
+                throw new InvalidOperationException("No SCPI command text is defined for SetTriggerLevel");
+            }
+
+            string effectiveCommandText = this.BuildEffectiveCommandText(
+                ScopeCommand.SetTriggerLevel,
+                commandText);
+
+            if (string.IsNullOrWhiteSpace(effectiveCommandText))
+            {
+                throw new InvalidOperationException("No trigger level value is available for SetTriggerLevel");
+            }
+
+            await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Clears the cached TIME/DIV value so the next keyboard-driven TIME/DIV step will refresh it
+        // from the oscilloscope before sending a new SetTimeDiv command.
+        // ###########################################################################################
+        private void InvalidateCachedTimeDivSeconds()
+        {
+            this.thisLastTimeDivSeconds = null;
+        }
+
+        // ###########################################################################################
+        // Ensures a cached TIME/DIV value is available for keyboard stepping. When the cache is empty,
+        // it performs one QueryTimeDiv palette execution and stores the returned value.
+        // ###########################################################################################
+        private async Task<bool> EnsureCachedTimeDivSecondsAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry oscilloscopeEntry,
+            CancellationToken cancellationToken)
+        {
+            if (this.thisLastTimeDivSeconds.HasValue)
+            {
+                return true;
+            }
+
+            await this.ExecutePaletteAsync(
+                scopeClient,
+                oscilloscopeEntry,
+                ScopeCommandPalette.QueryTimeDiv,
+                cancellationToken).ConfigureAwait(false);
+
+            return this.thisLastTimeDivSeconds.HasValue;
+        }
+
+        // ###########################################################################################
+        // Queues one keyboard-driven TIME/DIV step and starts the dedicated background worker that
+        // drains pending Add/Subtract requests without dropping held-key repeats.
+        // ###########################################################################################
+        public void QueueTimeDivKeyboardStep(int offset)
+        {
+            if (offset == 0)
+            {
+                return;
+            }
+
+            Interlocked.Add(
+                ref this.thisPendingTimeDivKeyboardSteps,
+                offset > 0 ? 1 : -1);
+
+            this.EnsureTimeDivKeyboardWorkerStarted();
+
+            if (this.thisTimeDivKeyboardSignal.CurrentCount == 0)
+            {
+                this.thisTimeDivKeyboardSignal.Release();
+            }
+        }
+
+        // ###########################################################################################
+        // Starts the dedicated TIME/DIV keyboard worker once so held Add/Subtract keys can be
+        // processed as a pending batch instead of being dropped by the popup window.
+        // ###########################################################################################
+        private void EnsureTimeDivKeyboardWorkerStarted()
+        {
+            if (this.thisTimeDivKeyboardWorkerTask != null &&
+                !this.thisTimeDivKeyboardWorkerTask.IsCompleted)
+            {
+                return;
+            }
+
+            this.thisTimeDivKeyboardWorkerCts?.Cancel();
+            this.thisTimeDivKeyboardWorkerCts?.Dispose();
+            this.thisTimeDivKeyboardWorkerCts = new CancellationTokenSource();
+            this.thisTimeDivKeyboardWorkerTask = this.RunTimeDivKeyboardWorkerAsync(
+                this.thisTimeDivKeyboardWorkerCts.Token);
+        }
+
+        // ###########################################################################################
+        // Stops any queued keyboard TIME/DIV stepping and shuts down the dedicated background worker.
+        // ###########################################################################################
+        private void StopTimeDivKeyboardWorker()
+        {
+            Interlocked.Exchange(ref this.thisPendingTimeDivKeyboardSteps, 0);
+
+            if (this.thisTimeDivKeyboardWorkerCts == null)
+            {
+                return;
+            }
+
+            try
+            {
+                this.thisTimeDivKeyboardWorkerCts.Cancel();
+            }
+            catch
+            {
+            }
+
+            this.thisTimeDivKeyboardWorkerCts.Dispose();
+            this.thisTimeDivKeyboardWorkerCts = null;
+            this.thisTimeDivKeyboardWorkerTask = null;
+        }
+
+        // ###########################################################################################
+        // Drains queued keyboard TIME/DIV steps in batches so repeated Add/Subtract keypresses remain
+        // responsive even while one SCPI write is still in flight.
+        // ###########################################################################################
+        private async Task RunTimeDivKeyboardWorkerAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await this.thisTimeDivKeyboardSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        int pendingSteps = Interlocked.Exchange(ref this.thisPendingTimeDivKeyboardSteps, 0);
+                        if (pendingSteps == 0)
+                        {
+                            break;
+                        }
+
+                        int direction = Math.Sign(pendingSteps);
+                        int requestedStepCount = Math.Abs(pendingSteps);
+                        OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+                        await this.RunWithEstablishedOscilloscopeSessionAsync(
+                            selectionSnapshot,
+                            async (scopeClient, oscilloscopeEntry, token) =>
+                            {
+                                if (!await this.EnsureCachedTimeDivSecondsAsync(
+                                    scopeClient,
+                                    oscilloscopeEntry,
+                                    token).ConfigureAwait(false))
+                                {
+                                    this.AppendOutputLine("Warning", "Could not read current TIME/DIV from oscilloscope");
+                                    return;
+                                }
+
+                                double startingTimeDivSeconds = this.thisLastTimeDivSeconds!.Value;
+                                double currentTimeDivSeconds = startingTimeDivSeconds;
+                                int appliedStepCount = 0;
+
+                                for (int i = 0; i < requestedStepCount; i++)
+                                {
+                                    if (!ScopeValueMapper.TryGetAdjacentTimeDivValue(
+                                        oscilloscopeEntry,
+                                        currentTimeDivSeconds,
+                                        direction,
+                                        out ScopeMappedValue mappedTimeDiv))
+                                    {
+                                        if (appliedStepCount == 0)
+                                        {
+                                            string directionLabel = direction < 0 ? "previous" : "next";
+                                            this.AppendOutputLine(
+                                                "Warning",
+                                                $"Could not resolve the {directionLabel} TIME/DIV value from the oscilloscope definition list");
+                                        }
+
+                                        break;
+                                    }
+
+                                    await this.SendTimeDivFastAsync(
+                                        scopeClient,
+                                        oscilloscopeEntry,
+                                        mappedTimeDiv.NumericValue,
+                                        token).ConfigureAwait(false);
+
+                                    currentTimeDivSeconds = mappedTimeDiv.NumericValue;
+                                    appliedStepCount++;
+                                }
+
+                                if (appliedStepCount <= 0)
+                                {
+                                    return;
+                                }
+
+                                this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                                this.AppendOutputLine(
+                                    "Info",
+                                    appliedStepCount == 1
+                                        ? $"Keyboard TIME/DIV step: {this.FormatTime(startingTimeDivSeconds)} -> {this.FormatTime(currentTimeDivSeconds)}"
+                                        : $"Keyboard TIME/DIV step: {this.FormatTime(startingTimeDivSeconds)} -> {this.FormatTime(currentTimeDivSeconds)} ({appliedStepCount} steps)");
+                            },
+                            cancellationToken,
+                            writeWarnings: true).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        // ###########################################################################################
+        // Sends one TIME/DIV Set command through a lightweight SCPI fast path so repeated keyboard
+        // stepping avoids the heavier full palette logging pipeline.
+        // ###########################################################################################
+        private async Task SendTimeDivFastAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry oscilloscopeEntry,
+            double targetTimeDivSeconds,
+            CancellationToken cancellationToken)
+        {
+            this.thisLastTimeDivSeconds = targetTimeDivSeconds;
+
+            string commandText = ScopeCommandResolver.GetCommandText(
+                oscilloscopeEntry,
+                ScopeCommand.SetTimeDiv);
+
+            if (string.IsNullOrWhiteSpace(commandText))
+            {
+                throw new InvalidOperationException("No SCPI command text is defined for SetTimeDiv");
+            }
+
+            string effectiveCommandText = this.BuildEffectiveCommandText(
+                ScopeCommand.SetTimeDiv,
+                commandText);
+
+            if (string.IsNullOrWhiteSpace(effectiveCommandText))
+            {
+                throw new InvalidOperationException("No TIME/DIV value is available for SetTimeDiv");
+            }
+
+            await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Queues one keyboard-driven VOLTS/DIV target and starts the dedicated background worker that
+        // applies the latest requested value without dropping rapid keypresses.
+        // ###########################################################################################
+        public void QueueVoltsDivKeyboardSet(double targetVoltsDivVolts)
+        {
+            if (targetVoltsDivVolts <= 0)
+            {
+                return;
+            }
+
+            lock (this.thisPendingVoltsDivKeyboardLock)
+            {
+                this.thisPendingVoltsDivKeyboardTargetVolts = targetVoltsDivVolts;
+            }
+
+            this.EnsureVoltsDivKeyboardWorkerStarted();
+
+            if (this.thisVoltsDivKeyboardSignal.CurrentCount == 0)
+            {
+                this.thisVoltsDivKeyboardSignal.Release();
+            }
+        }
+
+        // ###########################################################################################
+        // Starts the dedicated VOLTS/DIV keyboard worker once so rapid fixed-value requests can be
+        // handled with latest-wins behavior.
+        // ###########################################################################################
+        private void EnsureVoltsDivKeyboardWorkerStarted()
+        {
+            if (this.thisVoltsDivKeyboardWorkerTask != null &&
+                !this.thisVoltsDivKeyboardWorkerTask.IsCompleted)
+            {
+                return;
+            }
+
+            this.thisVoltsDivKeyboardWorkerCts?.Cancel();
+            this.thisVoltsDivKeyboardWorkerCts?.Dispose();
+            this.thisVoltsDivKeyboardWorkerCts = new CancellationTokenSource();
+            this.thisVoltsDivKeyboardWorkerTask = this.RunVoltsDivKeyboardWorkerAsync(
+                this.thisVoltsDivKeyboardWorkerCts.Token);
+        }
+
+        // ###########################################################################################
+        // Stops any queued keyboard VOLTS/DIV requests and shuts down the dedicated background worker.
+        // ###########################################################################################
+        private void StopVoltsDivKeyboardWorker()
+        {
+            lock (this.thisPendingVoltsDivKeyboardLock)
+            {
+                this.thisPendingVoltsDivKeyboardTargetVolts = null;
+            }
+
+            if (this.thisVoltsDivKeyboardWorkerCts == null)
+            {
+                return;
+            }
+
+            try
+            {
+                this.thisVoltsDivKeyboardWorkerCts.Cancel();
+            }
+            catch
+            {
+            }
+
+            this.thisVoltsDivKeyboardWorkerCts.Dispose();
+            this.thisVoltsDivKeyboardWorkerCts = null;
+            this.thisVoltsDivKeyboardWorkerTask = null;
+        }
+
+        // ###########################################################################################
+        // Drains queued keyboard VOLTS/DIV requests using latest-wins semantics so rapid fixed-value
+        // keypresses remain responsive without replaying stale intermediate selections.
+        // ###########################################################################################
+        private async Task RunVoltsDivKeyboardWorkerAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await this.thisVoltsDivKeyboardSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                    double? pendingTargetVoltsDivVolts;
+                    lock (this.thisPendingVoltsDivKeyboardLock)
+                    {
+                        pendingTargetVoltsDivVolts = this.thisPendingVoltsDivKeyboardTargetVolts;
+                        this.thisPendingVoltsDivKeyboardTargetVolts = null;
+                    }
+
+                    if (!pendingTargetVoltsDivVolts.HasValue)
+                    {
+                        continue;
+                    }
+
+                    OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+
+                    await this.RunWithEstablishedOscilloscopeSessionAsync(
+                        selectionSnapshot,
+                        async (scopeClient, oscilloscopeEntry, token) =>
+                        {
+                            if (!ScopeValueMapper.TryGetSupportedVoltsDivValue(
+                                oscilloscopeEntry,
+                                pendingTargetVoltsDivVolts.Value,
+                                out ScopeMappedValue mappedVoltsDiv))
+                            {
+                                this.AppendOutputLine(
+                                    "Warning",
+                                    $"Could not resolve keyboard VOLTS/DIV value [{this.FormatVoltage(pendingTargetVoltsDivVolts.Value)}] from the oscilloscope definition list");
+                                return;
+                            }
+
+                            await this.SendVoltsDivFastAsync(
+                                scopeClient,
+                                oscilloscopeEntry,
+                                mappedVoltsDiv.NumericValue,
+                                token).ConfigureAwait(false);
+
+                            this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+
+                            this.AppendOutputLine(
+                                "Info",
+                                $"Keyboard VOLTS/DIV set: {mappedVoltsDiv.MatchedDisplayValue} per division");
+                        },
+                        cancellationToken,
+                        writeWarnings: true).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        // ###########################################################################################
+        // Sends one VOLTS/DIV Set command through a lightweight SCPI fast path so repeated keyboard
+        // selections avoid the heavier full palette logging pipeline.
+        // ###########################################################################################
+        private async Task SendVoltsDivFastAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry oscilloscopeEntry,
+            double targetVoltsDivVolts,
+            CancellationToken cancellationToken)
+        {
+            this.thisLastVoltsDivVolts = targetVoltsDivVolts;
+
+            string commandText = ScopeCommandResolver.GetCommandText(
+                oscilloscopeEntry,
+                ScopeCommand.SetVoltsDiv);
+
+            if (string.IsNullOrWhiteSpace(commandText))
+            {
+                throw new InvalidOperationException("No SCPI command text is defined for SetVoltsDiv");
+            }
+
+            string effectiveCommandText = this.BuildEffectiveCommandText(
+                ScopeCommand.SetVoltsDiv,
+                commandText);
+
+            if (string.IsNullOrWhiteSpace(effectiveCommandText))
+            {
+                throw new InvalidOperationException("No VOLTS/DIV value is available for SetVoltsDiv");
+            }
+
+            await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
         }
 
     }

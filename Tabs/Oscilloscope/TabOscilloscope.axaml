@@ -63,6 +63,11 @@
 						   LostFocus="OnPortNumericUpDownLostFocus"
 						   HorizontalAlignment="Stretch" />
 
+					<CheckBox x:Name="AutoConnectOscilloscopeCheckBox"
+						  Content="Auto-connect oscilloscope"
+						  Margin="0,4,0,0"
+						  VerticalAlignment="Center" />
+					
 					<Button x:Name="ConnectToOscilloscopeButton"
 							Content="Connect to oscilloscope"
 							HorizontalAlignment="Stretch"

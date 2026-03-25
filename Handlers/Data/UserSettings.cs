@@ -77,7 +77,9 @@ namespace Handlers.DataHandling
         [JsonPropertyName("lastOscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
         [JsonPropertyName("oscilloscopeHost")] public string OscilloscopeHost { get; set; } = "192.168.0.100";
         [JsonPropertyName("oscilloscopePort")] public int OscilloscopePort { get; set; } = 5025;
+        [JsonPropertyName("oscilloscopeAutoConnect")] public bool OscilloscopeAutoConnect { get; set; } = false;
         [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control image pin selection";
+
 
     }
 
@@ -588,6 +590,23 @@ namespace Handlers.DataHandling
 
                 _data.OscilloscopePort = value;
                 Logger.Info($"Setting changed: [OscilloscopePort] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // Persists whether oscilloscope auto-connect is enabled.
+        // ###########################################################################################
+        public static bool OscilloscopeAutoConnect
+        {
+            get => _data.OscilloscopeAutoConnect;
+            set
+            {
+                if (_data.OscilloscopeAutoConnect == value)
+                    return;
+
+                _data.OscilloscopeAutoConnect = value;
+                Logger.Info($"Setting changed: [OscilloscopeAutoConnect] [{value}]");
                 Save();
             }
         }

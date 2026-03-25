@@ -83,6 +83,8 @@ namespace CRT
         private string _lastScopeImageSyncSignature = string.Empty;
         private bool _hasSeenOscilloscopeSessionTitleState;
         private bool _hasActiveOscilloscopeSessionTitleState;
+        private DateTime _lastOscilloscopeKeyboardCommandUtc = DateTime.MinValue;
+        private int _oscilloscopeKeyboardCommandInFlight;
 
 
         // ###########################################################################################
@@ -123,14 +125,14 @@ namespace CRT
             }
 
             // Restore switch states from persisted settings
-            this.MousewheelZoomSwitch.IsChecked =
+            this.MousewheelZoomCheckBox.IsChecked =
                 string.Equals(UserSettings.ComponentInfoScrollAction, "Image zoom", StringComparison.OrdinalIgnoreCase);
 
             this.NumpadOscilloscopeSwitch.IsChecked =
                 string.Equals(UserSettings.ComponentInfoKeyboardHandling, "Control oscilloscope", StringComparison.OrdinalIgnoreCase);
 
-            this.MousewheelZoomSwitch.Checked += this.OnMousewheelZoomSwitchChanged;
-            this.MousewheelZoomSwitch.Unchecked += this.OnMousewheelZoomSwitchChanged;
+            this.MousewheelZoomCheckBox.Checked += this.OnMousewheelZoomSwitchChanged;
+            this.MousewheelZoomCheckBox.Unchecked += this.OnMousewheelZoomSwitchChanged;
             this.NumpadOscilloscopeSwitch.Checked += this.OnNumpadOscilloscopeSwitchChanged;
             this.NumpadOscilloscopeSwitch.Unchecked += this.OnNumpadOscilloscopeSwitchChanged;
             this.ThumbnailList.SelectionChanged += this.OnThumbnailSelectionChanged;
@@ -245,6 +247,13 @@ namespace CRT
                 return;
             }
 
+            if (this.NumpadOscilloscopeSwitch.IsChecked == true &&
+                this.TryHandleOscilloscopeKeyboardCommand(e.Key))
+            {
+                e.Handled = true;
+                return;
+            }
+
             // Digit keys: top-row digits always control pin selection.
             // Numpad digits do the same only when numpad-to-oscilloscope control is disabled.
             int digitValue = -1;
@@ -263,6 +272,156 @@ namespace CRT
                 this.HandlePinDigit((char)('0' + digitValue));
                 e.Handled = true;
             }
+        }
+
+        // ###########################################################################################
+        // Routes popup keyboard shortcuts to the oscilloscope tab when oscilloscope keyboard control
+        // is enabled for the component info window.
+        // ###########################################################################################
+        private bool TryHandleOscilloscopeKeyboardCommand(Key key)
+        {
+            switch (key)
+            {
+                case Key.Add:
+                    return this.TryQueueOscilloscopeTimeDivStep(-1);
+
+                case Key.Subtract:
+                    return this.TryQueueOscilloscopeTimeDivStep(1);
+
+                case Key.Up:
+                    return this.TryQueueOscilloscopeTriggerLevelStep(1);
+
+                case Key.Down:
+                    return this.TryQueueOscilloscopeTriggerLevelStep(-1);
+
+                case Key.NumPad1:
+                    return this.TryQueueOscilloscopeVoltsDivSet(1.0);
+
+                case Key.NumPad2:
+                    return this.TryQueueOscilloscopeVoltsDivSet(2.0);
+
+                case Key.Multiply:
+                    return this.TryQueueOscilloscopeKeyboardCommand(() => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Single));
+
+                case Key.Divide:
+                    return this.TryQueueOscilloscopeKeyboardCommand(() => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Run));
+
+                default:
+                    return false;
+            }
+        }
+
+        // ###########################################################################################
+        // Applies the oscilloscope Debounce-Time interval and a single-flight guard so held keys
+        // do not flood the oscilloscope with repeated keyboard-driven commands.
+        // ###########################################################################################
+        private bool TryQueueOscilloscopeKeyboardCommand(Func<Task> commandAsync)
+        {
+            DateTime nowUtc = DateTime.UtcNow;
+            TimeSpan minimumInterval = this.GetOscilloscopeKeyboardCommandMinimumInterval();
+
+            if (nowUtc - this._lastOscilloscopeKeyboardCommandUtc < minimumInterval)
+            {
+                return true;
+            }
+
+            if (Interlocked.CompareExchange(ref this._oscilloscopeKeyboardCommandInFlight, 1, 0) != 0)
+            {
+                return true;
+            }
+
+            this._lastOscilloscopeKeyboardCommandUtc = nowUtc;
+            _ = this.ExecuteOscilloscopeKeyboardCommandAsync(commandAsync);
+            return true;
+        }
+
+        // ###########################################################################################
+        // Executes one throttled oscilloscope keyboard command and releases the single-flight gate
+        // afterward so the next accepted keypress can run.
+        // ###########################################################################################
+        private async Task ExecuteOscilloscopeKeyboardCommandAsync(Func<Task> commandAsync)
+        {
+            try
+            {
+                await commandAsync();
+            }
+            finally
+            {
+                this._lastOscilloscopeKeyboardCommandUtc = DateTime.UtcNow;
+                Interlocked.Exchange(ref this._oscilloscopeKeyboardCommandInFlight, 0);
+            }
+        }
+
+        // ###########################################################################################
+        // Requests a TIME/DIV step on the active oscilloscope session using the oscilloscope tab's
+        // existing SCPI pipeline and command palette execution.
+        // ###########################################################################################
+        private async Task StepOscilloscopeTimeDivAsync(int offset)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            await mainOwner.TabOscilloscopeControl.StepTimeDivAsync(offset, CancellationToken.None);
+        }
+
+        // ###########################################################################################
+        // Requests a trigger-level step on the active oscilloscope session using the oscilloscope
+        // tab's existing SCPI pipeline and command palette execution.
+        // ###########################################################################################
+        private async Task StepOscilloscopeTriggerLevelAsync(int direction)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            await mainOwner.TabOscilloscopeControl.StepTriggerLevelAsync(direction, CancellationToken.None);
+        }
+
+        // ###########################################################################################
+        // Requests a fixed VOLTS/DIV value on the active oscilloscope session using the oscilloscope
+        // tab's existing SCPI pipeline and command palette execution.
+        // ###########################################################################################
+        private async Task SetOscilloscopeVoltsDivAsync(double voltsPerDiv)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            await mainOwner.TabOscilloscopeControl.SetVoltsDivAsync(voltsPerDiv, CancellationToken.None);
+        }
+
+        // ###########################################################################################
+        // Queues one TIME/DIV keyboard step on the oscilloscope tab so repeated Add/Subtract
+        // keypresses are buffered there instead of being dropped by this popup window.
+        // ###########################################################################################
+        private bool TryQueueOscilloscopeTimeDivStep(int offset)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return true;
+            }
+
+            mainOwner.TabOscilloscopeControl.QueueTimeDivKeyboardStep(offset);
+            return true;
+        }
+
+        // ###########################################################################################
+        // Queues one fixed VOLTS/DIV keyboard selection on the oscilloscope tab so rapid numpad
+        // requests use latest-wins behavior instead of the popup window's single-flight gate.
+        // ###########################################################################################
+        private bool TryQueueOscilloscopeVoltsDivSet(double voltsPerDiv)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return true;
+            }
+
+            mainOwner.TabOscilloscopeControl.QueueVoltsDivKeyboardSet(voltsPerDiv);
+            return true;
         }
 
         // ###########################################################################################
@@ -523,7 +682,7 @@ namespace CRT
         private void OnMousewheelZoomSwitchChanged(object? sender, RoutedEventArgs e)
         {
             UserSettings.ComponentInfoScrollAction =
-                this.MousewheelZoomSwitch.IsChecked == true
+                this.MousewheelZoomCheckBox.IsChecked == true
                     ? "Image zoom"
                     : "Image change";
         }
@@ -1196,22 +1355,50 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Toggles the mousewheel zoom switch when its descriptive text is clicked.
+        // Returns the oscilloscope keyboard command throttle interval using the same Debounce-Time
+        // value that the oscilloscope tab already reads from the main Excel data file.
         // ###########################################################################################
-        private void OnMousewheelZoomTextPointerPressed(object? sender, PointerPressedEventArgs e)
+        private TimeSpan GetOscilloscopeKeyboardCommandMinimumInterval()
         {
-            this.MousewheelZoomSwitch.IsChecked = this.MousewheelZoomSwitch.IsChecked != true;
-            e.Handled = true;
+            if (this.Owner is not Main mainOwner)
+            {
+                return TimeSpan.FromMilliseconds(250);
+            }
+
+            int debounceDelayMilliseconds = mainOwner.TabOscilloscopeControl.GetComponentImageSyncDebounceDelayMilliseconds();
+            return TimeSpan.FromMilliseconds(Math.Max(0, debounceDelayMilliseconds));
         }
 
         // ###########################################################################################
-        // Toggles the numpad oscilloscope switch when its descriptive text is clicked.
+        // Requests direct execution of a named oscilloscope command palette on the active session
+        // using the oscilloscope tab's existing SCPI pipeline and command logging.
         // ###########################################################################################
-        private void OnNumpadOscilloscopeTextPointerPressed(object? sender, PointerPressedEventArgs e)
+        private async Task RunOscilloscopePaletteAsync(ScopeCommandPalette palette)
         {
-            this.NumpadOscilloscopeSwitch.IsChecked = this.NumpadOscilloscopeSwitch.IsChecked != true;
-            e.Handled = true;
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            await mainOwner.TabOscilloscopeControl.RunPaletteAsync(palette, CancellationToken.None);
         }
 
+        // ###########################################################################################
+        // Queues one trigger-level keyboard step on the oscilloscope tab so repeated Up/Down
+        // keypresses are buffered there instead of being dropped by this popup window.
+        // ###########################################################################################
+        private bool TryQueueOscilloscopeTriggerLevelStep(int direction)
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return true;
+            }
+
+            mainOwner.TabOscilloscopeControl.QueueTriggerLevelKeyboardStep(direction);
+            return true;
+        }
+
+
+        
     }
 }

@@ -1,3 +1,8 @@
+- Fixed changing to another hardware will clear the filter component search
+- Added "Oscilloscope" tab
+- Added oscilloscope sync when viewing oscilloscope images in component info popup
+- Changed minor UI and text changes
+
 
 # OLD CHANGELOG
 

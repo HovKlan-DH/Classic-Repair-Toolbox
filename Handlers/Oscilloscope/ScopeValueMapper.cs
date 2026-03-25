@@ -1,5 +1,6 @@
 ﻿using Handlers.DataHandling;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
@@ -294,5 +295,109 @@ namespace Handlers.Oscilloscope
             return value.ToString("G15", CultureInfo.InvariantCulture)
                 .Replace("E", "e", StringComparison.Ordinal);
         }
+
+        // ###########################################################################################
+        // Resolves the previous or next supported T/DIV value from the oscilloscope definition list
+        // while preserving the exact order defined in the main Excel data file.
+        // ###########################################################################################
+        public static bool TryGetAdjacentTimeDivValue(
+            OscilloscopeEntry oscilloscopeEntry,
+            double currentSeconds,
+            int offset,
+            out ScopeMappedValue mappedValue)
+        {
+            mappedValue = new ScopeMappedValue();
+
+            if (offset == 0 || string.IsNullOrWhiteSpace(oscilloscopeEntry.TimeDivList))
+            {
+                return false;
+            }
+
+            var supportedValues = ParseSupportedValues(
+                oscilloscopeEntry.TimeDivList,
+                TryParseTimeValue);
+
+            if (supportedValues.Count == 0)
+            {
+                return false;
+            }
+
+            int currentIndex = supportedValues.FindIndex(value =>
+                AreEquivalent(currentSeconds, value.NumericValue));
+
+            if (currentIndex < 0)
+            {
+                return false;
+            }
+
+            int targetIndex = currentIndex + offset;
+            if (targetIndex < 0 || targetIndex >= supportedValues.Count)
+            {
+                return false;
+            }
+
+            var targetValue = supportedValues[targetIndex];
+
+            mappedValue = new ScopeMappedValue
+            {
+                RawValue = targetValue.DisplayValue,
+                MatchedDisplayValue = targetValue.DisplayValue,
+                NumericValue = targetValue.NumericValue,
+                ScpiValue = FormatScpiNumber(targetValue.NumericValue)
+            };
+
+            return true;
+        }
+
+        // ###########################################################################################
+        // Parses the supported engineering values CSV into ordered display/numeric pairs, skipping
+        // any malformed entries while preserving the original Excel-defined order.
+        // ###########################################################################################
+        private static List<(string DisplayValue, double NumericValue)> ParseSupportedValues(
+            string supportedValuesCsv,
+            ValueParser parser)
+        {
+            return supportedValuesCsv
+                .Split(',')
+                .Select(value => value.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => new
+                {
+                    DisplayValue = value,
+                    Success = parser(value, out double numericValue),
+                    NumericValue = numericValue
+                })
+                .Where(value => value.Success)
+                .Select(value => (value.DisplayValue, value.NumericValue))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // Resolves a fixed V/DIV value against the supported oscilloscope V/DIV list and returns the
+        // matching display text and SCPI numeric value.
+        // ###########################################################################################
+        public static bool TryGetSupportedVoltsDivValue(
+            OscilloscopeEntry oscilloscopeEntry,
+            double volts,
+            out ScopeMappedValue mappedValue)
+        {
+            mappedValue = new ScopeMappedValue();
+
+            if (string.IsNullOrWhiteSpace(oscilloscopeEntry.VoltsDivList))
+            {
+                return false;
+            }
+
+            string rawValue = $"{volts.ToString("0.###", CultureInfo.InvariantCulture)}V";
+
+            return TryMatchSupportedValue(
+                rawValue,
+                volts,
+                oscilloscopeEntry.VoltsDivList,
+                TryParseVoltageValue,
+                out mappedValue);
+        }
+
+
     }
 }

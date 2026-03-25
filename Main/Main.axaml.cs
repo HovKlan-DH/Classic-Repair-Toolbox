@@ -32,6 +32,7 @@ namespace CRT
 
         // Category filter: suppresses saves during programmatic selection changes
         private bool _suppressCategoryFilterSave;
+        private bool _suppressComponentSearchRefresh;
 
         private BoardData? _currentBoardData;
         private bool _suppressComponentHighlightUpdate;
@@ -339,6 +340,10 @@ namespace CRT
         // ###########################################################################################
         private void OnHardwareSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
+            this._suppressComponentSearchRefresh = true;
+            this.ComponentSearchTextBox.Text = string.Empty;
+            this._suppressComponentSearchRefresh = false;
+
             var selectedHardware = this.HardwareComboBox.SelectedItem as string;
 
             var boards = DataManager.HardwareBoards
@@ -715,6 +720,11 @@ namespace CRT
             }
 
             Dispatcher.UIThread.Post(() => this._windowPlacementReady = true, DispatcherPriority.Background);
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                this.TabOscilloscopeControl.InitializeForMainWindow(this);
+            }, DispatcherPriority.Background);
 
             Dispatcher.UIThread.Post(() =>
             {
@@ -1415,7 +1425,7 @@ namespace CRT
         // ###########################################################################################
         public void OnComponentSearchTextChanged(object? sender, global::Avalonia.Controls.TextChangedEventArgs e)
         {
-            if (this._currentBoardData == null || this._suppressCategoryFilterSave)
+            if (this._suppressComponentSearchRefresh || this._currentBoardData == null || this._suppressCategoryFilterSave)
                 return;
 
             var activeCategories = new HashSet<string>(
