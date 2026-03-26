@@ -35,7 +35,8 @@ namespace Handlers.DataHandling
 
                 foreach (var image in boardData.ComponentImages)
                 {
-                    ValidateFile(contextName, "Component images", image.File);
+                    string componentImageEntry = $"[{image.BoardLabel.Trim()}] pin [{image.Pin.Trim()}]";
+                    ValidateFile(contextName, "Component images", image.File, componentImageEntry);
                 }
 
                 foreach (var localFile in boardData.ComponentLocalFiles)
@@ -53,14 +54,31 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Validates a single path for backslashes, existence on disk, and exact case match.
+        // Validates a single path for empty values, backslashes, existence on disk, and exact case match.
         // ###########################################################################################
-        private static void ValidateFile(string excelDataFile, string sheetName, string? file)
+        private static void ValidateFile(string excelDataFile, string sheetName, string? file, string? entryLabel = null)
         {
-            if (string.IsNullOrWhiteSpace(file))
-                return;
-
             bool isMain = string.IsNullOrEmpty(excelDataFile);
+
+            if (string.IsNullOrWhiteSpace(file))
+            {
+                if (isMain)
+                {
+                    Logger.Warning(
+                        string.IsNullOrWhiteSpace(entryLabel)
+                            ? $"Main Excel file sheet [{sheetName}] has an entry with an empty file name - please fix!"
+                            : $"Main Excel file sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
+                }
+                else
+                {
+                    Logger.Warning(
+                        string.IsNullOrWhiteSpace(entryLabel)
+                            ? $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry with an empty file name - please fix!"
+                            : $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
+                }
+
+                return;
+            }
 
             if (file.Contains('\\'))
             {
@@ -76,11 +94,17 @@ namespace Handlers.DataHandling
 
             if (!File.Exists(fullPath))
             {
-                Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] and file [{file}] does not exist - please fix!");
+                if (isMain)
+                    Logger.Warning($"Main Excel file sheet [{sheetName}] and file [{file}] does not exist - please fix!");
+                else
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] and file [{file}] does not exist - please fix!");
             }
             else if (!HasExactCaseMatch(DataManager.DataRoot, safeFile))
             {
-                Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] and file [{file}] has incorrect casing (UPPER/lowercase) - please fix!");
+                if (isMain)
+                    Logger.Warning($"Main Excel file sheet [{sheetName}] and file [{file}] has incorrect casing (UPPER/lowercase) - please fix!");
+                else
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] and file [{file}] has incorrect casing (UPPER/lowercase) - please fix!");
             }
         }
 

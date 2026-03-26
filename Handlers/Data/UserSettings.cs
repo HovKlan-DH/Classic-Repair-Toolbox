@@ -79,6 +79,7 @@ namespace Handlers.DataHandling
         [JsonPropertyName("oscilloscopePort")] public int OscilloscopePort { get; set; } = 5025;
         [JsonPropertyName("oscilloscopeAutoConnect")] public bool OscilloscopeAutoConnect { get; set; } = false;
         [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control image pin selection";
+        [JsonPropertyName("oscilloscopeImageFolder")] public string OscilloscopeImageFolder { get; set; } = string.Empty;
 
 
     }
@@ -693,6 +694,40 @@ namespace Handlers.DataHandling
             Logger.Info($"Setting changed: [SchematicsOrder] [{boardKey}] [{order.Count} sequenced]");
             Save();
         }
+
+        // ###########################################################################################
+        // Persists the selected oscilloscope image folder path.
+        // When no explicit folder has been saved, the effective default becomes the current data root.
+        // ###########################################################################################
+        public static string OscilloscopeImageFolder
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(_data.OscilloscopeImageFolder))
+                {
+                    return _data.OscilloscopeImageFolder;
+                }
+
+                return string.IsNullOrWhiteSpace(DataManager.DataRoot)
+                    ? string.Empty
+                    : DataManager.DataRoot;
+            }
+            set
+            {
+                value ??= string.Empty;
+
+                if (string.Equals(_data.OscilloscopeImageFolder, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _data.OscilloscopeImageFolder = value;
+                Logger.Info($"Setting changed: [OscilloscopeImageFolder] [{(string.IsNullOrWhiteSpace(value) ? "empty" : value)}]");
+                Save();
+            }
+        }
+
+
 
     }
 }

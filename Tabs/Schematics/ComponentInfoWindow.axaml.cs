@@ -79,12 +79,12 @@ namespace CRT
         private Point _panStartPoint;
         private Matrix _panStartMatrix;
 
-        private CancellationTokenSource? _scopeImageSyncCts;
         private string _lastScopeImageSyncSignature = string.Empty;
         private bool _hasSeenOscilloscopeSessionTitleState;
         private bool _hasActiveOscilloscopeSessionTitleState;
         private DateTime _lastOscilloscopeKeyboardCommandUtc = DateTime.MinValue;
         private int _oscilloscopeKeyboardCommandInFlight;
+        private Bitmap? thisTemporaryCapturedScopeBitmap;
 
 
         // ###########################################################################################
@@ -131,10 +131,12 @@ namespace CRT
             this.NumpadOscilloscopeSwitch.IsChecked =
                 string.Equals(UserSettings.ComponentInfoKeyboardHandling, "Control oscilloscope", StringComparison.OrdinalIgnoreCase);
 
-            this.MousewheelZoomCheckBox.Checked += this.OnMousewheelZoomSwitchChanged;
-            this.MousewheelZoomCheckBox.Unchecked += this.OnMousewheelZoomSwitchChanged;
-            this.NumpadOscilloscopeSwitch.Checked += this.OnNumpadOscilloscopeSwitchChanged;
-            this.NumpadOscilloscopeSwitch.Unchecked += this.OnNumpadOscilloscopeSwitchChanged;
+            this.UpdateNumpadOscilloscopeSwitchAvailability();
+
+            // Replace Checked/Unchecked with IsCheckedChanged
+            this.MousewheelZoomCheckBox.IsCheckedChanged += this.OnMousewheelZoomSwitchChanged;
+            this.NumpadOscilloscopeSwitch.IsCheckedChanged += this.OnNumpadOscilloscopeSwitchChanged;
+
             this.ThumbnailList.SelectionChanged += this.OnThumbnailSelectionChanged;
 
             // Map the interactions to the expanded top-panel boundaries area instead of the local box
@@ -201,14 +203,13 @@ namespace CRT
 
             this.Closed += (_, _) =>
             {
+                this.ClearTemporaryCapturedOscilloscopeImage();
                 this._loadCts?.Cancel();
                 this._pinBufferCts?.Cancel();
                 this._pinFlashCts?.Cancel();
                 foreach (var bmp in this._loadedBitmaps)
                     bmp.Dispose();
                 this._loadedBitmaps.Clear();
-                this._scopeImageSyncCts?.Cancel();
-                this._scopeImageSyncCts?.Dispose();
             };
         }
 
@@ -239,17 +240,18 @@ namespace CRT
                 return;
             }
 
-            if (e.Key == Key.Space || e.Key == Key.Enter)
+            if (this.NumpadOscilloscopeSwitch.IsEnabled &&
+                this.NumpadOscilloscopeSwitch.IsChecked == true &&
+                this.TryHandleOscilloscopeKeyboardCommand(e.Key))
             {
-                this.ThumbnailList.SelectedIndex = 0;
-                this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
                 e.Handled = true;
                 return;
             }
 
-            if (this.NumpadOscilloscopeSwitch.IsChecked == true &&
-                this.TryHandleOscilloscopeKeyboardCommand(e.Key))
+            if (e.Key == Key.Space || e.Key == Key.Enter)
             {
+                this.ThumbnailList.SelectedIndex = 0;
+                this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
                 e.Handled = true;
                 return;
             }
@@ -261,7 +263,8 @@ namespace CRT
                 digitValue = (int)e.Key - (int)Key.D0;
             else if (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9)
             {
-                if (this.NumpadOscilloscopeSwitch.IsChecked == true)
+                if (this.NumpadOscilloscopeSwitch.IsEnabled &&
+                    this.NumpadOscilloscopeSwitch.IsChecked == true)
                     return;
 
                 digitValue = (int)e.Key - (int)Key.NumPad0;
@@ -300,11 +303,21 @@ namespace CRT
                 case Key.NumPad2:
                     return this.TryQueueOscilloscopeVoltsDivSet(2.0);
 
+                case Key.Decimal:
+                    return this.TryQueueOscilloscopeKeyboardCommand(
+                        () => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.ClearStatistics));
+
+                case Key.Enter:
+                    return this.TryQueueOscilloscopeKeyboardCommand(
+                        this.CaptureAndDisplayOscilloscopeImageAsync);
+
                 case Key.Multiply:
-                    return this.TryQueueOscilloscopeKeyboardCommand(() => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Single));
+                    return this.TryQueueOscilloscopeKeyboardCommand(
+                        () => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Single));
 
                 case Key.Divide:
-                    return this.TryQueueOscilloscopeKeyboardCommand(() => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Run));
+                    return this.TryQueueOscilloscopeKeyboardCommand(
+                        () => this.RunOscilloscopePaletteAsync(ScopeCommandPalette.Run));
 
                 default:
                     return false;
@@ -711,6 +724,8 @@ namespace CRT
             string dataRoot,
             bool hasExplicitRegionComponents)
         {
+            this.ClearTemporaryCapturedOscilloscopeImage();
+
             // Reset pin navigation state whenever a new component is loaded
             this._pinBufferCts?.Cancel();
             this._pinBuffer = string.Empty;
@@ -773,7 +788,9 @@ namespace CRT
             if (this._suppressThumbnailSelection)
                 return;
 
-            this.ResetImageZoom(); // Wipes previous zoom data clean every time a completely new index overrides selection
+            this.ClearTemporaryCapturedOscilloscopeImage();
+            this.ResetImageZoom();
+
             var selected = this.ThumbnailList.SelectedItem as ComponentImageItem;
             this.MainComponentImage.Source = selected?.ImageSource;
             this.NoImageText.IsVisible = selected?.ImageSource == null;
@@ -905,6 +922,7 @@ namespace CRT
 
         // ###########################################################################################
         // Loads component images on a background thread, then populates the gallery and main image.
+        // Entries without a File value are excluded so no empty thumbnail placeholders are shown.
         // ###########################################################################################
         private async void LoadImagesAsync(List<ComponentImageEntry> entries, string dataRoot, string? preservePin = null)
         {
@@ -912,7 +930,11 @@ namespace CRT
             this._loadCts = new CancellationTokenSource();
             var cts = this._loadCts;
 
-            if (entries.Count == 0)
+            var displayableEntries = entries
+                .Where(HasDisplayableImageFile)
+                .ToList();
+
+            if (displayableEntries.Count == 0)
             {
                 this.DisposeLoadedBitmaps();
                 this.ScheduleSelectedOscilloscopeImageSync(null);
@@ -923,16 +945,10 @@ namespace CRT
             {
                 var result = new List<(ComponentImageEntry Entry, Bitmap? Bitmap)>();
 
-                foreach (var entry in entries)
+                foreach (var entry in displayableEntries)
                 {
                     if (cts.Token.IsCancellationRequested)
                         break;
-
-                    if (string.IsNullOrWhiteSpace(entry.File))
-                    {
-                        result.Add((entry, null));
-                        continue;
-                    }
 
                     var fullPath = Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
                     Bitmap? bitmap = null;
@@ -1033,11 +1049,14 @@ namespace CRT
         // ###########################################################################################
         private void DisposeLoadedBitmaps()
         {
+            this.ClearTemporaryCapturedOscilloscopeImage();
             this.MainComponentImage.Source = null;
             this.ThumbnailList.ItemsSource = null;
             this.ImageNoteSection.IsVisible = false;
+
             foreach (var bmp in this._loadedBitmaps)
                 bmp.Dispose();
+
             this._loadedBitmaps.Clear();
         }
 
@@ -1052,13 +1071,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Counts how many images belong to the current component for the requested region.
-        // Empty image regions are included in both counters.
+        // Counts how many displayable images belong to the current component for the requested region.
+        // Empty image regions are included in both counters. Entries without a File are excluded.
         // ###########################################################################################
         private int CountImagesForRegion(string region)
         {
             return this._allComponentImages.Count(img =>
                 string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                HasDisplayableImageFile(img) &&
                 IsImageVisibleInRegion(img, region));
         }
 
@@ -1077,6 +1097,7 @@ namespace CRT
 
         // ###########################################################################################
         // Re-filters the stored image list for the current local region and triggers an async reload.
+        // Entries without a File value are excluded from the thumbnail gallery.
         // ###########################################################################################
         private void RefreshImages(bool resetSelection = false)
         {
@@ -1090,8 +1111,10 @@ namespace CRT
             var matchingEntries = this._allComponentImages
                 .Where(img =>
                     string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                    HasDisplayableImageFile(img) &&
                     IsImageVisibleInRegion(img, this._localRegion))
                 .ToList();
+
             this.LoadImagesAsync(matchingEntries, this._dataRoot, currentPin);
         }
 
@@ -1263,7 +1286,7 @@ namespace CRT
                 return;
             }
 
-            mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(selectedItem.SourceEntry);
+            mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(selectedItem!.SourceEntry);
         }
 
         // ###########################################################################################
@@ -1295,6 +1318,8 @@ namespace CRT
 
             this._hasSeenOscilloscopeSessionTitleState = hasSeenOscilloscopeSession;
             this._hasActiveOscilloscopeSessionTitleState = hasActiveOscilloscopeSession;
+
+            this.UpdateNumpadOscilloscopeSwitchAvailability();
             this.ApplyOscilloscopeSessionTitleState();
         }
 
@@ -1398,7 +1423,131 @@ namespace CRT
             return true;
         }
 
+        // ###########################################################################################
+        // Enables the numpad oscilloscope switch only while an active oscilloscope session exists.
+        // The checked state is preserved so control resumes automatically after reconnect.
+        // ###########################################################################################
+        private void UpdateNumpadOscilloscopeSwitchAvailability()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.UpdateNumpadOscilloscopeSwitchAvailability,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
 
-        
+            bool isOscilloscopeAvailable = this._hasActiveOscilloscopeSessionTitleState;
+
+            this.NumpadOscilloscopeSwitch.IsEnabled = isOscilloscopeAvailable;
+        }
+
+        // ###########################################################################################
+        // Captures a live oscilloscope image for the currently selected component image, saves it
+        // through the oscilloscope tab, and temporarily shows it in the large preview area.
+        // ###########################################################################################
+        private async Task CaptureAndDisplayOscilloscopeImageAsync()
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            ComponentImageItem? selectedItem = this.ThumbnailList.SelectedItem as ComponentImageItem;
+            ComponentImageEntry? selectedEntry = selectedItem?.SourceEntry;
+
+            if (selectedEntry == null)
+            {
+                return;
+            }
+
+            string displayedRegion = !string.IsNullOrWhiteSpace(selectedEntry.Region)
+                ? selectedEntry.Region.Trim()
+                : this._localRegion;
+
+            await Dispatcher.UIThread.InvokeAsync(
+                this.ShowFetchScopeImageOverlay,
+                DispatcherPriority.Background);
+
+            try
+            {
+                string? savedFilePath = await mainOwner.TabOscilloscopeControl.CaptureAndSaveOscilloscopeImageAsync(
+                    selectedEntry,
+                    displayedRegion,
+                    CancellationToken.None);
+
+                if (string.IsNullOrWhiteSpace(savedFilePath) || !File.Exists(savedFilePath))
+                {
+                    return;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => this.ShowTemporaryCapturedOscilloscopeImage(savedFilePath),
+                    DispatcherPriority.Background);
+            }
+            finally
+            {
+                await Dispatcher.UIThread.InvokeAsync(
+                    this.HideFetchScopeImageOverlay,
+                    DispatcherPriority.Background);
+            }
+        }
+
+        // ###########################################################################################
+        // Loads a just-captured oscilloscope image from disk and temporarily replaces the large
+        // image preview until the user navigates away from the current thumbnail selection.
+        // ###########################################################################################
+        private void ShowTemporaryCapturedOscilloscopeImage(string savedFilePath)
+        {
+            this.ClearTemporaryCapturedOscilloscopeImage();
+
+            this.thisTemporaryCapturedScopeBitmap = new Bitmap(savedFilePath);
+            this.MainComponentImage.Source = this.thisTemporaryCapturedScopeBitmap;
+            this.NoImageText.IsVisible = false;
+            this.CapturedScopeImageText.Text = $"Saved image as [{Path.GetFileName(savedFilePath)}]";
+            this.CapturedScopeImageBorder.IsVisible = true;
+        }
+
+        // ###########################################################################################
+        // Clears the temporary oscilloscope capture preview and restores the normal main-image
+        // behavior driven by the selected thumbnail item.
+        // ###########################################################################################
+        private void ClearTemporaryCapturedOscilloscopeImage()
+        {
+            this.HideFetchScopeImageOverlay();
+            this.CapturedScopeImageBorder.IsVisible = false;
+
+            if (this.thisTemporaryCapturedScopeBitmap != null)
+            {
+                this.thisTemporaryCapturedScopeBitmap.Dispose();
+                this.thisTemporaryCapturedScopeBitmap = null;
+            }
+        }
+
+        // ###########################################################################################
+        // Shows a full-image overlay so the user can see that a new oscilloscope capture is in progress.
+        // ###########################################################################################
+        private void ShowFetchScopeImageOverlay()
+        {
+            this.FetchScopeImageOverlayBorder.IsVisible = true;
+        }
+
+        // ###########################################################################################
+        // Hides the temporary full-image overlay once the oscilloscope capture has completed or failed.
+        // ###########################################################################################
+        private void HideFetchScopeImageOverlay()
+        {
+            this.FetchScopeImageOverlayBorder.IsVisible = false;
+        }
+
+        // ###########################################################################################
+        // Returns true when the component image entry points to a real image file path.
+        // Empty or whitespace-only File values are excluded from the thumbnail gallery.
+        // ###########################################################################################
+        private static bool HasDisplayableImageFile(ComponentImageEntry image)
+        {
+            return !string.IsNullOrWhiteSpace(image.File);
+        }
+
     }
 }

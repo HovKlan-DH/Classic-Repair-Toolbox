@@ -2,16 +2,21 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.Platform.Storage;
 using Handlers.DataHandling;
 using Handlers.Oscilloscope;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Globalization;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics.CodeAnalysis;
 
 namespace CRT
 {
@@ -20,6 +25,9 @@ namespace CRT
         private double? thisLastTriggerLevelVolts;
         private double? thisLastTimeDivSeconds;
         private double? thisLastVoltsDivVolts;
+
+        private bool thisIsNormalizingPortText;
+        private string thisLastValidPortText = "5025";
 
         private CancellationTokenSource? thisOscilloscopeMonitorCancellationTokenSource;
         private string thisMainWindowTitleBase = string.Empty;
@@ -72,15 +80,20 @@ namespace CRT
             this.HostTextBox.Text = UserSettings.OscilloscopeHost;
             this.HostTextBox.TextChanged += this.OnHostTextChanged;
 
-            this.PortNumericUpDown.Value = UserSettings.OscilloscopePort;
-            this.PortNumericUpDown.ValueChanged += this.OnPortValueChanged;
+            this.PortTextBox.Text = (UserSettings.OscilloscopePort is >= 1 and <= 65535
+                ? UserSettings.OscilloscopePort
+                : 5025).ToString(CultureInfo.InvariantCulture);
+            this.thisLastValidPortText = this.PortTextBox.Text;
+            this.PortTextBox.TextChanged += this.OnPortTextChanged;
 
             this.AutoConnectOscilloscopeCheckBox.IsChecked = UserSettings.OscilloscopeAutoConnect;
-            this.AutoConnectOscilloscopeCheckBox.Checked += this.OnAutoConnectOscilloscopeCheckBoxChanged;
-            this.AutoConnectOscilloscopeCheckBox.Unchecked += this.OnAutoConnectOscilloscopeCheckBoxChanged;
+            this.AutoConnectOscilloscopeCheckBox.IsCheckedChanged += (_, _) => this.OnAutoConnectOscilloscopeCheckBoxChanged();
 
             this.VendorComboBox.SelectionChanged += this.OnVendorSelectionChanged;
             this.SeriesOrModelComboBox.SelectionChanged += this.OnSeriesOrModelSelectionChanged;
+
+            this.OscilloscopeImageFolderTextBox.Text = UserSettings.OscilloscopeImageFolder;
+            this.UpdateOscilloscopeImageFolderUi();
 
             this.PopulateVendorDropDown();
         }
@@ -174,7 +187,7 @@ namespace CRT
                 port >= 1 &&
                 port <= 65535)
             {
-                this.PortNumericUpDown.Value = port;
+                this.PortTextBox.Text = port.ToString(CultureInfo.InvariantCulture);
             }
         }
 
@@ -188,29 +201,98 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists port numerical up/down field whenever it's updated.
+        // Persists the TCP port whenever the textbox contains a valid port value and normalizes any
+        // invalid edits so only ASCII digits 0-9 remain while keeping the value within 1-65535.
         // ###########################################################################################
-        private void OnPortValueChanged(object? sender, NumericUpDownValueChangedEventArgs e)
+        private void OnPortTextChanged(object? sender, global::Avalonia.Controls.TextChangedEventArgs e)
         {
-            if (e.NewValue.HasValue)
+            if (this.thisIsNormalizingPortText)
             {
-                UserSettings.OscilloscopePort = (int)e.NewValue.Value;
+                return;
+            }
+
+            string originalText = this.PortTextBox.Text ?? string.Empty;
+            string sanitizedText = new(originalText.Where(ch => ch is >= '0' and <= '9').Take(5).ToArray());
+
+            if (sanitizedText.Length > 0 &&
+                int.TryParse(sanitizedText, NumberStyles.None, CultureInfo.InvariantCulture, out int typedPort) &&
+                typedPort > 65535)
+            {
+                sanitizedText = this.thisLastValidPortText;
+            }
+
+            if (!string.Equals(originalText, sanitizedText, StringComparison.Ordinal))
+            {
+                int caretIndex = this.PortTextBox.CaretIndex;
+
+                this.thisIsNormalizingPortText = true;
+
+                try
+                {
+                    this.PortTextBox.Text = sanitizedText;
+                    this.PortTextBox.CaretIndex = Math.Min(caretIndex, sanitizedText.Length);
+                }
+                finally
+                {
+                    this.thisIsNormalizingPortText = false;
+                }
+            }
+
+            if (int.TryParse(sanitizedText, NumberStyles.None, CultureInfo.InvariantCulture, out int port) &&
+                port >= 1 &&
+                port <= 65535)
+            {
+                UserSettings.OscilloscopePort = port;
+                this.thisLastValidPortText = sanitizedText;
             }
 
             this.InvalidateEstablishedOscilloscopeSession();
         }
 
         // ###########################################################################################
-        // Rejects non-digit text input in the TCP port field.
+        // Rejects non-digit text input in the TCP port field and blocks typed edits that would make
+        // the resulting port value exceed 65535. The TextBox MaxLength still enforces 5 characters.
         // ###########################################################################################
-        private void OnPortNumericUpDownTextInput(object? sender, TextInputEventArgs e)
+        private void OnPortTextBoxTextInput(object? sender, TextInputEventArgs e)
         {
             if (string.IsNullOrEmpty(e.Text))
             {
                 return;
             }
 
-            if (e.Text.Any(ch => !char.IsDigit(ch)))
+            if (e.Text.Any(ch => ch is < '0' or > '9'))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (sender is not TextBox textBox)
+            {
+                return;
+            }
+
+            string existingText = textBox.Text ?? string.Empty;
+            int selectionStart = textBox.SelectionStart;
+            int selectionEnd = textBox.SelectionEnd;
+
+            if (selectionEnd < selectionStart)
+            {
+                (selectionStart, selectionEnd) = (selectionEnd, selectionStart);
+            }
+
+            string resultingText =
+                existingText[..selectionStart] +
+                e.Text +
+                existingText[selectionEnd..];
+
+            if (resultingText.Length > 5)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (int.TryParse(resultingText, NumberStyles.None, CultureInfo.InvariantCulture, out int port) &&
+                port > 65535)
             {
                 e.Handled = true;
             }
@@ -219,26 +301,41 @@ namespace CRT
         // ###########################################################################################
         // Restores a valid TCP port value when the field loses focus.
         // ###########################################################################################
-        private void OnPortNumericUpDownLostFocus(object? sender, RoutedEventArgs e)
+        private void OnPortTextBoxLostFocus(object? sender, RoutedEventArgs e)
         {
-            if (!this.PortNumericUpDown.Value.HasValue)
+            string text = this.PortTextBox.Text?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(text))
             {
-                this.PortNumericUpDown.Value = UserSettings.OscilloscopePort is >= 1 and <= 65535
+                int fallbackPort = UserSettings.OscilloscopePort is >= 1 and <= 65535
                     ? UserSettings.OscilloscopePort
                     : 5025;
+
+                this.PortTextBox.Text = fallbackPort.ToString(CultureInfo.InvariantCulture);
                 return;
             }
 
-            if (this.PortNumericUpDown.Value.Value < 1)
+            if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int port))
             {
-                this.PortNumericUpDown.Value = 1;
+                int fallbackPort = UserSettings.OscilloscopePort is >= 1 and <= 65535
+                    ? UserSettings.OscilloscopePort
+                    : 5025;
+
+                this.PortTextBox.Text = fallbackPort.ToString(CultureInfo.InvariantCulture);
                 return;
             }
 
-            if (this.PortNumericUpDown.Value.Value > 65535)
+            if (port < 1)
             {
-                this.PortNumericUpDown.Value = 65535;
+                port = 1;
             }
+            else if (port > 65535)
+            {
+                port = 65535;
+            }
+
+            this.PortTextBox.Text = port.ToString(CultureInfo.InvariantCulture);
+            UserSettings.OscilloscopePort = port;
         }
 
         // ###########################################################################################
@@ -258,7 +355,13 @@ namespace CRT
 
             var selectedOscilloscope = this.GetSelectedOscilloscope();
             string host = this.HostTextBox.Text?.Trim() ?? string.Empty;
-            int port = this.PortNumericUpDown.Value.HasValue ? (int)this.PortNumericUpDown.Value.Value : 0;
+            int port = int.TryParse(
+                this.PortTextBox.Text?.Trim(),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out int parsedPort)
+                ? parsedPort
+                : 0;
 
             int debounceDelayMilliseconds = defaultDelayMilliseconds;
             if (selectedOscilloscope != null &&
@@ -646,7 +749,11 @@ namespace CRT
                 if (ScopeCommandResolver.ExpectsTextResponse(command))
                 {
                     string response = await scopeClient.QueryLineAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
-                    this.AppendOutputLine("Debug", $"SCPI << {response}");
+                    string loggedResponse = command == ScopeCommand.Identify
+                        ? this.MaskIdentifyResponseSerial(response)
+                        : response;
+
+                    this.AppendOutputLine("Debug", $"SCPI << {loggedResponse}");
                     this.ProcessTextResponse(command, response);
                 }
                 else
@@ -997,7 +1104,7 @@ namespace CRT
 
             this.AppendOutputLine("Info", $"Vendor: {vendor}");
             this.AppendOutputLine("Info", $"Model: {model}");
-            this.AppendOutputLine("Info", $"Serial: {serial}");
+            this.AppendOutputLine("Info", $"Serial: {this.MaskScopeSerial(serial)}");
             this.AppendOutputLine("Info", $"Firmware: {firmware}");
         }
 
@@ -2172,24 +2279,20 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists the auto-connect checkbox state and starts or stops the background auto-connect loop.
-        // ###########################################################################################
-        private void OnAutoConnectOscilloscopeCheckBoxChanged(object? sender, RoutedEventArgs e)
-        {
-            bool isEnabled = this.AutoConnectOscilloscopeCheckBox.IsChecked == true;
+// Persists the auto-connect checkbox state and starts or stops the background auto-connect loop.
+// ###########################################################################################
+private void OnAutoConnectOscilloscopeCheckBoxChanged()
+{
+    bool isEnabled = this.AutoConnectOscilloscopeCheckBox.IsChecked == true;
 
-            UserSettings.OscilloscopeAutoConnect = isEnabled;
-            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
+    UserSettings.OscilloscopeAutoConnect = isEnabled;
+    this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
 
-            if (isEnabled)
-            {
-                this.StartOscilloscopeAutoConnectLoop();
-            }
-            else
-            {
-                this.StopOscilloscopeAutoConnectLoop();
-            }
-        }
+    if (isEnabled)
+        this.StartOscilloscopeAutoConnectLoop();
+    else
+        this.StopOscilloscopeAutoConnectLoop();
+}
 
         // ###########################################################################################
         // Starts one background loop that continuously retries oscilloscope connection while enabled.
@@ -2912,6 +3015,362 @@ namespace CRT
 
             await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
         }
+
+        // ###########################################################################################
+        // Opens the Avalonia folder picker and stores the selected oscilloscope image folder.
+        // ###########################################################################################
+        private async void OnSelectOscilloscopeImageFolderClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                TopLevel? topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel?.StorageProvider == null)
+                {
+                    this.AppendOutputLine("Warning", "Folder picker is not available");
+                    return;
+                }
+
+                if (!topLevel.StorageProvider.CanPickFolder)
+                {
+                    this.AppendOutputLine("Warning", "This platform does not support folder picking");
+                    return;
+                }
+
+                IReadOnlyList<IStorageFolder> selectedFolders =
+                    await topLevel.StorageProvider.OpenFolderPickerAsync(
+                        new FolderPickerOpenOptions
+                        {
+                            Title = "Select oscilloscope image folder",
+                            AllowMultiple = false
+                        });
+
+                IStorageFolder? selectedFolder = selectedFolders.FirstOrDefault();
+                string? selectedPath = selectedFolder?.TryGetLocalPath();
+
+                if (string.IsNullOrWhiteSpace(selectedPath))
+                {
+                    return;
+                }
+
+                string normalizedPath = Path.GetFullPath(selectedPath);
+
+                UserSettings.OscilloscopeImageFolder = normalizedPath;
+                this.UpdateOscilloscopeImageFolderUi();
+
+                this.AppendOutputLine("Info", $"Oscilloscope image folder set to [{normalizedPath}]");
+            }
+            catch (Exception ex)
+            {
+                this.AppendOutputLine("Warning", $"Failed to select oscilloscope image folder: {ex.Message}");
+            }
+        }
+
+        // ###########################################################################################
+        // Opens the configured oscilloscope image folder in the operating system file manager.
+        // ###########################################################################################
+        private void OnOpenOscilloscopeImageFolderClick(object? sender, RoutedEventArgs e)
+        {
+            string directoryPath = UserSettings.OscilloscopeImageFolder?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                this.AppendOutputLine("Warning", "Select an oscilloscope image folder first");
+                this.UpdateOscilloscopeImageFolderUi();
+                return;
+            }
+
+            try
+            {
+                this.OpenDirectoryInFileExplorer(directoryPath);
+            }
+            catch (Exception ex)
+            {
+                this.AppendOutputLine("Warning", $"Failed to open oscilloscope image folder: {ex.Message}");
+            }
+        }
+
+        // ###########################################################################################
+        // Refreshes the folder path textbox and the enabled state of the open-folder button.
+        // ###########################################################################################
+        private void UpdateOscilloscopeImageFolderUi()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.InvokeAsync(
+                    this.UpdateOscilloscopeImageFolderUi,
+                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return;
+            }
+
+            string directoryPath = UserSettings.OscilloscopeImageFolder?.Trim() ?? string.Empty;
+
+            this.OscilloscopeImageFolderTextBox.Text = directoryPath;
+            this.OpenOscilloscopeImageFolderButton.IsEnabled = !string.IsNullOrWhiteSpace(directoryPath);
+        }
+
+        // ###########################################################################################
+        // Creates the target directory if needed and opens it in the native file explorer.
+        // ###########################################################################################
+        private void OpenDirectoryInFileExplorer(string directoryPath)
+        {
+            string normalizedPath = Path.GetFullPath(directoryPath);
+            Directory.CreateDirectory(normalizedPath);
+
+            if (OperatingSystem.IsWindows())
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{normalizedPath}\"")
+                {
+                    UseShellExecute = true
+                });
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                Process.Start("open", normalizedPath);
+            }
+            else
+            {
+                Process.Start("xdg-open", normalizedPath);
+            }
+        }
+
+        // ###########################################################################################
+        // Captures the current oscilloscope screenshot over the active SCPI session, saves it as a PNG
+        // in the configured image folder, and returns the saved file path.
+        // ###########################################################################################
+        public async Task<string?> CaptureAndSaveOscilloscopeImageAsync(
+            ComponentImageEntry componentImageEntry,
+            string displayedRegion,
+            CancellationToken cancellationToken)
+        {
+            if (componentImageEntry == null)
+            {
+                this.AppendOutputLine("Warning", "No active component image is selected");
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(componentImageEntry.BoardLabel))
+            {
+                this.AppendOutputLine("Warning", "The selected component image has no board label");
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(componentImageEntry.Pin) &&
+                string.IsNullOrWhiteSpace(componentImageEntry.Name))
+            {
+                this.AppendOutputLine("Warning", "The selected component image has neither a pin value nor a name");
+                return null;
+            }
+
+            string outputDirectory = UserSettings.OscilloscopeImageFolder?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(outputDirectory))
+            {
+                this.AppendOutputLine("Warning", "Select an oscilloscope image folder first");
+                this.UpdateOscilloscopeImageFolderUi();
+                return null;
+            }
+
+            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
+            if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: true))
+            {
+                return null;
+            }
+
+            string outputFilePath = this.BuildCapturedOscilloscopeImageFilePath(
+                componentImageEntry,
+                displayedRegion,
+                outputDirectory);
+
+            bool enteredSemaphore = false;
+
+            try
+            {
+                await this.thisOscilloscopeSessionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                enteredSemaphore = true;
+
+                if (!selectionSnapshot.HasActiveEstablishedSession || this.thisConnectedScopeClient == null)
+                {
+                    this.AppendOutputLine("Warning", "Connect to oscilloscope first");
+                    return null;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => this.SetOscilloscopeButtonsEnabled(false),
+                    DispatcherPriority.Background);
+
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    timeoutCts.Token,
+                    cancellationToken);
+
+                byte[] rawImageData = await this.QueryDumpImagePaletteAsync(
+                    this.thisConnectedScopeClient,
+                    selectionSnapshot.SelectedOscilloscope!,
+                    linkedCts.Token).ConfigureAwait(false);
+
+                if (!this.TryCreateBitmapFromScopeRawImageData(rawImageData, out Bitmap? capturedBitmap))
+                {
+                    this.AppendOutputLine("Warning", "Could not decode the oscilloscope image");
+                    return null;
+                }
+
+                using (capturedBitmap)
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                    capturedBitmap.Save(outputFilePath);
+                }
+
+                this.AppendOutputLine("Info", $"Saved oscilloscope image to [{outputFilePath}]");
+                return outputFilePath;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (OperationCanceledException)
+            {
+                await this.HandleOscilloscopeSessionFailureCoreAsync("Connection or SCPI communication timed out");
+            }
+            catch (Exception ex)
+            {
+                await this.HandleOscilloscopeSessionFailureCoreAsync(ex.Message);
+            }
+            finally
+            {
+                if (enteredSemaphore)
+                {
+                    this.thisOscilloscopeSessionSemaphore.Release();
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => this.SetOscilloscopeButtonsEnabled(true),
+                    DispatcherPriority.Background);
+            }
+
+            return null;
+        }
+
+        // ###########################################################################################
+        // Executes only the DumpImage palette command, logs the SCPI traffic, and returns the raw
+        // binary block received from the oscilloscope.
+        // ###########################################################################################
+        private async Task<byte[]> QueryDumpImagePaletteAsync(
+            ScopeScpiClient scopeClient,
+            OscilloscopeEntry selectedOscilloscope,
+            CancellationToken cancellationToken)
+        {
+            this.AppendOutputLine("Debug", "---");
+            this.AppendOutputLine("Debug", this.GetPaletteDescription(ScopeCommandPalette.DumpImage));
+
+            string dumpImageCommand = ScopeCommandResolver.GetCommandText(selectedOscilloscope, ScopeCommand.DumpImage);
+            if (string.IsNullOrWhiteSpace(dumpImageCommand))
+            {
+                throw new InvalidOperationException("No SCPI command text is defined for DumpImage");
+            }
+
+            this.AppendOutputLine("Debug", $"SCPI >> {dumpImageCommand}");
+
+            byte[] rawData = await scopeClient.QueryBinaryBlockAsync(dumpImageCommand, cancellationToken).ConfigureAwait(false);
+
+            this.AppendOutputLine("Debug", $"SCPI << <{rawData.Length} bytes binary>");
+            return rawData;
+        }
+
+        // ###########################################################################################
+        // Converts the raw oscilloscope DumpImage response into an Avalonia bitmap. The method first
+        // strips a SCPI definite-length header when present, then falls back to the raw buffer.
+        // ###########################################################################################
+        private bool TryCreateBitmapFromScopeRawImageData(byte[] rawImageData, [NotNullWhen(true)] out Bitmap? bitmap)
+        {
+            bitmap = null;
+
+            try
+            {
+                if (this.TryExtractBinaryPayload(rawImageData, out byte[] payload) && payload.Length > 0)
+                {
+                    using var payloadStream = new MemoryStream(payload, writable: false);
+                    bitmap = new Bitmap(payloadStream);
+                    return true;
+                }
+
+                using var rawStream = new MemoryStream(rawImageData, writable: false);
+                bitmap = new Bitmap(rawStream);
+                return true;
+            }
+            catch
+            {
+                bitmap = null;
+                return false;
+            }
+        }
+
+        // ###########################################################################################
+        // Builds the PNG file path for one captured oscilloscope image using the selected component
+        // image metadata and the popup's currently displayed region.
+        // ###########################################################################################
+        private string BuildCapturedOscilloscopeImageFilePath(
+            ComponentImageEntry componentImageEntry,
+            string displayedRegion,
+            string outputDirectory)
+        {
+            string safeBoardLabel = this.SanitizeCapturedOscilloscopeImageFileNamePart(componentImageEntry.BoardLabel);
+
+            string identityPart = !string.IsNullOrWhiteSpace(componentImageEntry.Pin)
+                ? this.SanitizeCapturedOscilloscopeImageFileNamePart(componentImageEntry.Pin)
+                : this.SanitizeCapturedOscilloscopeImageFileNamePart(componentImageEntry.Name);
+
+            string safeRegion = string.IsNullOrWhiteSpace(displayedRegion)
+                ? string.Empty
+                : this.SanitizeCapturedOscilloscopeImageFileNamePart(displayedRegion);
+
+            string fileName = string.IsNullOrWhiteSpace(safeRegion)
+                ? $"{safeBoardLabel}_{identityPart}.png"
+                : $"{safeBoardLabel}_{identityPart}_{safeRegion}.png";
+
+            return Path.Combine(outputDirectory, fileName);
+        }
+
+        // ###########################################################################################
+        // Replaces characters that are invalid in file names so oscilloscope captures can be written
+        // safely on all supported desktop platforms.
+        // ###########################################################################################
+        private string SanitizeCapturedOscilloscopeImageFileNamePart(string value)
+        {
+            string sanitized = string.IsNullOrWhiteSpace(value) ? "Unknown" : value.Trim();
+
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                sanitized = sanitized.Replace(invalidChar, '_');
+            }
+
+            return sanitized;
+        }
+
+        // ###########################################################################################
+        // Masks a scope serial number so logs and the output panel do not expose the real value.
+        // ###########################################################################################
+        private string MaskScopeSerial(string serial)
+        {
+            return string.IsNullOrEmpty(serial)
+                ? string.Empty
+                : new string('*', serial.Length);
+        }
+
+        // ###########################################################################################
+        // Masks only the serial field inside a standard *IDN? response while leaving the other parts
+        // unchanged for debugging and display purposes.
+        // ###########################################################################################
+        private string MaskIdentifyResponseSerial(string response)
+        {
+            var parts = (response ?? string.Empty).Split(',');
+
+            if (parts.Length > 2)
+            {
+                string trimmedSerial = parts[2].Trim();
+                parts[2] = this.MaskScopeSerial(trimmedSerial);
+            }
+
+            return string.Join(",", parts);
+        }
+
 
     }
 }

@@ -163,37 +163,72 @@
 						</Border>
 					</StackPanel>
 
+					<!-- Top-right temporary capture overlay -->
+					<Border x:Name="CapturedScopeImageBorder"
+							VerticalAlignment="Top"
+							HorizontalAlignment="Right"
+							Margin="0,6,6,0"
+							Background="{DynamicResource ComponentPopup_OscilloscopeExpected_Bg}"
+							BorderBrush="{DynamicResource ComponentPopup_OscilloscopeExpected_Border}"
+							BorderThickness="1"
+							CornerRadius="2"
+							Padding="10,4"
+							IsVisible="False">
+						<TextBlock x:Name="CapturedScopeImageText"
+						   Text="User image"
+						   FontSize="22"
+						   FontWeight="SemiBold"
+						   TextWrapping="Wrap"
+						   MaxWidth="260"
+						   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}" />
+					</Border>
+
+					<!-- Full-image fetch overlay shown while a new oscilloscope image is being captured -->
+					<Border x:Name="FetchScopeImageOverlayBorder"
+							Background="#CC000000"
+							IsVisible="False"
+							IsHitTestVisible="False">
+						<TextBlock x:Name="FetchScopeImageOverlayText"
+								   Text="Querying image - please wait..."
+								   HorizontalAlignment="Center"
+								   VerticalAlignment="Center"
+								   TextAlignment="Center"
+								   FontSize="28"
+								   FontWeight="Bold"
+								   Foreground="IndianRed" />
+					</Border>
+
 					<!-- Bottom-left image counter overlay -->
 					<Border x:Name="ImageCounterBorder"
 							VerticalAlignment="Bottom"
-                            HorizontalAlignment="Left"
-                            Margin="6,0,0,6"
+							HorizontalAlignment="Left"
+							Margin="6,0,0,6"
 							Background="{DynamicResource ComponentPopup_ImageXofY_Bg}"
 							BorderBrush="{DynamicResource ComponentPopup_ImageXofY_Border}"
 							BorderThickness="1"
-                            CornerRadius="2"
-                            Padding="5,2"
-                            IsVisible="False">
+							CornerRadius="2"
+							Padding="5,2"
+							IsVisible="False">
 						<TextBlock x:Name="ImageCounterText"
-					               FontSize="11"
-					               Foreground="{DynamicResource ComponentPopup_ImageXofY_Fg}" />
+								   FontSize="11"
+								   Foreground="{DynamicResource ComponentPopup_ImageXofY_Fg}" />
 					</Border>
 
 					<!-- Center: pin jump confirmation flash -->
 					<Border x:Name="PinFlashBorder"
 							HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
+							VerticalAlignment="Center"
 							Background="{DynamicResource ComponentPopup_KeyboardTyping_Bg}"
 							BorderBrush="{DynamicResource ComponentPopup_KeyboardTyping_Border}"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Padding="20,10"
-                            IsHitTestVisible="False"
-                            IsVisible="False">
+							BorderThickness="1"
+							CornerRadius="6"
+							Padding="20,10"
+							IsHitTestVisible="False"
+							IsVisible="False">
 						<TextBlock x:Name="PinFlashText"
-						           FontSize="36"
-						           FontWeight="Bold"
-						           Foreground="{DynamicResource ComponentPopup_KeyboardTyping_Fg}" />
+								   FontSize="36"
+								   FontWeight="Bold"
+								   Foreground="{DynamicResource ComponentPopup_KeyboardTyping_Fg}" />
 					</Border>
 				</Grid>
 			</Border>
@@ -499,21 +534,21 @@
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
-						<CheckBox x:Name="MousewheelZoomCheckBox"
-							  Content="Mousewheel will zoom image"
-							  FontSize="11"
-							  VerticalAlignment="Center" />
+						<CheckBox x:Name="NumpadOscilloscopeSwitch"
+								  Content="Numpad will control oscilloscope"
+								  FontSize="11"
+								  VerticalAlignment="Center" />
 					</Grid>
-
+					
 					<Grid Grid.Column="2"
 						  Grid.Row="2"
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
-						<CheckBox x:Name="NumpadOscilloscopeSwitch"
-								  Content="Numpad will control oscilloscope"
-								  FontSize="11"
-								  VerticalAlignment="Center" />
+						<CheckBox x:Name="MousewheelZoomCheckBox"
+							  Content="Mousewheel will zoom image"
+							  FontSize="11"
+							  VerticalAlignment="Center" />
 					</Grid>
 
 				</Grid>

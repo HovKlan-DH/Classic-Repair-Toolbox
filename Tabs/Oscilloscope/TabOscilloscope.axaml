@@ -36,32 +36,80 @@
 							Margin="0,12,0,0"
 							Spacing="8">
 
-					<TextBlock Text="IP address or FQDN"
-							   FontSize="11"
-							   Foreground="{DynamicResource Main_Header_Fg}" />
-					<TextBox x:Name="HostTextBox"
+					<Grid ColumnDefinitions="*,8,Auto"
+						  RowDefinitions="Auto,Auto">
+						<TextBlock Grid.Row="0"
+								   Grid.Column="0"
+								   Text="IP address or FQDN"
+								   FontSize="11"
+								   Foreground="{DynamicResource Main_Header_Fg}" />
+
+						<TextBlock Grid.Row="0"
+								   Grid.Column="2"
+								   Text="TCP port"
+								   FontSize="11"
+								   Foreground="{DynamicResource Main_Header_Fg}" />
+
+						<TextBox Grid.Row="1"
+								 Grid.Column="0"
+								 x:Name="HostTextBox"
+								 FontSize="12"
+								 MinHeight="0"
+								 Padding="6,4"
+								 Background="{DynamicResource Main_InputField_Bg}"
+								 Foreground="{DynamicResource Main_InputField_Fg}"
+								 VerticalContentAlignment="Center"
+								 Watermark="192.168.0.100 or scope.local" />
+
+						<TextBox Grid.Row="1"
+								 Grid.Column="2"
+								 x:Name="PortTextBox"
+								 Width="72"
+								 MaxLength="5"
+								 FontSize="12"
+								 MinHeight="0"
+								 Padding="6,4"
+								 Background="{DynamicResource Main_InputField_Bg}"
+								 Foreground="{DynamicResource Main_InputField_Fg}"
+								 VerticalContentAlignment="Center"
+								 HorizontalContentAlignment="Right"
+								 TextInput="OnPortTextBoxTextInput"
+								 LostFocus="OnPortTextBoxLostFocus" />
+					</Grid>
+
+					<TextBlock Text="Image save folder"
+           FontSize="11"
+           Foreground="{DynamicResource Main_Header_Fg}" />
+
+					<TextBox x:Name="OscilloscopeImageFolderTextBox"
 							 FontSize="12"
 							 MinHeight="0"
 							 Padding="6,4"
 							 Background="{DynamicResource Main_InputField_Bg}"
 							 Foreground="{DynamicResource Main_InputField_Fg}"
 							 VerticalContentAlignment="Center"
-							 Watermark="192.168.1.100 or scope.local" />
+							 IsReadOnly="True"
+							 TextWrapping="Wrap"
+							 Watermark="No folder selected" />
 
-					<TextBlock Text="TCP port"
-							   FontSize="11"
-							   Foreground="{DynamicResource Main_Header_Fg}" />
-					<NumericUpDown x:Name="PortNumericUpDown"
-						   FontSize="12"
-						   Minimum="1"
-						   Maximum="65535"
-						   Increment="1"
-						   Value="5025"
-						   FormatString="0"
-						   ShowButtonSpinner="False"
-						   TextInput="OnPortNumericUpDownTextInput"
-						   LostFocus="OnPortNumericUpDownLostFocus"
-						   HorizontalAlignment="Stretch" />
+					<StackPanel Orientation="Horizontal"
+								Spacing="8">
+						<Button x:Name="SelectOscilloscopeImageFolderButton"
+								Content="Browse..."
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnSelectOscilloscopeImageFolderClick" />
+
+						<Button x:Name="OpenOscilloscopeImageFolderButton"
+								Content="Open folder"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnOpenOscilloscopeImageFolderClick" />
+					</StackPanel>
 
 					<CheckBox x:Name="AutoConnectOscilloscopeCheckBox"
 						  Content="Auto-connect oscilloscope"
