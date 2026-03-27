@@ -69,14 +69,15 @@ namespace Handlers.DataHandling
                             ? $"Main Excel file sheet [{sheetName}] has an entry with an empty file name - please fix!"
                             : $"Main Excel file sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
                 }
-                else
-                {
-                    Logger.Warning(
-                        string.IsNullOrWhiteSpace(entryLabel)
-                            ? $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry with an empty file name - please fix!"
-                            : $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
-                }
-
+/*
+                                else
+                                {
+                                    Logger.Warning(
+                                        string.IsNullOrWhiteSpace(entryLabel)
+                                            ? $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry with an empty file name - please fix!"
+                                            : $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
+                                }
+*/
                 return;
             }
 

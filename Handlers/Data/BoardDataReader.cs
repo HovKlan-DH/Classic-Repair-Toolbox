@@ -63,15 +63,18 @@ namespace Handlers.DataHandling
 
         // Required header sets per sheet - used for robust, order-independent column mapping
         // Compliant with .NET6
-        private static readonly string[] SchematicsHeaders = new[] { ColSchematicName, ColSchematicImageFile, ColMainImageHighlightColor, ColMainHighlightOpacity, ColThumbnailImageHighlightColor, ColThumbnailHighlightOpacity };
-        private static readonly string[] ComponentsHeaders = new[] { ColBoardLabel, ColFriendlyName, ColTechnicalNameOrValue, ColPartNumber, ColCategory, ColRegion, ColDescription };
-        private static readonly string[] ComponentImagesHeaders = new[] { ColBoardLabel, ColRegion, ColPin, ColName, ColExpectedOscilloscopeReading, ColFile, ColNote, ColTimeDiv, ColVoltsDiv, ColTriggerLevelVolts };
-        private static readonly string[] ComponentHighlightsHeaders = new[] { ColSchematicName, ColBoardLabel, ColX, ColY, ColWidth, ColHeight };
+
+        // Reduce these arrays to only require the strict core columns, so older Excel sheets without newly 
+        // added (optional) columns still load correctly while still parsing the new columns if they exist.
+        private static readonly string[] SchematicsHeaders = new[] { ColSchematicName, ColSchematicImageFile };
+        private static readonly string[] ComponentsHeaders = new[] { ColBoardLabel, ColFriendlyName, ColTechnicalNameOrValue };
+        private static readonly string[] ComponentImagesHeaders = new[] { ColBoardLabel, ColPin, ColName, ColFile };
+        private static readonly string[] ComponentHighlightsHeaders = new[] { ColSchematicName, ColBoardLabel, ColX, ColY };
         private static readonly string[] ComponentLocalFilesHeaders = new[] { ColBoardLabel, ColName, ColFile };
         private static readonly string[] ComponentLinksHeaders = new[] { ColBoardLabel, ColName, ColUrl };
         private static readonly string[] BoardLocalFilesHeaders = new[] { ColCategory, ColName, ColFile };
         private static readonly string[] BoardLinksHeaders = new[] { ColCategory, ColName, ColUrl };
-        private static readonly string[] CreditsHeaders = new[] { ColCategory, ColSubCategory, ColNameOrHandle, ColContact };
+        private static readonly string[] CreditsHeaders = new[] { ColCategory, ColNameOrHandle };
 
         private static readonly Dictionary<string, BoardData> _cache = new(StringComparer.OrdinalIgnoreCase);
 
