@@ -93,6 +93,9 @@
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Bg">#B0D8EC</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Bg">LightGray</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Bg">#BB000000</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Fg">White</SolidColorBrush>
@@ -189,6 +192,9 @@
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Bg">#B0D8EC</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Bg">#735443</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Fg">#E8DDCF</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Border">#B87352</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Bg">#BB000000</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Border">Black</SolidColorBrush>

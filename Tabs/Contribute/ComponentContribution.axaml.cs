@@ -39,6 +39,9 @@ namespace CRT
         public string Pin { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string ExpectedOscilloscopeReading { get; set; } = string.Empty;
+        public string VoltsDiv { get; set; } = string.Empty;
+        public string TimeDiv { get; set; } = string.Empty;
+        public string TriggerLevelVolts { get; set; } = string.Empty;
         public string File { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
         public Bitmap? PreviewImage { get; set; }
@@ -202,9 +205,9 @@ namespace CRT
             }
 
             foreach (var row in boardData.ComponentImages.Where(c =>
-                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
-                (string.IsNullOrWhiteSpace(c.Region) ||
-                 string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
+    string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+    (string.IsNullOrWhiteSpace(c.Region) ||
+     string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
                 this.thisComponentImageRows.Add(new ContributionComponentImageRow
                 {
@@ -213,6 +216,9 @@ namespace CRT
                     Pin = row.Pin,
                     Name = row.Name,
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading,
+                    VoltsDiv = row.VoltsDiv,
+                    TimeDiv = row.TimeDiv,
+                    TriggerLevelVolts = row.TriggerLevelVolts,
                     File = row.File,
                     Note = row.Note
                 });
@@ -582,6 +588,7 @@ namespace CRT
         {
             return new ComponentContributionPayload
             {
+
                 ApplicationVersion = AppConfig.AppVersionString,
                 HardwareName = this.thisHardwareName,
                 BoardName = this.thisBoardName,
@@ -591,6 +598,7 @@ namespace CRT
                 Email = email,
                 Comment = comment,
                 SubmittedUtc = DateTimeOffset.UtcNow,
+
                 Components = this.thisComponentRows.Select(row => new ContributionComponentRow
                 {
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
@@ -601,6 +609,7 @@ namespace CRT
                     Region = row.Region?.Trim() ?? string.Empty,
                     Description = row.Description?.Trim() ?? string.Empty
                 }).ToList(),
+
                 ComponentImages = this.thisComponentImageRows.Select(row => new ContributionComponentImageRow
                 {
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
@@ -608,9 +617,13 @@ namespace CRT
                     Pin = row.Pin?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
+                    VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
+                    TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
+                    TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
                     Note = row.Note?.Trim() ?? string.Empty
                 }).ToList(),
+
                 ComponentHighlights = this.thisComponentHighlightRows.Select(row => new ComponentHighlightEntry
                 {
                     SchematicName = row.SchematicName?.Trim() ?? string.Empty,
@@ -620,24 +633,28 @@ namespace CRT
                     Width = row.Width?.Trim() ?? string.Empty,
                     Height = row.Height?.Trim() ?? string.Empty
                 }).ToList(),
+
                 ComponentLocalFiles = this.thisComponentLocalFileRows.Select(row => new ContributionComponentLocalFileRow
                 {
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
                 }).ToList(),
+
                 ComponentLinks = this.thisComponentLinkRows.Select(row => new ContributionComponentLinkRow
                 {
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty
                 }).ToList(),
+
                 BoardLocalFiles = this.thisBoardLocalFileRows.Select(row => new ContributionBoardLocalFileRow
                 {
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
                 }).ToList(),
+
                 BoardLinks = this.thisBoardLinkRows.Select(row => new ContributionBoardLinkRow
                 {
                     Category = row.Category?.Trim() ?? string.Empty,

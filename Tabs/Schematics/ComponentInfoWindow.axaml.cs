@@ -28,6 +28,9 @@ namespace CRT
         public string Pin { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string ExpectedOscilloscopeReading { get; set; } = string.Empty;
+        public string TimeDiv { get; set; } = string.Empty;
+        public string VoltsDiv { get; set; } = string.Empty;
+        public string TriggerLevelVolts { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
         public ComponentImageEntry? SourceEntry { get; set; }
         public bool LabelVisible => !string.IsNullOrEmpty(this.Label);
@@ -131,11 +134,14 @@ namespace CRT
             this.NumpadOscilloscopeSwitch.IsChecked =
                 string.Equals(UserSettings.ComponentInfoKeyboardHandling, "Control oscilloscope", StringComparison.OrdinalIgnoreCase);
 
+            this.SyncOscilloscopeCheckBox.IsChecked = UserSettings.ComponentInfoOscilloscopeSyncEnabled;
+
             this.UpdateNumpadOscilloscopeSwitchAvailability();
 
             // Replace Checked/Unchecked with IsCheckedChanged
             this.MousewheelZoomCheckBox.IsCheckedChanged += this.OnMousewheelZoomSwitchChanged;
             this.NumpadOscilloscopeSwitch.IsCheckedChanged += this.OnNumpadOscilloscopeSwitchChanged;
+            this.SyncOscilloscopeCheckBox.IsCheckedChanged += this.OnSyncOscilloscopeCheckBoxChanged;
 
             this.ThumbnailList.SelectionChanged += this.OnThumbnailSelectionChanged;
 
@@ -845,7 +851,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Refreshes the three top-left info labels from the currently selected thumbnail item.
+        // Refreshes the image info overlays from the currently selected thumbnail item.
         // ###########################################################################################
         private void UpdateInfoOverlay()
         {
@@ -861,6 +867,26 @@ namespace CRT
             this.SetInfoLabel(this.InfoPinBorder, this.InfoPinText, pinSameAsName ? null : pin);
             this.SetInfoLabel(this.InfoNameBorder, this.InfoNameText, name);
             this.SetInfoLabel(this.InfoOscBorder, this.InfoOscText, selected?.ExpectedOscilloscopeReading);
+
+            this.SetInfoLabel(this.InfoScopeTimeDivBorder, this.InfoScopeTimeDivText,
+                this.FormatScopeOverlayLabel("T/DIV", selected?.TimeDiv));
+
+            this.SetInfoLabel(this.InfoScopeVoltsDivBorder, this.InfoScopeVoltsDivText,
+                this.FormatScopeOverlayLabel("V/DIV", selected?.VoltsDiv));
+
+            this.SetInfoLabel(this.InfoScopeTriggerBorder, this.InfoScopeTriggerText,
+                this.FormatScopeOverlayLabel("T", selected?.TriggerLevelVolts));
+        }
+
+        // ###########################################################################################
+        // Builds a compact oscilloscope overlay label and hides it when the value is empty.
+        // ###########################################################################################
+        private string? FormatScopeOverlayLabel(string prefix, string? value)
+        {
+            string trimmed = value?.Trim() ?? string.Empty;
+            return string.IsNullOrWhiteSpace(trimmed)
+                ? null
+                : $"{prefix}:{trimmed}";
         }
 
         // ###########################################################################################
@@ -990,6 +1016,9 @@ namespace CRT
                     Pin = x.Entry.Pin.Trim(),
                     Name = x.Entry.Name,
                     ExpectedOscilloscopeReading = x.Entry.ExpectedOscilloscopeReading,
+                    TimeDiv = x.Entry.TimeDiv,
+                    VoltsDiv = x.Entry.VoltsDiv,
+                    TriggerLevelVolts = x.Entry.TriggerLevelVolts,
                     Note = x.Entry.Note,
                     SourceEntry = x.Entry
                 })
@@ -1280,7 +1309,8 @@ namespace CRT
                 return;
             }
 
-            if (!IsOscilloscopeImage(selectedItem?.SourceEntry))
+            if (!this.CanSendOscilloscopeCommands() ||
+                !IsOscilloscopeImage(selectedItem?.SourceEntry))
             {
                 mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(null);
                 return;
@@ -1424,8 +1454,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Enables the numpad oscilloscope switch only while an active oscilloscope session exists.
-        // The checked state is preserved so control resumes automatically after reconnect.
+        // Enables the popup's oscilloscope-related switches only while an active oscilloscope session exists.
+        // The checked states are preserved so behavior resumes automatically after reconnect.
         // ###########################################################################################
         private void UpdateNumpadOscilloscopeSwitchAvailability()
         {
@@ -1440,6 +1470,7 @@ namespace CRT
             bool isOscilloscopeAvailable = this._hasActiveOscilloscopeSessionTitleState;
 
             this.NumpadOscilloscopeSwitch.IsEnabled = isOscilloscopeAvailable;
+            this.SyncOscilloscopeCheckBox.IsEnabled = isOscilloscopeAvailable;
         }
 
         // ###########################################################################################
@@ -1547,6 +1578,37 @@ namespace CRT
         private static bool HasDisplayableImageFile(ComponentImageEntry image)
         {
             return !string.IsNullOrWhiteSpace(image.File);
+        }
+
+        // ###########################################################################################
+        // Returns true when popup-driven oscilloscope commands are allowed for the current session.
+        // ###########################################################################################
+        private bool CanSendOscilloscopeCommands()
+        {
+            return this.SyncOscilloscopeCheckBox.IsEnabled &&
+                   this.SyncOscilloscopeCheckBox.IsChecked == true;
+        }
+
+        // ###########################################################################################
+        // Saves the oscilloscope sync switch state and refreshes the current popup-driven sync request.
+        // ###########################################################################################
+        private void OnSyncOscilloscopeCheckBoxChanged(object? sender, RoutedEventArgs e)
+        {
+            bool isEnabled = this.SyncOscilloscopeCheckBox.IsChecked == true;
+            UserSettings.ComponentInfoOscilloscopeSyncEnabled = isEnabled;
+
+            if (this.Owner is not Main mainOwner)
+            {
+                return;
+            }
+
+            if (!this.CanSendOscilloscopeCommands())
+            {
+                mainOwner.TabOscilloscopeControl.QueueComponentImageOscilloscopeSync(null);
+                return;
+            }
+
+            this.ScheduleSelectedOscilloscopeImageSync(this.ThumbnailList.SelectedItem as ComponentImageItem);
         }
 
     }

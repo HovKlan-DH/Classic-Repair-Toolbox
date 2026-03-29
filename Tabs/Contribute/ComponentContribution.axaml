@@ -232,23 +232,38 @@
 														<TextBlock Text="Expected oscilloscope reading" FontSize="11" />
 														<TextBox Text="{Binding ExpectedOscilloscopeReading}" />
 
+														<Grid ColumnDefinitions="*,8,*,8,*">
+															<StackPanel Grid.Column="0" Spacing="4">
+																<TextBlock Text="Volts/DIV" FontSize="11" />
+																<TextBox Text="{Binding VoltsDiv}" />
+															</StackPanel>
+															<StackPanel Grid.Column="2" Spacing="4">
+																<TextBlock Text="Timing/DIV" FontSize="11" />
+																<TextBox Text="{Binding TimeDiv}" />
+															</StackPanel>
+															<StackPanel Grid.Column="4" Spacing="4">
+																<TextBlock Text="Trigger Level" FontSize="11" />
+																<TextBox Text="{Binding TriggerLevelVolts}" />
+															</StackPanel>
+														</Grid>
+
 														<TextBlock Text="File" FontSize="11" />
 														<TextBox Text="{Binding File}"
-														         Tag="{Binding}"
-														         IsReadOnly="True"
-														         Cursor="Hand"
-														         PointerReleased="OnFileTextBoxPointerReleased" />
+																 Tag="{Binding}"
+																 IsReadOnly="True"
+																 Cursor="Hand"
+																 PointerReleased="OnFileTextBoxPointerReleased" />
 
 														<TextBlock Text="Note" FontSize="11" />
 														<TextBox Text="{Binding Note}"
-														         AcceptsReturn="True"
-														         TextWrapping="Wrap"
-														         MinHeight="84" />
+																 AcceptsReturn="True"
+																 TextWrapping="Wrap"
+																 MinHeight="84" />
 
 														<Button Content="Remove image"
-														        HorizontalAlignment="Right"
-														        Tag="{Binding}"
-														        Click="OnRemoveComponentImageRowClick" />
+																HorizontalAlignment="Right"
+																Tag="{Binding}"
+																Click="OnRemoveComponentImageRowClick" />
 													</StackPanel>
 												</Grid>
 											</Grid>

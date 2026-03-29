@@ -48,7 +48,7 @@ namespace Handlers.DataHandling
         private const string ColNote = "Note";
         private const string ColTimeDiv = "T/DIV";
         private const string ColVoltsDiv = "V/DIV";
-        private const string ColTriggerLevelVolts = "T.Level";
+        private const string ColTriggerLevelVolts = "T.LVL";
 
         // Component highlights columns
         private const string ColX = "X";

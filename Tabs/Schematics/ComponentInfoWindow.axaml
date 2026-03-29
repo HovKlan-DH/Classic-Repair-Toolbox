@@ -163,11 +163,54 @@
 						</Border>
 					</StackPanel>
 
-					<!-- Top-right temporary capture overlay -->
+					<!-- Top-right oscilloscope settings overlay -->
+					<StackPanel VerticalAlignment="Top"
+								HorizontalAlignment="Right"
+								Orientation="Horizontal"
+								Margin="0,6,6,0"
+								Spacing="4">
+						<Border x:Name="InfoScopeTimeDivBorder"
+								Background="{DynamicResource ComponentPopup_OscilloscopeSyncData_Bg}"
+								BorderBrush="{DynamicResource ComponentPopup_OscilloscopeSyncData_Border}"
+								BorderThickness="1"
+								CornerRadius="2"
+								Padding="5,2"
+								IsVisible="False">
+							<TextBlock x:Name="InfoScopeTimeDivText"
+									   FontSize="11"
+									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+						</Border>
+
+						<Border x:Name="InfoScopeVoltsDivBorder"
+								Background="{DynamicResource ComponentPopup_OscilloscopeSyncData_Bg}"
+								BorderBrush="{DynamicResource ComponentPopup_OscilloscopeSyncData_Border}"
+								BorderThickness="1"
+								CornerRadius="2"
+								Padding="5,2"
+								IsVisible="False">
+							<TextBlock x:Name="InfoScopeVoltsDivText"
+									   FontSize="11"
+									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+						</Border>
+
+						<Border x:Name="InfoScopeTriggerBorder"
+								Background="{DynamicResource ComponentPopup_OscilloscopeSyncData_Bg}"
+								BorderBrush="{DynamicResource ComponentPopup_OscilloscopeSyncData_Border}"
+								BorderThickness="1"
+								CornerRadius="2"
+								Padding="5,2"
+								IsVisible="False">
+							<TextBlock x:Name="InfoScopeTriggerText"
+									   FontSize="11"
+									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+						</Border>
+					</StackPanel>
+
+					<!-- Bottom-right temporary capture overlay -->
 					<Border x:Name="CapturedScopeImageBorder"
-							VerticalAlignment="Top"
+							VerticalAlignment="Bottom"
 							HorizontalAlignment="Right"
-							Margin="0,6,6,0"
+							Margin="0,0,6,6"
 							Background="{DynamicResource ComponentPopup_OscilloscopeExpected_Bg}"
 							BorderBrush="{DynamicResource ComponentPopup_OscilloscopeExpected_Border}"
 							BorderThickness="1"
@@ -175,12 +218,12 @@
 							Padding="10,4"
 							IsVisible="False">
 						<TextBlock x:Name="CapturedScopeImageText"
-						   Text="User image"
-						   FontSize="22"
-						   FontWeight="SemiBold"
-						   TextWrapping="Wrap"
-						   MaxWidth="260"
-						   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}" />
+								   Text="User image"
+								   FontSize="22"
+								   FontWeight="SemiBold"
+								   TextWrapping="Wrap"
+								   MaxWidth="260"
+								   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}" />
 					</Border>
 
 					<!-- Full-image fetch overlay shown while a new oscilloscope image is being captured -->
@@ -497,12 +540,12 @@
 					Padding="0,6,0,0"
 					Margin="0,6,0,0">
 				<Grid ColumnDefinitions="Auto,10,Auto,*,Auto"
-					  RowDefinitions="28,4,28">
+					  RowDefinitions="28,4,28,4,28">
 
 					<Button x:Name="PalRegionButton"
 							Classes="RegionToggle"
 							Grid.Column="0"
-							Grid.Row="0"
+							Grid.Row="2"
 							Content="PAL (0)"
 							Width="70"
 							Height="24"
@@ -511,13 +554,13 @@
 							Padding="6,2"
 							HorizontalContentAlignment="Center"
 							VerticalContentAlignment="Center"
-							VerticalAlignment="Center"
+							VerticalAlignment="Bottom"
 							Click="OnPalRegionClick" />
 
 					<Button x:Name="NtscRegionButton"
 							Classes="RegionToggle"
 							Grid.Column="0"
-							Grid.Row="2"
+							Grid.Row="4"
 							Content="NTSC (0)"
 							Width="70"
 							Height="24"
@@ -526,11 +569,23 @@
 							Padding="6,2"
 							HorizontalContentAlignment="Center"
 							VerticalContentAlignment="Center"
-							VerticalAlignment="Center"
+							VerticalAlignment="Bottom"
 							Click="OnNtscRegionClick" />
 
 					<Grid Grid.Column="2"
 						  Grid.Row="0"
+						  Height="28"
+						  ColumnDefinitions="Auto,4,Auto"
+						  VerticalAlignment="Center">
+						<CheckBox x:Name="SyncOscilloscopeCheckBox"
+								  Content="Sync oscilloscope"
+								  IsChecked="True"
+								  FontSize="11"
+								  VerticalAlignment="Center" />
+					</Grid>
+
+					<Grid Grid.Column="2"
+						  Grid.Row="2"
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
@@ -539,16 +594,16 @@
 								  FontSize="11"
 								  VerticalAlignment="Center" />
 					</Grid>
-					
+
 					<Grid Grid.Column="2"
-						  Grid.Row="2"
+						  Grid.Row="4"
 						  Height="28"
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
 						<CheckBox x:Name="MousewheelZoomCheckBox"
-							  Content="Mousewheel will zoom image"
-							  FontSize="11"
-							  VerticalAlignment="Center" />
+								  Content="Mousewheel will zoom image"
+								  FontSize="11"
+								  VerticalAlignment="Center" />
 					</Grid>
 
 				</Grid>

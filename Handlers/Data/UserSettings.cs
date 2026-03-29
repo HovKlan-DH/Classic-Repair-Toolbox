@@ -80,8 +80,7 @@ namespace Handlers.DataHandling
         [JsonPropertyName("oscilloscopeAutoConnect")] public bool OscilloscopeAutoConnect { get; set; } = false;
         [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control image pin selection";
         [JsonPropertyName("oscilloscopeImageFolder")] public string OscilloscopeImageFolder { get; set; } = string.Empty;
-
-
+        [JsonPropertyName("componentInfoOscilloscopeSyncEnabled")] public bool? ComponentInfoOscilloscopeSyncEnabled { get; set; }
     }
 
     // ###########################################################################################
@@ -92,6 +91,17 @@ namespace Handlers.DataHandling
     {
         private static UserSettingsData _data = new();
         private static string _settingsFilePath = string.Empty;
+
+        public static bool ComponentInfoOscilloscopeSyncEnabled
+        {
+            get => _data.ComponentInfoOscilloscopeSyncEnabled ?? true;
+            set
+            {
+                _data.ComponentInfoOscilloscopeSyncEnabled = value;
+                Logger.Info($"Setting changed: [ComponentInfoOscilloscopeSyncEnabled] [{value}]");
+                Save();
+            }
+        }
 
         public static bool CheckVersionOnLaunch
         {
@@ -444,6 +454,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [LastOscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
                     Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");
                     Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
+                    Logger.Info($"        [ComponentInfoOscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
                 }
             }
             catch (Exception ex)
