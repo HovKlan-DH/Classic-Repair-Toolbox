@@ -48,9 +48,7 @@ When a new version is released it will be shown to you in the application, and y
   - MC0005A
 - **Commodore VIC-20**
   - 250403 (CR)
-    - Would appreciate help with:
-      - Oscilloscope baseline for PAL and NTSC
-      - More data
+    - Oscilloscope baseline measurements for PAL and NTSC
 - **Commodore 64**
   - 250407 (long board)
     - Covers _all_ components
