@@ -1,20 +1,9 @@
 - Fixed changing to another hardware will clear the filter component search
+- Fixed horizontal misalignment of rows in component contribution window
 - Added "Oscilloscope" tab
-- Added oscilloscope sync when viewing oscilloscope images in component info popup
-- Added oscilloscope labels in the top-right corner for the large image in component info popup
+- Component info popup:
+  - Added oscilloscope sync when viewing oscilloscope images
+  - Added oscilloscope labels in the top-right corner for the large image
+- Added YouTube video for showcasing oscilloscope functionalities:
+  - [How to sync oscilloscope in CRT](https://youtu.be/CbTh1FFp3tU)
 - Changed minor UI and text changes
-
-
-# OLD CHANGELOG
-
-- Fixed deselecting component from a filtered list did not remove highligting in schematic image
-- Fixed vertical table header/cell misalignment in "Overview" tab
-- Fixed thumbnails in component info popup also shows a lighter background color on transparent images
-- Added "Contribute" tab
-- Added (experimental) a couple of YouTube videos for showcasing specific functionalities:
-  - [Short introduction](https://youtu.be/B36etv0zOMo)
-  - [How to do manual traces](https://youtu.be/JUNXeCHsrME)
-- Changed icon format in Linux from `.ico` to `.png`
-- Changed display name in **Linux** and **macOS** from `Classic-Repair-Toolbox` to `Classic Repair Toolbox`
-- Changed some colors
-- Refactored various minor code, UI and texts

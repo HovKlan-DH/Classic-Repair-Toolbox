@@ -456,14 +456,14 @@ namespace CRT
 
             if (!isAutomaticReconnect)
             {
-                this.AppendOutputLine("Debug", "---");
+//                this.AppendOutputLine("Debug", "---");
                 this.AppendOutputLine(
                     "Info",
                     $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}");
             }
             else if (!this.thisHasLoggedAutomaticConnectPendingMessage)
             {
-                this.AppendOutputLine("Debug", "---");
+//                this.AppendOutputLine("Debug", "---");
                 this.AppendOutputLine(
                     "Info",
                     $"Automatically connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port} ...");

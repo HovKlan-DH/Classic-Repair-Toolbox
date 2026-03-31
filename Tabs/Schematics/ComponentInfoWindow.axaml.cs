@@ -868,26 +868,27 @@ namespace CRT
             this.SetInfoLabel(this.InfoNameBorder, this.InfoNameText, name);
             this.SetInfoLabel(this.InfoOscBorder, this.InfoOscText, selected?.ExpectedOscilloscopeReading);
 
-            this.SetInfoLabel(this.InfoScopeTimeDivBorder, this.InfoScopeTimeDivText,
-                this.FormatScopeOverlayLabel("T/DIV", selected?.TimeDiv));
+            this.SetInfoLabelPair(
+                this.InfoScopeTimeDivBorder,
+                this.InfoScopeTimeDivPrefixText,
+                this.InfoScopeTimeDivValueText,
+                "T/DIV:",
+                selected?.TimeDiv);
 
-            this.SetInfoLabel(this.InfoScopeVoltsDivBorder, this.InfoScopeVoltsDivText,
-                this.FormatScopeOverlayLabel("V/DIV", selected?.VoltsDiv));
+            this.SetInfoLabelPair(
+                this.InfoScopeVoltsDivBorder,
+                this.InfoScopeVoltsDivPrefixText,
+                this.InfoScopeVoltsDivValueText,
+                "V/DIV:",
+                selected?.VoltsDiv);
 
-            this.SetInfoLabel(this.InfoScopeTriggerBorder, this.InfoScopeTriggerText,
-                this.FormatScopeOverlayLabel("T", selected?.TriggerLevelVolts));
-        }
-
-        // ###########################################################################################
-        // Builds a compact oscilloscope overlay label and hides it when the value is empty.
-        // ###########################################################################################
-        private string? FormatScopeOverlayLabel(string prefix, string? value)
-        {
-            string trimmed = value?.Trim() ?? string.Empty;
-            return string.IsNullOrWhiteSpace(trimmed)
-                ? null
-                : $"{prefix}:{trimmed}";
-        }
+            this.SetInfoLabelPair(
+                this.InfoScopeTriggerBorder,
+                this.InfoScopeTriggerPrefixText,
+                this.InfoScopeTriggerValueText,
+                "T:",
+                selected?.TriggerLevelVolts);
+        }                
 
         // ###########################################################################################
         // Shows or hides the "Image note" section based on the selected thumbnail's note text.
@@ -910,6 +911,57 @@ namespace CRT
             border.IsVisible = show;
             if (show)
                 textBlock.Text = value;
+        }
+
+        // ###########################################################################################
+        // Shows or hides a compact two-part info label where the prefix stays normal and the value
+        // is rendered bold. Hidden when the value is empty.
+        // ###########################################################################################
+        private void SetInfoLabelPair(Border border, TextBlock prefixTextBlock, TextBlock valueTextBlock, string prefix, string? value)
+        {
+            string trimmed = this.NormalizeScopeOverlayValue(value);
+            bool show = !string.IsNullOrWhiteSpace(trimmed);
+
+            border.IsVisible = show;
+            if (!show)
+            {
+                prefixTextBlock.Text = string.Empty;
+                valueTextBlock.Text = string.Empty;
+                return;
+            }
+
+            prefixTextBlock.Text = prefix;
+            valueTextBlock.Text = trimmed;
+        }
+
+        // ###########################################################################################
+        // Normalizes oscilloscope overlay values so the final unit character is uppercase and the
+        // preceding unit character, when alphabetic, is lowercase.
+        // Examples: 1US -> 1uS, 5MV -> 5mV, 1.5v -> 1.5V
+        // ###########################################################################################
+        private string NormalizeScopeOverlayValue(string? value)
+        {
+            string trimmed = value?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return string.Empty;
+            }
+
+            char[] chars = trimmed.ToCharArray();
+            int lastIndex = chars.Length - 1;
+
+            if (char.IsLetter(chars[lastIndex]))
+            {
+                chars[lastIndex] = char.ToUpperInvariant(chars[lastIndex]);
+            }
+
+            int secondLastIndex = lastIndex - 1;
+            if (secondLastIndex >= 0 && char.IsLetter(chars[secondLastIndex]))
+            {
+                chars[secondLastIndex] = char.ToLowerInvariant(chars[secondLastIndex]);
+            }
+
+            return new string(chars);
         }
 
         // ###########################################################################################

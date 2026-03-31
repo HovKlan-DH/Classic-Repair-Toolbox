@@ -11,28 +11,32 @@
 
 		<Border Grid.Column="0"
 				Padding="16">
-			<Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+			<Grid RowDefinitions="Auto,Auto,*">
 
-				<TextBlock Grid.Row="0"
-						   Text="Vendor"
-						   FontSize="11"
-						   Foreground="{DynamicResource Main_Header_Fg}" />
-				<ComboBox Grid.Row="1"
-						  x:Name="VendorComboBox"
-						  HorizontalAlignment="Stretch"
-						  Margin="0,4,0,0" />
+				<Grid Grid.Row="0"
+					  RowDefinitions="Auto,Auto">
+					<TextBlock Grid.Row="0"
+							   Text="Vendor"
+							   FontSize="11"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
+					<ComboBox Grid.Row="1"
+							  x:Name="VendorComboBox"
+							  HorizontalAlignment="Stretch" />
+				</Grid>
 
-				<TextBlock Grid.Row="2"
-						   Text="Series or model"
-						   FontSize="11"
-						   Foreground="{DynamicResource Main_Header_Fg}"
-						   Margin="0,12,0,0" />
-				<ComboBox Grid.Row="3"
-						  x:Name="SeriesOrModelComboBox"
-						  HorizontalAlignment="Stretch"
-						  Margin="0,4,0,0" />
+				<Grid Grid.Row="1"
+					  RowDefinitions="Auto,Auto"
+					  Margin="0,12,0,0">
+					<TextBlock Grid.Row="0"
+							   Text="Series or model"
+							   FontSize="11"
+							   Foreground="{DynamicResource Main_Header_Fg}" />
+					<ComboBox Grid.Row="1"
+							  x:Name="SeriesOrModelComboBox"
+							  HorizontalAlignment="Stretch" />
+				</Grid>
 
-				<StackPanel Grid.Row="4"
+				<StackPanel Grid.Row="2"
 							Margin="0,12,0,0"
 							Spacing="8">
 
@@ -77,20 +81,24 @@
 								 LostFocus="OnPortTextBoxLostFocus" />
 					</Grid>
 
-					<TextBlock Text="Image save folder"
-           FontSize="11"
-           Foreground="{DynamicResource Main_Header_Fg}" />
+					<Grid RowDefinitions="Auto,Auto">
+						<TextBlock Grid.Row="0"
+								   Text="Image save folder"
+								   FontSize="11"
+								   Foreground="{DynamicResource Main_Header_Fg}" />
 
-					<TextBox x:Name="OscilloscopeImageFolderTextBox"
-							 FontSize="12"
-							 MinHeight="0"
-							 Padding="6,4"
-							 Background="{DynamicResource Main_InputField_Bg}"
-							 Foreground="{DynamicResource Main_InputField_Fg}"
-							 VerticalContentAlignment="Center"
-							 IsReadOnly="True"
-							 TextWrapping="Wrap"
-							 Watermark="No folder selected" />
+						<TextBox Grid.Row="1"
+								 x:Name="OscilloscopeImageFolderTextBox"
+								 FontSize="12"
+								 MinHeight="0"
+								 Padding="6,4"
+								 Background="{DynamicResource Main_InputField_Bg}"
+								 Foreground="{DynamicResource Main_InputField_Fg}"
+								 VerticalContentAlignment="Center"
+								 IsReadOnly="True"
+								 TextWrapping="Wrap"
+								 Watermark="No folder selected" />
+					</Grid>
 
 					<StackPanel Orientation="Horizontal"
 								Spacing="8">
@@ -113,9 +121,9 @@
 
 					<CheckBox x:Name="AutoConnectOscilloscopeCheckBox"
 						  Content="Auto-connect oscilloscope"
-						  Margin="0,4,0,0"
+						  Margin="0,8,0,0"
 						  VerticalAlignment="Center" />
-					
+
 					<Button x:Name="ConnectToOscilloscopeButton"
 							Content="Connect to oscilloscope"
 							HorizontalAlignment="Stretch"
@@ -143,16 +151,11 @@
 					  Background="{DynamicResource Main_Splitter}" />
 
 		<Border Grid.Column="2"
-				Padding="16">
+				Padding="0">
 			<Grid RowDefinitions="Auto,*">
-				<TextBlock Grid.Row="0"
-						   Text="Output"
-						   FontSize="11"
-						   Foreground="{DynamicResource Main_Header_Fg}" />
-
 				<TextBox Grid.Row="1"
 					 x:Name="OutputTextBox"
-					 Margin="0,4,0,0"
+					 Margin="0,0,0,0"
 					 IsReadOnly="True"
 					 AcceptsReturn="True"
 					 TextWrapping="WrapWithOverflow"

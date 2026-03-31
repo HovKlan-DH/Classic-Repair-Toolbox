@@ -115,7 +115,7 @@
 					<ComboBox Grid.Row="1"
 							  x:Name="HardwareComboBox"
 							  HorizontalAlignment="Stretch"
-							  Margin="0,4,0,0" />
+							  Margin="0,8,0,0" />
 					<TextBlock Grid.Row="2"
 							   Text="Board"
 							   FontSize="11"
@@ -124,7 +124,7 @@
 					<ComboBox Grid.Row="3"
 							  x:Name="BoardComboBox"
 							  HorizontalAlignment="Stretch"
-							  Margin="0,4,0,0" />
+							  Margin="0,8,0,0" />
 					<TextBlock Grid.Row="4"
 							   Text="Category"
 							   FontSize="11"
@@ -133,7 +133,7 @@
 					<ListBox Grid.Row="5"
 							 x:Name="CategoryFilterListBox"
 							 SelectionMode="Multiple,Toggle"
-							 Margin="0,4,0,0"
+							 Margin="0,8,0,0"
 							 Background="{DynamicResource List_Bg}"
 							 BorderBrush="{DynamicResource List_Border}"
 							 BorderThickness="1"
@@ -181,7 +181,7 @@
 					<ListBox Grid.Row="7"
 							 x:Name="ComponentFilterListBox"
 							 SelectionMode="Multiple,Toggle"
-							 Margin="0,4,0,0"
+							 Margin="0,8,0,0"
 							 Background="{DynamicResource List_Bg}"
 							 BorderBrush="{DynamicResource List_Border}"
 							 BorderThickness="1"

@@ -73,14 +73,14 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsOrderByBoard")] public Dictionary<string, List<string>> SchematicsOrderByBoard { get; set; } = new();
         [JsonPropertyName("contactEmail")] public string ContactEmail { get; set; } = string.Empty;
 
-        [JsonPropertyName("lastOscilloscopeVendor")] public string LastOscilloscopeVendor { get; set; } = string.Empty;
-        [JsonPropertyName("lastOscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
+        [JsonPropertyName("oscilloscopeVendor")] public string LastOscilloscopeVendor { get; set; } = string.Empty;
+        [JsonPropertyName("oscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
         [JsonPropertyName("oscilloscopeHost")] public string OscilloscopeHost { get; set; } = "192.168.0.100";
         [JsonPropertyName("oscilloscopePort")] public int OscilloscopePort { get; set; } = 5025;
         [JsonPropertyName("oscilloscopeAutoConnect")] public bool OscilloscopeAutoConnect { get; set; } = false;
-        [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control image pin selection";
+        [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control oscilloscope";
         [JsonPropertyName("oscilloscopeImageFolder")] public string OscilloscopeImageFolder { get; set; } = string.Empty;
-        [JsonPropertyName("componentInfoOscilloscopeSyncEnabled")] public bool? ComponentInfoOscilloscopeSyncEnabled { get; set; }
+        [JsonPropertyName("oscilloscopeSyncEnabled")] public bool? ComponentInfoOscilloscopeSyncEnabled { get; set; }
     }
 
     // ###########################################################################################
@@ -98,7 +98,7 @@ namespace Handlers.DataHandling
             set
             {
                 _data.ComponentInfoOscilloscopeSyncEnabled = value;
-                Logger.Info($"Setting changed: [ComponentInfoOscilloscopeSyncEnabled] [{value}]");
+                Logger.Info($"Setting changed: [OscilloscopeSyncEnabled] [{value}]");
                 Save();
             }
         }
@@ -404,8 +404,8 @@ namespace Handlers.DataHandling
 
                 Logger.Info($"System information:");
                 Logger.Info($"    Operating system is [{osHighLevel}] version [{os}]");
-                Logger.Info($"    Using CPU architecture [{archDescription}]");
-                Logger.Info($"    Self-contained .NET Runtime used [{RuntimeInformation.FrameworkDescription}]");
+                Logger.Info($"    CPU architecture is [{archDescription}]");
+                Logger.Info($"    Using self-contained .NET Runtime [{RuntimeInformation.FrameworkDescription}]");
 
                 // Now evaluate settings
                 if (!File.Exists(_settingsFilePath))
@@ -450,11 +450,11 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [LastSchematicByBoard] [{_data.LastSchematicByBoard.Count} entries]");
                     Logger.Info($"        [SchematicsSplitterRatios] [{_data.SchematicsSplitterRatios.Count} entries]");
                     Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
-                    Logger.Info($"        [LastOscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
-                    Logger.Info($"        [LastOscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
+                    Logger.Info($"        [OscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
+                    Logger.Info($"        [OscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
                     Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");
                     Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
-                    Logger.Info($"        [ComponentInfoOscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
+                    Logger.Info($"        [OscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
                 }
             }
             catch (Exception ex)
@@ -641,7 +641,7 @@ namespace Handlers.DataHandling
                 return;
 
             _data.LastOscilloscopeVendor = vendorName;
-            Logger.Info($"Setting changed: [LastOscilloscopeVendor] [{vendorName}]");
+            Logger.Info($"Setting changed: [OscilloscopeVendor] [{vendorName}]");
             Save();
         }
 
@@ -683,7 +683,7 @@ namespace Handlers.DataHandling
             }
 
             _data.LastOscilloscopeSeriesByVendor[vendorName] = seriesName;
-            Logger.Info($"Setting changed: [LastOscilloscopeSeriesByVendor] [{vendorName}] [{seriesName}]");
+            Logger.Info($"Setting changed: [OscilloscopeSeriesByVendor] [{vendorName}] [{seriesName}]");
             Save();
         }
 

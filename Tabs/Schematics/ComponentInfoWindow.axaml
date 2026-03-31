@@ -176,9 +176,16 @@
 								CornerRadius="2"
 								Padding="5,2"
 								IsVisible="False">
-							<TextBlock x:Name="InfoScopeTimeDivText"
-									   FontSize="11"
-									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							<StackPanel Orientation="Horizontal"
+										Spacing="0">
+								<TextBlock x:Name="InfoScopeTimeDivPrefixText"
+										   FontSize="11"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+								<TextBlock x:Name="InfoScopeTimeDivValueText"
+										   FontSize="11"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							</StackPanel>
 						</Border>
 
 						<Border x:Name="InfoScopeVoltsDivBorder"
@@ -188,9 +195,16 @@
 								CornerRadius="2"
 								Padding="5,2"
 								IsVisible="False">
-							<TextBlock x:Name="InfoScopeVoltsDivText"
-									   FontSize="11"
-									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							<StackPanel Orientation="Horizontal"
+										Spacing="0">
+								<TextBlock x:Name="InfoScopeVoltsDivPrefixText"
+										   FontSize="11"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+								<TextBlock x:Name="InfoScopeVoltsDivValueText"
+										   FontSize="11"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							</StackPanel>
 						</Border>
 
 						<Border x:Name="InfoScopeTriggerBorder"
@@ -200,9 +214,16 @@
 								CornerRadius="2"
 								Padding="5,2"
 								IsVisible="False">
-							<TextBlock x:Name="InfoScopeTriggerText"
-									   FontSize="11"
-									   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							<StackPanel Orientation="Horizontal"
+										Spacing="0">
+								<TextBlock x:Name="InfoScopeTriggerPrefixText"
+										   FontSize="11"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+								<TextBlock x:Name="InfoScopeTriggerValueText"
+										   FontSize="11"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource ComponentPopup_OscilloscopeSyncData_Fg}" />
+							</StackPanel>
 						</Border>
 					</StackPanel>
 
@@ -404,41 +425,41 @@
 					<!-- 3. Component one-liner (hidden when empty) -->
 					<StackPanel x:Name="OneLinerSection"
 								IsVisible="False"
-								Spacing="4">
-						<Border BorderBrush="Red"
-							BorderThickness="0"
-							Padding="0,0,0,3"
-							Margin="0,4,0,2">
-							<TextBlock Text="Component one-liner"
-						   FontSize="10"
-						   FontWeight="SemiBold"
-						   Foreground="{DynamicResource Main_Header_Fg}" />
-						</Border>
-						<TextBox x:Name="InfoDescription"
-							 IsReadOnly="True"
-							 AcceptsReturn="False"
-							 TextWrapping="Wrap"
-							 FontSize="12" />
+								Spacing="0"
+								Margin="0,8,0,0">
+						<Grid RowDefinitions="Auto,Auto">
+							<TextBlock Grid.Row="0"
+									   Text="Component one-liner"
+									   FontSize="10"
+									   FontWeight="SemiBold"
+									   Foreground="{DynamicResource Main_Header_Fg}" />
+							<TextBox Grid.Row="1"
+									 x:Name="InfoDescription"
+									 IsReadOnly="True"
+									 AcceptsReturn="False"
+									 TextWrapping="Wrap"
+									 FontSize="12" />
+						</Grid>
 					</StackPanel>
 
 					<!-- 4. Image note (hidden when empty or no thumbnail selected) -->
 					<StackPanel x:Name="ImageNoteSection"
 								IsVisible="False"
-								Spacing="4">
-						<Border BorderBrush="Red"
-					BorderThickness="0"
-					Padding="0,0,0,3"
-					Margin="0,4,0,2">
-							<TextBlock Text="Image note"
-						   FontSize="10"
-						   FontWeight="SemiBold"
-						   Foreground="{DynamicResource Main_Header_Fg}" />
-						</Border>
-						<TextBox x:Name="InfoNote"
-					 IsReadOnly="True"
-					 AcceptsReturn="False"
-					 TextWrapping="Wrap"
-					 FontSize="12" />
+								Spacing="0"
+								Margin="0,8,0,0">
+						<Grid RowDefinitions="Auto,Auto">
+							<TextBlock Grid.Row="0"
+									   Text="Image note"
+									   FontSize="10"
+									   FontWeight="SemiBold"
+									   Foreground="{DynamicResource Main_Header_Fg}" />
+							<TextBox Grid.Row="1"
+									 x:Name="InfoNote"
+									 IsReadOnly="True"
+									 AcceptsReturn="False"
+									 TextWrapping="Wrap"
+									 FontSize="12" />
+						</Grid>
 					</StackPanel>
 
 					<!-- 5. Component local files (hidden when empty) -->
@@ -590,7 +611,7 @@
 						  ColumnDefinitions="Auto,4,Auto"
 						  VerticalAlignment="Center">
 						<CheckBox x:Name="NumpadOscilloscopeSwitch"
-								  Content="Numpad will control oscilloscope"
+								  Content="Numpad controls oscilloscope"
 								  FontSize="11"
 								  VerticalAlignment="Center" />
 					</Grid>

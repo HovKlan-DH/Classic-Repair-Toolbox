@@ -119,34 +119,39 @@
 										        CornerRadius="4"
 										        Padding="8"
 										        Margin="0,0,0,8">
-											<Grid ColumnDefinitions="*,12,*">
-												<StackPanel Grid.Column="0" Spacing="4">
-													<TextBlock Text="Board label" FontSize="11" />
-													<TextBox Text="{Binding BoardLabel}" />
+											<Grid ColumnDefinitions="1*,12,1*"
+												  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+												  HorizontalAlignment="Stretch">
+												<TextBlock Grid.Column="0" Grid.Row="0" Text="Board label" FontSize="11" />
+												<TextBox Grid.Column="0" Grid.Row="1" Text="{Binding BoardLabel}" />
 
-													<TextBlock Text="Friendly name" FontSize="11" />
-													<TextBox Text="{Binding FriendlyName}" />
+												<TextBlock Grid.Column="2" Grid.Row="0" Text="Category" FontSize="11" />
+												<TextBox Grid.Column="2" Grid.Row="1" Text="{Binding Category}" />
 
-													<TextBlock Text="Technical name or value" FontSize="11" />
-													<TextBox Text="{Binding TechnicalNameOrValue}" />
+												<TextBlock Grid.Column="0" Grid.Row="2" Text="Friendly name" FontSize="11" Margin="0,8,0,0" />
+												<TextBox Grid.Column="0" Grid.Row="3" Text="{Binding FriendlyName}" />
 
-													<TextBlock Text="Part-number" FontSize="11" />
-													<TextBox Text="{Binding PartNumber}" />
-												</StackPanel>
+												<TextBlock Grid.Column="2" Grid.Row="2" Text="Region" FontSize="11" Margin="0,8,0,0" />
+												<TextBox Grid.Column="2" Grid.Row="3" Text="{Binding Region}" />
 
-												<StackPanel Grid.Column="2" Spacing="4">
-													<TextBlock Text="Category" FontSize="11" />
-													<TextBox Text="{Binding Category}" />
+												<TextBlock Grid.Column="0" Grid.Row="4" Text="Technical name or value" FontSize="11" Margin="0,8,0,0" />
+												<TextBox Grid.Column="0"
+														 Grid.Row="5"
+														 Text="{Binding TechnicalNameOrValue}"
+														 VerticalAlignment="Top" />
 
-													<TextBlock Text="Region" FontSize="11" />
-													<TextBox Text="{Binding Region}" />
+												<TextBlock Grid.Column="2" Grid.Row="4" Text="Short description" FontSize="11" Margin="0,8,0,0" />
+												<TextBox Grid.Column="2"
+														 Grid.Row="5"
+														 Grid.RowSpan="3"
+														 Text="{Binding Description}"
+														 AcceptsReturn="True"
+														 TextWrapping="Wrap"
+														 MinHeight="84"
+														 VerticalAlignment="Top" />
 
-													<TextBlock Text="Short description" FontSize="11" />
-													<TextBox Text="{Binding Description}"
-													         AcceptsReturn="True"
-													         TextWrapping="Wrap"
-													         MinHeight="84" />
-												</StackPanel>
+												<TextBlock Grid.Column="0" Grid.Row="6" Text="Part-number" FontSize="11" Margin="0,8,0,0" />
+												<TextBox Grid.Column="0" Grid.Row="7" Text="{Binding PartNumber}" />
 											</Grid>
 										</Border>
 									</DataTemplate>
@@ -213,58 +218,65 @@
 													</Viewbox>
 												</Grid>
 
-												<Grid Grid.Column="2" ColumnDefinitions="*,12,*">
-													<StackPanel Grid.Column="0" Spacing="4">
-														<TextBlock Text="Board label" FontSize="11" />
-														<TextBox Text="{Binding BoardLabel}" />
+												<Grid Grid.Column="2"
+													  ColumnDefinitions="1*,12,1*,8,1*,8,1*"
+													  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+													  HorizontalAlignment="Stretch">
+													<TextBlock Grid.Column="0" Grid.Row="0" Text="Board label" FontSize="11" />
+													<TextBox Grid.Column="0" Grid.Row="1" Text="{Binding BoardLabel}" MinWidth="0" />
 
-														<TextBlock Text="Region" FontSize="11" />
-														<TextBox Text="{Binding Region}" />
+													<TextBlock Grid.Column="2" Grid.Row="0" Grid.ColumnSpan="5" Text="Expected oscilloscope reading" FontSize="11" />
+													<TextBox Grid.Column="2" Grid.Row="1" Grid.ColumnSpan="5" Text="{Binding ExpectedOscilloscopeReading}" MinWidth="0" />
 
-														<TextBlock Text="Pin" FontSize="11" />
-														<TextBox Text="{Binding Pin}" />
+													<TextBlock Grid.Column="0" Grid.Row="2" Text="Region" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="0" Grid.Row="3" Text="{Binding Region}" MinWidth="0" />
 
-														<TextBlock Text="Name" FontSize="11" />
-														<TextBox Text="{Binding Name}" />
-													</StackPanel>
+													<TextBlock Grid.Column="2" Grid.Row="2" Text="Volts/DIV" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="2" Grid.Row="3" Text="{Binding VoltsDiv}" MinWidth="0" />
 
-													<StackPanel Grid.Column="2" Spacing="4">
-														<TextBlock Text="Expected oscilloscope reading" FontSize="11" />
-														<TextBox Text="{Binding ExpectedOscilloscopeReading}" />
+													<TextBlock Grid.Column="4" Grid.Row="2" Text="Timing/DIV" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="4" Grid.Row="3" Text="{Binding TimeDiv}" MinWidth="0" />
 
-														<Grid ColumnDefinitions="*,8,*,8,*">
-															<StackPanel Grid.Column="0" Spacing="4">
-																<TextBlock Text="Volts/DIV" FontSize="11" />
-																<TextBox Text="{Binding VoltsDiv}" />
-															</StackPanel>
-															<StackPanel Grid.Column="2" Spacing="4">
-																<TextBlock Text="Timing/DIV" FontSize="11" />
-																<TextBox Text="{Binding TimeDiv}" />
-															</StackPanel>
-															<StackPanel Grid.Column="4" Spacing="4">
-																<TextBlock Text="Trigger Level" FontSize="11" />
-																<TextBox Text="{Binding TriggerLevelVolts}" />
-															</StackPanel>
-														</Grid>
+													<TextBlock Grid.Column="6" Grid.Row="2" Text="Trigger Level" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="6" Grid.Row="3" Text="{Binding TriggerLevelVolts}" MinWidth="0" />
 
-														<TextBlock Text="File" FontSize="11" />
-														<TextBox Text="{Binding File}"
-																 Tag="{Binding}"
-																 IsReadOnly="True"
-																 Cursor="Hand"
-																 PointerReleased="OnFileTextBoxPointerReleased" />
+													<TextBlock Grid.Column="0" Grid.Row="4" Text="Pin" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="0" Grid.Row="5" Text="{Binding Pin}" MinWidth="0" />
 
-														<TextBlock Text="Note" FontSize="11" />
-														<TextBox Text="{Binding Note}"
-																 AcceptsReturn="True"
-																 TextWrapping="Wrap"
-																 MinHeight="84" />
+													<TextBlock Grid.Column="2" Grid.Row="4" Grid.ColumnSpan="5" Text="File" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="2" Grid.Row="5"
+															 Grid.ColumnSpan="5"
+															 Text="{Binding File}"
+															 Tag="{Binding}"
+															 IsReadOnly="True"
+															 Cursor="Hand"
+															 MinWidth="0"
+															 PointerReleased="OnFileTextBoxPointerReleased" />
 
-														<Button Content="Remove image"
-																HorizontalAlignment="Right"
-																Tag="{Binding}"
-																Click="OnRemoveComponentImageRowClick" />
-													</StackPanel>
+													<TextBlock Grid.Column="0" Grid.Row="6" Text="Name" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="0"
+															 Grid.Row="7"
+															 Text="{Binding Name}"
+															 MinWidth="0"
+															 VerticalAlignment="Top" />
+
+													<TextBlock Grid.Column="2" Grid.Row="6" Grid.ColumnSpan="5" Text="Note" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="2" Grid.Row="7"
+															 Grid.ColumnSpan="5"
+															 Text="{Binding Note}"
+															 AcceptsReturn="True"
+															 TextWrapping="Wrap"
+															 MinHeight="84"
+															 MinWidth="0" />
+
+													<Button Grid.Column="2"
+															Grid.Row="8"
+															Grid.ColumnSpan="5"
+															Content="Remove image"
+															HorizontalAlignment="Right"
+															Tag="{Binding}"
+															Click="OnRemoveComponentImageRowClick"
+															Margin="0,8,0,0" />
 												</Grid>
 											</Grid>
 										</Border>
@@ -570,16 +582,21 @@
 						           FontSize="11"
 						           Foreground="{DynamicResource Main_Header_Fg}"
 						           TextWrapping="Wrap" />
-						<TextBlock Text="Also do document your specific board revision, as that maybe be important (if board has more revisions)."
-								   FontSize="11"
-								   Foreground="{DynamicResource Main_Header_Fg}"
-								   TextWrapping="Wrap" />
-						<TextBox x:Name="MandatoryCommentTextBox"
-						         AcceptsReturn="True"
-						         TextWrapping="Wrap"
-						         MinHeight="180"
-						         Background="{DynamicResource Main_TextField_Bg}"
-						         Foreground="{DynamicResource Main_TextField_Fg}" />
+
+						<Grid RowDefinitions="Auto,Auto">
+							<TextBlock Grid.Row="0"
+							           Text="Also do document your specific board revision, as that maybe be important (if board has more revisions)."
+							           FontSize="11"
+							           Foreground="{DynamicResource Main_Header_Fg}"
+							           TextWrapping="Wrap" />
+							<TextBox Grid.Row="1"
+							         x:Name="MandatoryCommentTextBox"
+							         AcceptsReturn="True"
+							         TextWrapping="Wrap"
+							         MinHeight="180"
+							         Background="{DynamicResource Main_TextField_Bg}"
+							         Foreground="{DynamicResource Main_TextField_Fg}" />
+						</Grid>
 					</StackPanel>
 				</Border>
 
