@@ -123,9 +123,9 @@ There are several ways to get in contact with the developer:
 
 You can view the below _Quick Help_ videos for introduction to specific topics in _CRT_:
 
-- [Short introduction](https://youtu.be/f2kY_8RYMII)
+- [Short introduction](https://youtu.be/FamNSLKJpdI)
 - [How to do manual traces](https://youtu.be/JUNXeCHsrME)
-
+- [How to sync oscilloscope](https://youtu.be/CbTh1FFp3tU)
 
 ### Information automatically collected by CRT
 
