@@ -230,6 +230,8 @@ _CRT_ can control a network connected oscilloscope, if it is supported, with the
 
 <img width="1051" height="358" alt="image" src="https://github.com/user-attachments/assets/8f339e2c-bf05-49bd-ab8d-9cad2a3b018b" />
 
+If your oscilloscope is not in the list or it actually does not work properly, then please do investigate which **SCPI commands** for your specific oscilloscope model, as this varies quite a lot - even within same vendor. I do not know all oscilloscopes, so you will need to provide this data yourself. You can add and test the required data in the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscope`.
+
 
 ### Development tools used
 
