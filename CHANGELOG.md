@@ -1,3 +1,8 @@
+- Changed handlking of data contribution
+- Refactored and mitigated some potential security risks
+
+
+
 - Fixed changing to another hardware will clear the filter component search
 - Fixed horizontal misalignment of rows in component contribution window
 - Added "Oscilloscope" tab

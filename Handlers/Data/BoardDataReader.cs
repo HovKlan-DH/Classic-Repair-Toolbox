@@ -29,6 +29,7 @@ namespace Handlers.DataHandling
         private const string ColThumbnailHighlightOpacity = "Thumbnail highlight opacity";
 
         // Shared columns (appear in multiple sheets)
+        private const string ColUuidV4 = "UUID v4";
         private const string ColBoardLabel = "Board label";
         private const string ColCategory = "Category";
         private const string ColName = "Name";
@@ -230,6 +231,7 @@ namespace Handlers.DataHandling
         private static List<BoardSchematicEntry> MapSchematics(List<Dictionary<string, string>> rows)
             => rows.Select(r => new BoardSchematicEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 SchematicName = Val(r, ColSchematicName),
                 SchematicImageFile = Val(r, ColSchematicImageFile),
                 MainImageHighlightColor = Val(r, ColMainImageHighlightColor),
@@ -241,6 +243,7 @@ namespace Handlers.DataHandling
         private static List<ComponentEntry> MapComponents(List<Dictionary<string, string>> rows)
             => rows.Select(r => new ComponentEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 BoardLabel = Val(r, ColBoardLabel),
                 FriendlyName = Val(r, ColFriendlyName),
                 TechnicalNameOrValue = Val(r, ColTechnicalNameOrValue),
@@ -253,6 +256,7 @@ namespace Handlers.DataHandling
         private static List<ComponentImageEntry> MapComponentImages(List<Dictionary<string, string>> rows)
             => rows.Select(r => new ComponentImageEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 BoardLabel = Val(r, ColBoardLabel),
                 Region = Val(r, ColRegion),
                 Pin = Val(r, ColPin),
@@ -279,22 +283,25 @@ namespace Handlers.DataHandling
         private static List<ComponentLocalFileEntry> MapComponentLocalFiles(List<Dictionary<string, string>> rows)
             => rows.Select(r => new ComponentLocalFileEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 BoardLabel = Val(r, ColBoardLabel),
                 Name = Val(r, ColName),
                 File = Val(r, ColFile)
             }).ToList();
 
         private static List<ComponentLinkEntry> MapComponentLinks(List<Dictionary<string, string>> rows)
-            => rows.Select(r => new ComponentLinkEntry
-            {
-                BoardLabel = Val(r, ColBoardLabel),
-                Name = Val(r, ColName),
-                Url = Val(r, ColUrl)
-            }).ToList();
+           => rows.Select(r => new ComponentLinkEntry
+           {
+               UuidV4 = Val(r, ColUuidV4),
+               BoardLabel = Val(r, ColBoardLabel),
+               Name = Val(r, ColName),
+               Url = Val(r, ColUrl)
+           }).ToList();
 
         private static List<BoardLocalFileEntry> MapBoardLocalFiles(List<Dictionary<string, string>> rows)
             => rows.Select(r => new BoardLocalFileEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 Category = Val(r, ColCategory),
                 Name = Val(r, ColName),
                 File = Val(r, ColFile)
@@ -303,6 +310,7 @@ namespace Handlers.DataHandling
         private static List<BoardLinkEntry> MapBoardLinks(List<Dictionary<string, string>> rows)
             => rows.Select(r => new BoardLinkEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 Category = Val(r, ColCategory),
                 Name = Val(r, ColName),
                 Url = Val(r, ColUrl)
@@ -311,6 +319,7 @@ namespace Handlers.DataHandling
         private static List<CreditEntry> MapCredits(List<Dictionary<string, string>> rows)
             => rows.Select(r => new CreditEntry
             {
+                UuidV4 = Val(r, ColUuidV4),
                 Category = Val(r, ColCategory),
                 SubCategory = Val(r, ColSubCategory),
                 NameOrHandle = Val(r, ColNameOrHandle),

@@ -4,6 +4,7 @@ namespace Handlers.DataHandling
 {
     public class BoardSchematicEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string SchematicName { get; init; } = string.Empty;
         public string SchematicImageFile { get; init; } = string.Empty;
         public string MainImageHighlightColor { get; init; } = string.Empty;
@@ -14,6 +15,7 @@ namespace Handlers.DataHandling
 
     public class ComponentEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string BoardLabel { get; init; } = string.Empty;
         public string FriendlyName { get; init; } = string.Empty;
         public string TechnicalNameOrValue { get; init; } = string.Empty;
@@ -25,6 +27,7 @@ namespace Handlers.DataHandling
 
     public class ComponentImageEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string BoardLabel { get; init; } = string.Empty;
         public string Region { get; init; } = string.Empty;
         public string Pin { get; init; } = string.Empty;
@@ -49,6 +52,7 @@ namespace Handlers.DataHandling
 
     public class ComponentLocalFileEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
@@ -56,6 +60,7 @@ namespace Handlers.DataHandling
 
     public class ComponentLinkEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
@@ -63,6 +68,7 @@ namespace Handlers.DataHandling
 
     public class BoardLocalFileEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string Category { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
@@ -70,6 +76,7 @@ namespace Handlers.DataHandling
 
     public class BoardLinkEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string Category { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
@@ -77,6 +84,7 @@ namespace Handlers.DataHandling
 
     public class CreditEntry
     {
+        public string UuidV4 { get; init; } = string.Empty;
         public string Category { get; init; } = string.Empty;
         public string SubCategory { get; init; } = string.Empty;
         public string NameOrHandle { get; init; } = string.Empty;
@@ -140,5 +148,4 @@ namespace Handlers.DataHandling
         public string VoltsDivList { get; init; } = string.Empty;
         public string DebounceTime { get; init; } = string.Empty;
     }
-
 }

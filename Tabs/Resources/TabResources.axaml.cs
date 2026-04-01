@@ -56,22 +56,12 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the specified target (URL or local file) using the operating system's default handler
+        // Opens the specified target only after strict validation. URLs are limited to HTTP/HTTPS
+        // and local files must remain inside the configured data-root.
         // ###########################################################################################
         private void OpenTarget()
         {
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = this.Target,
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to open resource {this.Target}: {ex.Message}");
-            }
+            ExternalTargetLauncher.TryOpen(this.Target);
         }
     }
 

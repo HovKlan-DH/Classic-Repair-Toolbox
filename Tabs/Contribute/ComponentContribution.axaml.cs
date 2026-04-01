@@ -15,6 +15,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Handlers.DataHandling;
@@ -23,6 +24,7 @@ namespace CRT
 {
     public sealed class ContributionComponentRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string FriendlyName { get; set; } = string.Empty;
         public string TechnicalNameOrValue { get; set; } = string.Empty;
@@ -34,6 +36,7 @@ namespace CRT
 
     public sealed class ContributionComponentImageRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string Region { get; set; } = string.Empty;
         public string Pin { get; set; } = string.Empty;
@@ -44,12 +47,17 @@ namespace CRT
         public string TriggerLevelVolts { get; set; } = string.Empty;
         public string File { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
+
+        [JsonIgnore]
         public Bitmap? PreviewImage { get; set; }
+
+        [JsonIgnore]
         public string PreviewStatusText { get; set; } = "No preview available";
     }
 
     public sealed class ContributionComponentLocalFileRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string File { get; set; } = string.Empty;
@@ -57,6 +65,7 @@ namespace CRT
 
     public sealed class ContributionComponentLinkRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
@@ -64,6 +73,7 @@ namespace CRT
 
     public sealed class ContributionBoardLocalFileRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string File { get; set; } = string.Empty;
@@ -71,6 +81,7 @@ namespace CRT
 
     public sealed class ContributionBoardLinkRow
     {
+        public string UuidV4 { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
@@ -84,6 +95,7 @@ namespace CRT
         public string Region { get; set; } = string.Empty;
         public string ComponentBoardLabel { get; set; } = string.Empty;
         public string ComponentDisplayText { get; set; } = string.Empty;
+        public string ComponentUuidV4 { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Comment { get; set; } = string.Empty;
         public DateTimeOffset SubmittedUtc { get; set; }
@@ -112,6 +124,7 @@ namespace CRT
         private string thisBoardLabel = string.Empty;
         private string thisComponentDisplayText = string.Empty;
         private string thisDataRoot = string.Empty;
+        private string thisComponentUuidV4 = string.Empty;
 
         private static readonly JsonSerializerOptions thisContributionPayloadJsonOptions = new()
         {
@@ -145,10 +158,16 @@ namespace CRT
             this.thisBoardName = boardName;
             this.thisLocalRegion = region;
             this.thisBoardLabel = boardLabel;
+            this.thisComponentUuidV4 = string.Empty;
 
             var primaryComponent = boardData.Components.FirstOrDefault(c =>
-                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase));
+                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(c.Region) ||
+                 string.Equals(c.Region.Trim(), region, StringComparison.OrdinalIgnoreCase)))
+                ?? boardData.Components.FirstOrDefault(c =>
+                    string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase));
 
+            this.thisComponentUuidV4 = primaryComponent?.UuidV4?.Trim() ?? string.Empty;
             this.thisComponentDisplayText = this.BuildComponentDisplayText(primaryComponent, boardLabel);
 
             this.PopulateHeader();
@@ -194,6 +213,7 @@ namespace CRT
             {
                 this.thisComponentRows.Add(new ContributionComponentRow
                 {
+                    UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
                     FriendlyName = row.FriendlyName,
                     TechnicalNameOrValue = row.TechnicalNameOrValue,
@@ -205,12 +225,13 @@ namespace CRT
             }
 
             foreach (var row in boardData.ComponentImages.Where(c =>
-    string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
-    (string.IsNullOrWhiteSpace(c.Region) ||
-     string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
+                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(c.Region) ||
+                 string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
                 this.thisComponentImageRows.Add(new ContributionComponentImageRow
                 {
+                    UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
                     Region = row.Region,
                     Pin = row.Pin,
@@ -243,6 +264,7 @@ namespace CRT
             {
                 this.thisComponentLocalFileRows.Add(new ContributionComponentLocalFileRow
                 {
+                    UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     File = row.File
@@ -254,6 +276,7 @@ namespace CRT
             {
                 this.thisComponentLinkRows.Add(new ContributionComponentLinkRow
                 {
+                    UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     Url = row.Url
@@ -264,6 +287,7 @@ namespace CRT
             {
                 this.thisBoardLocalFileRows.Add(new ContributionBoardLocalFileRow
                 {
+                    UuidV4 = row.UuidV4,
                     Category = row.Category,
                     Name = row.Name,
                     File = row.File
@@ -274,6 +298,7 @@ namespace CRT
             {
                 this.thisBoardLinkRows.Add(new ContributionBoardLinkRow
                 {
+                    UuidV4 = row.UuidV4,
                     Category = row.Category,
                     Name = row.Name,
                     Url = row.Url
@@ -573,7 +598,7 @@ namespace CRT
 
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(AppConfig.AppShortName + " " + AppConfig.AppVersionString);
 
-            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-contribution/", progressContent);
+            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-contribution/api/", progressContent);
             string responseBody = await response.Content.ReadAsStringAsync();
             bool isSuccess = response.IsSuccessStatusCode &&
                              responseBody.Trim().StartsWith("Success", StringComparison.OrdinalIgnoreCase);
@@ -588,19 +613,20 @@ namespace CRT
         {
             return new ComponentContributionPayload
             {
-
                 ApplicationVersion = AppConfig.AppVersionString,
                 HardwareName = this.thisHardwareName,
                 BoardName = this.thisBoardName,
                 Region = this.thisLocalRegion,
                 ComponentBoardLabel = this.thisBoardLabel,
                 ComponentDisplayText = this.thisComponentDisplayText,
+                ComponentUuidV4 = this.thisComponentUuidV4?.Trim() ?? string.Empty,
                 Email = email,
                 Comment = comment,
                 SubmittedUtc = DateTimeOffset.UtcNow,
 
                 Components = this.thisComponentRows.Select(row => new ContributionComponentRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     FriendlyName = row.FriendlyName?.Trim() ?? string.Empty,
                     TechnicalNameOrValue = row.TechnicalNameOrValue?.Trim() ?? string.Empty,
@@ -612,6 +638,7 @@ namespace CRT
 
                 ComponentImages = this.thisComponentImageRows.Select(row => new ContributionComponentImageRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Region = row.Region?.Trim() ?? string.Empty,
                     Pin = row.Pin?.Trim() ?? string.Empty,
@@ -636,6 +663,7 @@ namespace CRT
 
                 ComponentLocalFiles = this.thisComponentLocalFileRows.Select(row => new ContributionComponentLocalFileRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
@@ -643,6 +671,7 @@ namespace CRT
 
                 ComponentLinks = this.thisComponentLinkRows.Select(row => new ContributionComponentLinkRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty
@@ -650,6 +679,7 @@ namespace CRT
 
                 BoardLocalFiles = this.thisBoardLocalFileRows.Select(row => new ContributionBoardLocalFileRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
@@ -657,6 +687,7 @@ namespace CRT
 
                 BoardLinks = this.thisBoardLinkRows.Select(row => new ContributionBoardLinkRow
                 {
+                    UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty
@@ -674,6 +705,7 @@ namespace CRT
             builder.AppendLine($"Hardware: {this.thisHardwareName}");
             builder.AppendLine($"Board: {this.thisBoardName}");
             builder.AppendLine($"Component: {this.thisComponentDisplayText}");
+            builder.AppendLine($"Component UUID v4: {this.thisComponentUuidV4}");
             builder.AppendLine($"Region context: {this.thisLocalRegion}");
             builder.AppendLine();
             builder.AppendLine("Mandatory change comment:");
@@ -733,7 +765,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Resolves an edited file path either as absolute or relative to the current data root.
+        // Resolves an edited file path so it can be verified for existence and attached.
+        // Accepts both relative paths (resolved against data-root) and external absolute paths.
         // ###########################################################################################
         private string? ResolveExistingFilePath(string pathValue)
         {
@@ -743,13 +776,31 @@ namespace CRT
                 return null;
             }
 
-            if (Path.IsPathRooted(trimmed) && File.Exists(trimmed))
+            try
             {
-                return trimmed;
-            }
+                string normalizedInput = trimmed.Replace('/', Path.DirectorySeparatorChar);
 
-            string relativeToDataRoot = Path.Combine(this.thisDataRoot, trimmed.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(relativeToDataRoot) ? relativeToDataRoot : null;
+                // 1. If the user selected an absolute path via the file picker anywhere on their PC, allow it!
+                if (Path.IsPathRooted(normalizedInput))
+                {
+                    string fullPath = Path.GetFullPath(normalizedInput);
+                    return File.Exists(fullPath) ? fullPath : null;
+                }
+
+                // 2. If it's a relative path, assume it lives strictly inside the current data-root
+                if (!string.IsNullOrWhiteSpace(this.thisDataRoot))
+                {
+                    string normalizedDataRoot = Path.GetFullPath(this.thisDataRoot);
+                    string combinedPath = Path.GetFullPath(Path.Combine(normalizedDataRoot, normalizedInput));
+                    return File.Exists(combinedPath) ? combinedPath : null;
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ###########################################################################################
