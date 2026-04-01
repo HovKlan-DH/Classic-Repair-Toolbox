@@ -17,6 +17,7 @@ It is (for now) primarily dedicated to Commodore, and have several built-in prof
 - [Installation and usage](#installation-and-usage)
 - [Built-in hardware and boards](#built-in-hardware-and-boards)
 - [Data contributions being worked on currently](#data-contributions-being-worked-on-currently)
+- [Supported oscilloscopes](#supported-oscilloscopes)
 - [Requirements](#requirements)
 - [Help wanted](#help-wanted)
 - [Contact developer](#contact-developer)
@@ -26,6 +27,7 @@ It is (for now) primarily dedicated to Commodore, and have several built-in prof
   - [Commandline parameters](#commandline-parameters)
   - [How to contribute with data to CRT GitHub repository?](#how-to-contribute-with-data-to-crt-github-repository)
   - [Compiling yourself](#compiling-yourself)
+  - [Controlling oscilloscope with keyboard/numpad](#controlling-oscilloscope-with-keyboardnumpad)
   - [Development tools used](#development-tools-used)
 - [Inspiration for building this application](#inspiration-for-building-this-application)
 - [Screenshots](#screenshots)
@@ -48,9 +50,7 @@ When a new version is released it will be shown to you in the application, and y
   - MC0005A
 - **Commodore VIC-20**
   - 250403 (CR)
-    - Would appreciate help with:
-      - Oscilloscope baseline for PAL and NTSC
-      - More data
+    - Oscilloscope baseline measurements for PAL and NTSC
 - **Commodore 64**
   - 250407 (long board)
     - Covers _all_ components
@@ -76,9 +76,49 @@ When a new version is released it will be shown to you in the application, and y
 
 ### Data contributions being worked on currently
 
-- **@SX64man** is doing an oscilloscope baseline for **VIC-20 NTSC**
+- **@Rabs** is doing an oscilloscope baseline for **Amstrad CPC 664**
+- I will do the **PAL** oscilloscope baseline for **C128 DCR** - just need some time
 - Please let me know if you want to contribute with something, so it can be visualized here to avoid duplicate work.
-    
+
+
+## Supported oscilloscopes
+
+- **Keysight**
+  - InfiniiVision 2000 X
+  - InfiniiVision 6000 X
+  - InfiniiVision 6000L
+- **Rigol**
+  - DHO1000
+  - DHO4000
+  - DS1000Z
+  - DS2000A
+  - MSO1000Z
+  - MSO2000A
+- **Rohde & Schwarz**
+  - MXO 4
+  - RTA4000
+- **Siglent**
+  - SDS800X HD
+  - SDS1000CML+
+  - SDS1000CNL+
+  - SDS1000DL+
+  - SDS1000X
+  - SDS1000X+
+  - SDS1000X-E
+  - SDS1000X HD
+  - SDS1202X-E
+  - SDS2000X
+  - SDS2000X HD
+  - SDS2000X Plus
+  - SDS3000X HD
+  - SDS5000X
+  - SDS6000 Pro
+  - SDS6000A
+  - SDS6000L
+  - SDS7000A
+  - SHS800X
+  - SHS1000X
+
 
 ## Requirements
 
@@ -123,9 +163,9 @@ There are several ways to get in contact with the developer:
 
 You can view the below _Quick Help_ videos for introduction to specific topics in _CRT_:
 
-- [Short introduction](https://youtu.be/f2kY_8RYMII)
+- [Short introduction](https://youtu.be/FamNSLKJpdI)
 - [How to do manual traces](https://youtu.be/JUNXeCHsrME)
-
+- [How to sync oscilloscope](https://youtu.be/CbTh1FFp3tU)
 
 ### Information automatically collected by CRT
 
@@ -183,6 +223,15 @@ As per default the Linux package is a one-large binary package that can be run d
 ### Compiling yourself
 
 You can view the details in [BUILDING.md](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/BUILDING.md)
+
+
+### Controlling oscilloscope with keyboard/numpad
+
+_CRT_ can control a network connected oscilloscope, if it is supported, with the keyboard/numpad. You can use these keys:
+
+<img width="1051" height="358" alt="image" src="https://github.com/user-attachments/assets/8f339e2c-bf05-49bd-ab8d-9cad2a3b018b" />
+
+If your oscilloscope is not in the list or it actually does not work properly, then please do investigate which **SCPI commands** works for your specific oscilloscope model, as this varies quite a lot - even within same vendor. I do not know all oscilloscopes, nor do I have access to anything else than my own, so you will need to provide this data yourself. You can add and test the required data in the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscope`.
 
 
 ### Development tools used
