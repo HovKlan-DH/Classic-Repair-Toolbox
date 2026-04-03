@@ -1,4 +1,5 @@
 - Changed handlking of data contribution
+- Refactored some data needed for backend contribution review
 - Refactored and mitigated some potential security risks
 
 

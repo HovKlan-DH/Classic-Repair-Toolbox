@@ -243,15 +243,22 @@
 													<TextBlock Grid.Column="0" Grid.Row="4" Text="Pin" FontSize="11" Margin="0,8,0,0" />
 													<TextBox Grid.Column="0" Grid.Row="5" Text="{Binding Pin}" MinWidth="0" />
 
-													<TextBlock Grid.Column="2" Grid.Row="4" Grid.ColumnSpan="5" Text="File" FontSize="11" Margin="0,8,0,0" />
-													<TextBox Grid.Column="2" Grid.Row="5"
-															 Grid.ColumnSpan="5"
-															 Text="{Binding File}"
-															 Tag="{Binding}"
-															 IsReadOnly="True"
-															 Cursor="Hand"
-															 MinWidth="0"
-															 PointerReleased="OnFileTextBoxPointerReleased" />
+													<TextBlock Grid.Column="2" Grid.Row="4" Grid.ColumnSpan="3" Text="File location" FontSize="11" Margin="0,8,0,0" />
+													<ComboBox Grid.Column="2" Grid.Row="5"
+																					  Grid.ColumnSpan="3"
+																					  ItemsSource="{Binding $parent[local:ComponentContributionWindow].AvailableEndFolders}"
+																					  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+																					  HorizontalAlignment="Stretch"
+																					  MinWidth="0" />
+
+													<TextBlock Grid.Column="6" Grid.Row="4" Text="File" FontSize="11" Margin="0,8,0,0" />
+													<TextBox Grid.Column="6" Grid.Row="5"
+																					 Text="{Binding File}"
+																					 Tag="{Binding}"
+																					 IsReadOnly="True"
+																					 Cursor="Hand"
+																					 MinWidth="0"
+																					 PointerReleased="OnFileTextBoxPointerReleased" />
 
 													<TextBlock Grid.Column="0" Grid.Row="6" Text="Name" FontSize="11" Margin="0,8,0,0" />
 													<TextBox Grid.Column="0"

@@ -10,6 +10,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -34,8 +36,15 @@ namespace CRT
         public string Description { get; set; } = string.Empty;
     }
 
-    public sealed class ContributionComponentImageRow
+    public sealed class ContributionComponentImageRow : INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string Region { get; set; } = string.Empty;
@@ -45,11 +54,54 @@ namespace CRT
         public string VoltsDiv { get; set; } = string.Empty;
         public string TimeDiv { get; set; } = string.Empty;
         public string TriggerLevelVolts { get; set; } = string.Empty;
-        public string File { get; set; } = string.Empty;
+
+        private string thisFileLocation = string.Empty;
+        public string FileLocation
+        {
+            get => this.thisFileLocation;
+            set
+            {
+                if (this.thisFileLocation != value)
+                {
+                    this.thisFileLocation = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
+        private string thisFile = string.Empty;
+        public string File
+        {
+            get => this.thisFile;
+            set
+            {
+                if (this.thisFile != value)
+                {
+                    this.thisFile = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
         public string Note { get; set; } = string.Empty;
 
         [JsonIgnore]
-        public Bitmap? PreviewImage { get; set; }
+        public string? OriginalFilePath { get; set; }
+
+        private Bitmap? thisPreviewImage;
+        [JsonIgnore]
+        public Bitmap? PreviewImage
+        {
+            get => this.thisPreviewImage;
+            set
+            {
+                if (this.thisPreviewImage != value)
+                {
+                    this.thisPreviewImage = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
 
         [JsonIgnore]
         public string PreviewStatusText { get; set; } = "No preview available";
@@ -110,6 +162,8 @@ namespace CRT
 
     public partial class ComponentContributionWindow : Window
     {
+        public ObservableCollection<string> AvailableEndFolders { get; } = new();
+
         private readonly ObservableCollection<ContributionComponentRow> thisComponentRows = new();
         private readonly ObservableCollection<ContributionComponentImageRow> thisComponentImageRows = new();
         private readonly ObservableCollection<ContributionComponentLocalFileRow> thisComponentLocalFileRows = new();
@@ -160,6 +214,8 @@ namespace CRT
             this.thisBoardLabel = boardLabel;
             this.thisComponentUuidV4 = string.Empty;
 
+            this.PopulateEndFolders(dataRoot);
+
             var primaryComponent = boardData.Components.FirstOrDefault(c =>
                 string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
                 (string.IsNullOrWhiteSpace(c.Region) ||
@@ -172,6 +228,64 @@ namespace CRT
 
             this.PopulateHeader();
             this.LoadRows(boardData, boardLabel);
+        }
+
+        // ###########################################################################################
+        // Discovers and populates all end folders within the given data root directory.
+        // ###########################################################################################
+        private void PopulateEndFolders(string dataRoot)
+        {
+            this.AvailableEndFolders.Clear();
+
+            if (string.IsNullOrWhiteSpace(dataRoot) || !Directory.Exists(dataRoot))
+            {
+                return;
+            }
+
+            try
+            {
+                var endFolders = new List<string>();
+                this.FindEndFoldersRecursive(dataRoot, dataRoot, endFolders);
+
+                foreach (var folder in endFolders.OrderBy(f => f))
+                {
+                    this.AvailableEndFolders.Add(folder);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to populate end folders: {ex.Message}");
+            }
+        }
+
+        // ###########################################################################################
+        // Helper to recursively find all directories containing no sub-directories.
+        // ###########################################################################################
+        private void FindEndFoldersRecursive(string rootPath, string currentPath, List<string> endFolders)
+        {
+            try
+            {
+                var subDirs = Directory.GetDirectories(currentPath);
+                if (subDirs.Length == 0)
+                {
+                    string relativePath = Path.GetRelativePath(rootPath, currentPath);
+                    if (!string.IsNullOrWhiteSpace(relativePath) && relativePath != ".")
+                    {
+                        endFolders.Add(relativePath.Replace('\\', '/'));
+                    }
+                }
+                else
+                {
+                    foreach (var subDir in subDirs)
+                    {
+                        this.FindEndFoldersRecursive(rootPath, subDir, endFolders);
+                    }
+                }
+            }
+            catch
+            {
+                // Unreadable directories are skipped safely
+            }
         }
 
         // ###########################################################################################
@@ -225,10 +339,37 @@ namespace CRT
             }
 
             foreach (var row in boardData.ComponentImages.Where(c =>
-                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
-                (string.IsNullOrWhiteSpace(c.Region) ||
-                 string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
+string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+(string.IsNullOrWhiteSpace(c.Region) ||
+ string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
+                string fileLocation = string.Empty;
+                var propertyInfo = row.GetType().GetProperty("FileLocation");
+                if (propertyInfo != null && propertyInfo.GetValue(row) is string fl && !string.IsNullOrWhiteSpace(fl))
+                {
+                    fileLocation = fl;
+                }
+                else if (!string.IsNullOrWhiteSpace(row.File) && !Path.IsPathRooted(row.File))
+                {
+                    try
+                    {
+                        string? dir = Path.GetDirectoryName(row.File);
+                        if (!string.IsNullOrWhiteSpace(dir))
+                        {
+                            fileLocation = dir.Replace('\\', '/');
+                        }
+                    }
+                    catch { }
+                }
+                else if (!string.IsNullOrWhiteSpace(row.File) && Path.IsPathRooted(row.File))
+                {
+                    try
+                    {
+                        fileLocation = Path.GetDirectoryName(row.File)?.Replace('\\', '/') ?? string.Empty;
+                    }
+                    catch { }
+                }
+
                 this.thisComponentImageRows.Add(new ContributionComponentImageRow
                 {
                     UuidV4 = row.UuidV4,
@@ -240,7 +381,9 @@ namespace CRT
                     VoltsDiv = row.VoltsDiv,
                     TimeDiv = row.TimeDiv,
                     TriggerLevelVolts = row.TriggerLevelVolts,
-                    File = row.File,
+                    FileLocation = fileLocation,
+                    File = Path.GetFileName(row.File ?? string.Empty),
+                    OriginalFilePath = row.File,
                     Note = row.Note
                 });
             }
@@ -368,7 +511,6 @@ namespace CRT
 
             InsertRowAtTop(this.thisComponentImageRows, row);
             this.RefreshComponentImagePreview(row);
-            this.RefreshComponentImageRowsItemsControl();
             this.UpdateSectionCounters();
         }
 
@@ -647,6 +789,7 @@ namespace CRT
                     VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
                     TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
                     TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
+                    FileLocation = row.FileLocation?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
                     Note = row.Note?.Trim() ?? string.Empty
                 }).ToList(),
@@ -701,7 +844,7 @@ namespace CRT
         private string BuildContributionFeedbackText(string comment)
         {
             var builder = new StringBuilder();
-            builder.AppendLine("Component contribution submission");
+//            builder.AppendLine("Component contribution submission");
             builder.AppendLine($"Hardware: {this.thisHardwareName}");
             builder.AppendLine($"Board: {this.thisBoardName}");
             builder.AppendLine($"Component: {this.thisComponentDisplayText}");
@@ -723,7 +866,7 @@ namespace CRT
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             this.AddResolvedFilesFromPaths(
-                this.thisComponentImageRows.Select(r => r.File),
+                this.thisComponentImageRows.Select(r => !string.IsNullOrWhiteSpace(r.OriginalFilePath) ? r.OriginalFilePath : (string.IsNullOrWhiteSpace(r.FileLocation) ? r.File : Path.Combine(r.FileLocation, r.File ?? string.Empty))),
                 "ReferencedFiles/ComponentImages",
                 files,
                 seenPaths);
@@ -869,8 +1012,6 @@ namespace CRT
             {
                 this.RefreshComponentImagePreview(row);
             }
-
-            this.RefreshComponentImageRowsItemsControl();
         }
 
         // ###########################################################################################
@@ -880,7 +1021,13 @@ namespace CRT
         {
             this.DisposeComponentImagePreview(row);
 
-            string? resolvedPath = this.ResolveExistingFilePath(row.File);
+            string fullPath = !string.IsNullOrWhiteSpace(row.OriginalFilePath)
+                ? row.OriginalFilePath
+                : (string.IsNullOrWhiteSpace(row.FileLocation)
+                    ? row.File
+                    : Path.Combine(row.FileLocation, row.File ?? string.Empty));
+
+            string? resolvedPath = this.ResolveExistingFilePath(fullPath);
             if (string.IsNullOrWhiteSpace(resolvedPath))
             {
                 row.PreviewStatusText = string.Empty;
@@ -909,15 +1056,6 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Rebinds the component image item source so preview updates are reflected immediately.
-        // ###########################################################################################
-        private void RefreshComponentImageRowsItemsControl()
-        {
-            this.ComponentImageRowsItemsControl.ItemsSource = null;
-            this.ComponentImageRowsItemsControl.ItemsSource = this.thisComponentImageRows;
-        }
-
-        // ###########################################################################################
         // Refreshes an image preview when the edited file path box loses focus.
         // ###########################################################################################
         private void OnComponentImageFileTextBoxLostFocus(object? sender, RoutedEventArgs e)
@@ -925,7 +1063,6 @@ namespace CRT
             if (sender is TextBox { Tag: ContributionComponentImageRow row })
             {
                 this.RefreshComponentImagePreview(row);
-                this.RefreshComponentImageRowsItemsControl();
             }
         }
 
@@ -982,9 +1119,30 @@ namespace CRT
             switch (tag)
             {
                 case ContributionComponentImageRow componentImageRow:
-                    componentImageRow.File = selectedPath;
+                    componentImageRow.File = Path.GetFileName(selectedPath);
+                    componentImageRow.OriginalFilePath = selectedPath;
+
+                    try
+                    {
+                        string? dir = Path.GetDirectoryName(selectedPath);
+                        if (!string.IsNullOrWhiteSpace(dir) && !string.IsNullOrWhiteSpace(this.thisDataRoot) && dir.StartsWith(this.thisDataRoot, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string rel = Path.GetRelativePath(this.thisDataRoot, dir);
+                            componentImageRow.FileLocation = (rel != "." && rel != "") ? rel.Replace('\\', '/') : string.Empty;
+                        }
+                        // We intentionally do NOT overwrite FileLocation if the user selects an external file.
+                        // The file should retain whatever drop-down folder the user selected.
+                    }
+                    catch
+                    {
+                    }
+
                     this.RefreshComponentImagePreview(componentImageRow);
-                    this.RefreshComponentImageRowsItemsControl();
+
+                    // Force the UI to evaluate the combobox selected item update by re-assigning it.
+                    string updatedLocation = componentImageRow.FileLocation;
+                    componentImageRow.FileLocation = string.Empty;
+                    componentImageRow.FileLocation = updatedLocation;
                     break;
 
                 case ContributionComponentLocalFileRow componentLocalFileRow:
@@ -1042,7 +1200,17 @@ namespace CRT
             }
 
             string selectedPath = files[0].Path.LocalPath;
-            textBox.Text = selectedPath;
+
+            // For component image rows, we want only the filename to show visually in the immediate box
+            if (textBox.Tag is ContributionComponentImageRow)
+            {
+                textBox.Text = Path.GetFileName(selectedPath);
+            }
+            else
+            {
+                textBox.Text = selectedPath;
+            }
+
             this.ApplySelectedFilePath(textBox.Tag, selectedPath);
         }
 
@@ -1053,7 +1221,9 @@ namespace CRT
         {
             return tag switch
             {
-                ContributionComponentImageRow componentImageRow => componentImageRow.File,
+                ContributionComponentImageRow componentImageRow =>
+                    !string.IsNullOrWhiteSpace(componentImageRow.OriginalFilePath) ? componentImageRow.OriginalFilePath :
+                    (string.IsNullOrWhiteSpace(componentImageRow.FileLocation) ? componentImageRow.File : Path.Combine(componentImageRow.FileLocation, componentImageRow.File ?? string.Empty)),
                 ContributionComponentLocalFileRow componentLocalFileRow => componentLocalFileRow.File,
                 ContributionBoardLocalFileRow boardLocalFileRow => boardLocalFileRow.File,
                 _ => null
