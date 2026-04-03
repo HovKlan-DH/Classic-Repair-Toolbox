@@ -1,5 +1,7 @@
-- Changed handlking of data contribution
-- Refactored some data needed for backend contribution review
+- Contribute tab:
+  - Added UUID per row in Excel data files
+  - Added "File location" drop-down
+  - Changed "File" does no longer include relative path
 - Refactored and mitigated some potential security risks
 
 
