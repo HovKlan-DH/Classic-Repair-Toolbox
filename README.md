@@ -47,28 +47,28 @@ When a new version is released it will be shown to you in the application, and y
 ## Built-in hardware and boards
 
 - **Amstrad CPC 664**
-  - MC0005A
+  - **MC0005A**
 - **Commodore VIC-20**
-  - 250403 (CR)
+  - **250403** (CR)
     - Oscilloscope baseline measurements for PAL and NTSC
 - **Commodore 64**
-  - 250407 (long board)
+  - **250407** (long board)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
-  - 250425 (long board)
+  - **250425** (long board)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
-  - 250466 (long board)
+  - **250466** (long board)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
-  - 250469 (short board)
+  - **250469** (short board)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
 - **Commodore 128 and 128D** 
-  - 310378 (C128 and C128D, plastic cabinet)
+  - **310378** (C128 and C128D, plastic cabinet)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
-  - 250477 (C128DCR, metal cabinet)
+  - **250477** (C128DCR, metal cabinet)
     - Covers _all_ components
     - Would appreciate help with:
       - Oscilloscope baseline for NTSC
