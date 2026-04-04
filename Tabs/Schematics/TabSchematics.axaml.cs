@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -14,12 +15,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Tabs.TabSchematics;
+using static OfficeOpenXml.ExcelErrorValue;
 
 namespace CRT;
 
 public partial class TabSchematics : UserControl
 {
     public Main? MainWindow { get; set; }
+
+    public bool IsLabelEditorActive => this.thisIsLabelEditorMode;
 
     // Zoom
     internal Matrix schematicsMatrix = Matrix.Identity;
@@ -70,9 +74,60 @@ public partial class TabSchematics : UserControl
     private GridLength thisRestoreRightColumnWidth = new(1, GridUnitType.Star);
     private double thisRestoreRightColumnMinWidth = 100.0;
 
+    private sealed class EditableComponentHighlight
+    {
+        public string SchematicName { get; set; } = string.Empty;
+        public string BoardLabel { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    private enum LabelEditorDragMode
+    {
+        None,
+        Move,
+        ResizeTopLeft,
+        ResizeTop,
+        ResizeTopRight,
+        ResizeRight,
+        ResizeBottomRight,
+        ResizeBottom,
+        ResizeBottomLeft,
+        ResizeLeft
+    }
+
+    // Label editor
+    private bool thisIsLabelEditorMode;
+    private bool thisHasPendingLabelEditorChanges;
+    private bool thisIsShowingLabelEditorMenu;
+    private Point thisLastLabelEditorMenuPoint;
+    private string thisLabelEditorSchematicName = string.Empty;
+    private readonly List<EditableComponentHighlight> thisLabelEditorWorkingHighlights = new();
+    private EditableComponentHighlight? thisSelectedLabelEditorHighlight;
+    private bool thisIsDrawingLabelEditorRectangle;
+    private Point thisLabelEditorDrawStartPixelPoint;
+    private Rect? thisLabelEditorDraftRectangle;
+    private EditableComponentHighlight? thisPendingNewLabelEditorHighlight;
+    private LabelEditorDragMode thisLabelEditorDragMode;
+    private Point thisLabelEditorDragStartPixelPoint;
+    private Rect thisLabelEditorOriginalDragRectangle;
+
     public TabSchematics()
     {
         InitializeComponent();
+
+        this.EnableLabelEditorButton.Click += (_, _) => this.BeginLabelEditorMode();
+        this.CancelLabelEditorChangesButton.Click += (_, _) => this.CancelLabelEditorChanges();
+        this.ApplyLabelEditorChangesButton.Click += (_, _) => this.ApplyLabelEditorChanges();
+
+        this.ConfirmNewLabelEditorBoardLabelButton.Click += (_, _) => this.ConfirmNewLabelEditorPrompt();
+        this.CancelNewLabelEditorBoardLabelButton.Click += (_, _) => this.CancelNewLabelEditorPrompt();
+
+        this.NewLabelEditorBoardLabelTextBox.KeyDown += this.OnNewLabelEditorPromptKeyDown;
+        this.NewLabelEditorCategoryComboBox.KeyDown += this.OnNewLabelEditorPromptKeyDown;
     }
 
     // ###########################################################################################
@@ -131,6 +186,12 @@ public partial class TabSchematics : UserControl
         this.SchematicsThumbnailList.AddHandler(DragDrop.DragOverEvent, this.OnThumbnailDragOver);
         this.SchematicsThumbnailList.AddHandler(DragDrop.DropEvent, this.OnThumbnailDrop);
         this.SchematicsThumbnailList.AddHandler(DragDrop.DragLeaveEvent, this.OnThumbnailDragLeave);
+
+        this.AddHandler(
+            InputElement.KeyDownEvent,
+            this.OnSchematicsKeyDown,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
 
         bool isLabelsExpanded = UserSettings.SchematicsLabelsPanelExpanded;
         this.LabelsListPanel.IsVisible = isLabelsExpanded;
@@ -482,6 +543,68 @@ public partial class TabSchematics : UserControl
         var point = e.GetPosition(this.SchematicsContainer);
         var pointer = e.GetCurrentPoint(this.SchematicsContainer);
 
+        if (this.IsPointerInsideLabelEditorMenu(point) || this.IsPointerInsideNewLabelPrompt(point))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (this.thisIsLabelEditorMode && this.SchematicsNewLabelPromptBorder.IsVisible)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (pointer.Properties.IsLeftButtonPressed && this.thisIsShowingLabelEditorMenu)
+        {
+            this.HideLabelEditorMenu();
+        }
+
+        if (this.thisIsLabelEditorMode)
+        {
+            if (pointer.Properties.IsRightButtonPressed)
+            {
+                this.isPanning = true;
+                this.panStartPoint = point;
+                this.panStartMatrix = this.schematicsMatrix;
+
+                this.HideSchematicsHoverUi();
+                this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
+
+                e.Pointer.Capture(this.SchematicsContainer);
+                e.Handled = true;
+                return;
+            }
+
+            if (pointer.Properties.IsLeftButtonPressed)
+            {
+                if (this.TryGetLabelEditorPixelPoint(point, out var pixelPoint))
+                {
+                    if (this.TryGetSelectedLabelEditorHandleAtContainerPoint(point, out var resizeMode))
+                    {
+                        int selectedIndex = this.thisLabelEditorWorkingHighlights.IndexOf(this.thisSelectedLabelEditorHighlight!);
+                        this.StartLabelEditorDrag(selectedIndex, pixelPoint, resizeMode);
+                    }
+                    else if (this.TryGetLabelEditorHighlightAtContainerPoint(point, out var workingIndex))
+                    {
+                        this.StartLabelEditorDrag(workingIndex, pixelPoint, LabelEditorDragMode.Move);
+                    }
+                    else
+                    {
+                        this.ClearSelectedLabelEditorHighlight();
+                        this.StartDrawingLabelEditorRectangle(pixelPoint);
+                    }
+                }
+                else
+                {
+                    this.ClearSelectedLabelEditorHighlight();
+                }
+
+                e.Handled = true;
+                return;
+            }
+        }
+
         bool hoveringComponent = this.TryGetHoveredBoardLabel(point, out var boardLabel, out var displayText);
 
         if (TryInvert(this.schematicsMatrix, out var inv))
@@ -503,7 +626,6 @@ public partial class TabSchematics : UserControl
             this.panStartPoint = point;
             this.panStartMatrix = this.schematicsMatrix;
 
-            // Call hide UI first to avoid overwriting the panning cursor 
             this.HideSchematicsHoverUi();
             this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
 
@@ -512,7 +634,7 @@ public partial class TabSchematics : UserControl
             return;
         }
 
-        if (pointer.Properties.IsLeftButtonPressed && hoveringComponent)
+        if (pointer.Properties.IsLeftButtonPressed && hoveringComponent && !this.thisIsLabelEditorMode)
         {
             this.SelectComponentByBoardLabel(boardLabel);
 
@@ -532,7 +654,35 @@ public partial class TabSchematics : UserControl
         var point = e.GetPosition(this.SchematicsContainer);
         bool isShiftDown = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
-        if (TryInvert(this.schematicsMatrix, out var inv))
+        if (this.thisIsLabelEditorMode && this.thisLabelEditorDragMode != LabelEditorDragMode.None)
+        {
+            this.SchematicsLabelEditorOverlay.HoveredIndex = -1;
+            this.UpdateLabelEditorCursor(point);
+
+            if (this.TryGetLabelEditorPixelPoint(point, out var pixelPoint))
+            {
+                this.UpdateLabelEditorDrag(pixelPoint);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (this.thisIsLabelEditorMode && this.thisIsDrawingLabelEditorRectangle)
+        {
+            this.SchematicsLabelEditorOverlay.HoveredIndex = -1;
+            this.UpdateLabelEditorCursor(point);
+
+            if (this.TryGetLabelEditorPixelPoint(point, out var pixelPoint))
+            {
+                this.UpdateDrawingLabelEditorRectangle(pixelPoint);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (!this.thisIsLabelEditorMode && TryInvert(this.schematicsMatrix, out var inv))
         {
             var localPoint = new Point(
                 (point.X * inv.M11) + (point.Y * inv.M21) + inv.M31,
@@ -554,18 +704,83 @@ public partial class TabSchematics : UserControl
             return;
         }
 
+        if (this.thisIsLabelEditorMode)
+        {
+            int selectedIndex = this.thisSelectedLabelEditorHighlight != null
+                ? this.thisLabelEditorWorkingHighlights.IndexOf(this.thisSelectedLabelEditorHighlight)
+                : -1;
+
+            this.SchematicsLabelEditorOverlay.HoveredIndex =
+                selectedIndex >= 0 && this.IsPointerOverSelectedLabelEditorInteraction(point)
+                    ? selectedIndex
+                    : -1;
+        }
+
         this.UpdateSchematicsHoverUi(point);
     }
 
     // ###########################################################################################
+    // Returns true when the pointer is inside the currently selected rectangle's move or resize
+    // interaction area so cursor feedback and marker visibility activate at the same time.
+    // ###########################################################################################
+    private bool IsPointerOverSelectedLabelEditorInteraction(Point pointerInContainer)
+    {
+        if (this.thisSelectedLabelEditorHighlight == null)
+        {
+            return false;
+        }
+
+        if (this.TryGetSelectedLabelEditorHandleAtContainerPoint(pointerInContainer, out _))
+        {
+            return true;
+        }
+
+        if (!this.TryGetLabelEditorHighlightAtContainerPoint(pointerInContainer, out var workingIndex))
+        {
+            return false;
+        }
+
+        return workingIndex >= 0 &&
+               workingIndex < this.thisLabelEditorWorkingHighlights.Count &&
+               ReferenceEquals(this.thisLabelEditorWorkingHighlights[workingIndex], this.thisSelectedLabelEditorHighlight);
+    }
+
+    // ###########################################################################################
     // Exits pan mode when the right mouse button is released, or finalized polyline logic.
-    // Also evaluates if the release qualifies as a stationary right-click to toggle selection.
+    // Also evaluates if the release qualifies as a stationary right-click to toggle selection
+    // or show the label-editor action menu on empty space.
     // ###########################################################################################
     private void OnSchematicsPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         var point = e.GetPosition(this.SchematicsContainer);
 
-        if (TryInvert(this.schematicsMatrix, out var inv))
+        if (this.thisIsLabelEditorMode && this.thisLabelEditorDragMode != LabelEditorDragMode.None)
+        {
+            this.CompleteLabelEditorDrag();
+            this.UpdateLabelEditorCursor(point);
+            e.Handled = true;
+            return;
+        }
+
+        if (this.thisIsLabelEditorMode && this.thisIsDrawingLabelEditorRectangle)
+        {
+            if (this.TryGetLabelEditorPixelPoint(point, out var pixelPoint))
+            {
+                this.CompleteDrawingLabelEditorRectangle(point, pixelPoint);
+            }
+            else
+            {
+                this.thisIsDrawingLabelEditorRectangle = false;
+                this.thisLabelEditorDraftRectangle = null;
+                this.RefreshLabelEditorOverlay();
+            }
+
+            this.UpdateLabelEditorCursor(point);
+            e.Handled = true;
+            return;
+        }
+
+        if (!this.thisIsLabelEditorMode && TryInvert(this.schematicsMatrix, out var inv))
         {
             var localPoint = new Point(
                 (point.X * inv.M11) + (point.Y * inv.M21) + inv.M31,
@@ -584,13 +799,33 @@ public partial class TabSchematics : UserControl
         this.isPanning = false;
         e.Pointer.Capture(null);
 
-        // Determine if movement was small enough to be interpreted as a right-click rather than a pan
         var delta = point - this.panStartPoint;
-        if (Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4)
+        bool isStationaryRightClick = Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4;
+
+        if (isStationaryRightClick)
         {
-            if (this.TryGetHoveredBoardLabel(point, out var boardLabel, out var displayText))
+            if (this.thisIsLabelEditorMode)
             {
-                this.ToggleComponentSelectionByBoardLabel(boardLabel);
+                if (this.TryGetLabelEditorHighlightAtContainerPoint(point, out var workingIndex))
+                {
+                    this.DeleteLabelEditorHighlight(workingIndex);
+                    this.HideLabelEditorMenu();
+                }
+                else
+                {
+                    this.ShowLabelEditorMenu(point);
+                }
+            }
+            else
+            {
+                if (this.TryGetHoveredBoardLabel(point, out var boardLabel, out _))
+                {
+                    this.ToggleComponentSelectionByBoardLabel(boardLabel);
+                }
+                else
+                {
+                    this.ShowLabelEditorMenu(point);
+                }
             }
         }
 
@@ -770,10 +1005,9 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     public void ResetSchematicsViewer()
     {
-        this.polylineManager?.Reset(); // Enforce state wipe on board reload
+        this.polylineManager?.Reset();
         this.SchematicsLabelsCanvas.Children.Clear();
 
-        // Reset color indicator fallback
         this.SetTraceColorPickerColor(Colors.White);
         this.CustomColorButton.Background = Brushes.White;
 
@@ -792,10 +1026,29 @@ public partial class TabSchematics : UserControl
         this.schematicsMatrix = Matrix.Identity;
         ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
+        ((MatrixTransform)this.SchematicsLabelEditorOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
 
         this.SchematicsHighlightsOverlay.HighlightIndex = null;
         this.SchematicsHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
         this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
+
+        this.thisIsLabelEditorMode = false;
+        this.thisHasPendingLabelEditorChanges = false;
+        this.thisLabelEditorSchematicName = string.Empty;
+        this.thisSelectedLabelEditorHighlight = null;
+        this.thisPendingNewLabelEditorHighlight = null;
+        this.thisIsDrawingLabelEditorRectangle = false;
+        this.thisLabelEditorDraftRectangle = null;
+        this.thisLabelEditorWorkingHighlights.Clear();
+        this.HideLabelEditorMenu();
+        this.HideNewLabelEditorPrompt();
+
+        this.SchematicsLabelEditorOverlay.Rectangles = Array.Empty<Rect>();
+        this.SchematicsLabelEditorOverlay.SelectedIndex = -1;
+        this.SchematicsLabelEditorOverlay.DraftRectangle = null;
+        this.SchematicsLabelEditorOverlay.BitmapPixelSize = new PixelSize(0, 0);
+        this.SchematicsLabelEditorOverlay.ViewMatrix = this.schematicsMatrix;
+        this.SchematicsLabelEditorOverlay.IsVisible = false;
 
         this.isPanning = false;
         this.HideSchematicsHoverUi();
@@ -882,14 +1135,19 @@ public partial class TabSchematics : UserControl
         this.schematicsMatrix = new Matrix(scale, 0, 0, scale, tx, ty);
         ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
-        ((MatrixTransform)this.SchematicsPolylineCanvas.RenderTransform!).Matrix = this.schematicsMatrix; // Apply to Polyline layer
-        ((MatrixTransform)this.SchematicsLabelsCanvas.RenderTransform!).Matrix = this.schematicsMatrix; // Apply to Labels layer
+        ((MatrixTransform)this.SchematicsLabelEditorOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
+        ((MatrixTransform)this.SchematicsPolylineCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
+        ((MatrixTransform)this.SchematicsLabelsCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
 
         this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
         this.SchematicsHighlightsOverlay.InvalidateVisual();
 
-        this.polylineManager?.UpdateScaleFactor(scale); // Ensure line visuals behave consistently
+        this.SchematicsLabelEditorOverlay.ViewMatrix = this.schematicsMatrix;
+        this.SchematicsLabelEditorOverlay.InvalidateVisual();
+
+        this.polylineManager?.UpdateScaleFactor(scale);
         this.UpdateComponentLabelsScale(scale);
+        this.RefreshLabelEditorOverlay();
     }
 
     // ###########################################################################################
@@ -914,19 +1172,14 @@ public partial class TabSchematics : UserControl
 
     // ###########################################################################################
     // Generates floating labels exactly above relevant components based on checkbox matrix.
+    // While label-editor mode is active, board labels from the working copy are shown immediately
+    // so newly confirmed labels appear without waiting for Apply.
     // ###########################################################################################
     public void UpdateComponentLabels()
     {
         this.SchematicsLabelsCanvas.Children.Clear();
 
-        if (this.CheckLabelBoard.IsChecked != true &&
-            this.CheckLabelTechnical.IsChecked != true &&
-            this.CheckLabelFriendly.IsChecked != true)
-        {
-            return;
-        }
-
-        if (this.MainWindow == null || this.currentFullResBitmap == null)
+        if (this.currentFullResBitmap == null)
             return;
 
         double imgWidth = this.currentFullResBitmap.PixelSize.Width;
@@ -938,6 +1191,78 @@ public partial class TabSchematics : UserControl
         if (selectedThumb == null)
             return;
 
+        var contentRect = this.GetImageContentRect();
+
+        double currentScale = this.schematicsMatrix.M11;
+        double inverseScale = currentScale > 0 ? 1.0 / currentScale : 1.0;
+
+        if (this.thisIsLabelEditorMode)
+        {
+            foreach (var row in this.thisLabelEditorWorkingHighlights.Where(row =>
+                         string.Equals(row.SchematicName, selectedThumb.Name, StringComparison.OrdinalIgnoreCase) &&
+                         !string.IsNullOrWhiteSpace(row.BoardLabel)))
+            {
+                double centerX = row.X + (row.Width / 2.0);
+                double centerY = row.Y + (row.Height / 2.0);
+
+                double localX = contentRect.X + (centerX / imgWidth) * contentRect.Width;
+                double localY = contentRect.Y + (centerY / imgHeight) * contentRect.Height;
+
+                var tb = new TextBlock
+                {
+                    Text = row.BoardLabel,
+                    FontSize = 11,
+                    FontWeight = FontWeight.Bold,
+                    TextAlignment = TextAlignment.Center
+                };
+                tb.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("Schematics_ComponentLabel_Fg"));
+
+                var innerBorder = new Border
+                {
+                    BorderThickness = new Avalonia.Thickness(1),
+                    CornerRadius = new Avalonia.CornerRadius(4),
+                    Padding = new Avalonia.Thickness(6, 4),
+                    Child = tb
+                };
+                innerBorder.Bind(Border.BackgroundProperty, this.GetResourceObservable("Schematics_ComponentLabel_Bg"));
+                innerBorder.Bind(Border.BorderBrushProperty, this.GetResourceObservable("Schematics_ComponentLabel_Border"));
+
+                var transformGroup = new TransformGroup();
+                transformGroup.Children.Add(new ScaleTransform(inverseScale, inverseScale));
+
+                var container = new Border
+                {
+                    IsHitTestVisible = false,
+                    Child = innerBorder,
+                    RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                    RenderTransform = transformGroup
+                };
+
+                container.SizeChanged += (s, ev) =>
+                {
+                    Canvas.SetLeft(container, localX - (ev.NewSize.Width / 2.0));
+                    Canvas.SetTop(container, localY - (ev.NewSize.Height / 2.0));
+                };
+
+                Canvas.SetLeft(container, localX);
+                Canvas.SetTop(container, localY);
+
+                this.SchematicsLabelsCanvas.Children.Add(container);
+            }
+
+            return;
+        }
+
+        if (this.CheckLabelBoard.IsChecked != true &&
+            this.CheckLabelTechnical.IsChecked != true &&
+            this.CheckLabelFriendly.IsChecked != true)
+        {
+            return;
+        }
+
+        if (this.MainWindow == null)
+            return;
+
         if (!this.highlightRectsBySchematicAndLabel.TryGetValue(selectedThumb.Name, out var byLabel))
             return;
 
@@ -947,11 +1272,6 @@ public partial class TabSchematics : UserControl
         bool selectedOnly = this.CheckLabelSelectedOnly.IsChecked == true;
         var itemsToLoop = selectedOnly ? selectedItems : visibleItems;
         var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var contentRect = this.GetImageContentRect();
-
-        double currentScale = this.schematicsMatrix.M11;
-        double inverseScale = currentScale > 0 ? 1.0 / currentScale : 1.0;
 
         foreach (var item in itemsToLoop)
         {
@@ -1203,6 +1523,11 @@ public partial class TabSchematics : UserControl
         if (this.isPanning)
             return;
 
+        if (this.thisIsLabelEditorMode)
+        {
+            this.SchematicsLabelEditorOverlay.HoveredIndex = -1;
+        }
+
         this.HideSchematicsHoverUi();
     }
 
@@ -1211,6 +1536,19 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     private void UpdateSchematicsHoverUi(Point pointerInContainer)
     {
+        if (this.thisIsLabelEditorMode)
+        {
+            if (this.MainWindow != null)
+            {
+                this.MainWindow.isHoveringComponent = false;
+            }
+
+            this.SchematicsHoverLabelBorder.IsVisible = false;
+            this.SchematicsHoverLabelText.Text = string.Empty;
+            this.UpdateLabelEditorCursor(pointerInContainer);
+            return;
+        }
+
         if (this.TryGetHoveredBoardLabel(pointerInContainer, out _, out var displayText))
         {
             this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.Hand);
@@ -1959,5 +2297,1527 @@ public partial class TabSchematics : UserControl
             this.ClampSchematicsMatrix();
         }, DispatcherPriority.Background);
     }
+
+    // ###########################################################################################
+    // Returns true when the pointer is currently inside the floating label-editor menu bounds.
+    // ###########################################################################################
+    private bool IsPointerInsideLabelEditorMenu(Point containerPoint)
+    {
+        if (!this.SchematicsLabelEditorMenuBorder.IsVisible)
+        {
+            return false;
+        }
+
+        Point? translatedTopLeft = this.SchematicsLabelEditorMenuBorder.TranslatePoint(new Point(0, 0), this.SchematicsContainer);
+        if (!translatedTopLeft.HasValue)
+        {
+            return false;
+        }
+
+        var menuRect = new Rect(translatedTopLeft.Value, this.SchematicsLabelEditorMenuBorder.Bounds.Size);
+        return menuRect.Contains(containerPoint);
+    }
+
+    // ###########################################################################################
+    // Shows the floating label-editor action menu at the requested schematic container location.
+    // ###########################################################################################
+    private void ShowLabelEditorMenu(Point containerPoint)
+    {
+        this.thisLastLabelEditorMenuPoint = containerPoint;
+        this.UpdateLabelEditorMenuButtons();
+
+        double estimatedWidth = 240.0;
+        double estimatedHeight = this.thisIsLabelEditorMode ? 110.0 : 70.0;
+
+        double x = Math.Clamp(containerPoint.X, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Width - estimatedWidth));
+        double y = Math.Clamp(containerPoint.Y, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Height - estimatedHeight));
+
+        this.SchematicsLabelEditorMenuBorder.Margin = new Thickness(x, y, 0, 0);
+        this.SchematicsLabelEditorMenuBorder.IsVisible = true;
+        this.thisIsShowingLabelEditorMenu = true;
+    }
+
+    // ###########################################################################################
+    // Hides the floating label-editor action menu.
+    // ###########################################################################################
+    private void HideLabelEditorMenu()
+    {
+        this.SchematicsLabelEditorMenuBorder.IsVisible = false;
+        this.thisIsShowingLabelEditorMenu = false;
+    }
+
+    // ###########################################################################################
+    // Updates the menu text and button visibility according to the current editor-mode state.
+    // ###########################################################################################
+    private void UpdateLabelEditorMenuButtons()
+    {
+        this.SchematicsLabelEditorMenuStateTextBlock.Text = this.thisIsLabelEditorMode
+            ? "Component label editor mode"
+            : "Schematic actions";
+
+        this.EnableLabelEditorButton.IsVisible = !this.thisIsLabelEditorMode;
+        this.CancelLabelEditorChangesButton.IsVisible = this.thisIsLabelEditorMode;
+        this.ApplyLabelEditorChangesButton.IsVisible = this.thisIsLabelEditorMode;
+    }
+
+    // ###########################################################################################
+    // Returns the currently selected schematic name, or an empty string if none is selected.
+    // ###########################################################################################
+    private string GetCurrentSchematicName()
+    {
+        return (this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name?.Trim() ?? string.Empty;
+    }
+
+    // ###########################################################################################
+    // Loads a fresh working-copy snapshot of highlight rectangles for the current schematic.
+    // ###########################################################################################
+    private void LoadLabelEditorWorkingCopyForCurrentSchematic()
+    {
+        this.thisLabelEditorWorkingHighlights.Clear();
+        this.thisSelectedLabelEditorHighlight = null;
+        this.thisLabelEditorSchematicName = this.GetCurrentSchematicName();
+
+        var boardData = this.MainWindow?.CurrentBoardData;
+        if (boardData == null || string.IsNullOrWhiteSpace(this.thisLabelEditorSchematicName))
+        {
+            return;
+        }
+
+        foreach (var row in boardData.ComponentHighlights.Where(h =>
+                     string.Equals(h.SchematicName, this.thisLabelEditorSchematicName, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (!TryParseDouble(row.X, out var x) ||
+                !TryParseDouble(row.Y, out var y) ||
+                !TryParseDouble(row.Width, out var width) ||
+                !TryParseDouble(row.Height, out var height))
+            {
+                continue;
+            }
+
+            if (width <= 0 || height <= 0)
+            {
+                continue;
+            }
+
+            string boardLabel = row.BoardLabel?.Trim() ?? string.Empty;
+            string category = boardData.Components
+                .FirstOrDefault(component => string.Equals(component.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
+                ?.Category?.Trim() ?? string.Empty;
+
+            this.thisLabelEditorWorkingHighlights.Add(new EditableComponentHighlight
+            {
+                SchematicName = row.SchematicName?.Trim() ?? string.Empty,
+                BoardLabel = boardLabel,
+                Category = category,
+                X = x,
+                Y = y,
+                Width = width,
+                Height = height
+            });
+        }
+    }
+
+    // ###########################################################################################
+    // Enters label-editor mode and captures the current schematic highlights into a working copy.
+    // Closes the action menu immediately after enabling the editor.
+    // ###########################################################################################
+    private void BeginLabelEditorMode()
+    {
+        this.thisIsLabelEditorMode = true;
+        this.thisHasPendingLabelEditorChanges = false;
+
+        this.LoadLabelEditorWorkingCopyForCurrentSchematic();
+        this.RefreshLabelEditorOverlay();
+        this.HideLabelEditorMenu();
+        this.SchematicsContainer.Focus();
+
+        Logger.Info($"Label editor enabled for schematic [{this.thisLabelEditorSchematicName}] with [{this.thisLabelEditorWorkingHighlights.Count}] rectangles loaded");
+    }
+
+    // ###########################################################################################
+    // Cancels the current label-editor session and discards all in-memory editor changes.
+    // ###########################################################################################
+    private void CancelLabelEditorChanges()
+    {
+        this.thisIsLabelEditorMode = false;
+        this.thisHasPendingLabelEditorChanges = false;
+        this.thisLabelEditorSchematicName = string.Empty;
+        this.thisSelectedLabelEditorHighlight = null;
+        this.thisPendingNewLabelEditorHighlight = null;
+        this.thisIsDrawingLabelEditorRectangle = false;
+        this.thisLabelEditorDraftRectangle = null;
+        this.thisLabelEditorDragMode = LabelEditorDragMode.None;
+        this.thisLabelEditorWorkingHighlights.Clear();
+
+        this.HideLabelEditorMenu();
+        this.HideNewLabelEditorPrompt();
+        this.RefreshLabelEditorOverlay();
+        this.SchematicsContainer.Focus();
+
+        Logger.Info("Label editor changes canceled");
+    }
+
+    // ###########################################################################################
+    // Validates and saves the current editor session to the board Excel file, then reloads the
+    // board from disk so the runtime state reflects the persisted workbook content.
+    // ###########################################################################################
+    private async void ApplyLabelEditorChanges()
+    {
+        if (this.SchematicsNewLabelPromptBorder.IsVisible)
+        {
+            this.ConfirmNewLabelEditorPrompt();
+
+            if (this.SchematicsNewLabelPromptBorder.IsVisible)
+            {
+                Logger.Info("Label editor save aborted because the new-label prompt is still visible after confirmation attempt");
+                return;
+            }
+        }
+
+        if (!this.TryValidateLabelEditorSave(out var validationError))
+        {
+            Logger.Warning($"Label editor validation failed - [{validationError}]");
+            await this.ShowLabelEditorValidationFailedDialogAsync(validationError);
+            return;
+        }
+
+        string schematicName = this.GetCurrentSchematicName();
+        string excelPath = this.MainWindow?.GetCurrentBoardExcelPath() ?? string.Empty;
+        string cacheKey = this.MainWindow?.GetCurrentBoardEntry()?.ExcelDataFile?.Trim() ?? string.Empty;
+        string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+
+        Logger.Debug($"Label editor resolved Excel save path: [{excelPath}]");
+        Logger.Debug($"Label editor resolved cache key: [{cacheKey}]");
+        Logger.Debug($"Label editor resolved schematic name: [{schematicName}]");
+        Logger.Debug($"Label editor resolved region: [{region}]");
+
+        if (string.IsNullOrWhiteSpace(excelPath))
+        {
+            Logger.Warning("Label editor save failed - could not resolve current board Excel path");
+            return;
+        }
+
+        var saveRows = this.BuildLabelEditorSaveRowsForCurrentSchematic();
+
+        Logger.Debug($"Label editor built save rows count: [{saveRows.Count}]");
+
+/*
+        foreach (var row in saveRows)
+        {
+            Logger.Debug(
+                $"Label editor save row -> Schematic=[{row.SchematicName}] Label=[{row.BoardLabel}] Category=[{row.Category}] Region=[{row.Region}] X=[{row.X}] Y=[{row.Y}] Width=[{row.Width}] Height=[{row.Height}]");
+        }
+*/
+
+        var saveResult = await BoardDataWriter.SaveLabelEditorChangesAsync(
+            excelPath,
+            schematicName,
+            saveRows,
+            region);
+
+        if (!saveResult.Success)
+        {
+            Logger.Warning($"Label editor save failed - [{saveResult.ErrorMessage}]");
+            await this.ShowLabelEditorSaveFailedDialogAsync(saveResult.ErrorMessage);
+            return;
+        }
+
+        Logger.Info($"Label editor save succeeded for Excel path: [{excelPath}]");
+
+        BoardDataReader.ClearCache(cacheKey);
+
+        this.thisIsLabelEditorMode = false;
+        this.thisHasPendingLabelEditorChanges = false;
+        this.thisSelectedLabelEditorHighlight = null;
+        this.thisPendingNewLabelEditorHighlight = null;
+        this.thisIsDrawingLabelEditorRectangle = false;
+        this.thisLabelEditorDraftRectangle = null;
+        this.thisLabelEditorDragMode = LabelEditorDragMode.None;
+        this.thisLabelEditorWorkingHighlights.Clear();
+
+        this.HideLabelEditorMenu();
+        this.HideNewLabelEditorPrompt();
+        this.RefreshLabelEditorOverlay();
+        this.SchematicsContainer.Focus();
+
+//        Logger.Info($"Label editor requesting board reload for schematic [{schematicName}]");
+        this.MainWindow?.ReloadCurrentBoardFromDisk(schematicName);
+
+        Logger.Info($"Label editor changes saved and reload requested for schematic [{schematicName}]");
+    }
+
+    // ###########################################################################################
+    // Refreshes the label-editor overlay from the current working-copy rectangles and selected item.
+    // Uses the same main highlight color and opacity as the normal schematic highlight.
+    // ###########################################################################################
+    private void RefreshLabelEditorOverlay()
+    {
+        if (!this.thisIsLabelEditorMode || this.currentFullResBitmap == null)
+        {
+            this.SchematicsLabelEditorOverlay.IsVisible = false;
+            this.SchematicsLabelEditorOverlay.Rectangles = Array.Empty<Rect>();
+            this.SchematicsLabelEditorOverlay.SelectedIndex = -1;
+            this.SchematicsLabelEditorOverlay.HoveredIndex = -1;
+            this.SchematicsLabelEditorOverlay.DraftRectangle = null;
+            this.SchematicsLabelEditorOverlay.BitmapPixelSize = this.currentFullResBitmap?.PixelSize ?? new PixelSize(0, 0);
+            this.SchematicsLabelEditorOverlay.ViewMatrix = this.schematicsMatrix;
+            this.UpdateComponentLabels();
+            return;
+        }
+
+        string schematicName = this.GetCurrentSchematicName();
+
+        var itemsForCurrentSchematic = this.thisLabelEditorWorkingHighlights
+            .Where(row => string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var rects = itemsForCurrentSchematic
+            .Select(row => new Rect(row.X, row.Y, row.Width, row.Height))
+            .ToList();
+
+        int selectedIndex = -1;
+        if (this.thisSelectedLabelEditorHighlight != null)
+        {
+            selectedIndex = itemsForCurrentSchematic.IndexOf(this.thisSelectedLabelEditorHighlight);
+        }
+
+        Color highlightColor = Colors.IndianRed;
+        double highlightOpacity = 0.20;
+
+        if (!string.IsNullOrWhiteSpace(schematicName) &&
+            this.schematicByName.TryGetValue(schematicName, out var schematic))
+        {
+            highlightColor = ParseColorOrDefault(schematic.MainImageHighlightColor, Colors.IndianRed);
+            highlightOpacity = ParseOpacityOrDefault(schematic.MainHighlightOpacity, 0.20);
+        }
+
+        this.SchematicsLabelEditorOverlay.Rectangles = rects;
+        this.SchematicsLabelEditorOverlay.SelectedIndex = selectedIndex;
+        this.SchematicsLabelEditorOverlay.HoveredIndex = -1;
+        this.SchematicsLabelEditorOverlay.DraftRectangle = this.thisLabelEditorDraftRectangle;
+        this.SchematicsLabelEditorOverlay.BitmapPixelSize = this.currentFullResBitmap.PixelSize;
+        this.SchematicsLabelEditorOverlay.ViewMatrix = this.schematicsMatrix;
+        this.SchematicsLabelEditorOverlay.HighlightColor = highlightColor;
+        this.SchematicsLabelEditorOverlay.HighlightOpacity = highlightOpacity;
+        this.SchematicsLabelEditorOverlay.IsVisible = true;
+
+        this.UpdateComponentLabels();
+    }
+
+    // ###########################################################################################
+    // Computes the editor overlay image content rect using the exact same top-left anchoring
+    // logic as the editor overlay renderer so pointer hit testing matches drawn rectangles.
+    // ###########################################################################################
+    private Rect GetLabelEditorImageContentRect()
+    {
+        var bitmap = this.currentFullResBitmap;
+
+        Size controlSize = this.SchematicsLabelEditorOverlay.Bounds.Size;
+        if (controlSize.Width <= 0 || controlSize.Height <= 0)
+        {
+            controlSize = this.SchematicsContainer.Bounds.Size;
+        }
+
+        if (bitmap == null || controlSize.Width <= 0 || controlSize.Height <= 0)
+        {
+            return new Rect(controlSize);
+        }
+
+        double containerAspect = controlSize.Width / controlSize.Height;
+        double bitmapAspect = (double)bitmap.PixelSize.Width / bitmap.PixelSize.Height;
+
+        if (bitmapAspect > containerAspect)
+        {
+            return new Rect(0, 0, controlSize.Width, controlSize.Width / bitmapAspect);
+        }
+        else
+        {
+            return new Rect(0, 0, controlSize.Height * bitmapAspect, controlSize.Height);
+        }
+    }
+
+    // ###########################################################################################
+    // Converts a schematic container pointer position into bitmap pixel coordinates used by the
+    // label editor, returning false if the pointer is outside the visible image content area.
+    // ###########################################################################################
+    private bool TryGetLabelEditorPixelPoint(Point pointerInContainer, out Point pixelPoint)
+    {
+        pixelPoint = default;
+
+        if (!this.thisIsLabelEditorMode || this.currentFullResBitmap == null)
+        {
+            return false;
+        }
+
+        if (!TryInvert(this.schematicsMatrix, out var inv))
+        {
+            return false;
+        }
+
+        var localPoint = new Point(
+            (pointerInContainer.X * inv.M11) + (pointerInContainer.Y * inv.M21) + inv.M31,
+            (pointerInContainer.X * inv.M12) + (pointerInContainer.Y * inv.M22) + inv.M32);
+
+        var contentRect = this.GetLabelEditorImageContentRect();
+        if (contentRect.Width <= 0 || contentRect.Height <= 0 || !contentRect.Contains(localPoint))
+        {
+            return false;
+        }
+
+        double px = ((localPoint.X - contentRect.X) / contentRect.Width) * this.currentFullResBitmap.PixelSize.Width;
+        double py = ((localPoint.Y - contentRect.Y) / contentRect.Height) * this.currentFullResBitmap.PixelSize.Height;
+
+        pixelPoint = new Point(px, py);
+        return true;
+    }
+
+    // ###########################################################################################
+    // Tries to find the topmost editable highlight rectangle under the current pointer position.
+    // Returns the working-list index for direct select/delete operations.
+    // ###########################################################################################
+    private bool TryGetLabelEditorHighlightAtContainerPoint(Point pointerInContainer, out int workingIndex)
+    {
+        workingIndex = -1;
+
+        if (!this.TryGetLabelEditorPixelPoint(pointerInContainer, out var pixelPoint))
+        {
+            return false;
+        }
+
+        string schematicName = this.GetCurrentSchematicName();
+        if (string.IsNullOrWhiteSpace(schematicName))
+        {
+            return false;
+        }
+
+        for (int i = this.thisLabelEditorWorkingHighlights.Count - 1; i >= 0; i--)
+        {
+            var row = this.thisLabelEditorWorkingHighlights[i];
+            if (!string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var rect = new Rect(row.X, row.Y, row.Width, row.Height);
+            if (!rect.Contains(pixelPoint))
+            {
+                continue;
+            }
+
+            workingIndex = i;
+            return true;
+        }
+
+        return false;
+    }
+
+    // ###########################################################################################
+    // Selects a working-copy editor highlight and refreshes the visual selection markers.
+    // ###########################################################################################
+    private void SelectLabelEditorHighlight(int workingIndex)
+    {
+        if (workingIndex < 0 || workingIndex >= this.thisLabelEditorWorkingHighlights.Count)
+        {
+            this.ClearSelectedLabelEditorHighlight();
+            return;
+        }
+
+        this.thisSelectedLabelEditorHighlight = this.thisLabelEditorWorkingHighlights[workingIndex];
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Clears the current label-editor selection and removes visible selection markers.
+    // ###########################################################################################
+    private void ClearSelectedLabelEditorHighlight()
+    {
+        this.thisSelectedLabelEditorHighlight = null;
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Deletes the requested working-copy editor highlight and refreshes the overlay immediately.
+    // ###########################################################################################
+    private void DeleteLabelEditorHighlight(int workingIndex)
+    {
+        if (workingIndex < 0 || workingIndex >= this.thisLabelEditorWorkingHighlights.Count)
+        {
+            return;
+        }
+
+        var deleted = this.thisLabelEditorWorkingHighlights[workingIndex];
+        this.thisLabelEditorWorkingHighlights.RemoveAt(workingIndex);
+
+        if (ReferenceEquals(this.thisSelectedLabelEditorHighlight, deleted))
+        {
+            this.thisSelectedLabelEditorHighlight = null;
+        }
+
+        this.thisHasPendingLabelEditorChanges = true;
+        this.RefreshLabelEditorOverlay();
+
+        Logger.Debug($"Label editor rectangle deleted for board label [{deleted.BoardLabel}] on schematic [{deleted.SchematicName}]");
+    }
+
+    // ###########################################################################################
+    // Normalizes a rectangle so width and height are always positive regardless of drag direction.
+    // ###########################################################################################
+    private static Rect CreateNormalizedRect(Point start, Point end)
+    {
+        double x = Math.Min(start.X, end.X);
+        double y = Math.Min(start.Y, end.Y);
+        double width = Math.Abs(end.X - start.X);
+        double height = Math.Abs(end.Y - start.Y);
+
+        return new Rect(x, y, width, height);
+    }
+
+    // ###########################################################################################
+    // Returns true when the pointer is currently inside the new-label prompt bounds.
+    // ###########################################################################################
+    private bool IsPointerInsideNewLabelPrompt(Point containerPoint)
+    {
+        if (!this.SchematicsNewLabelPromptBorder.IsVisible)
+        {
+            return false;
+        }
+
+        Point? translatedTopLeft = this.SchematicsNewLabelPromptBorder.TranslatePoint(new Point(0, 0), this.SchematicsContainer);
+        if (!translatedTopLeft.HasValue)
+        {
+            return false;
+        }
+
+        var promptRect = new Rect(translatedTopLeft.Value, this.SchematicsNewLabelPromptBorder.Bounds.Size);
+        return promptRect.Contains(containerPoint);
+    }
+
+    // ###########################################################################################
+    // Starts drawing a new editor rectangle from the current bitmap pixel position.
+    // ###########################################################################################
+    private void StartDrawingLabelEditorRectangle(Point startPixelPoint)
+    {
+        this.thisIsDrawingLabelEditorRectangle = true;
+        this.thisLabelEditorDrawStartPixelPoint = startPixelPoint;
+        this.thisLabelEditorDraftRectangle = new Rect(startPixelPoint.X, startPixelPoint.Y, 0, 0);
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Updates the current draft editor rectangle while the mouse is being dragged.
+    // ###########################################################################################
+    private void UpdateDrawingLabelEditorRectangle(Point currentPixelPoint)
+    {
+        if (!this.thisIsDrawingLabelEditorRectangle)
+        {
+            return;
+        }
+
+        this.thisLabelEditorDraftRectangle = CreateNormalizedRect(this.thisLabelEditorDrawStartPixelPoint, currentPixelPoint);
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Returns true when a newly drawn editor rectangle is too small to be considered intentional.
+    // This prevents accidental tiny drags from opening the new-label prompt.
+    // ###########################################################################################
+    private static bool IsLabelEditorRectangleTooSmall(Rect rect)
+    {
+        const double minimumWidth = 15.0;
+        const double minimumHeight = 15.0;
+        const double minimumArea = minimumWidth * minimumHeight;
+
+        return rect.Width < minimumWidth ||
+               rect.Height < minimumHeight ||
+               (rect.Width * rect.Height) < minimumArea;
+    }
+
+    // ###########################################################################################
+    // Completes the current rectangle drawing operation and opens the board-label prompt.
+    // ###########################################################################################
+    private void CompleteDrawingLabelEditorRectangle(Point releaseContainerPoint, Point releasePixelPoint)
+    {
+        if (!this.thisIsDrawingLabelEditorRectangle)
+        {
+            return;
+        }
+
+        var finalRect = CreateNormalizedRect(this.thisLabelEditorDrawStartPixelPoint, releasePixelPoint);
+
+        this.thisIsDrawingLabelEditorRectangle = false;
+        this.thisLabelEditorDraftRectangle = null;
+
+        if (IsLabelEditorRectangleTooSmall(finalRect))
+        {
+            this.RefreshLabelEditorOverlay();
+            return;
+        }
+
+        var newRow = new EditableComponentHighlight
+        {
+            SchematicName = this.GetCurrentSchematicName(),
+            BoardLabel = string.Empty,
+            Category = string.Empty,
+            X = finalRect.X,
+            Y = finalRect.Y,
+            Width = finalRect.Width,
+            Height = finalRect.Height
+        };
+
+        this.thisLabelEditorWorkingHighlights.Add(newRow);
+        this.thisSelectedLabelEditorHighlight = newRow;
+        this.thisPendingNewLabelEditorHighlight = newRow;
+        this.thisHasPendingLabelEditorChanges = true;
+
+        this.RefreshLabelEditorOverlay();
+        this.ShowNewLabelEditorPrompt(releaseContainerPoint);
+    }
+
+    // ###########################################################################################
+    // Shows the prompt used for entering the board label and category of a newly drawn rectangle.
+    // ###########################################################################################
+    private void ShowNewLabelEditorPrompt(Point containerPoint)
+    {
+        double estimatedWidth = 280.0;
+        double estimatedHeight = 170.0;
+
+        double x = Math.Clamp(containerPoint.X, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Width - estimatedWidth));
+        double y = Math.Clamp(containerPoint.Y, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Height - estimatedHeight));
+
+        var categories = this.GetAvailableLabelEditorCategories();
+        string preferredCategory =
+            this.MainWindow?.CategoryFilterListBox.SelectedItems?
+                .Cast<string>()
+                .FirstOrDefault(category => !string.IsNullOrWhiteSpace(category))
+            ?? categories.FirstOrDefault() ?? "General";
+
+        this.NewLabelEditorBoardLabelTextBox.Text = string.Empty;
+        this.NewLabelEditorCategoryComboBox.ItemsSource = categories;
+        this.NewLabelEditorCategoryComboBox.SelectedItem = preferredCategory;
+
+        this.SchematicsNewLabelPromptBorder.Margin = new Thickness(x, y, 0, 0);
+        this.SchematicsNewLabelPromptBorder.IsVisible = true;
+
+        Dispatcher.UIThread.Post(() => this.NewLabelEditorBoardLabelTextBox.Focus(), DispatcherPriority.Background);
+    }
+
+    // ###########################################################################################
+    // Hides the prompt used for entering the board label of a newly drawn rectangle.
+    // ###########################################################################################
+    private void HideNewLabelEditorPrompt()
+    {
+        this.SchematicsNewLabelPromptBorder.IsVisible = false;
+        this.NewLabelEditorBoardLabelTextBox.Text = string.Empty;
+        this.NewLabelEditorCategoryComboBox.ItemsSource = null;
+        this.NewLabelEditorCategoryComboBox.SelectedItem = null;
+    }
+
+    // ###########################################################################################
+    // Commits the entered board label and category onto the newly created rectangle and keeps it selected.
+    // ###########################################################################################
+    private void ConfirmNewLabelEditorPrompt()
+    {
+        if (this.thisPendingNewLabelEditorHighlight == null)
+        {
+            this.HideNewLabelEditorPrompt();
+            this.SchematicsContainer.Focus();
+            return;
+        }
+
+        string boardLabel = this.NewLabelEditorBoardLabelTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(boardLabel))
+        {
+            this.NewLabelEditorBoardLabelTextBox.Focus();
+            return;
+        }
+
+        string category = this.NewLabelEditorCategoryComboBox.SelectedItem as string ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            this.NewLabelEditorCategoryComboBox.Focus();
+            return;
+        }
+
+        this.thisPendingNewLabelEditorHighlight.BoardLabel = boardLabel;
+        this.thisPendingNewLabelEditorHighlight.Category = category;
+        this.thisPendingNewLabelEditorHighlight = null;
+
+        this.HideNewLabelEditorPrompt();
+        this.RefreshLabelEditorOverlay();
+        this.SchematicsContainer.Focus();
+    }
+
+    // ###########################################################################################
+    // Cancels the newly created rectangle naming prompt and removes the pending rectangle.
+    // ###########################################################################################
+    private void CancelNewLabelEditorPrompt()
+    {
+        if (this.thisPendingNewLabelEditorHighlight != null)
+        {
+            this.thisLabelEditorWorkingHighlights.Remove(this.thisPendingNewLabelEditorHighlight);
+            this.thisPendingNewLabelEditorHighlight = null;
+            this.thisSelectedLabelEditorHighlight = null;
+        }
+
+        this.thisLabelEditorDraftRectangle = null;
+        this.thisIsDrawingLabelEditorRectangle = false;
+
+        this.HideNewLabelEditorPrompt();
+        this.RefreshLabelEditorOverlay();
+        this.SchematicsContainer.Focus();
+    }
+
+    // ###########################################################################################
+    // Converts a schematic container pointer position into overlay-local coordinates used for
+    // editor-handle hit testing, returning false if the pointer is outside the image content area.
+    // ###########################################################################################
+    private bool TryGetLabelEditorLocalPoint(Point pointerInContainer, out Point localPoint)
+    {
+        localPoint = default;
+
+        if (!this.thisIsLabelEditorMode || this.currentFullResBitmap == null)
+        {
+            return false;
+        }
+
+        if (!TryInvert(this.schematicsMatrix, out var inv))
+        {
+            return false;
+        }
+
+        localPoint = new Point(
+            (pointerInContainer.X * inv.M11) + (pointerInContainer.Y * inv.M21) + inv.M31,
+            (pointerInContainer.X * inv.M12) + (pointerInContainer.Y * inv.M22) + inv.M32);
+
+        var contentRect = this.GetLabelEditorImageContentRect();
+        return contentRect.Width > 0 && contentRect.Height > 0 && contentRect.Contains(localPoint);
+    }
+
+    // ###########################################################################################
+    // Converts a pixel-space highlight rectangle into editor overlay local coordinates.
+    // ###########################################################################################
+    private Rect ConvertLabelEditorPixelRectToLocalRect(Rect pixelRect)
+    {
+        if (this.currentFullResBitmap == null)
+        {
+            return default;
+        }
+
+        var contentRect = this.GetLabelEditorImageContentRect();
+
+        double sx = contentRect.Width / this.currentFullResBitmap.PixelSize.Width;
+        double sy = contentRect.Height / this.currentFullResBitmap.PixelSize.Height;
+
+        double x = contentRect.X + (pixelRect.X * sx);
+        double y = contentRect.Y + (pixelRect.Y * sy);
+        double w = pixelRect.Width * sx;
+        double h = pixelRect.Height * sy;
+
+        return new Rect(x, y, w, h);
+    }
+
+    // ###########################################################################################
+    // Tries to hit one of the selected rectangle's resize handles or sides.
+    // ###########################################################################################
+    private bool TryGetSelectedLabelEditorHandleAtContainerPoint(Point pointerInContainer, out LabelEditorDragMode dragMode)
+    {
+        dragMode = LabelEditorDragMode.None;
+
+        if (this.thisSelectedLabelEditorHighlight == null || this.currentFullResBitmap == null)
+        {
+            return false;
+        }
+
+        if (!this.TryGetLabelEditorLocalPoint(pointerInContainer, out var localPoint))
+        {
+            return false;
+        }
+
+        var rect = new Rect(
+            this.thisSelectedLabelEditorHighlight.X,
+            this.thisSelectedLabelEditorHighlight.Y,
+            this.thisSelectedLabelEditorHighlight.Width,
+            this.thisSelectedLabelEditorHighlight.Height);
+
+        var localRect = this.ConvertLabelEditorPixelRectToLocalRect(rect);
+
+        double scale = Math.Max(0.0001, this.schematicsMatrix.M11);
+        double handleSize = Math.Clamp(10.0 / scale, 5.0, 18.0);
+        double half = handleSize / 2.0;
+
+        var topLeft = new Rect(localRect.Left - half, localRect.Top - half, handleSize, handleSize);
+        var top = new Rect(localRect.Center.X - half, localRect.Top - half, handleSize, handleSize);
+        var topRight = new Rect(localRect.Right - half, localRect.Top - half, handleSize, handleSize);
+        var right = new Rect(localRect.Right - half, localRect.Center.Y - half, handleSize, handleSize);
+        var bottomRight = new Rect(localRect.Right - half, localRect.Bottom - half, handleSize, handleSize);
+        var bottom = new Rect(localRect.Center.X - half, localRect.Bottom - half, handleSize, handleSize);
+        var bottomLeft = new Rect(localRect.Left - half, localRect.Bottom - half, handleSize, handleSize);
+        var left = new Rect(localRect.Left - half, localRect.Center.Y - half, handleSize, handleSize);
+
+        if (topLeft.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeTopLeft; return true; }
+        if (top.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeTop; return true; }
+        if (topRight.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeTopRight; return true; }
+        if (right.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeRight; return true; }
+        if (bottomRight.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeBottomRight; return true; }
+        if (bottom.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeBottom; return true; }
+        if (bottomLeft.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeBottomLeft; return true; }
+        if (left.Contains(localPoint)) { dragMode = LabelEditorDragMode.ResizeLeft; return true; }
+
+        return false;
+    }
+
+    // ###########################################################################################
+    // Starts dragging an existing highlight rectangle for move or resize operations.
+    // ###########################################################################################
+    private void StartLabelEditorDrag(int workingIndex, Point startPixelPoint, LabelEditorDragMode dragMode)
+    {
+        if (workingIndex < 0 || workingIndex >= this.thisLabelEditorWorkingHighlights.Count)
+        {
+            return;
+        }
+
+        this.thisSelectedLabelEditorHighlight = this.thisLabelEditorWorkingHighlights[workingIndex];
+        this.thisLabelEditorDragMode = dragMode;
+        this.thisLabelEditorDragStartPixelPoint = startPixelPoint;
+        this.thisLabelEditorOriginalDragRectangle = new Rect(
+            this.thisSelectedLabelEditorHighlight.X,
+            this.thisSelectedLabelEditorHighlight.Y,
+            this.thisSelectedLabelEditorHighlight.Width,
+            this.thisSelectedLabelEditorHighlight.Height);
+
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Applies the current drag delta to the selected rectangle for move or resize operations.
+    // ###########################################################################################
+    private void UpdateLabelEditorDrag(Point currentPixelPoint)
+    {
+        if (this.thisSelectedLabelEditorHighlight == null || this.thisLabelEditorDragMode == LabelEditorDragMode.None)
+        {
+            return;
+        }
+
+        double dx = currentPixelPoint.X - this.thisLabelEditorDragStartPixelPoint.X;
+        double dy = currentPixelPoint.Y - this.thisLabelEditorDragStartPixelPoint.Y;
+
+        double left = this.thisLabelEditorOriginalDragRectangle.Left;
+        double top = this.thisLabelEditorOriginalDragRectangle.Top;
+        double right = this.thisLabelEditorOriginalDragRectangle.Right;
+        double bottom = this.thisLabelEditorOriginalDragRectangle.Bottom;
+
+        switch (this.thisLabelEditorDragMode)
+        {
+            case LabelEditorDragMode.Move:
+                left += dx;
+                right += dx;
+                top += dy;
+                bottom += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeTopLeft:
+                left += dx;
+                top += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeTop:
+                top += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeTopRight:
+                right += dx;
+                top += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeRight:
+                right += dx;
+                break;
+
+            case LabelEditorDragMode.ResizeBottomRight:
+                right += dx;
+                bottom += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeBottom:
+                bottom += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeBottomLeft:
+                left += dx;
+                bottom += dy;
+                break;
+
+            case LabelEditorDragMode.ResizeLeft:
+                left += dx;
+                break;
+        }
+
+        const double minimumSize = 1.0;
+
+        if (right < left + minimumSize)
+        {
+            if (this.thisLabelEditorDragMode == LabelEditorDragMode.Move)
+            {
+                right = left + this.thisLabelEditorOriginalDragRectangle.Width;
+            }
+            else
+            {
+                if (this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeLeft ||
+                    this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeTopLeft ||
+                    this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeBottomLeft)
+                {
+                    left = right - minimumSize;
+                }
+                else
+                {
+                    right = left + minimumSize;
+                }
+            }
+        }
+
+        if (bottom < top + minimumSize)
+        {
+            if (this.thisLabelEditorDragMode == LabelEditorDragMode.Move)
+            {
+                bottom = top + this.thisLabelEditorOriginalDragRectangle.Height;
+            }
+            else
+            {
+                if (this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeTop ||
+                    this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeTopLeft ||
+                    this.thisLabelEditorDragMode == LabelEditorDragMode.ResizeTopRight)
+                {
+                    top = bottom - minimumSize;
+                }
+                else
+                {
+                    bottom = top + minimumSize;
+                }
+            }
+        }
+
+        this.thisSelectedLabelEditorHighlight.X = left;
+        this.thisSelectedLabelEditorHighlight.Y = top;
+        this.thisSelectedLabelEditorHighlight.Width = right - left;
+        this.thisSelectedLabelEditorHighlight.Height = bottom - top;
+
+        this.thisHasPendingLabelEditorChanges = true;
+        this.RefreshLabelEditorOverlay();
+    }
+
+    // ###########################################################################################
+    // Finishes the current move or resize operation for the selected rectangle.
+    // ###########################################################################################
+    private void CompleteLabelEditorDrag()
+    {
+        this.thisLabelEditorDragMode = LabelEditorDragMode.None;
+    }
+
+    // ###########################################################################################
+    // Applies keyboard move, expand, or shrink operations to the selected editor rectangle.
+    // Arrow keys move by 1 px, Shift expands in the pressed direction, and Alt shrinks from
+    // the opposite side of the pressed direction.
+    // ###########################################################################################
+    private bool ApplySelectedLabelEditorKeyboardStep(Key key, KeyModifiers modifiers)
+    {
+        if (!this.thisIsLabelEditorMode ||
+            this.thisSelectedLabelEditorHighlight == null ||
+            this.SchematicsNewLabelPromptBorder.IsVisible)
+        {
+            return false;
+        }
+
+        if (modifiers.HasFlag(KeyModifiers.Shift) && modifiers.HasFlag(KeyModifiers.Alt))
+        {
+            return false;
+        }
+
+        bool isShift = modifiers.HasFlag(KeyModifiers.Shift);
+        bool isAlt = modifiers.HasFlag(KeyModifiers.Alt);
+
+        double x = this.thisSelectedLabelEditorHighlight.X;
+        double y = this.thisSelectedLabelEditorHighlight.Y;
+        double width = this.thisSelectedLabelEditorHighlight.Width;
+        double height = this.thisSelectedLabelEditorHighlight.Height;
+
+        const double step = 1.0;
+        bool changed = false;
+
+        if (!isShift && !isAlt)
+        {
+            switch (key)
+            {
+                case Key.Left:
+                    x -= step;
+                    changed = true;
+                    break;
+
+                case Key.Right:
+                    x += step;
+                    changed = true;
+                    break;
+
+                case Key.Up:
+                    y -= step;
+                    changed = true;
+                    break;
+
+                case Key.Down:
+                    y += step;
+                    changed = true;
+                    break;
+            }
+        }
+        else if (isShift)
+        {
+            switch (key)
+            {
+                case Key.Left:
+                    x -= step;
+                    width += step;
+                    changed = true;
+                    break;
+
+                case Key.Right:
+                    width += step;
+                    changed = true;
+                    break;
+
+                case Key.Up:
+                    y -= step;
+                    height += step;
+                    changed = true;
+                    break;
+
+                case Key.Down:
+                    height += step;
+                    changed = true;
+                    break;
+            }
+        }
+        else if (isAlt)
+        {
+            switch (key)
+            {
+                case Key.Left:
+                    if (width > step)
+                    {
+                        width -= step;
+                        changed = true;
+                    }
+                    break;
+
+                case Key.Right:
+                    if (width > step)
+                    {
+                        x += step;
+                        width -= step;
+                        changed = true;
+                    }
+                    break;
+
+                case Key.Up:
+                    if (height > step)
+                    {
+                        height -= step;
+                        changed = true;
+                    }
+                    break;
+
+                case Key.Down:
+                    if (height > step)
+                    {
+                        y += step;
+                        height -= step;
+                        changed = true;
+                    }
+                    break;
+            }
+        }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        this.thisSelectedLabelEditorHighlight.X = x;
+        this.thisSelectedLabelEditorHighlight.Y = y;
+        this.thisSelectedLabelEditorHighlight.Width = Math.Max(1.0, width);
+        this.thisSelectedLabelEditorHighlight.Height = Math.Max(1.0, height);
+
+        this.thisHasPendingLabelEditorChanges = true;
+        this.RefreshLabelEditorOverlay();
+        return true;
+    }
+
+    // ###########################################################################################
+    // Handles fine keyboard control for the selected label-editor rectangle.
+    // Arrow keys move, Shift expands, and Alt shrinks in the pressed direction.
+    // ###########################################################################################
+    private void OnSchematicsKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!this.thisIsLabelEditorMode)
+        {
+            return;
+        }
+
+        if (this.ApplySelectedLabelEditorKeyboardStep(e.Key, e.KeyModifiers))
+        {
+            e.Handled = true;
+        }
+    }
+
+    // ###########################################################################################
+    // Writes the current schematic's working-copy label editor rectangles back into the active
+    // in-memory board data, replacing only the edited schematic rows.
+    // ###########################################################################################
+    private void ApplyWorkingLabelEditorHighlightsToCurrentBoard()
+    {
+        var boardData = this.MainWindow?.CurrentBoardData;
+        string schematicName = this.GetCurrentSchematicName();
+
+        if (boardData == null || string.IsNullOrWhiteSpace(schematicName))
+        {
+            return;
+        }
+
+        for (int i = boardData.ComponentHighlights.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(boardData.ComponentHighlights[i].SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
+            {
+                boardData.ComponentHighlights.RemoveAt(i);
+            }
+        }
+
+        foreach (var row in this.thisLabelEditorWorkingHighlights.Where(row =>
+                     string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrWhiteSpace(row.BoardLabel)))
+        {
+            boardData.ComponentHighlights.Add(new ComponentHighlightEntry
+            {
+                SchematicName = row.SchematicName.Trim(),
+                BoardLabel = row.BoardLabel.Trim(),
+                X = row.X.ToString(CultureInfo.InvariantCulture),
+                Y = row.Y.ToString(CultureInfo.InvariantCulture),
+                Width = row.Width.ToString(CultureInfo.InvariantCulture),
+                Height = row.Height.ToString(CultureInfo.InvariantCulture)
+            });
+        }
+    }
+
+    // ###########################################################################################
+    // Ensures any newly introduced board labels from the editor exist in the in-memory component
+    // list so they are available immediately in the current session after Apply.
+    // ###########################################################################################
+    private void EnsureLabelEditorBoardLabelsExistInCurrentBoard()
+    {
+        var boardData = this.MainWindow?.CurrentBoardData;
+        if (boardData == null)
+        {
+            return;
+        }
+
+        string localRegion = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+
+        foreach (var row in this.thisLabelEditorWorkingHighlights
+                     .Where(row => !string.IsNullOrWhiteSpace(row.BoardLabel))
+                     .GroupBy(row => row.BoardLabel.Trim(), StringComparer.OrdinalIgnoreCase)
+                     .Select(group => group.First()))
+        {
+            bool exists = boardData.Components.Any(component =>
+                string.Equals(component.BoardLabel, row.BoardLabel, StringComparison.OrdinalIgnoreCase));
+
+            if (exists)
+            {
+                continue;
+            }
+
+            boardData.Components.Add(new ComponentEntry
+            {
+                BoardLabel = row.BoardLabel.Trim(),
+                FriendlyName = string.Empty,
+                TechnicalNameOrValue = string.Empty,
+                PartNumber = string.Empty,
+                Category = string.IsNullOrWhiteSpace(row.Category) ? "General" : row.Category.Trim(),
+                Region = localRegion,
+                Description = string.Empty
+            });
+        }
+    }
+
+    // ###########################################################################################
+    // Builds the available category list for the new-label prompt and ensures at least one item
+    // exists so a newly created component can always be categorized immediately.
+    // ###########################################################################################
+    private List<string> GetAvailableLabelEditorCategories()
+    {
+        var boardData = this.MainWindow?.CurrentBoardData;
+
+        var categories = boardData?.Components
+            .Select(component => component.Category?.Trim() ?? string.Empty)
+            .Where(category => !string.IsNullOrWhiteSpace(category))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+            ?? new List<string>();
+
+        if (categories.Count == 0)
+        {
+            categories.Add("General");
+        }
+
+        return categories;
+    }
+
+    // ###########################################################################################
+    // Handles Enter/Escape while the new-label prompt is open so the prompt can be confirmed
+    // directly from the keyboard without clicking the buttons.
+    // ###########################################################################################
+    private void OnNewLabelEditorPromptKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!this.SchematicsNewLabelPromptBorder.IsVisible)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            this.ConfirmNewLabelEditorPrompt();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            this.CancelNewLabelEditorPrompt();
+            e.Handled = true;
+        }
+    }
+
+    // ###########################################################################################
+    // Validates the current schematic editor rows before anything is written to disk.
+    // ###########################################################################################
+    private bool TryValidateLabelEditorSave(out string validationError)
+    {
+        validationError = string.Empty;
+
+        string schematicName = this.GetCurrentSchematicName();
+        if (string.IsNullOrWhiteSpace(schematicName))
+        {
+            validationError = "No schematic is currently selected";
+            return false;
+        }
+
+        var rows = this.thisLabelEditorWorkingHighlights
+            .Where(row => string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.BoardLabel))
+            {
+                validationError = "One or more rectangles are missing a board label";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(row.Category))
+            {
+                validationError = $"The label [{row.BoardLabel}] is missing a category";
+                return false;
+            }
+
+            if (row.Width <= 0 || row.Height <= 0)
+            {
+                validationError = $"The label [{row.BoardLabel}] has invalid rectangle dimensions";
+                return false;
+            }
+        }
+
+        var conflictingCategoryGroup = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.BoardLabel))
+            .GroupBy(row => row.BoardLabel.Trim(), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group
+                .Select(row => row.Category?.Trim() ?? string.Empty)
+                .Where(category => !string.IsNullOrWhiteSpace(category))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() > 1);
+
+        if (conflictingCategoryGroup != null)
+        {
+            validationError = $"The board label [{conflictingCategoryGroup.Key}] has conflicting categories in the editor";
+            return false;
+        }
+
+        return true;
+    }
+
+    // ###########################################################################################
+    // Converts the current schematic editor rows into the workbook save DTO used by the writer.
+    // ###########################################################################################
+    private List<LabelEditorSaveRow> BuildLabelEditorSaveRowsForCurrentSchematic()
+    {
+        string schematicName = this.GetCurrentSchematicName();
+        string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+
+        return this.thisLabelEditorWorkingHighlights
+            .Where(row => string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
+            .Select(row => new LabelEditorSaveRow
+            {
+                SchematicName = row.SchematicName.Trim(),
+                BoardLabel = row.BoardLabel.Trim(),
+                Category = row.Category.Trim(),
+                Region = region,
+                X = row.X,
+                Y = row.Y,
+                Width = row.Width,
+                Height = row.Height
+            })
+            .ToList();
+    }
+
+    // ###########################################################################################
+    // Updates the schematic cursor for label-editor interactions.
+    // Shows Hand over resize handles and SizeAll over movable rectangles.
+    // ###########################################################################################
+    private void UpdateLabelEditorCursor(Point pointerInContainer)
+    {
+        if (!this.thisIsLabelEditorMode)
+        {
+            this.SchematicsContainer.Cursor = Cursor.Default;
+            return;
+        }
+
+        if (this.thisLabelEditorDragMode != LabelEditorDragMode.None)
+        {
+            this.SchematicsContainer.Cursor = this.thisLabelEditorDragMode == LabelEditorDragMode.Move
+                ? new Cursor(StandardCursorType.SizeAll)
+                : new Cursor(StandardCursorType.Hand);
+            return;
+        }
+
+        if (this.thisIsDrawingLabelEditorRectangle)
+        {
+            this.SchematicsContainer.Cursor = Cursor.Default;
+            return;
+        }
+
+        if (this.TryGetSelectedLabelEditorHandleAtContainerPoint(pointerInContainer, out _))
+        {
+            this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.Hand);
+            return;
+        }
+
+        if (this.TryGetLabelEditorHighlightAtContainerPoint(pointerInContainer, out _))
+        {
+            this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
+            return;
+        }
+
+        this.SchematicsContainer.Cursor = Cursor.Default;
+    }
+
+    // ###########################################################################################
+    // Shows a modal error dialog when label-editor changes cannot be written to the Excel file
+    // so save failures are visible immediately instead of only appearing in the logfile.
+    // ###########################################################################################
+    private async Task ShowLabelEditorSaveFailedDialogAsync(string errorMessage)
+    {
+        string message = string.IsNullOrWhiteSpace(errorMessage)
+            ? "The label editor changes could not be saved."
+            : errorMessage;
+
+        var closeButton = new Button
+        {
+            Content = "Close",
+            MinWidth = 110,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center
+        };
+
+        var dialog = new Window
+        {
+            Title = "Label editor save failed",
+            Width = 540,
+            MinWidth = 460,
+            CanResize = false,
+            ShowInTaskbar = false,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        closeButton.Click += (_, _) => dialog.Close();
+
+        var errorAccentBrush = new SolidColorBrush(Color.Parse("#C62828"));
+        var panelBackgroundBrush = this.ResolveThemeBrush("Schematics_Panels_Bg", new SolidColorBrush(Color.Parse("#FFF8F8")));
+        var panelBorderBrush = this.ResolveThemeBrush("Schematics_Panels_Border", new SolidColorBrush(Color.Parse("#E0B4B4")));
+        var foregroundBrush = this.ResolveThemeBrush("Schematics_Panels_Fg", Brushes.Black);
+
+        dialog.Content = new Border
+        {
+            Background = panelBackgroundBrush,
+            BorderBrush = panelBorderBrush,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new Border
+                    {
+                        Background = errorAccentBrush,
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(12, 10),
+                        Child = new StackPanel
+                        {
+                            Orientation = Avalonia.Layout.Orientation.Horizontal,
+                            Spacing = 10,
+                            Children =
+                            {
+                                new TextBlock
+                                {
+                                    Text = "⚠",
+                                    FontSize = 22,
+                                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                                    Foreground = Brushes.White
+                                },
+                                new TextBlock
+                                {
+                                    Text = "Unable to save label editor changes",
+                                    FontSize = 14,
+                                    FontWeight = FontWeight.Bold,
+                                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                                    Foreground = Brushes.White,
+                                    TextWrapping = TextWrapping.Wrap
+                                }
+                            }
+                        }
+                    },
+                    new TextBlock
+                    {
+                        Text = message,
+                        Foreground = foregroundBrush,
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    new TextBlock
+                    {
+                        Text = "If the Excel workbook is open in another program, close it and try again. Check the logfile for technical details.",
+                        Foreground = foregroundBrush,
+                        Opacity = 0.85,
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    closeButton
+                }
+            }
+        };
+
+        if (TopLevel.GetTopLevel(this) is Window owner)
+        {
+            await dialog.ShowDialog(owner);
+        }
+        else
+        {
+            dialog.Show();
+        }
+    }
+
+    // ###########################################################################################
+    // Shows a modal error dialog when the label editor contains invalid data so validation
+    // problems are visible immediately instead of only appearing in the logfile.
+    // ###########################################################################################
+    private async Task ShowLabelEditorValidationFailedDialogAsync(string errorMessage)
+    {
+        string message = string.IsNullOrWhiteSpace(errorMessage)
+            ? "The label editor contains invalid data."
+            : errorMessage;
+
+        var closeButton = new Button
+        {
+            Content = "Close",
+            MinWidth = 110,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center
+        };
+
+        var dialog = new Window
+        {
+            Title = "Label editor validation failed",
+            Width = 540,
+            MinWidth = 460,
+            CanResize = false,
+            ShowInTaskbar = false,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+
+        closeButton.Click += (_, _) => dialog.Close();
+
+        var errorAccentBrush = new SolidColorBrush(Color.Parse("#C62828"));
+        var panelBackgroundBrush = this.ResolveThemeBrush("Schematics_Panels_Bg", new SolidColorBrush(Color.Parse("#FFF8F8")));
+        var panelBorderBrush = this.ResolveThemeBrush("Schematics_Panels_Border", new SolidColorBrush(Color.Parse("#E0B4B4")));
+        var foregroundBrush = this.ResolveThemeBrush("Schematics_Panels_Fg", Brushes.Black);
+
+        dialog.Content = new Border
+        {
+            Background = panelBackgroundBrush,
+            BorderBrush = panelBorderBrush,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new Border
+                    {
+                        Background = errorAccentBrush,
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(12, 10),
+                        Child = new StackPanel
+                        {
+                            Orientation = Avalonia.Layout.Orientation.Horizontal,
+                            Spacing = 10,
+                            Children =
+                            {
+                                new TextBlock
+                                {
+                                    Text = "⚠",
+                                    FontSize = 22,
+                                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                                    Foreground = Brushes.White
+                                },
+                                new TextBlock
+                                {
+                                    Text = "Unable to apply component label editor changes",
+                                    FontSize = 14,
+                                    FontWeight = FontWeight.Bold,
+                                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                                    Foreground = Brushes.White,
+                                    TextWrapping = TextWrapping.Wrap
+                                }
+                            }
+                        }
+                    },
+                    new TextBlock
+                    {
+                        Text = message,
+                        Foreground = foregroundBrush,
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    closeButton
+                }
+            }
+        };
+
+        if (TopLevel.GetTopLevel(this) is Window owner)
+        {
+            await dialog.ShowDialog(owner);
+        }
+        else
+        {
+            dialog.Show();
+        }
+    }
+
 
 }

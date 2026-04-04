@@ -38,7 +38,7 @@
 				   Margin="12,12,12,12"
 				   TextWrapping="Wrap"
 				   Foreground="{DynamicResource Main_Fg}">
-			To contribute and enhance the data quality for this board, then you can select an existing component and give feedback where data is wrong or missing. Your contribution will be seen as a "suggestion for changes" and will be sent directly to the developer, who will incorporate it in to the backend data set. You will get informed of decission, if you have provided your email address.
+			To contribute and enhance the data quality for this board, then you can select an existing component and give feedback where data is wrong or missing. Your contribution will be seen as a "suggestion for changes" and will be sent directly to the developer, who will incorporate it in to the backend data set.
 		</TextBlock>
 
 		<!-- Board revision date section -->

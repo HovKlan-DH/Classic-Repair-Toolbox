@@ -47,7 +47,9 @@ namespace CRT
 
         // Region toggle: local override, does not affect the global setting
         private string _localRegion = UserSettings.Region;
+
         public string LocalRegion => this._localRegion;
+        public BoardData? CurrentBoardData => this._currentBoardData;
         private bool _suppressRegionToggle;
 
         // Cascading offset for multiple popups
@@ -145,40 +147,46 @@ namespace CRT
             this.AddHandler(
                 InputElement.PointerReleasedEvent,
                 (s, e) =>
+            {
+                Dispatcher.UIThread.Post(() =>
                 {
-                    Dispatcher.UIThread.Post(() =>
+                    // Abort stealing focus if another window (like the component popup) is currently active
+                    if (!this.IsActive)
                     {
-                        // Abort stealing focus if another window (like the component popup) is currently active
-                        if (!this.IsActive)
-                        {
-                            return;
-                        }
+                        return;
+                    }
 
-                        // Do not steal focus if we are on tabs that utilize text inputs
-                        var selectedTab = this.MainTabControl?.SelectedItem as TabItem;
-                        string? tabHeader = selectedTab?.Header?.ToString();
+                    // Do not steal focus while the schematics label editor is active
+                    if (this.TabSchematicsControl.IsLabelEditorActive)
+                    {
+                        return;
+                    }
 
-                        if (tabHeader == "Feedback" || tabHeader == "Configuration")
-                        {
-                            return;
-                        }
+                    // Do not steal focus if we are on tabs that utilize text inputs
+                    var selectedTab = this.MainTabControl?.SelectedItem as TabItem;
+                    string? tabHeader = selectedTab?.Header?.ToString();
 
-                        // Avoid stealing focus if another TextBox currently holds it naturally
-                        var focusedElement = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-                        if (focusedElement is global::Avalonia.Controls.TextBox && focusedElement != this.ComponentSearchTextBox)
-                        {
-                            return;
-                        }
+                    if (tabHeader == "Feedback" || tabHeader == "Configuration")
+                    {
+                        return;
+                    }
 
-                        if (this.ComponentSearchTextBox != null && !this.ComponentSearchTextBox.IsFocused)
-                        {
-                            this.ComponentSearchTextBox.Focus();
-                        }
-                    }, DispatcherPriority.Background);
-                },
-                RoutingStrategies.Bubble,
-                handledEventsToo: true
-            );
+                    // Avoid stealing focus if another TextBox currently holds it naturally
+                    var focusedElement = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+                    if (focusedElement is global::Avalonia.Controls.TextBox && focusedElement != this.ComponentSearchTextBox)
+                    {
+                        return;
+                    }
+
+                    if (this.ComponentSearchTextBox != null && !this.ComponentSearchTextBox.IsFocused)
+                    {
+                        this.ComponentSearchTextBox.Focus();
+                    }
+                }, DispatcherPriority.Background);
+            },
+            RoutingStrategies.Bubble,
+            handledEventsToo: true
+        );
 
             if (UserSettings.CheckVersionOnLaunch)
             {
@@ -661,6 +669,52 @@ namespace CRT
                 return string.Empty;
             }
             return $"{hw}|{board}";
+        }
+
+        // ###########################################################################################
+        // Returns the currently selected hardware/board entry, or null if the selection is invalid.
+        // ###########################################################################################
+        internal HardwareBoardEntry? GetCurrentBoardEntry()
+        {
+            var selectedHardware = this.HardwareComboBox.SelectedItem as string;
+            var selectedBoard = this.BoardComboBox.SelectedItem as string;
+
+            if (string.IsNullOrWhiteSpace(selectedHardware) || string.IsNullOrWhiteSpace(selectedBoard))
+            {
+                return null;
+            }
+
+            return DataManager.HardwareBoards.FirstOrDefault(entry =>
+                string.Equals(entry.HardwareName, selectedHardware, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry.BoardName, selectedBoard, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // ###########################################################################################
+        // Resolves the full path to the currently selected board Excel file.
+        // ###########################################################################################
+        internal string GetCurrentBoardExcelPath()
+        {
+            var entry = this.GetCurrentBoardEntry();
+            if (entry == null || string.IsNullOrWhiteSpace(entry.ExcelDataFile))
+            {
+                return string.Empty;
+            }
+
+            return Path.Combine(DataManager.DataRoot, entry.ExcelDataFile.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        // ###########################################################################################
+        // Reloads the currently selected board from disk and restores the given schematic selection.
+        // ###########################################################################################
+        internal void ReloadCurrentBoardFromDisk(string schematicNameToRestore)
+        {
+            var boardKey = this.GetCurrentBoardKey();
+            if (!string.IsNullOrWhiteSpace(boardKey) && !string.IsNullOrWhiteSpace(schematicNameToRestore))
+            {
+                UserSettings.SetLastSchematicForBoard(boardKey, schematicNameToRestore);
+            }
+
+            this.OnBoardSelectionChanged(null, null!);
         }
 
         // ###########################################################################################
@@ -1636,6 +1690,83 @@ namespace CRT
                     hasActiveOscilloscopeSession);
             }
         }
+
+        // ###########################################################################################
+        // Rebuilds runtime component lists and highlight caches after the schematic label editor
+        // has modified the in-memory board data for the current session.
+        // ###########################################################################################
+        internal void RefreshRuntimeBoardStateAfterLabelEditorApply()
+        {
+            if (this._currentBoardData == null)
+            {
+                return;
+            }
+
+            var previouslySelectedKeys = new HashSet<string>(
+                this.ComponentFilterListBox.SelectedItems?.Cast<ComponentListItem>()
+                    .Select(i => i.SelectionKey) ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            var activeCategories = new HashSet<string>(
+                this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            string searchTerm = this.ComponentSearchTextBox?.Text ?? string.Empty;
+
+            this.TabSchematicsControl.highlightRectsBySchematicAndLabel =
+                TabSchematics.BuildHighlightRects(this._currentBoardData, this._localRegion);
+
+            var componentItems = BuildComponentItems(this._currentBoardData, this._localRegion, activeCategories, searchTerm);
+
+            this._suppressComponentHighlightUpdate = true;
+            this.ComponentFilterListBox.ItemsSource = componentItems;
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                try
+                {
+                    this.ComponentFilterListBox.SelectAll();
+                }
+                catch
+                {
+                }
+            }
+            else
+            {
+                for (int i = 0; i < componentItems.Count; i++)
+                {
+                    if (previouslySelectedKeys.Contains(componentItems[i].SelectionKey))
+                    {
+                        this.ComponentFilterListBox.Selection.Select(i);
+                    }
+                }
+            }
+
+            this._suppressComponentHighlightUpdate = false;
+
+            var survivingLabels = componentItems
+                .Where(item => previouslySelectedKeys.Contains(item.SelectionKey))
+                .Select(item => item.BoardLabel)
+                .Where(label => !string.IsNullOrWhiteSpace(label))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                survivingLabels = componentItems
+                    .Select(item => item.BoardLabel)
+                    .Where(label => !string.IsNullOrWhiteSpace(label))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            this.TabSchematicsControl.UpdateHighlightsForComponents(survivingLabels);
+            this.TabSchematicsControl.UpdateComponentLabels();
+            this.TabOverview.LoadData(this._currentBoardData);
+            this.TabContribute.LoadData(this._currentBoardData, this._localRegion);
+        }
+
+
 
         // ###########################################################################################
     }

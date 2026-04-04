@@ -1,4 +1,5 @@
-- Contribute tab:
+- Added label editor
+- Changed "Contribute" tab:
   - Added UUID per row in Excel data files
   - Added "File location" drop-down
   - Changed "File" does no longer include relative path

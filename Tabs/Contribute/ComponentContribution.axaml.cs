@@ -36,7 +36,15 @@ namespace CRT
         public string Description { get; set; } = string.Empty;
     }
 
-    public sealed class ContributionComponentImageRow : INotifyPropertyChanged
+    public interface IContributionFileRow
+    {
+        string FileLocation { get; set; }
+        string File { get; set; }
+        string? OriginalFilePath { get; set; }
+        ObservableCollection<string> AvailableFileLocations { get; }
+    }
+
+    public sealed class ContributionComponentImageRow : INotifyPropertyChanged, IContributionFileRow
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -83,6 +91,9 @@ namespace CRT
             }
         }
 
+        [JsonIgnore]
+        public ObservableCollection<string> AvailableFileLocations { get; } = new();
+
         public string Note { get; set; } = string.Empty;
 
         [JsonIgnore]
@@ -107,12 +118,52 @@ namespace CRT
         public string PreviewStatusText { get; set; } = "No preview available";
     }
 
-    public sealed class ContributionComponentLocalFileRow
+    public sealed class ContributionComponentLocalFileRow : INotifyPropertyChanged, IContributionFileRow
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         public string UuidV4 { get; set; } = string.Empty;
         public string BoardLabel { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
-        public string File { get; set; } = string.Empty;
+
+        private string thisFileLocation = string.Empty;
+        public string FileLocation
+        {
+            get => this.thisFileLocation;
+            set
+            {
+                if (this.thisFileLocation != value)
+                {
+                    this.thisFileLocation = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
+        private string thisFile = string.Empty;
+        public string File
+        {
+            get => this.thisFile;
+            set
+            {
+                if (this.thisFile != value)
+                {
+                    this.thisFile = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public ObservableCollection<string> AvailableFileLocations { get; } = new();
+
+        [JsonIgnore]
+        public string? OriginalFilePath { get; set; }
     }
 
     public sealed class ContributionComponentLinkRow
@@ -123,12 +174,52 @@ namespace CRT
         public string Url { get; set; } = string.Empty;
     }
 
-    public sealed class ContributionBoardLocalFileRow
+    public sealed class ContributionBoardLocalFileRow : INotifyPropertyChanged, IContributionFileRow
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         public string UuidV4 { get; set; } = string.Empty;
         public string Category { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
-        public string File { get; set; } = string.Empty;
+
+        private string thisFileLocation = string.Empty;
+        public string FileLocation
+        {
+            get => this.thisFileLocation;
+            set
+            {
+                if (this.thisFileLocation != value)
+                {
+                    this.thisFileLocation = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
+        private string thisFile = string.Empty;
+        public string File
+        {
+            get => this.thisFile;
+            set
+            {
+                if (this.thisFile != value)
+                {
+                    this.thisFile = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public ObservableCollection<string> AvailableFileLocations { get; } = new();
+
+        [JsonIgnore]
+        public string? OriginalFilePath { get; set; }
     }
 
     public sealed class ContributionBoardLinkRow
@@ -339,38 +430,13 @@ namespace CRT
             }
 
             foreach (var row in boardData.ComponentImages.Where(c =>
-string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
-(string.IsNullOrWhiteSpace(c.Region) ||
- string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
+                string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(c.Region) ||
+                 string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
-                string fileLocation = string.Empty;
-                var propertyInfo = row.GetType().GetProperty("FileLocation");
-                if (propertyInfo != null && propertyInfo.GetValue(row) is string fl && !string.IsNullOrWhiteSpace(fl))
-                {
-                    fileLocation = fl;
-                }
-                else if (!string.IsNullOrWhiteSpace(row.File) && !Path.IsPathRooted(row.File))
-                {
-                    try
-                    {
-                        string? dir = Path.GetDirectoryName(row.File);
-                        if (!string.IsNullOrWhiteSpace(dir))
-                        {
-                            fileLocation = dir.Replace('\\', '/');
-                        }
-                    }
-                    catch { }
-                }
-                else if (!string.IsNullOrWhiteSpace(row.File) && Path.IsPathRooted(row.File))
-                {
-                    try
-                    {
-                        fileLocation = Path.GetDirectoryName(row.File)?.Replace('\\', '/') ?? string.Empty;
-                    }
-                    catch { }
-                }
+                string fileLocation = this.GetExistingFileLocation(row, row.File);
 
-                this.thisComponentImageRows.Add(new ContributionComponentImageRow
+                var imageRow = new ContributionComponentImageRow
                 {
                     UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
@@ -385,7 +451,10 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
                     File = Path.GetFileName(row.File ?? string.Empty),
                     OriginalFilePath = row.File,
                     Note = row.Note
-                });
+                };
+
+                this.SetAvailableFileLocations(imageRow);
+                this.thisComponentImageRows.Add(imageRow);
             }
 
             foreach (var row in boardData.ComponentHighlights.Where(c =>
@@ -405,13 +474,20 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
             foreach (var row in boardData.ComponentLocalFiles.Where(c =>
                 string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase)))
             {
-                this.thisComponentLocalFileRows.Add(new ContributionComponentLocalFileRow
+                string fileLocation = this.GetExistingFileLocation(row, row.File);
+
+                var localFileRow = new ContributionComponentLocalFileRow
                 {
                     UuidV4 = row.UuidV4,
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
-                    File = row.File
-                });
+                    FileLocation = fileLocation,
+                    File = Path.GetFileName(row.File ?? string.Empty),
+                    OriginalFilePath = row.File
+                };
+
+                this.SetAvailableFileLocations(localFileRow);
+                this.thisComponentLocalFileRows.Add(localFileRow);
             }
 
             foreach (var row in boardData.ComponentLinks.Where(c =>
@@ -428,13 +504,20 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
 
             foreach (var row in boardData.BoardLocalFiles)
             {
-                this.thisBoardLocalFileRows.Add(new ContributionBoardLocalFileRow
+                string fileLocation = this.GetExistingFileLocation(row, row.File);
+
+                var boardLocalFileRow = new ContributionBoardLocalFileRow
                 {
                     UuidV4 = row.UuidV4,
                     Category = row.Category,
                     Name = row.Name,
-                    File = row.File
-                });
+                    FileLocation = fileLocation,
+                    File = Path.GetFileName(row.File ?? string.Empty),
+                    OriginalFilePath = row.File
+                };
+
+                this.SetAvailableFileLocations(boardLocalFileRow);
+                this.thisBoardLocalFileRows.Add(boardLocalFileRow);
             }
 
             foreach (var row in boardData.BoardLinks)
@@ -509,6 +592,8 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
                 Region = this.thisLocalRegion
             };
 
+            this.SetAvailableFileLocations(row);
+
             InsertRowAtTop(this.thisComponentImageRows, row);
             this.RefreshComponentImagePreview(row);
             this.UpdateSectionCounters();
@@ -532,11 +617,14 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
         // ###########################################################################################
         private void OnAddComponentLocalFileRowClick(object? sender, RoutedEventArgs e)
         {
-            InsertRowAtTop(this.thisComponentLocalFileRows, new ContributionComponentLocalFileRow
+            var row = new ContributionComponentLocalFileRow
             {
                 BoardLabel = this.thisBoardLabel
-            });
+            };
 
+            this.SetAvailableFileLocations(row);
+
+            InsertRowAtTop(this.thisComponentLocalFileRows, row);
             this.UpdateSectionCounters();
         }
 
@@ -582,7 +670,11 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
         // ###########################################################################################
         private void OnAddBoardLocalFileRowClick(object? sender, RoutedEventArgs e)
         {
-            InsertRowAtTop(this.thisBoardLocalFileRows, new ContributionBoardLocalFileRow());
+            var row = new ContributionBoardLocalFileRow();
+
+            this.SetAvailableFileLocations(row);
+
+            InsertRowAtTop(this.thisBoardLocalFileRows, row);
             this.UpdateSectionCounters();
         }
 
@@ -729,7 +821,7 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
             formContent.Add(new StringContent(email), "email");
             formContent.Add(new StringContent(this.BuildContributionFeedbackText(comment)), "feedback");
             formContent.Add(new StringContent(AppConfig.AppVersionString), "version");
-            formContent.Add(new StringContent("component-contribution"), "submissionType");
+//            formContent.Add(new StringContent("component-contribution"), "submissionType");
 
             var fileContent = new ByteArrayContent(memoryStream.ToArray());
             fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
@@ -809,6 +901,7 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
                     UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     BoardLabel = row.BoardLabel?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
+                    FileLocation = row.FileLocation?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
                 }).ToList(),
 
@@ -825,6 +918,7 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
                     UuidV4 = row.UuidV4?.Trim() ?? string.Empty,
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
+                    FileLocation = row.FileLocation?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty
                 }).ToList(),
 
@@ -866,19 +960,19 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             this.AddResolvedFilesFromPaths(
-                this.thisComponentImageRows.Select(r => !string.IsNullOrWhiteSpace(r.OriginalFilePath) ? r.OriginalFilePath : (string.IsNullOrWhiteSpace(r.FileLocation) ? r.File : Path.Combine(r.FileLocation, r.File ?? string.Empty))),
+                this.thisComponentImageRows.Select(r => this.GetStoredFilePath(r)),
                 "ReferencedFiles/ComponentImages",
                 files,
                 seenPaths);
 
             this.AddResolvedFilesFromPaths(
-                this.thisComponentLocalFileRows.Select(r => r.File),
+                this.thisComponentLocalFileRows.Select(r => this.GetStoredFilePath(r)),
                 "ReferencedFiles/ComponentLocalFiles",
                 files,
                 seenPaths);
 
             this.AddResolvedFilesFromPaths(
-                this.thisBoardLocalFileRows.Select(r => r.File),
+                this.thisBoardLocalFileRows.Select(r => this.GetStoredFilePath(r)),
                 "ReferencedFiles/BoardLocalFiles",
                 files,
                 seenPaths);
@@ -1119,38 +1213,16 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
             switch (tag)
             {
                 case ContributionComponentImageRow componentImageRow:
-                    componentImageRow.File = Path.GetFileName(selectedPath);
-                    componentImageRow.OriginalFilePath = selectedPath;
-
-                    try
-                    {
-                        string? dir = Path.GetDirectoryName(selectedPath);
-                        if (!string.IsNullOrWhiteSpace(dir) && !string.IsNullOrWhiteSpace(this.thisDataRoot) && dir.StartsWith(this.thisDataRoot, StringComparison.OrdinalIgnoreCase))
-                        {
-                            string rel = Path.GetRelativePath(this.thisDataRoot, dir);
-                            componentImageRow.FileLocation = (rel != "." && rel != "") ? rel.Replace('\\', '/') : string.Empty;
-                        }
-                        // We intentionally do NOT overwrite FileLocation if the user selects an external file.
-                        // The file should retain whatever drop-down folder the user selected.
-                    }
-                    catch
-                    {
-                    }
-
+                    this.ApplySelectedFilePathToRow(componentImageRow, selectedPath);
                     this.RefreshComponentImagePreview(componentImageRow);
-
-                    // Force the UI to evaluate the combobox selected item update by re-assigning it.
-                    string updatedLocation = componentImageRow.FileLocation;
-                    componentImageRow.FileLocation = string.Empty;
-                    componentImageRow.FileLocation = updatedLocation;
                     break;
 
                 case ContributionComponentLocalFileRow componentLocalFileRow:
-                    componentLocalFileRow.File = selectedPath;
+                    this.ApplySelectedFilePathToRow(componentLocalFileRow, selectedPath);
                     break;
 
                 case ContributionBoardLocalFileRow boardLocalFileRow:
-                    boardLocalFileRow.File = selectedPath;
+                    this.ApplySelectedFilePathToRow(boardLocalFileRow, selectedPath);
                     break;
             }
         }
@@ -1201,8 +1273,7 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
 
             string selectedPath = files[0].Path.LocalPath;
 
-            // For component image rows, we want only the filename to show visually in the immediate box
-            if (textBox.Tag is ContributionComponentImageRow)
+            if (textBox.Tag is IContributionFileRow)
             {
                 textBox.Text = Path.GetFileName(selectedPath);
             }
@@ -1221,11 +1292,7 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
         {
             return tag switch
             {
-                ContributionComponentImageRow componentImageRow =>
-                    !string.IsNullOrWhiteSpace(componentImageRow.OriginalFilePath) ? componentImageRow.OriginalFilePath :
-                    (string.IsNullOrWhiteSpace(componentImageRow.FileLocation) ? componentImageRow.File : Path.Combine(componentImageRow.FileLocation, componentImageRow.File ?? string.Empty)),
-                ContributionComponentLocalFileRow componentLocalFileRow => componentLocalFileRow.File,
-                ContributionBoardLocalFileRow boardLocalFileRow => boardLocalFileRow.File,
+                IContributionFileRow fileRow => this.GetStoredFilePath(fileRow),
                 _ => null
             };
         }
@@ -1308,6 +1375,101 @@ string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase) &&
             this.ComponentLinksCountTextBlock.Text = $"({this.thisComponentLinkRows.Count})";
             this.BoardLocalFilesCountTextBlock.Text = $"({this.thisBoardLocalFileRows.Count})";
             this.BoardLinksCountTextBlock.Text = $"({this.thisBoardLinkRows.Count})";
+        }
+
+        // ###########################################################################################
+        // Extracts a file-location value from a row, with legacy fallback from the stored file path.
+        // ###########################################################################################
+        private string GetExistingFileLocation(object row, string? filePath)
+        {
+            var propertyInfo = row.GetType().GetProperty("FileLocation");
+            if (propertyInfo != null && propertyInfo.GetValue(row) is string fileLocation && !string.IsNullOrWhiteSpace(fileLocation))
+            {
+                return fileLocation.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                string? directory = Path.GetDirectoryName(filePath);
+                return string.IsNullOrWhiteSpace(directory) ? string.Empty : directory.Replace('\\', '/');
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        // ###########################################################################################
+        // Builds the effective source path for a file row from original path or location + filename.
+        // ###########################################################################################
+        private string GetStoredFilePath(IContributionFileRow row)
+        {
+            if (!string.IsNullOrWhiteSpace(row.OriginalFilePath))
+            {
+                return row.OriginalFilePath;
+            }
+
+            return string.IsNullOrWhiteSpace(row.FileLocation)
+                ? row.File
+                : Path.Combine(row.FileLocation, row.File ?? string.Empty);
+        }
+
+        // ###########################################################################################
+        // Applies the selected file to a row while keeping the source path separate from the filename.
+        // ###########################################################################################
+        private void ApplySelectedFilePathToRow(IContributionFileRow row, string selectedPath)
+        {
+            row.File = Path.GetFileName(selectedPath);
+            row.OriginalFilePath = selectedPath;
+
+            try
+            {
+                string? dir = Path.GetDirectoryName(selectedPath);
+                if (!string.IsNullOrWhiteSpace(dir) &&
+                    !string.IsNullOrWhiteSpace(this.thisDataRoot) &&
+                    dir.StartsWith(this.thisDataRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    string rel = Path.GetRelativePath(this.thisDataRoot, dir);
+                    row.FileLocation = (rel != "." && rel != "") ? rel.Replace('\\', '/') : string.Empty;
+                }
+                // We intentionally do NOT overwrite FileLocation if the user selects an external file.
+                // The file should retain whatever drop-down folder the user selected.
+            }
+            catch
+            {
+            }
+
+            this.SetAvailableFileLocations(row);
+
+            string updatedLocation = row.FileLocation;
+            row.FileLocation = string.Empty;
+            row.FileLocation = updatedLocation;
+        }
+
+        // ###########################################################################################
+        // Populates a row-specific file-location list and injects the current folder if missing.
+        // The resulting list is kept sorted, including any injected non-end-folder path.
+        // ###########################################################################################
+        private void SetAvailableFileLocations(IContributionFileRow row)
+        {
+            row.AvailableFileLocations.Clear();
+
+            string currentFileLocation = row.FileLocation?.Trim() ?? string.Empty;
+
+            var folders = this.AvailableEndFolders
+                .Concat(string.IsNullOrWhiteSpace(currentFileLocation) ? Enumerable.Empty<string>() : new[] { currentFileLocation })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var folder in folders)
+            {
+                row.AvailableFileLocations.Add(folder);
+            }
         }
 
     }

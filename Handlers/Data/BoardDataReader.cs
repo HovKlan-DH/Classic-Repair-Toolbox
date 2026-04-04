@@ -154,6 +154,19 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Removes one cached board-data instance so the next load re-reads the Excel file from disk.
+        // ###########################################################################################
+        public static void ClearCache(string cacheKey)
+        {
+            if (string.IsNullOrWhiteSpace(cacheKey))
+            {
+                return;
+            }
+
+            BoardDataReader._cache.Remove(cacheKey);
+        }
+
+        // ###########################################################################################
         // Scans the named sheet for the header row containing all required headers, then reads
         // all data rows below it. Each row is a case-insensitive dictionary keyed by header name.
         // Multi-line cell headers (Alt+Enter in Excel) are normalized to single-space strings.

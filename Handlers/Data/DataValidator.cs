@@ -26,6 +26,10 @@ namespace Handlers.DataHandling
             @"^-?\d+(?:\.\d+)?[Vv]$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex UuidV4Regex = new(
+            @"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         // ###########################################################################################
         // Validates all data definitions and paths across the main Excel file and all board-specific
         // files in the background, emitting warnings to the log for any inconsistencies found.
@@ -33,6 +37,8 @@ namespace Handlers.DataHandling
         public static async Task ValidateAllDataAsync()
         {
             Logger.Info("Starting background data validation");
+
+            var seenUuids = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in DataManager.HardwareBoards)
             {
@@ -71,6 +77,8 @@ namespace Handlers.DataHandling
                 {
                     ValidateFile(contextName, "Board local files", boardLocalFile.File);
                 }
+
+                ValidateBoardUuids(contextName, boardData, seenUuids);
             }
 
             Logger.Info("Background data validation complete");
@@ -175,6 +183,118 @@ namespace Handlers.DataHandling
                 return;
 
             Logger.Warning($"Excel data file [{excelDataFile}] sheet [Component images] has an entry {entryLabel} with invalid [T.LVL] value [{value}] - please fix!");
+        }
+
+        // ###########################################################################################
+        // Validates UUID v4 values across all UUID-bearing sheets in the board Excel data file.
+        // Logs empty UUIDs, invalid UUID v4 format, and duplicates across all loaded boards/sheets.
+        // ###########################################################################################
+        private static void ValidateBoardUuids(string excelDataFile, BoardData boardData, Dictionary<string, string> seenUuids)
+        {
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Board schematics",
+                boardData.Schematics,
+                schematic => schematic.UuidV4,
+                schematic => $"schematic [{schematic.SchematicName.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Components",
+                boardData.Components,
+                component => component.UuidV4,
+                component => $"component [{component.BoardLabel.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Component images",
+                boardData.ComponentImages,
+                image => image.UuidV4,
+                image => $"component image [{image.BoardLabel.Trim()}] pin [{image.Pin.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Component local files",
+                boardData.ComponentLocalFiles,
+                localFile => localFile.UuidV4,
+                localFile => $"component local file [{localFile.BoardLabel.Trim()}] name [{localFile.Name.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Component links",
+                boardData.ComponentLinks,
+                link => link.UuidV4,
+                link => $"component link [{link.BoardLabel.Trim()}] name [{link.Name.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Board local files",
+                boardData.BoardLocalFiles,
+                localFile => localFile.UuidV4,
+                localFile => $"board local file [{localFile.Category.Trim()}] name [{localFile.Name.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Board links",
+                boardData.BoardLinks,
+                link => link.UuidV4,
+                link => $"board link [{link.Category.Trim()}] name [{link.Name.Trim()}]",
+                seenUuids);
+
+            ValidateUuidsInSheet(
+                excelDataFile,
+                "Credits",
+                boardData.Credits,
+                credit => credit.UuidV4,
+                credit => $"credit [{credit.Category.Trim()}] name [{credit.NameOrHandle.Trim()}]",
+                seenUuids);
+        }
+
+        // ###########################################################################################
+        // Validates one sheet's UUID values for presence, strict UUID v4 format, and global uniqueness.
+        // Duplicate checks only run after the UUID has passed format validation.
+        // ###########################################################################################
+        private static void ValidateUuidsInSheet<T>(
+            string excelDataFile,
+            string sheetName,
+            IEnumerable<T> entries,
+            Func<T, string> getUuid,
+            Func<T, string> getEntryLabel,
+            Dictionary<string, string> seenUuids)
+        {
+            foreach (var entry in entries)
+            {
+                string entryLabel = getEntryLabel(entry);
+                string uuid = (getUuid(entry) ?? string.Empty).Trim();
+
+                if (string.IsNullOrWhiteSpace(uuid))
+                {
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with an empty [UUID v4] value - please fix!");
+                    continue;
+                }
+
+                if (!UuidV4Regex.IsMatch(uuid))
+                {
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with invalid [UUID v4] value [{uuid}] - please fix!");
+                    continue;
+                }
+
+                string currentLocation = $"Excel data file [{excelDataFile}] sheet [{sheetName}] entry {entryLabel}";
+
+                if (seenUuids.TryGetValue(uuid, out var firstLocation))
+                {
+                    Logger.Warning($"Duplicate [UUID v4] value [{uuid}] found in {currentLocation}; already used in {firstLocation} - please fix!");
+                    continue;
+                }
+
+                seenUuids[uuid] = currentLocation;
+            }
         }
 
         // ###########################################################################################

@@ -88,7 +88,7 @@
 						           FontWeight="Bold" />
 						<TextBlock TextWrapping="Wrap"
 						           Foreground="{DynamicResource Main_Fg}">
-							All data below is editable suggestions. The current values are preloaded from the board data. When submitted, the full edited payload is sent to the developer for review together with your comment. Please do provide your email, in case of any follow-up questions or confirmations that this has been accepted or rejected.
+							All data below is editable suggestions. The current values are preloaded from the board data. When submitted, the full payload is sent to the developer for review together with your comment.
 						</TextBlock>
 					</StackPanel>
 				</Border>
@@ -97,7 +97,7 @@
 				        BorderThickness="1"
 				        CornerRadius="6"
 				        Padding="12">
-					<Expander IsExpanded="True">
+					<Expander IsExpanded="False">
 						<Expander.Header>
 							<TextBlock Text='Component'
 							           FontSize="15"
@@ -246,7 +246,7 @@
 													<TextBlock Grid.Column="2" Grid.Row="4" Grid.ColumnSpan="3" Text="File location" FontSize="11" Margin="0,8,0,0" />
 													<ComboBox Grid.Column="2" Grid.Row="5"
 																					  Grid.ColumnSpan="3"
-																					  ItemsSource="{Binding $parent[local:ComponentContributionWindow].AvailableEndFolders}"
+																					  ItemsSource="{Binding AvailableFileLocations}"
 																					  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
 																					  HorizontalAlignment="Stretch"
 																					  MinWidth="0" />
@@ -295,9 +295,9 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource Panel_Border}"
-						BorderThickness="1"
-						CornerRadius="6"
-						Padding="12">
+		BorderThickness="1"
+		CornerRadius="6"
+		Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
 							<StackPanel Orientation="Horizontal" Spacing="4">
@@ -312,8 +312,8 @@
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-						            Margin="0,10,0,0"
-						            HorizontalAlignment="Stretch">
+									Margin="0,10,0,0"
+									HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
 								<StackPanel Grid.Column="0" Spacing="2">
 									<TextBlock Text="Describe all files specifically for this component."
@@ -330,34 +330,41 @@
 										Click="OnAddComponentLocalFileRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
-									  Margin="0,0,0,6"
-									  HorizontalAlignment="Stretch">
+							<Grid ColumnDefinitions="180,12,280,12,390,12,*,12,Auto"
+								  Margin="0,0,0,6"
+								  HorizontalAlignment="Stretch">
 								<TextBlock Text="Board label" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
-								<TextBlock Grid.Column="4" Text="File" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="File location" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="6" Text="File" FontSize="11" FontWeight="Bold" />
 							</Grid>
 
 							<ItemsControl x:Name="ComponentLocalFileRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionComponentLocalFileRow">
 										<Border BorderThickness="0"
-										        Background="Transparent"
-										        Padding="0,4">
-											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
-											      HorizontalAlignment="Stretch">
+												Background="Transparent"
+												Padding="0,4">
+											<Grid ColumnDefinitions="180,12,280,12,390,12,*,12,Auto"
+												  HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding BoardLabel}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
-												<TextBox Grid.Column="4"
-												         Text="{Binding File}"
-												         Tag="{Binding}"
-												         IsReadOnly="True"
-												         Cursor="Hand"
-												         PointerReleased="OnFileTextBoxPointerReleased" />
-												<Button Grid.Column="6"
-												        Content="Remove"
-												        Tag="{Binding}"
-												        Click="OnRemoveComponentLocalFileRowClick" />
+												<ComboBox Grid.Column="4"
+														  ItemsSource="{Binding AvailableFileLocations}"
+														  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+														  HorizontalAlignment="Stretch"
+														  MinWidth="0" />
+												<TextBox Grid.Column="6"
+														 Text="{Binding File}"
+														 Tag="{Binding}"
+														 IsReadOnly="True"
+														 Cursor="Hand"
+														 MinWidth="0"
+														 PointerReleased="OnFileTextBoxPointerReleased" />
+												<Button Grid.Column="8"
+														Content="Remove"
+														Tag="{Binding}"
+														Click="OnRemoveComponentLocalFileRowClick" />
 											</Grid>
 										</Border>
 									</DataTemplate>
@@ -436,9 +443,9 @@
 				</Border>
 
 				<Border BorderBrush="{DynamicResource Panel_Border}"
-						BorderThickness="1"
-						CornerRadius="6"
-						Padding="12">
+		BorderThickness="1"
+		CornerRadius="6"
+		Padding="12">
 					<Expander IsExpanded="False">
 						<Expander.Header>
 							<StackPanel Orientation="Horizontal" Spacing="4">
@@ -453,8 +460,8 @@
 						</Expander.Header>
 
 						<StackPanel Spacing="10"
-						            Margin="0,10,0,0"
-						            HorizontalAlignment="Stretch">
+									Margin="0,10,0,0"
+									HorizontalAlignment="Stretch">
 							<Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
 								<StackPanel Grid.Column="0" Spacing="2">
 									<TextBlock Text="Describe all files specifically for the board."
@@ -471,34 +478,41 @@
 										Click="OnAddBoardLocalFileRowClick" />
 							</Grid>
 
-							<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
+							<Grid ColumnDefinitions="180,12,280,12,390,12,*,12,Auto"
 								  Margin="0,0,0,6"
 								  HorizontalAlignment="Stretch">
 								<TextBlock Text="Category" FontSize="11" FontWeight="Bold" />
 								<TextBlock Grid.Column="2" Text="Name" FontSize="11" FontWeight="Bold" />
-								<TextBlock Grid.Column="4" Text="File" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="4" Text="File location" FontSize="11" FontWeight="Bold" />
+								<TextBlock Grid.Column="6" Text="File" FontSize="11" FontWeight="Bold" />
 							</Grid>
 
 							<ItemsControl x:Name="BoardLocalFileRowsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ContributionBoardLocalFileRow">
 										<Border BorderThickness="0"
-										        Background="Transparent"
-										        Padding="0,4">
-											<Grid ColumnDefinitions="180,12,360,12,*,12,Auto"
-												HorizontalAlignment="Stretch">
+												Background="Transparent"
+												Padding="0,4">
+											<Grid ColumnDefinitions="180,12,280,12,390,12,*,12,Auto"
+												  HorizontalAlignment="Stretch">
 												<TextBox Text="{Binding Category}" />
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
-												<TextBox Grid.Column="4"
-												         Text="{Binding File}"
-												         Tag="{Binding}"
-												         IsReadOnly="True"
-												         Cursor="Hand"
-												         PointerReleased="OnFileTextBoxPointerReleased" />
-												<Button Grid.Column="6"
-												        Content="Remove"
-												        Tag="{Binding}"
-												        Click="OnRemoveBoardLocalFileRowClick" />
+												<ComboBox Grid.Column="4"
+														  ItemsSource="{Binding AvailableFileLocations}"
+														  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+														  HorizontalAlignment="Stretch"
+														  MinWidth="0" />
+												<TextBox Grid.Column="6"
+														 Text="{Binding File}"
+														 Tag="{Binding}"
+														 IsReadOnly="True"
+														 Cursor="Hand"
+														 MinWidth="0"
+														 PointerReleased="OnFileTextBoxPointerReleased" />
+												<Button Grid.Column="8"
+														Content="Remove"
+														Tag="{Binding}"
+														Click="OnRemoveBoardLocalFileRowClick" />
 											</Grid>
 										</Border>
 									</DataTemplate>

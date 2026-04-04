@@ -15,13 +15,14 @@
 		</Grid.ColumnDefinitions>
 
 		<Border Grid.Column="0"
-                x:Name="SchematicsContainer"
-                ClipToBounds="True"
-                PointerWheelChanged="OnSchematicsZoom"
-                PointerPressed="OnSchematicsPointerPressed"
-                PointerMoved="OnSchematicsPointerMoved"
-                PointerReleased="OnSchematicsPointerReleased"
-                Padding="0,0,0,0">
+			x:Name="SchematicsContainer"
+			Focusable="True"
+			ClipToBounds="True"
+			PointerWheelChanged="OnSchematicsZoom"
+			PointerPressed="OnSchematicsPointerPressed"
+			PointerMoved="OnSchematicsPointerMoved"
+			PointerReleased="OnSchematicsPointerReleased"
+			Padding="0,0,0,0">
 			<Grid>
 				<TextBlock x:Name="SchematicsMissingImageText"
                            Text="Missing image - please refresh board after sync finishes..."
@@ -59,6 +60,15 @@
 						<MatrixTransform />
 					</Canvas.RenderTransform>
 				</Canvas>
+
+				<ts:ComponentLabelEditorOverlay x:Name="SchematicsLabelEditorOverlay"
+												IsVisible="False"
+												IsHitTestVisible="False"
+												RenderTransformOrigin="0%,0%">
+					<ts:ComponentLabelEditorOverlay.RenderTransform>
+						<MatrixTransform />
+					</ts:ComponentLabelEditorOverlay.RenderTransform>
+				</ts:ComponentLabelEditorOverlay>
 
 				<Canvas x:Name="SchematicsLabelsCanvas"
 												IsHitTestVisible="False"
@@ -196,7 +206,6 @@
 									Padding="6,2"
 									VerticalAlignment="Center" />
 						</StackPanel>
-						<!-- Code-behind will inject colors here -->
 						<StackPanel x:Name="TracesListPanel" Spacing="4" />
 
 						<Button x:Name="UndoDeletedTraceButton"
@@ -222,13 +231,10 @@
 					BoxShadow="0 4 10 0 #40000000">
 					<StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
 
-						<!-- DYNAMIC Color Buttons Array -->
 						<StackPanel x:Name="DynamicPaletteColorsPanel" Orientation="Horizontal" Spacing="10" />
 
-						<!-- THIS IS THE FIRST DIVIDER -->
 						<Border Width="1" Height="18" Background="{DynamicResource Schematics_Panels_Fg}" Margin="2,0"/>
 
-						<!-- Custom Color Wheel mapped as a perfectly round flyout button -->
 						<Button x:Name="CustomColorButton"
 								Width="18" Height="18"
 								CornerRadius="9"
@@ -237,13 +243,6 @@
 								Background="White"
 								BorderBrush="White"
 								BorderThickness="1">
-							<!--
-							<Button.Flyout>
-								<Flyout Placement="BottomEdgeAlignedLeft">
-									<ColorView x:Name="TraceColorPicker" Color="White" />
-								</Flyout>
-							</Button.Flyout>
-							-->
 							<Button.Flyout>
 								<Flyout Placement="BottomEdgeAlignedLeft">
 									<ColorView x:Name="TraceColorPicker"
@@ -253,10 +252,8 @@
 							</Button.Flyout>
 						</Button>
 
-						<!-- THIS IS THE SECOND DIVIDER -->
 						<Border Width="1" Height="18" Background="{DynamicResource SchematicsPanels_Fg}" Margin="2,0"/>
 
-						<!-- Delete Trace Button -->
 						<TextBlock Text="🗑"
 								   FontSize="16"
 								   Foreground="IndianRed"
@@ -441,6 +438,90 @@
 					   HorizontalAlignment="Stretch"
 					   RenderOptions.BitmapInterpolationMode="HighQuality" />
 			</Grid>
+		</Border>
+
+		<Border x:Name="SchematicsLabelEditorMenuBorder"
+				IsVisible="False"
+				ZIndex="5000"
+				HorizontalAlignment="Left"
+				VerticalAlignment="Top"
+				Background="{DynamicResource Schematics_Panels_Bg}"
+				BorderBrush="{DynamicResource Schematics_Panels_Border}"
+				BorderThickness="1"
+				CornerRadius="6"
+				Padding="10,8">
+			<StackPanel x:Name="SchematicsLabelEditorMenuPanel"
+						Spacing="8"
+						Width="220">
+				<TextBlock x:Name="SchematicsLabelEditorMenuStateTextBlock"
+						   Text="Schematic actions"
+						   FontSize="11"
+						   FontWeight="Bold"
+						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+
+				<Button x:Name="EnableLabelEditorButton"
+						Content="Enable component label editor"
+						HorizontalAlignment="Stretch" />
+
+				<Button x:Name="CancelLabelEditorChangesButton"
+						Content="Discard all editor changes"
+						IsVisible="False"
+						HorizontalAlignment="Stretch"
+						Foreground="White"
+						Background="IndianRed"
+						BorderBrush="#B85C5C" />
+
+				<Button x:Name="ApplyLabelEditorChangesButton"
+						Content="Apply all editor changes"
+						IsVisible="False"
+						HorizontalAlignment="Stretch"
+						Foreground="White"
+						Background="#4F8A5B"
+						BorderBrush="#3E6E48" />
+			</StackPanel>
+		</Border>
+
+		<Border x:Name="SchematicsNewLabelPromptBorder"
+				IsVisible="False"
+				ZIndex="5001"
+				HorizontalAlignment="Left"
+				VerticalAlignment="Top"
+				Background="{DynamicResource Schematics_Panels_Bg}"
+				BorderBrush="{DynamicResource Schematics_Panels_Border}"
+				BorderThickness="1"
+				CornerRadius="6"
+				Padding="10,8">
+			<StackPanel Spacing="8"
+						Width="260">
+				<TextBlock Text="New component label"
+						   FontSize="11"
+						   FontWeight="Bold"
+						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+
+				<TextBlock Text="Board label"
+						   FontSize="11"
+						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+
+				<TextBox x:Name="NewLabelEditorBoardLabelTextBox" />
+
+				<TextBlock Text="Category"
+						   FontSize="11"
+						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+
+				<ComboBox x:Name="NewLabelEditorCategoryComboBox"
+						  HorizontalAlignment="Stretch" />
+
+				<StackPanel Orientation="Horizontal"
+							Spacing="8"
+							HorizontalAlignment="Right">
+					<Button x:Name="CancelNewLabelEditorBoardLabelButton"
+							Content="Cancel"
+							MinWidth="72" />
+					<Button x:Name="ConfirmNewLabelEditorBoardLabelButton"
+							Content="OK"
+							MinWidth="72" />
+				</StackPanel>
+			</StackPanel>
 		</Border>
 
 	</Grid>
