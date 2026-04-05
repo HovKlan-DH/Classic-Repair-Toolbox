@@ -166,6 +166,8 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 - [Short introduction](https://youtu.be/FamNSLKJpdI)
 - [How to do manual traces](https://youtu.be/JUNXeCHsrME)
 - [How to sync oscilloscope](https://youtu.be/CbTh1FFp3tU)
+- [How to use component label editor](https://youtu.be/jmYrz2VB3ig)
+
 
 ### Information automatically collected by CRT
 
