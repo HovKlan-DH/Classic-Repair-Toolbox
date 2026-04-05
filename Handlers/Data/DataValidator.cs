@@ -79,6 +79,7 @@ namespace Handlers.DataHandling
                 }
 
                 ValidateBoardUuids(contextName, boardData, seenUuids);
+                ValidateOrphanComponents(contextName, boardData);
             }
 
             Logger.Info("Background data validation complete");
@@ -295,6 +296,113 @@ namespace Handlers.DataHandling
 
                 seenUuids[uuid] = currentLocation;
             }
+        }
+
+        // ###########################################################################################
+        // Detects orphan component references between the component-related board Excel sheets.
+        // Uses [BoardLabel] as the shared component key and emits warnings for any missing links.
+        // ###########################################################################################
+        private static void ValidateOrphanComponents(string excelDataFile, BoardData boardData)
+        {
+            var componentLabels = CreateNormalizedLabelSet(boardData.Components, component => component.BoardLabel);
+            var highlightLabels = CreateNormalizedLabelSet(boardData.ComponentHighlights, highlight => highlight.BoardLabel);
+
+            foreach (var component in boardData.Components)
+            {
+                string boardLabel = NormalizeLabel(component.BoardLabel);
+                if (string.IsNullOrWhiteSpace(boardLabel))
+                    continue;
+
+                if (!highlightLabels.Contains(boardLabel))
+                {
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [Components] has an orphan component [{component.BoardLabel.Trim()}] that does not exist in sheet [Component highlights] - please fix!");
+                }
+            }
+
+            ValidateComponentReferencesInSheet(
+                excelDataFile,
+                "Component images",
+                boardData.ComponentImages,
+                image => image.BoardLabel,
+                image => $"component image [{image.BoardLabel.Trim()}] pin [{image.Pin.Trim()}]",
+                componentLabels);
+
+            ValidateComponentReferencesInSheet(
+                excelDataFile,
+                "Component highlights",
+                boardData.ComponentHighlights,
+                highlight => highlight.BoardLabel,
+                highlight => $"component highlight [{highlight.BoardLabel.Trim()}] schematic [{highlight.SchematicName.Trim()}]",
+                componentLabels);
+
+            ValidateComponentReferencesInSheet(
+                excelDataFile,
+                "Component local files",
+                boardData.ComponentLocalFiles,
+                localFile => localFile.BoardLabel,
+                localFile => $"component local file [{localFile.BoardLabel.Trim()}] name [{localFile.Name.Trim()}]",
+                componentLabels);
+
+            ValidateComponentReferencesInSheet(
+                excelDataFile,
+                "Component links",
+                boardData.ComponentLinks,
+                link => link.BoardLabel,
+                link => $"component link [{link.BoardLabel.Trim()}] name [{link.Name.Trim()}]",
+                componentLabels);
+        }
+
+        // ###########################################################################################
+        // Validates that entries in a component-related sheet reference a component label that
+        // actually exists in the [Components] sheet.
+        // ###########################################################################################
+        private static void ValidateComponentReferencesInSheet<T>(
+            string excelDataFile,
+            string sheetName,
+            IEnumerable<T> entries,
+            Func<T, string> getBoardLabel,
+            Func<T, string> getEntryLabel,
+            HashSet<string> componentLabels)
+        {
+            foreach (var entry in entries)
+            {
+                string boardLabel = NormalizeLabel(getBoardLabel(entry));
+                if (string.IsNullOrWhiteSpace(boardLabel))
+                    continue;
+
+                if (!componentLabels.Contains(boardLabel))
+                {
+                    Logger.Warning($"Excel data file [{excelDataFile}] sheet [{sheetName}] has an orphan entry {getEntryLabel(entry)} because component [{boardLabel}] does not exist in sheet [Components] - please fix!");
+                }
+            }
+        }
+
+        // ###########################################################################################
+        // Builds a case-insensitive label set from a sequence of entries using trimmed board labels.
+        // Empty labels are ignored.
+        // ###########################################################################################
+        private static HashSet<string> CreateNormalizedLabelSet<T>(IEnumerable<T> entries, Func<T, string> getLabel)
+        {
+            var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in entries)
+            {
+                string label = NormalizeLabel(getLabel(entry));
+                if (!string.IsNullOrWhiteSpace(label))
+                {
+                    labels.Add(label);
+                }
+            }
+
+            return labels;
+        }
+
+        // ###########################################################################################
+        // Normalizes a component label by trimming surrounding whitespace.
+        // ###########################################################################################
+        private static string NormalizeLabel(string? label)
+        {
+            return (label ?? string.Empty).Trim();
         }
 
         // ###########################################################################################

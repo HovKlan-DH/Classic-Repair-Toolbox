@@ -1,3 +1,17 @@
+# 1.5.0, 2026-April-5
+---------------------
+- Fixed it will not show "oscilloscope disconnected" at application launch, if not set to auto-connect
+- Added label editor in "Schematics" tab
+- Added YouTube video for showcasing label editor functionalities:
+  - [How to use component label editor in CRT](https://youtu.be/jmYrz2VB3ig)
+- Added more checks for the data validator
+- Changed "Contribute" tab:
+  - Added UUID per row in Excel data files
+  - Added "File location" drop-down
+  - Changed "File" does no longer include relative path
+- Refactored and mitigated some potential security risks
+
+
 # 1.4.0, 2026-March-31
 ----------------------
 - Fixed changing to another hardware will clear the filter component search

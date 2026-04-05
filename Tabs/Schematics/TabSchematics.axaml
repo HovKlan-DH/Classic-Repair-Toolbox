@@ -467,17 +467,17 @@
 						Content="Discard all editor changes"
 						IsVisible="False"
 						HorizontalAlignment="Stretch"
-						Foreground="White"
-						Background="IndianRed"
-						BorderBrush="#B85C5C" />
+						Foreground="{DynamicResource Button_Discard_Fg}"
+						Background="{DynamicResource Button_Discard_Bg}"
+						BorderBrush="{DynamicResource Button_Discard_Border}" />
 
 				<Button x:Name="ApplyLabelEditorChangesButton"
 						Content="Apply all editor changes"
 						IsVisible="False"
 						HorizontalAlignment="Stretch"
-						Foreground="White"
-						Background="#4F8A5B"
-						BorderBrush="#3E6E48" />
+						Foreground="{DynamicResource Button_Apply_Fg}"
+						Background="{DynamicResource Button_Apply_Bg}"
+						BorderBrush="{DynamicResource Button_Apply_Border}" />
 			</StackPanel>
 		</Border>
 

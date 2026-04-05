@@ -1986,8 +1986,9 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Updates the main window title and button state based on the actual SCPI session state
-        // instead of raw ping reachability.
+        // Updates the main window title and button state based on the actual SCPI session state.
+        // The oscilloscope suffix is only shown after a session has existed, or while auto-connect
+        // is enabled and startup/background detection is expected to be active.
         // ###########################################################################################
         private void UpdateMainWindowOscilloscopeSessionState()
         {
@@ -2003,6 +2004,10 @@ namespace CRT
                 this.thisHasEstablishedOscilloscopeSession &&
                 this.thisConnectedScopeClient != null;
 
+            bool shouldShowTitleSuffix =
+                this.thisHasSeenEstablishedOscilloscopeSession ||
+                UserSettings.OscilloscopeAutoConnect;
+
             this.RunFullTestSuiteButton.IsEnabled = hasEstablishedSession;
 
             Window? window = this.thisMainWindow ?? TopLevel.GetTopLevel(this) as Window;
@@ -2013,11 +2018,11 @@ namespace CRT
                     this.thisMainWindowTitleBase = this.GetMainWindowTitleBase(window.Title ?? string.Empty);
                 }
 
-                string suffix = hasEstablishedSession
-                    ? " (oscilloscope connected)"
-                    : " (oscilloscope disconnected)";
-
-                string newTitle = this.thisMainWindowTitleBase + suffix;
+                string newTitle = shouldShowTitleSuffix
+                    ? this.thisMainWindowTitleBase + (hasEstablishedSession
+                        ? " (oscilloscope connected)"
+                        : " (oscilloscope disconnected)")
+                    : this.thisMainWindowTitleBase;
 
                 if (!string.Equals(window.Title, newTitle, StringComparison.Ordinal))
                 {
@@ -2279,20 +2284,26 @@ namespace CRT
         }
 
         // ###########################################################################################
-// Persists the auto-connect checkbox state and starts or stops the background auto-connect loop.
-// ###########################################################################################
-private void OnAutoConnectOscilloscopeCheckBoxChanged()
-{
-    bool isEnabled = this.AutoConnectOscilloscopeCheckBox.IsChecked == true;
+        // Persists the auto-connect checkbox state and starts or stops the background auto-connect loop.
+        // ###########################################################################################
+        private void OnAutoConnectOscilloscopeCheckBoxChanged()
+        {
+            bool isEnabled = this.AutoConnectOscilloscopeCheckBox.IsChecked == true;
 
-    UserSettings.OscilloscopeAutoConnect = isEnabled;
-    this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
+            UserSettings.OscilloscopeAutoConnect = isEnabled;
+            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
 
-    if (isEnabled)
-        this.StartOscilloscopeAutoConnectLoop();
-    else
-        this.StopOscilloscopeAutoConnectLoop();
-}
+            if (isEnabled)
+            {
+                this.StartOscilloscopeAutoConnectLoop();
+            }
+            else
+            {
+                this.StopOscilloscopeAutoConnectLoop();
+            }
+
+            this.UpdateMainWindowOscilloscopeSessionState();
+        }
 
         // ###########################################################################################
         // Starts one background loop that continuously retries oscilloscope connection while enabled.

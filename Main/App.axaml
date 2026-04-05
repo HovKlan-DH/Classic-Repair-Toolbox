@@ -42,6 +42,12 @@
 					<SolidColorBrush x:Key="Table_RowHover_Bg">#E1F0FA</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Highlighted_Bg">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Border">#B85C5C</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Bg">#4F8A5B</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Border">#3E6E48</SolidColorBrush>
 					<SolidColorBrush x:Key="Panel_Border">Gray</SolidColorBrush>
 
 					<!-- Light, Main, banners -->
@@ -149,6 +155,12 @@
 					<SolidColorBrush x:Key="Table_RowHover_Bg">#3C2F28</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Highlighted_Bg">#B87352</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Discard_Border">#B85C5C</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Bg">#4F8A5B</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Apply_Border">#3E6E48</SolidColorBrush>
 					<SolidColorBrush x:Key="Panel_Border">#524842</SolidColorBrush>
 					
 					<!-- Dark, Main, banners -->
