@@ -907,7 +907,7 @@ public partial class TabSchematics
     // ###########################################################################################
     // Compares two label-editor snapshots so duplicate undo and redo entries can be skipped.
     // ###########################################################################################
-    private bool AreLabelEditorUndoStatesEqual(LabelEditorUndoState leftState, LabelEditorUndoState rightState)
+    private static bool AreLabelEditorUndoStatesEqual(LabelEditorUndoState leftState, LabelEditorUndoState rightState)
     {
         const double epsilon = 0.0001;
 
@@ -949,7 +949,7 @@ public partial class TabSchematics
     private void PushLabelEditorUndoState(LabelEditorUndoState state)
     {
         if (this.thisLabelEditorUndoStack.Count > 0 &&
-            this.AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), state))
+            AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), state))
         {
             return;
         }
@@ -1028,7 +1028,7 @@ public partial class TabSchematics
         var currentState = this.CreateLabelEditorUndoState();
 
         while (this.thisLabelEditorUndoStack.Count > 0 &&
-               this.AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), currentState))
+               AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), currentState))
         {
             this.thisLabelEditorUndoStack.Pop();
         }
@@ -1041,7 +1041,7 @@ public partial class TabSchematics
         var previousState = this.thisLabelEditorUndoStack.Pop();
 
         if (this.thisLabelEditorRedoStack.Count == 0 ||
-            !this.AreLabelEditorUndoStatesEqual(this.thisLabelEditorRedoStack.Peek(), currentState))
+            !AreLabelEditorUndoStatesEqual(this.thisLabelEditorRedoStack.Peek(), currentState))
         {
             this.thisLabelEditorRedoStack.Push(currentState);
         }
@@ -1063,7 +1063,7 @@ public partial class TabSchematics
         var currentState = this.CreateLabelEditorUndoState();
 
         while (this.thisLabelEditorRedoStack.Count > 0 &&
-               this.AreLabelEditorUndoStatesEqual(this.thisLabelEditorRedoStack.Peek(), currentState))
+               AreLabelEditorUndoStatesEqual(this.thisLabelEditorRedoStack.Peek(), currentState))
         {
             this.thisLabelEditorRedoStack.Pop();
         }
@@ -1076,7 +1076,7 @@ public partial class TabSchematics
         var nextState = this.thisLabelEditorRedoStack.Pop();
 
         if (this.thisLabelEditorUndoStack.Count == 0 ||
-            !this.AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), currentState))
+            !AreLabelEditorUndoStatesEqual(this.thisLabelEditorUndoStack.Peek(), currentState))
         {
             this.thisLabelEditorUndoStack.Push(currentState);
         }
@@ -1147,7 +1147,7 @@ public partial class TabSchematics
     // Builds a lightweight signature for the currently visible editor labels so controls are only
     // re-bound when the count or label text actually changes.
     // ###########################################################################################
-    private string BuildEditorComponentLabelVisualSignature(IReadOnlyList<EditableComponentHighlight> rows)
+    private static string BuildEditorComponentLabelVisualSignature(IReadOnlyList<EditableComponentHighlight> rows)
     {
         if (rows.Count == 0)
         {
@@ -1186,7 +1186,7 @@ public partial class TabSchematics
 
         this.EnsureEditorComponentLabelVisualPoolSize(visibleRows.Count);
 
-        string newSignature = this.BuildEditorComponentLabelVisualSignature(visibleRows);
+        string newSignature = BuildEditorComponentLabelVisualSignature(visibleRows);
         bool textChanged = !string.Equals(
             this.thisLastEditorLabelVisualSignature,
             newSignature,

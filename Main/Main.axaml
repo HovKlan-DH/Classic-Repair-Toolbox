@@ -579,44 +579,6 @@
 
 				</TabControl>
 
-				<!-- MODE HINT: the "what to do next" label shown while a mode is waiting for the
-				     user to act on the schematic image - clicking "Add worklog" otherwise leaves
-				     them with a crosshair and no instruction.
-
-				     It sits in the tab-header row, stretched from the tabs to the window edge, and
-				     ABOVE the data-sync icon (ZIndex 20 against its 10) so it covers that icon
-				     rather than being crowded beside it. The khaki is the same highlight the
-				     component hover label and thumbnail headers use, so it reads as the app's own
-				     "look here" colour rather than a new kind of alert.
-
-				     It clears itself on the first pointer press, so it costs an experienced user
-				     one click they were going to make anyway. Driven from Main.ModeHint.cs.
-
-				     The TextBlock is the Border's DIRECT child, with no StackPanel around it. A
-				     horizontal StackPanel measures its children with infinite width, so a
-				     TextWrapping="Wrap" inside one never wraps at all - the text just ran past the
-				     window edge no matter what MaxWidth the Border carried. -->
-				<Border x:Name="ModeHintBorder"
-						Grid.Row="5"
-						ZIndex="20"
-						IsVisible="False"
-						IsHitTestVisible="False"
-						HorizontalAlignment="Right"
-						VerticalAlignment="Top"
-						MaxWidth="560"
-						Margin="0,10,10,0"
-						Background="{DynamicResource Schematics_ComponentHover_Bg}"
-						BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
-						BorderThickness="1"
-						CornerRadius="3"
-						Padding="10,4">
-					<TextBlock x:Name="ModeHintText"
-							   FontSize="12"
-							   TextWrapping="Wrap"
-							   VerticalAlignment="Center"
-							   Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
-				</Border>
-
 				<Border x:Name="DataSyncStatusIconBorder"
 						Grid.Row="5"
 						ZIndex="10"
@@ -666,6 +628,63 @@
 
 			</Grid>
 		</Border>
+
+		<!-- MODE HINT: the "what to do next" label shown while a mode is waiting for the user to
+		     act on the schematic image - clicking "Add worklog" otherwise leaves them with a
+		     crosshair and no instruction.
+
+		     A direct child of RootGrid, spanning all three columns and pinned to the window's
+		     UPPER-LEFT corner, so it floats above EVERYTHING - the LeftPanel sidebar included -
+		     rather than being confined to the RightPanel's tab area where it used to live. It is
+		     the LAST child in RootGrid, so it draws on top of every sibling without needing a
+		     ZIndex to fight over; the explicit ZIndex is still set high as a safety net against
+		     whatever gets added after it later.
+
+		     The khaki fill is the same highlight the component hover label and thumbnail headers
+		     use, so it reads as the app's own "look here" colour rather than a new kind of alert.
+		     The border is DASHED and IndianRed (the same accent the selected-tab underline and
+		     selected-workbook-card border use) at 2px, one step heavier than the app's ordinary 1px
+		     borders, so the hint itself reads as clearly distinct from ordinary panel chrome.
+		     The "Hint:" lead-in is bold and on its OWN line (a LineBreak, not just a leading word)
+		     so it reads as a label sitting above the sentence rather than as its first word. A
+		     SECOND LineBreak follows it, purely for vertical space between the label and the
+		     sentence - an empty Run would not do it, since Avalonia collapses a blank inline.
+
+		     It clears itself on the first pointer press, so it costs an experienced user one click
+		     they were going to make anyway. Driven from Main.ModeHint.cs.
+
+		     A Panel rather than a Border: only shapes carry StrokeDashArray, Border has no
+		     dashed-edge option at all (see the same note beside the drag-placeholder Rectangle in
+		     WorklogEntryEditorWindow.axaml) - so the dashed outline is drawn by a Rectangle sized to
+		     fill the Panel, with the text on top of it.
+
+		     The TextBlock has no StackPanel around it. A horizontal StackPanel measures its children
+		     with infinite width, so a TextWrapping="Wrap" inside one never wraps at all - the text
+		     just ran past the window edge no matter what MaxWidth the Panel carried. -->
+		<Panel x:Name="ModeHintBorder"
+			   Grid.Column="0"
+			   Grid.ColumnSpan="3"
+			   ZIndex="1000"
+			   IsVisible="False"
+			   IsHitTestVisible="False"
+			   HorizontalAlignment="Left"
+			   VerticalAlignment="Top"
+			   MaxWidth="350"
+			   Margin="10,10,0,0">
+			<Rectangle Stroke="{DynamicResource Main_TabUnderline_Selected}"
+					   StrokeThickness="2"
+					   StrokeDashArray="4,2"
+					   RadiusX="3"
+					   RadiusY="3"
+					   Fill="{DynamicResource Schematics_ComponentHover_Bg}" />
+			<TextBlock FontSize="12"
+					   TextWrapping="Wrap"
+					   VerticalAlignment="Center"
+					   Margin="15"
+					   Foreground="{DynamicResource Schematics_ComponentHover_Fg}">
+				<Run Text="&#xf059;" FontFamily="{StaticResource FontAwesomeRegular}" /><Run Text="  Hint:" FontWeight="Bold" /><LineBreak /><LineBreak /><Run x:Name="ModeHintText" />
+			</TextBlock>
+		</Panel>
 
 	</Grid>
 

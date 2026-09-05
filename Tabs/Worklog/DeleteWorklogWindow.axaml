@@ -1,0 +1,45 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.DeleteWorklogWindow"
+        Title="Delete worklog"
+        Width="420"
+        MinWidth="380"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeaderText" Text="Delete worklog" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock x:Name="IntroText" TextWrapping="Wrap" Text="This permanently deletes the worklog:" />
+
+		<!-- The worklog's own "#N · Title", on its own line so it stands out from the surrounding
+		     sentences - set from code (Initialize), never a markup default, since it names a real
+		     worklog. Same treatment DeleteWorkbookWindow gives the workbook it is about to delete. -->
+		<TextBlock x:Name="WorklogNameText"
+				   TextWrapping="Wrap"
+				   FontWeight="Bold"
+				   Margin="0,8,0,8" />
+
+		<TextBlock TextWrapping="Wrap"
+				   Text="Everything recorded to the worklog will be deleted; e.g. work done, comments, photos and files." />
+
+		<TextBlock TextWrapping="Wrap"
+				   Margin="0,8,0,0"
+				   Text="This cannot be undone!" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="DeleteButton"
+					Content="Delete worklog"
+					Foreground="{DynamicResource Button_Cancel_Fg}"
+					Background="{DynamicResource Button_Cancel_Bg}"
+					BorderBrush="{DynamicResource Button_Cancel_Border}"
+					Click="OnDeleteClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

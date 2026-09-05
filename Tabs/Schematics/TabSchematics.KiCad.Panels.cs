@@ -318,25 +318,10 @@ public partial class TabSchematics
                 continue;
             }
 
-            foreach (string netName in netNames)
-            {
-                if (!string.IsNullOrWhiteSpace(netName))
-                {
-                    result.Add(netName);
-                }
-            }
+            result.UnionWith(netNames.Where(netName => !string.IsNullOrWhiteSpace(netName)));
         }
 
         return result;
-    }
-
-    // ###########################################################################################
-    // Updates the panel displaying connected components and pins for all currently active nets.
-    // Rebuilds the list only when the active net set actually changes.
-    // ###########################################################################################
-    private void UpdateKiCadNetConnectionsPanel()
-    {
-        this.UpdateKiCadNetConnectionsPanel(this.BuildActiveKiCadTracePreviewNetNames());
     }
 
     // ###########################################################################################

@@ -283,7 +283,7 @@ namespace CRT
 
                 foreach (var file in targetFiles)
                 {
-                    this.AddFileToZipSafe(archive, file.Source, file.ZipEntryName, bytesAdded =>
+                    AddFileToZipSafe(archive, file.Source, file.ZipEntryName, bytesAdded =>
                     {
                         currentUncompressedBytes += bytesAdded;
                         if (totalUncompressedBytes > 0)
@@ -337,7 +337,7 @@ namespace CRT
         // if file doesn't exist or is locked. Reports bytes copied back out to optionally track 
         // compression progress dynamically.
         // ###########################################################################################
-        private void AddFileToZipSafe(ZipArchive archive, string sourcePath, string entryName, Action<int>? onBytesRead = null)
+        private static void AddFileToZipSafe(ZipArchive archive, string sourcePath, string entryName, Action<int>? onBytesRead = null)
         {
             if (!File.Exists(sourcePath)) return;
             try

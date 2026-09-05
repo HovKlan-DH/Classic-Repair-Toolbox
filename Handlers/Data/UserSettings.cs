@@ -1481,35 +1481,6 @@ namespace Handlers.DataHandling
             }
         }
 
-/*
-        // ###########################################################################################
-        // Returns whether KiCad traces should auto-highlight on hover for the given board.
-        // Defaults to true so existing behavior is preserved unless explicitly changed.
-        // ###########################################################################################
-        public static bool GetSchematicsHoverHighlightsTracesForBoard(string boardKey)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return true;
-
-            return _data.SchematicsHoverHighlightsTracesByBoard.TryGetValue(boardKey, out var enabled)
-                ? enabled
-                : true;
-        }
-
-        // ###########################################################################################
-        // Persists whether KiCad traces should auto-highlight on hover for the given board.
-        // ###########################################################################################
-        public static void SetSchematicsHoverHighlightsTracesForBoard(string boardKey, bool enabled)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return;
-
-            _data.SchematicsHoverHighlightsTracesByBoard[boardKey] = enabled;
-            Logger.Info($"Setting changed: [SchematicsHoverHighlightsTraces] [{boardKey}] [{enabled}]");
-            Save();
-        }
-*/
-
         // ###########################################################################################
         // Returns whether contributor mode is enabled for the given board.
         // Falls back to the legacy global setting when a board-specific value is not yet saved.
@@ -1615,28 +1586,6 @@ namespace Handlers.DataHandling
             Logger.Info($"Setting changed: [SchematicsMarkPin1OnSelectedComponent] [{boardKey}] [{enabled}]");
             Save();
         }
-
-        // ###########################################################################################
-        // Returns whether selected-component trace preview is enabled globally.
-        // The board key is ignored and only kept for backward call-site compatibility.
-        // ###########################################################################################
-/*
-        public static bool GetSchematicsShowTracesOnSelectedComponentForBoard(string boardKey)
-        {
-            return SchematicsShowTracesOnSelectedComponent;
-        }
-*/
-
-        // ###########################################################################################
-        // Persists whether selected-component trace preview is enabled globally.
-        // The board key is ignored and only kept for backward call-site compatibility.
-        // ###########################################################################################
-/*
-        public static void SetSchematicsShowTracesOnSelectedComponentForBoard(string boardKey, bool enabled)
-        {
-            SchematicsShowTracesOnSelectedComponent = enabled;
-        }
-*/
 
     }
 }

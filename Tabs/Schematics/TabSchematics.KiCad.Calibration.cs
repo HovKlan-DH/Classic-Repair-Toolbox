@@ -500,22 +500,6 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Returns the current interactive calibration rectangle in image-pixel coordinates.
-    // Left can be greater than right and top can be greater than bottom so flip state is preserved.
-    // ###########################################################################################
-/*
-        private Rect GetCurrentKiCadCalibrationImageRect()
-        {
-            double left = Math.Min(this.thisKiCadCalibrationImageLeft, this.thisKiCadCalibrationImageRight);
-            double right = Math.Max(this.thisKiCadCalibrationImageLeft, this.thisKiCadCalibrationImageRight);
-            double top = Math.Min(this.thisKiCadCalibrationImageTop, this.thisKiCadCalibrationImageBottom);
-            double bottom = Math.Max(this.thisKiCadCalibrationImageTop, this.thisKiCadCalibrationImageBottom);
-
-            return new Rect(left, top, Math.Max(1.0, right - left), Math.Max(1.0, bottom - top));
-        }
-*/
-
-    // ###########################################################################################
     // Returns true when the pointer is inside the currently visible KiCad calibration rectangle.
     // This is used for move-drag behavior while calibration mode is active.
     // ###########################################################################################

@@ -51,7 +51,7 @@ namespace Handlers.DataHandling
         private static readonly System.Threading.SemaphoreSlim OrphanAndUnusedFileCleanupSemaphore = new(1, 1);
 
         public static string DataRoot => _dataRoot;
-        public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = new(); // compliant with .NET6
+        public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = [];
         public static List<OscilloscopeEntry> Oscilloscopes { get; private set; } = new();
 
         public static string ResolvedMainExcelFileName { get; private set; } = string.Empty;
@@ -1043,8 +1043,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static string NormalizeHeader(string text)
         {
-//            var parts = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            var parts = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries); // .NET6 compliant
+            var parts = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
             return string.Join(" ", parts).Trim();
         }
 

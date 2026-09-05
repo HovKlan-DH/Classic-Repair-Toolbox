@@ -84,6 +84,13 @@ public class WorklogEntryModeTests
         Assert.Contains("components in scope", CRT.Main.WorklogAreaModeHint, StringComparison.OrdinalIgnoreCase);
     }
 
+    // It reads as a full sentence, not a sentence fragment, so it ends with a period.
+    [Fact]
+    public void The_worklog_mode_hint_ends_with_a_period()
+    {
+        Assert.EndsWith(".", CRT.Main.WorklogAreaModeHint, StringComparison.Ordinal);
+    }
+
     // The hint is a label over the tab-header row, not something the user has to interact with,
     // so it must never take a click - least of all the very click that dismisses it.
     //
@@ -98,14 +105,18 @@ public class WorklogEntryModeTests
         int hintIndex = markup.IndexOf("x:Name=\"ModeHintBorder\"", StringComparison.Ordinal);
         Assert.True(hintIndex >= 0, "ModeHintBorder is not in Main.axaml");
 
-        // The Border's own attribute block, up to the end of its opening tag.
+        // The Panel's own attribute block, up to the end of its opening tag.
         string element = markup[hintIndex..markup.IndexOf('>', hintIndex)];
 
         Assert.Contains("IsVisible=\"False\"", element, StringComparison.Ordinal);
         Assert.Contains("IsHitTestVisible=\"False\"", element, StringComparison.Ordinal);
     }
 
-    // It must sit ABOVE the data-sync icon so it covers it, rather than being crowded beside it.
+    // The hint floats over the WHOLE window now - it is a direct RootGrid child pinned to the
+    // upper-left corner, above the LeftPanel sidebar as well as the tab area - rather than being
+    // confined to the row the data-sync icon sits in. It still carries a ZIndex well above every
+    // other overlay in the window as a safety net, even though being RootGrid's last child already
+    // guarantees it draws on top.
     [Fact]
     public void The_mode_hint_sits_above_the_data_sync_icon()
     {
@@ -114,7 +125,7 @@ public class WorklogEntryModeTests
         int hintZ = ReadZIndex(markup, "ModeHintBorder");
         int syncZ = ReadZIndex(markup, "DataSyncStatusIconBorder");
 
-        Assert.True(hintZ > syncZ, $"the hint at ZIndex {hintZ} does not cover the sync icon at {syncZ}");
+        Assert.True(hintZ > syncZ, $"the hint at ZIndex {hintZ} does not draw above the sync icon at {syncZ}");
     }
 
     // The hint's text must WRAP inside its box rather than running past the window edge.
@@ -176,21 +187,90 @@ public class WorklogEntryModeTests
         });
     }
 
-    // No icon, and not bold - the hint is a sentence to read, not an alert to react to.
+    // The hint carries the same Font Awesome "circle-question" glyph
+    // (ConfigurationHelpIconTests.HelpGlyph, U+F059) the Configuration tab's help buttons use,
+    // ahead of a bold "Hint:" lead-in on its OWN line, separated from the sentence below it by a
+    // BLANK line (two LineBreaks, not one) for vertical breathing room. The icon is its own Run
+    // with FontAwesomeRegular rather than folded into the "Hint:" Run's Text, because a single Run
+    // can only carry one FontFamily and the regular UI font has no glyph at U+F059 - and the
+    // sentence itself must still be a plain Run with no weight of its own, since only the lead-in
+    // is bold.
     [Fact]
-    public void The_mode_hint_is_plain_text_with_no_icon()
+    public void The_mode_hint_has_an_icon_and_a_bold_lead_in_with_a_blank_line_after_it()
     {
         string markup = ReadMainWindowMarkup();
 
         int start = markup.IndexOf("x:Name=\"ModeHintBorder\"", StringComparison.Ordinal);
         Assert.True(start >= 0, "ModeHintBorder is not in Main.axaml");
 
-        int end = markup.IndexOf("</Border>", start, StringComparison.Ordinal);
+        int end = markup.IndexOf("</Panel>", start, StringComparison.Ordinal);
         string block = markup[start..end];
 
-        Assert.DoesNotContain("ModeHintIcon", block, StringComparison.Ordinal);
-        Assert.DoesNotContain("FontAwesome", block, StringComparison.Ordinal);
-        Assert.DoesNotContain("FontWeight", block, StringComparison.Ordinal);
+        Assert.Contains("Text=\"&#xf059;\" FontFamily=\"{StaticResource FontAwesomeRegular}\"", block, StringComparison.Ordinal);
+        Assert.Contains("Text=\"  Hint:\" FontWeight=\"Bold\" /><LineBreak /><LineBreak /><Run", block, StringComparison.Ordinal);
+
+        int hintRunIndex = block.IndexOf("x:Name=\"ModeHintText\"", StringComparison.Ordinal);
+        Assert.True(hintRunIndex >= 0, "ModeHintText is not in the mode-hint block");
+        string hintRunElement = block[hintRunIndex..block.IndexOf('>', hintRunIndex)];
+        Assert.DoesNotContain("FontWeight", hintRunElement, StringComparison.Ordinal);
+    }
+
+    // The hint's outline is DASHED rather than solid, so it reads as distinct from the app's
+    // ordinary panel borders. Border has no dashed-edge option in Avalonia, so the outline is a
+    // Rectangle with StrokeDashArray layered under the text - the same pattern
+    // WorklogEntryEditorWindow.axaml uses for its drag placeholder. It is also IndianRed (via
+    // Main_TabUnderline_Selected, the same accent the selected-tab underline and selected-workbook
+    // card use) and 2px - one step heavier than the app's ordinary 1px borders - so it reads as
+    // clearly distinct rather than just another panel outline.
+    [Fact]
+    public void The_mode_hint_border_is_dashed_and_indian_red_at_2px()
+    {
+        string markup = ReadMainWindowMarkup();
+
+        int start = markup.IndexOf("x:Name=\"ModeHintBorder\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, "ModeHintBorder is not in Main.axaml");
+
+        int end = markup.IndexOf("</Panel>", start, StringComparison.Ordinal);
+        string block = markup[start..end];
+
+        Assert.Contains("StrokeDashArray=", block, StringComparison.Ordinal);
+        Assert.Contains("Stroke=\"{DynamicResource Main_TabUnderline_Selected}\"", block, StringComparison.Ordinal);
+        Assert.Contains("StrokeThickness=\"2\"", block, StringComparison.Ordinal);
+    }
+
+    // It floats above the LEFT PANEL too, not just the tab area - a direct RootGrid child spanning
+    // all three columns, rather than nested inside RightPanel where it used to live.
+    [Fact]
+    public void The_mode_hint_spans_the_whole_window_including_the_left_panel()
+    {
+        string markup = ReadMainWindowMarkup();
+
+        int start = markup.IndexOf("x:Name=\"ModeHintBorder\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, "ModeHintBorder is not in Main.axaml");
+
+        string element = markup[start..markup.IndexOf('>', start)];
+
+        Assert.Contains("Grid.ColumnSpan=\"3\"", element, StringComparison.Ordinal);
+        Assert.Contains("MaxWidth=\"350\"", element, StringComparison.Ordinal);
+    }
+
+    // 15px of padding inside the dashed box, on all sides - the text must never touch the border.
+    [Fact]
+    public void The_mode_hint_text_has_15px_padding()
+    {
+        string markup = ReadMainWindowMarkup();
+
+        int start = markup.IndexOf("x:Name=\"ModeHintBorder\"", StringComparison.Ordinal);
+        Assert.True(start >= 0, "ModeHintBorder is not in Main.axaml");
+
+        int end = markup.IndexOf("</Panel>", start, StringComparison.Ordinal);
+        string block = markup[start..end];
+
+        int textBlockIndex = block.IndexOf("<TextBlock", StringComparison.Ordinal);
+        Assert.True(textBlockIndex >= 0, "no TextBlock in the mode-hint block");
+        string textBlockElement = block[textBlockIndex..block.IndexOf('>', textBlockIndex)];
+
+        Assert.Contains("Margin=\"15\"", textBlockElement, StringComparison.Ordinal);
     }
 
     private static int ReadZIndex(string markup, string controlName)

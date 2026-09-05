@@ -90,7 +90,7 @@ public partial class TabSchematics
     // Converts one KiCad world-space length into the current local overlay coordinate space using
     // the active box-based calibration model.
     // ###########################################################################################
-    private double MapKiCadWorldLengthToLocal(
+    private static double MapKiCadWorldLengthToLocal(
         double worldLength,
         Rect worldBounds,
         Rect contentRect,
@@ -252,7 +252,7 @@ public partial class TabSchematics
     // Uses adaptive subdivision based on on-screen curve length so long arcs stay smooth without
     // exploding the point count for short arcs.
     // ###########################################################################################
-    private List<Point> SampleQuadraticBezier(Point start, Point control, Point end, int steps)
+    private static List<Point> SampleQuadraticBezier(Point start, Point control, Point end, int steps)
     {
         double firstLegLength = Math.Sqrt(
             Math.Pow(control.X - start.X, 2.0) +

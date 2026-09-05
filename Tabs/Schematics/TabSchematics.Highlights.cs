@@ -1097,7 +1097,7 @@ public partial class TabSchematics
     // Builds a lightweight signature for the currently visible standard labels so text updates
     // only occur when the visible label set actually changes.
     // ###########################################################################################
-    private string BuildStandardComponentLabelVisualSignature(IReadOnlyList<(string Text, double LocalX, double LocalY)> labels)
+    private static string BuildStandardComponentLabelVisualSignature(IReadOnlyList<(string Text, double LocalX, double LocalY)> labels)
     {
         if (labels.Count == 0)
         {
@@ -1130,7 +1130,7 @@ public partial class TabSchematics
 
         this.EnsureStandardComponentLabelVisualPoolSize(labels.Count);
 
-        string newSignature = this.BuildStandardComponentLabelVisualSignature(labels);
+        string newSignature = BuildStandardComponentLabelVisualSignature(labels);
         bool textChanged = !string.Equals(
             this.thisLastStandardLabelVisualSignature,
             newSignature,

@@ -675,12 +675,7 @@ namespace Handlers.Geometry
             Point currentPoint;
             Point nextPoint;
 
-            if (seedStartDegree != 2 && seedEndDegree == 2)
-            {
-                currentPoint = seedSegment.StartWorld;
-                nextPoint = seedSegment.EndWorld;
-            }
-            else if (seedEndDegree != 2 && seedStartDegree == 2)
+            if (seedEndDegree != 2 && seedStartDegree == 2)
             {
                 currentPoint = seedSegment.EndWorld;
                 nextPoint = seedSegment.StartWorld;
@@ -731,7 +726,6 @@ namespace Handlers.Geometry
 
                 var nextSegmentNode = segmentNodes[nextSegmentIndex];
                 currentSegmentIndex = nextSegmentIndex;
-                currentPoint = nextPoint;
                 nextPoint = GetOtherEndpoint(nextSegmentNode, nextPointKey);
             }
 

@@ -317,17 +317,6 @@ namespace Handlers.DataHandling
                 TriggerLevelVolts = Val(r, ColTriggerLevelVolts)
             }).ToList();
 
-        private static List<ComponentHighlightEntry> MapComponentHighlights(List<Dictionary<string, string>> rows)
-            => rows.Select(r => new ComponentHighlightEntry
-            {
-                SchematicName = Val(r, ColSchematicName),
-                BoardLabel = Val(r, ColBoardLabel),
-                X = Val(r, ColX),
-                Y = Val(r, ColY),
-                Width = Val(r, ColWidth),
-                Height = Val(r, ColHeight)
-            }).ToList();
-
         private static List<ComponentLocalFileEntry> MapComponentLocalFiles(List<Dictionary<string, string>> rows)
             => rows.Select(r => new ComponentLocalFileEntry
             {
@@ -481,34 +470,6 @@ namespace Handlers.DataHandling
                 files.Clear();
                 return false;
             }
-        }
-
-        // ###########################################################################################
-        // Adds normalized relative local file paths from one worksheet row collection into the target set.
-        // ###########################################################################################
-        private static void AddReferencedLocalFiles(
-            HashSet<string> files,
-            List<Dictionary<string, string>> rows,
-            string fileColumnName)
-        {
-            foreach (var row in rows)
-            {
-                string normalized = NormalizeRelativeFilePath(Val(row, fileColumnName));
-                if (!string.IsNullOrWhiteSpace(normalized))
-                {
-                    files.Add(normalized);
-                }
-            }
-        }
-
-        // ###########################################################################################
-        // Normalizes a relative file path for case-insensitive manifest comparison.
-        // ###########################################################################################
-        private static string NormalizeRelativeFilePath(string path)
-        {
-            return string.IsNullOrWhiteSpace(path)
-                ? string.Empty
-                : path.Trim().Replace('\\', '/').TrimStart('/');
         }
 
         // ###########################################################################################

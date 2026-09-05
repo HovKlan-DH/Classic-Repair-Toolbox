@@ -1,0 +1,88 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.WorklogAttachCaptureWindow"
+        Title="Attach image to worklog"
+        Width="460"
+        MinWidth="380"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeaderText"
+				   Text="Attach image to worklog"
+				   FontSize="16"
+				   FontWeight="Bold"
+				   Margin="0,0,0,10" />
+
+		<!-- The captured image, shown but NOT choosable. Unlike the editor's Add photo dialog there
+		     is no Browse and no drop target: the file is the capture that was just taken, and
+		     offering to swap it would make this a general attach dialog opened from the wrong place. -->
+		<TextBlock Text="Image" />
+
+		<Border Background="{DynamicResource Form_Bg}"
+				BorderBrush="{DynamicResource Form_Border}"
+				BorderThickness="1"
+				CornerRadius="3"
+				Padding="10">
+			<Grid ColumnDefinitions="Auto,*">
+				<Image x:Name="ImagePreview"
+					   Grid.Column="0"
+					   Width="72"
+					   Height="72"
+					   Margin="0,0,10,0"
+					   Stretch="Uniform"
+					   VerticalAlignment="Top" />
+
+				<TextBlock x:Name="SelectedFileText"
+						   Grid.Column="1"
+						   FontSize="12"
+						   TextWrapping="Wrap"
+						   VerticalAlignment="Center" />
+			</Grid>
+		</Border>
+
+		<!-- Which workbook this lands in, read-only. This dialog opens from the component popup,
+		     which can be sitting over a schematic while the user has been looking at the scope, so
+		     the worklog bar that normally makes the active workbook obvious is not in view. Changing
+		     it stays the Workbooks tab's job - a second place to activate one invites the two
+		     getting out of step. -->
+		<TextBlock Text="Workbook" Margin="0,10,0,0" />
+		<TextBlock x:Name="WorkbookText"
+				   FontSize="12"
+				   Opacity="0.75"
+				   TextWrapping="Wrap" />
+
+		<TextBlock Text="Worklog" Margin="0,10,0,0" />
+		<ComboBox x:Name="EntryComboBox"
+				  HorizontalAlignment="Stretch"
+				  SelectionChanged="OnEntrySelectionChanged" />
+
+		<!-- No caption explaining the ordering: the grouping is stated by non-selectable headings
+		     INSIDE the dropdown instead (see BuildGroupHeader). A note under a closed box explains
+		     an order the reader cannot see at the time, and is not on screen at the moment the list
+		     is open and the order actually matters. -->
+
+		<TextBlock Text="Comment" Margin="0,10,0,0" />
+		<TextBox x:Name="CommentTextBox"
+				 AcceptsReturn="True"
+				 TextWrapping="Wrap"
+				 Height="70"
+				 VerticalContentAlignment="Top" />
+		<TextBlock Text="Ctrl+Enter to save" FontSize="10" Opacity="0.6" Margin="0,2,0,0" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="AttachButton"
+					Content="Attach to existing worklog"
+					Foreground="{DynamicResource Button_Ok_Fg}"
+					Background="{DynamicResource Button_Ok_Bg}"
+					BorderBrush="{DynamicResource Button_Ok_Border}"
+					Click="OnAttachClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

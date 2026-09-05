@@ -102,15 +102,6 @@ namespace Handlers.DataHandling
                             ? $"Main Excel file sheet [{sheetName}] has an entry with an empty file name - please fix!"
                             : $"Main Excel file sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
                 }
-                /*
-                                                else
-                                                {
-                                                    Logger.Warning(
-                                                        string.IsNullOrWhiteSpace(entryLabel)
-                                                            ? $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry with an empty file name - please fix!"
-                                                            : $"Excel data file [{excelDataFile}] sheet [{sheetName}] has an entry {entryLabel} with an empty file name - please fix!");
-                                                }
-                */
                 return;
             }
 
@@ -370,8 +361,6 @@ namespace Handlers.DataHandling
             var byPartNumber = new Dictionary<string, (HashSet<string> Names, List<string> Labels)>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in boardData.Components)
             {
-//                if (!string.Equals(c.Category?.Trim(), "IC", StringComparison.OrdinalIgnoreCase))
-//                    continue;
                 string partNumber = (c.PartNumber ?? string.Empty).Trim();
                 string technicalName = (c.TechnicalNameOrValue ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(partNumber) || string.IsNullOrWhiteSpace(technicalName))

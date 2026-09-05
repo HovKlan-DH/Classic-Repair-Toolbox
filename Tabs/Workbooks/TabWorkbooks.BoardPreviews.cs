@@ -42,6 +42,17 @@ namespace CRT
     // ###########################################################################################
     public partial class TabWorkbooks
     {
+        // Shown by BOTH the board pane and the entry list when the board has no worklogs at all,
+        // which is why it is one constant rather than the same sentence typed in two places: the two
+        // messages are on screen together, and WorkbooksBoardPreviewTests asserts they are identical,
+        // so a divergence showed up as a failing test rather than as the UI telling anyone.
+        //
+        // Punctuated like every other empty state in this file - the two it sits beside ("...match
+        // your search." and "...for this schematic yet.") both end in a full stop, and this one
+        // briefly did not.
+        private const string NoWorklogsForBoardMessage =
+            "No worklogs recorded yet for any schematics in this board.";
+
         // The schematic currently selected in the board pane - drives the entry list on the right.
         // Null means none selected (before the first RefreshBoardPreviews call, or the workbook has
         // no entries at all). RefreshBoardPreviews defaults this to the first schematic it builds a
@@ -339,14 +350,13 @@ namespace CRT
                 // As on the two lists: "none matched" is not the same as "none recorded", and saying
                 // "yet" for a search result reads as the entries having gone missing.
                 this.NoBoardPreviewsText.Text = matchedEntryIds != null && allWorkbookEntries.Count > 0
-                    ? "No worklog entries in this workbook match your search."
-                    : "No worklog entries recorded against a schematic image for this workbook yet.";
+                    ? "No worklogs in this workbook match your search."
+                    : NoWorklogsForBoardMessage;
             }
 
             // The entries this pass already read are handed on rather than re-read: GetEntries has
-            // no cache (File.ReadAllText + Deserialize + a per-entry normalise/migrate loop, every
-            // call), and this method and the entry list were reading the same workbook's file twice
-            // per rebuild.
+            // no cache (File.ReadAllText + Deserialize + a per-entry normalise loop, every call), and
+            // this method and the entry list were reading the same workbook's file twice per rebuild.
             this.RefreshSelectedSchematicEntries(entries);
         }
 
@@ -449,7 +459,7 @@ namespace CRT
             if (this.thisSelectedSchematicName == null)
             {
                 this.SelectedSchematicEntriesHeaderText.Text = "Select a schematic";
-                this.NoSelectedSchematicEntriesText.Text = "Click a schematic image on the left to see its entries here.";
+                this.NoSelectedSchematicEntriesText.Text = NoWorklogsForBoardMessage;
                 this.NoSelectedSchematicEntriesText.IsVisible = true;
                 return;
             }
@@ -472,15 +482,15 @@ namespace CRT
                 .ToList();
 
             this.SelectedSchematicEntriesHeaderText.Text =
-                $"{this.thisSelectedSchematicName} · {WorklogEntryScope.FormatCount(entries.Count, "entry", "entries")}";
+                $"{this.thisSelectedSchematicName} · {WorklogEntryScope.FormatCount(entries.Count, "worklog", "worklogs")}";
 
             if (entries.Count == 0)
             {
                 // A search that hid them all is a different thing from a schematic that never had
                 // any, and saying "yet" for it reads as the entries having been lost.
                 this.NoSelectedSchematicEntriesText.Text = matchedEntryIds != null
-                    ? "No worklog entries on this schematic match your search."
-                    : "No worklog entries for this schematic yet.";
+                    ? "No worklogs on this schematic match your search."
+                    : "No worklogs for this schematic yet.";
                 this.NoSelectedSchematicEntriesText.IsVisible = true;
                 return;
             }
@@ -541,6 +551,24 @@ namespace CRT
             titleRow.Children.Add(titleText);
             titleRow.Children.Add(idBadge);
 
+            // "Delete worklog" pinned to the card's TOP-RIGHT corner, mirroring where "Delete
+            // workbook" sits relative to the workbook it acts on. A Grid rather than another
+            // WrapPanel item: the title wraps to as many lines as it needs and the button must stay
+            // level with the FIRST of them (VerticalAlignment.Top) rather than drifting down beside
+            // a long title - the same reason WorkbookHeaderActionsPanel is top-aligned.
+            var titleRowGrid = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto")
+            };
+
+            var deleteButton = BuildDeleteWorklogButton();
+            deleteButton.Click += (_, _) => this.OnDeleteWorklogClick(entry);
+
+            Grid.SetColumn(titleRow, 0);
+            Grid.SetColumn(deleteButton, 1);
+            titleRowGrid.Children.Add(titleRow);
+            titleRowGrid.Children.Add(deleteButton);
+
             bool hasDescription = !string.IsNullOrWhiteSpace(entry.Description);
             var descriptionText = this.BuildHighlightedTextBlock(
                 hasDescription ? entry.Description : "(no description)",
@@ -568,7 +596,7 @@ namespace CRT
             var statsRow = BuildEntryStatsRow(entry);
 
             var stack = new StackPanel { Spacing = 6 };
-            stack.Children.Add(titleRow);
+            stack.Children.Add(titleRowGrid);
             stack.Children.Add(descriptionText);
             stack.Children.Add(categoryStatusRow);
             stack.Children.Add(statsRow);
@@ -633,6 +661,92 @@ namespace CRT
             e.Handled = true;
 
             this.OpenEntryEditor(this.thisSelectedWorkbookId, entry.Id, this.ResolveSchematicBitmapForEntry(entry));
+        }
+
+        // ###########################################################################################
+        // The "Delete worklog" button in an entry detail card's top-right corner.
+        //
+        // Deliberately the SAME destructive styling "Delete workbook" carries in the header above
+        // (the Button_Cancel_* brushes), at the same FontSize 11 - the two are the same kind of
+        // permanent delete, one level apart, and a differently-coloured one here would read as a
+        // different kind of action. No fixed Width, unlike the header's four buttons: those share
+        // one because they line up in a grid of two rows, whereas this is a lone button and a fixed
+        // width would either clip its label or leave it padded out at random.
+        //
+        // Its OWN Cursor is the default arrow rather than the card's Hand: the card behind it is
+        // clickable as a whole (it opens the editor), and inheriting the Hand would say this button
+        // does the same benign thing the rest of the card does. A shared static instance, like
+        // HandCursor beside it - a Cursor is a disposable native handle, and one per card per
+        // rebuild is a handle leaked on every board change and every entry save.
+        // ###########################################################################################
+        private static readonly Cursor ArrowCursor = new(StandardCursorType.Arrow);
+
+        private static Button BuildDeleteWorklogButton() => new()
+        {
+            Content = "Delete worklog",
+            FontSize = 11,
+            Padding = new Thickness(8, 4),
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Foreground = ResolveThemeBrushStatic("Button_Cancel_Fg"),
+            Background = ResolveThemeBrushStatic("Button_Cancel_Bg"),
+            BorderBrush = ResolveThemeBrushStatic("Button_Cancel_Border"),
+            Cursor = ArrowCursor
+        };
+
+        // ###########################################################################################
+        // Deletes one worklog from the selected workbook, after the user confirms in
+        // DeleteWorklogWindow - the same confirm-then-act shape "Delete workbook" uses, and for the
+        // same reason: WorklogManager.DeleteEntry removes the entry's row AND its whole attachment
+        // folder, photos and files included, with nothing to undo it.
+        //
+        // A Button rather than a bare click region, so the press never reaches the card's own
+        // PointerPressed underneath it (a Button handles the press itself) - a single click must
+        // not both open the editor and raise a delete confirmation over it.
+        //
+        // The refresh goes through Main.RefreshWorklogBar, the one funnel every worklog change
+        // passes through, so the schematic overlay's rectangles and thumbnail pills lose the deleted
+        // entry too rather than drawing a worklog that no longer exists. With no MainWindow
+        // (headless tests) there is nothing to funnel through, so a full fresh pass rebuilds this
+        // tab directly - a bare RefreshBoardPreviews would redraw from this pass's entry read cache,
+        // which still holds the entry that was just deleted.
+        // ###########################################################################################
+        private async void OnDeleteWorklogClick(WorklogEntryRecord entry)
+        {
+            if (this.thisSelectedWorkbookId <= 0)
+                return;
+
+            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+                return;
+
+            var dialog = new DeleteWorklogWindow();
+            dialog.Initialize(entry);
+
+            bool? confirmed = await dialog.ShowDialog<bool?>(ownerWindow);
+            if (confirmed != true)
+                return;
+
+            if (!WorklogManager.DeleteEntry(this.thisSelectedWorkbookId, entry.Id))
+            {
+                // The same treatment a failed workbook delete gets: the user confirmed a
+                // destructive action, and a list that simply does not change reads as "the click
+                // did not register" and invites them to try again.
+                await ShowWorkbookActionFailedAsync(
+                    ownerWindow,
+                    "Delete worklog",
+                    $"Could not delete worklog #{entry.Id} - see the log for details.\n\n" +
+                    "It may be open in another program, for example a photo or file from the worklog.");
+                return;
+            }
+
+            if (this.MainWindow != null)
+            {
+                this.MainWindow.RefreshWorklogBar();
+            }
+            else
+            {
+                this.StartFreshBoardPass();
+            }
         }
 
         // ###########################################################################################

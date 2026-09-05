@@ -208,35 +208,6 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Loads the raw JSON root object when it exists and returns a new empty root when the file
-        // is missing, blank, or cannot be parsed.
-        // ###########################################################################################
-        private static BoardComponentHighlightJsonRoot thisLoadRoot(string jsonPath)
-        {
-            try
-            {
-                if (!File.Exists(jsonPath))
-                {
-                    return new BoardComponentHighlightJsonRoot();
-                }
-
-                string json = File.ReadAllText(jsonPath);
-                if (string.IsNullOrWhiteSpace(json))
-                {
-                    return new BoardComponentHighlightJsonRoot();
-                }
-
-                return JsonSerializer.Deserialize<BoardComponentHighlightJsonRoot>(json, JsonSerializerOptions)
-                    ?? new BoardComponentHighlightJsonRoot();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to parse board highlight JSON file [{jsonPath}] - [{ex.Message}]");
-                return new BoardComponentHighlightJsonRoot();
-            }
-        }
-
-        // ###########################################################################################
         // Rounds highlight coordinates and sizes to integer values using midpoint rounding away
         // from zero so saved JSON matches the old compact Excel persistence behavior.
         // ###########################################################################################

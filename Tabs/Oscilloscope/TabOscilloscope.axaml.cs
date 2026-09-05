@@ -456,14 +456,12 @@ namespace CRT
 
             if (!isAutomaticReconnect)
             {
-//                this.AppendOutputLine("Debug", "---");
                 this.AppendOutputLine(
                     "Info",
                     $"Connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port}");
             }
             else if (!this.thisHasLoggedAutomaticConnectPendingMessage)
             {
-//                this.AppendOutputLine("Debug", "---");
                 this.AppendOutputLine(
                     "Info",
                     $"Automatically connecting to {selectedOscilloscope.Brand} {selectedOscilloscope.SeriesOrModel} at {selectionSnapshot.Host}:{selectionSnapshot.Port} ...");
@@ -476,7 +474,7 @@ namespace CRT
                 enteredSemaphore = true;
 
                 using var timeoutCts = new CancellationTokenSource(
-                    this.GetOscilloscopeConnectionAttemptTimeout(isAutomaticReconnect));
+                    GetOscilloscopeConnectionAttemptTimeout(isAutomaticReconnect));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
                     timeoutCts.Token,
                     externalCancellationToken);
@@ -569,7 +567,7 @@ namespace CRT
         // Returns the timeout to use for one oscilloscope connection attempt.
         // Automatic background retries use a shorter timeout than manual connects.
         // ###########################################################################################
-        private TimeSpan GetOscilloscopeConnectionAttemptTimeout(bool isAutomaticReconnect)
+        private static TimeSpan GetOscilloscopeConnectionAttemptTimeout(bool isAutomaticReconnect)
         {
             return isAutomaticReconnect
                 ? TimeSpan.FromSeconds(5)
@@ -579,7 +577,7 @@ namespace CRT
         // ###########################################################################################
         // Returns the delay between automatic oscilloscope reconnect attempts.
         // ###########################################################################################
-        private TimeSpan GetOscilloscopeAutoConnectRetryDelay()
+        private static TimeSpan GetOscilloscopeAutoConnectRetryDelay()
         {
             return TimeSpan.FromSeconds(1);
         }
@@ -726,7 +724,7 @@ namespace CRT
             CancellationToken cancellationToken)
         {
             this.AppendOutputLine("Debug", "---");
-            this.AppendOutputLine("Debug", this.GetPaletteDescription(palette));
+            this.AppendOutputLine("Debug", GetPaletteDescription(palette));
 
             foreach (var command in ScopeCommandPaletteDefinitions.GetCommands(palette))
             {
@@ -863,15 +861,15 @@ namespace CRT
             return command switch
             {
                 ScopeCommand.SetTriggerLevel => this.thisLastTriggerLevelVolts.HasValue
-                    ? this.FormatParameterizedCommand(baseCommandText, this.thisLastTriggerLevelVolts.Value)
+                    ? FormatParameterizedCommand(baseCommandText, this.thisLastTriggerLevelVolts.Value)
                     : string.Empty,
 
                 ScopeCommand.SetTimeDiv => this.thisLastTimeDivSeconds.HasValue
-                    ? this.FormatParameterizedCommand(baseCommandText, this.thisLastTimeDivSeconds.Value)
+                    ? FormatParameterizedCommand(baseCommandText, this.thisLastTimeDivSeconds.Value)
                     : string.Empty,
 
                 ScopeCommand.SetVoltsDiv => this.thisLastVoltsDivVolts.HasValue
-                    ? this.FormatParameterizedCommand(baseCommandText, this.thisLastVoltsDivVolts.Value)
+                    ? FormatParameterizedCommand(baseCommandText, this.thisLastVoltsDivVolts.Value)
                     : string.Empty,
 
                 _ => baseCommandText
@@ -881,7 +879,7 @@ namespace CRT
         // ###########################################################################################
         // Formats a SCPI command by replacing a "{0}" placeholder or appending the value.
         // ###########################################################################################
-        private string FormatParameterizedCommand(string baseCommandText, double value)
+        private static string FormatParameterizedCommand(string baseCommandText, double value)
         {
             string formattedValue = ScopeFormatting.FormatScpiNumber(value);
 
@@ -967,7 +965,7 @@ namespace CRT
         // ###########################################################################################
         // Returns a readable debug description for the currently executed command palette.
         // ###########################################################################################
-        private string GetPaletteDescription(ScopeCommandPalette palette)
+        private static string GetPaletteDescription(ScopeCommandPalette palette)
         {
             return palette switch
             {
@@ -1436,7 +1434,7 @@ namespace CRT
                     return;
                 }
 
-                string signature = this.BuildComponentImageSyncSignature(
+                string signature = BuildComponentImageSyncSignature(
                     componentImageEntry,
                     selectionSnapshot,
                     mappedTimeDiv,
@@ -1521,7 +1519,7 @@ namespace CRT
         // Builds a stable signature for the currently selected component image so repeated callbacks
         // for the same image are skipped, while actual image changes still resend SCPI commands.
         // ###########################################################################################
-        private string BuildComponentImageSyncSignature(
+        private static string BuildComponentImageSyncSignature(
             ComponentImageEntry componentImageEntry,
             OscilloscopeSelectionSnapshot selectionSnapshot,
             ScopeMappedValue? mappedTimeDiv,
@@ -1542,17 +1540,6 @@ namespace CRT
                 mappedTimeDiv?.ScpiValue ?? string.Empty,
                 mappedVoltsDiv?.ScpiValue ?? string.Empty,
                 mappedTriggerLevel?.ScpiValue ?? string.Empty);
-        }
-
-        // ###########################################################################################
-        // Returns true only when the user has explicitly connected, the ping monitor reports the
-        // scope as reachable, and a persistent SCPI client is currently stored for reuse.
-        // ###########################################################################################
-        private bool HasActiveEstablishedOscilloscopeSession()
-        {
-            return this.thisHasEstablishedOscilloscopeSession &&
-                   this.thisLastOscilloscopeConnectionState == true &&
-                   this.thisConnectedScopeClient != null;
         }
 
         // ###########################################################################################
@@ -1959,161 +1946,6 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Queries the current TIME/DIV, resolves the previous or next supported value from the main
-        // oscilloscope Excel definition, and sends the SetTimeDiv palette over the active session.
-        // ###########################################################################################
-        public async Task StepTimeDivAsync(int offset, CancellationToken cancellationToken)
-        {
-            if (offset == 0)
-            {
-                return;
-            }
-
-            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
-
-            await this.RunWithEstablishedOscilloscopeSessionAsync(
-                selectionSnapshot,
-                async (scopeClient, oscilloscopeEntry, token) =>
-                {
-                    this.thisLastTimeDivSeconds = null;
-
-                    await this.ExecutePaletteAsync(
-                        scopeClient,
-                        oscilloscopeEntry,
-                        ScopeCommandPalette.QueryTimeDiv,
-                        token).ConfigureAwait(false);
-
-                    if (!this.thisLastTimeDivSeconds.HasValue)
-                    {
-                        this.AppendOutputLine("Warning", "Could not read current TIME/DIV from oscilloscope");
-                        return;
-                    }
-
-                    double currentTimeDivSeconds = this.thisLastTimeDivSeconds.Value;
-
-                    if (!ScopeValueMapper.TryGetAdjacentTimeDivValue(
-                        oscilloscopeEntry,
-                        currentTimeDivSeconds,
-                        offset,
-                        out ScopeMappedValue mappedTimeDiv))
-                    {
-                        string directionLabel = offset < 0 ? "previous" : "next";
-                        this.AppendOutputLine(
-                            "Warning",
-                            $"Could not resolve the {directionLabel} TIME/DIV value from the oscilloscope definition list");
-                        return;
-                    }
-
-                    this.AppendOutputLine(
-                        "Info",
-                        $"Keyboard TIME/DIV step: {ScopeFormatting.FormatTime(currentTimeDivSeconds)} -> {mappedTimeDiv.MatchedDisplayValue}");
-
-                    this.thisLastTimeDivSeconds = mappedTimeDiv.NumericValue;
-                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-
-                    await this.ExecutePaletteAsync(
-                        scopeClient,
-                        oscilloscopeEntry,
-                        ScopeCommandPalette.SetTimeDiv,
-                        token).ConfigureAwait(false);
-                },
-                cancellationToken,
-                writeWarnings: true).ConfigureAwait(false);
-        }
-
-        // ###########################################################################################
-        // Uses a cached trigger level for keyboard stepping whenever possible so repeated Up/Down
-        // keypresses only send SetTriggerLevel instead of querying the oscilloscope each time.
-        // ###########################################################################################
-        public async Task StepTriggerLevelAsync(int direction, CancellationToken cancellationToken)
-        {
-            if (direction == 0)
-            {
-                return;
-            }
-
-            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
-
-            await this.RunWithEstablishedOscilloscopeSessionAsync(
-                selectionSnapshot,
-                async (scopeClient, oscilloscopeEntry, token) =>
-                {
-                    if (!await this.EnsureCachedTriggerLevelVoltsAsync(
-                        scopeClient,
-                        oscilloscopeEntry,
-                        token).ConfigureAwait(false))
-                    {
-                        this.AppendOutputLine("Warning", "Could not read current trigger level from oscilloscope");
-                        return;
-                    }
-
-                    double currentTriggerLevelVolts = this.thisLastTriggerLevelVolts!.Value;
-                    double targetTriggerLevelVolts = ScopeFormatting.GetNextSnappedTriggerLevelVolts(
-                        currentTriggerLevelVolts,
-                        direction);
-
-                    await this.SendTriggerLevelFastAsync(
-                        scopeClient,
-                        oscilloscopeEntry,
-                        targetTriggerLevelVolts,
-                        token).ConfigureAwait(false);
-
-                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-
-                    this.AppendOutputLine(
-                        "Info",
-                        $"Keyboard trigger level step: {ScopeFormatting.FormatVoltage(currentTriggerLevelVolts)} -> {ScopeFormatting.FormatVoltage(targetTriggerLevelVolts)}");
-                },
-                cancellationToken,
-                writeWarnings: true).ConfigureAwait(false);
-        }
-
-        // ###########################################################################################
-        // Resolves a fixed VOLTS/DIV value from the oscilloscope definition list and sends the
-        // SetVoltsDiv palette over the active session.
-        // ###########################################################################################
-        public async Task SetVoltsDivAsync(double targetVoltsDivVolts, CancellationToken cancellationToken)
-        {
-            if (targetVoltsDivVolts <= 0)
-            {
-                return;
-            }
-
-            OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
-
-            await this.RunWithEstablishedOscilloscopeSessionAsync(
-                selectionSnapshot,
-                async (scopeClient, oscilloscopeEntry, token) =>
-                {
-                    if (!ScopeValueMapper.TryGetSupportedVoltsDivValue(
-                        oscilloscopeEntry,
-                        targetVoltsDivVolts,
-                        out ScopeMappedValue mappedVoltsDiv))
-                    {
-                        this.AppendOutputLine(
-                            "Warning",
-                            $"Could not resolve keyboard VOLTS/DIV value [{ScopeFormatting.FormatVoltage(targetVoltsDivVolts)}] from the oscilloscope definition list");
-                        return;
-                    }
-
-                    this.AppendOutputLine(
-                        "Info",
-                        $"Keyboard VOLTS/DIV set: {mappedVoltsDiv.MatchedDisplayValue} per division");
-
-                    this.thisLastVoltsDivVolts = mappedVoltsDiv.NumericValue;
-                    this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-
-                    await this.ExecutePaletteAsync(
-                        scopeClient,
-                        oscilloscopeEntry,
-                        ScopeCommandPalette.SetVoltsDiv,
-                        token).ConfigureAwait(false);
-                },
-                cancellationToken,
-                writeWarnings: true).ConfigureAwait(false);
-        }
-
-        // ###########################################################################################
         // Executes one named oscilloscope command palette on the already established session so
         // keyboard shortcuts can reuse the normal SCPI logging and palette behavior.
         // ###########################################################################################
@@ -2218,7 +2050,7 @@ namespace CRT
                         !UserSettings.EnableNetworkConnectedOscilloscopeTab)
                     {
                         await Task.Delay(
-                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -2228,7 +2060,7 @@ namespace CRT
                         this.thisConnectedScopeClient != null)
                     {
                         await Task.Delay(
-                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -2236,7 +2068,7 @@ namespace CRT
                     if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: false))
                     {
                         await Task.Delay(
-                            this.GetOscilloscopeAutoConnectRetryDelay(),
+                            GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
                         continue;
                     }
@@ -2261,7 +2093,7 @@ namespace CRT
                     }
 
                     await Task.Delay(
-                        this.GetOscilloscopeAutoConnectRetryDelay(),
+                        GetOscilloscopeAutoConnectRetryDelay(),
                         cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -3085,7 +2917,7 @@ namespace CRT
                 return null;
             }
 
-            string outputFilePath = this.BuildCapturedOscilloscopeImageFilePath(
+            string outputFilePath = BuildCapturedOscilloscopeImageFilePath(
                 componentImageEntry,
                 displayedRegion,
                 outputDirectory);
@@ -3117,7 +2949,7 @@ namespace CRT
                     selectionSnapshot.SelectedOscilloscope!,
                     linkedCts.Token).ConfigureAwait(false);
 
-                if (!this.TryCreateBitmapFromScopeRawImageData(rawImageData, out Bitmap? capturedBitmap))
+                if (!TryCreateBitmapFromScopeRawImageData(rawImageData, out Bitmap? capturedBitmap))
                 {
                     this.AppendOutputLine("Warning", "Could not decode the oscilloscope image");
                     return null;
@@ -3169,7 +3001,7 @@ namespace CRT
             CancellationToken cancellationToken)
         {
             this.AppendOutputLine("Debug", "---");
-            this.AppendOutputLine("Debug", this.GetPaletteDescription(ScopeCommandPalette.DumpImage));
+            this.AppendOutputLine("Debug", GetPaletteDescription(ScopeCommandPalette.DumpImage));
 
             string dumpImageCommand = ScopeCommandResolver.GetCommandText(selectedOscilloscope, ScopeCommand.DumpImage);
             if (string.IsNullOrWhiteSpace(dumpImageCommand))
@@ -3189,7 +3021,7 @@ namespace CRT
         // Converts the raw oscilloscope DumpImage response into an Avalonia bitmap. The method first
         // strips a SCPI definite-length header when present, then falls back to the raw buffer.
         // ###########################################################################################
-        private bool TryCreateBitmapFromScopeRawImageData(byte[] rawImageData, [NotNullWhen(true)] out Bitmap? bitmap)
+        private static bool TryCreateBitmapFromScopeRawImageData(byte[] rawImageData, [NotNullWhen(true)] out Bitmap? bitmap)
         {
             bitmap = null;
 
@@ -3217,7 +3049,7 @@ namespace CRT
         // Builds the PNG file path for one captured oscilloscope image using the selected component
         // image metadata and the popup's currently displayed region.
         // ###########################################################################################
-        private string BuildCapturedOscilloscopeImageFilePath(
+        private static string BuildCapturedOscilloscopeImageFilePath(
             ComponentImageEntry componentImageEntry,
             string displayedRegion,
             string outputDirectory)

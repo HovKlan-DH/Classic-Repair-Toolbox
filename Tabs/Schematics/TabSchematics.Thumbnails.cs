@@ -53,8 +53,6 @@ public partial class TabSchematics
 
     private Point thisThumbnailDragPointerOffsetInItem;
 
-//    private int thisThumbnailCurrentInsertIndex = -1;
-//    private Point thisThumbnailDragStartPointInList;
     private double thisThumbnailLastPointerYInList = double.NaN;
 
     private double thisThumbnailDragGhostFixedX;
@@ -372,7 +370,6 @@ public partial class TabSchematics
 
         this.thisThumbnailDragStartEventArgs = e;
         this.thisThumbnailDragStartPoint = e.GetPosition(this);
-//        this.thisThumbnailDragStartPointInList = e.GetPosition(this.SchematicsThumbnailList);
         this.thisThumbnailDragPointerOffsetInItem = e.GetPosition(control);
         this.thisIsDraggingThumbnail = true;
         this.thisDraggedThumbnail = thumbnail;
@@ -426,7 +423,6 @@ public partial class TabSchematics
         }
 
         this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
-//        this.thisThumbnailCurrentInsertIndex = this.thisDraggedThumbnailOriginalIndex;
         this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
         this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
 
@@ -438,7 +434,6 @@ public partial class TabSchematics
             this.thisDraggedThumbnail = null;
             this.thisDraggedThumbnailOriginalIndex = -1;
             this.thisDraggedThumbnailWasSelected = false;
-//            this.thisThumbnailCurrentInsertIndex = -1;
             this.thisThumbnailLastPointerYInList = double.NaN;
             this.thisThumbnailDragStartEventArgs = null;
             return;
@@ -461,7 +456,6 @@ public partial class TabSchematics
         this.thisDraggedThumbnail = null;
         this.thisDraggedThumbnailOriginalIndex = -1;
         this.thisDraggedThumbnailWasSelected = false;
-//        this.thisThumbnailCurrentInsertIndex = -1;
         this.thisThumbnailLastPointerYInList = double.NaN;
         this.thisThumbnailDragStartEventArgs = null;
 
@@ -552,7 +546,6 @@ public partial class TabSchematics
 
         if (existingIndex == insertIndex)
         {
-//            this.thisThumbnailCurrentInsertIndex = insertIndex;
             return;
         }
 
@@ -563,7 +556,6 @@ public partial class TabSchematics
 
         insertIndex = Math.Clamp(insertIndex, 0, this.currentThumbnails.Count);
         this.currentThumbnails.Insert(insertIndex, this.thisThumbnailDropPlaceholder);
-//        this.thisThumbnailCurrentInsertIndex = insertIndex;
     }
 
     // ###########################################################################################
@@ -598,7 +590,6 @@ public partial class TabSchematics
         }
 
         this.currentThumbnails.Insert(restoreIndex, this.thisDraggedThumbnail);
-//        this.thisThumbnailCurrentInsertIndex = restoreIndex;
         this.thisThumbnailLastPointerYInList = double.NaN;
 
         if (this.thisDraggedThumbnailWasSelected)
@@ -752,7 +743,6 @@ public partial class TabSchematics
         }
 
         this.currentThumbnails.Insert(insertIndex, this.thisDraggedThumbnail);
-//        this.thisThumbnailCurrentInsertIndex = insertIndex;
 
         if (this.thisDraggedThumbnailWasSelected)
         {
@@ -765,7 +755,6 @@ public partial class TabSchematics
         this.thisDraggedThumbnail = null;
         this.thisDraggedThumbnailOriginalIndex = -1;
         this.thisDraggedThumbnailWasSelected = false;
-//        this.thisThumbnailCurrentInsertIndex = -1;
         this.thisThumbnailLastPointerYInList = double.NaN;
         this.thisSuppressThumbnailSelectionChanged = false;
         this.thisThumbnailDragStartEventArgs = null;
@@ -835,21 +824,9 @@ public partial class TabSchematics
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string importantSignalNet in this.BuildSelectedImportantSignalNetNames())
-        {
-            if (!string.IsNullOrWhiteSpace(importantSignalNet))
-            {
-                result.Add(importantSignalNet);
-            }
-        }
+        result.UnionWith(this.BuildSelectedImportantSignalNetNames().Where(netName => !string.IsNullOrWhiteSpace(netName)));
 
-        foreach (string lockedNet in this.thisLockedKiCadNetNames)
-        {
-            if (!string.IsNullOrWhiteSpace(lockedNet))
-            {
-                result.Add(lockedNet);
-            }
-        }
+        result.UnionWith(this.thisLockedKiCadNetNames.Where(netName => !string.IsNullOrWhiteSpace(netName)));
 
         return result;
     }

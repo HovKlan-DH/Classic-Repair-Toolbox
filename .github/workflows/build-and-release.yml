@@ -385,6 +385,23 @@ jobs:
             echo "release_name=$VERSION" >> $GITHUB_OUTPUT
           fi
 
+      # Takes ONLY the newest version's notes out of CHANGELOG.md - the section under the
+      # first "# <version>, <date>" header, up to the next one. The whole file used to be
+      # pasted in, so every release body carried the entire history back to 0.1.x.
+      #
+      # The version header and the "-----" underline beneath it are both dropped: the
+      # release is already titled with its version, so repeating it in the body is noise.
+      #
+      # Matching is on the HEADER POSITION, not on the version string. The workflow's
+      # version comes from the csproj and a release is often built before the changelog's
+      # own "2026-September-?" date placeholder is filled in, so requiring the two to
+      # agree would fail the release over a date the maintainer is still deciding.
+      #
+      # CRLF is stripped first - CHANGELOG.md is maintained on Windows, and a trailing
+      # \r inside the GITHUB_OUTPUT heredoc corrupts the rendered Markdown.
+      #
+      # Only ever reaches a release body for a FULL release; pre-releases substitute their
+      # own fixed one-liner (see "Create GitHub Release" below).
       - name: Read Changelog and append text
         id: changelog
         run: |
@@ -392,7 +409,11 @@ jobs:
             echo 'content<<EOF'
 
             if [ -f "CHANGELOG.md" ]; then
-              cat CHANGELOG.md
+              sed 's/\r$//' CHANGELOG.md | awk '
+                /^# / { if (++seen > 1) exit; next }
+                seen == 1 && !body && /^-+[[:space:]]*$/ { next }
+                seen == 1 { body = 1; print }
+              ' | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}'
             else
               echo "No CHANGELOG.md found."
             fi

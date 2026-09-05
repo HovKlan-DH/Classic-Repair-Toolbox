@@ -3,7 +3,7 @@
         xmlns:local="clr-namespace:CRT"
         xmlns:theme="clr-namespace:Handlers.Theming;assembly=Classic-Repair-Toolbox"
         x:Class="CRT.WorklogEntryEditorWindow"
-        Title="Worklog entry"
+        Title="Worklog"
         Width="1200"
         Height="800"
         MinWidth="900"

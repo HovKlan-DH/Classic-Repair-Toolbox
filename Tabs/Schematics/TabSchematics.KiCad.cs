@@ -34,7 +34,6 @@ public partial class TabSchematics
     // KiCad import / overlay
     private KiCadProjectBundle? thisKiCadProject;
 
-//    private string thisKiCadProjectPath = string.Empty;
     private readonly HashSet<string> thisSelectedKiCadReferences = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly HashSet<string> thisSelectedKiCadNormalizedNetNames = new(StringComparer.OrdinalIgnoreCase);
@@ -710,35 +709,6 @@ public partial class TabSchematics
             }
 
             this.thisKiCadRuntimeCacheScopeByKey.Remove(scopeKey);
-        }
-    }
-
-    // ###########################################################################################
-    // Clears only the active runtime cache scope when the current KiCad project is replaced or
-    // needs to be invalidated, without destroying caches for other previously visited boards.
-    // ###########################################################################################
-    private void ClearCurrentKiCadRuntimeCaches()
-    {
-        if (string.IsNullOrWhiteSpace(this.thisCurrentKiCadRuntimeCacheScopeKey))
-        {
-            return;
-        }
-
-        if (!this.thisKiCadRuntimeCacheScopeByKey.TryGetValue(this.thisCurrentKiCadRuntimeCacheScopeKey, out var scope))
-        {
-            return;
-        }
-
-        lock (this.thisKiCadPcbNetRenderCacheSync)
-        {
-            scope.NetRenderCacheByKey.Clear();
-            scope.NetRenderBuildTaskByKey.Clear();
-        }
-
-        lock (this.thisKiCadPcbHoverHitTestCacheSync)
-        {
-            scope.HoverHitTestCacheByKey.Clear();
-            scope.HoverHitTestBuildTaskByKey.Clear();
         }
     }
 

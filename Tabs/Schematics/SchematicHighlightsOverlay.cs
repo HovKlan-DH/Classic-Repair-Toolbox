@@ -14,8 +14,7 @@ namespace Tabs.TabSchematics
     // ###########################################################################################
     public sealed class SchematicHighlightsOverlay : Control
     {
-//        private readonly List<int> _queryResults = [];
-        private readonly List<int> _queryResults = new(); // .NET6 compliant
+        private readonly List<int> _queryResults = [];
         private HighlightSpatialIndex? _highlightIndex;
 
         public HighlightSpatialIndex? HighlightIndex

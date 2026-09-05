@@ -51,6 +51,25 @@ public sealed class WorklogManagerTests : IDisposable
         return record!;
     }
 
+    /// <summary>
+    /// Adds one entry and asserts it succeeded. Same reasoning as CreateWorkbook above: AddEntry
+    /// returns null only when the workbook folder or the write fails, neither of which the delete
+    /// tests set up, so a null is a real failure rather than something to "!" past at every call.
+    /// The area is a fixed unit rect - none of these tests care where the entry was marked.
+    /// </summary>
+    private static WorklogEntryRecord AddEntry(
+        int workbookId,
+        string schematicName,
+        string title,
+        string category = "Issue",
+        string state = "Open")
+    {
+        var entry = WorklogManager.AddEntry(
+            workbookId, schematicName, new Rect(0, 0, 1, 1), title, "", category, state, Array.Empty<string>());
+        Assert.NotNull(entry);
+        return entry!;
+    }
+
     [Fact]
     public void An_empty_workbook_folder_starts_with_no_workbooks_and_id_one()
     {
@@ -253,6 +272,140 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.True(thrown is null);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // DeleteEntry - the Workbooks tab's per-card "Delete worklog" button. A worklog is a row in
+    // entries.json PLUS a "worklog_{id}" folder holding its photo/file bytes, so deleting one has
+    // to remove both or the workbook keeps orphaned attachment bytes forever.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Deleting_a_worklog_removes_only_that_entry_and_leaves_the_others_alone()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var first = AddEntry(workbook.Id, "Sch", "Bad cap");
+        var second = AddEntry(workbook.Id, "Sch", "Cracked trace");
+        var third = AddEntry(workbook.Id, "Sch", "Dead PLA");
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, second.Id));
+
+        var remaining = WorklogManager.GetEntries(workbook.Id);
+        Assert.Equal(2, remaining.Count);
+        Assert.Equal(new[] { first.Id, third.Id }, remaining.Select(e => e.Id).ToArray());
+        Assert.Equal(new[] { "Bad cap", "Dead PLA" }, remaining.Select(e => e.Title).ToArray());
+    }
+
+    // The surviving entries KEEP their own ids - nothing is renumbered down to close the gap.
+    // Those ids are what the board pills, the entry cards and the exported PDF all show ("#4"),
+    // and they name each entry's attachment folder on disk, so renumbering would silently relabel
+    // worklogs the user has already referred to elsewhere. The gap IS the record of a deletion.
+    [Fact]
+    public void Deleting_a_worklog_does_not_renumber_the_entries_that_remain()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        AddEntry(workbook.Id, "Sch", "First");
+        var second = AddEntry(workbook.Id, "Sch", "Second");
+        var third = AddEntry(workbook.Id, "Sch", "Third");
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, second.Id));
+
+        Assert.Equal(new[] { 1, 3 }, WorklogManager.GetEntries(workbook.Id).Select(e => e.Id).ToArray());
+        Assert.Equal(3, third.Id);
+    }
+
+    // The attachment BYTES go with the entry. Only the row was removed in an earlier shape of
+    // this, which left a "worklog_{id}" folder full of photos that nothing on disk named - and
+    // worse, one the next entry allocated that same id would then inherit.
+    [Fact]
+    public void Deleting_a_worklog_also_removes_its_attachments_folder()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var entry = AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        string attachments = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, entry.Id)!;
+        File.WriteAllText(Path.Combine(attachments, "photo.png"), "not really a png");
+        Assert.True(Directory.Exists(attachments));
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, entry.Id));
+
+        Assert.False(Directory.Exists(attachments));
+    }
+
+    // An entry with no attachments never had a folder (GetEntryAttachmentsFolder creates one only
+    // when something is actually attached), and deleting it must not fail over the absence.
+    [Fact]
+    public void Deleting_a_worklog_with_no_attachments_folder_still_succeeds()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var entry = AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, entry.Id));
+        Assert.Empty(WorklogManager.GetEntries(workbook.Id));
+    }
+
+    // The workbook's own bookkeeping is recomputed, exactly as it is after an add or an edit:
+    // deleting the last still-Open entry of an otherwise-finished workbook closes it.
+    [Fact]
+    public void Deleting_the_last_open_worklog_closes_the_workbook()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        AddEntry(workbook.Id, "Sch", "Done already", state: "Closed");
+        var stillOpen = AddEntry(workbook.Id, "Sch", "Outstanding", state: "Open");
+
+        Assert.Equal("Open", WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0].Status);
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, stillOpen.Id));
+
+        var reloaded = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0];
+        Assert.Equal("Closed", reloaded.Status);
+        Assert.Equal(1, reloaded.EntryCount);
+    }
+
+    // The other side of the same rule: a workbook with NO entries is Open, per
+    // RecomputeWorkbookStatus - so deleting the only (Closed) entry reopens it rather than
+    // leaving it Closed on the strength of entries that are gone.
+    [Fact]
+    public void Deleting_the_only_worklog_leaves_the_workbook_open_with_no_entries()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var only = AddEntry(workbook.Id, "Sch", "Done", state: "Closed");
+
+        Assert.Equal("Closed", WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0].Status);
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, only.Id));
+
+        var reloaded = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0];
+        Assert.Equal("Open", reloaded.Status);
+        Assert.Equal(0, reloaded.EntryCount);
+        Assert.Empty(WorklogManager.GetEntries(workbook.Id));
+    }
+
+    [Fact]
+    public void Deleting_an_unknown_worklog_returns_false_and_changes_nothing()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        Assert.False(WorklogManager.DeleteEntry(workbook.Id, 999));
+        Assert.Single(WorklogManager.GetEntries(workbook.Id));
+    }
+
+    [Fact]
+    public void Deleting_a_worklog_from_an_unknown_workbook_returns_false_instead_of_throwing()
+    {
+        this.LoadWorklog();
+
+        Exception? thrown = Record.Exception(() => Assert.False(WorklogManager.DeleteEntry(999, 1)));
+
+        Assert.True(thrown is null);
+    }
+
     [Fact]
     public void Updating_a_workbook_overwrites_its_title_and_note_and_leaves_everything_else_alone()
     {
@@ -325,21 +478,208 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.True(thrown is null);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // ID COUNTERS - a deleted id is never handed out again.
+    //
+    // This replaces the opposite rule, which this file used to pin down: ids were "highest on disk
+    // plus one", so deleting the highest workbook let the next one take its number back. That
+    // silently made an already-exported PDF ("Workbook_2_...") describe a different repair, and let
+    // the new record inherit the deleted one's folder on disk, attachments included.
+    // ---------------------------------------------------------------------------------------
+
     [Fact]
-    public void Deleting_the_highest_id_workbook_lets_its_id_be_reused()
+    public void Deleting_the_highest_id_workbook_does_not_let_its_id_be_reused()
     {
-        // CURRENT BEHAVIOUR, and a deliberate consequence of having no persisted id counter: the
-        // next id is only ever "highest folder on disk, plus one". Nothing remembers that #1 was
-        // already used once it is gone.
+        this.LoadWorklog();
+
+        var first = CreateWorkbook("Commodore 64|250469", "First job", "");
+        Assert.Equal(1, first.Id);
+
+        Assert.True(WorklogManager.DeleteWorkbook(first.Id));
+
+        // Nothing is on disk any more, but the counter remembers #1 was spent.
+        Assert.Equal(2, WorklogManager.PeekNextId());
+        Assert.Equal(2, CreateWorkbook("Commodore 64|250469", "Second job", "").Id);
+    }
+
+    // The example from the request: two workbooks, delete the SECOND, and the next is #3 - not #2.
+    // A gap in the numbering is the correct record that #2 existed.
+    [Fact]
+    public void Deleting_a_workbook_leaves_a_gap_that_the_next_create_skips_over()
+    {
+        this.LoadWorklog();
+
+        CreateWorkbook("Commodore 64|250469", "First job", "");
+        var second = CreateWorkbook("Commodore 64|250469", "Second job", "");
+        Assert.Equal(2, second.Id);
+
+        Assert.True(WorklogManager.DeleteWorkbook(second.Id));
+
+        var third = CreateWorkbook("Commodore 64|250469", "Third job", "");
+        Assert.Equal(3, third.Id);
+
+        // And the surviving #1 was not disturbed on the way.
+        var ids = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469").Select(w => w.Id).OrderBy(id => id);
+        Assert.Equal(new[] { 1, 3 }, ids);
+    }
+
+    // The counter survives a restart: it is a file, not in-memory state. LoadFrom the SAME root
+    // again is what a relaunch does, and the numbering has to carry on rather than restart.
+    [Fact]
+    public void The_workbook_counter_survives_reloading_the_same_root()
+    {
         string root = this.LoadWorklog();
 
         CreateWorkbook("Commodore 64|250469", "First job", "");
-        Directory.Delete(Path.Combine(root, "1"), recursive: true);
+        var second = CreateWorkbook("Commodore 64|250469", "Second job", "");
+        Assert.True(WorklogManager.DeleteWorkbook(second.Id));
 
-        Assert.Equal(1, WorklogManager.PeekNextId());
+        WorklogManager.LoadFrom(root);
 
-        var reused = CreateWorkbook("Commodore 64|250469", "Second job", "");
-        Assert.Equal(1, reused.Id);
+        Assert.Equal(3, WorklogManager.PeekNextId());
+    }
+
+    // NO MIGRATION, by design: nothing seeds a counter from, or rewrites, workbooks written before
+    // the counter file existed. What must still hold is that such a workbook is never OVERWRITTEN -
+    // a counter starting from zero would otherwise hand out #1 while a "1" folder is sitting there,
+    // and CreateWorkbook's Directory.CreateDirectory succeeds silently on an existing folder, so
+    // the new workbook's index.json would replace the old one in place and inherit its entries and
+    // attachments. The allocator walks past ids already taken on disk instead.
+    [Fact]
+    public void A_workbook_folder_that_predates_the_counter_is_skipped_rather_than_overwritten()
+    {
+        string root = this.LoadWorklog();
+
+        // A workbook as an older build left it: a numbered folder with an index.json, and no
+        // counter file anywhere.
+        string legacyFolder = Path.Combine(root, "1");
+        Directory.CreateDirectory(legacyFolder);
+        File.WriteAllText(
+            Path.Combine(legacyFolder, "index.json"),
+            JsonSerializer.Serialize(new WorkbookRecord
+            {
+                Id = 1,
+                BoardKey = "Commodore 64|250469",
+                Title = "Written by an older build",
+                Status = "Open",
+            }));
+
+        var created = CreateWorkbook("Commodore 64|250469", "Brand new job", "");
+
+        Assert.Equal(2, created.Id);
+
+        // The old one is still there, untouched - not replaced by the new record.
+        var legacy = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469").Single(w => w.Id == 1);
+        Assert.Equal("Written by an older build", legacy.Title);
+    }
+
+    // The same floor on the ENTRY side, and for the same reason: a workbook written before
+    // LastEntryId existed deserializes it as 0, so without the walk-past its next entry would be
+    // #1 on top of the entries it already has.
+    [Fact]
+    public void Entries_in_a_workbook_that_predates_the_counter_are_not_renumbered_from_one()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        AddEntry(workbook.Id, "Sch", "First");
+        AddEntry(workbook.Id, "Sch", "Second");
+
+        // Strip the counter back out of index.json, leaving the workbook exactly as an older build
+        // would have written it: entries present, no lastEntryId.
+        string indexPath = Path.Combine(root, workbook.Id.ToString(), "index.json");
+        var record = JsonSerializer.Deserialize<WorkbookRecord>(File.ReadAllText(indexPath))!;
+        record.LastEntryId = 0;
+        File.WriteAllText(indexPath, JsonSerializer.Serialize(record));
+
+        Assert.Equal(3, WorklogManager.PeekNextEntryId(workbook.Id));
+
+        var third = AddEntry(workbook.Id, "Sch", "Third");
+        Assert.Equal(3, third.Id);
+    }
+
+    [Fact]
+    public void Deleting_a_worklog_does_not_let_its_id_be_reused()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        AddEntry(workbook.Id, "Sch", "First");
+        var second = AddEntry(workbook.Id, "Sch", "Second");
+        Assert.Equal(2, second.Id);
+
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, second.Id));
+
+        // #2 is spent even though nothing on disk carries it any more.
+        Assert.Equal(3, WorklogManager.PeekNextEntryId(workbook.Id));
+        Assert.Equal(3, AddEntry(workbook.Id, "Sch", "Third").Id);
+    }
+
+    // Deleting the ONLY entry still spends its number - the workbook is empty again but does not
+    // restart at #1, or the "#1" pill on the board would refer to two different repairs over time.
+    [Fact]
+    public void Deleting_every_worklog_does_not_restart_entry_numbering()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        var only = AddEntry(workbook.Id, "Sch", "Only");
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, only.Id));
+
+        Assert.Empty(WorklogManager.GetEntries(workbook.Id));
+        Assert.Equal(2, AddEntry(workbook.Id, "Sch", "Next").Id);
+    }
+
+    // Each workbook numbers its own entries: the counter lives in that workbook's index.json, so a
+    // second workbook starts at #1 regardless of how many entries the first one has spent.
+    [Fact]
+    public void Entry_numbering_is_per_workbook_and_not_shared_across_them()
+    {
+        this.LoadWorklog();
+        var first = CreateWorkbook("Commodore 64|250469", "First job", "");
+        var second = CreateWorkbook("Commodore 64|250469", "Second job", "");
+
+        AddEntry(first.Id, "Sch", "A");
+        AddEntry(first.Id, "Sch", "B");
+
+        Assert.Equal(1, AddEntry(second.Id, "Sch", "C").Id);
+    }
+
+    // The entry counter is per-workbook state, so it must survive a reload the same way the
+    // workbook counter does.
+    [Fact]
+    public void The_entry_counter_survives_reloading_the_same_root()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        var entry = AddEntry(workbook.Id, "Sch", "First");
+        Assert.True(WorklogManager.DeleteEntry(workbook.Id, entry.Id));
+
+        WorklogManager.LoadFrom(root);
+
+        Assert.Equal(2, WorklogManager.PeekNextEntryId(workbook.Id));
+    }
+
+    // Deleting a workbook takes its entry counter with it - the counter lives in the folder that is
+    // removed. That is correct rather than a leak: entry ids only have to be unique within their
+    // own workbook, and the workbook id itself is never reused, so a fresh workbook numbering its
+    // entries from #1 cannot collide with anything the deleted one exported.
+    [Fact]
+    public void A_new_workbook_starts_its_entries_at_one_even_after_another_was_deleted()
+    {
+        this.LoadWorklog();
+        var first = CreateWorkbook("Commodore 64|250469", "First job", "");
+
+        AddEntry(first.Id, "Sch", "A");
+        AddEntry(first.Id, "Sch", "B");
+        Assert.True(WorklogManager.DeleteWorkbook(first.Id));
+
+        var replacement = CreateWorkbook("Commodore 64|250469", "Second job", "");
+
+        // A new WORKBOOK number, so its "#1" is unambiguous.
+        Assert.Equal(2, replacement.Id);
+        Assert.Equal(1, AddEntry(replacement.Id, "Sch", "C").Id);
     }
 
     // ---------------------------------------------------------- an unusable workbook root
@@ -595,10 +935,8 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Single(entries);
     }
 
-    // An entry state the app never writes and cannot migrate must not silently count as resolved:
-    // closing a workbook the user still considers open is the one direction of this rule that
-    // loses information. The retired states are NOT in this list - they have a defined mapping and
-    // are covered by the migration tests below.
+    // An entry state the app never writes must not silently count as resolved: closing a workbook
+    // the user still considers open is the one direction of this rule that loses information.
     [Theory]
     [InlineData("Whatever")]
     [InlineData("half-done")]
@@ -612,68 +950,6 @@ public sealed class WorklogManagerTests : IDisposable
         var active = WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469");
         Assert.NotNull(active);
         Assert.Equal("Open", active!.Status);
-    }
-
-    // ---------------------------------------------------------------- retired state migration
-
-    // Entries written by an older build carry Pending/RuledOut/Fixed. They are mapped on read, so
-    // an upgraded user sees the state they left behind rather than a blank pill and a workbook
-    // that silently reopened.
-    //
-    // RuledOut maps to Closed, not Open: it counted as resolved under the old rule, so any other
-    // mapping would CHANGE a workbook's status instead of preserving it.
-    [Theory]
-    [InlineData("Pending", "Open")]
-    [InlineData("Fixed", "Closed")]
-    [InlineData("RuledOut", "Closed")]
-    [InlineData("pending", "Open")]
-    [InlineData("ruledout", "Closed")]
-    public void A_retired_entry_state_is_migrated_to_its_replacement(string stored, string expected)
-    {
-        Assert.Equal(expected, WorklogManager.MigrateEntryState(stored));
-    }
-
-    // The current values and anything unknown pass through untouched - the migration must not
-    // rewrite a state it does not own.
-    [Theory]
-    [InlineData("Open")]
-    [InlineData("Closed")]
-    [InlineData("Whatever")]
-    public void A_current_or_unknown_entry_state_is_left_alone(string state)
-    {
-        Assert.Equal(state, WorklogManager.MigrateEntryState(state));
-    }
-
-    // A blank state has always meant Open (AddEntry defaults it), so the migration agrees.
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData(null)]
-    public void A_blank_entry_state_migrates_to_open(string? state)
-    {
-        Assert.Equal("Open", WorklogManager.MigrateEntryState(state));
-    }
-
-    // The end-to-end promise: a workbook closed under the old vocabulary stays closed after the
-    // upgrade. This is what the migration exists for - without it RecomputeWorkbookStatus reopens
-    // it the next time anything in that workbook is saved.
-    [Fact]
-    public void A_workbook_whose_entries_were_all_fixed_stays_closed_after_upgrading()
-    {
-        string root = this.LoadWorklog();
-        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
-        WorklogManager.AddEntry(workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Closed", Array.Empty<string>());
-
-        // Rewrite entries.json the way the previous build would have left it.
-        string entriesPath = Path.Combine(root, workbook.Id.ToString(), "entries.json");
-        File.WriteAllText(entriesPath, File.ReadAllText(entriesPath).Replace("\"Closed\"", "\"Fixed\""));
-
-        var migrated = WorklogManager.GetEntries(workbook.Id);
-        Assert.Equal("Closed", Assert.Single(migrated).State);
-
-        // And the recomputed status still reports the workbook as finished.
-        WorklogManager.UpdateEntry(workbook.Id, migrated[0]);
-        Assert.Null(WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469"));
     }
 
     [Fact]
@@ -1545,6 +1821,135 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal("Closed", WorklogManager.GetLatestWorkbookForBoard("Commodore 64|250469")!.Status);
     }
 
+    // ------------------------------------------------- retired entry states, migrated on read
+
+    /// <summary>
+    /// Writes one entry to a workbook's entries.json with a raw State string, the way an older build
+    /// or a hand edit would leave it. The state has to go in by hand: nothing in the app can produce
+    /// a retired value any more, which is exactly why the read-time mapping is the only thing
+    /// standing between such a file and being misread.
+    /// </summary>
+    private static void OverwriteSingleEntryState(string root, int workbookId, string rawState)
+    {
+        string entriesPath = Path.Combine(root, workbookId.ToString(), "entries.json");
+
+        File.WriteAllText(entriesPath, $$"""
+        [
+          {
+            "id": 1,
+            "schematicName": "Sch",
+            "title": "Bad cap",
+            "category": "Issue",
+            "state": "{{rawState}}"
+          }
+        ]
+        """);
+    }
+
+    // Entries used to carry Pending/Fixed/RuledOut; they now carry Open/Closed. Without the
+    // read-time mapping, an entry saved by an older build is silently misread: ResolvedEntryStates
+    // holds only "Closed", so a "Fixed" entry reads as unresolved, the editor renders NEITHER state
+    // pill as selected, and the next save writes the retired value straight back.
+    //
+    // Fixed and RuledOut both map to CLOSED because both counted as resolved under the old rule -
+    // mapping either anywhere else would change every affected workbook's status rather than
+    // preserve it.
+    [Theory]
+    [InlineData("Pending", "Open")]
+    [InlineData("Fixed", "Closed")]
+    [InlineData("RuledOut", "Closed")]
+    public void A_retired_entry_state_is_mapped_to_its_replacement_on_read(string stored, string expected)
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        OverwriteSingleEntryState(root, workbook.Id, stored);
+
+        Assert.Equal(expected, WorklogManager.GetEntries(workbook.Id).Single().State);
+    }
+
+    // Case-insensitively, for the same reason IsResolvedState is: the value is read off disk, where
+    // a hand edit or an older build's casing is exactly what turns up.
+    [Theory]
+    [InlineData("fixed")]
+    [InlineData("FIXED")]
+    [InlineData(" Fixed ")]
+    [InlineData("ruledout")]
+    public void A_differently_cased_retired_state_is_still_mapped(string stored)
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        OverwriteSingleEntryState(root, workbook.Id, stored);
+
+        Assert.Equal("Closed", WorklogManager.GetEntries(workbook.Id).Single().State);
+    }
+
+    // The consequence that matters most, and the one no other test here would catch: a workbook the
+    // user had FINISHED under the old vocabulary must not reopen itself on upgrade. Without the
+    // mapping, "Fixed" reads as unresolved and RecomputeWorkbookStatus reopens the workbook.
+    [Fact]
+    public void A_workbook_whose_only_entry_was_Fixed_does_not_reopen_itself_on_read()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
+        var entry = AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        OverwriteSingleEntryState(root, workbook.Id, "Fixed");
+
+        var migrated = WorklogManager.GetEntries(workbook.Id).Single();
+
+        Assert.True(WorklogManager.IsResolvedState(migrated.State));
+
+        // The write-back path: saving the migrated entry must record "Closed" rather than putting
+        // the retired value back on disk, and must leave the workbook closed.
+        Assert.True(WorklogManager.UpdateEntry(workbook.Id, migrated));
+        Assert.Equal("Closed", WorklogManager.GetEntries(workbook.Id).Single().State);
+        Assert.Equal("Closed", WorklogManager.GetLatestWorkbookForBoard("Commodore 64|250469")!.Status);
+
+        // The id is untouched by the migration - it names the entry's attachment folder and every
+        // pill the user sees.
+        Assert.Equal(entry.Id, migrated.Id);
+    }
+
+    // A blank state is an entry that predates the field, or a partially-written record. It reads as
+    // Open rather than as an unrecognised value, so the entry has a pill the editor can select.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_blank_stored_state_reads_as_Open(string stored)
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        OverwriteSingleEntryState(root, workbook.Id, stored);
+
+        Assert.Equal("Open", WorklogManager.GetEntries(workbook.Id).Single().State);
+    }
+
+    // A current value passes through untouched, trimmed - the mapping must not be a rewrite of
+    // everything it sees. An unrecognised one is LEFT ALONE rather than forced to Open, so
+    // RecomputeWorkbookStatus treats it as unresolved and the workbook stays open: the safe
+    // direction, since the alternative silently closes a workbook.
+    [Theory]
+    [InlineData("Open", "Open")]
+    [InlineData("Closed", "Closed")]
+    [InlineData(" Closed ", "Closed")]
+    [InlineData("SomeFutureState", "SomeFutureState")]
+    public void A_current_or_unknown_state_is_not_rewritten(string stored, string expected)
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        OverwriteSingleEntryState(root, workbook.Id, stored);
+
+        Assert.Equal(expected, WorklogManager.GetEntries(workbook.Id).Single().State);
+    }
+
     // ------------------------------------------------------------- AddEntryRecord
 
     // AddEntryRecord is what the "Add worklog" flow writes with. Unlike AddEntry, which takes the
@@ -1741,13 +2146,18 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.False(WorklogManager.EntryExists(9999, 1));
     }
 
-    // A destination folder that ALREADY exists is a real case, not a corruption: a previous draft
-    // that reserved this same number and whose cleanup delete failed leaves one behind. Skipping
-    // the move there stranded the draft's bytes in a folder no entry names, while the entry itself
-    // was committed naming files that were not in its own folder - a photo row broken forever, with
-    // only a log line nobody reads. So the two folders are MERGED.
+    // A draft whose reserved id is taken meanwhile is moved to the id it is actually allocated,
+    // and that destination is now guaranteed to be FREE: since ids are handed out from a counter
+    // that also walks past any "worklog_{id}" folder already on disk (see PeekNextEntryIdIn), the
+    // allocator can no longer land a new entry on a folder that already has bytes in it.
+    //
+    // This test used to place a stale folder at reserved + 1 and assert the two were merged. That
+    // situation is now unreachable through this path - the allocator skips reserved + 1 precisely
+    // because the folder is there - so it asserts the skip instead. MoveEntryAttachmentsFolder's
+    // merge behaviour is still real and still covered, directly, by the two tests below it: it
+    // remains the safety net for a destination that appears between the allocation and the move.
     [Fact]
-    public void AddEntryRecord_merges_into_an_existing_destination_attachment_folder()
+    public void AddEntryRecord_is_never_allocated_an_id_whose_attachment_folder_already_exists()
     {
         this.LoadWorklog();
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
@@ -1758,14 +2168,14 @@ public sealed class WorklogManagerTests : IDisposable
         string reservedFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, reserved)!;
         File.WriteAllText(Path.Combine(reservedFolder, "photo_1_draft.png"), "draft bytes");
 
-        // Something else takes that id first, so the draft will be allocated the next one.
+        // Something else takes that id first, so the draft cannot keep it.
         WorklogManager.AddEntry(
             workbook.Id, "Sheet 1", new Rect(0, 0, 1, 1), "Written meanwhile", "", "Note", "Open", Array.Empty<string>());
 
-        // A stale folder is already sitting where the draft is about to be moved - an earlier
-        // cancelled draft whose delete failed.
-        string destinationFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, reserved + 1)!;
-        File.WriteAllText(Path.Combine(destinationFolder, "photo_9_orphan.png"), "orphan bytes");
+        // A stale folder from an earlier cancelled draft sits at the NEXT id along - the one the
+        // draft would otherwise have been given.
+        string staleFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, reserved + 1)!;
+        File.WriteAllText(Path.Combine(staleFolder, "photo_9_orphan.png"), "orphan bytes");
 
         var saved = WorklogManager.AddEntryRecord(
             workbook.Id,
@@ -1773,50 +2183,98 @@ public sealed class WorklogManagerTests : IDisposable
             reserved);
 
         Assert.NotNull(saved);
-        Assert.Equal(reserved + 1, saved!.Id);
 
-        // The draft's own bytes made it across - the whole point.
+        // Skipped PAST the stale folder rather than moved into it: adopting a cancelled draft's
+        // photos into someone's new worklog is exactly the outcome the folder check prevents.
+        Assert.Equal(reserved + 2, saved!.Id);
+
+        string destinationFolder = Path.Combine(
+            WorklogManager.GetEntryAttachmentsFolderPath(workbook.Id, saved.Id)!);
+
         Assert.True(
             File.Exists(Path.Combine(destinationFolder, "photo_1_draft.png")),
-            "the draft's photo was stranded because the destination folder already existed");
+            "the draft's photo did not follow it to the id it was allocated");
 
-        // And the orphan already there was not destroyed on the way.
-        Assert.True(File.Exists(Path.Combine(destinationFolder, "photo_9_orphan.png")));
+        // The orphan is left exactly where it was, still belonging to nothing.
+        Assert.True(File.Exists(Path.Combine(staleFolder, "photo_9_orphan.png")));
+        Assert.False(File.Exists(Path.Combine(staleFolder, "photo_1_draft.png")));
 
         Assert.False(
             Directory.Exists(reservedFolder),
             "the emptied reserved folder was left behind");
     }
 
-    // A name collision inside a merge leaves the file that is already there alone: it is the one
-    // some record may still name, and overwriting it would destroy bytes to save bytes.
-    [Fact]
-    public void AddEntryRecord_does_not_overwrite_a_colliding_name_when_merging_attachments()
+    // MoveEntryAttachmentsFolder's merge, tested directly rather than through AddEntryRecord.
+    //
+    // It is reached by reflection because the allocator above can no longer produce a collision
+    // through the public path - but the merge is not dead code: it is the safety net for a
+    // destination folder that appears between the id being allocated and the bytes being moved
+    // (another process, a restored backup, a sync client), and deleting it because today's caller
+    // cannot trigger it would remove the handling for the day something can. Same reasoning, and
+    // the same technique, as ExternalTargetLauncherTests uses for its private predicates.
+    private static void InvokeMoveEntryAttachmentsFolder(string workbookFolder, int fromEntryId, int toEntryId)
     {
-        this.LoadWorklog();
+        var method = typeof(WorklogManager).GetMethod(
+            "MoveEntryAttachmentsFolder",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+        method!.Invoke(null, new object[] { workbookFolder, fromEntryId, toEntryId });
+    }
+
+    [Fact]
+    public void Moving_a_draft_folder_merges_into_an_existing_destination_rather_than_stranding_it()
+    {
+        // A destination folder that already exists is a real case, not a corruption. Skipping the
+        // move there strands the draft's bytes in a folder no entry names, while the entry itself
+        // is committed naming files that are not in its own folder - a photo row broken forever,
+        // with only a log line nobody reads. So the two folders are MERGED.
+        string root = this.LoadWorklog();
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        string workbookFolder = Path.Combine(root, workbook.Id.ToString());
 
-        int reserved = WorklogManager.PeekNextEntryId(workbook.Id);
+        string from = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 1)!;
+        File.WriteAllText(Path.Combine(from, "photo_1_draft.png"), "draft bytes");
 
-        string reservedFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, reserved)!;
-        File.WriteAllText(Path.Combine(reservedFolder, "photo_1_shared.png"), "draft bytes");
+        string to = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 2)!;
+        File.WriteAllText(Path.Combine(to, "photo_9_orphan.png"), "orphan bytes");
 
-        WorklogManager.AddEntry(
-            workbook.Id, "Sheet 1", new Rect(0, 0, 1, 1), "Written meanwhile", "", "Note", "Open", Array.Empty<string>());
+        InvokeMoveEntryAttachmentsFolder(workbookFolder, 1, 2);
 
-        string destinationFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, reserved + 1)!;
-        File.WriteAllText(Path.Combine(destinationFolder, "photo_1_shared.png"), "existing bytes");
+        // The draft's own bytes made it across - the whole point.
+        Assert.True(
+            File.Exists(Path.Combine(to, "photo_1_draft.png")),
+            "the draft's photo was stranded because the destination folder already existed");
 
-        WorklogManager.AddEntryRecord(
-            workbook.Id,
-            new WorklogEntryRecord { Id = reserved, SchematicName = "Sheet 1", Title = "The draft" },
-            reserved);
+        // And the orphan already there was not destroyed on the way.
+        Assert.True(File.Exists(Path.Combine(to, "photo_9_orphan.png")));
 
-        Assert.Equal("existing bytes", File.ReadAllText(Path.Combine(destinationFolder, "photo_1_shared.png")));
+        Assert.False(Directory.Exists(from), "the emptied source folder was left behind");
+    }
+
+    [Fact]
+    public void Moving_a_draft_folder_does_not_overwrite_a_colliding_name()
+    {
+        // The filenames cannot normally collide across the two folders - they are built from the
+        // owning record's own attachment ids - but a name that collides anyway is left alone rather
+        // than overwritten: the file already there is the one some record may still name.
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        string workbookFolder = Path.Combine(root, workbook.Id.ToString());
+
+        string from = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 1)!;
+        File.WriteAllText(Path.Combine(from, "photo_1_shared.png"), "draft bytes");
+
+        string to = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 2)!;
+        File.WriteAllText(Path.Combine(to, "photo_1_shared.png"), "existing bytes");
+
+        InvokeMoveEntryAttachmentsFolder(workbookFolder, 1, 2);
+
+        Assert.Equal("existing bytes", File.ReadAllText(Path.Combine(to, "photo_1_shared.png")));
 
         // The one that could not be moved stays put rather than being silently dropped, and its
         // folder survives with it.
-        Assert.True(File.Exists(Path.Combine(reservedFolder, "photo_1_shared.png")));
+        Assert.True(File.Exists(Path.Combine(from, "photo_1_shared.png")));
     }
 
     // AddEntry Trim()s Title and Description; AddEntryRecord must too, or an entry created through
@@ -1890,80 +2348,59 @@ public sealed class WorklogManagerTests : IDisposable
     }
 
     // ###########################################################################################
-    // THE PRE-RENAME FOLDER MIGRATION.
-    //
-    // The worklog folder was renamed from "Workbook" to "Workbooks" to match the tab. Without a
-    // migration that rename is silent data loss: Load resolves the new name, LoadFrom's
-    // Directory.CreateDirectory brings it into being empty, and every workbook, entry, photo and
-    // attachment an existing user recorded simply stops being found - reported as nothing, because
-    // "0 workbooks" is also what a fresh install shows.
-    //
-    // These drive MigrateLegacyWorklogFolder directly with explicit paths rather than going through
-    // Load(), which resolves the user's REAL AppData folder - see the test-seam rules in CLAUDE.md.
+    // "--workbooks-root=" - the same idea as DataManager.ResolveDataRoot's "--data-root=", but for
+    // the purely-local Workbooks folder. ResolveExplicitWorkbookRoot is pure (no statics touched, no
+    // AppData read), so it is safe to call directly without going through Load().
     // ###########################################################################################
     [Fact]
-    public void The_pre_rename_workbook_folder_is_moved_to_the_new_name()
+    public void ResolveExplicitWorkbookRoot_uses_the_workbooks_root_command_line_argument()
     {
-        string appFolder = this.thisWorkspace.Path_("App-" + Guid.NewGuid().ToString("N"));
-        string legacyFolder = Path.Combine(appFolder, AppConfig.LegacyWorklogFolderName);
-        string currentFolder = Path.Combine(appFolder, AppConfig.WorklogFolderName);
-
-        // A workbook as it would sit on disk from an older build: its own numbered subfolder
-        // holding index.json, which is what ReadAllWorkbooks walks.
-        Directory.CreateDirectory(Path.Combine(legacyFolder, "1"));
-        File.WriteAllText(Path.Combine(legacyFolder, "1", AppConfig.WorklogIndexFileName), "{\"Id\":1}");
-
-        WorklogManager.MigrateLegacyWorklogFolder(appFolder, currentFolder);
-
-        Assert.False(Directory.Exists(legacyFolder));
-        Assert.True(File.Exists(Path.Combine(currentFolder, "1", AppConfig.WorklogIndexFileName)));
-
-        // And the moved data is genuinely readable as workbooks afterwards, not just present as
-        // files - the point of the migration is that the tab finds them again.
-        WorklogManager.LoadFrom(currentFolder);
-        Assert.Equal(2, WorklogManager.PeekNextId());
+        Assert.Equal(
+            @"D:\somewhere\Workbooks",
+            WorklogManager.ResolveExplicitWorkbookRoot(new[] { @"--workbooks-root=D:\somewhere\Workbooks" }));
     }
 
-    // A fresh install has no legacy folder. The migration must be a no-op rather than creating
-    // anything or throwing - it runs on every single launch.
     [Fact]
-    public void The_migration_does_nothing_when_there_is_no_legacy_folder()
+    public void ResolveExplicitWorkbookRoot_strips_surrounding_quotes()
     {
-        string appFolder = this.thisWorkspace.Path_("App-" + Guid.NewGuid().ToString("N"));
-        string currentFolder = Path.Combine(appFolder, AppConfig.WorklogFolderName);
-        Directory.CreateDirectory(appFolder);
-
-        WorklogManager.MigrateLegacyWorklogFolder(appFolder, currentFolder);
-
-        Assert.False(Directory.Exists(currentFolder));
+        Assert.Equal(
+            @"D:\my data\Workbooks",
+            WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--workbooks-root=\"D:\\my data\\Workbooks\"" }));
     }
 
-    // ###########################################################################################
-    // BOTH folders present - the migration must REFUSE rather than merge.
-    //
-    // Reachable when the migration already ran (the normal second launch) or when a user has real
-    // data under both names. Moving one onto the other would merge two histories whose workbook ids
-    // collide, so the legacy folder is left exactly as it is for the user to sort out by hand.
-    // ###########################################################################################
     [Fact]
-    public void The_migration_refuses_when_both_folders_exist_and_leaves_the_legacy_one_alone()
+    public void ResolveExplicitWorkbookRoot_matches_the_argument_case_insensitively()
     {
-        string appFolder = this.thisWorkspace.Path_("App-" + Guid.NewGuid().ToString("N"));
-        string legacyFolder = Path.Combine(appFolder, AppConfig.LegacyWorklogFolderName);
-        string currentFolder = Path.Combine(appFolder, AppConfig.WorklogFolderName);
-
-        Directory.CreateDirectory(Path.Combine(legacyFolder, "1"));
-        File.WriteAllText(Path.Combine(legacyFolder, "1", AppConfig.WorklogIndexFileName), "{\"Id\":1}");
-
-        Directory.CreateDirectory(Path.Combine(currentFolder, "7"));
-        File.WriteAllText(Path.Combine(currentFolder, "7", AppConfig.WorklogIndexFileName), "{\"Id\":7}");
-
-        WorklogManager.MigrateLegacyWorklogFolder(appFolder, currentFolder);
-
-        // Neither side touched: the legacy data is still recoverable, and the current data is not
-        // polluted with a colliding id.
-        Assert.True(File.Exists(Path.Combine(legacyFolder, "1", AppConfig.WorklogIndexFileName)));
-        Assert.True(File.Exists(Path.Combine(currentFolder, "7", AppConfig.WorklogIndexFileName)));
-        Assert.False(Directory.Exists(Path.Combine(currentFolder, "1")));
+        Assert.Equal("X", WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--WORKBOOKS-ROOT=X" }));
     }
+
+    [Fact]
+    public void ResolveExplicitWorkbookRoot_takes_the_first_matching_argument()
+    {
+        Assert.Equal(
+            "first",
+            WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--workbooks-root=first", "--workbooks-root=second" }));
+    }
+
+    [Fact]
+    public void ResolveExplicitWorkbookRoot_ignores_unrelated_arguments()
+    {
+        Assert.Equal(
+            "X",
+            WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--verbose", "--workbooks-root=X", "--data-root=Y" }));
+    }
+
+    [Fact]
+    public void ResolveExplicitWorkbookRoot_returns_null_with_no_matching_argument()
+    {
+        Assert.Null(WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--data-root=X" }));
+    }
+
+    [Fact]
+    public void ResolveExplicitWorkbookRoot_returns_null_with_no_arguments_at_all()
+    {
+        Assert.Null(WorklogManager.ResolveExplicitWorkbookRoot(null));
+        Assert.Null(WorklogManager.ResolveExplicitWorkbookRoot(Array.Empty<string>()));
+    }
+
 }

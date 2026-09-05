@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -85,7 +85,6 @@ namespace CRT
         private Point _panStartPoint;
         private Matrix _panStartMatrix;
 
-        private string _lastScopeImageSyncSignature = string.Empty;
         private bool _hasSeenOscilloscopeSessionTitleState;
         private bool _hasActiveOscilloscopeSessionTitleState;
         private DateTime _lastOscilloscopeKeyboardCommandUtc = DateTime.MinValue;
@@ -408,48 +407,6 @@ namespace CRT
                 this._lastOscilloscopeKeyboardCommandUtc = DateTime.UtcNow;
                 Interlocked.Exchange(ref this._oscilloscopeKeyboardCommandInFlight, 0);
             }
-        }
-
-        // ###########################################################################################
-        // Requests a TIME/DIV step on the active oscilloscope session using the oscilloscope tab's
-        // existing SCPI pipeline and command palette execution.
-        // ###########################################################################################
-        private async Task StepOscilloscopeTimeDivAsync(int offset)
-        {
-            if (this.Owner is not Main mainOwner)
-            {
-                return;
-            }
-
-            await mainOwner.TabOscilloscopeControl.StepTimeDivAsync(offset, CancellationToken.None);
-        }
-
-        // ###########################################################################################
-        // Requests a trigger-level step on the active oscilloscope session using the oscilloscope
-        // tab's existing SCPI pipeline and command palette execution.
-        // ###########################################################################################
-        private async Task StepOscilloscopeTriggerLevelAsync(int direction)
-        {
-            if (this.Owner is not Main mainOwner)
-            {
-                return;
-            }
-
-            await mainOwner.TabOscilloscopeControl.StepTriggerLevelAsync(direction, CancellationToken.None);
-        }
-
-        // ###########################################################################################
-        // Requests a fixed VOLTS/DIV value on the active oscilloscope session using the oscilloscope
-        // tab's existing SCPI pipeline and command palette execution.
-        // ###########################################################################################
-        private async Task SetOscilloscopeVoltsDivAsync(double voltsPerDiv)
-        {
-            if (this.Owner is not Main mainOwner)
-            {
-                return;
-            }
-
-            await mainOwner.TabOscilloscopeControl.SetVoltsDivAsync(voltsPerDiv, CancellationToken.None);
         }
 
         // ###########################################################################################
@@ -914,25 +871,25 @@ namespace CRT
             bool pinSameAsName = !string.IsNullOrWhiteSpace(pin) &&
                                  string.Equals(pin, name, StringComparison.OrdinalIgnoreCase);
 
-            this.SetInfoLabel(this.InfoPinBorder, this.InfoPinText, pinSameAsName ? null : pin);
-            this.SetInfoLabel(this.InfoNameBorder, this.InfoNameText, name);
-            this.SetInfoLabel(this.InfoOscBorder, this.InfoOscText, selected?.ExpectedOscilloscopeReading);
+            SetInfoLabel(this.InfoPinBorder, this.InfoPinText, pinSameAsName ? null : pin);
+            SetInfoLabel(this.InfoNameBorder, this.InfoNameText, name);
+            SetInfoLabel(this.InfoOscBorder, this.InfoOscText, selected?.ExpectedOscilloscopeReading);
 
-            this.SetInfoLabelPair(
+            SetInfoLabelPair(
                 this.InfoScopeTimeDivBorder,
                 this.InfoScopeTimeDivPrefixText,
                 this.InfoScopeTimeDivValueText,
                 "T/DIV:",
                 selected?.TimeDiv);
 
-            this.SetInfoLabelPair(
+            SetInfoLabelPair(
                 this.InfoScopeVoltsDivBorder,
                 this.InfoScopeVoltsDivPrefixText,
                 this.InfoScopeVoltsDivValueText,
                 "V/DIV:",
                 selected?.VoltsDiv);
 
-            this.SetInfoLabelPair(
+            SetInfoLabelPair(
                 this.InfoScopeTriggerBorder,
                 this.InfoScopeTriggerPrefixText,
                 this.InfoScopeTriggerValueText,
@@ -955,7 +912,7 @@ namespace CRT
         // ###########################################################################################
         // Shows or hides a single info label border depending on whether value is non-empty.
         // ###########################################################################################
-        private void SetInfoLabel(Border border, TextBlock textBlock, string? value)
+        private static void SetInfoLabel(Border border, TextBlock textBlock, string? value)
         {
             bool show = !string.IsNullOrWhiteSpace(value);
             border.IsVisible = show;
@@ -967,7 +924,7 @@ namespace CRT
         // Shows or hides a compact two-part info label where the prefix stays normal and the value
         // is rendered bold. Hidden when the value is empty.
         // ###########################################################################################
-        private void SetInfoLabelPair(Border border, TextBlock prefixTextBlock, TextBlock valueTextBlock, string prefix, string? value)
+        private static void SetInfoLabelPair(Border border, TextBlock prefixTextBlock, TextBlock valueTextBlock, string prefix, string? value)
         {
             string trimmed = ScopeFormatting.NormalizeScopeOverlayValue(value);
             bool show = !string.IsNullOrWhiteSpace(trimmed);
@@ -1048,13 +1005,21 @@ namespace CRT
                     if (cts.Token.IsCancellationRequested)
                         break;
 
-                    var fullPath = Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
                     Bitmap? bitmap = null;
 
-                    if (File.Exists(fullPath))
+                    try
                     {
-                        try { bitmap = new Bitmap(fullPath); }
-                        catch { }
+                        var fullPath = Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
+                        if (File.Exists(fullPath))
+                        {
+                            bitmap = new Bitmap(fullPath);
+                        }
+                    }
+                    catch
+                    {
+                        // A malformed File value (e.g. from hand-edited or contributed board data)
+                        // should skip this one image, not crash the whole load - this method has
+                        // no caller-side exception handling since it is async void.
                     }
 
                     result.Add((entry, bitmap));
@@ -1281,9 +1246,9 @@ namespace CRT
             if (!string.IsNullOrWhiteSpace(this._boardLabel))
                 titleParts.Add(this._boardLabel.Trim());
             if (!string.IsNullOrWhiteSpace(entry?.FriendlyName))
-                titleParts.Add(entry!.FriendlyName.Trim());
+                titleParts.Add(entry.FriendlyName.Trim());
             if (!string.IsNullOrWhiteSpace(entry?.TechnicalNameOrValue))
-                titleParts.Add(entry!.TechnicalNameOrValue.Trim());
+                titleParts.Add(entry.TechnicalNameOrValue.Trim());
 
             string titleText = titleParts.Count > 0
                 ? string.Join(" | ", titleParts)
@@ -1582,6 +1547,240 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
             this.NoImageText.IsVisible = false;
             this.CapturedScopeImageText.Text = $"Saved image as [{Path.GetFileName(savedFilePath)}]";
             this.CapturedScopeImageBorder.IsVisible = true;
+
+            this.thisCapturedScopeImagePath = savedFilePath;
+            this.UpdateAttachCapturedImageButton();
+        }
+
+        // ###########################################################################################
+        // The capture the "Attach image to worklog" button acts on - the PNG most recently written
+        // by CaptureAndDisplayOscilloscopeImageAsync. Cleared alongside the banner, so the button can
+        // never act on a file belonging to an earlier capture.
+        // ###########################################################################################
+        private string? thisCapturedScopeImagePath;
+
+        // ###########################################################################################
+        // Shows the attach button only when there is both a capture to attach AND a workbook to
+        // attach it to.
+        //
+        // Hidden outright when the worklog feature is switched off, matching how the Workbooks tab
+        // and the worklog bar are gated (Main.ApplyWorklogBarVisibility) - a user who has turned the
+        // feature off should see no trace of it here either. Also hidden when the board has no
+        // workbook yet: the dialog's whole premise is filing into the active one, and there is
+        // nothing useful to offer without it.
+        // ###########################################################################################
+        private void UpdateAttachCapturedImageButton()
+        {
+            bool hasCapture = !string.IsNullOrWhiteSpace(this.thisCapturedScopeImagePath);
+
+            this.AttachCapturedImageButton.IsVisible =
+                hasCapture &&
+                UserSettings.EnableWorklog &&
+                this.ResolveActiveWorkbookForCapture() != null;
+        }
+
+        // ###########################################################################################
+        // The workbook a capture would be filed into - the board's ACTIVE workbook, resolved through
+        // Main so this flow cannot disagree with the worklog bar about which one that is.
+        // ###########################################################################################
+        private WorkbookRecord? ResolveActiveWorkbookForCapture()
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return null;
+            }
+
+            string boardKey = mainOwner.GetCurrentBoardKey();
+            return string.IsNullOrWhiteSpace(boardKey)
+                ? null
+                : Main.ResolveActiveWorkbookForBoard(boardKey);
+        }
+
+        // ###########################################################################################
+        // Files the just-captured oscilloscope image into a worklog entry.
+        //
+        // One modal does the whole job: it names the workbook, ranks the entries (component matches
+        // first - see WorklogAttachTargets) and takes the comment. The capture is already safely
+        // written to the oscilloscope image folder before any of this, so cancelling here, or a
+        // failed attach, costs the user nothing but the filing.
+        //
+        // "Create new worklog" opens the full editor on a draft with the photo already attached,
+        // rather than making the user save an entry and come back for it - probing before anything
+        // has been written down is exactly how diagnosis starts. The draft carries no marked area
+        // (ShowMarkedArea false, the supported "parked badge" state), because area-marking needs the
+        // schematic view and the user is at the bench with a probe in hand.
+        // ###########################################################################################
+        private async void OnAttachCapturedImageClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await this.AttachCapturedImageToWorklogAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to attach captured oscilloscope image to a worklog: {ex.Message}");
+            }
+        }
+
+        private async Task AttachCapturedImageToWorklogAsync()
+        {
+            string? capturedPath = this.thisCapturedScopeImagePath;
+            if (string.IsNullOrWhiteSpace(capturedPath) || !File.Exists(capturedPath))
+            {
+                return;
+            }
+
+            var workbook = this.ResolveActiveWorkbookForCapture();
+            if (workbook == null)
+            {
+                return;
+            }
+
+            var dialog = new WorklogAttachCaptureWindow();
+            dialog.Initialize(
+                capturedPath,
+                workbook,
+                WorklogManager.GetEntries(workbook.Id),
+                this._boardLabel);
+
+            var result = await dialog.ShowDialog<WorklogAttachCaptureWindow.AttachResult?>(this);
+            if (result == null)
+            {
+                return;
+            }
+
+            if (result.EntryId == null)
+            {
+                await this.CreateWorklogEntryForCaptureAsync(workbook.Id, capturedPath, result.Comment);
+                return;
+            }
+
+            // Nothing below this point can leave the entry invisible: it is filed into an existing
+            // worklog, which already has whatever schematic and area the user gave it.
+
+            var outcome = WorklogAttachmentWriter.AttachToEntry(
+                workbook.Id,
+                result.EntryId.Value,
+                capturedPath,
+                WorklogAttachmentStorage.PhotoFilePrefix,
+                result.Comment);
+
+            if (outcome != WorklogAttachmentWriter.AttachOutcome.Added)
+            {
+                Logger.Warning($"Could not attach captured image to worklog entry [#{result.EntryId.Value}]: {outcome}");
+                return;
+            }
+
+            this.CapturedScopeImageText.Text =
+                $"Attached to worklog #{result.EntryId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+            this.RefreshWorklogSurfacesAfterAttach();
+        }
+
+        // ###########################################################################################
+        // The "Create new worklog" branch: opens the full editor on a draft carrying the capture.
+        //
+        // The photo is attached AFTER InitializeForNewEntry, which is the order AttachCapturedPhoto
+        // documents - the draft's attachment folder is named after the id that call reserves.
+        //
+        // The entry MUST be filed against a real schematic. Both surfaces that draw worklog entries
+        // filter by SchematicName - the Schematics tab's overlay (RefreshWorklogEntriesList) and the
+        // Workbooks board pane - so an entry saved with a blank one is invisible on both, with no
+        // way to reach it from the board at all. It shipped that way once and was reported: the
+        // worklog saved fine and then appeared nowhere. The schematic showing on the Schematics tab
+        // is the right one to use, since that is the board view the user is working against.
+        //
+        // The AREA is deliberately left unset, with ShowMarkedArea off: this entry was born at the
+        // oscilloscope with a probe in hand, not by dragging a rectangle, so there is no area to
+        // record. That is the supported "parked pill" state - the entry shows as a "#N" pill in the
+        // schematic panel's top-right corner rather than as a rectangle on the board. Ticking "Show
+        // marked area" later gives it a real, draggable square (see WorklogDefaultAreaGeometry) -
+        // which is why the schematic BITMAP is handed over rather than a null: that geometry needs
+        // the board's pixel size, and without it the tick produced the zero-sized rect the geometry
+        // exists to prevent. See ResolveSchematicBitmapForCapture.
+        // ###########################################################################################
+        private async Task CreateWorklogEntryForCaptureAsync(int workbookId, string capturedPath, string comment)
+        {
+            var editor = new WorklogEntryEditorWindow();
+
+            editor.InitializeForNewEntry(
+                workbookId,
+                this.ResolveSchematicNameForCapture(),
+                default,
+                this.ResolveSchematicBitmapForCapture());
+
+            editor.SetShowMarkedAreaForNewEntry(false);
+
+            // The outcome is acted on, not merely logged. A failed copy leaves the Photos section
+            // empty, and an editor that opens looking exactly like a successful one says the capture
+            // was filed when it was not - along with the comment the user typed into the attach
+            // dialog. The banner reports it instead, and the editor is not opened at all: there is
+            // nothing to create a worklog around.
+            if (!editor.AttachCapturedPhoto(capturedPath, comment))
+            {
+                Logger.Warning($"Could not attach captured image to a new worklog in workbook [#{workbookId.ToString(System.Globalization.CultureInfo.InvariantCulture)}] - the new worklog was not opened");
+                this.CapturedScopeImageText.Text = "Could not attach the image to a worklog";
+                return;
+            }
+
+            await editor.ShowDialog(this);
+
+            this.RefreshWorklogSurfacesAfterAttach();
+        }
+
+        // ###########################################################################################
+        // Which schematic a worklog created from a capture belongs to - the one currently showing on
+        // the Schematics tab, which is the board view the user is working against.
+        // ###########################################################################################
+        private string ResolveSchematicNameForCapture()
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return string.Empty;
+            }
+
+            return mainOwner.TabSchematicsControl?.GetCurrentSchematicName() ?? string.Empty;
+        }
+
+        // ###########################################################################################
+        // The board image the editor draws the marked area against - the same full-resolution bitmap
+        // the Schematics tab hands over on its own "Add worklog" path, taken from the same field.
+        //
+        // Passing null here is not harmless: the editor's EnsureMarkedAreaExistsWhenShown returns
+        // early without one, so ticking "Show marked area" on a worklog created from a capture left
+        // a zero-sized rectangle - which draws as nothing and can never be grabbed and dragged into
+        // place. That is precisely the bug WorklogDefaultAreaGeometry exists to fix, and this entry
+        // kind - born parked, with no area at all - is the one most likely to have the box ticked
+        // later.
+        //
+        // The editor does not dispose it (see its own note that the bitmap belongs to the caller),
+        // so handing over the tab's live field is safe; a null one simply means no board is loaded.
+        // ###########################################################################################
+        private Bitmap? ResolveSchematicBitmapForCapture()
+        {
+            if (this.Owner is not Main mainOwner)
+            {
+                return null;
+            }
+
+            return mainOwner.TabSchematicsControl?.currentFullResBitmap;
+        }
+
+        // ###########################################################################################
+        // Pushes a just-attached photo out to every worklog surface, through Main.RefreshWorklogBar -
+        // the one funnel every worklog change already passes through, so the Workbooks tab, the bar
+        // and the Schematics tab's overlay cannot go stale in a case that funnel already handles.
+        //
+        // Deliberately not poking TabWorkbooks directly: that tab holds decoded schematic bitmaps
+        // whose lifetime is tied to its attach/detach cycle, and a second refresh path into it is
+        // exactly the re-entrancy its OnDetachedFromVisualTree comment warns about.
+        // ###########################################################################################
+        private void RefreshWorklogSurfacesAfterAttach()
+        {
+            if (this.Owner is Main mainOwner)
+            {
+                mainOwner.RefreshWorklogBar();
+            }
         }
 
         // ###########################################################################################
@@ -1592,6 +1791,11 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
         {
             this.HideFetchScopeImageOverlay();
             this.CapturedScopeImageBorder.IsVisible = false;
+
+            // Cleared with the banner, so the attach button can never act on a file belonging to an
+            // earlier capture after the user has navigated to another thumbnail.
+            this.thisCapturedScopeImagePath = null;
+            this.AttachCapturedImageButton.IsVisible = false;
 
             if (this.thisTemporaryCapturedScopeBitmap != null)
             {

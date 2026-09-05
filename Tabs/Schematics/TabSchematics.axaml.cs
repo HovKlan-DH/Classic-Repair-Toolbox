@@ -937,15 +937,21 @@ public partial class TabSchematics : UserControl
             return false;
         }
 
-        return this.IsBoardContributorModeEnabled() ||
+        return IsBoardContributorModeEnabled() ||
                this.thisIsLabelEditorMode ||
                this.thisIsKiCadTraceCalibrationMode;
     }
 
     // ###########################################################################################
     // Returns the currently selected schematic name, or an empty string if none is selected.
+    //
+    // internal rather than private so the component popup's "attach capture to worklog" flow can
+    // name the schematic a new entry belongs to. An entry with a blank SchematicName is invisible
+    // on BOTH surfaces that draw entries - this tab filters by name (RefreshWorklogEntriesList) and
+    // so does the Workbooks board pane - so a worklog created from the oscilloscope has to be filed
+    // against a real schematic or it can never be seen again.
     // ###########################################################################################
-    private string GetCurrentSchematicName()
+    internal string GetCurrentSchematicName()
     {
         return (this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name?.Trim() ?? string.Empty;
     }

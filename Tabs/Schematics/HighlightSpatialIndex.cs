@@ -22,8 +22,7 @@ namespace Tabs.TabSchematics
         public HighlightSpatialIndex(IReadOnlyList<Rect> rects, int cellSize = 512)
         {
             this._cellSize = Math.Max(32, cellSize);
-//            this._rects = rects is Rect[] arr ? arr : [.. rects];
-            this._rects = rects is Rect[] arr ? arr : rects.ToArray(); // .NET6 compliant
+            this._rects = rects is Rect[] arr ? arr : rects.ToArray();
             this._cells = new Dictionary<long, List<int>>(capacity: Math.Max(16, this._rects.Length / 4));
             this._seenStamp = new int[this._rects.Length];
             this._stamp = 1;

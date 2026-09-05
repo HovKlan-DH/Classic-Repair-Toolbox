@@ -24,14 +24,74 @@ namespace Handlers.OnlineHandling
     public static class OnlineServices
     {
         private static readonly string UserAgent;
-        private static readonly Uri TrustedManifestUri;
-        private static readonly string TrustedDownloadAuthority;
+
+        // The trusted download authority, memoised against the manifest URL it was derived from.
+        //
+        // It cannot be a plain static readonly computed once in the type initializer, which is what
+        // it used to be: AppConfig.GetChecksumsUrl() reads UserSettings.DownloadDataFromTestSource,
+        // so the configured manifest - and therefore the authority derived from it - can change
+        // while the app is running. Freezing it at type-init would pin whichever source happened to
+        // be selected the first time this class was touched.
+        //
+        // Recomputing it per manifest entry is the other extreme, and a sync validates thousands of
+        // them: each call parsed a fresh Uri to recover a value that changes only when a setting
+        // does. Keying the memo on the URL string gives both - one parse per distinct source, and a
+        // switch of source is picked up on the next entry.
+        //
+        // A lock rather than a Lazy or a ConcurrentDictionary: this is two fields, written on a
+        // setting change and read on a path that is already doing file I/O, so the simplest thing
+        // that is correct under the concurrent validation SyncFilesAsync can perform is enough.
+        private static readonly object TrustedAuthorityLock = new();
+        private static string trustedAuthoritySourceUrl = string.Empty;
+        private static string trustedAuthority = string.Empty;
 
         static OnlineServices()
         {
             OnlineServices.UserAgent = $"{AppConfig.AppShortName} {AppConfig.AppDisplayVersionString}";
-            OnlineServices.TrustedManifestUri = new Uri(AppConfig.ChecksumsUrl, UriKind.Absolute);
-            OnlineServices.TrustedDownloadAuthority = OnlineServices.TrustedManifestUri.Authority;
+        }
+
+        // ###########################################################################################
+        // The authority (host and port) that a manifest download URL must be on, taken from the
+        // configured manifest URL itself - so the app can only ever be told to download from the
+        // same server it read the manifest from.
+        //
+        // Returns false, with a reason, when the configured URL is not a valid absolute URI. That is
+        // a configuration fault rather than a per-file one, but it is reported per file because that
+        // is where the decision is made; FetchManifestAsync reaches the same conclusion first and
+        // logs it as Critical, so a real misconfiguration is announced once before this is consulted
+        // at all.
+        // ###########################################################################################
+        private static bool TryGetTrustedDownloadAuthority(out string authority, out string failureReason)
+        {
+            string configuredUrl = AppConfig.GetChecksumsUrl();
+
+            lock (OnlineServices.TrustedAuthorityLock)
+            {
+                if (!string.Equals(configuredUrl, OnlineServices.trustedAuthoritySourceUrl, StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        OnlineServices.trustedAuthority = new Uri(configuredUrl, UriKind.Absolute).Authority;
+                        OnlineServices.trustedAuthoritySourceUrl = configuredUrl;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Deliberately not cached: an invalid URL must be re-evaluated, so that
+                        // correcting the setting takes effect without restarting the app.
+                        OnlineServices.trustedAuthority = string.Empty;
+                        OnlineServices.trustedAuthoritySourceUrl = string.Empty;
+
+                        authority = string.Empty;
+                        failureReason = $"configured manifest URL is invalid: {ex.Message}";
+                        return false;
+                    }
+                }
+
+                authority = OnlineServices.trustedAuthority;
+            }
+
+            failureReason = string.Empty;
+            return true;
         }
 
         // ###########################################################################################
@@ -71,7 +131,7 @@ namespace Handlers.OnlineHandling
                 };
 
                 using var response = await http.PostAsync(AppConfig.CheckVersionUrl, new FormUrlEncodedContent(payload));
-                var responseBody = await response.Content.ReadAsStringAsync();
+                _ = await response.Content.ReadAsStringAsync();
                 Logger.Info($"Online check-in completed:");
                 Logger.Info($"    HTTP:[{(int)response.StatusCode}]");
                 Logger.Info($"    Sent:[{osHighLevel}]");
@@ -446,16 +506,8 @@ namespace Handlers.OnlineHandling
                 return false;
             }
 
-            string trustedDownloadAuthority;
-            try
-            {
-                trustedDownloadAuthority = new Uri(AppConfig.GetChecksumsUrl(), UriKind.Absolute).Authority;
-            }
-            catch (Exception ex)
-            {
-                failureReason = $"configured manifest URL is invalid: {ex.Message}";
+            if (!OnlineServices.TryGetTrustedDownloadAuthority(out string trustedDownloadAuthority, out failureReason))
                 return false;
-            }
 
             if (!string.Equals(candidateUri.Authority, trustedDownloadAuthority, StringComparison.OrdinalIgnoreCase))
             {
@@ -473,14 +525,8 @@ namespace Handlers.OnlineHandling
         private static async Task<string> ComputeChecksumAsync(string filePath)
         {
             await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            /*
             var hash = await SHA256.HashDataAsync(stream);
             return Convert.ToHexStringLower(hash);
-            */
-            // .NET6 compliant
-            using var sha256 = SHA256.Create();
-            var hash = await Task.Run(() => sha256.ComputeHash(stream));
-            return Convert.ToHexString(hash).ToLowerInvariant();
         }
 
         // ###########################################################################################
@@ -552,6 +598,9 @@ namespace Handlers.OnlineHandling
                     if (!string.Equals(actualChecksum, expectedChecksum, StringComparison.Ordinal))
                     {
                         Logger.Warning($"[{entry.File}] [{statusCode}] [Checksum mismatch] [Expected:{expectedChecksum}] [Actual:{actualChecksum}]");
+
+                        // Best-effort cleanup: the real failure is already logged above, and a
+                        // leftover temp file here is harmless - it never gets moved into place.
                         try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
                         return false;
                     }
@@ -569,7 +618,8 @@ namespace Handlers.OnlineHandling
             {
                 Logger.Warning($"[{entry.File}] [Exception] [{ex.Message}]");
 
-                // Clean up temp file if it was left behind
+                // Best-effort cleanup: the real failure is already logged above, and a leftover
+                // temp file here is harmless - it never gets moved into place.
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
                 return false;

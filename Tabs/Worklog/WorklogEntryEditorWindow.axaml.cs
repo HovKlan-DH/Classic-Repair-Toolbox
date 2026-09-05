@@ -683,7 +683,7 @@ namespace CRT
             // gates on a non-blank title, so the flag is simply forced on and the title box decides.
             this.thisIsDirty = true;
 
-            this.Title = "New worklog entry";
+            this.Title = "New worklog";
             this.EditorSaveButton.Content = "Add worklog";
 
             // Same reasoning as Initialize's own deferred lift - its posted job runs after this
@@ -696,6 +696,74 @@ namespace CRT
                     this.EditorTitleTextBox.Focus();
                 },
                 DispatcherPriority.Background);
+        }
+
+        // ###########################################################################################
+        // Sets "Show marked area" on a brand-new entry. Call AFTER InitializeForNewEntry, which
+        // defaults it to ticked.
+        //
+        // Exists for the worklog created from an oscilloscope capture, which has no drawn area at
+        // all: leaving the box ticked would promise a rectangle that does not exist, and the entry
+        // would draw as nothing. Unticked, it parks as a "#N" pill in the corner instead, which is
+        // the state the app already supports for an entry with no area to sit on.
+        // ###########################################################################################
+        public void SetShowMarkedAreaForNewEntry(bool showMarkedArea)
+        {
+            this.EditorShowMarkedAreaCheckBox.IsChecked = showMarkedArea;
+            this.thisEntry.ShowMarkedArea = showMarkedArea;
+        }
+
+        // ###########################################################################################
+        // Attaches an already-captured image to the entry this window is editing, as if it had been
+        // added through the Photos section - the "Create new worklog" answer to the oscilloscope
+        // capture's attach dialog, where the user wants the capture filed into an entry that does
+        // not exist yet.
+        //
+        // Call AFTER InitializeForNewEntry. That order matters: the draft's attachment folder is
+        // named after the id InitializeForNewEntry reserves, so attaching before it would copy the
+        // bytes into a folder belonging to whatever entry currently holds that number.
+        //
+        // For a draft, PersistEntrySilently deliberately writes nothing (see its own comment) - the
+        // photo record lives in the working copy until Save, and WorklogManager.AddEntryRecord then
+        // writes it and moves the reserved folder if the id has moved meanwhile. So a cancelled
+        // draft discards this photo along with everything else, which is the correct outcome: the
+        // capture itself is still safe in the oscilloscope image folder regardless.
+        //
+        // Returns false when the bytes could not be filed - an unresolvable attachments folder, or
+        // a failed copy (a locked file, a full disk, permissions). The caller MUST act on that: the
+        // editor otherwise opens with an empty Photos section and no message at all, which reads as
+        // "the capture was attached" when it was not, and the comment the user typed into the attach
+        // dialog is lost with it.
+        // ###########################################################################################
+        public bool AttachCapturedPhoto(string sourcePath, string comment)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            var section = this.PhotoAttachments;
+
+            string? attachmentsFolder = WorklogManager.GetEntryAttachmentsFolder(this.thisWorkbookId, this.thisEntry.Id);
+
+            var outcome = WorklogAttachmentWriter.Attach(
+                sourcePath,
+                attachmentsFolder,
+                section.Records(),
+                section.OwnerPrefix,
+                comment,
+                this.PersistEntrySilently,
+                out _);
+
+            if (outcome != WorklogAttachmentWriter.AttachOutcome.Added)
+            {
+                Logger.Warning($"Could not attach captured image to a new worklog entry: {outcome}");
+                return false;
+            }
+
+            this.EnsureListSectionExpanded(section.HeaderKey);
+            this.RefreshAttachmentRows(section);
+            return true;
         }
 
         // ###########################################################################################
@@ -772,7 +840,60 @@ namespace CRT
         // ###########################################################################################
         private void OnShowMarkedAreaCheckedChanged(object? sender, RoutedEventArgs e)
         {
+            this.EnsureMarkedAreaExistsWhenShown();
             this.MarkDirty();
+        }
+
+        // ###########################################################################################
+        // Gives the entry a real, draggable marked area the first time "Show marked area" is ticked
+        // on one that has never had a drawn area at all.
+        //
+        // A worklog created from an oscilloscope capture is stored with no area (see
+        // ComponentInfoWindow's create branch) and parks as a corner pill instead. Ticking this box
+        // on such an entry used to promise a rectangle that could not exist: a zero-sized rect draws
+        // as nothing, or as a hairline, and can never be grabbed and dragged into place - so the
+        // entry looked broken with no way to fix it from the UI.
+        //
+        // WorklogDefaultAreaGeometry places a visible square in the board's BOTTOM-right corner -
+        // the opposite corner from the parked pills, so a freshly-placed area cannot be mistaken for
+        // one of them - which the user then drags to where it belongs.
+        //
+        // Only ever ADDS an area, never replaces one: an entry that already has a drawn rectangle
+        // keeps it through any number of tick/untick cycles.
+        // ###########################################################################################
+        private void EnsureMarkedAreaExistsWhenShown()
+        {
+            if (this.EditorShowMarkedAreaCheckBox.IsChecked != true || this.thisSchematicBitmap == null)
+            {
+                return;
+            }
+
+            var existing = new Rect(
+                this.thisEntry.AreaX, this.thisEntry.AreaY, this.thisEntry.AreaWidth, this.thisEntry.AreaHeight);
+
+            // ResolveAreaForShowing owns the "does this entry need an area inventing" decision, so
+            // this method never re-derives it: it hands over what the entry has and takes back what
+            // it should have. Re-deriving it here is what let the geometry class document itself as
+            // the single decision point while the editor quietly kept its own copy of the rule.
+            var area = WorklogDefaultAreaGeometry.ResolveAreaForShowing(
+                existing,
+                new Size(this.thisSchematicBitmap.PixelSize.Width, this.thisSchematicBitmap.PixelSize.Height));
+
+            // Unchanged means the entry already had a real area, and it is never replaced. Still
+            // unusable means the image has no size to place one on, so the entry stays parked.
+            if (area == existing || WorklogDefaultAreaGeometry.IsUnset(area))
+            {
+                return;
+            }
+
+            this.thisEntry.AreaX = area.X;
+            this.thisEntry.AreaY = area.Y;
+            this.thisEntry.AreaWidth = area.Width;
+            this.thisEntry.AreaHeight = area.Height;
+
+            // The location preview draws from the entry's own area, so it has to be redrawn now that
+            // the entry has one - otherwise the box is ticked and the preview still shows nothing.
+            this.RefreshLocationPreviewOverlay();
         }
 
         // ###########################################################################################
@@ -2026,6 +2147,15 @@ namespace CRT
 
         // Drives the shared row rebuild for one list, so a test can prove the SAME method serves
         // both sections - including the thumbnail branch, which is the one place they differ.
+        // ###########################################################################################
+        // The marked area on the window's WORKING COPY - which is what the tick handler edits, and
+        // what Save writes back. Initialize deliberately clones the caller's record (see CloneEntry)
+        // so Cancel cannot mutate it, so a test reading the record it passed in would see nothing
+        // change no matter what the editor did.
+        // ###########################################################################################
+        internal Rect WorkingEntryAreaForTests =>
+            new(this.thisEntry.AreaX, this.thisEntry.AreaY, this.thisEntry.AreaWidth, this.thisEntry.AreaHeight);
+
         internal void RefreshAttachmentRowsForTests(bool photos) =>
             this.RefreshAttachmentRows(photos ? this.PhotoAttachments : this.FileAttachments);
 
@@ -2196,48 +2326,27 @@ namespace CRT
 
             var records = section.Records();
 
-            // The id is settled before the name, because the stored name is built from it. It also
-            // skips any id whose file is already in the folder - see AllocateAttachmentId for why
-            // plain Max(Id) + 1 can silently overwrite an orphaned attachment.
-            int nextId = WorklogAttachmentStorage.AllocateAttachmentId(
+            // The id/name/order allocation and the roll-back-on-failed-persist all live in
+            // WorklogAttachmentWriter, which the oscilloscope capture's attach flow calls too - see
+            // its header for the four subtleties that used to be written out here. The rows are
+            // refreshed after the write either way, since a rollback removes the record again.
+            var outcome = WorklogAttachmentWriter.Attach(
+                result.SourcePath,
+                attachmentsFolder,
                 records,
                 section.OwnerPrefix,
-                WorklogAttachmentStorage.ListAttachmentFileNames(attachmentsFolder));
+                result.Comment,
+                this.PersistEntrySilently,
+                out _);
 
-            // Ordering is 0-based to match ReorderAttachment, which renumbers densely from 0. When
-            // this started at 1, the first attachment added after any drag-reorder took the same
-            // DisplayOrder as an existing row, and two rows sharing an order sort arbitrarily.
-            int nextOrder = records.Count == 0 ? 0 : records.Max(r => r.DisplayOrder) + 1;
-
-            string storedFileName = WorklogAttachmentStorage.BuildStoredFileName(
-                result.SourcePath, section.OwnerPrefix, nextId);
-
-            if (!WorklogAttachmentStorage.CopyAttachmentIntoFolder(result.SourcePath, attachmentsFolder, storedFileName))
+            if (outcome == WorklogAttachmentWriter.AttachOutcome.CopyFailed)
             {
                 this.ShowSaveFailed($"The {section.Noun} could not be copied into the worklog.");
                 return;
             }
 
-            records.Add(new WorklogAttachmentRecord
-            {
-                Id = nextId,
-                FileName = storedFileName,
-                Comment = result.Comment,
-                DisplayOrder = nextOrder
-            });
-
             this.EnsureListSectionExpanded(section.HeaderKey);
             this.RefreshAttachmentRows(section);
-
-            // A failed save means entries.json will never mention this attachment, so the bytes just
-            // copied in would sit in the attachments folder forever with nothing referencing them.
-            // Undoing the copy keeps the folder consistent with what was actually recorded.
-            if (!this.PersistEntrySilently())
-            {
-                records.RemoveAll(r => r.Id == nextId);
-                WorklogAttachmentStorage.DeleteAttachmentFileAndFolderIfEmpty(attachmentsFolder, storedFileName);
-                this.RefreshAttachmentRows(section);
-            }
         }
 
         // ###########################################################################################
@@ -2600,7 +2709,7 @@ namespace CRT
             // The placeholder is already sitting at the drop position, so its index in the row list
             // IS the target - no need to re-measure against the pointer, which would disagree with
             // what the user was just shown if the pointer sat between two rows.
-            int targetIndex = this.IndexOfPhotoRow(context, draggedId);
+            int targetIndex = IndexOfPhotoRow(context, draggedId);
 
             this.ResetPhotoDragState();
 
@@ -2635,7 +2744,7 @@ namespace CRT
             // wildly wrong index and is persisted immediately.
             this.thisPhotoRowDragBoundaries.Clear();
 
-            int index = this.IndexOfPhotoRow(context, this.thisDraggedPhotoId);
+            int index = IndexOfPhotoRow(context, this.thisDraggedPhotoId);
             if (index < 0)
             {
                 return false;
@@ -2713,7 +2822,7 @@ namespace CRT
                 return;
             }
 
-            int currentIndex = this.IndexOfPhotoRow(context, this.thisDraggedPhotoId);
+            int currentIndex = IndexOfPhotoRow(context, this.thisDraggedPhotoId);
             if (currentIndex < 0)
             {
                 return;
@@ -2728,7 +2837,7 @@ namespace CRT
             context.Rows.Move(currentIndex, targetIndex);
         }
 
-        private int IndexOfPhotoRow(DragContext context, int id)
+        private static int IndexOfPhotoRow(DragContext context, int id)
         {
             for (int i = 0; i < context.Rows.Count; i++)
             {

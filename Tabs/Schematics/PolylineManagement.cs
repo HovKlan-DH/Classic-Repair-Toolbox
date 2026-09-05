@@ -206,7 +206,7 @@ namespace Tabs.TabSchematics
                 Logger.Info($"Trace deleted (Palette): Color [{this._activePolyline.TraceColor}], Markers [{this._activePolyline.NodeCount}]");
 
                 this._polylines.Remove(this._activePolyline);
-                this._activePolyline.Dispose(this._canvas);
+                this._activePolyline.RemoveFromCanvas(this._canvas);
                 this._activePolyline = null;
 
                 this.PaletteStateChanged?.Invoke(false, default);
@@ -272,12 +272,12 @@ namespace Tabs.TabSchematics
                         this.PushUndo(polyline);
                     }
 
-                    polyline!.RemoveNode(nodeIndex);
+                    polyline.RemoveNode(nodeIndex);
                     if (polyline.NodeCount < 2)
                     {
                         Logger.Info($"Trace deleted (clicked on marker): Color [{polyline.TraceColor}]");
                         this._polylines.Remove(polyline);
-                        polyline.Dispose(this._canvas);
+                        polyline.RemoveFromCanvas(this._canvas);
                         if (this._activePolyline == polyline) this._activePolyline = null;
                     }
                     this.NotifyStatsChanged();
@@ -290,11 +290,11 @@ namespace Tabs.TabSchematics
                 {
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
 
-                    this.PushUndo(polySegment!);
-                    Logger.Info($"Trace deleted (clicked on line): Color [{polySegment!.TraceColor}], Markers [{polySegment.NodeCount}]");
+                    this.PushUndo(polySegment);
+                    Logger.Info($"Trace deleted (clicked on line): Color [{polySegment.TraceColor}], Markers [{polySegment.NodeCount}]");
 
                     this._polylines.Remove(polySegment);
-                    polySegment.Dispose(this._canvas);
+                    polySegment.RemoveFromCanvas(this._canvas);
 
                     if (this._activePolyline == polySegment)
                         this._activePolyline = null;
@@ -325,7 +325,7 @@ namespace Tabs.TabSchematics
                     if (!this.GetColorVisibility(polySegment!.TraceColor)) return false;
 
                     this.SelectPolyline(polySegment);
-                    polySegment!.InsertNode(segmentIndex + 1, this.CanvasToNormalized(splitPoint));
+                    polySegment.InsertNode(segmentIndex + 1, this.CanvasToNormalized(splitPoint));
                     this._activePolyline = polySegment;
                     this._draggingNodeIndex = segmentIndex + 1;
                     this.CurrentDrawingColor = polySegment.TraceColor;
@@ -474,7 +474,7 @@ namespace Tabs.TabSchematics
                     }
                     else
                     {
-                        this._tempDrawingLine.Dispose(this._canvas);
+                        this._tempDrawingLine.RemoveFromCanvas(this._canvas);
                         this.SelectPolyline(null);
                     }
                     this._tempDrawingLine = null;
@@ -586,8 +586,8 @@ namespace Tabs.TabSchematics
 
         private void ResetState()
         {
-            this._tempDrawingLine?.Dispose(this._canvas);
-            foreach (var p in this._polylines) p.Dispose(this._canvas);
+            this._tempDrawingLine?.RemoveFromCanvas(this._canvas);
+            foreach (var p in this._polylines) p.RemoveFromCanvas(this._canvas);
 
             if (this._hoverMarker != null)
             {
@@ -729,7 +729,10 @@ namespace Tabs.TabSchematics
                 var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(filePath, json);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to save user-drawn traces to [{filePath}]: [{ex.Message}]");
+            }
         }
 
         public static List<TraceModel> GetTraces(string boardKey, string schematicName)
@@ -811,7 +814,7 @@ namespace Tabs.TabSchematics
             }
         }
 
-        public void Dispose(Canvas canvas)
+        public void RemoveFromCanvas(Canvas canvas)
         {
             canvas.Children.Remove(this._shape);
             foreach (var m in this._markers) canvas.Children.Remove(m);

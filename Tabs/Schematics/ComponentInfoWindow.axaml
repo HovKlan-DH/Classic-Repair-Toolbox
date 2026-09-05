@@ -268,13 +268,31 @@
 							CornerRadius="2"
 							Padding="10,4"
 							IsVisible="False">
-						<TextBlock x:Name="CapturedScopeImageText"
-								   Text="User image"
-								   FontSize="22"
-								   FontWeight="SemiBold"
-								   TextWrapping="Wrap"
-								   MaxWidth="260"
-								   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}" />
+						<StackPanel Spacing="6">
+							<TextBlock x:Name="CapturedScopeImageText"
+									   Text="User image"
+									   FontSize="22"
+									   FontWeight="SemiBold"
+									   TextWrapping="Wrap"
+									   MaxWidth="260"
+									   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}" />
+
+							<!-- Offered on the banner that already appears after every capture, rather
+							     than as a mode entered beforehand: the user is at the bench sweeping
+							     pin after pin, and a prompt per capture would be intolerable while an
+							     ignorable button costs nothing. Hidden entirely when the worklog
+							     feature is switched off - see UpdateAttachCapturedImageButton. -->
+							<Button x:Name="AttachCapturedImageButton"
+									Content="Attach image to worklog"
+									HorizontalAlignment="Center"
+									FontSize="12"
+									Padding="8,3"
+									Background="{DynamicResource Button_Highlighted_Bg}"
+									Foreground="{DynamicResource Button_Highlighted_Fg}"
+									BorderBrush="{DynamicResource Button_Highlighted_Border}"
+									IsVisible="False"
+									Click="OnAttachCapturedImageClick" />
+						</StackPanel>
 					</Border>
 
 					<!-- Full-image fetch overlay shown while a new oscilloscope image is being captured -->

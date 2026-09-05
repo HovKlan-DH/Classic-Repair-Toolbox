@@ -168,8 +168,27 @@
                        FontWeight="SemiBold"
                        Margin="0,16,0,4" />
 
-			<CheckBox x:Name="EnableWorklogCheckBox"
-                      Content="Enable Workbooks tab" />
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="EnableWorklogCheckBox"
+						  Content="Enable Workbooks tab"
+						  VerticalAlignment="Center" />
+				<Button x:Name="EnableWorklogHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Open help page for Workbooks"
+						Click="OnEnableWorklogHelpClick">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
 
 			<TextBlock Text="Scope in Workbooks tab:"
                        Margin="0,8,0,0" />

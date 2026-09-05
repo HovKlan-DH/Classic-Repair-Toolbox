@@ -797,6 +797,7 @@ namespace Handlers.DataHandling
                     }
                     catch
                     {
+                        // One malformed pad entry should not discard the rest of the bucket.
                     }
                 }
             }

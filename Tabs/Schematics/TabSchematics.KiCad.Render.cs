@@ -56,17 +56,6 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Renders resolved schematic wire paths for the currently selected normalized net names.
-    // Uses a render-only overlay control instead of creating one Polyline control per path.
-    // ###########################################################################################
-/*
-    private void RenderKiCadSchematicGeometry(KiCadProjectView view)
-    {
-        this.RenderKiCadSchematicGeometry(view, this.BuildActiveKiCadTracePreviewNetNames());
-    }
-*/
-
-    // ###########################################################################################
     // Returns the active KiCad calibration for the current schematic.
     // Uses the temporary interactive box calibration while calibration mode is active; otherwise
     // loads the persisted box calibration from the board JSON file.
@@ -321,24 +310,6 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Builds a short human-readable description of the text anchor based on KiCad justification.
-    // ###########################################################################################
-    private static string DescribeKiCadTextAnchor(KiCadSchematicTextEffects? effects)
-    {
-        var justify = effects?.Justify ?? new List<string>();
-
-        bool hasLeft = justify.Any(value => string.Equals(value, "left", StringComparison.OrdinalIgnoreCase));
-        bool hasRight = justify.Any(value => string.Equals(value, "right", StringComparison.OrdinalIgnoreCase));
-        bool hasTop = justify.Any(value => string.Equals(value, "top", StringComparison.OrdinalIgnoreCase));
-        bool hasBottom = justify.Any(value => string.Equals(value, "bottom", StringComparison.OrdinalIgnoreCase));
-
-        string horizontal = hasLeft ? "left" : hasRight ? "right" : "center";
-        string vertical = hasTop ? "top" : hasBottom ? "bottom" : "middle";
-
-        return $"{horizontal}-{vertical}";
-    }
-
-    // ###########################################################################################
     // Returns true when the supplied pad belongs to a selected or hovered component and should
     // receive the special primary-pin highlight.
     // ###########################################################################################
@@ -390,7 +361,7 @@ public partial class TabSchematics
     // Keeps most of the mapped width so split trace chains meet cleanly, while trimming only a
     // small amount to avoid the overlay looking too bloated.
     // ###########################################################################################
-    private double GetKiCadOverlayStrokeThickness(double mappedThickness)
+    private static double GetKiCadOverlayStrokeThickness(double mappedThickness)
     {
         if (mappedThickness <= 1.0)
         {
@@ -520,13 +491,13 @@ public partial class TabSchematics
                 contentRect,
                 calibration);
 
-            double width = this.MapKiCadWorldLengthToLocal(
+            double width = MapKiCadWorldLengthToLocal(
                 pad.Size?.X ?? 1.2,
                 worldBounds,
                 contentRect,
                 calibration);
 
-            double height = this.MapKiCadWorldLengthToLocal(
+            double height = MapKiCadWorldLengthToLocal(
                 pad.Size?.Y ?? 1.2,
                 worldBounds,
                 contentRect,
@@ -580,8 +551,8 @@ public partial class TabSchematics
                     continue;
                 }
 
-                double thickness = this.GetKiCadOverlayStrokeThickness(
-                    this.MapKiCadWorldLengthToLocal(
+                double thickness = GetKiCadOverlayStrokeThickness(
+                    MapKiCadWorldLengthToLocal(
                         groupedSegments[0].WidthWorld,
                         worldBounds,
                         contentRect,
@@ -642,14 +613,14 @@ public partial class TabSchematics
                     contentRect,
                     calibration);
 
-                double thickness = this.GetKiCadOverlayStrokeThickness(
-                    this.MapKiCadWorldLengthToLocal(
+                double thickness = GetKiCadOverlayStrokeThickness(
+                    MapKiCadWorldLengthToLocal(
                         arcNode.WidthWorld,
                         worldBounds,
                         contentRect,
                         calibration));
 
-                var sampledArcPoints = this.SampleQuadraticBezier(start, mid, end, 20);
+                var sampledArcPoints = SampleQuadraticBezier(start, mid, end, 20);
 
                 target.Add(new KiCadOverlayPrimitive
                 {
@@ -830,7 +801,7 @@ public partial class TabSchematics
                     contentRect,
                     calibration);
 
-                double diameter = this.MapKiCadWorldLengthToLocal(
+                double diameter = MapKiCadWorldLengthToLocal(
                     viaNode.DiameterWorld,
                     worldBounds,
                     contentRect,

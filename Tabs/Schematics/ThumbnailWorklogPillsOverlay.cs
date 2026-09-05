@@ -109,7 +109,7 @@ namespace Tabs.TabSchematics
 
             foreach (var (pill, center, text) in this.LayOutPills())
             {
-                this.DrawPill(context, center, pill.Color, pill.EntryId, text);
+                DrawPill(context, center, pill.Color, pill.EntryId, text);
             }
         }
 
@@ -258,7 +258,7 @@ namespace Tabs.TabSchematics
         // to measure it anyway to place the block, and laying the same string out a second time to
         // draw it would be wasted work on every render pass of every thumbnail.
         // ###########################################################################################
-        private void DrawPill(
+        private static void DrawPill(
             DrawingContext context,
             Point center,
             Color color,

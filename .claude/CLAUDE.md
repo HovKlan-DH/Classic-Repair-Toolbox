@@ -45,13 +45,18 @@ per-OS instructions).
   reported in the log and read by nothing else. RELEASE still matters for *timings* (DEBUG is
   JIT-only) and for warnings-as-errors, not for behaviour.
 - **Command-line switches**, all parsed once at startup:
-  - `--data-root=<path>` — use a different `Data` folder (default: next to the executable).
+  - `--data-root=<path>` — use a different `Data` folder (default: an AppData folder that survives
+    Velopack updates). See `DataManager.ResolveDataRoot`.
+  - `--workbooks-root=<path>` — use a different folder for worklog workbooks (repair jobs), the same
+    idea as `--data-root=` but for the purely-local "Workbooks" folder (default: also under AppData).
+    See `WorklogManager.ResolveExplicitWorkbookRoot`.
   - `--simulate-update[=<version>]` — offer a fake application update (default `99.0.0`), fake the
     download and skip the restart, so the update banner can be exercised without a release. See
     [Handlers/Data/SimulationOptions.cs](../Handlers/Data/SimulationOptions.cs). Active in RELEASE
     builds too, on purpose; the startup log shouts about it and the banner says `(simulated)`.
-  - Both are set for F5 and the `watch` task in [.vscode/launch.json](../.vscode/launch.json) and
-    [.vscode/tasks.json](../.vscode/tasks.json).
+  - All three are parsed the same way (case-insensitive, surrounding quotes stripped, first match
+    wins, unrecognised arguments ignored). `--simulate-update` is set for F5 and the `watch` task in
+    [.vscode/launch.json](../.vscode/launch.json) and [.vscode/tasks.json](../.vscode/tasks.json).
 - **To skip the online data sync while iterating, untick "Check for new or updated data at
   application launch" in the Configuration tab.** It is a normal user setting, not a build or
   command-line concern — it short-circuits the manifest fetch, and with no manifest the board-Excel
@@ -115,11 +120,11 @@ number formats.
 | Security | `ExternalTargetLauncher`, `OnlineServices`' manifest-validation predicates |
 | KiCad | `KiCadRawProjectLoader`, `KiCadProjectLoader`, the `KiCadProjectData` model |
 | Board data | `BoardDataReader`, `BoardDataWriter`, `BoardComponentHighlightStorage`, `ComponentListBuilder`, `ComponentImageQueries`, `OverviewHtmlBuilder`, `ContactLinkFormatter` |
-| Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only) |
+| Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `DeleteEntry`, the non-reusing id counters, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only), `WorklogAttachTargets`, `WorklogAttachmentWriter` |
 | Text links | `TextLinkFinder` (which runs in a user-typed note are web links) |
 | Settings / startup | `UserSettings`, `DataManager` (data-root + master workbook), `DataValidator` (smoke only), `SimulationOptions` |
 | Headless UI (`Tests/.../Ui/`) | All nine tabs built headlessly, the worklog and Workbooks palettes, component highlight selection and schematics zoom, plus `Main` itself, the label editor's full edit cycle, the worklog area-marking flow, `ComponentInfoWindow`, the oscilloscope's SCPI sequencing, and the Configuration/Overview/About tabs - see [Headless UI tests](#headless-ui-tests) |
-| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry` |
+| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry` |
 
 `Handlers/` is where the real coverage is; most of the uncovered remainder is `Tabs/` and `Main/`,
 Avalonia code-behind that is verified by running the app.
@@ -219,19 +224,24 @@ and `UiTest.cs` (runs a body on the UI thread). The rest are the tests themselve
 | File | Covers |
 | --- | --- |
 | `TabConstructionTests.cs` | Every tab constructs without throwing |
+| `ConfigurationHelpIconTests.cs` | The Configuration tab's "?" help icons (Workbooks and MiniPro): that each button exists, carries the `HelpIconButton` class and the Font Awesome circle-question glyph, and shares a row with the checkbox it explains. The CLICK is deliberately not tested - it goes through `ExternalTargetLauncher`, whose accept path calls `Process.Start` (rule 6); a mis-typed `Click` handler name already fails the XAML parse |
 | `ComponentHighlightSelectionTests.cs` | Selecting/deselecting in the component filter box, and the highlights that appear and vanish across the main image and every thumbnail |
 | `SchematicsZoomTests.cs` | The schematic viewer's zoom limits, and zoom anchoring - that the point under the mouse pointer stays under the mouse pointer |
 | `WorkbooksPaletteTests.cs` | The Workbooks tab's `Workbooks_*` theme keys: that each resolves, that both themes define all of them, and that the pin colours stay identical across themes |
 | `WorkbooksListTests.cs` | The Workbooks tab's workbook list and selection: counts and their singular/plural forms, card contents, newest-first order, board scoping, default/click selection, that the status pill (list and top-line) uses the shared Open/Closed brushes, the activation fallback chain (`UserSettings.ActiveWorkbookIdByBoard` wins over newest; a stale saved id falls back to newest), that both splitters' widths are restored from `UserSettings.WorkbooksLeftPanelWidth`/`WorkbooksEntryListWidth` via `ApplySplitterWidthsForTests`, the top-line's Note text (shown/switched/collapsed-when-blank) and its Edit/Delete actions' visibility (hidden with no workbook selected, shown once one is), and that deleting a workbook via `WorklogManager.DeleteWorkbook` removes its card and a refresh lands the selection on the board's next remaining workbook (or clears the top-line entirely when it was the last one) |
-| `WorkbooksBoardPreviewTests.cs` | The Workbooks tab's board pane: one preview per schematic with an entry in the selected workbook, shared previews for co-located entries, unknown-schematic and missing-image entries skipped without dropping other previews, the pane rebuilding when the selected workbook changes, (via `BuildShownTab`'s real layout pass) that a "show marked area" ON entry's badge anchors to its marker while an OFF entry's badge parks in the image's top-right corner instead, that a pill carries a Hand cursor on a hit-test-visible canvas, `RefreshBoardPreviewsForCurrentSelection` populating the pane from board data supplied after an earlier empty build without touching the workbook list, schematic selection (default-first, highlight moving on click, the entry list switching to the clicked schematic), an entry detail card's four rows read back by content (including the stats row's hours/cost/comment/link/photo/file counts, populated through `WorklogManager.UpdateEntry` rather than a bare in-memory record), that the card has exactly one outer border with no border wrapping any individual row, that the Legend panel is gone, and `BuildWorklogEntryComponentScopeForTests` (matched components whose highlight rect the entry's area touches, `null` with no cached highlight rects at all and `null` when the entry's own schematic has no cache entry) - the computation `OnPreviewBadgePointerPressed` hands to `WorklogEntryEditorWindow.InitializeComponentScope` so the modal opened from a pill is provably the same one the Schematics tab opens |
+| `WorkbooksBoardPreviewTests.cs` | The Workbooks tab's board pane: one preview per schematic with an entry in the selected workbook, shared previews for co-located entries, unknown-schematic and missing-image entries skipped without dropping other previews, the pane rebuilding when the selected workbook changes, (via `BuildShownTab`'s real layout pass) that a "show marked area" ON entry's badge anchors to its marker while an OFF entry's badge parks in the image's top-right corner instead, that a pill carries a Hand cursor on a hit-test-visible canvas, `RefreshBoardPreviewsForCurrentSelection` populating the pane from board data supplied after an earlier empty build without touching the workbook list, schematic selection (default-first, highlight moving on click, the entry list switching to the clicked schematic), an entry detail card's four rows read back by content (including the stats row's hours/cost/comment/link/photo/file counts, populated through `WorklogManager.UpdateEntry` rather than a bare in-memory record), the two empty-state messages on a board with no workbooks (both reading "No worklogs recorded yet for any schematics in this board", and both `VerticalAlignment.Top` - a `TextBlock` in a Grid cell defaults to Stretch, which floats a single line down the middle of an empty panel), that the card has exactly one outer border with no border wrapping any individual row, the per-card "Delete worklog" button (one on EVERY card; in the title row Grid's Auto column and Top-aligned, so it hugs the top-right corner past a title that wraps; carrying the `Button_Cancel_*` theme brushes - asserted against the KEYS, since the header button's own `DynamicResource` values have not resolved on a tab that is never attached to a window - and NOT the card's Hand cursor, compared by `Cursor.ToString()` because `Cursor` has no value equality and a fresh `new Cursor(Hand)` fails as "Expected: Hand / Actual: Hand"), that the Legend panel is gone, and `BuildWorklogEntryComponentScopeForTests` (matched components whose highlight rect the entry's area touches, `null` with no cached highlight rects at all and `null` when the entry's own schematic has no cache entry) - the computation `OnPreviewBadgePointerPressed` hands to `WorklogEntryEditorWindow.InitializeComponentScope` so the modal opened from a pill is provably the same one the Schematics tab opens |
 | `WorkbooksSearchTests.cs` | The "Find a previous repair" box actually applying `WorklogSearchQuery` to the tab: the workbook list narrowing (by title, by note, and through text in one of the workbook's entries), the result count and each empty state saying "no match" rather than "none recorded", AND/quoted-phrase/`-`exclusion/case-insensitivity end to end, the entry list narrowing to matched entries while a workbook matched by its OWN text keeps all of its entries, that filtering the ACTIVE workbook out moves the top-line to a shown one WITHOUT changing `ActiveWorkbookIdByBoard`, that `ClearSearchForBoardChange` empties both the box and the filter, and the highlighting - the matched runs marked and nothing else, original casing and the full text preserved through the `Inlines` split, no marks with no search active, and marks removed again when the box is cleared |
 | `WorkbooksBoardPreviewTests.cs` (cont.) | Plus the DETACH/RE-ATTACH cycle a tab switch performs: that detaching leaves no preview `Image` holding a `Source` (the disposed-bitmap crash - see the board pane's bitmap-cache note above; this test fails against the dispose-without-clearing version), that re-attaching rebuilds the pane with a LIVE bitmap rather than handing back the disposed one, and that detaching a tab which built no previews at all is harmless |
 | `DeleteWorkbookWindowTests.cs` | That the delete-confirmation modal's Enter/Escape both CANCEL - including with the **Delete button focused**, the case a plain bubbling `KeyDown` handler misses entirely (the button's own Enter handling fires `Click` and confirms the delete). Asserts on the Delete button's `Click` rather than on the window closing, since it closes either way - the fix is `RoutingStrategies.Tunnel`, and this test fails against the bubbling version |
+| `DeleteWorklogWindowTests.cs` | The per-entry delete confirmation, the twin of the above and for the same reason: that Enter CANCELS even with the **Delete button focused** (the Tunnel-vs-bubbling regression again, asserted on the Delete button's own `Click`), that Escape cancels, that the worklog is named by the same `#N · Title` its card and board pill show (an untitled one as `(untitled)`, not trailing off after the separator), and that the copy says WORKLOG throughout - a near-copy of the workbook dialog that still named the workbook would tell the user they are about to lose the whole job when they are deleting one line of it |
 | `WorklogEditorNewEntryTests.cs` | The editor opened on a NEW entry (`InitializeForNewEntry`, the "Add worklog" flow after the quick card was removed): that it opens blank with Save disabled, that typing a title ENABLES Save - the thing `Initialize`'s own end-of-method clean state would otherwise make impossible, so a new entry could never be saved at all - that a blank or whitespace title disables it again, the drawn area's schematic carried through, the Note/Open defaults and the "Worklog created" audit comment, "Show marked area" ticked, the window titled "New worklog entry", that cancelling reports `WasSaved == false` and a null `SavedNewEntry` (a draft writes nothing, so the caller must not be told to refresh), and `InitializeComponentScope`'s `tickAll` - fully ticked for a new entry, unticked without it |
 | `WorklogEditorNewEntryTests.cs` (cont.) | Also: the Save button reads "Add worklog" rather than "Update worklog" (set explicitly by `InitializeForNewEntry`, not left as the markup default), and that a blank title on a brand-new entry shows NO explanatory message - there is nothing on disk yet to disagree with, unlike a saved entry (see `WorklogEditorHeaderTests.cs`) |
 | `WorkbooksSummaryAndPillsTests.cs` | The things that made this tab read as one surface: that the entry card's status pill and the top-line's have the SAME border width AND colour (the reported "the pill is not identical" — matching on only one of the two is what let them drift while each claimed to match), that a status pill's border is the STATE colour so Open and Closed differ and a category chip's is its own CATEGORY colour, both at 1px; that an entry card carries a Hand cursor marking it clickable (the click itself opens a modal a headless test cannot dismiss — what makes it provably the pill's modal is the shared `OpenEntryEditor`); that a counted pill in the summary keeps the ordinary 1px informational outline in its own colour but drops its ICON (while an uncounted one keeps it), and that the category/state counts are drawn as pills with the count LEADING each; and the summary strip's real totals (counting "worklogs", not "entries"), that only its NUMBERS are bold (asserted run by run - the finished string cannot show the difference), its collapsed-by-default state, toggling both ways, that an expanded strip SURVIVES a refresh (it rebuilds on every board change and save), the components line hidden when nothing is scoped, and the strip hidden entirely with no workbook selected. Plus that BOTH export formats have their own visible button carrying no icon (the ZIP was reported as invisible when it lived only in the save dialog's type list), and the export document built through the tab's own path — that the tab's board data reaches the exported sections, and that the suggested file name names the workbook and board but NOT the title |
 | `WorkbooksSearchFocusTests.cs` | `TabWorkbooks.FocusSearchBox` - that calling it moves real keyboard focus onto `FindRepairTextBox`, that calling it twice is harmless, and that focus can still move away afterwards through ordinary interaction. Covers only what is testable without `Main` (never constructed by any test): `Main`'s own `OnMainTabControlSelectionChanged`, which calls this on tab entry and is guarded by `e.Source` against `SelectionChanged`'s bubble from a nested `ListBox`/`ComboBox` on another tab, is exercised only by running the app |
 | `ThumbnailWorklogPillsTests.cs` | The thumbnail gallery's "#N" pills, via `ThumbnailWorklogPillsOverlay.LayOutPills`: that a "show marked area" ON entry's pill sits on its marked area while an OFF one is PARKED in the image's top-right corner instead - the reported bug where the thumbnail kept drawing a hidden entry's pill at its marker while the main view parked it, asserted by actual position (the marker is deliberately bottom-left) rather than by mere difference - that the same marker lands in two different places depending on the flag, that a thumbnail carrying both kinds keeps each placement, that parked pills stack without overlapping and stay inside the image however many there are, that they hug the IMAGE's edge and not the letterboxed control's, that each keeps its own id and colour, and that a zero-sized bitmap lays out nothing |
+| `WorklogOverlayRefreshTests.cs` | That the Schematics tab's overlay and thumbnail pills REDRAW after an entry changes in the workbook already on screen - `RefreshWorklogEntriesListForCurrentWorkbook` re-reading from disk so an edited area moves, a ticked "Show marked area" makes the rectangle appear, an unticked one removes it, and an added entry shows up; plus that a refresh with "Show worklogs" off stays cheap and draws nothing (it is called on EVERY worklog change, including for users who never turn the overlay on). Four of the five fail against the pre-fix version, where `Main.RefreshWorklogBar` only reached the overlay inside its "the shown WORKBOOK changed" branch |
+| `WorklogMarkedAreaDefaultTests.cs` | Ticking "Show marked area" on a worklog that never had one - the entry created from an oscilloscope capture, which is stored with no area and parks as a corner pill. That the tick leaves it with a rectangle that is genuinely visible, grabbable and wholly INSIDE the board (against the zero-sized rect that draws as nothing and can never be dragged into place), that the new square lands BOTTOM-right, away from the top-right parked pills, that an entry which already has a drawn area is never moved - asserted through a full untick/retick cycle, the sequence that would expose any re-placement - that unticking invents nothing, and that `SetShowMarkedAreaForNewEntry` can create a worklog parked rather than marked. Reads `WorkingEntryAreaForTests`, not the record passed in: `Initialize` clones it (see `CloneEntry`) so Cancel cannot mutate the caller's copy, and a test reading that copy would see nothing change no matter what the editor did |
+| `WorklogAttachCaptureWindowTests.cs` | The modal that files a captured oscilloscope image into a worklog: that the PRESELECTED row is the ranked-first one (asserted with a component match that is NOT lowest by id, so a dialog doing no ranking at all fails it), that "Create new worklog" is always offered and is always LAST so it never displaces a real entry from the preselected slot (and is correctly the only row, and preselected, when the workbook has no entries), that the button reads "Attach to existing worklog" for an existing worklog and "Create worklog" for the new-entry row (it opens the full editor rather than attaching there and then, and a button still reading "Attach" would misdescribe that), that the target workbook is NAMED (this dialog opens from the component popup, which can be sitting over a schematic while the user has been looking at the scope), and the GROUP HEADERS - that both bands are named in the list itself ("Worklogs with U8 in scope" / "All other worklogs"), that every header is disabled so it can never be selected while the preselected row is still a real worklog, that a header is faint enough not to read as an option and is OUTDENTED with its worklogs indented under it (asserted past the Fluent theme's own 11px item padding, since a row at the default already sits right of the header - verified by removing the `ContainerPrepared` hook), that the matched heading picks the component out in BOLD inside brackets with only that run bold and the joined runs still reading "Worklogs with [U8] in scope", that the "All other worklogs" heading stays a plain string, and that no headers appear at all when nothing matches the component |
 | `TextLinkRendererTests.cs` | Rendering a user-typed note with its web links clickable: that link-free text stays a plain single-`Text` block with no Hand cursor, that a linked one moves its content into `Inlines` with `Text == null` (a block carrying both renders the Text and silently ignores the Inlines), that only the link run is underlined, that re-rendering replaces the previous pass rather than layering on it, and the LINK + SEARCH-HIGHLIGHT merge - a search term landing inside a URL, one outside it, highlighting with no link present, and that the merged runs are never empty and always rebuild the original string. Plus the `LinkText` attached property the editor's DataTemplates use, including re-rendering when a recycled container is handed a different row |
 | `WorklogEntryModeTests.cs` | The parked-pill canvas (separate from the anchored badge canvas, so parked pills do not pan and zoom with the board; no `Background`, since one would swallow every press across the schematic panel; below the "Netlist names" panel in z-order) and the "Add worklog" mode hint (its wording, that it starts hidden and is not hit-testable, that it covers the data-sync icon, that its text wraps inside its box rather than overflowing - a horizontal `StackPanel` measures with infinite width and would never wrap - and that it is plain text with no icon). Formerly `WorklogCreateCardTests.cs`; the quick card's own tests went with the card |
 
@@ -504,6 +514,56 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   is a button. It is 2px at rest as well as hovered, for the same reason the previews are — growing
   1px to 2px would reflow the card as the pointer crossed it.
 
+- **Each entry card carries a "Delete worklog" button in its TOP-RIGHT corner**, the per-worklog
+  twin of the header's "Delete workbook" and confirmed by the same shape of modal
+  ([DeleteWorklogWindow](../Tabs/Worklog/DeleteWorklogWindow.axaml.cs) — a near-copy of
+  `DeleteWorkbookWindow`, kept as its own window rather than merged into a shared "confirm a
+  delete" dialog: the two say different things about different objects, and the point of the copy
+  is that changing one cannot silently change what the other promises about a permanent delete).
+  **Enter and Escape both CANCEL there, on the Tunnel route** — same reasoning and the same fix as
+  the workbook dialog, since a focused Button consumes Enter on the bubbling route and would delete
+  the worklog on a reflexive keypress. It is a real `Button`, not a click region, so the press never
+  reaches the card's own `PointerPressed` underneath it — a single click must not both open the
+  editor and raise a delete confirmation over it. It carries the destructive `Button_Cancel_*`
+  brushes (the same three keys the header's Delete names) and the default ARROW cursor rather than
+  the card's Hand, which would say it does the same benign thing the rest of the card does.
+  `WorklogManager.DeleteEntry` removes the entry's row from `entries.json` AND its whole
+  `worklog_{id}` attachment folder — the JSON write goes FIRST, so a failed write leaves the entry
+  whole rather than stranding a surviving row pointing at photos that are gone. **The remaining
+  entries deliberately KEEP their ids**: those ids are what the board pills, the cards and the
+  exported PDF all show, and they name the attachment folders, so a gap in the numbering is the
+  correct record of a deletion rather than something to close up. The refresh goes through
+  `Main.RefreshWorklogBar`, the one funnel every worklog change passes through, so the Schematics
+  tab's overlay rectangles and thumbnail pills lose the deleted entry too.
+
+- **A deleted id is never handed out again — neither a workbook's nor a worklog's.** Both used to be
+  allocated as "highest currently on disk, plus one", so deleting the top one let the next record
+  take its number back. That is not cosmetic: a workbook id names a PDF that has already been
+  exported and very likely emailed (`Workbook_2_Commodore_C64_20260904`), and both ids name real
+  folders (`2/`, `worklog_2/`) whose contents a recreated record would inherit — so a reused number
+  silently makes an old document describe a different repair. Two persisted counters record the
+  highest id ever HANDED OUT: `counters.json` at the workbook root for workbook ids, and each
+  workbook's own `index.json` (`WorkbookRecord.LastEntryId`) for the entries inside it. Delete #2 of
+  two workbooks and the next is **#3**; the gap is the correct record that #2 existed. Entry
+  numbering is **per workbook** (the counter travels in the folder it numbers and is deleted with
+  it), which is right because entry ids only have to be unique within their workbook and the
+  workbook id itself is never reused.
+
+  **There is deliberately NO migration** — nothing seeds a counter from existing data and nothing
+  rewrites a workbook written before the counters existed. What the allocators do instead is refuse
+  an id that is already taken on disk (`SkipIdsAlreadyOnDisk`, and the walk in `PeekNextEntryIdIn`):
+  a counter starting from zero would otherwise hand out #1 while a `1/` folder still sits there, and
+  since `CreateWorkbook`'s `Directory.CreateDirectory` succeeds silently on an existing folder, the
+  new workbook's `index.json` would **overwrite the old one in place** and inherit its entries and
+  attachments. That skip is a floor, not a migration — the counter is still the only thing that can
+  stop a DELETED id coming back, which checking disk alone never can. The entry side exempts the
+  draft's own `reservedId` from its folder check: that folder belongs to the entry being saved right
+  now, and skipping past it would misnumber the entry and strand the photos just attached to it.
+  One consequence worth knowing: `AddEntryRecord` can no longer be allocated an id whose attachment
+  folder exists, so `MoveEntryAttachmentsFolder`'s merge is now unreachable through that path and is
+  tested directly (by reflection) rather than deleted — it remains the safety net for a destination
+  that appears between the allocation and the move.
+
 - **Every workbook can be EXPORTED** (`TabWorkbooks.Export.cs`), from **two buttons** — "Export to
   PDF" and "Export to ZIP" — on their own SECOND ROW inside `WorkbookHeaderActionsPanel`, under
   Edit/Delete: four buttons across one line crowded the workbook title beside them and pushed the
@@ -730,6 +790,16 @@ from `Main.SetComponentHighlightRects` whenever the component highlight-rect cac
 board load finishing, or a region switch), because the pane's badges are clickable before that cache
 is populated and a click in that window silently dropped the editor's component checklist.
 
+**Every worklog change redraws the Schematics tab's overlay and thumbnail pills.**
+`Main.RefreshWorklogBar` calls `TabSchematics.SetShowWorklogEntriesList` when the shown WORKBOOK
+changes, and `RefreshWorklogEntriesListForCurrentWorkbook` otherwise. That second branch was missing:
+editing an entry inside the workbook already on screen changes neither of `SetShowWorklogEntriesList`'s
+two arguments, so the overlay and the thumbnail pills kept drawing the PRE-edit record until
+something else happened to rebuild them - reported as a marker not updating after adding one or
+ticking "Show marked area". Editing from the **Workbooks tab** was the worst case, since its save
+path funnels through `RefreshWorklogBar` alone and so nothing redrew the schematic overlay at all.
+Pinned by `WorklogOverlayRefreshTests`, four of which fail against the missing-branch version.
+
 **Activation.** Before this, every worklog-facing control (the bar, "Show worklogs", "Add worklog")
 always acted on `WorklogManager.GetLatestWorkbookForBoard` - there was no way to point any of them at
 an older or closed workbook. Clicking a card in the Workbooks tab now overrides that: `Main`'s
@@ -850,6 +920,123 @@ an entry written meanwhile would otherwise give two entries the same number. Whe
 `AddEntryRecord` moves the draft's attachment folder with it; a cancelled draft's attachment bytes
 are deleted instead (`DiscardDraftAttachments`, wired to Cancel *and* to `Closing`, since the
 title-bar close does not go through Cancel).
+
+**An oscilloscope capture can be filed straight into a worklog.** After a capture, the component
+popup's existing "Saved image as [...]" banner carries an **"Attach image to worklog"** button
+(`ComponentInfoWindow.OnAttachCapturedImageClick`). The banner was chosen deliberately over a mode
+entered beforehand: the user is at the bench sweeping pin after pin, so a prompt per capture would
+be intolerable while an ignorable button costs nothing. It is hidden entirely when
+`UserSettings.EnableWorklog` is off (matching how the tab and the bar are gated) or when the board
+has no workbook to file into, and it is cleared alongside the banner so it can never act on an
+earlier capture's file.
+
+**The WORKBOOK is never in question; the ENTRY is.** `ResolveActiveWorkbook` already settles which
+workbook is active app-wide, so the only thing the user has to answer is which worklog - which is
+why [WorklogAttachCaptureWindow](../Tabs/Worklog/WorklogAttachCaptureWindow.axaml.cs) is ONE modal
+(image, workbook, worklog, comment) rather than a picker followed by the editor's Add photo dialog.
+It resolves the choice and returns it; the caller performs the write, the same division
+`WorklogAddPhotoWindow` keeps. The popup asks `Main.ResolveActiveWorkbookForBoard` (made `internal`
+for this) rather than re-deriving "which workbook" a third time.
+
+**The entry list is RANKED, and the first row is preselected** -
+[WorklogAttachTargets](../Handlers/Data/WorklogAttachTargets.cs) (pure, unit tested). The rule is
+deliberately just TWO levels: entries whose `ComponentLabels` contain the component being measured
+come first, then everything else, **both bands in ascending id order**. Someone probing U8 while
+working a fault on U8 gets a single Attach click. Closed entries are KEPT rather than hidden - a
+board that comes back is re-measured against the entry describing the original repair.
+
+**Ascending id, because this renders as a plain dropdown and a LIST has to look ordered.** The first
+version sorted newest-first inside an open-before-closed band - defensible per criterion, and on
+screen it produced `#2, #4, #3, #1`: three invisible criteria interleaving into what reads as no
+order at all. Reported as exactly that. Entry ids are also what the board pills show (`#4`), so
+counting order is the one ordering the user can already follow. **Open/closed is no longer a sort
+level** for the same reason; both values already carry an always-visible pill, so they filter by eye.
+The component match survives as the one level above id because it pays for itself - it puts the right
+answer in the preselected slot.
+
+**The two bands are NAMED by non-selectable headers inside the dropdown** - "Worklogs with U8 in
+scope" and "All other worklogs" (`BuildGroupHeader`). The ordering was reported as illogical twice,
+and a caption UNDER the box did not fix it: it explains an order the reader cannot see at the time,
+and it is not on screen at the moment the list is open and the order actually matters. So the
+grouping is stated where it is being applied. The headers are `ComboBoxItem`s with `IsEnabled` false
+rather than data rows plus a `SelectionChanged` guard - a disabled item is skipped by mouse AND
+keyboard, so a header can never become `SelectedItem`, whereas a guard lets the selection land on it
+and then bounces, which flickers and fights arrow-key navigation. Because a header then occupies
+index 0, the preselected row is set BY VALUE (`items.FirstOrDefault(item => item is EntryChoice)`),
+never by index. Headers appear only when there IS a match to separate out: with one band, a lone
+"All other worklogs" would name a distinction that is not being drawn.
+
+**The matched heading names the component in bold inside brackets** - `Worklogs with [U6] in scope`
+(`BuildComponentGroupHeader`), so the thing the grouping is keyed on is visible at a glance rather
+than buried in a sentence. A `TextBlock` cannot mix weights within one `Text`, so it is built from
+`Run`s - the identical reason `TabWorkbooks.Summary.cs` walks `WorkbookSummary`'s `Stat` parts. That
+makes its `Text` null with the words in `Inlines`, so **a test reading only `Text` sees the heading
+as blank**. The "All other worklogs" heading stays a plain string: nothing there needs emphasis, and
+a `TextBlock` built to hold no bold run is just a heavier way to say the same thing. It also means
+`Content` is a `string` for one header and a `TextBlock` for the other, so **anything distinguishing
+headers from rows must match on the `EntryChoice`, not on "not a string"** - that shortcut picked the
+bolded header up as a worklog row and read its outer padding as the indent.
+
+**A header is faint (0.45 opacity) and OUTDENTED, with its worklogs indented under it.** At 0.75 it
+still read as a selectable option and was reported as such - a ComboBox's rows carry no styling of
+their own to contrast against. Opacity rather than a colour, because the theme defines no muted
+-foreground key and dimming the inherited `Fg` stays correct in BOTH themes where a hardcoded grey
+would fail one. The indent goes on the generated CONTAINER via `ContainerPrepared`: the rows are
+plain records with no `Padding` of their own, and a `ComboBoxItem` style would also hit the headers,
+which ARE `ComboBoxItem`s and set their own padding. **Any test for that indent must assert against
+the Fluent theme's own 11px item padding, not against the header's 6px** - an un-indented row already
+sits further right than the header, so the obvious comparison passes with the hook removed
+entirely.
+
+**"Create new worklog" opens the full editor on a draft with the photo already attached**
+(`WorklogEntryEditorWindow.AttachCapturedPhoto`), rather than making the user save an entry and come
+back for it - probing before anything is written down is how diagnosis starts. It must be called
+AFTER `InitializeForNewEntry`, whose reserved id names the draft's attachment folder.
+
+**That draft MUST be filed against a real schematic.** Both surfaces that draw worklog entries
+filter by `SchematicName` - the Schematics tab's overlay (`RefreshWorklogEntriesList`) and the
+Workbooks board pane - so an entry saved with a blank one is invisible on both, unreachable from the
+board entirely. It shipped that way once and was reported: the worklog saved fine and then appeared
+nowhere. `ComponentInfoWindow.ResolveSchematicNameForCapture` reads the schematic currently showing
+on the Schematics tab (`TabSchematics.GetCurrentSchematicName`, made `internal` for this), which is
+the board view the user is working against.
+
+**The draft carries NO marked area, with `ShowMarkedArea` off**
+(`WorklogEntryEditorWindow.SetShowMarkedAreaForNewEntry`) - it was born at the bench with a probe in
+hand, not by dragging a rectangle. That is the supported parked-pill state: the entry shows as a
+"#N" pill in the schematic panel's TOP-right corner rather than as a rectangle on the board. The
+seam sets both the checkbox and the record, or the editor's own save would write back the markup
+default of "ticked" and the entry would promise a rectangle it does not have.
+
+**Ticking "Show marked area" on such an entry gives it a real, draggable square** -
+[WorklogDefaultAreaGeometry](../Handlers/Geometry/WorklogDefaultAreaGeometry.cs) (pure, unit tested),
+via the editor's `EnsureMarkedAreaExistsWhenShown`. Without it the tick left a ZERO-SIZED rect, which
+draws as nothing or as a hairline and can never be grabbed and dragged into place - the entry looked
+broken with no way to fix it from the UI. The square is placed in the board's **BOTTOM**-right
+corner, the opposite corner from the parked pills, so a freshly placed area cannot be mistaken for
+one of them while it is being moved. It only ever ADDS an area and never replaces one: an entry with
+a drawn rectangle keeps it through any number of tick/untick cycles, since silently relocating a
+user's own marked area would be worse than the bug being fixed. `IsUnset` tests a threshold rather
+than comparing to zero - a rect that has been through a JSON round-trip or a hand edit can carry a
+sliver that is still not grabbable.
+
+**Both attach paths share one writer** -
+[WorklogAttachmentWriter](../Handlers/Data/WorklogAttachmentWriter.cs), which the editor's own Photos
+section now calls too rather than keeping its own copy. It carries four subtleties that are each
+invisible when wrong and were each fixed once already: the id is allocated through
+`AllocateAttachmentId` (which SKIPS ids whose bytes are already in the folder, since plain
+`Max(Id) + 1` silently overwrites an orphan), the id is settled BEFORE the name that is built from
+it, `DisplayOrder` is 0-based to match `ReorderAttachment`'s dense renumbering, and a failed persist
+rolls the copied bytes back out. `AttachToEntry` re-reads the entry from disk rather than trusting a
+caller's copy: `ShowDialog` does not block the dispatcher, so the full editor can be open on that
+same entry and writing back a stale record would drop whatever it has since saved.
+
+**Attaching refreshes through `Main.RefreshWorklogBar`**, the one funnel every worklog change
+already passes through - deliberately NOT by poking `TabWorkbooks`, whose decoded schematic bitmaps
+are tied to its attach/detach cycle and whose `OnDetachedFromVisualTree` comment warns about exactly
+that re-entrancy. **The capture itself is written to the oscilloscope image folder before any of
+this**, so cancelling the dialog, or a failed attach, costs the user the filing but never the
+measurement.
 
 **Links in user-typed text are clickable.** The workbook Note, the worklog Description, and the Work
 done / Comment / Photo comment / File comment rows all render any web link in them as a clickable

@@ -51,25 +51,6 @@ public partial class TabSchematics
     private readonly Dictionary<EditableComponentHighlight, Rect> thisLabelEditorOriginalDragRectangles = new();
 
     // ###########################################################################################
-    // Returns true when the pointer is inside the currently selected rectangle's move or resize
-    // interaction area so cursor feedback and marker visibility activate at the same time.
-    // ###########################################################################################
-    private bool IsPointerOverSelectedLabelEditorInteraction(Point pointerInContainer)
-    {
-        if (!this.HasSelectedLabelEditorHighlightsForCurrentSchematic())
-        {
-            return false;
-        }
-
-        if (this.TryGetSelectedLabelEditorHandleAtContainerPoint(pointerInContainer, out _))
-        {
-            return true;
-        }
-
-        return this.TryGetSelectedLabelEditorHighlightAtContainerPoint(pointerInContainer, out _);
-    }
-
-    // ###########################################################################################
     // Computes the editor overlay image content rect using the exact same mapping as the main
     // schematic overlays so pointer hit testing stays aligned after reloads and mode switches.
     // ###########################################################################################
@@ -611,7 +592,7 @@ public partial class TabSchematics
             var beforeDragState = this.CreateLabelEditorUndoStateFromOriginalDragState();
             var afterDragState = this.CreateLabelEditorUndoState();
 
-            if (!this.AreLabelEditorUndoStatesEqual(beforeDragState, afterDragState))
+            if (!AreLabelEditorUndoStatesEqual(beforeDragState, afterDragState))
             {
                 this.PushLabelEditorUndoState(beforeDragState);
             }
@@ -985,25 +966,6 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Returns true when the pointer is inside the current selection bounds so grouped move can start.
-    // ###########################################################################################
-    private bool IsPointerInsideSelectedLabelEditorBounds(Point pointerInContainer)
-    {
-        if (!this.TryGetSelectedLabelEditorBounds(out var selectionBounds))
-        {
-            return false;
-        }
-
-        if (!this.TryGetLabelEditorLocalPoint(pointerInContainer, out var localPoint))
-        {
-            return false;
-        }
-
-        var localRect = this.ConvertLabelEditorPixelRectToLocalRect(selectionBounds);
-        return localRect.Contains(localPoint);
-    }
-
-    // ###########################################################################################
     // Captures the original rectangles of all selected highlights before a move or resize starts.
     // ###########################################################################################
     private void CaptureSelectedLabelEditorDragState()
@@ -1013,48 +975,6 @@ public partial class TabSchematics
         foreach (var row in this.GetSelectedLabelEditorHighlightsForCurrentSchematic())
         {
             this.thisLabelEditorOriginalDragRectangles[row] = new Rect(row.X, row.Y, row.Width, row.Height);
-        }
-    }
-
-    // ###########################################################################################
-    // Applies a transformed group bounds rectangle back onto all selected highlights proportionally.
-    // ###########################################################################################
-    private void ApplyTransformedBoundsToSelectedLabelEditorHighlights(
-        Rect originalSelectionBounds,
-        Rect newSelectionBounds,
-        IReadOnlyDictionary<EditableComponentHighlight, Rect>? sourceRects = null)
-    {
-        var selected = this.GetSelectedLabelEditorHighlightsForCurrentSchematic();
-        if (selected.Count == 0)
-        {
-            return;
-        }
-
-        double originalWidth = Math.Max(1.0, originalSelectionBounds.Width);
-        double originalHeight = Math.Max(1.0, originalSelectionBounds.Height);
-        double newWidth = Math.Max(1.0, newSelectionBounds.Width);
-        double newHeight = Math.Max(1.0, newSelectionBounds.Height);
-
-        foreach (var row in selected)
-        {
-            Rect sourceRect = sourceRects != null && sourceRects.TryGetValue(row, out var storedRect)
-                ? storedRect
-                : new Rect(row.X, row.Y, row.Width, row.Height);
-
-            double relativeLeft = (sourceRect.Left - originalSelectionBounds.Left) / originalWidth;
-            double relativeTop = (sourceRect.Top - originalSelectionBounds.Top) / originalHeight;
-            double relativeRight = (sourceRect.Right - originalSelectionBounds.Left) / originalWidth;
-            double relativeBottom = (sourceRect.Bottom - originalSelectionBounds.Top) / originalHeight;
-
-            double left = newSelectionBounds.Left + (relativeLeft * newWidth);
-            double top = newSelectionBounds.Top + (relativeTop * newHeight);
-            double right = newSelectionBounds.Left + (relativeRight * newWidth);
-            double bottom = newSelectionBounds.Top + (relativeBottom * newHeight);
-
-            row.X = left;
-            row.Y = top;
-            row.Width = Math.Max(1.0, right - left);
-            row.Height = Math.Max(1.0, bottom - top);
         }
     }
 

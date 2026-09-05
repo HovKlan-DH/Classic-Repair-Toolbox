@@ -754,7 +754,7 @@ namespace CRT
 
             foreach (var row in this.thisComponentImageRows)
             {
-                this.DisposeComponentImagePreview(row);
+                DisposeComponentImagePreview(row);
             }
 
             this.thisComponentRows.Clear();
@@ -788,7 +788,7 @@ namespace CRT
                 (string.IsNullOrWhiteSpace(c.Region) ||
                  string.Equals(c.Region.Trim(), this.thisLocalRegion, StringComparison.OrdinalIgnoreCase))))
             {
-                string fileLocation = this.GetExistingFileLocation(row, row.File);
+                string fileLocation = GetExistingFileLocation(row, row.File);
 
                 var imageRow = new ContributionComponentImageRow
                 {
@@ -826,7 +826,7 @@ namespace CRT
 
             foreach (var row in boardData.ComponentLocalFiles.Where(c => BelongsToComponent(c.BoardLabel)))
             {
-                string fileLocation = this.GetExistingFileLocation(row, row.File);
+                string fileLocation = GetExistingFileLocation(row, row.File);
 
                 var localFileRow = new ContributionComponentLocalFileRow
                 {
@@ -855,7 +855,7 @@ namespace CRT
 
             foreach (var row in boardData.BoardLocalFiles)
             {
-                string fileLocation = this.GetExistingFileLocation(row, row.File);
+                string fileLocation = GetExistingFileLocation(row, row.File);
 
                 var boardLocalFileRow = new ContributionBoardLocalFileRow
                 {
@@ -1038,20 +1038,6 @@ namespace CRT
             yield return this.BoardLinksSection;
         }
 
-/*
-        // ###########################################################################################
-        // Adds a new editable row to the Components section.
-        // ###########################################################################################
-        private void OnAddComponentRowClick(object? sender, RoutedEventArgs e)
-        {
-            this.thisComponentRows.Add(new ContributionComponentRow
-            {
-                BoardLabel = this.thisBoardLabel,
-                Region = this.thisLocalRegion
-            });
-        }
-*/
-
         // ###########################################################################################
         // Removes an editable row from the Components section.
         // ###########################################################################################
@@ -1088,7 +1074,7 @@ namespace CRT
         {
             if (sender is Button { Tag: ContributionComponentImageRow row })
             {
-                this.DisposeComponentImagePreview(row);
+                DisposeComponentImagePreview(row);
                 this.thisComponentImageRows.Remove(row);
                 this.UpdateSectionCounters();
             }
@@ -1498,7 +1484,7 @@ namespace CRT
             for (int index = 0; index < this.thisComponentImageRows.Count; index++)
             {
                 var row = this.thisComponentImageRows[index];
-                var problem = ContributionPackaging.ValidateComponentImageFile(this.GetStoredFilePath(row));
+                var problem = ContributionPackaging.ValidateComponentImageFile(GetStoredFilePath(row));
 
                 row.FileErrorText = problem switch
                 {
@@ -1570,12 +1556,12 @@ namespace CRT
 
             using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
             {
-                this.AddTextEntryToZip(archive, "ComponentContribution.json", payloadJson);
+                AddTextEntryToZip(archive, "ComponentContribution.json", payloadJson);
 
                 for (int i = 0; i < attachments.Count; i++)
                 {
                     progress.Report($"Packaging referenced files... {i + 1}/{attachments.Count}");
-                    this.AddFileToZipSafe(archive, attachments[i].SourcePath, attachments[i].ZipEntryName);
+                    AddFileToZipSafe(archive, attachments[i].SourcePath, attachments[i].ZipEntryName);
                 }
             }
 
@@ -1590,7 +1576,6 @@ namespace CRT
             formContent.Add(new StringContent(email), "email");
             formContent.Add(new StringContent(this.BuildContributionFeedbackText(comment)), "feedback");
             formContent.Add(new StringContent(AppConfig.AppDisplayVersionString), "version");
-//            formContent.Add(new StringContent("component-contribution"), "submissionType");
 
             var fileContent = new ByteArrayContent(memoryStream.ToArray());
             fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
@@ -1744,19 +1729,19 @@ namespace CRT
             references.AddRange(this.thisComponentImageRows.Select(row => new ContributionFileReference
             {
                 SectionFolder = "ComponentImages",
-                ResolvedSourcePath = this.ResolveExistingFilePath(this.GetStoredFilePath(row))
+                ResolvedSourcePath = this.ResolveExistingFilePath(GetStoredFilePath(row))
             }));
 
             references.AddRange(this.thisComponentLocalFileRows.Select(row => new ContributionFileReference
             {
                 SectionFolder = "ComponentLocalFiles",
-                ResolvedSourcePath = this.ResolveExistingFilePath(this.GetStoredFilePath(row))
+                ResolvedSourcePath = this.ResolveExistingFilePath(GetStoredFilePath(row))
             }));
 
             references.AddRange(this.thisBoardLocalFileRows.Select(row => new ContributionFileReference
             {
                 SectionFolder = "BoardLocalFiles",
-                ResolvedSourcePath = this.ResolveExistingFilePath(this.GetStoredFilePath(row))
+                ResolvedSourcePath = this.ResolveExistingFilePath(GetStoredFilePath(row))
             }));
 
             var plan = ContributionPackaging.AssignZipEntries(references);
@@ -1793,7 +1778,7 @@ namespace CRT
         // ###########################################################################################
         // Adds a UTF-8 text file entry to the output zip archive.
         // ###########################################################################################
-        private void AddTextEntryToZip(ZipArchive archive, string entryName, string content)
+        private static void AddTextEntryToZip(ZipArchive archive, string entryName, string content)
         {
             var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
             using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
@@ -1803,7 +1788,7 @@ namespace CRT
         // ###########################################################################################
         // Adds a file to the provided zip archive, skipping unreadable files safely.
         // ###########################################################################################
-        private void AddFileToZipSafe(ZipArchive archive, string sourcePath, string entryName)
+        private static void AddFileToZipSafe(ZipArchive archive, string sourcePath, string entryName)
         {
             if (!File.Exists(sourcePath))
             {
@@ -1875,7 +1860,7 @@ namespace CRT
         // ###########################################################################################
         private void RefreshComponentImagePreview(ContributionComponentImageRow row)
         {
-            this.DisposeComponentImagePreview(row);
+            DisposeComponentImagePreview(row);
 
             string fullPath = !string.IsNullOrWhiteSpace(row.OriginalFilePath)
                 ? row.OriginalFilePath
@@ -1905,7 +1890,7 @@ namespace CRT
         // ###########################################################################################
         // Disposes the currently loaded preview image for a component image row.
         // ###########################################################################################
-        private void DisposeComponentImagePreview(ContributionComponentImageRow row)
+        private static void DisposeComponentImagePreview(ContributionComponentImageRow row)
         {
             row.PreviewImage?.Dispose();
             row.PreviewImage = null;
@@ -1918,7 +1903,7 @@ namespace CRT
         {
             foreach (var row in this.thisComponentImageRows)
             {
-                this.DisposeComponentImagePreview(row);
+                DisposeComponentImagePreview(row);
             }
         }
 
@@ -2047,7 +2032,7 @@ namespace CRT
         {
             return tag switch
             {
-                IContributionFileRow fileRow => this.GetStoredFilePath(fileRow),
+                IContributionFileRow fileRow => GetStoredFilePath(fileRow),
                 _ => null
             };
         }
@@ -2135,7 +2120,7 @@ namespace CRT
         // ###########################################################################################
         // Extracts a file-location value from a row, with legacy fallback from the stored file path.
         // ###########################################################################################
-        private string GetExistingFileLocation(object row, string? filePath)
+        private static string GetExistingFileLocation(object row, string? filePath)
         {
             var propertyInfo = row.GetType().GetProperty("FileLocation");
             if (propertyInfo != null && propertyInfo.GetValue(row) is string fileLocation && !string.IsNullOrWhiteSpace(fileLocation))
@@ -2162,7 +2147,7 @@ namespace CRT
         // ###########################################################################################
         // Builds the effective source path for a file row from original path or location + filename.
         // ###########################################################################################
-        private string GetStoredFilePath(IContributionFileRow row)
+        private static string GetStoredFilePath(IContributionFileRow row)
         {
             if (!string.IsNullOrWhiteSpace(row.OriginalFilePath))
             {

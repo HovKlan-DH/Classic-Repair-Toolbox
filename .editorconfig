@@ -10,3 +10,46 @@ root = true
 # the two highest-value clusters found in the first scan - S2486 because a silently swallowed
 # exception can hide a real bug, S1144 because it is confirmed dead code. Worth reviewing first
 # when picking findings to act on.
+#
+# The eight rules below are silenced (severity none) rather than merely kept off the
+# warnings-as-errors list, because a full manual audit of every occurrence in this codebase
+# - not a sample - found each one to be a genuine false positive for how this project's code is
+# actually shaped, not a case-by-case judgment call. Silencing means they no longer show as
+# warnings at all (IDE squiggles or build output); WarningsNotAsErrors in the csproj still lists
+# them too; that entry is now belt-and-braces for these eight; the meaningful gate is here.
+#
+# Do NOT add a rule here on a hunch or a single example - the rest of this project's Sonar
+# findings are deliberately left visible because sampling one instance of a rule and assuming the
+# rest match is exactly the mistake that produced wrong conclusions earlier in this project's own
+# review history (see git history / conversation log around the SonarAnalyzer introduction). Only
+# add a rule here after checking EVERY occurrence, the same way these eight were checked - if a
+# rule turns out to be mixed (some real findings, some noise), fix the real ones and leave the
+# rule OFF this list so the remainder stays visible for the next pass instead.
+dotnet_diagnostic.S1075.severity = none  # Hardcoded absolute URI - every hit is an AppConfig
+    # constant (ChecksumsUrl, CheckVersionUrl, etc.), which is the ONE sanctioned place per this
+    # project's own conventions to hold exactly these values. 9 occurrences checked.
+dotnet_diagnostic.S1313.severity = none  # Hardcoded IP address - the only hits are
+    # UserSettings.OscilloscopeHost's default value ("192.168.0.100"), a sane placeholder for a
+    # user-editable setting, not a real target. 2 occurrences checked.
+dotnet_diagnostic.S6444.severity = none  # Regex without a timeout - every pattern is fixed and
+    # developer-authored (email validation, SCPI parsing, etc.) running against short,
+    # locally-typed or already-bounded strings; no attacker controls the pattern, so there is no
+    # ReDoS surface for this rule to guard. 11 occurrences checked.
+dotnet_diagnostic.S4036.severity = none  # Relative path passed to Process.Start - every hit
+    # launches a well-known OS shell command (explorer/open/xdg-open) by name so PATH resolution
+    # keeps it portable across Windows/Linux/macOS; hardcoding an absolute path would break that
+    # portability, which is the opposite of what the rule wants. 6 occurrences checked.
+dotnet_diagnostic.S108.severity = none  # Empty block ("remove or fill") - every hit is either a
+    # deliberate empty catch (see S2486 above, which already covers exception-swallow review) or
+    # a genuine "advance the reader/loop and discard" idiom (e.g. skipping to the end of a JSON
+    # array). 31 occurrences checked; none were accidentally-empty logic.
+dotnet_diagnostic.S6605.severity = none  # Any(predicate) instead of a collection's own Exists -
+    # behaviourally identical on List<T>; a pure micro-style preference with no correctness or
+    # even measurable performance difference at this codebase's data sizes. 14 occurrences checked.
+dotnet_diagnostic.S6608.severity = none  # First()/Last() instead of [0]/[^1] - behaviourally
+    # identical; same pure-style category as S6605. 2 occurrences checked.
+dotnet_diagnostic.S3358.severity = none  # Nested ternary - purely a formatting preference here;
+    # the one example that looked genuinely risky on inspection (KiCadCalibrationGeometry's
+    # mirror-remap table) is deliberately shaped as nested ternaries to keep each corner's four
+    # cases visually grouped, and is already covered by its own dedicated unit tests. 31
+    # occurrences checked, none hiding an operator-precedence mistake.

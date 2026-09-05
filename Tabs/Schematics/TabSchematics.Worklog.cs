@@ -477,7 +477,7 @@ public partial class TabSchematics
 
         ((TextBlock)this.thisWorklogEntryBadgeBorder.Child!).Text = $"#{this.thisWorklogEntryNextId}";
         this.thisWorklogEntryBadgeScaleTransform!.ScaleX = inverseScale;
-        this.thisWorklogEntryBadgeScaleTransform!.ScaleY = inverseScale;
+        this.thisWorklogEntryBadgeScaleTransform.ScaleY = inverseScale;
 
         this.thisWorklogEntryBadgeBorder.IsVisible = true;
         this.thisWorklogEntryBadgeBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -525,6 +525,23 @@ public partial class TabSchematics
 
         this.RefreshWorklogEntriesListOverlay();
     }
+
+    // ###########################################################################################
+    // Redraws the worklog overlay and the thumbnail pills for the workbook ALREADY being shown,
+    // without changing which workbook that is.
+    //
+    // Called from Main.RefreshWorklogBar on every worklog change. SetShowWorklogEntriesList above
+    // covers the case where the shown workbook CHANGES, but an entry edited inside the workbook
+    // already on screen changes neither of that method's two arguments - so before this existed,
+    // editing an entry's area, or ticking "Show marked area" on it, left both the schematic overlay
+    // and the thumbnail pills drawing the entry as it was before the edit until something else
+    // happened to rebuild them. Reported as the marker not updating.
+    //
+    // Cheap when nothing is being shown: RefreshWorklogEntriesListOverlay's first branch clears and
+    // returns without touching the disk.
+    // ###########################################################################################
+    public void RefreshWorklogEntriesListForCurrentWorkbook() =>
+        this.RefreshWorklogEntriesListOverlay();
 
     // ###########################################################################################
     // Rebuilds the "Show worklogs" list view for the schematic currently on screen: every saved
@@ -1181,47 +1198,6 @@ public partial class TabSchematics
     // Anything unrecognised falls through to Open: state is a free-form string in entries.json, so
     // a hand-edited or future value must still render rather than throw.
     // ###########################################################################################
-    // fa-solid lock-open / lock, from WorklogGlyphs - the ONE pair, sitting beside
-    // FontAwesomeGlyphMetrics, whose OvershootByCodepoint is keyed off these exact values. A site
-    // left on a different codepoint gets no overshoot padding and silently clips the top pixel row
-    // of its padlock, which is the defect that class exists to fix.
-    private const int WorklogOpenCodepoint = WorklogGlyphs.OpenCodepoint;
-
-    private const int WorklogClosedCodepoint = WorklogGlyphs.ClosedCodepoint;
-
-    private static readonly string WorklogOpenGlyph = WorklogGlyphs.OpenGlyph;
-
-    private static readonly string WorklogClosedGlyph = WorklogGlyphs.ClosedGlyph;
-
-    // Anything that is not a resolved state is treated as open, matching ResolveWorklogStateColor
-    // below - an unrecognised value from a future build shows as open rather than as nothing.
-    //
-    // Delegates to WorklogManager.IsResolvedState rather than comparing here: that is the one place
-    // "which states mean finished" is answered, so this cannot drift from the auto-close rule (a
-    // second resolved state would otherwise close the workbook while every badge still drew its
-    // entries as open), and it picks up that method's case-insensitive read of state values that
-    // came off disk.
-    private bool IsWorklogStateResolved(string state) =>
-        WorklogManager.IsResolvedState(state);
-
-    // The FontAwesomeSolid family from the app resources, with the system default as a fallback so
-    // a missing resource degrades to readable text rather than throwing.
-    private FontFamily ResolveFontAwesomeSolid()
-    {
-        if (this.TryFindResource("FontAwesomeSolid", out object? resource) && resource is FontFamily family)
-        {
-            return family;
-        }
-
-        if (Application.Current?.TryGetResource("FontAwesomeSolid", Application.Current.ActualThemeVariant, out object? themed) == true
-            && themed is FontFamily themedFamily)
-        {
-            return themedFamily;
-        }
-
-        return FontFamily.Default;
-    }
-
     private Color ResolveWorklogStateColor(string state)
     {
         string stateColorResourceKey = state switch
@@ -1429,7 +1405,7 @@ public partial class TabSchematics
     private void PositionWorklogEntriesListBadge(Border badge, Rect pixelRect, Rect contentRect, double inverseScale)
     {
         ((ScaleTransform)badge.RenderTransform!).ScaleX = inverseScale;
-        ((ScaleTransform)badge.RenderTransform!).ScaleY = inverseScale;
+        ((ScaleTransform)badge.RenderTransform).ScaleY = inverseScale;
 
         var localRect = RectGeometry.PixelToLocalRect(pixelRect, contentRect, this.currentFullResBitmap!.PixelSize);
 

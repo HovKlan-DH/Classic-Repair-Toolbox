@@ -24,7 +24,7 @@ namespace CRT
         // ###########################################################################################
         public void InitializeAbout(Assembly assembly, string? versionString)
         {
-            this.AboutAssemblyTitleText.Text = this.GetAssemblyTitle(assembly);
+            this.AboutAssemblyTitleText.Text = GetAssemblyTitle(assembly);
             this.AppVersionText.Text = versionString ?? "(unknown)";
         }
 
@@ -46,20 +46,10 @@ namespace CRT
             this.PopulateCreditsSection(credits);
         }
 
-/*
-        // ###########################################################################################
-        // Updates the credits section for the currently loaded board.
-        // ###########################################################################################
-        public void SetCredits(List<CreditEntry>? credits)
-        {
-            this.PopulateCreditsSection(credits);
-        }
-*/
-
         // ###########################################################################################
         // Resolves assembly title from metadata, with a fallback to assembly name.
         // ###########################################################################################
-        private string GetAssemblyTitle(Assembly assembly)
+        private static string GetAssemblyTitle(Assembly assembly)
         {
             var titleAttribute = assembly.GetCustomAttribute<AssemblyTitleAttribute>();
             if (!string.IsNullOrWhiteSpace(titleAttribute?.Title))
@@ -68,31 +58,10 @@ namespace CRT
             return assembly.GetName().Name ?? "Classic Repair Toolbox";
         }
 
-/*
-        // ###########################################################################################
-        // Loads a text asset from Avalonia resources and returns the raw file content.
-        // ###########################################################################################
-        private string LoadTextAsset(string assetPath)
-        {
-            try
-            {
-                var assetUri = new Uri($"avares://Classic-Repair-Toolbox/{assetPath}");
-                using var stream = AssetLoader.Open(assetUri);
-                using var reader = new StreamReader(stream);
-                return reader.ReadToEnd();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to load changelog [{ex.Message}]");
-                return "Unable to load changelog...";
-            }
-        }
-*/
-
         // ###########################################################################################
         // Opens a validated external target through the shared launcher.
         // ###########################################################################################
-        private void OpenUrl(string url)
+        private static void OpenUrl(string url)
         {
             if (!ExternalTargetLauncher.TryOpen(url))
             {
@@ -105,7 +74,7 @@ namespace CRT
         // ###########################################################################################
         private void OnGitHubProjectPageClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenUrl("https://github.com/HovKlan-DH/Classic-Repair-Toolbox");
+            OpenUrl("https://github.com/HovKlan-DH/Classic-Repair-Toolbox");
         }
 
         // ###########################################################################################
@@ -113,7 +82,7 @@ namespace CRT
         // ###########################################################################################
         private void OnHelperPageClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenUrl("https://classic-repair-toolbox.dk");
+            OpenUrl("https://classic-repair-toolbox.dk");
         }
 
         // ###########################################################################################
@@ -121,7 +90,7 @@ namespace CRT
         // ###########################################################################################
         private void OnYouTubeChannelClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenUrl("https://www.youtube.com/@HovKlan-DH");
+            OpenUrl("https://www.youtube.com/@HovKlan-DH");
         }
 
         // ###########################################################################################
@@ -146,7 +115,7 @@ namespace CRT
                 if (isClickable && !string.IsNullOrWhiteSpace(entry.Contact))
                 {
                     string href = ContactLinkFormatter.BuildContactHref(entry.Contact);
-                    openAction = () => this.OpenUrl(href);
+                    openAction = () => OpenUrl(href);
                 }
 
                 this.CreditsList.Add(new CreditDisplayItem(

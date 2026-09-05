@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.OnlineHandling;
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -61,21 +62,10 @@ namespace CRT
 
         // Name of the local folder holding worklog workbooks (repair jobs) and their entries. Stored
         // alongside the log file, but deliberately its own subfolder: worklog data is purely local
-        // and must never be synced like "Data" nor mixed in with settings/log files.
+        // and must never be synced like "Data" nor mixed in with settings/log files. Overridden
+        // entirely by "--workbooks-root=", the same idea as "--data-root=" for the synced Data folder.
         // Used by: WorklogManager.Load
         public const string WorklogFolderName = "Workbooks";
-
-        // The name this folder had before it was renamed to match the "Workbooks" tab. Builds up to
-        // and including 2.5.0-alpha.4 wrote here, so an upgrading user's ENTIRE repair history -
-        // every workbook, entry, photo and attached file - lives under this name and nothing else
-        // knows about it.
-        //
-        // Kept solely so WorklogManager.Load can move that folder across on first run. Without it
-        // the rename is silent data loss rather than a rename: Load resolves the new name,
-        // Directory.CreateDirectory makes it, and the tab reports "0 workbooks" as an ordinary
-        // empty state, with the real data still on disk under a name nothing reads.
-        // Used by: WorklogManager.MigrateLegacyWorklogFolder
-        public const string LegacyWorklogFolderName = "Workbook";
 
         // Name of the JSON file holding one workbook's own record, stored inside that workbook's
         // own subfolder of WorklogFolderName (e.g. "Workbook/1/index.json"). There is deliberately
@@ -360,7 +350,7 @@ namespace CRT
         // The report is written and the crash is then allowed to proceed exactly as it did before,
         // so this changes what is RECORDED, never what the application does.
         // ###########################################################################################
-        private void SetupGlobalExceptionLogging()
+        private static void SetupGlobalExceptionLogging()
         {
             CrashLogger.Initialize(AppConfig.AppDisplayVersionString);
 
@@ -432,7 +422,7 @@ namespace CRT
             // Logging and the crash handlers come FIRST, before anything that could throw, so that
             // a failure in startup itself is still recorded.
             Logger.Initialize();
-            this.SetupGlobalExceptionLogging();
+            SetupGlobalExceptionLogging();
 
             // This method is "async void", which Avalonia requires here but which has a sharp edge:
             // there is no caller able to observe a throw, so an exception after the first "await"
@@ -508,7 +498,18 @@ namespace CRT
             Logger.Info(startupTimeline.Record("Runtime and UI framework ready", DateTime.Now));
 
             UserSettings.Load();
-            WorklogManager.Load();
+
+            // Loaded unconditionally here, NOT inside the desktop-lifetime branch below. Every
+            // WorklogManager read returns empty until this has run, and CreateWorkbook refuses with
+            // "no usable workbook root folder", so a lifetime other than the classic desktop one
+            // would leave the whole worklog feature silently inert.
+            //
+            // It reads "--workbooks-root=" the same way DataManager reads "--data-root=", and takes
+            // the arguments from the process rather than from desktop.Args precisely so it does not
+            // have to wait for that branch. Element 0 is the executable path, which is why it is
+            // skipped - it is not an argument, and passing it in would have the resolver test a
+            // file path against the switch prefix.
+            WorklogManager.Load(Environment.GetCommandLineArgs().Skip(1).ToArray());
 
             // Loud on purpose. A simulated update looks exactly like a real one in a screenshot, so
             // the log has to be the place where that is unambiguous when a bug report arrives.
@@ -559,8 +560,7 @@ namespace CRT
                 Logger.Info(startupTimeline.Record("Splash visible", DateTime.Now));
 
                 // Either use local data or sync it from online source
-//                await DataManager.InitializeAsync(desktop.Args ?? []);
-                await DataManager.InitializeAsync(desktop.Args ?? Array.Empty<string>()); // supporting .NET6
+                await DataManager.InitializeAsync(desktop.Args ?? []);
 
                 Logger.Info(startupTimeline.Record("Data initialised", DateTime.Now));
 

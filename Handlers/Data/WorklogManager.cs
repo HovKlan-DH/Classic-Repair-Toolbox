@@ -25,6 +25,17 @@ namespace Handlers.DataHandling
         [JsonPropertyName("status")] public string Status { get; set; } = "Open";
         [JsonPropertyName("startDate")] public DateTime StartDate { get; set; }
         [JsonPropertyName("entryCount")] public int EntryCount { get; set; }
+
+        // ###########################################################################################
+        // The highest entry id ever HANDED OUT for this workbook - not the highest currently on disk.
+        // The next entry takes this plus one, so deleting an entry never lets its number come back.
+        //
+        // Zero means "not recorded yet", which is what every workbook written before this field
+        // existed deserializes to. It is NOT the same as "no entries have been created": such a
+        // workbook may well have entries, so the counter is seeded from the highest id actually on
+        // disk the first time it is needed - see AllocateNextEntryId.
+        // ###########################################################################################
+        [JsonPropertyName("lastEntryId")] public int LastEntryId { get; set; }
     }
 
     // ###########################################################################################
@@ -147,38 +158,51 @@ namespace Handlers.DataHandling
     // every query scans the subfolders on disk, so there is no bookkeeping file to keep in sync or
     // go stale.
     //
-    // The app has no delete-workbook feature at all: nothing here removes a folder, so the only way
-    // to delete one today is by hand in the file manager.
+    // Workbooks and single worklog entries can both be DELETED from the Workbooks tab (see
+    // DeleteWorkbook and DeleteEntry), and neither one's id is ever handed out again.
     //
-    // One consequence of having no persisted id counter: the next id is the highest numbered
-    // subfolder currently on disk, plus one. So hand-deleting workbook #3 (the highest) lets the
-    // next workbook created take #3 again - nothing remembers #3 was ever used. That is not
-    // harmless: entry attachments live in "worklog_<id>" folders keyed on the same reused ids
-    // (see GetEntryAttachmentsFolder), so a recreated workbook can inherit a deleted one's files.
-    // Worth a persisted counter in index.json before attachments actually ship.
+    // Ids are therefore NOT derived from what is on disk. Two persisted counters record the highest
+    // id ever handed out - counters.json at the root for workbook ids, and each workbook's own
+    // index.json (WorkbookRecord.LastEntryId) for the entries inside it - so deleting #2 of two
+    // workbooks leaves the next one as #3, with a gap where #2 was. Deriving the next id from the
+    // surviving folders instead, which is what this used to do, re-handed a deleted number to the
+    // next record: that silently makes an already-exported PDF ("Workbook_2_...") describe a
+    // different repair, and it lets the new record inherit the deleted one's folder on disk,
+    // attachments included. See the id-counter header further down for the full reasoning, and for
+    // why there is deliberately no migration of workbooks written before the counters existed.
     //
     // Purely local: this folder sits beside the settings/log files, never inside the synced "Data"
-    // folder. Call Load() once at startup before any other member is used.
+    // folder - unless "--workbooks-root=" points it elsewhere, the same idea as DataManager's
+    // "--data-root=" for the synced data. Call Load() once at startup before any other member is
+    // used.
     // ###########################################################################################
     public static class WorklogManager
     {
+        private const string WorkbooksRootArg = "--workbooks-root=";
+
         private static string _workbookRootPath = string.Empty;
 
         // ###########################################################################################
-        // Resolves the "Workbooks" folder in the user's AppData folder and points the manager at it.
+        // Resolves the folder to store workbooks in - "--workbooks-root=" if given, otherwise the
+        // "Workbooks" folder in the user's AppData folder - and points the manager at it.
+        //
         // Falls back to an unusable (empty) root silently on any failure.
         // ###########################################################################################
-        public static void Load()
+        public static void Load(string[]? args = null)
         {
             try
             {
+                string? explicitRoot = ResolveExplicitWorkbookRoot(args);
+
+                if (explicitRoot != null)
+                {
+                    LoadFrom(explicitRoot);
+                    return;
+                }
+
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var appFolder = Path.Combine(appData, AppConfig.AppFolderName);
                 var directory = Path.Combine(appFolder, AppConfig.WorklogFolderName);
-
-                // BEFORE LoadFrom, which creates the (new, empty) folder - once that exists the
-                // migration below can no longer tell an upgrading user from a fresh install.
-                MigrateLegacyWorklogFolder(appFolder, directory);
 
                 LoadFrom(directory);
             }
@@ -189,69 +213,23 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Moves the pre-rename "Workbook" folder to "Workbooks", once, on the first launch after
-        // upgrading.
-        //
-        // WHY THIS EXISTS: the folder was renamed to match the Workbooks tab, and AppConfig holds
-        // only the new name. A rename with no migration is not a rename - it is silent data loss.
-        // Load resolves the new path, LoadFrom's Directory.CreateDirectory brings it into being
-        // empty, ReadAllWorkbooks finds nothing, and the tab, the worklog bar and every entry,
-        // photo and attachment simply report "0 workbooks" as if the user had never recorded a
-        // repair. The real data is still on disk the whole time, under a name nothing reads.
-        //
-        // A MOVE rather than a copy: two divergent copies of a repair history is a worse outcome
-        // than either one alone, since the user cannot tell which is current and the next save
-        // lands in only one of them.
-        //
-        // Every guard here is a REFUSAL to act, never a partial move:
-        //   - no legacy folder: a fresh install, nothing to do;
-        //   - destination already exists: either the migration already ran, or the user has real
-        //     data under the new name. Moving onto it would merge two histories with colliding
-        //     workbook ids, so the legacy folder is left untouched and named in the log instead.
-        //
-        // A failure is logged and swallowed rather than thrown: the worklog is one feature, and a
-        // folder that could not be moved (open in Explorer, held by a sync client, permissions)
-        // must not stop the whole application from starting. The legacy folder is left intact, so
-        // the next launch simply tries again.
+        // Parses "--workbooks-root=" out of the command line, following the same conventions
+        // DataManager.ResolveDataRoot uses for "--data-root=": case-insensitive, surrounding quotes
+        // stripped, first match wins. Returns null when not given, so Load() can fall back to its
+        // AppData default.
         // ###########################################################################################
-        internal static void MigrateLegacyWorklogFolder(string appFolder, string currentWorklogFolder)
+        internal static string? ResolveExplicitWorkbookRoot(string[]? args)
         {
-            try
+            if (args == null)
+                return null;
+
+            foreach (var arg in args)
             {
-                var legacyFolder = Path.Combine(appFolder, AppConfig.LegacyWorklogFolderName);
-
-                // Guards the degenerate case of the two constants having been set to the same
-                // value: Directory.Move onto itself throws, and this runs during startup. Compared
-                // ignoring case because the filesystems this ships on (Windows, macOS by default)
-                // treat paths that way, so equal-but-for-case here means the same folder.
-                if (string.Equals(legacyFolder, currentWorklogFolder, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-
-                if (!Directory.Exists(legacyFolder))
-                {
-                    return;
-                }
-
-                if (Directory.Exists(currentWorklogFolder))
-                {
-                    Logger.Warning(
-                        $"Worklog: found the pre-rename folder [{legacyFolder}] but [{currentWorklogFolder}] " +
-                        "already exists, so it was left alone. Merge it by hand if it holds workbooks you want.");
-                    return;
-                }
-
-                Directory.Move(legacyFolder, currentWorklogFolder);
-
-                Logger.Info($"Worklog: migrated [{legacyFolder}] to [{currentWorklogFolder}]");
+                if (arg.StartsWith(WorkbooksRootArg, StringComparison.OrdinalIgnoreCase))
+                    return arg[WorkbooksRootArg.Length..].Trim('"', '\'');
             }
-            catch (Exception ex)
-            {
-                Logger.Warning(
-                    $"Worklog: could not migrate the pre-rename folder - [{ex.Message}]. " +
-                    "The old folder is untouched and the migration will be retried on the next launch.");
-            }
+
+            return null;
         }
 
         // ###########################################################################################
@@ -318,19 +296,147 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Returns the id that CreateWorkbook will hand out next, for display before the workbook
-        // actually exists (the "#1" preview in the create dialog).
+        // actually exists (the "#1" preview in the create dialog). A PEEK, not a reservation: it does
+        // not consume the number, so two dialogs open at once both preview the same one and whichever
+        // saves first takes it - CreateWorkbook allocates for real at write time.
+        //
+        // The counter when there is one, the highest id on disk when there is not (an unreadable
+        // file, or an install that predates the counter). Then skipped past anything already taken,
+        // per the header above.
+        //
+        // AllocateNextWorkbookId calls this and then records the result, which is the only
+        // difference between a peek and an allocation.
         // ###########################################################################################
-        public static int PeekNextId() => NextIdFromExistingFolders();
+        public static int PeekNextId() =>
+            SkipIdsAlreadyOnDisk((ReadCounters()?.LastWorkbookId ?? HighestWorkbookIdOnDisk()) + 1);
 
         // ###########################################################################################
-        // The next id is one past the highest numbered subfolder currently on disk - see the class
-        // header for why that means a deleted highest-id workbook's number can be reused.
+        // THE ID COUNTERS - why ids are never reused, and why that is worth a file of its own.
+        //
+        // Both id spaces (workbooks under the root, entries within one workbook) used to be
+        // allocated as "highest currently on disk, plus one". That reuses the number of anything
+        // deleted from the top: create #1 and #2, delete #2, and the next workbook is #2 again.
+        //
+        // That is not cosmetic. A workbook id names a PDF that has already been exported and very
+        // likely emailed to a customer ("Workbook_2_Commodore_C64_20260904"), and both ids name real
+        // folders on disk ("2/", "worklog_2/") that a recreated record would inherit the contents
+        // of. So a reused number silently makes an old document describe a different repair.
+        //
+        // The fix is a counter that records the highest id ever HANDED OUT, rather than deriving it
+        // from what survives. A deleted number is spent: delete #2 of two workbooks and the next is
+        // #3, leaving a gap that correctly records that #2 existed. The workbook counter lives in
+        // this one file at the root; the per-workbook ENTRY counter lives in that workbook's own
+        // index.json (WorkbookRecord.LastEntryId), so it travels with the folder it numbers and is
+        // deleted along with it - a workbook's entry ids only have to be unique within it.
+        //
+        // THERE IS DELIBERATELY NO MIGRATION of data written before these counters existed. Nothing
+        // reads an old workbook to seed a counter and nothing rewrites one. What the allocators do
+        // instead is REFUSE an id that is already taken on disk (see SkipIdsAlreadyOnDisk, and
+        // AllocateNextEntryId for the entry side): a counter starting from zero would otherwise hand
+        // out #1 while a "1" folder still sits there, and since CreateWorkbook's
+        // Directory.CreateDirectory succeeds silently on an existing folder, the new workbook's
+        // index.json would overwrite the old one in place and inherit its entries and attachments.
+        // The skip costs one directory check per create and makes that unrepresentable. It is a
+        // floor, not a migration - the counter is still the thing that stops a DELETED id coming
+        // back, which is what checking disk alone can never do.
         // ###########################################################################################
-        private static int NextIdFromExistingFolders()
+        private const string CountersFileName = "counters.json";
+
+        // ###########################################################################################
+        // The workbook root's persisted id counter. One field today; a class rather than a bare int
+        // in the JSON so a future counter can be added without rewriting the file's shape.
+        // ###########################################################################################
+        private sealed class WorkbookCounters
+        {
+            [JsonPropertyName("lastWorkbookId")] public int LastWorkbookId { get; set; }
+        }
+
+        private static string CountersPath =>
+            string.IsNullOrEmpty(_workbookRootPath) ? string.Empty : Path.Combine(_workbookRootPath, CountersFileName);
+
+        // ###########################################################################################
+        // Reads the counter file, or null when it is missing or unreadable.
+        //
+        // An unreadable file is NOT treated as zero: that would restart numbering low and re-hand
+        // ids that may already have been used. Callers fall back to the highest id on disk, which is
+        // the old pre-counter behaviour - worse than the counter, but never a collision.
+        // ###########################################################################################
+        private static WorkbookCounters? ReadCounters()
+        {
+            string path = CountersPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<WorkbookCounters>(File.ReadAllText(path));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to read worklog id counters: [{path}] [{ex.Message}] - falling back to the highest id on disk");
+                return null;
+            }
+        }
+
+        // ###########################################################################################
+        // Walks an id forward past every workbook folder that already exists, so a counter starting
+        // from zero beside pre-existing workbooks can never hand out one of their numbers - see the
+        // header above for what overwriting one would cost.
+        //
+        // A plain loop rather than "highest on disk plus one": the gaps left by deleted workbooks
+        // are exactly what this must be able to walk INTO once the counter is ahead of them, so it
+        // has to test the specific id rather than jump past everything.
+        // ###########################################################################################
+        private static int SkipIdsAlreadyOnDisk(int candidateId)
         {
             if (string.IsNullOrEmpty(_workbookRootPath) || !Directory.Exists(_workbookRootPath))
             {
-                return 1;
+                return candidateId;
+            }
+
+            while (Directory.Exists(Path.Combine(_workbookRootPath, candidateId.ToString(CultureInfo.InvariantCulture))))
+            {
+                candidateId++;
+            }
+
+            return candidateId;
+        }
+
+        // ###########################################################################################
+        // Allocates the next workbook id and RECORDS it, so the number is spent whether or not the
+        // workbook it was handed to still exists later.
+        //
+        // A failed counter write is logged and tolerated rather than failing the create: the user
+        // came here to start a repair job, and refusing that over a bookkeeping file would be a
+        // worse outcome than the id reuse it guards against. The next allocation then falls back to
+        // max-on-disk, which still cannot collide with anything that exists.
+        // ###########################################################################################
+        private static int AllocateNextWorkbookId()
+        {
+            int id = PeekNextId();
+
+            string path = CountersPath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                var counters = ReadCounters() ?? new WorkbookCounters();
+                counters.LastWorkbookId = id;
+                AtomicJsonFile.Write(path, counters, SaveJsonOptions, "worklog id counters");
+            }
+
+            return id;
+        }
+
+        // ###########################################################################################
+        // The highest numbered subfolder under the workbook root, or 0 when there are none. The
+        // pre-counter allocation rule, kept only as the fallback described above.
+        // ###########################################################################################
+        private static int HighestWorkbookIdOnDisk()
+        {
+            if (string.IsNullOrEmpty(_workbookRootPath) || !Directory.Exists(_workbookRootPath))
+            {
+                return 0;
             }
 
             int maxId = 0;
@@ -344,15 +450,17 @@ namespace Handlers.DataHandling
                 }
             }
 
-            return maxId + 1;
+            return maxId;
         }
 
         // ###########################################################################################
         // Returns the id AddEntry will hand out next for the given workbook, for display before the
         // entry actually exists: the on-board "#N" badge over a freshly drawn area, and the id a
-        // draft entry in the full editor RESERVES for its attachment folder. Same highest-plus-one
-        // scheme as AddEntry itself - see its own comment - so this must stay in sync with it. A
-        // workbook with no folder or no entries yet previews "#1".
+        // draft entry in the full editor RESERVES for its attachment folder.
+        //
+        // Reads the workbook's persisted LastEntryId rather than the entries currently in it, so a
+        // deleted entry's number is never offered again - see the id-counter header above. A
+        // workbook with no folder previews "#1".
         //
         // A PEEK, not a reservation: another entry can be added between this call and the save, so
         // AddEntryRecord re-allocates the id at write time rather than trusting the peeked one.
@@ -365,8 +473,104 @@ namespace Handlers.DataHandling
                 return 1;
             }
 
-            var entries = ReadEntries(folder);
-            return entries.Count == 0 ? 1 : entries.Max(e => e.Id) + 1;
+            return PeekNextEntryIdIn(folder);
+        }
+
+        // ###########################################################################################
+        // The next entry id for an already-resolved workbook folder, WITHOUT consuming it.
+        //
+        // LastEntryId is 0 both for a workbook that has never had an entry and for one written
+        // before that field existed - and the second of those may hold entries numbered well above
+        // zero. There is deliberately NO migration (nothing rewrites such a workbook to seed its
+        // counter), so the id is instead walked past every entry actually present, exactly as the
+        // workbook side skips existing folders. That is a floor, not a seed: once the counter is
+        // ahead of what is on disk it does all the work, and a gap left by a deleted entry is
+        // walked straight over rather than reused.
+        //
+        // The attachment FOLDER is checked too, not just the entries. A "worklog_{id}" folder can
+        // outlive the entry that named it - a draft that reserved the id and was cancelled while its
+        // cleanup delete failed, or a delete that removed the row but could not remove the folder
+        // (DeleteEntry logs and tolerates exactly that) - and handing that id to a new entry would
+        // silently adopt a stranger's photos and files.
+        //
+        // reservedId is the id a DRAFT already claimed and wrote its attachment bytes under, or 0
+        // when there is no draft. It is EXEMPT from that folder check: that folder is not a
+        // stranger's, it belongs to the entry being saved right now, and skipping past it would both
+        // misnumber the entry and strand the photos the user just attached to it.
+        // ###########################################################################################
+        private static int PeekNextEntryIdIn(string folder, int reservedId = 0)
+        {
+            var record = ReadWorkbookRecord(folder);
+            int candidateId = (record?.LastEntryId ?? 0) + 1;
+
+            var usedIds = new HashSet<int>(ReadEntries(folder).Select(e => e.Id));
+
+            while (usedIds.Contains(candidateId) || IsAttachmentFolderTaken(folder, candidateId, reservedId))
+            {
+                candidateId++;
+            }
+
+            return candidateId;
+        }
+
+        private static bool IsAttachmentFolderTaken(string folder, int candidateId, int reservedId) =>
+            candidateId != reservedId &&
+            Directory.Exists(Path.Combine(folder, BuildEntryAttachmentsFolderName(candidateId)));
+
+        // ###########################################################################################
+        // Allocates the next entry id for a workbook and RECORDS it in that workbook's index.json,
+        // so the number is spent whether or not the entry it was handed to still exists later.
+        //
+        // This writes index.json, and RecomputeWorkbookStatus writes it again at the end of the same
+        // save. The two do not fight only because that one RE-READS the file rather than saving a
+        // record captured earlier - see its own comment. Anything added later that rewrites this
+        // file mid-save must do the same, or it will silently roll the counter back and re-hand the
+        // id that was just allocated.
+        //
+        // A failed write is logged and tolerated rather than failing the save: the user's typed work
+        // matters more than the bookkeeping field, and the walk-past-what-exists floor in
+        // PeekNextEntryIdIn still prevents a collision with anything that is actually there.
+        // ###########################################################################################
+        private static int AllocateNextEntryId(string folder, int workbookId, int reservedId = 0)
+        {
+            int id = PeekNextEntryIdIn(folder, reservedId);
+
+            var record = ReadWorkbookRecord(folder);
+            if (record != null)
+            {
+                record.LastEntryId = id;
+                SaveWorkbook(folder, record);
+            }
+            else
+            {
+                Logger.Warning($"Could not record the allocated entry id [#{id}] for workbook [#{workbookId}]: its index.json could not be read");
+            }
+
+            return id;
+        }
+
+        // ###########################################################################################
+        // One workbook's own index.json, or null when it is missing or unreadable. The single reader
+        // for that file - UpdateWorkbook, RecomputeWorkbookStatus and the entry-id counter each
+        // used to open and deserialize it inline with their own try/catch.
+        // ###########################################################################################
+        private static WorkbookRecord? ReadWorkbookRecord(string folder)
+        {
+            string indexPath = Path.Combine(folder, AppConfig.WorklogIndexFileName);
+            if (!File.Exists(indexPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<WorkbookRecord>(File.ReadAllText(indexPath));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to read workbook: [{folder}] [{ex.Message}]");
+                return null;
+            }
         }
 
         // ###########################################################################################
@@ -548,7 +752,9 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            int id = NextIdFromExistingFolders();
+            // Allocates AND records, so this number is spent even if the workbook is later
+            // deleted - see the id-counter header above.
+            int id = AllocateNextWorkbookId();
             string folder = Path.Combine(_workbookRootPath, id.ToString(CultureInfo.InvariantCulture));
 
             var record = new WorkbookRecord
@@ -602,21 +808,10 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            string indexPath = Path.Combine(folder, AppConfig.WorklogIndexFileName);
-            WorkbookRecord? record;
-            try
-            {
-                var json = File.ReadAllText(indexPath);
-                record = JsonSerializer.Deserialize<WorkbookRecord>(json);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to update workbook [#{workbookId}]: [{ex.Message}]");
-                return null;
-            }
-
+            var record = ReadWorkbookRecord(folder);
             if (record == null)
             {
+                Logger.Warning($"Failed to update workbook [#{workbookId}]: its index.json could not be read");
                 return null;
             }
 
@@ -893,7 +1088,9 @@ namespace Handlers.DataHandling
             }
 
             var entries = ReadEntries(folder);
-            int nextEntryId = entries.Count == 0 ? 1 : entries.Max(e => e.Id) + 1;
+            // Allocates AND records in the workbook's index.json, so this number is spent even if
+            // the entry is later deleted - see the id-counter header above.
+            int nextEntryId = AllocateNextEntryId(folder, workbookId, reservedId);
 
             entry.Id = nextEntryId;
             NormalizeEntryCollections(entry);
@@ -1040,7 +1237,9 @@ namespace Handlers.DataHandling
             }
 
             var entries = ReadEntries(folder);
-            int nextEntryId = entries.Count == 0 ? 1 : entries.Max(e => e.Id) + 1;
+            // Allocates AND records in the workbook's index.json, so this number is spent even if
+            // the entry is later deleted - see the id-counter header above.
+            int nextEntryId = AllocateNextEntryId(folder, workbookId);
 
             var entry = new WorklogEntryRecord
             {
@@ -1115,6 +1314,72 @@ namespace Handlers.DataHandling
             RecomputeWorkbookStatus(folder, workbookId, entries);
 
             Logger.Info($"Setting changed: [Worklog] updated entry [#{updatedEntry.Id}] in workbook [#{workbookId}] [{updatedEntry.Category}/{updatedEntry.State}]");
+
+            return true;
+        }
+
+        // ###########################################################################################
+        // Deletes one entry from a workbook: its row in entries.json and its "worklog_{id}"
+        // attachment folder (photos and files), then recomputes the workbook's status the same way
+        // UpdateEntry does - removing the last still-Open entry closes the workbook, and removing
+        // the only entry reopens it (a workbook with no entries is Open, per RecomputeWorkbookStatus).
+        //
+        // The JSON row goes FIRST and the attachment bytes second, deliberately. If the write fails
+        // the entry is still whole - it keeps both its row and its attachments - whereas deleting
+        // the bytes first would leave a surviving entry pointing at photos that are gone. A failure
+        // to remove the folder AFTER the row is written is logged and tolerated: the entry itself is
+        // gone from the user's point of view, and orphaned bytes in a folder no row names are
+        // recoverable clutter rather than a broken workbook.
+        //
+        // The remaining entries deliberately KEEP their ids - nothing is renumbered. Ids are what
+        // the board pills and the exported PDF show ("#4"), and they name the attachment folders, so
+        // renumbering would silently relabel every entry the user has already written about
+        // elsewhere. A gap in the numbering is the correct record of a deleted worklog.
+        // ###########################################################################################
+        public static bool DeleteEntry(int workbookId, int entryId)
+        {
+            string? folder = GetWorkbookFolder(workbookId);
+            if (folder == null)
+            {
+                Logger.Warning($"Failed to delete worklog entry: workbook [#{workbookId}] folder not found");
+                return false;
+            }
+
+            var entries = ReadEntries(folder);
+            int index = entries.FindIndex(e => e.Id == entryId);
+            if (index < 0)
+            {
+                Logger.Warning($"Failed to delete worklog entry: entry [#{entryId}] not found in workbook [#{workbookId}]");
+                return false;
+            }
+
+            entries.RemoveAt(index);
+
+            if (!SaveEntries(folder, entries))
+            {
+                // Nothing reached disk, so nothing else may happen either - in particular the
+                // attachments must survive, since the entry that names them still exists on disk.
+                return false;
+            }
+
+            // The non-creating resolver: GetEntryAttachmentsFolder would re-create the very folder
+            // being removed, leaving an empty one behind where the entry had none.
+            string attachmentsFolder = Path.Combine(folder, BuildEntryAttachmentsFolderName(entryId));
+            if (Directory.Exists(attachmentsFolder))
+            {
+                try
+                {
+                    Directory.Delete(attachmentsFolder, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Deleted worklog entry [#{entryId}] but could not remove its attachments folder [{attachmentsFolder}]: [{ex.Message}]");
+                }
+            }
+
+            RecomputeWorkbookStatus(folder, workbookId, entries);
+
+            Logger.Info($"Setting changed: [Worklog] deleted entry [#{entryId}] from workbook [#{workbookId}]");
 
             return true;
         }
@@ -1204,24 +1469,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static void RecomputeWorkbookStatus(string folder, int workbookId, List<WorklogEntryRecord> entries)
         {
-            string indexPath = Path.Combine(folder, AppConfig.WorklogIndexFileName);
-            if (!File.Exists(indexPath))
-            {
-                return;
-            }
-
-            WorkbookRecord? record;
-            try
-            {
-                var json = File.ReadAllText(indexPath);
-                record = JsonSerializer.Deserialize<WorkbookRecord>(json);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to recompute workbook status [{folder}]: [{ex.Message}]");
-                return;
-            }
-
+            // Re-read from disk rather than taking a record from the caller. That is load-bearing
+            // now that index.json also carries LastEntryId: AllocateNextEntryId has just written
+            // the freshly allocated counter into this very file, and saving a record captured
+            // before that would roll it straight back and re-hand the same id to the next entry.
+            var record = ReadWorkbookRecord(folder);
             if (record == null)
             {
                 return;

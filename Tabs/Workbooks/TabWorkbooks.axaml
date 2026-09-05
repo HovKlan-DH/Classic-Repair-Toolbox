@@ -156,7 +156,7 @@
 						     count above still reads "0 workbooks", so this only has to say what to
 						     do about it. -->
 						<TextBlock x:Name="NoWorkbooksText"
-								   Text="No repairs recorded for this board yet. Use &quot;Create new workbook&quot; above the tabs to start one."
+								   Text="No repairs recorded for this board yet.&#10;Use &quot;Create new workbook&quot; above the tabs to start one."
 								   Classes="WorkbooksFaint"
 								   FontSize="10"
 								   TextWrapping="Wrap"
@@ -264,7 +264,7 @@
 								   IsVisible="False" />
 
 						<!-- The workbook summary strip: one always-visible headline line
-						     ("7 entries - 12.5 h - 430 - 4 open") with a chevron that expands the
+						     ("7 worklogs - 12.5 h - 430 - 4 open") with a chevron that expands the
 						     full breakdown below it. Everything in it is set from code
 						     (ApplySummaryForWorkbook) off WorkbookSummary.Summarize, so the app and
 						     an exported PDF report the same numbers from the one computation.
@@ -469,13 +469,18 @@
 					</ScrollViewer>
 
 					<!-- Shown instead of the panel above when the selected workbook has no entries
-					     at all, or none with a recognised schematic image. -->
+					     at all, or none with a recognised schematic image.
+
+					     VerticalAlignment="Top", not the Grid default of Stretch: a lone line of
+					     text in a full-height cell otherwise floats in the vertical middle of an
+					     empty pane, far from the heading it belongs to. -->
 					<TextBlock x:Name="NoBoardPreviewsText"
-							   Text="No worklog entries recorded against a schematic image for this workbook yet."
+							   Text="No worklogs recorded yet for any schematics in this board"
 							   Classes="WorkbooksFaint"
 							   FontSize="11"
 							   TextWrapping="Wrap"
 							   Margin="12"
+							   VerticalAlignment="Top"
 							   IsVisible="False" />
 				</Grid>
 
@@ -508,14 +513,16 @@
 						</ScrollViewer>
 
 						<!-- Shown instead of the panel above when no schematic is selected, or the
-						     selected one has no entries. -->
+						     selected one has no entries. Top-aligned for the same reason
+						     NoBoardPreviewsText is - see its comment. -->
 						<TextBlock x:Name="NoSelectedSchematicEntriesText"
-								   Text="Click a schematic image on the left to see its entries here."
+								   Text="No worklogs recorded yet for any schematics in this board"
 								   Classes="WorkbooksFaint"
 								   FontSize="11"
 								   TextWrapping="Wrap"
 								   Margin="9"
 								   Grid.Row="1"
+								   VerticalAlignment="Top"
 								   IsVisible="False" />
 					</Grid>
 				</Border>

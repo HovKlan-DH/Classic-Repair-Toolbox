@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -8,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -745,9 +747,11 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
     private static StackPanel EntriesPanel(TabWorkbooks tab) =>
         tab.GetControl<StackPanel>("SelectedSchematicEntriesPanel");
 
-    // Reads back one entry detail card's four stacked rows, in order: title (the title text plus
-    // the "#N" badge, concatenated), description, category+status (the two outlined pills'
-    // concatenated text), and the stats row (hours/cost/comments/links/photos/files, concatenated).
+    // Reads back one entry detail card's four stacked rows, in order: title (the title text, the
+    // "#N" badge AND the "Delete worklog" button's label, concatenated - the button shares that
+    // row's Grid so it can sit in the card's top-right corner), description, category+status (the
+    // two outlined pills' concatenated text), and the stats row (hours/cost/comments/links/photos/
+    // files, concatenated).
     // Asserts there are exactly four rows and that the whole card is ONE bordered panel (a single
     // outer Border, not one per field), since that shape - "one border around the worklog, not each
     // element inside it" - is the point being pinned down here.
@@ -772,6 +776,58 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         Assert.DoesNotContain(rows, r => r is Border);
 
         return (title, description, categoryStatus, stats);
+    }
+
+    // ###########################################################################################
+    // THE EMPTY STATES on a board with no workbooks at all - reported as reading wrong: both
+    // messages sat in the vertical MIDDLE of their (full-height, otherwise empty) panels, far from
+    // the headings they belong to, and the entry list's told the user to click a schematic image
+    // when there were no schematic images to click.
+    // ###########################################################################################
+
+    // Vertical alignment is the whole point here: a TextBlock in a Grid cell defaults to Stretch,
+    // which lays a single line of text out centred down the panel. Both must be Top.
+    [Fact]
+    public void The_empty_state_messages_are_top_aligned_rather_than_floating_mid_panel()
+    {
+        this.LoadWorklog();
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, BuildBoardData(), selectedWorkbookId: 0);
+
+            Assert.Equal(VerticalAlignment.Top, tab.GetControl<TextBlock>("NoBoardPreviewsText").VerticalAlignment);
+            Assert.Equal(VerticalAlignment.Top, tab.GetControl<TextBlock>("NoSelectedSchematicEntriesText").VerticalAlignment);
+        });
+    }
+
+    // Both panels say the same thing, and neither mentions clicking a schematic image: on a board
+    // with no workbooks there is nothing on the left to click, so the old wording described an
+    // action the user could not take.
+    [Fact]
+    public void Both_empty_state_messages_say_no_worklogs_are_recorded_for_the_board()
+    {
+        this.LoadWorklog();
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, BuildBoardData(), selectedWorkbookId: 0);
+
+            const string expected = "No worklogs recorded yet for any schematics in this board.";
+
+            var boardPane = tab.GetControl<TextBlock>("NoBoardPreviewsText");
+            var entryList = tab.GetControl<TextBlock>("NoSelectedSchematicEntriesText");
+
+            Assert.Equal(expected, boardPane.Text);
+            Assert.Equal(expected, entryList.Text);
+
+            Assert.True(boardPane.IsVisible);
+            Assert.True(entryList.IsVisible);
+
+            // The message the entry list used to carry named an action that does not exist on an
+            // empty board - there is no schematic image on the left to click.
+            Assert.DoesNotContain("Click a schematic", entryList.Text!, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     [Fact]
@@ -847,6 +903,163 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
             // used to be.
             Assert.NotEqual(sheetABorderWhenSelected, sheetA.BorderBrush);
             Assert.Equal(sheetABorderWhenSelected, sheetB.BorderBrush);
+        });
+    }
+
+    // ###########################################################################################
+    // "Delete worklog" on an entry card - the per-worklog twin of the header's "Delete workbook".
+    //
+    // What these pin down is the button's PLACEMENT and its wiring, not the delete itself: the
+    // click opens a modal a headless test cannot dismiss (the same reason the card's own
+    // click-to-open-the-editor is only pinned by its Hand cursor), and WorklogManager.DeleteEntry
+    // is covered directly in WorklogManagerTests.
+    // ###########################################################################################
+
+    private static Button DeleteWorklogButton(Control card) =>
+        card.GetSelfAndVisualDescendants()
+            .OfType<Button>()
+            .Single(b => (b.Content as string) == "Delete worklog");
+
+    [Fact]
+    public void Every_entry_card_carries_its_own_delete_worklog_button()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Delete buttons", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        WorklogManager.AddEntry(workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10), "First", "", "Issue", "Open", Array.Empty<string>());
+        WorklogManager.AddEntry(workbook.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10), "Second", "", "Issue", "Open", Array.Empty<string>());
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var cards = EntriesPanel(tab).Children.Cast<Control>().ToList();
+            Assert.Equal(2, cards.Count);
+
+            // One PER CARD, not one for the list: the button acts on the worklog it sits on, so a
+            // shared one at the top of the panel would have nothing to name.
+            foreach (var card in cards)
+            {
+                Assert.NotNull(DeleteWorklogButton(card));
+            }
+        });
+    }
+
+    // Top-RIGHT of the card, which is what was asked for and mirrors where "Delete workbook" sits
+    // relative to the workbook it acts on. Asserted structurally rather than by pixels: it is the
+    // last column of the title row's Grid (so it is right of the title) and Top-aligned (so a title
+    // that wraps to two lines leaves it level with the FIRST line rather than dragging it down the
+    // card).
+    [Fact]
+    public void The_delete_worklog_button_sits_in_the_cards_top_right_corner()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Button placement", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        WorklogManager.AddEntry(
+            workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10),
+            "A title long enough that it would wrap onto a second line in a narrow entry list",
+            "", "Issue", "Open", Array.Empty<string>());
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+
+            // The FIRST of the card's four rows - top of the card, above the description.
+            var titleRow = ((StackPanel)((Border)card).Child!).Children[0];
+            var grid = Assert.IsType<Grid>(titleRow);
+
+            var button = DeleteWorklogButton(card);
+
+            // Right: the button owns the Grid's second (Auto) column while the title text sits in
+            // the first (star) one, so the title takes the slack and the button hugs the edge.
+            Assert.Equal(1, Grid.GetColumn(button));
+            Assert.Equal(2, grid.ColumnDefinitions.Count);
+            Assert.Equal(GridUnitType.Star, grid.ColumnDefinitions[0].Width.GridUnitType);
+            Assert.Equal(GridUnitType.Auto, grid.ColumnDefinitions[1].Width.GridUnitType);
+
+            // Top: level with the first line of a wrapping title.
+            Assert.Equal(VerticalAlignment.Top, button.VerticalAlignment);
+            Assert.Equal(HorizontalAlignment.Right, button.HorizontalAlignment);
+        });
+    }
+
+    // The same destructive styling "Delete workbook" carries in the header above: these are the
+    // same kind of permanent delete one level apart, and a differently-coloured one here would
+    // read as a different kind of action.
+    [Fact]
+    public void The_delete_worklog_button_uses_the_same_destructive_brushes_as_delete_workbook()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Button styling", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        WorklogManager.AddEntry(workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+            var button = DeleteWorklogButton(card);
+
+            // Asserted against the Button_Cancel_* THEME KEYS, which is what "the same as Delete
+            // workbook" actually means - that button names those same three keys in the markup.
+            //
+            // Deliberately NOT compared against the header button's resolved brushes: its values
+            // come from DynamicResource bindings, which have not resolved on a tab that is built
+            // but never attached to a window, so it reads Black here and the comparison would be
+            // testing Avalonia's binding state rather than this styling. Resolving the keys the
+            // same way the code under test does keeps the assertion correct in both themes without
+            // hardcoding a colour.
+            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Fg", null), button.Foreground);
+            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Bg", null), button.Background);
+            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Border", null), button.BorderBrush);
+            Assert.NotNull(button.Foreground);
+        });
+    }
+
+    // The card behind the button is clickable as a whole (it opens the editor) and carries a Hand
+    // cursor to say so. The button must NOT inherit it: a Hand here would say this does the same
+    // benign thing the rest of the card does, when it is the one control on the card that destroys
+    // something.
+    [Fact]
+    public void The_delete_worklog_button_does_not_inherit_the_cards_hand_cursor()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Button cursor", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        WorklogManager.AddEntry(workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+
+            // Compared by the cursor's own ToString, not by instance: Cursor has no value equality,
+            // so two Cursors built from the same StandardCursorType are NOT Equal and an
+            // Assert.Equal against a fresh `new Cursor(...)` fails with the baffling
+            // "Expected: Hand / Actual: Hand".
+            Assert.Equal("Hand", ((Border)card).Cursor?.ToString());
+            Assert.NotEqual("Hand", DeleteWorklogButton(card).Cursor?.ToString());
         });
     }
 

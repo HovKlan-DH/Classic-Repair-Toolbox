@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Handlers.OnlineHandling
 {
@@ -54,13 +55,10 @@ namespace Handlers.OnlineHandling
             if (files == null || files.Count == 0)
                 return;
 
-            var named = new List<string>(files.Count);
-
-            foreach (var file in files)
-            {
-                if (!string.IsNullOrWhiteSpace(file))
-                    named.Add(file.Trim());
-            }
+            var named = files
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .Select(file => file.Trim())
+                .ToList();
 
             if (named.Count == 0)
                 return;

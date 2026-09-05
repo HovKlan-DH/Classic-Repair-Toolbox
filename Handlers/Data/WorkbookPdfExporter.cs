@@ -429,7 +429,7 @@ namespace Handlers.DataHandling
 
                 if (document.Sections.Count == 0)
                 {
-                    column.Item().PaddingTop(10).Text("This workbook has no worklog entries.")
+                    column.Item().PaddingTop(10).Text("This workbook has no worklogs.")
                         .FontSize(10).FontColor(LabelColor).Italic();
                     return;
                 }

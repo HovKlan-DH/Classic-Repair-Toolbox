@@ -93,7 +93,6 @@ namespace Handlers.DataHandling
             sb.AppendLine("<th>Component</th>");
             sb.AppendLine("<th>Technical name</th>");
             sb.AppendLine("<th>Friendly name</th>");
-            //            sb.AppendLine("<th>Part-number</th>");
             sb.AppendLine("<th colspan='2'>&nbsp;</th>");
             sb.AppendLine("</tr>");
             sb.AppendLine("</thead>");
@@ -105,7 +104,6 @@ namespace Handlers.DataHandling
                 sb.AppendLine($"<td>{Encode(row.Component)}</td>");
                 sb.AppendLine($"<td>{Encode(row.TechnicalName)}</td>");
                 sb.AppendLine($"<td>{Encode(row.FriendlyName)}</td>");
-                //                sb.AppendLine($"<td>{Encode(row.PartNumber)}</td>");
                 sb.AppendLine("<td colspan='2'>&nbsp;</td>");
                 sb.AppendLine("</tr>");
             }

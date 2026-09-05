@@ -51,7 +51,9 @@ namespace Handlers.DataHandling
             {
                 Logger.Warning($"Failed to save {whatFailed}: [{path}] [{ex.Message}]");
 
-                // Clean up the temp file if it was left behind
+                // Clean up the temp file if it was left behind. Best-effort: the real failure is
+                // already logged above, and failing to delete a leftover temp file is not itself
+                // worth surfacing - it is harmless and gets overwritten on the next save attempt.
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
                 return false;

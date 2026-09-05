@@ -43,6 +43,11 @@ namespace CRT
     //     component-scope checklist included;
     //   - clicking elsewhere on a preview selects that schematic and switches the entry list on the
     //     right to it, one detail card per entry;
+    //   - each of those detail cards carries its own "Delete worklog" button in its top-right
+    //     corner (BuildDeleteWorklogButton/OnDeleteWorklogClick, in TabWorkbooks.BoardPreviews.cs),
+    //     the per-worklog twin of "Delete workbook" below - confirmed via DeleteWorklogWindow,
+    //     which cancels on Enter for the same reason that one does, then WorklogManager.DeleteEntry
+    //     removes the entry's row AND its worklog_{id} attachment folder;
     //   - the top-line's second line shows the selected workbook's Note (the whole line collapsed
     //     when blank), and, right-aligned against both lines, "Edit workbook"/"Delete workbook"
     //     actions for it (OnEditWorkbookClick/OnDeleteWorkbookClick, below). Edit reopens
@@ -171,7 +176,7 @@ namespace CRT
         // Coalesces keystrokes in the search box into one rebuild.
         //
         // Filtering costs a GetEntries per workbook - File.ReadAllText + Deserialize + a per-entry
-        // migrate loop, uncached - plus a full board-pane rebuild, all synchronously on the UI
+        // normalise loop, uncached - plus a full board-pane rebuild, all synchronously on the UI
         // thread. Rebuilding per keystroke made typing one word on a board with a few dozen
         // workbooks hundreds of file reads, and the class header already calls reading entries twice
         // per pass "the single most expensive thing this tab did".
@@ -568,7 +573,8 @@ namespace CRT
         // the list is empty. Captured as a constant rather than read back off the control, which by
         // then may be showing the no-results message instead.
         private const string NoWorkbooksDefaultText =
-            "No repairs recorded for this board yet. Use \"Create new workbook\" above the tabs to start one.";
+            "No repairs recorded for this board yet.\n" +
+            "Use \"Create new workbook\" above the tabs to start one.";
 
         // ###########################################################################################
         // Narrows a board's workbooks to those matching the current search, and records WHICH of each
@@ -621,7 +627,7 @@ namespace CRT
 
         // ###########################################################################################
         // One workbook's entries, read at most once per refresh pass. GetEntries has no cache of its
-        // own (File.ReadAllText + Deserialize + a per-entry migrate loop, every call), and within a
+        // own (File.ReadAllText + Deserialize + a per-entry normalise loop, every call), and within a
         // single pass the search filter and the board pane both want the same workbook's entries.
         //
         // Internal so TabWorkbooks.BoardPreviews.cs (the other half of this class) shares the same
@@ -670,7 +676,7 @@ namespace CRT
                 this.thisSearchDebounceTimer = new DispatcherTimer { Interval = SearchDebounceInterval };
                 this.thisSearchDebounceTimer.Tick += (_, _) =>
                 {
-                    this.thisSearchDebounceTimer!.Stop();
+                    this.thisSearchDebounceTimer.Stop();
                     this.RefreshWorkbooks();
                 };
             }
@@ -883,6 +889,7 @@ namespace CRT
                 // create.
                 await ShowWorkbookActionFailedAsync(
                     ownerWindow,
+                    "Delete workbook",
                     $"Could not delete workbook #{workbook.Id} - see the log for details.\n\n" +
                     "It may be open in another program, for example a photo or file from the workbook.");
                 return;
@@ -892,12 +899,17 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // A minimal "that did not work" modal for the workbook actions on this tab. The create/edit
-        // dialog reports its own failures inline in its validation line, but Delete has no dialog
-        // left on screen by the time it fails - its confirmation has already closed - so the message
-        // needs a window of its own.
+        // A minimal "that did not work" modal for the destructive actions on this tab. The
+        // create/edit dialog reports its own failures inline in its validation line, but a Delete
+        // has no dialog left on screen by the time it fails - its confirmation has already closed -
+        // so the message needs a window of its own.
+        //
+        // The title is a PARAMETER rather than the hardcoded "Delete workbook" it started as: both
+        // deletes on this tab report through here now (a workbook, and a single worklog from an
+        // entry card), and a "Delete workbook" title over a message about a worklog names the wrong
+        // object at exactly the moment the user is trying to work out what failed.
         // ###########################################################################################
-        private static async Task ShowWorkbookActionFailedAsync(Window ownerWindow, string message)
+        private static async Task ShowWorkbookActionFailedAsync(Window ownerWindow, string title, string message)
         {
             var okButton = new Button
             {
@@ -908,7 +920,7 @@ namespace CRT
 
             var dialog = new Window
             {
-                Title = "Delete workbook",
+                Title = title,
                 Width = 420,
                 SizeToContent = SizeToContent.Height,
                 CanResize = false,
@@ -1102,7 +1114,7 @@ namespace CRT
             {
                 var boardLabelText = new TextBlock
                 {
-                    Text = this.MainWindow?.FormatBoardKeyForDisplay(workbook.BoardKey) ?? workbook.BoardKey,
+                    Text = this.MainWindow != null ? Main.FormatBoardKeyForDisplay(workbook.BoardKey) : workbook.BoardKey,
                     FontSize = 10,
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center

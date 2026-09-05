@@ -152,12 +152,12 @@ public class WorklogEditorNewEntryTests
         });
     }
 
-    // The window says it is a new entry rather than reusing the generic "Worklog entry" title, so a
-    // user who has several open can tell which one has not been saved yet.
+    // The window says it is new rather than reusing the generic "Worklog" title, so a user who has
+    // several open can tell which one has not been saved yet.
     [Fact]
     public void A_new_entry_window_names_itself_as_new()
     {
-        WithNewEntryEditor(window => Assert.Equal("New worklog entry", window.Title));
+        WithNewEntryEditor(window => Assert.Equal("New worklog", window.Title));
     }
 
     // Closing without saving must report NOTHING saved. For a saved entry WasSaved can be true

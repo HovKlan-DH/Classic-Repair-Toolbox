@@ -1,5 +1,6 @@
-using System.Reflection;
+﻿using System.Reflection;
 using CRT;
+using Handlers.DataHandling;
 using Handlers.OnlineHandling;
 
 namespace ClassicRepairToolbox.Tests;
@@ -423,6 +424,64 @@ public class OnlineServicesTests
         Assert.Equal(
             new Uri(AppConfig.ChecksumsUrl, UriKind.Absolute).Authority,
             new Uri(AppConfig.ChecksumsUrl_test, UriKind.Absolute).Authority);
+    }
+
+    // The trusted authority is MEMOISED against the URL it came from, not computed once for the
+    // life of the process. It used to be a static readonly filled in by the type initializer, which
+    // is wrong now that GetChecksumsUrl() reads a user setting: whichever source happened to be
+    // selected the first time this class was touched would be frozen in for the whole session.
+    //
+    // Both sources are on the same host today, so this cannot assert two DIFFERENT authorities - it
+    // asserts the thing that would actually break, which is that toggling the setting either way
+    // still validates against the authority the currently-configured manifest names. A frozen value
+    // passes this only while the two hosts agree; the test above is what fails when they stop.
+    [Fact]
+    public void The_trusted_authority_is_re_derived_when_the_data_source_setting_changes()
+    {
+        bool originalSetting = UserSettings.DownloadDataFromTestSource;
+
+        try
+        {
+            foreach (bool useTestSource in new[] { false, true, false })
+            {
+                UserSettings.DownloadDataFromTestSource = useTestSource;
+
+                string expectedAuthority =
+                    new Uri(AppConfig.GetChecksumsUrl(), UriKind.Absolute).Authority;
+
+                Assert.True(TryCreateTrustedDownloadUri(
+                    $"https://{expectedAuthority}/app-data/x.xlsx", out Uri? uri, out string reason));
+
+                Assert.Equal(string.Empty, reason);
+                Assert.Equal(expectedAuthority, uri!.Authority);
+
+                // The memo must not have widened what is accepted: an unrelated host is still
+                // refused after the switch, which is the failure mode a stale cache would cause if
+                // the two sources ever moved apart.
+                Assert.False(TryCreateTrustedDownloadUri(
+                    "https://evil.example/app-data/x.xlsx", out _, out _));
+            }
+        }
+        finally
+        {
+            UserSettings.DownloadDataFromTestSource = originalSetting;
+        }
+    }
+
+    // Repeated validation of the same source is the hot path - a sync validates one manifest entry
+    // per file, thousands of them - and it must keep returning the same answer while the memo is
+    // being reused, not just on the first call that fills it.
+    [Fact]
+    public void Repeated_validation_against_the_same_source_stays_consistent()
+    {
+        string authority = TrustedAuthority;
+
+        for (int i = 0; i < 50; i++)
+        {
+            Assert.True(TryCreateTrustedDownloadUri($"https://{authority}/app-data/{i}.xlsx", out Uri? uri, out _));
+            Assert.Equal(authority, uri!.Authority);
+            Assert.False(TryCreateTrustedDownloadUri($"https://other.example/app-data/{i}.xlsx", out _, out _));
+        }
     }
 
     // ------------------------------------------------------- the whole entry, in order

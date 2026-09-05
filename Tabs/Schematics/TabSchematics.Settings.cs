@@ -190,7 +190,7 @@ public partial class TabSchematics
     // ###########################################################################################
     // Returns true when contributor-only schematic actions are enabled globally.
     // ###########################################################################################
-    private bool IsBoardContributorModeEnabled()
+    private static bool IsBoardContributorModeEnabled()
     {
         return UserSettings.ContributorMode;
     }

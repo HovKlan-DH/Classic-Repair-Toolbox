@@ -859,15 +859,10 @@ namespace Handlers.DataHandling
             {
                 string directory = Path.GetDirectoryName(entry.Key) ?? string.Empty;
 
-                foreach (var sheetRef in ExtractSchematicSheetRefs(entry.Value))
-                {
-                    if (string.IsNullOrWhiteSpace(sheetRef.FileName))
-                    {
-                        continue;
-                    }
-
-                    childPaths.Add(Path.GetFullPath(Path.Combine(directory, sheetRef.FileName)));
-                }
+                childPaths.UnionWith(
+                    ExtractSchematicSheetRefs(entry.Value)
+                        .Where(sheetRef => !string.IsNullOrWhiteSpace(sheetRef.FileName))
+                        .Select(sheetRef => Path.GetFullPath(Path.Combine(directory, sheetRef.FileName!))));
             }
 
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

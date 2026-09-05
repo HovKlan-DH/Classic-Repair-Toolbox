@@ -44,7 +44,7 @@ public sealed class IcTestService
         string xml = PrepareLogicicXml(entry, mode);
         try
         {
-            var device = string.IsNullOrWhiteSpace(entry.DeviceName) ? entry.Id : entry.DeviceName!;
+            var device = string.IsNullOrWhiteSpace(entry.DeviceName) ? entry.Id : entry.DeviceName;
             var args = new List<string> { "-p", device, "--logicic", xml, "-T" };
             var run = await _runner.RunAsync(args, output, ct).ConfigureAwait(false);
             if (!run.Started)
@@ -129,7 +129,7 @@ public sealed class IcTestService
 
     private static string BuildLogicicXml(IcTestEntry entry, IcTestMode? mode)
     {
-        var name = string.IsNullOrWhiteSpace(entry.DeviceName) ? entry.Id : entry.DeviceName!;
+        var name = string.IsNullOrWhiteSpace(entry.DeviceName) ? entry.Id : entry.DeviceName;
         int volts = entry.Voltage > 0 ? entry.Voltage : 5;
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<logicic>\n");

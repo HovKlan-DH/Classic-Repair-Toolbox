@@ -3,8 +3,8 @@ using Avalonia.Input;
 namespace CRT;
 
 // ###########################################################################################
-// The MODE HINT: the khaki "what to do next" label in the tab-header row, shown while a mode is
-// waiting for the user to act on the schematic image.
+// The MODE HINT: the khaki "what to do next" label pinned to the window's upper-left corner,
+// shown while a mode is waiting for the user to act on the schematic image.
 //
 // The problem it solves is general rather than specific to the worklog. Clicking "Add worklog"
 // puts the Schematics tab into area-marking mode and then says nothing - the cursor becomes a
@@ -12,9 +12,9 @@ namespace CRT;
 // and KiCad calibration mode leave the user in the same position. This gives any such mode one
 // line to say what it is waiting for.
 //
-// It lives in the main window rather than in the tab because the row it sits in belongs to the
-// window, and because a hint is about the application's state - which mode is active - rather
-// than about anything the tab is drawing.
+// It lives in the main window rather than in the tab because it floats above the WHOLE window
+// (the LeftPanel sidebar included, not just the tab area), and because a hint is about the
+// application's state - which mode is active - rather than about anything the tab is drawing.
 //
 // Deliberately NOT dismissible and NOT remembered in settings. It clears itself on the first
 // pointer press anywhere, so it costs an experienced user one click they were going to make
@@ -28,7 +28,7 @@ public partial class Main
     // The wording for the worklog area-marking mode. Kept beside the machinery that shows it so
     // the text a user reads is not scattered across the modes that trigger it.
     public const string WorklogAreaModeHint =
-        "Now mark an area on the schematics image, to select the components in scope of your worklog";
+        "Now mark an area on the schematics image, to select the components in scope of your worklog.";
 
     // ###########################################################################################
     // Shows the hint. Calling it again just replaces the wording, so a mode that changes what it

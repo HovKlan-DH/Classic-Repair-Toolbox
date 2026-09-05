@@ -13,7 +13,7 @@ namespace CRT
     // ###########################################################################################
     // TabWorkbooks, part: the workbook SUMMARY STRIP under the top-line.
     //
-    // One always-visible headline ("7 entries - 12.5 h - 430 - 4 open") with a chevron that expands
+    // One always-visible headline ("7 worklogs - 12.5 h - 430 - 4 open") with a chevron that expands
     // a breakdown by category, by state, by attachment count and by component scope. Everything it
     // shows comes from WorkbookSummary.Summarize (pure, in Handlers/, unit tested) - this file only
     // moves those strings onto controls and remembers whether the detail is open.

@@ -182,60 +182,6 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Replaces only the current schematic's highlight rows in the worksheet and preserves all
-        // highlight rows belonging to other schematics. New rows are written in stable grouped
-        // order so labels stay together by category and board label.
-        // ###########################################################################################
-        private static void ReplaceHighlightsForSchematic(
-            ExcelWorksheet sheet,
-            Dictionary<string, int> colMap,
-            int headerRow,
-            string schematicName,
-            IReadOnlyList<LabelEditorSaveRow> rows)
-        {
-            int maxRow = sheet.Dimension?.End.Row ?? headerRow;
-            int deletedRowCount = 0;
-
-            for (int row = maxRow; row > headerRow; row--)
-            {
-                string existingSchematicName = GetCellText(sheet, row, colMap[ColSchematicName]);
-                if (string.Equals(existingSchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
-                {
-                    sheet.DeleteRow(row);
-                    deletedRowCount++;
-                }
-            }
-
-            var orderedRows = rows
-                .Where(item => string.Equals(item.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
-                .Where(item => !string.IsNullOrWhiteSpace(item.BoardLabel))
-                .OrderBy(item => item.Category?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.BoardLabel?.Trim() ?? string.Empty, BoardLabelNaturalComparer)
-                .ThenBy(item => item.Y)
-                .ThenBy(item => item.X)
-                .ToList();
-
-            //            Logger.Debug($"BoardDataWriter deleted highlight rows for schematic [{schematicName}]: [{deletedRowCount}]");
-            Logger.Debug($"BoardDataWriter will write highlight rows for schematic [{schematicName}]: [{orderedRows.Count}]");
-
-            int appendRow = (sheet.Dimension?.End.Row ?? headerRow) + 1;
-
-            foreach (var item in orderedRows)
-            {
-//                Logger.Debug(
-//                    $"BoardDataWriter writing highlight row at Excel row [{appendRow}] -> Label=[{item.BoardLabel}] Category=[{item.Category}] X=[{item.X}] Y=[{item.Y}] Width=[{item.Width}] Height=[{item.Height}]");
-
-                sheet.Cells[appendRow, colMap[ColSchematicName]].Value = item.SchematicName.Trim();
-                sheet.Cells[appendRow, colMap[ColBoardLabel]].Value = item.BoardLabel.Trim();
-                sheet.Cells[appendRow, colMap[ColX]].Value = FormatRoundedInteger(item.X);
-                sheet.Cells[appendRow, colMap[ColY]].Value = FormatRoundedInteger(item.Y);
-                sheet.Cells[appendRow, colMap[ColWidth]].Value = FormatRoundedInteger(item.Width);
-                sheet.Cells[appendRow, colMap[ColHeight]].Value = FormatRoundedInteger(item.Height);
-                appendRow++;
-            }
-        }
-
-        // ###########################################################################################
         // Inserts only truly missing component rows. A blank existing region is treated as a
         // wildcard match so shared component rows are not duplicated for PAL or NTSC saves.
         // ###########################################################################################
@@ -254,8 +200,6 @@ namespace Handlers.DataHandling
                 .OrderBy(item => item.Category?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(item => item.BoardLabel?.Trim() ?? string.Empty, BoardLabelNaturalComparer)
                 .ToList();
-
-            //            Logger.Info($"BoardDataWriter missing component rows to insert: [{rowsToInsert.Count}]");
 
             foreach (var item in rowsToInsert)
             {
@@ -523,14 +467,6 @@ namespace Handlers.DataHandling
             {
                 sheet.Cells[row, descriptionCol].Value = string.Empty;
             }
-        }
-
-        // ###########################################################################################
-        // Builds a stable uniqueness key for a component row using board label and region.
-        // ###########################################################################################
-        private static string BuildComponentKey(string boardLabel, string region)
-        {
-            return $"{boardLabel.Trim()}\u001F{region.Trim()}";
         }
 
         // ###########################################################################################

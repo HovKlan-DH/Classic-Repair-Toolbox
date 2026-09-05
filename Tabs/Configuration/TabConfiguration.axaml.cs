@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -215,6 +215,20 @@ namespace CRT
         {
             bool isExperimentalModeEnabled = this.EnableMiniproExperimentalModeCheckBox.IsChecked == true;
             this.EnableMiniproExperimentalDemoModeCheckBox.IsEnabled = isExperimentalModeEnabled;
+        }
+
+        // ###########################################################################################
+        // Opens the help page describing the Workbooks tab, through the shared launcher that every
+        // external target in this app goes through - same shape as the MiniPro help below it.
+        // ###########################################################################################
+        private void OnEnableWorklogHelpClick(object? sender, RoutedEventArgs e)
+        {
+            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks";
+
+            if (!ExternalTargetLauncher.TryOpen(helpUrl))
+            {
+                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
+            }
         }
 
         // ###########################################################################################

@@ -48,6 +48,9 @@ public class FontAwesomeAssetTests
         new object[] { SolidPath, 0xF2ED, "trash-can (delete)" },
         new object[] { SolidPath, 0xF160, "sort-down (newest first)" },
         new object[] { SolidPath, 0xF161, "sort-up (oldest first)" },
+
+        // Help icons - the Configuration tab's "?" buttons and the worklog mode hint
+        new object[] { RegularPath, 0xF059, "circle-question (help)" },
     };
 
     // A codepoint that is absent from the face renders as a blank box, silently. The Free Regular

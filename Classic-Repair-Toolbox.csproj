@@ -3,7 +3,6 @@
 		<Title>Classic Repair Toolbox</Title>
 		<Product>Classic Repair Toolbox</Product>
 		<AssemblyTitle>Classic Repair Toolbox</AssemblyTitle>
-		<Company>HovKlan</Company>
 		<Authors>Dennis Helligsø</Authors>
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
@@ -170,9 +169,11 @@
 		</Content>
 	</ItemGroup>
 
+<!--
     <ItemGroup>
         <AvaloniaResource Include="Assets/Changelog.txt" />
     </ItemGroup>
+-->
 
   <ItemGroup>
     <EmbeddedResource Update="Properties/Resources.resx">

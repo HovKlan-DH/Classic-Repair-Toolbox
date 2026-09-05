@@ -225,7 +225,7 @@ namespace CRT
                 {
                     Text = workbook == null
                         ? string.Empty
-                        : $"#{workbook.Id} | {workbook.Title} ({this.FormatBoardKeyForDisplay(workbook.BoardKey)})",
+                        : $"#{workbook.Id} | {workbook.Title} ({FormatBoardKeyForDisplay(workbook.BoardKey)})",
                     FontSize = 12,
                 });
 
@@ -556,46 +556,39 @@ namespace CRT
                 return 0;
             }
 
-            try
-            {
-                return await DataManager.SyncRemainingAsync(
-                    status => Dispatcher.UIThread.Post(() =>
+            return await DataManager.SyncRemainingAsync(
+                status => Dispatcher.UIThread.Post(() =>
+                {
+                    if (keepBannerTextStatic)
                     {
-                        if (keepBannerTextStatic)
-                        {
-                            return;
-                        }
+                        return;
+                    }
 
-                        if (status.Contains("up to date", StringComparison.OrdinalIgnoreCase) ||
-                            status.StartsWith("Sync complete", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return;
-                        }
-
-                        // status only on line 1
-                        this.SetSyncBannerText(status);
-                    }),
-                    filePath => Dispatcher.UIThread.Post(() =>
+                    if (status.Contains("up to date", StringComparison.OrdinalIgnoreCase) ||
+                        status.StartsWith("Sync complete", StringComparison.OrdinalIgnoreCase))
                     {
-                        // file only on line 2
-                        this._currentSyncFileRelativePath = filePath ?? string.Empty;
+                        return;
+                    }
 
-                        if (keepBannerTextStatic)
-                        {
-                            return;
-                        }
+                    // status only on line 1
+                    this.SetSyncBannerText(status);
+                }),
+                filePath => Dispatcher.UIThread.Post(() =>
+                {
+                    // file only on line 2
+                    this._currentSyncFileRelativePath = filePath ?? string.Empty;
 
-                        string currentLine1 = this.SyncBannerText.Text?
-                            .Split('\n')[0]
-                            .Trim() ?? string.Empty;
+                    if (keepBannerTextStatic)
+                    {
+                        return;
+                    }
 
-                        this.SetSyncBannerText(currentLine1);
-                    }));
-            }
-            catch
-            {
-                throw;
-            }
+                    string currentLine1 = this.SyncBannerText.Text?
+                        .Split('\n')[0]
+                        .Trim() ?? string.Empty;
+
+                    this.SetSyncBannerText(currentLine1);
+                }));
         }
 
         // ###########################################################################################
@@ -1001,6 +994,8 @@ namespace CRT
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
+                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
+                // selection model has not yet caught up with the new item count.
                 try
                 {
                     this.ComponentFilterListBox.SelectAll();
@@ -1222,6 +1217,8 @@ namespace CRT
 
                 if (!string.IsNullOrWhiteSpace(searchTerm))
                 {
+                    // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
+                    // selection model has not yet caught up with the new item count.
                     try { this.ComponentFilterListBox.SelectAll(); } catch { }
                 }
                 else
@@ -1326,7 +1323,7 @@ namespace CRT
         // Falls back to the raw key if the board no longer exists in the synced data, e.g. content
         // that was later removed from classic-repair-toolbox.dk.
         // ###########################################################################################
-        internal string FormatBoardKeyForDisplay(string boardKey) =>
+        internal static string FormatBoardKeyForDisplay(string boardKey) =>
             FindEntryForBoardKey(boardKey)?.ShortHardwareBoardLabel is { Length: > 0 } shortLabel
                 ? shortLabel
                 : boardKey;
@@ -1463,7 +1460,7 @@ namespace CRT
 
             if (UserSettings.ValidateDataOnLaunch)
             {
-                this.thisBackgroundDataValidationTask = this.StartBackgroundDataValidationAsync();
+                this.thisBackgroundDataValidationTask = StartBackgroundDataValidationAsync();
             }
 
             this.thisWindowOpenedCompletionSource.TrySetResult(true);
@@ -1597,7 +1594,11 @@ namespace CRT
         // newest" is exactly how the card and the bar came to disagree. This wrapper only fetches
         // the two inputs.
         // ###########################################################################################
-        private WorkbookRecord? ResolveActiveWorkbookForBoard(string boardKey) =>
+        // internal rather than private so the component popup's "attach capture to worklog" flow can
+        // ask the same question this window does, rather than re-deriving "which workbook" a third
+        // time - WorklogManager.ResolveActiveWorkbook's own header is explicit that it is the ONE
+        // place that rule lives.
+        internal static WorkbookRecord? ResolveActiveWorkbookForBoard(string boardKey) =>
             WorklogManager.ResolveActiveWorkbook(
                 WorklogManager.GetWorkbooksForBoard(boardKey),
                 UserSettings.GetActiveWorkbookId(boardKey));
@@ -1822,7 +1823,6 @@ namespace CRT
 
             var activeWorkbook = WorklogManager.ResolveActiveWorkbook(workbooks, UserSettings.GetActiveWorkbookId(boardKey));
             bool hasWorkbook = activeWorkbook != null;
-            bool isOpen = hasWorkbook && WorklogManager.IsWorkbookStatusOpen(activeWorkbook!.Status);
 
             // The Workbooks tab's list is rebuilt from here rather than from its own wiring: this
             // method is already the single place worklog state is refreshed from - board changes,
@@ -1894,6 +1894,15 @@ namespace CRT
                 this._worklogShowEntriesWorkbookId = workbookId;
                 this.TabSchematicsControl.SetShowWorklogEntriesList(showByDefault, workbookId);
             }
+            else
+            {
+                // Same workbook as before, but its ENTRIES may have just changed - an area redrawn,
+                // "Show marked area" ticked, an entry added or deleted. The branch above only fires
+                // when the shown WORKBOOK changes, so without this the schematic overlay and the
+                // thumbnail pills kept drawing the entry as it was before the edit until something
+                // else happened to rebuild them. Reported as the marker not updating.
+                this.TabSchematicsControl.RefreshWorklogEntriesListForCurrentWorkbook();
+            }
 
             // The picker lists EVERY workbook on every board, not just this board's own workbooks in
             // "workbooks" above - selecting one for a different board is how the bar can jump there
@@ -1948,13 +1957,13 @@ namespace CRT
 
             if (activeWorkbook.EntryCount == 0)
             {
-                this.WorklogJobStatusText.Text = $"No worklog entries yet · started {startDate}";
+                this.WorklogJobStatusText.Text = $"No worklogs yet · started {startDate}";
                 return;
             }
 
-            string entryWord = activeWorkbook.EntryCount == 1 ? "worklog entry" : "worklog entries";
+            string worklogWord = activeWorkbook.EntryCount == 1 ? "worklog" : "worklogs";
             this.WorklogJobStatusText.Text =
-                $"{activeWorkbook.EntryCount} {entryWord} · started {startDate}";
+                $"{activeWorkbook.EntryCount} {worklogWord} · started {startDate}";
         }
 
         // ###########################################################################################
@@ -1993,7 +2002,7 @@ namespace CRT
         // ###########################################################################################
         private void OnWorklogAddEntryClick(object? sender, RoutedEventArgs e)
         {
-            var activeWorkbook = this.ResolveActiveWorkbookForBoard(this.GetCurrentBoardKey());
+            var activeWorkbook = ResolveActiveWorkbookForBoard(this.GetCurrentBoardKey());
             if (activeWorkbook == null)
                 return;
 
@@ -2036,7 +2045,7 @@ namespace CRT
             bool isChecked = this.WorklogShowEntriesCheckBox.IsChecked == true;
             UserSettings.WorklogShowEntriesChecked = isChecked;
 
-            var activeWorkbook = this.ResolveActiveWorkbookForBoard(this.GetCurrentBoardKey());
+            var activeWorkbook = ResolveActiveWorkbookForBoard(this.GetCurrentBoardKey());
             int workbookId = isChecked && activeWorkbook != null ? activeWorkbook.Id : 0;
 
             this._worklogShowEntriesWorkbookId = workbookId;
@@ -2664,6 +2673,8 @@ namespace CRT
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
+                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
+                // selection model has not yet caught up with the new item count.
                 try { this.ComponentFilterListBox.SelectAll(); } catch { }
             }
             else
@@ -2733,6 +2744,8 @@ namespace CRT
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
+                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
+                // selection model has not yet caught up with the new item count.
                 try { this.ComponentFilterListBox.SelectAll(); } catch { }
 
                 highlightLabels = componentItems
@@ -2988,6 +3001,8 @@ namespace CRT
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
+                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
+                // selection model has not yet caught up with the new item count.
                 try
                 {
                     this.ComponentFilterListBox.SelectAll();
@@ -3338,7 +3353,7 @@ namespace CRT
         // ###########################################################################################
         // Starts the background data validation task and converts failures into log entries only.
         // ###########################################################################################
-        private Task StartBackgroundDataValidationAsync()
+        private static Task StartBackgroundDataValidationAsync()
         {
             return Task.Run(async () =>
             {
