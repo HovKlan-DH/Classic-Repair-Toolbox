@@ -15,21 +15,22 @@ Verified against the live Wiki: these 11 are still the **old, pre-review version
 the old `Go to [Wiki Home]` header, absolute `https://github.com/...` links and no page title, so
 none of them has been pasted yet.
 
-Open each page in the Wiki, select all, paste the file's contents, save.
+**Click a link below** and you land in that page's Wiki editor. Select all, paste the contents of
+the matching file from this folder, save.
 
-| # | Paste this page | Copy from |
+| # | Open this Wiki page (goes straight to the editor) | Paste the contents of |
 | --- | --- | --- |
-| 1 | `Commandline-parameters` | `Assets/Wiki/Commandline-parameters.md` |
-| 2 | `Contribute-data-via-GitHub` | `Assets/Wiki/Contribute-data-via-GitHub.md` |
-| 3 | `Controlling-oscilloscope-with-keyboard` | `Assets/Wiki/Controlling-oscilloscope-with-keyboard.md` |
-| 4 | `Development-tools-used` | `Assets/Wiki/Development-tools-used.md` |
-| 5 | `Information-collected` | `Assets/Wiki/Information-collected.md` |
-| 6 | `Inspiration-for-creating-application` | `Assets/Wiki/Inspiration-for-creating-application.md` |
-| 7 | `Installing-application-in-Linux` | `Assets/Wiki/Installing-application-in-Linux.md` |
-| 8 | `KiCad-folder` | `Assets/Wiki/KiCad-folder.md` |
-| 9 | `MiniPro-programmer` | `Assets/Wiki/MiniPro-programmer.md` |
-| 10 | `Scope-baseline-folder` | `Assets/Wiki/Scope-baseline-folder.md` |
-| 11 | `Synchronize-oscilloscope` | `Assets/Wiki/Synchronize-oscilloscope.md` |
+| 1 | [Commandline-parameters](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Commandline-parameters/_edit) | `Commandline-parameters.md` |
+| 2 | [Contribute-data-via-GitHub](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Contribute-data-via-GitHub/_edit) | `Contribute-data-via-GitHub.md` |
+| 3 | [Controlling-oscilloscope-with-keyboard](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Controlling-oscilloscope-with-keyboard/_edit) | `Controlling-oscilloscope-with-keyboard.md` |
+| 4 | [Development-tools-used](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Development-tools-used/_edit) | `Development-tools-used.md` |
+| 5 | [Information-collected](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Information-collected/_edit) | `Information-collected.md` |
+| 6 | [Inspiration-for-creating-application](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Inspiration-for-creating-application/_edit) | `Inspiration-for-creating-application.md` |
+| 7 | [Installing-application-in-Linux](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Installing-application-in-Linux/_edit) | `Installing-application-in-Linux.md` |
+| 8 | [KiCad-folder](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/KiCad-folder/_edit) | `KiCad-folder.md` |
+| 9 | [MiniPro-programmer](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer/_edit) | `MiniPro-programmer.md` |
+| 10 | [Scope-baseline-folder](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Scope-baseline-folder/_edit) | `Scope-baseline-folder.md` |
+| 11 | [Synchronize-oscilloscope](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Synchronize-oscilloscope/_edit) | `Synchronize-oscilloscope.md` |
 
 **How to tell you got them all:** a finished page starts with a `#` title and a one-line summary.
 If the first line still reads `Go to [Wiki Home]`, that page has not been pasted.
