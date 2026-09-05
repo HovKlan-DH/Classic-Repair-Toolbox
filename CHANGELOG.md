@@ -14,7 +14,8 @@
   - Fixed timeout issue when fetching manifest file
   - Fixed test case configuration to exclude them when compiling using `dotnet publish`
   - Refactored "Contribute" tab and server backend review process
-  - Refactored several parts of project for better maintainability and added more test cases (2569 cases and ~54% coverage total)
+  - Refactored parts of project for better maintainability and added more test cases (2569 cases and ~54% coverage total)
+  - Refactored documentation
 
 TAND!!!!!!!!!!!
 
