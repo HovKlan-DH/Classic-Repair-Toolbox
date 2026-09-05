@@ -223,7 +223,7 @@ namespace CRT
         // ###########################################################################################
         private void OnEnableWorklogHelpClick(object? sender, RoutedEventArgs e)
         {
-            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks";
+            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks-tab";
 
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {
