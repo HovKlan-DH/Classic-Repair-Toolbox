@@ -7,45 +7,27 @@ mirror works.
 
 ---
 
-# ⚠️ 1 page to rename, 4 to update
+# ✅ Everything is in sync
 
-Everything else is in sync — verified against the live Wiki on **2026-09-06**.
+Verified against the live Wiki on **2026-09-06**:
 
-## Rename this page
+- All 34 mirrored pages are byte-for-byte identical to their Wiki page.
+- **Every internal link across all 40 live pages resolves** — including the six unmirrored orphans.
+- No page carries a stray `#` H1.
+- The old `Workbooks-The-Workbooks-tab` page is gone, and nothing refers to it.
 
-`Workbooks-The-Workbooks-tab` read almost identically to its own parent, `Workbooks-tab`, even
-though one is the hub for the whole feature and the other is a single sub-page about browsing.
+**Nothing to paste.**
 
-In the Wiki, open that page and click **Edit**. There is no Rename button — a wiki page is renamed
-by changing its **Title** field:
+## What came back from the Wiki this time
 
-1. Set **Title** to `Workbooks Browsing and search` (spaces, not hyphens — GitHub converts them, so
-   the page becomes `Workbooks-Browsing-and-search`).
-2. While you are there, paste `Workbooks-Browsing-and-search.md` over the page content — its summary
-   line changed too, so this saves a second edit.
-3. **Save**.
+Edited in the Wiki rather than here, so the mirror was updated from the Wiki:
 
-If the old `Workbooks-The-Workbooks-tab` page is still listed afterwards, delete it with **Delete
-page**. Once the four pages below are pasted, nothing links to it any more.
+- **Link text is now "Workbooks", not "Workbooks tab" or "Workbooks-tab"** — on Home and in the
+  breadcrumb of all four sub-pages. The target is still `Workbooks-tab`; only the words changed. The
+  page is about the feature, so naming it after the tab widget was the wrong emphasis.
+- `Workbooks-Browsing-and-search` keeps its original summary, "Where you browse your repair jobs".
 
-Its three siblings are named for what you do — Getting started, Daily use, Export and data — and
-this one now matches: it covers finding an older repair and reading the totals.
-
-## Then update these — 4 pages
-
-They link to the renamed page, so paste them **after** the rename:
-
-| # | Local file to copy | Where to paste it in the Wiki |
-| --- | --- | --- |
-| 1 | `_Sidebar.md` | The sidebar |
-| 2 | `Home.md` | Home → *(the front page itself)* |
-| 3 | `Workbooks-tab.md` | Home → Workbooks |
-| 4 | `Workbooks-Daily-use.md` | Home → Workbooks → Daily use |
-
-The link text changed with the name — these now read **Browsing and search** rather than
-"The Workbooks tab".
-
-## The Workbooks pages, after this
+## The Workbooks pages
 
 ```
 Workbooks-tab                        the hub: vocabulary, categories, states
@@ -54,6 +36,13 @@ Workbooks-tab                        the hub: vocabulary, categories, states
 ├── Workbooks-Browsing-and-search    find an older repair, read the totals
 └── Workbooks-Export-and-data        PDF/ZIP, where files live, deleting
 ```
+
+## The tab pages
+
+One page per tab, all reachable from Home and the sidebar:
+
+`Schematics-tab` · `Overview-tab` · `Resources-tab` · `Workbooks-tab` · `Oscilloscope-tab` ·
+`Contribute-tab` · `Configuration-tab` · `Feedback-tab` · `About-tab`
 
 ## Pages in the Wiki that are not mirrored
 

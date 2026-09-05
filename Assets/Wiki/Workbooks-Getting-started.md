@@ -1,4 +1,4 @@
-[Wiki Home](Home) · [Workbooks tab](Workbooks-tab)
+[Wiki Home](Home) · [Workbooks](Workbooks-tab)
 
 Turn it on, and record your first repair.
 

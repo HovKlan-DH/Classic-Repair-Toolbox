@@ -1,6 +1,6 @@
-[Wiki Home](Home) · [Workbooks tab](Workbooks-tab)
+[Wiki Home](Home) · [Workbooks](Workbooks-tab)
 
-Browsing your repair jobs, searching past ones, and what a workbook adds up to.
+Where you browse your repair jobs.
 
 ---
 

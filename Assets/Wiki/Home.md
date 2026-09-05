@@ -5,7 +5,7 @@ New here? Start with [Getting started](Getting-started).
 ## Using CRT at the bench
 
 * [Getting started](Getting-started) — what CRT does, and what to do after installing it
-* [Workbooks-tab](Workbooks-tab) — record what you found and what you did, and hand the job over as a PDF
+* [Workbooks](Workbooks-tab) — record what you found and what you did, and hand the job over as a PDF
   - [Getting started](Workbooks-Getting-started)
   - [Daily use](Workbooks-Daily-use)
   - [Browsing and search](Workbooks-Browsing-and-search)
