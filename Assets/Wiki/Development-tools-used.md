@@ -12,5 +12,3 @@ NuGet packages used:
 - [EPPlus](https://epplussoftware.com/) - reads and writes the Excel data files
 - [QuestPDF](https://www.questpdf.com/) - the workbook PDF export
 - [Velopack](https://github.com/velopack/velopack) - the in-application updater
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

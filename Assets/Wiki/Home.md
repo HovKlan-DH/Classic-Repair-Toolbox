@@ -4,7 +4,7 @@ Welcome to the **Classic Repair Toolbox** wiki/documentation, where you will fin
 * [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard)
 * [Synchronize oscilloscope](Synchronize-oscilloscope)
 * [MiniPro programmer](MiniPro-programmer)
-* [Commandline parameters](Commandline-parameters)
+* [Command-line parameters](Commandline-parameters)
 * [Installing application in Linux](Installing-application-in-Linux)
 * [Compiling yourself from source](Compiling-yourself-from-source)
 * [Explanation of data files](Explanation-of-data-files)
