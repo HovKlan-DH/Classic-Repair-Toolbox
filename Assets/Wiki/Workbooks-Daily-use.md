@@ -88,4 +88,4 @@ It asks which worklog. Worklogs that already have the component you were probing
 
 ---
 
-**Next:** [The Workbooks tab](Workbooks-The-Workbooks-tab) — browsing, searching and totals
+**Next:** [Browsing and search](Workbooks-Browsing-and-search) — find an older repair, and read the totals

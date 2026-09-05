@@ -6,7 +6,7 @@ Record what you find on a board and what you did about it — and hand the finis
 
 * [Getting started](Workbooks-Getting-started) - turn it on and record your first repair
 * [Daily use](Workbooks-Daily-use) - the worklog bar, the editor, marking areas on a schematic
-* [Workbooks tab](Workbooks-The-Workbooks-tab) - browsing, searching and totals
+* [Browsing and search](Workbooks-Browsing-and-search) - find an older repair, and read the totals
 * [Export and your data](Workbooks-Export-and-data) - PDF/ZIP export, where files are stored, deleting
 
 ## The two words

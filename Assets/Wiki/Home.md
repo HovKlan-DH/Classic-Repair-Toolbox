@@ -8,7 +8,7 @@ New here? Start with [Getting started](Getting-started).
 * [Workbooks-tab](Workbooks-tab) — record what you found and what you did, and hand the job over as a PDF
   - [Getting started](Workbooks-Getting-started)
   - [Daily use](Workbooks-Daily-use)
-  - [The Workbooks tab](Workbooks-The-Workbooks-tab)
+  - [Browsing and search](Workbooks-Browsing-and-search)
   - [Export and your data](Workbooks-Export-and-data)
 * [Synchronize oscilloscope](Synchronize-oscilloscope) — set your scope up like the one that took the baseline
 * [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard) — drive the scope from the numpad

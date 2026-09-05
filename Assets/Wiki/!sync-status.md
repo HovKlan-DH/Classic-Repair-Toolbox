@@ -7,44 +7,51 @@ mirror works.
 
 ---
 
-# ⚠️ 9 pages need re-pasting — they have broken links right now
+# ⚠️ 1 page to rename, 4 to update
 
-The tab pages were created in the Wiki without the `The-` prefix (`Schematics-tab`, not
-`The-Schematics-tab`), and `Workbooks` became `Workbooks-tab`. Your names are the better ones and
-the mirror now uses them — but **the pages below still link to the old names, so those links are
-dead in the live Wiki.**
+Everything else is in sync — verified against the live Wiki on **2026-09-06**.
 
-Nine pages, in any order:
+## Rename this page
+
+`Workbooks-The-Workbooks-tab` read almost identically to its own parent, `Workbooks-tab`, even
+though one is the hub for the whole feature and the other is a single sub-page about browsing.
+
+In the Wiki, open that page, click **Rename**, and change it to:
+
+```
+Workbooks-Browsing-and-search
+```
+
+GitHub keeps the page's history through a rename, so nothing is lost.
+
+Its three siblings are named for what you do — Getting started, Daily use, Export and data — and
+this one now matches: it covers finding an older repair and reading the totals.
+
+Then paste `Workbooks-Browsing-and-search.md` over it, since its summary line changed too.
+
+## Then update these — 4 pages
+
+They link to the renamed page, so paste them **after** the rename:
 
 | # | Local file to copy | Where to paste it in the Wiki |
 | --- | --- | --- |
 | 1 | `_Sidebar.md` | The sidebar |
 | 2 | `Home.md` | Home → *(the front page itself)* |
-| 3 | `Getting-started.md` | Home → Getting started |
-| 4 | `Schematics-tab.md` | Home → Schematics |
-| 5 | `Overview-tab.md` | Home → Overview |
-| 6 | `Oscilloscope-tab.md` | Home → Oscilloscope |
-| 7 | `Contribute-tab.md` | Home → Contribute |
-| 8 | `Configuration-tab.md` | Home → Configuration |
-| 9 | `Feedback-tab.md` | Home → Feedback |
+| 3 | `Workbooks-tab.md` | Home → Workbooks |
+| 4 | `Workbooks-Daily-use.md` | Home → Workbooks → Daily use |
 
-`Resources-tab` and `About-tab` are already correct — they happened to contain no links to the
-renamed pages.
+The link text changed with the name — these now read **Browsing and search** rather than
+"The Workbooks tab".
 
-**What was broken:** `Workbooks` was the worst of them. That page no longer exists under that name,
-so the sidebar's link to the main feature was dead, as were the links from Home, Getting-started,
-Configuration-tab and Schematics-tab.
+## The Workbooks pages, after this
 
-## Still worth deciding: two pages with near-identical names
-
-| Page | What it is |
-| --- | --- |
-| `Workbooks-tab` | The **hub** for the whole feature — vocabulary, categories, states, and links to the four sub-pages |
-| `Workbooks-The-Workbooks-tab` | One **sub-page**, about browsing, searching and the totals strip |
-
-They are genuinely different pages and both are needed, but the second reads like a duplicate of the
-first. Renaming it to `Workbooks-Browsing` would say what it covers instead of repeating the tab's
-name — one rename in the Wiki, and the links get fixed here. Left alone for now.
+```
+Workbooks-tab                        the hub: vocabulary, categories, states
+├── Workbooks-Getting-started        turn it on, record your first repair
+├── Workbooks-Daily-use              the bar, the editor, markers on the board
+├── Workbooks-Browsing-and-search    find an older repair, read the totals
+└── Workbooks-Export-and-data        PDF/ZIP, where files live, deleting
+```
 
 ## Pages in the Wiki that are not mirrored
 

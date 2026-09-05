@@ -5,7 +5,7 @@
 [Workbooks](Workbooks-tab)
 - [Getting started](Workbooks-Getting-started)
 - [Daily use](Workbooks-Daily-use)
-- [The Workbooks tab](Workbooks-The-Workbooks-tab)
+- [Browsing and search](Workbooks-Browsing-and-search)
 - [Export and data](Workbooks-Export-and-data)
 
 [Synchronize oscilloscope](Synchronize-oscilloscope)
