@@ -12,11 +12,12 @@ content at that commit.
 
 Last reviewed: **2026-09-05**
 
-## Pages to update — 9
+`Commandline-parameters` pasted into the Wiki at `bc82ef65`.
+
+## Pages to update — 8
 
 | Page | What changed | In Wiki? |
 | --- | --- | --- |
-| `Commandline-parameters` | **Rewritten.** Was missing `--workbooks-root` entirely, said "two parameters", and both `--simulate-update` examples had four dashes (`----simulate-update`). Also documents the bare `--simulate-update` form and its `99.0.0` default | Exists |
 | `Development-tools-used` | **Corrected.** Listed Newtonsoft.Json, which the project does not use; QuestPDF was missing. Dated model lists removed | Exists |
 | `KiCad-folder` | **Written.** Was "Must be written &lt;SIGH&gt;" | Exists |
 | `Scope-baseline-folder` | **Written.** Was "Must be written &lt;SIGH&gt;" | Exists |
@@ -38,9 +39,9 @@ These do not exist in the Wiki. Create each with **New Page**, named exactly as 
 | `Workbooks-The-Workbooks-tab` |
 | `Workbooks-Export-and-data` |
 
-## Already in sync — 11
+## Already in sync — 12
 
-No action needed: `Home`, `Add-new-board-with-KiCad-data`,
+No action needed: `Home`, `Add-new-board-with-KiCad-data`, `Commandline-parameters`,
 `Contribute-data-via-CRT`, `Contribute-data-via-GitHub`, `Controlling-oscilloscope-with-keyboard`,
 `Explanation-of-data-files`, `Information-collected`, `Inspiration-for-creating-application`,
 `Installing-application-in-Linux`, `MiniPro-programmer`, `Synchronize-oscilloscope`.
