@@ -1,8 +1,6 @@
-# Board Excel
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 The data file for one board: its schematics, components, images, files and links.
-
-[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 ---
 

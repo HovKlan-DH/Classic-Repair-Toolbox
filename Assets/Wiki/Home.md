@@ -18,8 +18,11 @@ New here? Start with [Getting started](Getting-started).
 * [Contribute data via GitHub](Contribute-data-via-GitHub) — submit a whole new board
 * [Add a new board with KiCad data](Add-new-board-with-KiCad-data) — the full walkthrough
 * [Explanation of data files](Explanation-of-data-files) — reference for every file and column:
-  [Main Excel](Main-Excel) · [Board Excel](Board-Excel) · [Board JSON](Board-JSON) ·
-  [KiCad folder](KiCad-folder) · [Scope baseline folder](Scope-baseline-folder)
+  - [Main Excel](Main-Excel)
+  - [Board Excel](Board-Excel)
+  - [Board JSON](Board-JSON)
+  - [KiCad folder](KiCad-folder)
+  - [Scope baseline folder](Scope-baseline-folder)
 
 ## About the project
 

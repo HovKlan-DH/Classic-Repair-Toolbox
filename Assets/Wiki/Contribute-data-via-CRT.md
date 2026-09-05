@@ -1,8 +1,6 @@
-# Contribute data via CRT
+[Wiki Home](Home)
 
 Fix a value or add a datasheet from inside the application.
-
-[Wiki Home](Home)
 
 ---
 

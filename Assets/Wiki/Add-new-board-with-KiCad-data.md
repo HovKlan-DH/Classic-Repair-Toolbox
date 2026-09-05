@@ -1,8 +1,6 @@
-# How to add a new board with KiCad data
+[Wiki Home](Home)
 
 The full walkthrough: from a bare board photo to clickable traces.
-
-[Wiki Home](Home)
 
 ---
 

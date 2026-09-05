@@ -1,8 +1,6 @@
-# Main Excel
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 The top-level file: every hardware and board, and every oscilloscope.
-
-[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 ---
 

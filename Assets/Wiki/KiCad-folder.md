@@ -1,8 +1,6 @@
-# KiCad folder
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 The raw KiCad files that make a board's traces clickable.
-
-[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 ---
 

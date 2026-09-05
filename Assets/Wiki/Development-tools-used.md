@@ -1,8 +1,6 @@
-# Development tools used
+[Wiki Home](Home)
 
 What CRT is built with.
-
-[Wiki Home](Home)
 
 ---
 

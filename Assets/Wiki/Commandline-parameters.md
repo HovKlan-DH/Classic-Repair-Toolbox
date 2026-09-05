@@ -1,8 +1,6 @@
-# Command-line parameters
+[Wiki Home](Home)
 
 Move the data or workbooks folder elsewhere, and fake an update.
-
-[Wiki Home](Home)
 
 ---
 

@@ -1,8 +1,6 @@
-# Synchronize oscilloscope
+[Wiki Home](Home)
 
 Set your scope up the same way the baseline was taken.
-
-[Wiki Home](Home)
 
 ---
 

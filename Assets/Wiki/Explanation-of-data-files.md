@@ -1,8 +1,6 @@
-# Data files
+[Wiki Home](Home)
 
 Everything CRT knows about hardware is data, not code — so adding a board is a data job, not a programming job. This page shows which file holds what.
-
-[Wiki Home](Home)
 
 ---
 

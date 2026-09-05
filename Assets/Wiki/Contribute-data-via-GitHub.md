@@ -1,8 +1,6 @@
-# Contribute data via GitHub
+[Wiki Home](Home)
 
 Submit a whole new board through a pull request.
-
-[Wiki Home](Home)
 
 ---
 

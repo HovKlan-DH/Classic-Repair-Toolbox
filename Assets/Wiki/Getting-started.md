@@ -1,8 +1,6 @@
-# Getting started
+[Wiki Home](Home)
 
 What CRT does, and what to do in your first ten minutes with it.
-
-[Wiki Home](Home)
 
 ---
 

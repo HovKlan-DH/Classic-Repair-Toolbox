@@ -1,8 +1,6 @@
-# Scope baseline folder
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 Oscilloscope screenshots from a known working board.
-
-[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 ---
 

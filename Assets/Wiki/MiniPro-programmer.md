@@ -1,8 +1,6 @@
-# MiniPro programmer
+[Wiki Home](Home)
 
 Test a logic IC or a C64 PLA out of the board.
-
-[Wiki Home](Home)
 
 ---
 

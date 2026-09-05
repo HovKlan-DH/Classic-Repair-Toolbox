@@ -1,8 +1,6 @@
-# Compiling yourself from source
+[Wiki Home](Home)
 
 Build CRT on Windows, Linux or macOS with the plain `dotnet` CLI.
-
-[Wiki Home](Home)
 
 ---
 

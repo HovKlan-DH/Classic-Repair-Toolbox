@@ -1,8 +1,6 @@
-# Controlling oscilloscope with keyboard
+[Wiki Home](Home)
 
 Drive a connected scope from the numpad, without leaving the schematic.
-
-[Wiki Home](Home)
 
 ---
 

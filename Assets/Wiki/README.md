@@ -56,17 +56,16 @@ source. Repointing a page at it would break the image.
 Every page opens the same way, so a reader knows where they are:
 
 ```markdown
-# Page Title
+[Wiki Home](Home) · [Parent page](Parent-Page)
 
 One or two lines: what this page gets you.
-
-[Wiki Home](Home) · [Parent page](Parent-Page)
 
 ---
 ```
 
-- **One `#` H1 per page**, the title. Sections are `##`. `Home` is the exception — the Wiki renders
-  its own title there.
+- **No `#` H1.** The Wiki renders the page name as the title already, so an H1 in the body just
+  says it twice. Sections start at `##`.
+- **The breadcrumb comes first, then the summary**, then a `---` rule.
 - **No "Go to Wiki Home" footers.** `_Sidebar.md` is rendered by GitHub on every page and does that
   job; a hand-maintained footer rots (it was missing from 9 of 24 pages before).
 - **The app is `CRT`** — not `_CRT_`, not "the application", not "the app".

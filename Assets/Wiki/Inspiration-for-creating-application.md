@@ -1,8 +1,6 @@
-# Inspiration for creating application
+[Wiki Home](Home)
 
 Why this project exists.
-
-[Wiki Home](Home)
 
 ---
 

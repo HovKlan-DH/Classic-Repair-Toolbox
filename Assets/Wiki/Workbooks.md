@@ -1,8 +1,6 @@
-# Workbooks
+[Wiki Home](Home)
 
 Record what you find on a board and what you did about it — and hand the finished job to a customer as a PDF.
-
-[Wiki Home](Home)
 
 ---
 

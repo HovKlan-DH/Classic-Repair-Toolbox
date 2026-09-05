@@ -1,8 +1,6 @@
-# Information collected
+[Wiki Home](Home)
 
 What CRT sends home, and what it does not.
-
-[Wiki Home](Home)
 
 ---
 

@@ -1,8 +1,6 @@
-# Board JSON
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 Where each component sits on each schematic image. Written by the app, not by hand.
-
-[Wiki Home](Home) · [Data files](Explanation-of-data-files)
 
 ---
 

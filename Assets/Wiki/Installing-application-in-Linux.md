@@ -1,8 +1,6 @@
-# Installing application in Linux
+[Wiki Home](Home)
 
 Get CRT into your Start menu.
-
-[Wiki Home](Home)
 
 ---
 
