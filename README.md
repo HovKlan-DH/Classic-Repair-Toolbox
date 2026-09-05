@@ -15,8 +15,8 @@ It is (for now) having Commodore computers with the most documented systems, but
 ## Table of Contents
 
 - [Requirements](#requirements)
+- [Full documentation](#full-documentation)
 - [Installation and usage](#installation-and-usage)
-- [Technical and other documentation](#technical-and-other-documentation)
 - [YouTube Quick-Help videos available](#youtube-quick-help-videos-available)
 - [Built-in hardware and boards](#built-in-hardware-and-boards)
 - [Data contributions being worked on currently](#data-contributions-being-worked-on-currently)
@@ -38,6 +38,11 @@ It is (for now) having Commodore computers with the most documented systems, but
 Note that the newest .NET LTS (Long-Term Support) is embedded in application, which means you do not need to have this installed. It also does mean that even if you have .NET installed on your computer, then it will still use the one embedded in application. Do note that it is the newest LTS at build time - it will _not_ get updated automatically and will stay as-is, until a newer version of _CRT_ is released.
 
 
+## Full documentation
+
+Please go to the [Wiki](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki) to view a more comprehensive documentation, that is not suited for the project front page.
+
+
 ## Installation and usage
 
 Download the newest normal (non-BETA) _CRT_ version from [Releases](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases), and install it. The installation folder cannot be chosen by the user and is determined by the installation process. In the "Configuration" tab you can open the folder and see where the configuration and data files are stored.
@@ -47,11 +52,6 @@ If you want the actual data stored elsewhere than default, then this can be chan
 Depending on your configuration settings, then _CRT_ will check for newer data from its online source at application launch. It is recommended to have this enabled, as there will come many updates over time.
 
 When a new version is released it will (per default, but can be configured) be shown to you in the application, and you can update directly from within the application.
-
-
-## Technical and other documentation
-
-Please go to the [Wiki](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki) to view more technical documentation or other information, that is not suited for the project front page.
 
 
 ## YouTube Quick-Help videos available
