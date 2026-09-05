@@ -1,8 +1,6 @@
-# Workbooks: getting started
+[Wiki Home](Home) · [Workbooks](Workbooks)
 
 Turn it on, and record your first repair.
-
-[Wiki Home](Home) · [Workbooks](Workbooks)
 
 ---
 

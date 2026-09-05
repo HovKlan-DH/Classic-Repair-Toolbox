@@ -1,8 +1,6 @@
-# Workbooks: export and your data
+[Wiki Home](Home) · [Workbooks](Workbooks)
 
 Handing the job over, where the files live, and deleting.
-
-[Wiki Home](Home) · [Workbooks](Workbooks)
 
 ---
 

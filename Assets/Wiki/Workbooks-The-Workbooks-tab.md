@@ -1,8 +1,6 @@
-# The Workbooks tab
+[Wiki Home](Home) · [Workbooks](Workbooks)
 
 Where you browse your repair jobs.
-
-[Wiki Home](Home) · [Workbooks](Workbooks)
 
 ---
 

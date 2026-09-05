@@ -10,7 +10,8 @@ mirror works.
 # ✅ Everything is in sync
 
 Verified against the live Wiki on **2026-09-06**: all 26 mirrored pages are byte-for-byte identical,
-and every internal link and heading anchor resolves.
+every internal link and heading anchor resolves, and no page carries a `#` H1 any more — the four
+`Workbooks-*` sub-pages that still had one have been brought into line with the rest.
 
 **Nothing to paste.**
 
@@ -19,28 +20,15 @@ and every internal link and heading anchor resolves.
 The pages were edited in the Wiki rather than here, so the mirror was updated *from* the Wiki — the
 reverse of the usual direction. Every change was a layout decision, and no content was lost:
 
-- **The `#` H1 title was removed from all 20 pages that had one.** The Wiki already renders the page
+- **The `#` H1 title was removed from every page that had one.** The Wiki already renders the page
   name as a heading, so an H1 in the body said it twice.
 - **The breadcrumb and the summary swapped places**, so a page now opens with
   `[Wiki Home](Home)`, then the one-line summary, then a `---` rule.
-- **`Home` and `_Sidebar` use bullet lists** instead of middle-dot separators.
+- **`Home` and `_Sidebar` use bullet lists** instead of middle-dot separators, and `Home` now lists
+  the four `Workbooks-*` sub-pages under their parent.
 
 [`README.md`](./README.md) has been updated so the page conventions describe this shape, not the old
 one.
-
-## One inconsistency worth a look
-
-The four `Workbooks-*` sub-pages **still have their `#` H1**, while the other 20 pages no longer do:
-
-| Page | Still has an H1 |
-| --- | --- |
-| `Workbooks-Getting-started` | `# Workbooks: getting started` |
-| `Workbooks-Daily-use` | `# Workbooks: daily use` |
-| `Workbooks-The-Workbooks-tab` | `# The Workbooks tab` |
-| `Workbooks-Export-and-data` | `# Workbooks: export and your data` |
-
-Their parent `Workbooks` page has had its H1 removed, so the set is split. Probably just the batch
-that was missed. Say the word and the four H1s come out to match — four re-pastes.
 
 ## Pages in the Wiki that are not mirrored
 

@@ -6,6 +6,10 @@ New here? Start with [Getting started](Getting-started).
 
 * [Getting started](Getting-started) — what CRT does, and what to do after installing it
 * [Workbooks](Workbooks) — record what you found and what you did, and hand the job over as a PDF
+  - [Getting started](Workbooks-Getting-started)
+  - [Daily use](Workbooks-Daily-use)
+  - [The Workbooks tab](Workbooks-The-Workbooks-tab)
+  - [Export and your data](Workbooks-Export-and-data)
 * [Synchronize oscilloscope](Synchronize-oscilloscope) — set your scope up like the one that took the baseline
 * [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard) — drive the scope from the numpad
 * [MiniPro programmer](MiniPro-programmer) — test a logic IC or a C64 PLA out of the board

@@ -1,8 +1,6 @@
-# Workbooks: daily use
+[Wiki Home](Home) · [Workbooks](Workbooks)
 
 The bar, the editor, and the markers on the board.
-
-[Wiki Home](Home) · [Workbooks](Workbooks)
 
 ---
 
