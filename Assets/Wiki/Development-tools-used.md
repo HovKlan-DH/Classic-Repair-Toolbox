@@ -1,6 +1,4 @@
-# Development tools used
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 _CRT_ has been developed in _Visual Studio Community 2026_. Where the old _Commodore_ project was primarily self-developed, then this new _Classic_ codebase has been developed primarily with GitHub Copilot, which is why I see myself more as a _conductor_ for this project, rather than the pure developer of this application - all credits to the people behind these LLM models 😁
 

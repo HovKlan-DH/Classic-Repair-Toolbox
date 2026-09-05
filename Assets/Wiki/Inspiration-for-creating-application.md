@@ -1,6 +1,4 @@
-# Inspiration for creating application
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 I have been repairing Commodore 64/128 computers for some years, but I still consider myself as a _beginner_ in this world of hardware, and as you probably can guess (since I did this application) then I am more a software person. The hardware side of things is really relaxing for me, focussing on some physical hardware, troubleshooting, soldering, replacing and seeing a broken machine being revived is just so satisfying, so this is a _must-have_ for me to relax a little from all my software projects 😁
 

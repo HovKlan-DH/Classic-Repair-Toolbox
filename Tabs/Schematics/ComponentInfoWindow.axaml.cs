@@ -838,7 +838,7 @@ namespace CRT
         // ###########################################################################################
         private void OnNumpadOscilloscopeHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/docs/controlling-oscilloscope-with-keyboard.md");
+            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Controlling-oscilloscope-with-keyboard");
         }
 
         // ###########################################################################################
@@ -846,7 +846,7 @@ namespace CRT
         // ###########################################################################################
         private void OnMiniProHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/docs/minipro-programmer.md");
+            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer");
         }
 
         // ###########################################################################################
@@ -854,7 +854,7 @@ namespace CRT
         // ###########################################################################################
         private void OnSyncOscilloscopeHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/docs/synchronize-oscilloscope.md");
+            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Synchronize-oscilloscope");
         }
 
         // ###########################################################################################

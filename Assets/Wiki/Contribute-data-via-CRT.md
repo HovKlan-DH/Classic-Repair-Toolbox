@@ -1,6 +1,4 @@
-# Contribute data via CRT
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 Spotted a wrong value, a missing part number, or do you have a datasheet, photo or scope
 reading that others would benefit from? You can suggest it directly from the **Contribute**
@@ -92,4 +90,4 @@ Do note that the edits you do will _not_ be used here-and-now in your own setup 
 
 Thank you — every correction makes the data better for the next person repairing the same board.
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

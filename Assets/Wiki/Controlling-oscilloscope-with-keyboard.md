@@ -1,6 +1,4 @@
-# Controlling oscilloscope with keyboard
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 _CRT_ can control a network connected oscilloscope from the keyboard/numpad, from within the
 component information window - the popup that opens when you click a component. The controls are
@@ -18,7 +16,7 @@ To enable and use the controls, do this:
 
 The keys work while the component information window has focus. You can use these keys:
 
-![image](./images/controlling-oscilloscope-with-keyboard.png)
+<img width="1051" height="358" alt="image" src="https://github.com/user-attachments/assets/8f339e2c-bf05-49bd-ab8d-9cad2a3b018b" />
 
 A few things worth knowing:
 
@@ -39,4 +37,4 @@ the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscop
 stepping keys resolve their target from those lists, and do nothing if the current value is not
 found there.
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

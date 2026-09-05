@@ -1,0 +1,16 @@
+Welcome to the **Classic Repair Toolbox** wiki/documentation, where you will find any documentation or information not relevant for the project `README.md` file.
+
+* [Workbooks](Workbooks)
+* [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard)
+* [Synchronize oscilloscope](Synchronize-oscilloscope)
+* [MiniPro programmer](MiniPro-programmer)
+* [Commandline parameters](Commandline-parameters)
+* [Installing application in Linux](Installing-application-in-Linux)
+* [Compiling yourself from source](Compiling-yourself-from-source)
+* [Explanation of data files](Explanation-of-data-files)
+* [How to add a new board with KiCad data](Add-new-board-with-KiCad-data)
+* [Contribute data via CRT](Contribute-data-via-CRT)
+* [Contribute data via GitHub repository](Contribute-data-via-GitHub)
+* [Information collected](Information-collected)
+* [Development tools used](Development-tools-used)
+* [Inspiration for creating application](Inspiration-for-creating-application)

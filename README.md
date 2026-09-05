@@ -42,7 +42,7 @@ Note that the newest .NET LTS (Long-Term Support) is embedded in application, wh
 
 Download the newest normal (non-BETA) _CRT_ version from [Releases](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases), and install it. The installation folder cannot be chosen by the user and is determined by the installation process. In the "Configuration" tab you can open the folder and see where the configuration and data files are stored.
 
-If you want the actual data stored elsewhere than default, then this can be changed via a command-line parameter, view [Commandline parameters](docs/commandline-parameters.md).
+If you want the actual data stored elsewhere than default, then this can be changed via a command-line parameter, view [Commandline parameters](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Commandline-parameters).
 
 Depending on your configuration settings, then _CRT_ will check for newer data from its online source at application launch. It is recommended to have this enabled, as there will come many updates over time.
 
@@ -51,7 +51,7 @@ When a new version is released it will (per default, but can be configured) be s
 
 ## Technical and other documentation
 
-Please go to the [documentation](docs/README.md) to view more technical documentation or other information, that is not suited for the project front page.
+Please go to the [Wiki](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki) to view more technical documentation or other information, that is not suited for the project front page.
 
 
 ## YouTube Quick-Help videos available

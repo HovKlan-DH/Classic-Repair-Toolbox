@@ -1,7 +1,5 @@
-# Board JSON
-
-Go to [Documentation index](./README.md).\
-Go to [Explanation data files](./explanation-of-data-files.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
+Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
 
 Every board folder in the data tree holds two files that share the same name — one `.xlsx` and one `.json`:
 

@@ -223,7 +223,7 @@ namespace CRT
         // ###########################################################################################
         private void OnEnableWorklogHelpClick(object? sender, RoutedEventArgs e)
         {
-            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/docs/workbooks.md";
+            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks";
 
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {
@@ -237,7 +237,7 @@ namespace CRT
         // ###########################################################################################
         private void OnEnableMiniproExperimentalModeHelpClick(object? sender, RoutedEventArgs e)
         {
-            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/blob/main/docs/minipro-programmer.md";
+            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer";
 
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {

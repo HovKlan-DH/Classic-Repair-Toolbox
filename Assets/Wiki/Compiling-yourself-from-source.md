@@ -1,6 +1,4 @@
-# Compiling yourself from source
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 _CRT_ is a .NET 10 / Avalonia desktop application and builds with the plain `dotnet` CLI on all
 three platforms. The build is identical everywhere — only **how you install the .NET 10 SDK** differs.
@@ -8,7 +6,7 @@ three platforms. The build is identical everywhere — only **how you install th
 ## Contents
 
 - [Before you start](#before-you-start)
-- [Quick start (any platform)](#quick-start-to-build-the-executable-any-platform)
+- [Quick start (any platform)](#quick-start-any-platform)
 - [Debug vs Release](#debug-vs-release)
 - [Command-line switches](#command-line-switches)
 - [Windows](#windows)
@@ -169,7 +167,7 @@ source build does not. On first launch _CRT_ creates its data folder and downloa
 Only the `win-x64` build bundles a `minipro` binary (committed at `Assets/MiniPro/win-x64/`, copied
 next to the executable automatically).
 
-On Linux and macOS, install `minipro` yourself, but please view [MiniPro programmer](./minipro-programmer.md).
+On Linux and macOS, install `minipro` yourself, but please view [MiniPro programmer](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer).
 
 ## Troubleshooting
 
@@ -186,4 +184,4 @@ check runs, so there is nothing for the simulation to answer. The log states thi
   * Expected on a first run from source — it is downloading. See
 [Where the hardware data comes from](#where-the-hardware-data-comes-from).
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

@@ -1,7 +1,5 @@
-# Board Excel
-
-Go to [Documentation index](./README.md).\
-Go to [Explanation data files](./explanation-of-data-files.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
+Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
 
 A board Excel file is placed in the folder for the individual board (system). As an example it could `Data C64 250407.xlsx` or `Data C64 250407 v2.0.0.xlsx`. The Excel file, alongside the main Excel file, is versionized meaning the version number represents the file will work from _FROM this version and onwards_.
 
@@ -342,7 +340,7 @@ This is data that can be gathered from the logfile, where it will dump all these
 Will show who has contributed with data to this board.\
 Shown in the "About" tab.
 
-## Common shared considerations for Excel data files
+# Common shared considerations for Excel data files
 
 There are a few important things to know generally for these Excel files.
 
@@ -353,5 +351,5 @@ There are a few important things to know generally for these Excel files.
 * Treat all folders and filenames as case-sensitive (to support Linux and macOS)
 * Check logfile after startup, as it will reveal any errors with the data files.
 
-Go to [Documentation index](./README.md).\
-Go to [Explanation data files](./explanation-of-data-files.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
+Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).

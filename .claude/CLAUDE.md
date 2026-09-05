@@ -24,43 +24,41 @@ already has uncommitted edits in it (those are the maintainer's, in progress). D
 write it. "Update the changelog" from the maintainer is the only permission — and it covers that
 one request, not the rest of the session.
 
-## Documentation lives in `docs/`
+## Documentation: the Wiki, mirrored in `Assets/Wiki/`
 
-The project's documentation is [docs/](../docs/) in this repository — plain Markdown, no static
-site generator, no build step, no workflow. It replaced the GitHub Wiki, which is kept only as a
-read-only archive; **do not add wiki links or wiki pages**, and repoint any you find.
+The published documentation is the **GitHub Wiki**. Its source of truth is
+[Assets/Wiki/](../Assets/Wiki/) — one `.md` file per Wiki page, named **exactly** as the page is.
 
-- **Filenames are lowercase kebab-case**: `board-excel.md`, never `Board-Excel.md`.
-- **Every page opens with a single `#` H1** carrying the human-readable page title.
-- **Links between pages are relative and include the extension**: `[Board Excel](./board-excel.md)`.
-  That form resolves in the GitHub file browser, in an editor and in a local clone alike.
-- **Images live in [docs/images/](../docs/images/)** and are referenced relatively:
-  `![Main window](./images/main-window.png)`. Never hotlink a `user-attachments` URL — those are
-  wiki/issue upload artefacts and are not versioned with the repo.
-- **[docs/README.md](../docs/README.md) is the index** GitHub renders for the folder. Every
-  released page must be linked from it, grouped into sections.
-- **Documentation ships in the SAME commit or PR as the code it describes.** A feature and the
-  page describing it are one change, not two.
+**Nothing publishes automatically.** GitHub offers no way to push a folder in this repository to
+the Wiki, so the maintainer copies changed files across by hand. Editing a file here changes what
+the page *should* say; the page itself changes only when they paste it. Never tell the user a Wiki
+page has been updated — say which files changed and that they are ready to be pasted.
 
-**Documentation for UNRELEASED functionality goes in [docs/upcoming/](../docs/upcoming/)**, with a
-callout naming the target version:
+- **Filenames ARE page names**, capitals included (`MiniPro-programmer.md` →
+  `.../wiki/MiniPro-programmer`). Never rename one without the Wiki page being renamed to match.
+- **These files use WIKI syntax, not repository syntax**, because they are written to be pasted:
+  internal links carry no path and no extension (`[Board JSON](Board-JSON)`), and images stay as
+  `<img>` tags pointing at their `user-attachments` URL. A relative `./page.md` link or a
+  `./images/` path breaks the moment it is pasted into a page. This is the opposite of the
+  convention everywhere else in this repo, and it is deliberate.
+- **`Assets/Wiki/images/`** holds reference copies only. The Wiki does not read from it, and
+  repointing a page at it would break the image.
+- **[Assets/Wiki/_sync-status.md](../Assets/Wiki/_sync-status.md)** records which pages have been
+  pasted, and at which commit. Update it only when the maintainer CONFIRMS a page is pasted — it
+  is a record of the Wiki's real state, not of this folder's.
+- **When asked for a sync diff**, list the pages whose files changed since their last-synced
+  commit, say what changed in each, and leave the pasting to the maintainer.
 
-```markdown
-> [!NOTE]
-> **Unreleased.** Planned for v2.6.
-> This page describes functionality that is not available in the current release.
-```
+**Documentation changes ship in the same commit as the code they describe.** When a change alters
+behaviour a mirrored page documents, update that page in the same commit and say so.
 
-That folder is for **whole new topics only**. An addition to an already-released page is marked
-inline with the same callout instead, so related information stays together rather than being
-split across two files. Nothing in `docs/upcoming/` may be linked from `docs/README.md` as though
-it were released — only from its clearly labelled "Upcoming" section. The promotion steps for when
-a feature ships are in [docs/upcoming/README.md](../docs/upcoming/README.md); follow them there
-rather than inventing a variation.
+**Five Wiki pages are opened by buttons in the shipped app** (`Workbooks`, `MiniPro-programmer`,
+`Controlling-oscilloscope-with-keyboard`, `Synchronize-oscilloscope` — see
+`TabConfiguration.axaml.cs` and `ComponentInfoWindow.axaml.cs`). Renaming or deleting one breaks a
+button in builds already installed, which no update can fix. Grep before touching those names.
 
-**The five in-app help links point into `docs/`** (`TabConfiguration.axaml.cs` and
-`ComponentInfoWindow.axaml.cs`, as `blob/main/docs/<page>.md` URLs). Renaming or moving one of
-those pages breaks a button in the shipped app, so grep for the filename before you rename it.
+**Six Wiki pages are deliberately not mirrored** (orphans superseded by newer pages) — see
+[Assets/Wiki/README.md](../Assets/Wiki/README.md). Do not add them back without being asked.
 
 ## Build, test, run, publish
 

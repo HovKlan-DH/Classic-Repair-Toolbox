@@ -1,7 +1,5 @@
-# Main Excel
-
-Go to [Documentation index](./README.md).\
-Go to [Explanation data files](./explanation-of-data-files.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
+Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
 
 The main Excel file is the one placed in the data root folder, named `Classic-Repair-Toolbox.xlsx` or `Classic-Repair-Toolbox.v2.0.0.xlsx`. This file depicts the different hardware in _CRT_, and it has the configuration for all supported oscilloscopes.
 
@@ -10,9 +8,9 @@ The Excel file, alongside the board Excel files, is versionized meaning the vers
 The Excel file has only two worksheets, so it is pretty simple compared to the board files.
 
 * Worksheets:
-  * [Hardware & Board](#worksheet-hardware-board)
+  * [Hardware & Board](#worksheet-hardware--board)
     * Columns:
-      * [Hardware name in drop-down](#column-hardware-name-in-drop-down)
+      * [Hardware name in drop-down](#column-hardware-name-in-drop-dow)
       * [Board name in drop-down](#column-board-name-in-drop-down)
       * [Excel data file](#column-excel-data-file)
       * [Hardware notes in "Overview" tab](#column-hardware-notes-in-overview-tab)
@@ -178,7 +176,7 @@ E.g. `1V` mean each vertical division is `1V`.
 > [!WARNING]
 > If some of the SCPI commands (in the Excel file) it states `{0}` which you should see as the actual value passed. The value is handled by _CRT_.
 
-## Common shared considerations for Excel data files
+# Common shared considerations for Excel data files
 
 There are a few important things to know generally for these Excel files.
 
@@ -189,5 +187,5 @@ There are a few important things to know generally for these Excel files.
 * Treat all folders and filenames as case-sensitive (to support Linux and macOS)
 * Check logfile after startup, as it will reveal any errors with the data files.
 
-Go to [Documentation index](./README.md).\
-Go to [Explanation data files](./explanation-of-data-files.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
+Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).

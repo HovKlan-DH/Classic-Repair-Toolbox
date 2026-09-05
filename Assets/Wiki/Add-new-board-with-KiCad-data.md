@@ -1,6 +1,4 @@
-# How to add a new board with KiCad data
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 This page walks through contributing a **complete new board** whose schematics and PCB views are backed
 by a KiCad project, so that selecting a component highlights its actual copper traces, nets can be
@@ -70,7 +68,7 @@ Board folders live under the data root as `<Manufacturer>/<Hardware>/<Board>/`. 
 ## Step 2 — Build the board Excel data file
 
 Copy an existing board `.xlsx` and empty the rows (maybe keep some for examples).\
-Keep the sheet names exactly, but reference the documentation for the many sheets and columns, [Explanation of data files](./explanation-of-data-files.md) and [Board Excel](./board-excel.md)
+Keep the sheet names exactly, but reference the documentation for the many sheets and columns, [Explanation of data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files) and [Board Excel](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Board-Excel)
 
 ---
 
@@ -100,7 +98,7 @@ Classic-Repair-Toolbox.v<version>_UserContribution.xlsx
 Same name as the main Excel data file that the application resolved, with `_UserContribution` before the extension
 (e.g. `Classic-Repair-Toolbox.v2.0.0_UserContribution.xlsx`).
 
-The content of the user contribution file must be same format as the main Excel data file, but of course only with your data in it (one new board). View the format here, [Explanation of data files](./explanation-of-data-files.md) and [Main Excel](./main-excel.md).
+The content of the user contribution file must be same format as the main Excel data file, but of course only with your data in it (one new board). View the format here, [Explanation of data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files) and [Main Excel](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Main-Excel).
 
 Its entries are merged into the hardware/board dropdowns at startup (an entry that duplicates one from
 the main Excel data file is skipped, with a warning in the log).
@@ -166,7 +164,7 @@ KiCad works in millimetres and your image is pixels, so each view needs a one-ti
 5. **Apply KiCad calibration**.
 
 This writes a `KiCad calibration points` entry into the board JSON — offset, scale and mirror flags for
-that one view. See [Board JSON](./board-json.md) for what the stored numbers mean. Nothing there is worth
+that one view. See [Board JSON](Board-JSON) for what the stored numbers mean. Nothing there is worth
 hand-editing; recalibrating is faster and correct.
 
 Repeat for every view that has a `CAD name`.
@@ -179,7 +177,7 @@ With contributor mode still on: right-click → **Enable component label editor*
 each component, and press **Apply all editor changes**. Rectangles go into the board JSON; brand-new
 board labels are appended to the workbook's `Components` sheet automatically.
 
-The full rules live in [Board JSON](./board-json.md). The one that matters most here: **the board label you
+The full rules live in [Board JSON](Board-JSON). The one that matters most here: **the board label you
 type must be the KiCad reference designator**, or the component will highlight on the image but light up
 no copper.
 
@@ -238,7 +236,7 @@ most mistakes are a warning in the logfile rather than a visible failure. Make s
 
 ## Submitting your data
 
-When you select a whole new board/system, then you should follow [Contribute data GitHub](./contribute-data-via-github.md) as this is a major new thing.
+When you select a whole new board/system, then you should follow [Contribute data GitHub](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Contribute-data-via-GitHub) as this is a major new thing.
 
 **Make sure you submit data in a good quality!** No one wants to see a rough and fast implementation, as this only gives frustration when missing something or something is plain wrong. This is a fine balance though, because "quality data" is a never ending story and it can always improve, but at least do your best to satisfy the many users that will benefit from your data 🙏
 
@@ -246,4 +244,4 @@ When you select a whole new board/system, then you should follow [Contribute dat
 
 There can be many causes why data misbehaves, so if e.g. you have some KiCad data not showing as expected or you do not understand something (probably due to none or wrong documentation), then please do not hesitate to connect with the developer. [View GitHub page for contact](https://github.com/HovKlan-DH/Classic-Repair-Toolbox#contact-developer).
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

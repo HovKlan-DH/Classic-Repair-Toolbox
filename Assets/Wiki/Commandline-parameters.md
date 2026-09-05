@@ -1,6 +1,4 @@
-# Commandline parameters
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 _CRT_ has two  commandline parameters:
 
@@ -50,4 +48,4 @@ Here you can simulate as like a newer version is available online - to view how 
 
 The UI will then show how this looks like, and clicking the "Install" button will simulate that, but without doing anything else, rather than go from 0% to 100% (no application restart or alike).
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

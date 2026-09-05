@@ -1,6 +1,4 @@
-# Information collected
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 I want to be transparent here, and inform that I am gathering information about your setup, at every application launch, where the application does a mandatory "check-in":
 

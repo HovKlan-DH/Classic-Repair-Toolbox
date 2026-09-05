@@ -1,6 +1,4 @@
-# Synchronize oscilloscope
-
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
 When you select a baseline image in the component information window, _CRT_ can push the
 oscilloscope settings stored with that image to your connected oscilloscope - the time base, the
@@ -53,7 +51,7 @@ Values are written as a number followed by a unit, using a period as the decimal
 * Everything that is sent - and everything that could not be mapped - is written to the output on
   the "Oscilloscope" tab, so that is the place to look when a baseline does not seem to synchronize.
 * Synchronizing works well together with
-  [controlling the oscilloscope from the keyboard](./controlling-oscilloscope-with-keyboard.md): let the
+  [controlling the oscilloscope from the keyboard](Controlling-oscilloscope-with-keyboard): let the
   image set the starting point, then fine-tune the time base or trigger level from the numpad.
 
 If your oscilloscope is not in the list, or it does not work properly, then please do investigate
@@ -62,4 +60,4 @@ within the same vendor. I do not know all oscilloscopes, nor do I have access to
 my own, so you will need to provide this data yourself. You can add and test the required data in
 the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscope`.
 
-Go to [Documentation index](./README.md).
+Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
