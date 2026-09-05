@@ -24,6 +24,6 @@ reaches everyone with the next data sync — usually within a week.
 
 | | |
 | --- | --- |
-| A component highlighted in the wrong place | The label editor — see [The Schematics tab](The-Schematics-tab) |
+| A component highlighted in the wrong place | The label editor — see [The Schematics tab](Schematics-tab) |
 | A whole new board | [Contribute data via GitHub](Contribute-data-via-GitHub) |
-| Something wrong with the application itself | [The Feedback tab](The-Feedback-tab) |
+| Something wrong with the application itself | [The Feedback tab](Feedback-tab) |

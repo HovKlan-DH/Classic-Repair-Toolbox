@@ -1,4 +1,4 @@
-[Wiki Home](Home) · [Workbooks](Workbooks)
+[Wiki Home](Home) · [Workbooks tab](Workbooks-tab)
 
 The bar, the editor, and the markers on the board.
 

@@ -7,54 +7,44 @@ mirror works.
 
 ---
 
-# ⚠️ 8 pages to create, 3 to update
+# ⚠️ 9 pages need re-pasting — they have broken links right now
 
-A page per tab was added, closing the gaps found by auditing the application against the Wiki.
+The tab pages were created in the Wiki without the `The-` prefix (`Schematics-tab`, not
+`The-Schematics-tab`), and `Workbooks` became `Workbooks-tab`. Your names are the better ones and
+the mirror now uses them — but **the pages below still link to the old names, so those links are
+dead in the live Wiki.**
 
-## Create these — 8 new pages
-
-Use **New Page** in the Wiki and name each one exactly as shown, or the links from Home and the
-sidebar will not resolve.
-
-| # | Create this Wiki page | Copy from |
-| --- | --- | --- |
-| 1 | `The-Schematics-tab` | `The-Schematics-tab.md` |
-| 2 | `The-Overview-tab` | `The-Overview-tab.md` |
-| 3 | `The-Resources-tab` | `The-Resources-tab.md` |
-| 4 | `The-Oscilloscope-tab` | `The-Oscilloscope-tab.md` |
-| 5 | `The-Contribute-tab` | `The-Contribute-tab.md` |
-| 6 | `The-Configuration-tab` | `The-Configuration-tab.md` |
-| 7 | `The-Feedback-tab` | `The-Feedback-tab.md` |
-| 8 | `The-About-tab` | `The-About-tab.md` |
-
-## Then update these — 3 pages
+Nine pages, in any order:
 
 | # | Local file to copy | Where to paste it in the Wiki |
 | --- | --- | --- |
-| 9 | `_Sidebar.md` | The sidebar — edit it the same way you did last time |
-| 10 | `Home.md` | Home → *(the front page itself)* |
-| 11 | `Getting-started.md` | Home → Getting started |
+| 1 | `_Sidebar.md` | The sidebar |
+| 2 | `Home.md` | Home → *(the front page itself)* |
+| 3 | `Getting-started.md` | Home → Getting started |
+| 4 | `Schematics-tab.md` | Home → Schematics |
+| 5 | `Overview-tab.md` | Home → Overview |
+| 6 | `Oscilloscope-tab.md` | Home → Oscilloscope |
+| 7 | `Contribute-tab.md` | Home → Contribute |
+| 8 | `Configuration-tab.md` | Home → Configuration |
+| 9 | `Feedback-tab.md` | Home → Feedback |
 
-`Home` and `_Sidebar` gain a **The tabs, one by one** section linking the eight new pages;
-`Getting-started`'s tab table now links each tab to its own page.
+`Resources-tab` and `About-tab` are already correct — they happened to contain no links to the
+renamed pages.
 
-## What these new pages cover
+**What was broken:** `Workbooks` was the worst of them. That page no longer exists under that name,
+so the sidebar's link to the main feature was dead, as were the links from Home, Getting-started,
+Configuration-tab and Schematics-tab.
 
-Features that were in the application but nowhere in the Wiki:
+## Still worth deciding: two pages with near-identical names
 
-- **Themes and colour customisation** — Light / Dark / User preference, where the colours live in the
-  settings file, and the reload button
-- **Print BOM / Print component list** on the Overview tab, and the per-row tick box deciding what
-  gets printed
-- **The Feedback tab** — nothing referred to it at all
-- **The Schematics display settings** — trace highlighting on hover and select, SHIFT-to-hover,
-  mark first pin, labels and traces visibility
-- **"Important signals" and "Netlist names"** — the panels for navigating a board by signal
-- **Drawing your own traces** on an image
-- **Contributor mode**, the component label editor and KiCad calibration — these were documented only
-  inside contributor pages, so a repair user never learned they existed
-- **The remaining Configuration settings** — multiple popups, data sync, orphan cleanup, update
-  checks, BETA notifications
+| Page | What it is |
+| --- | --- |
+| `Workbooks-tab` | The **hub** for the whole feature — vocabulary, categories, states, and links to the four sub-pages |
+| `Workbooks-The-Workbooks-tab` | One **sub-page**, about browsing, searching and the totals strip |
+
+They are genuinely different pages and both are needed, but the second reads like a duplicate of the
+first. Renaming it to `Workbooks-Browsing` would say what it covers instead of repeating the tab's
+name — one rename in the Wiki, and the links get fixed here. Left alone for now.
 
 ## Pages in the Wiki that are not mirrored
 

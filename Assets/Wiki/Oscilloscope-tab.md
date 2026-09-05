@@ -5,7 +5,7 @@ Connect CRT to a network-capable oscilloscope.
 ---
 
 Hidden unless **Enable network connected oscilloscope tab** is ticked in
-[Configuration](The-Configuration-tab).
+[Configuration](Configuration-tab).
 
 ## Connecting
 

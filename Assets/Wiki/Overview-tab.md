@@ -15,7 +15,7 @@ The tab shows one row per component on the selected board:
 | **Short description** | One line about what it does |
 | **Files and links** | Datasheets and other material for that component |
 
-Click a row to open that component's popup, the same one the [Schematics tab](The-Schematics-tab)
+Click a row to open that component's popup, the same one the [Schematics tab](Schematics-tab)
 opens.
 
 ## Printing

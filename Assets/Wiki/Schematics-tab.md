@@ -46,7 +46,7 @@ You can draw trace overlays by hand on any image — useful for a board with no 
 
 ## Recording what you find
 
-With the [Workbooks](Workbooks) feature on, **Add worklog** in the bar above the tabs lets you drag a rectangle on the schematic and write up what you found there. Markers for saved worklogs appear on the image and on the thumbnails — see [Workbooks: daily use](Workbooks-Daily-use).
+With the [Workbooks](Workbooks-tab) feature on, **Add worklog** in the bar above the tabs lets you drag a rectangle on the schematic and write up what you found there. Markers for saved worklogs appear on the image and on the thumbnails — see [Workbooks: daily use](Workbooks-Daily-use).
 
 ## Contributor mode
 

@@ -15,7 +15,7 @@ be better, or a question the documentation did not answer.
 ## What not to use it for
 
 **Wrong or missing board data** — a part number, a datasheet link, a component highlight in the
-wrong place. That goes through the [Contribute tab](The-Contribute-tab) instead, which sends the
+wrong place. That goes through the [Contribute tab](Contribute-tab) instead, which sends the
 actual data change rather than a description of it.
 
 **A whole new board** — see [Contribute data via GitHub](Contribute-data-via-GitHub).

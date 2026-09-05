@@ -52,7 +52,7 @@ development. You do not need this.
 
 ## Workbooks
 
-**Enable Workbooks tab** — shows or hides the [Workbooks](Workbooks) feature and its bar above the
+**Enable Workbooks tab** — shows or hides the [Workbooks](Workbooks-tab) feature and its bar above the
 tabs.
 
 **Scope in Workbooks tab** — whether the tab lists workbooks for the selected board only (the

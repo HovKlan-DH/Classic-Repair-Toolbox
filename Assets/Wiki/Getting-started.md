@@ -39,15 +39,15 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 
 | Tab | What it is for |
 | --- | --- |
-| **[Schematics](The-Schematics-tab)** | The board, its components and its traces |
-| **[Overview](The-Overview-tab)** | Every component as a list, and a printable bill of materials |
-| **[Resources](The-Resources-tab)** | Datasheets, service manuals and links for this board |
-| **[Workbooks](Workbooks)** | Record what you find as you repair |
-| **[Oscilloscope](The-Oscilloscope-tab)** | Drive a network-connected scope |
-| **[Contribute](The-Contribute-tab)** | Send corrections and additions back |
-| **[Configuration](The-Configuration-tab)** | Settings, and the button that opens your data folder |
-| **[Feedback](The-Feedback-tab)** | Send an issue or a question to the developer |
-| **[About](The-About-tab)** | Versions, links, and who contributed this board's data |
+| **[Schematics](Schematics-tab)** | The board, its components and its traces |
+| **[Overview](Overview-tab)** | Every component as a list, and a printable bill of materials |
+| **[Resources](Resources-tab)** | Datasheets, service manuals and links for this board |
+| **[Workbooks](Workbooks-tab)** | Record what you find as you repair |
+| **[Oscilloscope](Oscilloscope-tab)** | Drive a network-connected scope |
+| **[Contribute](Contribute-tab)** | Send corrections and additions back |
+| **[Configuration](Configuration-tab)** | Settings, and the button that opens your data folder |
+| **[Feedback](Feedback-tab)** | Send an issue or a question to the developer |
+| **[About](About-tab)** | Versions, links, and who contributed this board's data |
 
 **Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab, if you do not use them.
 
@@ -55,11 +55,11 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 
 The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the schematic, log hours and cost, attach photos, and export the finished job as a PDF for a customer.
 
-That is the one feature worth reading about before you need it — see [Workbooks](Workbooks).
+That is the one feature worth reading about before you need it — see [Workbooks](Workbooks-tab).
 
 ## Where next
 
-* [Workbooks](Workbooks) — track a repair from start to invoice
+* [Workbooks](Workbooks-tab) — track a repair from start to invoice
 * [Synchronize oscilloscope](Synchronize-oscilloscope) — if you have a network-capable scope
 * [MiniPro programmer](MiniPro-programmer) — to test a logic IC out of the board
 * [Contribute data via CRT](Contribute-data-via-CRT) — when you spot something wrong or missing

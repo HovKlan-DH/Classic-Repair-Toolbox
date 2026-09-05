@@ -2,7 +2,7 @@
 
 [Getting started](Getting-started)
 
-[Workbooks](Workbooks)
+[Workbooks](Workbooks-tab)
 - [Getting started](Workbooks-Getting-started)
 - [Daily use](Workbooks-Daily-use)
 - [The Workbooks tab](Workbooks-The-Workbooks-tab)
@@ -15,16 +15,15 @@
 - [Install on Linux](Installing-application-in-Linux)
 
 ### The tabs
-
-- [Schematics](The-Schematics-tab)
-- [Overview](The-Overview-tab)
-- [Resources](The-Resources-tab)
-- [Workbooks](Workbooks)
-- [Oscilloscope](The-Oscilloscope-tab)
-- [Contribute](The-Contribute-tab)
-- [Configuration](The-Configuration-tab)
-- [Feedback](The-Feedback-tab)
-- [About](The-About-tab)
+- [Schematics](Schematics-tab)
+- [Overview](Overview-tab)
+- [Resources](Resources-tab)
+- [Workbooks](Workbooks-tab)
+- [Oscilloscope](Oscilloscope-tab)
+- [Contribute](Contribute-tab)
+- [Configuration](Configuration-tab)
+- [Feedback](Feedback-tab)
+- [About](About-tab)
 
 ### Contributing
 - [Via CRT](Contribute-data-via-CRT)
