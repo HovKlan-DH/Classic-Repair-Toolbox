@@ -1,6 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Workbooks
 
-"Workbooks" is where you write down what you find on a board and what you did about it - and hand the finished job to a customer as a PDF.
+Record what you find on a board and what you did about it — and hand the finished job to a customer as a PDF.
+
+[Wiki Home](Home)
+
+---
 
 * [Getting started](Workbooks-Getting-started) - turn it on and record your first repair
 * [Daily use](Workbooks-Daily-use) - the worklog bar, the editor, marking areas on a schematic
@@ -42,5 +46,3 @@ So closing the last worklog closes the workbook, and adding a new worklog reopen
 ## Where it is stored
 
 On your own machine only. Never uploaded, never synced.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

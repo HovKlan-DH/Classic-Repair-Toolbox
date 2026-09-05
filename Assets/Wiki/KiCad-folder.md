@@ -1,5 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
+# KiCad folder
+
+The raw KiCad files that make a board's traces clickable.
+
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
+
+---
 
 A folder named exactly `KiCad data`, placed directly inside a board folder. It holds the raw KiCad files, and it is what makes the traces on a board clickable.
 
@@ -18,4 +23,4 @@ Rules:
 
 The board is not required to have this folder. Without it the board works as normal, just without clickable traces.
 
-See [How to add a new board with KiCad data](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Add-new-board-with-KiCad-data) for the full walkthrough.
+See [How to add a new board with KiCad data](Add-new-board-with-KiCad-data) for the full walkthrough.

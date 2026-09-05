@@ -1,8 +1,14 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Contribute data via GitHub
 
-When you have a major new contribution, e.g. a complete new board, then you should submit it directly to the _CRT_ GitHub repository, and in this way you will also be seen as a contributor. There are are some basic steps that you can follow, if you want to contribute data to CRT. It is quite easy, but it does require you have a GitHub account.
+Submit a whole new board through a pull request.
 
-- Fork the _CRT_ GitHub repository
+[Wiki Home](Home)
+
+---
+
+When you have a major new contribution, e.g. a complete new board, then you should submit it directly to the CRT GitHub repository, and in this way you will also be seen as a contributor. There are some basic steps that you can follow, if you want to contribute data to CRT. It is quite easy, but it does require you have a GitHub account.
+
+- Fork the CRT GitHub repository
 - Clone the fork to your local computer
 - **Create a new branch** (important!)
 - Do your own modifications:

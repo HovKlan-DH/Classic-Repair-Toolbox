@@ -1,4 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Information collected
+
+What CRT sends home, and what it does not.
+
+[Wiki Home](Home)
+
+---
 
 I want to be transparent here, and inform that I am gathering information about your setup, at every application launch, where the application does a mandatory "check-in":
 
@@ -8,7 +14,7 @@ I want to be transparent here, and inform that I am gathering information about 
 - Operating system version
   - Ex. `Microsoft Windows 10.0.19045`
   - Used for knowing if my rewrite to natively support Linux and macOS was worth it
-- CPU architechture used (32-bit or 64-bit)
+- CPU architecture used (32-bit or 64-bit)
   - Ex. `64-bit`
   - Used for knowing how wide usage that pesky self-contained .NET6 has (this is legacy and not used any more)
 

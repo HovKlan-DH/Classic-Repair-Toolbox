@@ -1,6 +1,12 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Synchronize oscilloscope
 
-When you select a baseline image in the component information window, _CRT_ can push the
+Set your scope up the same way the baseline was taken.
+
+[Wiki Home](Home)
+
+---
+
+When you select a baseline image in the component information window, CRT can push the
 oscilloscope settings stored with that image to your connected oscilloscope - the time base, the
 volts per division and the trigger level. The idea is that your own oscilloscope is then set up
 exactly like the one that captured the baseline, so what you see on your screen can be compared
@@ -15,7 +21,7 @@ settings by hand for every pin you probe.
 * Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it.
 * Click a component that has an oscilloscope baseline, and select one of its images.
 * In the component information window, make sure `Synchronize oscilloscope` is ticked. It is on by
-  default, but it is only available while _CRT_ is actually connected to the oscilloscope.
+  default, but it is only available while CRT is actually connected to the oscilloscope.
 
 Each time you select an image, the settings for that image are sent to the oscilloscope. The values
 being sent are also shown on the image itself, as the `T/DIV`, `V/DIV` and `T:` labels.
@@ -34,7 +40,7 @@ Only the values that are actually filled in are sent - an image with just a `T/D
 have its time base synchronized, and the rest of your oscilloscope settings are left alone. An image
 with none of the three, or with no pin number, is ignored entirely.
 
-Nothing else is touched. _CRT_ does not change your channel, probe attenuation, trigger source or
+Nothing else is touched. CRT does not change your channel, probe attenuation, trigger source or
 trigger slope - you have to set those up yourself.
 
 ## How the values are matched
@@ -59,5 +65,3 @@ which **SCPI commands** work for your specific oscilloscope model, as this varie
 within the same vendor. I do not know all oscilloscopes, nor do I have access to anything other than
 my own, so you will need to provide this data yourself. You can add and test the required data in
 the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscope`.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

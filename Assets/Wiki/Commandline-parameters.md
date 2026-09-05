@@ -1,6 +1,12 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Command-line parameters
 
-_CRT_ has three commandline parameters:
+Move the data or workbooks folder elsewhere, and fake an update.
+
+[Wiki Home](Home)
+
+---
+
+CRT has three commandline parameters:
 
 * [--data-root](#--data-root)
 * [--workbooks-root](#--workbooks-root)
@@ -62,5 +68,3 @@ Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothi
 The "Configuration" tab has a button `Open data/workbooks/log/settings folder`, which opens the folder holding your settings and log.
 
 The log file also has a `Data root is [...]` line near the top.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

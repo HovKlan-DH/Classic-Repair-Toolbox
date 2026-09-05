@@ -1,4 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# How to add a new board with KiCad data
+
+The full walkthrough: from a bare board photo to clickable traces.
+
+[Wiki Home](Home)
+
+---
 
 This page walks through contributing a **complete new board** whose schematics and PCB views are backed
 by a KiCad project, so that selecting a component highlights its actual copper traces, nets can be
@@ -42,10 +48,13 @@ the project has to satisfy four things:
 
 1. **Modern KiCad files.** Only `.kicad_pcb`, `.kicad_sch` and `.kicad_pro` are read (KiCad 6 and newer
    S-expression format). Legacy `.brd` / `.sch` files are ignored.
-2. **Reference designators must match your board labels.** This is *the* join that makes traces work: a
-   component highlighted as `U17` finds its copper by looking for a footprint whose reference is `U17`.
-   Matching is case-insensitive and trimmed, but otherwise exact. If the KiCad project calls the PLA
-   `U17` and your workbook calls it `PLA/U17`, nothing will highlight.
+2. **Reference designators must match your board labels.**
+
+   > [!WARNING]
+   > A component labelled `U17` finds its copper by looking for a footprint named `U17`. Call it
+   > `PLA/U17` in your workbook and nothing will highlight — with no error anywhere. Matching is
+   > case-insensitive and trimmed, but otherwise exact. This is the number one cause of
+   > "I did everything and no traces appear".
 3. **Nets should be named.** Net names are what the overlay groups copper by, and they are what you put
    in the `Important signals` sheet. KiCad's auto-generated names (`Net-(U1-Pad3)`) work, but they are
    useless to a human reading the signal list.
@@ -68,7 +77,7 @@ Board folders live under the data root as `<Manufacturer>/<Hardware>/<Board>/`. 
 ## Step 2 — Build the board Excel data file
 
 Copy an existing board `.xlsx` and empty the rows (maybe keep some for examples).\
-Keep the sheet names exactly, but reference the documentation for the many sheets and columns, [Explanation of data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files) and [Board Excel](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Board-Excel)
+Keep the sheet names exactly, but reference the documentation for the many sheets and columns, [Explanation of data files](Explanation-of-data-files) and [Board Excel](Board-Excel)
 
 ---
 
@@ -98,7 +107,7 @@ Classic-Repair-Toolbox.v<version>_UserContribution.xlsx
 Same name as the main Excel data file that the application resolved, with `_UserContribution` before the extension
 (e.g. `Classic-Repair-Toolbox.v2.0.0_UserContribution.xlsx`).
 
-The content of the user contribution file must be same format as the main Excel data file, but of course only with your data in it (one new board). View the format here, [Explanation of data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files) and [Main Excel](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Main-Excel).
+The content of the user contribution file must be same format as the main Excel data file, but of course only with your data in it (one new board). View the format here, [Explanation of data files](Explanation-of-data-files) and [Main Excel](Main-Excel).
 
 Its entries are merged into the hardware/board dropdowns at startup (an entry that duplicates one from
 the main Excel data file is skipped, with a warning in the log).
@@ -236,12 +245,10 @@ most mistakes are a warning in the logfile rather than a visible failure. Make s
 
 ## Submitting your data
 
-When you select a whole new board/system, then you should follow [Contribute data GitHub](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Contribute-data-via-GitHub) as this is a major new thing.
+When you select a whole new board/system, then you should follow [Contribute data GitHub](Contribute-data-via-GitHub) as this is a major new thing.
 
 **Make sure you submit data in a good quality!** No one wants to see a rough and fast implementation, as this only gives frustration when missing something or something is plain wrong. This is a fine balance though, because "quality data" is a never ending story and it can always improve, but at least do your best to satisfy the many users that will benefit from your data 🙏
 
 ## Connection with application developer
 
 There can be many causes why data misbehaves, so if e.g. you have some KiCad data not showing as expected or you do not understand something (probably due to none or wrong documentation), then please do not hesitate to connect with the developer. [View GitHub page for contact](https://github.com/HovKlan-DH/Classic-Repair-Toolbox#contact-developer).
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

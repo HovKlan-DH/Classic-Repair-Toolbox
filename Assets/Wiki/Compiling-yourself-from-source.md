@@ -1,6 +1,12 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Compiling yourself from source
 
-_CRT_ is a .NET 10 / Avalonia desktop application and builds with the plain `dotnet` CLI on all
+Build CRT on Windows, Linux or macOS with the plain `dotnet` CLI.
+
+[Wiki Home](Home)
+
+---
+
+CRT is a .NET 10 / Avalonia desktop application and builds with the plain `dotnet` CLI on all
 three platforms. The build is identical everywhere — only **how you install the .NET 10 SDK** differs.
 
 ## Contents
@@ -67,12 +73,13 @@ Build `Release` for anything you intend to use or measure; `Debug` is JIT-only a
 **Command line**
 
 ```
-dotnet build Classic-Repair-Toolbox.slnx -c Release bin\Release\net10.0\Classic-Repair-Toolbox.exe
+dotnet build Classic-Repair-Toolbox.slnx -c Release
+bin\Release\net10.0\Classic-Repair-Toolbox.exe
 ```
 
 ## Linux
 
-Install the NET 10 SDK - this is the only distro-specific part:
+Install the .NET 10 SDK - this is the only distro-specific part:
 
 | Distro | Command |
 | --- | --- |
@@ -154,7 +161,7 @@ pull request. If you add or change logic, add or update the tests in the same ch
 ## Where the hardware data comes from
 
 The ~1 GB in `Assets/Data` is **not** copied into the build output - official installers bundle it, but a
-source build does not. On first launch _CRT_ creates its data folder and downloads from its online source, `classic-repair-toolbox.dk`.
+source build does not. On first launch CRT creates its data folder and downloads from its online source, `classic-repair-toolbox.dk`.
 
 | Platform | Data folder |
 | --- | --- |
@@ -166,7 +173,7 @@ source build does not. On first launch _CRT_ creates its data folder and downloa
 Only the `win-x64` build bundles a `minipro` binary (committed at `Assets/MiniPro/win-x64/`, copied
 next to the executable automatically).
 
-On Linux and macOS, install `minipro` yourself, but please view [MiniPro programmer](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer).
+On Linux and macOS, install `minipro` yourself, but please view [MiniPro programmer](MiniPro-programmer).
 
 ## Troubleshooting
 
@@ -174,7 +181,7 @@ On Linux and macOS, install `minipro` yourself, but please view [MiniPro program
   * Run `dotnet --list-sdks`. No `10.x` entry means it is not installed or not on `PATH`. On Gentoo,
 check you ran `eselect dotnet set` and re-sourced `/etc/profile`.
 * **`--simulate-update` shows no banner**
-  * Tick "Check for new version at application launch" in the `Configuration` tab. Without it no update
+  * Tick "Check for new version at application launch" in the "Configuration" tab. Without it no update
 check runs, so there is nothing for the simulation to answer. The log states this at startup.
 * **Builds on Linux but exits immediately**
   * Avalonia needs fonts and ICU. On a minimal or container install add `fontconfig` and your distro's
@@ -182,5 +189,3 @@ check runs, so there is nothing for the simulation to answer. The log states thi
 * **Application launches but there is no hardware data**
   * Expected on a first run from source — it is downloading. See
 [Where the hardware data comes from](#where-the-hardware-data-comes-from).
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

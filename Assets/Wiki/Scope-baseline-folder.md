@@ -1,5 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
+# Scope baseline folder
+
+Oscilloscope screenshots from a known working board.
+
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
+
+---
 
 A folder named `Scope baseline` inside a board folder, holding oscilloscope screenshots from a known working board. You use them to compare against your own measurements when hunting a fault.
 
@@ -25,12 +30,10 @@ The images are not picked up from the folder on their own. Each one is a row in 
 
 Without those the image is treated as an ordinary component image instead.
 
-See [Board Excel](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Board-Excel) for the columns.
+See [Board Excel](Board-Excel) for the columns.
 
 ## Using them
 
-Click a component in the list, and the popup shows the baseline image for each pin. If your oscilloscope is connected, _CRT_ can also set it up with the same T/DIV and V/DIV values used for the baseline - see [Synchronize oscilloscope](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Synchronize-oscilloscope).
+Click a component in the list, and the popup shows the baseline image for each pin. If your oscilloscope is connected, CRT can also set it up with the same T/DIV and V/DIV values used for the baseline - see [Synchronize oscilloscope](Synchronize-oscilloscope).
 
 Do note that a matching reading is not a guarantee the chip is fine - it may simply not be active in the mode the machine is in.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

@@ -1,7 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Workbooks](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks).
+# Workbooks: daily use
 
 The bar, the editor, and the markers on the board.
+
+[Wiki Home](Home) · [Workbooks](Workbooks)
+
+---
 
 ## The worklog bar
 
@@ -19,7 +22,7 @@ The drop-down lists workbooks from **all** boards. Picking one from another boar
 
 ## Adding a worklog
 
-**Add worklog** -> drag a rectangle on the schematic -> the editor opens.
+**Add worklog** → drag a rectangle on the schematic → the editor opens.
 
 If you want to back out, click **Cancel entry** in the bar.
 
@@ -85,4 +88,6 @@ It asks which worklog. Worklogs that already have the component you were probing
 
 **Create new worklog** is always last in the list. It opens the editor with the image already attached, and the new worklog is filed against the schematic you have open, with no marked area.
 
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+---
+
+**Next:** [The Workbooks tab](Workbooks-The-Workbooks-tab) — browsing, searching and totals

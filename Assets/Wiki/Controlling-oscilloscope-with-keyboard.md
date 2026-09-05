@@ -1,6 +1,12 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Controlling oscilloscope with keyboard
 
-_CRT_ can control a network connected oscilloscope from the keyboard/numpad, from within the
+Drive a connected scope from the numpad, without leaving the schematic.
+
+[Wiki Home](Home)
+
+---
+
+CRT can control a network connected oscilloscope from the keyboard/numpad, from within the
 component information window - the popup that opens when you click a component. The controls are
 _not_ available on the "Oscilloscope" tab itself.
 
@@ -11,7 +17,7 @@ To enable and use the controls, do this:
 * Click a component that has an oscilloscope baseline (images depicting a working system), and
   select one of its images.
 * In the component information window, tick `Numpad controls oscilloscope`. The checkbox is only
-  available while _CRT_ is actually connected to the oscilloscope.
+  available while CRT is actually connected to the oscilloscope.
 * Make sure `NumLock` is on.
 
 The keys work while the component information window has focus. You can use these keys:
@@ -36,5 +42,3 @@ the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscop
 `TIME/DIV` and `VOLTS/DIV` value lists must be filled in as well as the command columns - the
 stepping keys resolve their target from those lists, and do nothing if the current value is not
 found there.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

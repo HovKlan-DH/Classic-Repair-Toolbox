@@ -1,7 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Workbooks](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks).
+# The Workbooks tab
 
 Where you browse your repair jobs.
+
+[Wiki Home](Home) · [Workbooks](Workbooks)
+
+---
 
 ```
 ┌───────────────┬──────────────────────────────────────────────┐
@@ -47,7 +50,7 @@ The selected workbook's number, title, status and note, plus four buttons:
 | Button | Does |
 | --- | --- |
 | Edit workbook | Change the description and note |
-| Delete workbook | Deletes the whole job - see [Export and your data](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks-Export-and-data) |
+| Delete workbook | Deletes the whole job - see [Export and your data](Workbooks-Export-and-data) |
 | Export to PDF | The customer document |
 | Export to ZIP | That PDF plus the original photos and files |
 
@@ -80,4 +83,6 @@ It does **not** search numbers (hours, cost, dates, id numbers) or the words Ope
 
 Searching never changes which workbook you are writing into. The box clears itself when you change board.
 
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+---
+
+**Next:** [Export and your data](Workbooks-Export-and-data) — PDF/ZIP, where files live, deleting

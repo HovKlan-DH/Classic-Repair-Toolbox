@@ -1,76 +1,17 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
+# Board Excel
 
-A board Excel file is placed in the folder for the individual board (system). As an example it could `Data C64 250407.xlsx` or `Data C64 250407 v2.0.0.xlsx`. The Excel file, alongside the main Excel file, is versionized meaning the version number represents the file will work from _FROM this version and onwards_.
+The data file for one board: its schematics, components, images, files and links.
+
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
+
+---
+
+A board Excel file is placed in the folder for the individual board (system). As an example it could `Data C64 250407.xlsx` or `Data C64 250407 v2.0.0.xlsx`. The Excel file, alongside the main Excel file, is versioned meaning the version number represents the file will work from _FROM this version and onwards_.
 
 The board Excel file is by far the most time consuming part, when building a new system from ground, as the data gathering part is hard/slow, if you want a good data quality (and yes, please... we want that).
 
 Below is the documentation for each of these worksheets and the columns inside those.
 
-The Excel file has many worksheets, so this will be a long documentation.
-
-* Worksheets:
-  * [Board schematics](#worksheet-board-schematics)
-    * Columns:
-      * [Schematic name](#column-schematic-name)
-      * [Schematic image file](#column-schematic-image-file)
-      * [Highlight colors](#columns-highlight-colors)
-      * [Highlight opacity](#columns-highlight-opacity)
-      * [CAD name](#column-cad-name)
-      * [UUID v4](#column-uuid-v4)
-  * [Components](#worksheet-components)
-    * Columns:
-      * [Board label](#column-board-label)
-      * [Friendly name](#column-friendly-name)
-      * [Technical name or value](#column-technical-name-or-value)
-      * [Part-number](#column-part-number)
-      * [Category](#column-category)
-      * [Region](#column-region)
-      * [Short one-liner description](#column-short-one-liner-description)
-      * [UUID v4](#column-uuid-v4-1)
-  * [Component images](#worksheet-component-images)
-    * Columns:
-      * [Board label](#column-board-label-1)
-      * [Region](#column-region-1)
-      * [Pin](#column-pin)
-      * [Name](#column-name)
-      * [Expected oscilloscope reading](#column-expected-oscilloscope-reading)
-      * [T/DIV](#column-tdiv)
-      * [V/DIV](#column-vdiv)
-      * [T.LVL](#column-tlvl)
-      * [File](#column-file)
-      * [Note](#column-note)
-      * [UUID v4](#column-uuid-v4-2)
-  * [Component local files](#worksheet-component-local-files)
-    * Columns:
-      * [Board label](#column-board-label-2)
-      * [Name](#column-name-1)
-      * [File](#column-file-1)
-      * [UUID v4](#column-uuid-v4-3)
-  * [Component links](#worksheet-component-links)
-    * Columns:
-      * [Board label](#column-board-label-3)
-      * [Name](#column-name-2)
-      * [URL](#column-url)
-      * [UUID v4](#column-uuid-v4-4)
-  * [Board local files](#worksheet-board-local-files)
-    * Columns:
-      * [Category](#column-category-1)
-      * [Name](#column-name-3)
-      * [File](#column-file-2)
-      * [UUID v4](#column-uuid-v4-5)
-  * [Board links](#worksheet-board-links)
-    * Columns:
-      * [Category](#column-category-2)
-      * [Name](#column-name-4)
-      * [URL](#column-url-1)
-      * [UUID v4](#column-uuid-v4-6)
-  * [Important signals](#worksheet-important-signals)
-    * Columns:
-      * [Display name](#column-display-name)
-      * [KiCad net name](#column-kicad-net-name)
-  * [Credits](#worksheet-credits)
-* [Common shared considerations for Excel data files](#common-shared-considerations-for-excel-data-files)
 
 ## Worksheet: Board schematics
 
@@ -95,7 +36,7 @@ Ideally this has a fairly high quality, but of course the visibility/performance
 ### Columns: Highlight colors
 
 Which color to use for component highlighting in the schematic images, both in the "Main" image but also for the thumbnails.\
-All allowed colors are available here, [https://learn.microsoft.com/en-us/dotnet/api/system.windows.media.colors?view=windowsdesktop-7.0](https://learn.microsoft.com/en-us/dotnet/api/system.windows.media.colors?view=windowsdesktop-7.0)
+Any [standard colour name](https://reference.avaloniaui.net/api/Avalonia.Media/Colors/) works, e.g. `Red`, `IndianRed`, `CornflowerBlue`
 
 ### Columns: Highlight opacity
 
@@ -109,8 +50,7 @@ The exact KiCad display name, which can be found in the logfile, if you have pla
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Components
 
@@ -158,8 +98,7 @@ Must be **one line only**!
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Component images
 
@@ -221,12 +160,11 @@ Typically (always?) the first image is the `Pinout` image, and this is special a
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Component local files
 
-Component local files will show in both the `Overview` tab and the component information popup in _CRT_.\
+Component local files will show in both the "Overview" tab and the component information popup in CRT.\
 It is a local file specifically for this component - e.g. a datasheet or technical documentation.
 
 ### Column: Board label
@@ -236,7 +174,7 @@ You can have multiple local files per component, so the board label is allowed t
 
 ### Column: Name
 
-Name for the file that will be shown in _CRT_.
+Name for the file that will be shown in CRT.
 
 ### Column: File
 
@@ -246,12 +184,11 @@ Use **relative** path from the `Data` folder.
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Component links
 
-Component URLs will show in both the `Overview` tab and the component information popup in _CRT_.\
+Component URLs will show in both the "Overview" tab and the component information popup in CRT.\
 It is a URL specifically for this component - e.g. a technical documentation or troubleshooting references.
 
 ### Column: Board label
@@ -261,7 +198,7 @@ You can have multiple links per component, so the board label is allowed to dupl
 
 ### Column: Name
 
-Name for the link that will be shown in _CRT_.
+Name for the link that will be shown in CRT.
 
 ### Column: URL
 
@@ -269,12 +206,11 @@ The URL will be opened in your default browser.
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Board local files
 
-Board local files will show in the `Resources` tab in _CRT_.\
+Board local files will show in the "Resources" tab in CRT.\
 It is meant as a general documentation for the board - e.g. generic diagnosing or troubleshooting.
 
 ### Column: Category
@@ -284,7 +220,7 @@ You can have multiple local files per category, so the category name is allowed 
 
 ### Column: Name
 
-Name for the file that will be shown in _CRT_.
+Name for the file that will be shown in CRT.
 
 ### Column: File
 
@@ -294,12 +230,11 @@ Use **relative** path from the `Data` folder.
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Board links
 
-Board URLs will show in the `Resources` tab in _CRT_.\
+Board URLs will show in the "Resources" tab in CRT.\
 It is meant as a general documentation for the board - e.g. generic diagnosing or troubleshooting.
 
 ### Column: Category
@@ -309,7 +244,7 @@ You can have multiple URLs per category, so the category name is allowed to dupl
 
 ### Column: Name
 
-Name for the link that will be shown in _CRT_.
+Name for the link that will be shown in CRT.
 
 ### Column: URL
 
@@ -317,8 +252,7 @@ The URL will be opened in your default browser.
 
 ### Column: UUID v4
 
-A unique identifier, used when user contributes data via the "Contribute" tab.\
-The UUID can be obtained from https://classic-repair-toolbox.dk/uuid/ and must be globally unique.
+See [UUIDs](#uuids) at the bottom of this page.
 
 ## Worksheet: Important signals
 
@@ -327,7 +261,7 @@ It does require KiCad data.
 
 ### Column: Display name
 
-The name to display in the _CRT_ list in the schematics image.\
+The name to display in the CRT list in the schematics image.\
 Many times the KiCad data is weird to look at, so this is the "human readable" name for it.\
 A display name can be repeated many times, as it then will show all the KiCad net names belonging to it.
 
@@ -340,16 +274,14 @@ This is data that can be gathered from the logfile, where it will dump all these
 Will show who has contributed with data to this board.\
 Shown in the "About" tab.
 
-# Common shared considerations for Excel data files
+## Rules for every Excel file
 
-There are a few important things to know generally for these Excel files.
+See [Data files](Explanation-of-data-files#rules-for-every-excel-file) — the same rules apply to every Excel file.
 
-* You should not have empty rows in the middle of your data, as this will be considered as _end of data_.
-* If there is a yellowish highlight in the data cell, it means the data needs to be validated or corrected manually.
-* No formatting (colors, bold or italic etc.) will be carried over from Excel to _CRT_ UI.
-* All paths uses `/` instead of `\` (to support Linux and macOS).
-* Treat all folders and filenames as case-sensitive (to support Linux and macOS)
-* Check logfile after startup, as it will reveal any errors with the data files.
+## UUIDs
 
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
+Several sheets have a `UUID v4` column. It is a unique identifier used when you contribute data
+through the "Contribute" tab, so the server can tell an edited row from a new one.
+
+Get one from [classic-repair-toolbox.dk/uuid](https://classic-repair-toolbox.dk/uuid/). It must be
+globally unique — never copy one from another row.

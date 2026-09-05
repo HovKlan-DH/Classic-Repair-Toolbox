@@ -1,5 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Explanation data files](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Explanation-of-data-files).
+# Board JSON
+
+Where each component sits on each schematic image. Written by the app, not by hand.
+
+[Wiki Home](Home) · [Data files](Explanation-of-data-files)
+
+---
 
 Every board folder in the data tree holds two files that share the same name — one `.xlsx` and one `.json`:
 
@@ -54,9 +59,7 @@ The file has two independent top-level sections ("roots"), both optional:
 }
 ```
 
-Most boards only have the first. The two are genuinely independent: when the app saves one, it re-reads
-the whole file, keeps everything else untouched, and writes the roots back in alphabetical order. That
-also means a future feature can add a third root without disturbing your work.
+Most boards only have the first. Saving one never disturbs the other.
 
 ---
 
@@ -136,16 +139,10 @@ component row in the Excel `Components` sheet, and the rule is:
 
 One label, one set of rectangles; the Excel row decides whether it is drawn.
 
-### Ordering and formatting the app produces
+### Do not reformat the file
 
-When the app writes this file it uses two-space indentation, sorts the roots alphabetically, sorts board
-labels **naturally** (`C2`, `C9`, `C10` — not `C1`, `C10`, `C2`), and sorts the rectangles inside a label
-top-to-bottom then left-to-right. The file is UTF-8 without BOM; line endings follow whichever OS saved
-it, which is harmless.
-
-Reading is completely order-independent, so a hand-written file in a different order still works. But if
-you reformat or re-sort by hand, the next save from the app puts it all back, and your contribution then
-shows hundreds of changed lines that are not actually changes. **Let the app own the formatting.**
+The app owns the formatting. If you re-sort or pretty-print it by hand, the next save puts it all
+back — and your contribution then shows hundreds of changed lines that are not changes.
 
 ---
 
@@ -188,7 +185,7 @@ overlay drifts, redo the calibration; it takes a minute and it is the only relia
 This file is written by the app. Editing it by hand is possible, but it is not the intended workflow and
 it is very easy to produce something that is valid JSON and still wrong.
 
-1. **Schematics** tab → in the settings panel, tick **Enable contributor mode**.
+1. "Schematics" tab → in the settings panel, tick **Enable contributor mode**.
 2. **Right-click** the schematic image (a click, not a drag) to open the floating menu.
 3. Choose **Enable component label editor** (or **Calibrate KiCad traces** for the KiCad root).
 4. Drag to draw a rectangle; drag the handles to resize; drag the middle to move; right-click a rectangle

@@ -1,7 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Workbooks](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks).
+# Workbooks: export and your data
 
 Handing the job over, where the files live, and deleting.
+
+[Wiki Home](Home) · [Workbooks](Workbooks)
+
+---
 
 ## Export
 
@@ -69,7 +72,7 @@ Workbooks/
 
 Close the application first, so you do not catch a file mid-write.
 
-You can put the folder somewhere else with `--workbooks-root=`, see [Commandline parameters](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Commandline-parameters).
+You can put the folder somewhere else with `--workbooks-root=`, see [Commandline parameters](Commandline-parameters).
 
 ## Deleting
 
@@ -88,5 +91,3 @@ Delete workbook #2 of two, and the next one you create is **#3**. The gap stays.
 That is deliberate: #2 may name a PDF you have already emailed to a customer, and reusing the number would make that document describe a different repair.
 
 Same for worklog numbers, and deleting one does not renumber the rest.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

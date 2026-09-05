@@ -40,7 +40,9 @@ These files are written to be **pasted into the Wiki**, so they follow the Wiki'
 rather than this repository's:
 
 - **Internal links have no path and no extension**: `[Board JSON](Board-JSON)`, never
-  `[Board JSON](./board-json.md)`. A relative path breaks the moment it is pasted into a page.
+  `[Board JSON](./board-json.md)` and never a full `https://github.com/.../wiki/...` URL. A relative
+  path breaks the moment it is pasted into a page, and an absolute one is 65 characters of noise
+  that breaks if the repository ever moves.
 - **Images stay as `<img>` tags pointing at their `user-attachments` URL**, exactly as the Wiki
   holds them. Text pasted into a Wiki page cannot carry an image file with it, so the URL must
   survive the paste untouched.
@@ -48,6 +50,33 @@ rather than this repository's:
 `images/` holds reference copies of those images so they are versioned and cannot be lost if the
 upload URL ever disappears. **The Wiki does not read from this folder** — it is a backup, not a
 source. Repointing a page at it would break the image.
+
+## Page conventions
+
+Every page opens the same way, so a reader knows where they are:
+
+```markdown
+# Page Title
+
+One or two lines: what this page gets you.
+
+[Wiki Home](Home) · [Parent page](Parent-Page)
+
+---
+```
+
+- **One `#` H1 per page**, the title. Sections are `##`. `Home` is the exception — the Wiki renders
+  its own title there.
+- **No "Go to Wiki Home" footers.** `_Sidebar.md` is rendered by GitHub on every page and does that
+  job; a hand-maintained footer rots (it was missing from 9 of 24 pages before).
+- **The app is `CRT`** — not `_CRT_`, not "the application", not "the app".
+- **Bold for anything clickable** (**Add worklog**), **backticks for literal text** you type or a
+  file, folder or column name (`Board label`).
+- **Tabs are quoted**: the "Configuration" tab.
+- **A task page ends with an "If it does not work" table.** Symptom on the left, likely cause on the
+  right. This is the most-used thing on the pages that have it.
+- **`> [!WARNING]` only for "you will lose work or it will silently not work"**, `> [!NOTE]` for
+  everything else. Nothing else.
 
 ## Updating a page
 

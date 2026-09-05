@@ -1,23 +1,29 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# MiniPro programmer
 
-_CRT_ can test logic ICs and the C64 PLA with a MiniPro programmer (TL866/T48/T56-class), directly
+Test a logic IC or a C64 PLA out of the board.
+
+[Wiki Home](Home)
+
+---
+
+CRT can test logic ICs and the C64 PLA with a MiniPro programmer (TL866/T48/T56-class), directly
 from the component info popup. The IC must be out of the board and seated in the ZIF socket -
 nothing is tested in-circuit.
 
 > [!NOTE]
-> I want to highlight, to be fair, that this feature is fully implemented and contributed by [@theretroloft](https://github.com/theretroloft), as I personally have no experience with how a MiniPro works or what it can be used for. I have merely changed some UI, but [@theretroloft](https://github.com/theretroloft) has done the huge heavy-lifting and implemented it in _CRT_.
+> I want to highlight, to be fair, that this feature is fully implemented and contributed by [@theretroloft](https://github.com/theretroloft), as I personally have no experience with how a MiniPro works or what it can be used for. I have merely changed some UI, but [@theretroloft](https://github.com/theretroloft) has done the huge heavy-lifting and implemented it in CRT.
 > Also note that the communication is through the GitLab project, [minipro](https://gitlab.com/DavidGriffith/minipro).
 
 ## Enable it in CRT
 
 * Go to the "Configuration" tab:
   * Tick `Enable MiniPro programmer functionality`
-  * There is no need for you to enable the simulated demo mode, as this is used for _CRT_ development
+  * There is no need for you to enable the simulated demo mode, as this is used for CRT development
     only
 
-# What to install on your local system?
+## What to install on your local system?
 
-If you use Windows, then the MiniPro application is distributed with the _CRT_ application and can be
+If you use Windows, then the MiniPro application is distributed with the CRT application and can be
 used out-of-the-box. If you use Linux or macOS, then you will need to install or compile MiniPro
 yourself and make the executable available to CRT.
 
@@ -65,14 +71,14 @@ help for others):
 * Build MiniPro, and then copy the `minipro` executable to `/usr/local/bin`
 * Check from anywhere in a terminal session that you can execute the `minipro` application
 
-# Which ICs can be tested?
+## Which ICs can be tested?
 
 The `Test IC with MiniPro programmer` button only appears for components that are categorized as an
 `IC` and that have a test in CRT's test catalogue - currently 29 of the 74-series logic ICs plus the
 C64 PLA (`906114-01`). The catalogue is part of the online-synchronized data, so new tests can arrive
 without a new version of CRT.
 
-# How to test a logic IC in CRT?
+## How to test a logic IC in CRT?
 
 * Insert the IC in the ZIF socket, with pin 1 of the IC aligned with pin 1 of the socket
 * Go to a logic component (e.g. `7406` or `74LS139` or alike) and open the component information
@@ -80,7 +86,7 @@ without a new version of CRT.
   * Click the `Test IC with MiniPro programmer` button
   * Click the `Run test` button - it should finish almost instantly
 
-# How to test a C64 PLA IC in CRT?
+## How to test a C64 PLA IC in CRT?
 
 * Insert the IC in the ZIF socket, with pin 1 of the IC aligned with pin 1 of the socket
 * Go to the PLA component and open the component information popup
@@ -88,7 +94,7 @@ without a new version of CRT.
   * Choose either `Quick (25 vectors)` or `Standard (512 vectors)` in the `Test depth` drop-down
   * Click the `Run test` button - it should finish almost instantly
 
-# Important note for test results
+## Important note for test results
 
 You can for sure trust the result if the test reports a FAIL - then the IC is for sure broken - but
 if the test reports a SUCCESS, then you need to pay attention to this fact:
@@ -100,5 +106,3 @@ if the test reports a SUCCESS, then you need to pay attention to this fact:
 The reason for this is that the MiniPro hardware (TL866/T48/T56) is simply not fast enough for this
 timing test! As a best guess, the IC will most likely work without any issues in the C64 if it tested
 OK in CRT.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).

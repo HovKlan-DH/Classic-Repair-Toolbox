@@ -1,11 +1,16 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).\
-Go to [Workbooks](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks).
+# Workbooks: getting started
+
+Turn it on, and record your first repair.
+
+[Wiki Home](Home) · [Workbooks](Workbooks)
+
+---
 
 From nothing to a recorded repair.
 
 ## 1. Turn it on
 
-"Configuration" tab -> tick **Enable Workbooks tab**.
+"Configuration" tab → tick **Enable Workbooks tab**.
 
 You now have a "Workbooks" tab, and a bar above the tabs.
 
@@ -53,8 +58,10 @@ Set the worklog to **Closed** when it is done. When the last one closes, so does
 
 ## 6. Hand it over
 
-"Workbooks" tab -> **Export to PDF** for the customer, or **Export to ZIP** to include the original photos and files.
+"Workbooks" tab → **Export to PDF** for the customer, or **Export to ZIP** to include the original photos and files.
 
-See [Export and your data](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks-Export-and-data).
+See [Export and your data](Workbooks-Export-and-data).
 
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+---
+
+**Next:** [Daily use](Workbooks-Daily-use) — the bar, the editor, and markers on the board

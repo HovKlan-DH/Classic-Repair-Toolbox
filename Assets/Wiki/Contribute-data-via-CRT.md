@@ -1,4 +1,10 @@
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
+# Contribute data via CRT
+
+Fix a value or add a datasheet from inside the application.
+
+[Wiki Home](Home)
+
+---
 
 Spotted a wrong value, a missing part number, or do you have a datasheet, photo or scope
 reading that others would benefit from? You can suggest it directly from the **Contribute**
@@ -84,10 +90,8 @@ to the top and bottom of a long form.
 
 ## Worth knowing
 
-Do note that the edits you do will _not_ be used here-and-now in your own setup - it is meant as a suggestion for the developer to consider your data edit, and if this is then approved, then it will be incorporated to the online data source, and then it will be available from there. This is normally a pretty fast process... at least within a week or so 😁
+Your own copy does not change. The suggestion goes to the developer, and once approved it reaches everyone with the next data sync — usually within a week.
 
 ## That's it
 
 Thank you — every correction makes the data better for the next person repairing the same board.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
