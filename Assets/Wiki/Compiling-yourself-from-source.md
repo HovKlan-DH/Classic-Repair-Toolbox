@@ -6,9 +6,8 @@ three platforms. The build is identical everywhere — only **how you install th
 ## Contents
 
 - [Before you start](#before-you-start)
-- [Quick start (any platform)](#quick-start-any-platform)
+- [Quick start (any platform)](#quick-start-to-build-the-executable-any-platform)
 - [Debug vs Release](#debug-vs-release)
-- [Command-line switches](#command-line-switches)
 - [Windows](#windows)
 - [Linux](#linux)
 - [macOS](#macos)

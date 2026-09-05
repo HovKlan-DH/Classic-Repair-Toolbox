@@ -8,9 +8,9 @@ The Excel file, alongside the board Excel files, is versionized meaning the vers
 The Excel file has only two worksheets, so it is pretty simple compared to the board files.
 
 * Worksheets:
-  * [Hardware & Board](#worksheet-hardware--board)
+  * [Hardware & Board](#worksheet-hardware-board)
     * Columns:
-      * [Hardware name in drop-down](#column-hardware-name-in-drop-dow)
+      * [Hardware name in drop-down](#column-hardware-name-in-drop-down)
       * [Board name in drop-down](#column-board-name-in-drop-down)
       * [Excel data file](#column-excel-data-file)
       * [Hardware notes in "Overview" tab](#column-hardware-notes-in-overview-tab)

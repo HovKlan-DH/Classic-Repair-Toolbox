@@ -20,10 +20,11 @@ Last reviewed: **2026-09-05**
 | `Development-tools-used` | **Corrected.** Listed Newtonsoft.Json, which the project does not use; QuestPDF was missing. Dated model lists removed | Exists |
 | `KiCad-folder` | **Written.** Was "Must be written &lt;SIGH&gt;" | Exists |
 | `Scope-baseline-folder` | **Written.** Was "Must be written &lt;SIGH&gt;" | Exists |
-| `Board-Excel` | 2 links fixed (see below) | Exists |
-| `Main-Excel` | 2 links fixed (see below) | Exists |
+| `Board-Excel` | 2 links fixed (see below), plus a broken contents anchor (`#technical-name-or-value` was missing its `column-` prefix) | Exists |
+| `Main-Excel` | 2 links fixed (see below), plus 2 broken contents anchors (a truncated `drop-dow`, and a doubled hyphen from the `&`) | Exists |
 | `Board-JSON` | 1 link fixed (see below) | Exists |
 | `Workbooks` | **Written.** Was "Will come... soon" — now an index | Exists |
+| `Compiling-yourself-from-source` | Contents anchor fixed for the reworded "Quick start" heading, and the dead `Command-line switches` entry removed (those live on `Commandline-parameters`) | Exists |
 
 ## Pages to CREATE — 4
 
@@ -37,9 +38,9 @@ These do not exist in the Wiki. Create each with **New Page**, named exactly as 
 | `Workbooks-The-Workbooks-tab` |
 | `Workbooks-Export-and-data` |
 
-## Already in sync — 13
+## Already in sync — 11
 
-No action needed: `Home`, `Add-new-board-with-KiCad-data`, `Compiling-yourself-from-source`,
+No action needed: `Home`, `Add-new-board-with-KiCad-data`,
 `Contribute-data-via-CRT`, `Contribute-data-via-GitHub`, `Controlling-oscilloscope-with-keyboard`,
 `Explanation-of-data-files`, `Information-collected`, `Inspiration-for-creating-application`,
 `Installing-application-in-Linux`, `MiniPro-programmer`, `Synchronize-oscilloscope`.
@@ -50,12 +51,3 @@ Seven links pointed at `wiki/Explanation-data-files`, a page that has never exis
 (the real one is `Explanation-of-data-files`), so they 404 in the Wiki today. Corrected in
 `Board-Excel` (2), `Main-Excel` (2), `Board-JSON` (1), `KiCad-folder` (1) and
 `Scope-baseline-folder` (1).
-
-## Known content issues, not yet addressed
-
-Not blocking a sync — recorded so they are not rediscovered each time:
-
-- **`Board-Excel`** has a table-of-contents entry, `#technical-name-or-value`, pointing at a
-  heading that no longer exists.
-- **`Compiling-yourself-from-source`** lists `Command-line switches` in its contents, but the page
-  has no such section.

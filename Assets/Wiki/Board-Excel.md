@@ -22,7 +22,7 @@ The Excel file has many worksheets, so this will be a long documentation.
     * Columns:
       * [Board label](#column-board-label)
       * [Friendly name](#column-friendly-name)
-      * [Technical name or value](#technical-name-or-value)
+      * [Technical name or value](#column-technical-name-or-value)
       * [Part-number](#column-part-number)
       * [Category](#column-category)
       * [Region](#column-region)
