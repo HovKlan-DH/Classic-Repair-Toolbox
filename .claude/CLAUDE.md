@@ -43,7 +43,7 @@ page has been updated — say which files changed and that they are ready to be 
   convention everywhere else in this repo, and it is deliberate.
 - **`Assets/Wiki/images/`** holds reference copies only. The Wiki does not read from it, and
   repointing a page at it would break the image.
-- **[Assets/Wiki/_sync-status.md](../Assets/Wiki/_sync-status.md)** records which pages have been
+- **[Assets/Wiki/!sync-status.md](../Assets/Wiki/%21sync-status.md)** records which pages have been
   pasted, and at which commit. Update it only when the maintainer CONFIRMS a page is pasted — it
   is a record of the Wiki's real state, not of this folder's.
 - **When asked for a sync diff**, list the pages whose files changed since their last-synced

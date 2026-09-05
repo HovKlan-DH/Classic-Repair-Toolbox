@@ -53,9 +53,9 @@ source. Repointing a page at it would break the image.
 
 1. Edit the `.md` file here, in the same commit as whatever code change made it necessary.
 2. When ready to publish, ask for the pages that have drifted — see
-   [`_sync-status.md`](./_sync-status.md) for what has been copied across and when.
+   [`!sync-status.md`](./%21sync-status.md) for what has been copied across and when.
 3. Open the named Wiki page, select all, paste the file's contents, save.
-4. Confirm, so [`_sync-status.md`](./_sync-status.md) can be brought up to date.
+4. Confirm, so [`!sync-status.md`](./%21sync-status.md) can be brought up to date.
 
 ## Pages deliberately NOT mirrored here
 

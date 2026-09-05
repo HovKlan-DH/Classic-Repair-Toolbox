@@ -13,12 +13,9 @@ Data/Commodore/C64/250469/
 Rules:
 
 * Only `.kicad_pcb`, `.kicad_sch` and `.kicad_pro` are read (KiCad 6 and newer).
-* Top level only - files in sub-folders are ignored.
 * Nothing to register. The application finds the folder on its own.
 * Do not add footprint libraries, 3D models, gerbers or backups. Everything here is downloaded by every user.
 
 The board is not required to have this folder. Without it the board works as normal, just without clickable traces.
 
 See [How to add a new board with KiCad data](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Add-new-board-with-KiCad-data) for the full walkthrough.
-
-Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
