@@ -1,13 +1,13 @@
 ﻿# Classic Repair Toolbox
 
-_Classic Repair Toolbox_ (or _CRT_ hence forward) is a cross-platform desktop application to assist hardware enthusiasts in diagnosing, troubleshooting, and repairing vintage computers and peripherals.
+_Classic Repair Toolbox_ (or _CRT_ henceforward) is a cross-platform desktop application to assist hardware enthusiasts in diagnosing, troubleshooting, and repairing vintage computers and peripherals.
 
 The project is a direct spin-off from an older project, _Commodore Repair Toolbox_ which now resides in a faint and distant memory only. The new _Classic_ project was realized as a complete rewrite, to be able to add natively support for **Linux** and **macOS**, but also to be able to support more hardware and not focus primarily on Commodore (Amstrad, ZX Spectrum and even different hardware types etc.).
 
 
 ## What can it do?
 
-With _CRT_ you can easily view technical schematics, zoom, identify components, view chip pinouts, use interactive (KiCad) traces or do manual circuit tracing, study datasheets, view oscilloscope images, resources and various other information, helping you diagnosing and repairing old vintage hardware.
+With CRT you can easily view technical schematics, zoom, identify components, view chip pinouts, use interactive (KiCad) traces or do manual circuit tracing, test ICs with a MiniPro programmer, study datasheets, view oscilloscope images, resources and various other information, helping you diagnosing and repairing old vintage hardware. You can also keep track on your repairs via the _Workbook_ feature.
 
 It is (for now) having Commodore computers with the most documented systems, but it also has an Amstrad and a ZX Spectrum board (more systems will come for sure), but it can support any kind of hardware, as you can add your own data - e.g. other computers, radios, DIY electronics or whatever else you can imagine. It probably works the best, if the hardware is "simple" and have good documentation available, like schematics, and if it is something you need to revisit multiple times - then you can add the needed information yourself, and use it for easy future reference.
 
@@ -35,7 +35,7 @@ It is (for now) having Commodore computers with the most documented systems, but
   - **Linux** (64-bit)
 - Disk space needed: ~**2GB**
 
-Note that the newest .NET LTS (Long-Term Support) is embedded in application, which means you do not need to have this installed. It also does mean that even if you have .NET installed on your computer, then it will still use the one embedded in application. Do note that it is the newest LTS at build time - it will _not_ get updated automatically and will stay as-is, until a newer version of _CRT_ is released.
+Note that the newest .NET LTS (Long-Term Support) is embedded in application, which means you do not need to have this installed. It also does mean that even if you have .NET installed on your computer, then it will still use the one embedded in application. Do note that it is the newest LTS at build time - it will _not_ get updated automatically and will stay as-is, until a newer version of CRT is released.
 
 
 ## Full documentation
@@ -45,18 +45,18 @@ Please go to the [Wiki](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wik
 
 ## Installation and usage
 
-Download the newest normal (non-BETA) _CRT_ version from [Releases](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases), and install it. The installation folder cannot be chosen by the user and is determined by the installation process. In the "Configuration" tab you can open the folder and see where the configuration and data files are stored.
+Download the newest normal (non-BETA) CRT version from [Releases](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases), and install it. The installation folder cannot be chosen by the user and is determined by the installation process. In the "Configuration" tab you can open the folder and see where the configuration and data files are stored.
 
 If you want the actual data stored elsewhere than default, then this can be changed via a command-line parameter, view [Commandline parameters](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Commandline-parameters).
 
-Depending on your configuration settings, then _CRT_ will check for newer data from its online source at application launch. It is recommended to have this enabled, as there will come many updates over time.
+Depending on your configuration settings, then CRT will check for newer data from its online source at application launch. It is recommended to have this enabled, as there will come many updates over time.
 
 When a new version is released it will (per default, but can be configured) be shown to you in the application, and you can update directly from within the application.
 
 
 ## YouTube Quick-Help videos available
 
-You can view the below _Quick Help_ videos for introduction to specific topics in _CRT_:
+You can view the below _Quick Help_ videos for introduction to specific topics in CRT:
 
 - [Short introduction](https://youtu.be/fwR018x39qg)
 - [How to do manual traces](https://youtu.be/JUNXeCHsrME)
@@ -64,7 +64,7 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 - [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
 - [How to use interactive traces](https://youtu.be/Y55nC_gJbH4)
 
-  
+
 ## Built-in hardware and boards
 
 - **Amstrad CPC 664**
@@ -219,7 +219,7 @@ Some images can also have detailed explanation:
 
 ## License
 
-_CRT_ is licensed under the **GNU General Public License v3** - see [LICENSE.txt](LICENSE.txt) for the
+CRT is licensed under the **GNU General Public License v3** - see [LICENSE.txt](LICENSE.txt) for the
 full license text.
 
 Do note that this covers the application itself. The hardware reference data (schematics, datasheets,
