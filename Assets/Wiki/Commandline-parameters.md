@@ -1,51 +1,66 @@
 Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
 
-_CRT_ has two  commandline parameters:
+_CRT_ has three commandline parameters:
 
 * [--data-root](#--data-root)
+* [--workbooks-root](#--workbooks-root)
 * [--simulate-update](#--simulate-update)
 
 ## --data-root
 
-Here you can specify which data folder you want to use. The data folder is where _CRT_ places all the data files it fetches from its
-online source, and as this is a lot of data - close to 1 GB - then in some cases it can be useful to keep it somewhere else, for example on another drive.
+Puts the downloaded data (schematics, board data, images - close to 1 GB) somewhere else, for example on another drive.
 
-If you do not use the parameter, then the data folder is:
+```
+--data-root=D:\CRT-data
+--data-root="D:\My Folder With Spaces"
+--data-root=/mydata/crt
+```
+
+Default if you do not use it:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data`
 * Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Data`
 
-It is deliberately placed outside the installation folder, because the installation folder is
-replaced when _CRT_ updates itself - data kept there would not survive an update.
+Good to know:
 
-If the path does not exist, then _CRT_ will try and create it. Note that the first start with a new
-data folder takes a while, as the data is copied into it from the installation folder.
+* Use a full path, not a relative one.
+* Do not end the path with `\` or `/`.
+* The folder is created if it does not exist. The first start then takes a while, as the data is copied into it.
+* Your settings, log and workbooks stay where they are - this moves the downloaded data only.
 
-Parameter examples:
-- `--data-root=/mydata/crt`
-- `--data-root="D:\My Folder With Spaces"`
+## --workbooks-root
 
-A few things worth knowing:
+Puts your workbooks (repair jobs) somewhere else - for example on a synced drive, so you have them on more than one machine.
 
-* Use a full path. A relative path is resolved from wherever _CRT_ happens to be started from,
-  which is rarely what you want.
-* Do not end the path with a backslash or a slash - on Windows a trailing `\` in front of the
-  closing quote is read as an escaped quote, and the path gets mangled.
-* The parameter itself is not case-sensitive, and anything else you put on the commandline is
-  ignored.
-* If you are in doubt about which folder is actually being used, then look in the log file for the
-  `Data root is [...]` line. The log and your settings always stay in
-  `%LocalAppData%\Classic-Repair-Toolbox` (`~/.local/share/Classic-Repair-Toolbox`) no matter what
-  you set here, and the `Open data/log/settings folder` button on the "Configuration" tab opens
-  exactly that folder.
+```
+--workbooks-root=D:\Repairs
+--workbooks-root="D:\My Repair Jobs"
+```
+
+Default if you do not use it:
+
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Workbooks`
+* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
+
+Same rules as `--data-root` above.
 
 ## --simulate-update
 
-Here you can simulate as like a newer version is available online - to view how the UI for that would look like. You give it a version number like this:
+Shows the "a new version is available" banner without a new version existing, so you can see what it looks like.
 
-- `----simulate-update=2.5.0`
-- `----simulate-update=2.5.1-beta.2`
+```
+--simulate-update
+--simulate-update=2.5.1-beta.2
+```
 
-The UI will then show how this looks like, and clicking the "Install" button will simulate that, but without doing anything else, rather than go from 0% to 100% (no application restart or alike).
+Without a version number it pretends version `99.0.0` is available.
+
+Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothing is downloaded and the application does not restart.
+
+## Which folders am I actually using?
+
+The "Configuration" tab has a button `Open data/workbooks/log/settings folder`, which opens the folder holding your settings and log.
+
+The log file also has a `Data root is [...]` line near the top.
 
 Go to [Wiki Home](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
