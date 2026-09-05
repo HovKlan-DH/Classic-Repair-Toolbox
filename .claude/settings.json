@@ -8,6 +8,12 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/require-green-tests.sh\"",
             "timeout": 300,
             "statusMessage": "Verifying the test suite is green..."
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-wiki-mirror.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking whether any Wiki page needs updating..."
           }
         ]
       }

@@ -52,6 +52,12 @@ page has been updated — say which files changed and that they are ready to be 
 **Documentation changes ship in the same commit as the code they describe.** When a change alters
 behaviour a mirrored page documents, update that page in the same commit and say so.
 
+**This one is machine-checked.** The `Stop` hook [hooks/remind-wiki-mirror.sh](hooks/remind-wiki-mirror.sh)
+maps code paths to the pages that document them, and names any whose code changed while the page
+did not. It WARNS rather than blocking - whether a change is user-visible is a judgement call, and
+unlike a red suite there is no objective pass/fail - so read the list and decide. When a page starts
+documenting new code, add the mapping to that script's `MAP`.
+
 **Five Wiki pages are opened by buttons in the shipped app** (`Workbooks`, `MiniPro-programmer`,
 `Controlling-oscilloscope-with-keyboard`, `Synchronize-oscilloscope` — see
 `TabConfiguration.axaml.cs` and `ComponentInfoWindow.axaml.cs`). Renaming or deleting one breaks a

@@ -70,3 +70,7 @@ nunit-*.xml
 
 # Webserver content
 Assets/Webserver/
+
+# Stop-hook state stamps (local, per-clone)
+.claude/.tests-green
+.claude/.wiki-reminded
