@@ -7,28 +7,54 @@ mirror works.
 
 ---
 
-# ✅ Everything is in sync
+# ⚠️ 8 pages to create, 3 to update
 
-Verified against the live Wiki on **2026-09-06**: all 26 mirrored pages are byte-for-byte identical,
-every internal link and heading anchor resolves, and no page carries a `#` H1 any more — the four
-`Workbooks-*` sub-pages that still had one have been brought into line with the rest.
+A page per tab was added, closing the gaps found by auditing the application against the Wiki.
 
-**Nothing to paste.**
+## Create these — 8 new pages
 
-## What came back from the Wiki this time
+Use **New Page** in the Wiki and name each one exactly as shown, or the links from Home and the
+sidebar will not resolve.
 
-The pages were edited in the Wiki rather than here, so the mirror was updated *from* the Wiki — the
-reverse of the usual direction. Every change was a layout decision, and no content was lost:
+| # | Create this Wiki page | Copy from |
+| --- | --- | --- |
+| 1 | `The-Schematics-tab` | `The-Schematics-tab.md` |
+| 2 | `The-Overview-tab` | `The-Overview-tab.md` |
+| 3 | `The-Resources-tab` | `The-Resources-tab.md` |
+| 4 | `The-Oscilloscope-tab` | `The-Oscilloscope-tab.md` |
+| 5 | `The-Contribute-tab` | `The-Contribute-tab.md` |
+| 6 | `The-Configuration-tab` | `The-Configuration-tab.md` |
+| 7 | `The-Feedback-tab` | `The-Feedback-tab.md` |
+| 8 | `The-About-tab` | `The-About-tab.md` |
 
-- **The `#` H1 title was removed from every page that had one.** The Wiki already renders the page
-  name as a heading, so an H1 in the body said it twice.
-- **The breadcrumb and the summary swapped places**, so a page now opens with
-  `[Wiki Home](Home)`, then the one-line summary, then a `---` rule.
-- **`Home` and `_Sidebar` use bullet lists** instead of middle-dot separators, and `Home` now lists
-  the four `Workbooks-*` sub-pages under their parent.
+## Then update these — 3 pages
 
-[`README.md`](./README.md) has been updated so the page conventions describe this shape, not the old
-one.
+| # | Local file to copy | Where to paste it in the Wiki |
+| --- | --- | --- |
+| 9 | `_Sidebar.md` | The sidebar — edit it the same way you did last time |
+| 10 | `Home.md` | Home → *(the front page itself)* |
+| 11 | `Getting-started.md` | Home → Getting started |
+
+`Home` and `_Sidebar` gain a **The tabs, one by one** section linking the eight new pages;
+`Getting-started`'s tab table now links each tab to its own page.
+
+## What these new pages cover
+
+Features that were in the application but nowhere in the Wiki:
+
+- **Themes and colour customisation** — Light / Dark / User preference, where the colours live in the
+  settings file, and the reload button
+- **Print BOM / Print component list** on the Overview tab, and the per-row tick box deciding what
+  gets printed
+- **The Feedback tab** — nothing referred to it at all
+- **The Schematics display settings** — trace highlighting on hover and select, SHIFT-to-hover,
+  mark first pin, labels and traces visibility
+- **"Important signals" and "Netlist names"** — the panels for navigating a board by signal
+- **Drawing your own traces** on an image
+- **Contributor mode**, the component label editor and KiCad calibration — these were documented only
+  inside contributor pages, so a repair user never learned they existed
+- **The remaining Configuration settings** — multiple popups, data sync, orphan cleanup, update
+  checks, BETA notifications
 
 ## Pages in the Wiki that are not mirrored
 

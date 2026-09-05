@@ -39,13 +39,15 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 
 | Tab | What it is for |
 | --- | --- |
-| **Schematics** | The board, its components and its traces |
-| **Overview** | Every component as a list, and a printable bill of materials |
-| **Resources** | Datasheets, service manuals and links for this board |
-| **Workbooks** | Record what you find as you repair — see [Workbooks](Workbooks) |
-| **Oscilloscope** | Drive a network-connected scope — see [Synchronize oscilloscope](Synchronize-oscilloscope) |
-| **Contribute** | Send corrections and additions back — see [Contribute data via CRT](Contribute-data-via-CRT) |
-| **Configuration** | Settings, and the button that opens your data folder |
+| **[Schematics](The-Schematics-tab)** | The board, its components and its traces |
+| **[Overview](The-Overview-tab)** | Every component as a list, and a printable bill of materials |
+| **[Resources](The-Resources-tab)** | Datasheets, service manuals and links for this board |
+| **[Workbooks](Workbooks)** | Record what you find as you repair |
+| **[Oscilloscope](The-Oscilloscope-tab)** | Drive a network-connected scope |
+| **[Contribute](The-Contribute-tab)** | Send corrections and additions back |
+| **[Configuration](The-Configuration-tab)** | Settings, and the button that opens your data folder |
+| **[Feedback](The-Feedback-tab)** | Send an issue or a question to the developer |
+| **[About](The-About-tab)** | Versions, links, and who contributed this board's data |
 
 **Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab, if you do not use them.
 

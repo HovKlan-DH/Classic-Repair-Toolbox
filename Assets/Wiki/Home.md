@@ -16,6 +16,18 @@ New here? Start with [Getting started](Getting-started).
 * [Command-line parameters](Commandline-parameters) — move the data or workbooks folder elsewhere
 * [Installing application in Linux](Installing-application-in-Linux) — get it into your Start menu
 
+## The tabs, one by one
+
+* [Schematics](The-Schematics-tab) — the board, its components and its traces
+* [Overview](The-Overview-tab) — every component as a list, and a printable bill of materials
+* [Resources](The-Resources-tab) — datasheets, manuals and links for this board
+* [Workbooks](Workbooks) — record a repair from start to invoice
+* [Oscilloscope](The-Oscilloscope-tab) — connect to a network-capable scope
+* [Contribute](The-Contribute-tab) — fix or add board data from inside the app
+* [Configuration](The-Configuration-tab) — every setting, and where your files are
+* [Feedback](The-Feedback-tab) — send an issue or a question to the developer
+* [About](The-About-tab) — versions, links and who contributed this board's data
+
 ## Contributing data
 
 * [Contribute data via CRT](Contribute-data-via-CRT) — fix a value or add a datasheet, from inside the app

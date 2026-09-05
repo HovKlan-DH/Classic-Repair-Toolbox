@@ -14,6 +14,18 @@
 - [Command-line parameters](Commandline-parameters)
 - [Install on Linux](Installing-application-in-Linux)
 
+### The tabs
+
+- [Schematics](The-Schematics-tab)
+- [Overview](The-Overview-tab)
+- [Resources](The-Resources-tab)
+- [Workbooks](Workbooks)
+- [Oscilloscope](The-Oscilloscope-tab)
+- [Contribute](The-Contribute-tab)
+- [Configuration](The-Configuration-tab)
+- [Feedback](The-Feedback-tab)
+- [About](The-About-tab)
+
 ### Contributing
 - [Via CRT](Contribute-data-via-CRT)
 - [Via GitHub](Contribute-data-via-GitHub)
