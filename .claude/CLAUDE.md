@@ -24,6 +24,44 @@ already has uncommitted edits in it (those are the maintainer's, in progress). D
 write it. "Update the changelog" from the maintainer is the only permission — and it covers that
 one request, not the rest of the session.
 
+## Documentation lives in `docs/`
+
+The project's documentation is [docs/](../docs/) in this repository — plain Markdown, no static
+site generator, no build step, no workflow. It replaced the GitHub Wiki, which is kept only as a
+read-only archive; **do not add wiki links or wiki pages**, and repoint any you find.
+
+- **Filenames are lowercase kebab-case**: `board-excel.md`, never `Board-Excel.md`.
+- **Every page opens with a single `#` H1** carrying the human-readable page title.
+- **Links between pages are relative and include the extension**: `[Board Excel](./board-excel.md)`.
+  That form resolves in the GitHub file browser, in an editor and in a local clone alike.
+- **Images live in [docs/images/](../docs/images/)** and are referenced relatively:
+  `![Main window](./images/main-window.png)`. Never hotlink a `user-attachments` URL — those are
+  wiki/issue upload artefacts and are not versioned with the repo.
+- **[docs/README.md](../docs/README.md) is the index** GitHub renders for the folder. Every
+  released page must be linked from it, grouped into sections.
+- **Documentation ships in the SAME commit or PR as the code it describes.** A feature and the
+  page describing it are one change, not two.
+
+**Documentation for UNRELEASED functionality goes in [docs/upcoming/](../docs/upcoming/)**, with a
+callout naming the target version:
+
+```markdown
+> [!NOTE]
+> **Unreleased.** Planned for v2.6.
+> This page describes functionality that is not available in the current release.
+```
+
+That folder is for **whole new topics only**. An addition to an already-released page is marked
+inline with the same callout instead, so related information stays together rather than being
+split across two files. Nothing in `docs/upcoming/` may be linked from `docs/README.md` as though
+it were released — only from its clearly labelled "Upcoming" section. The promotion steps for when
+a feature ships are in [docs/upcoming/README.md](../docs/upcoming/README.md); follow them there
+rather than inventing a variation.
+
+**The five in-app help links point into `docs/`** (`TabConfiguration.axaml.cs` and
+`ComponentInfoWindow.axaml.cs`, as `blob/main/docs/<page>.md` URLs). Renaming or moving one of
+those pages breaks a button in the shipped app, so grep for the filename before you rename it.
+
 ## Build, test, run, publish
 
 There is a unit test suite covering the UI-free logic in `Handlers/`. **Always run it, always add
