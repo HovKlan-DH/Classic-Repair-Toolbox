@@ -16,18 +16,20 @@ Everything else is in sync — verified against the live Wiki on **2026-09-06**.
 `Workbooks-The-Workbooks-tab` read almost identically to its own parent, `Workbooks-tab`, even
 though one is the hub for the whole feature and the other is a single sub-page about browsing.
 
-In the Wiki, open that page, click **Rename**, and change it to:
+In the Wiki, open that page and click **Edit**. There is no Rename button — a wiki page is renamed
+by changing its **Title** field:
 
-```
-Workbooks-Browsing-and-search
-```
+1. Set **Title** to `Workbooks Browsing and search` (spaces, not hyphens — GitHub converts them, so
+   the page becomes `Workbooks-Browsing-and-search`).
+2. While you are there, paste `Workbooks-Browsing-and-search.md` over the page content — its summary
+   line changed too, so this saves a second edit.
+3. **Save**.
 
-GitHub keeps the page's history through a rename, so nothing is lost.
+If the old `Workbooks-The-Workbooks-tab` page is still listed afterwards, delete it with **Delete
+page**. Once the four pages below are pasted, nothing links to it any more.
 
 Its three siblings are named for what you do — Getting started, Daily use, Export and data — and
 this one now matches: it covers finding an older repair and reading the totals.
-
-Then paste `Workbooks-Browsing-and-search.md` over it, since its summary line changed too.
 
 ## Then update these — 4 pages
 
