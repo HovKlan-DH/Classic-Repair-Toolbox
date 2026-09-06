@@ -5,18 +5,14 @@
 
 # Wiki pages waiting to be pasted
 
-**9 pages waiting.**
+**5 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
+| `Commandline-parameters.md` | Home > At the bench > Synchronize oscilloscope > Command-line parameters |
 | `Configuration-tab.md` | Home > The tabs > Configuration |
-| `Getting-started.md` | Home > At the bench > Getting started |
-| `Home.md` | Home |
-| `Oscilloscope-tab.md` | Home > The tabs > Oscilloscope |
+| `Development-tools-used.md` | Home > Project > Tools used |
 | `Workbooks-Browsing-and-search.md` | Home > At the bench > Workbooks > Browsing and search |
-| `Workbooks-Daily-use.md` | Home > At the bench > Workbooks > Daily use |
 | `Workbooks-Export-and-data.md` | Home > At the bench > Workbooks > Export and data |
-| `Workbooks-Getting-started.md` | Home > At the bench > Workbooks > Getting started |
-| `Workbooks-tab.md` | Home > At the bench > Workbooks |
 
 <!-- crt:waiting-end -->
