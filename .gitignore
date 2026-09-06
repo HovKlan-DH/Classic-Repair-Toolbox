@@ -74,3 +74,11 @@ Assets/Webserver/
 # Stop-hook state stamps (local, per-clone)
 .claude/.tests-green
 .claude/.wiki-reminded
+
+# Scratch folders holding a lone "p.csx", created by an editor "run this snippet"
+# action rather than by anything in this project. Two of them ("aggfield", "castchk")
+# were created a day apart under unpredictable names, and one had already been
+# committed by accident, so the pattern is ignored rather than the two names: a third
+# would otherwise arrive under a name nobody thought to list. Nothing here is built or
+# referenced - .csx is not picked up by the SDK "**/*.cs" compile glob either.
+p.csx
