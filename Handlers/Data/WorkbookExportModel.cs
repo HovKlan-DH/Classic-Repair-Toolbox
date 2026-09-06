@@ -35,9 +35,24 @@ namespace Handlers.DataHandling
 
             public DateTime StartDate { get; init; }
 
+            // When this workbook was closed, or null if it never was - so the header can report a
+            // finished job by when it FINISHED, exactly as the worklog bar and the workbook cards
+            // do on screen. An exported document that says "started" for a workbook the app shows
+            // as "ended" is the same disagreement, just harder to notice because the PDF is read
+            // away from the app. Nullable for the reason WorkbookRecord.EndDate is: null is "never
+            // closed", which every workbook written before that field existed deserializes to.
+            public DateTime? EndDate { get; init; }
+
             public DateTime GeneratedAt { get; init; }
 
             public WorkbookSummary.Totals Totals { get; init; } = WorkbookSummary.Summarize(null);
+
+            // The ISO 4217 code every cost in this document is printed with - captured when the
+            // document is BUILT rather than read from UserSettings while it is painted. The paint
+            // runs on a background thread (the export handler's Task.Run), and a setting the user
+            // could change mid-write would let one document print two currencies. It also keeps
+            // WorkbookPdfExporter free of a settings read, so its tests need no settings file.
+            public string CurrencyCode { get; init; } = WorklogCurrency.DefaultCode;
 
             // Grouped by schematic and ordered, so the document walks the board a section at a
             // time rather than jumping between schematics in entry-id order - a repair reads as a
@@ -99,7 +114,8 @@ namespace Handlers.DataHandling
             IEnumerable<WorklogEntryRecord> entries,
             IReadOnlyDictionary<string, string>? schematicImagePathsByName,
             Func<int, string?> attachmentsFolderForEntry,
-            DateTime generatedAt)
+            DateTime generatedAt,
+            string? currencyCode)
         {
             var entryList = (entries ?? Array.Empty<WorklogEntryRecord>())
                 .Where(e => e != null)
@@ -131,8 +147,10 @@ namespace Handlers.DataHandling
                 Note = workbook.Note ?? string.Empty,
                 Status = workbook.Status,
                 StartDate = workbook.StartDate,
+                EndDate = workbook.EndDate,
                 GeneratedAt = generatedAt,
                 Totals = WorkbookSummary.Summarize(entryList),
+                CurrencyCode = WorklogCurrency.NormalizeCode(currencyCode),
                 Sections = sections
             };
         }

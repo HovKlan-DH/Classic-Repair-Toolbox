@@ -1,6 +1,6 @@
 [Wiki Home](Home) · [Workbooks](Workbooks-tab)
 
-Handing the job over, where the files live, and deleting.
+Exporting a repair, where the files live, and deleting.
 
 ---
 
@@ -13,7 +13,7 @@ Two buttons in the "Workbooks" tab header, acting on the selected workbook.
 | The document | Yes | Yes - the same PDF, inside |
 | Photos | Embedded, page sized | The original files |
 | Attached files | No | Yes |
-| Use it for | Emailing a customer | Handing over everything |
+| Use it for | Sharing the write-up | Handing over everything |
 
 Both are named like this, and you can rename it in the save dialog:
 
@@ -21,7 +21,7 @@ Both are named like this, and you can rename it in the save dialog:
 Workbook_3_Commodore_C64_20260904.pdf
 ```
 
-The workbook description is deliberately not in the file name - it often holds a customer's own details, on a file about to be emailed.
+The workbook description is deliberately not in the file name - it often holds personal details, on a file you may be about to send to someone.
 
 ### What the PDF contains
 
@@ -52,19 +52,32 @@ Everything is on your own machine, in a `Workbooks` folder next to your settings
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Workbooks`
 * Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
 
-The "Configuration" tab has a button `Open data/workbooks/log/settings folder` that takes you there.
+The "Configuration" tab has a button `Open workbooks folder` that takes you straight there.
 
 One folder per workbook, holding everything belonging to it:
 
 ```
 Workbooks/
-├── 1/
-│   ├── index.json          <- the workbook
-│   ├── entries.json        <- all its worklogs
-│   └── worklog_1/          <- worklog #1's photos and files
-│       └── 5v-rail.png
-└── 2/
+├── index.json                  <- bookkeeping (the next workbook number)
+├── workbook_1/
+│   ├── index.json              <- the workbook
+│   ├── worklog_1/
+│   │   ├── index.json          <- worklog #1, all of it
+│   │   └── 5v-rail.png         <- and its photos and files
+│   └── worklog_2/
+│       └── index.json
+└── workbook_2/
 ```
+
+**Every folder holds one `index.json`, and that is the whole record.** A workbook is a folder; a worklog is a folder inside it, holding its own details together with its photos and files.
+
+That means **you can delete a worklog, or a whole workbook, by deleting its folder** - the application simply stops showing it, and there is nothing left over to tidy up.
+
+The `index.json` at the top of `Workbooks/` is not a workbook. It records which numbers have been handed out, so a deleted workbook's number is never given to a new one.
+
+> **Upgrading from an older version:** the layout changed and **nothing is converted automatically**. Older versions kept every worklog of a workbook in one `entries.json`, and named workbook folders by a bare number (`1` instead of `workbook_1`). Those are no longer read, so workbooks written by an older version will not appear. Keep a copy of the folder before upgrading if you need that data. The same applies to the older `counters.json`, which is no longer read and can be deleted.
+>
+> Two fields inside a workbook's `index.json` were renamed at the same time, for the same reason the folders were: `entryCount` and `lastEntryId` are now `worklogCount` and `lastWorklogId`, so the file says "worklog" like the rest of the application. These are also not converted - a workbook from an older version shows both as `0` until its next change, and no worklog number is ever re-used as a result.
 
 **To back up: copy the `Workbooks` folder.** That is all of it. To move to another machine, copy it across - nothing else needs doing.
 
@@ -78,7 +91,7 @@ Both are permanent - there is no undo.
 
 **Delete a worklog** - the ✕ on its card. Removes the worklog and its photos and files.
 
-**Delete a workbook** - the button in the header. Removes the whole job: every worklog, photo and file in it.
+**Delete a workbook** - the button in the header. Removes the whole repair: every worklog, photo and file in it.
 
 Export to ZIP first if there is any chance you want it back.
 
@@ -86,6 +99,6 @@ Export to ZIP first if there is any chance you want it back.
 
 Delete workbook #2 of two, and the next one you create is **#3**. The gap stays.
 
-That is deliberate: #2 may name a PDF you have already emailed to a customer, and reusing the number would make that document describe a different repair.
+That is deliberate: #2 may name a PDF you have already exported and sent on, and reusing the number would make that document describe a different repair.
 
 Same for worklog numbers, and deleting one does not renumber the rest.

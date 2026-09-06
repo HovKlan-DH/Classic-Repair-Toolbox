@@ -57,7 +57,7 @@ CHANGED="$(
 # code-path regex -> the Wiki pages that document it.
 # Kept deliberately short: only pages whose content is decided by that code.
 MAP="
-Tabs/Workbooks/|Tabs/Worklog/|Handlers/Data/Worklog|Handlers/Data/Workbook=Workbooks Workbooks-Daily-use Workbooks-The-Workbooks-tab Workbooks-Export-and-data Workbooks-Getting-started
+Tabs/Workbooks/|Tabs/Worklog/|Handlers/Data/Worklog|Handlers/Data/Workbook=Workbooks-tab Workbooks-Daily-use Workbooks-Browsing-and-search Workbooks-Export-and-data Workbooks-Getting-started
 Handlers/Data/SimulationOptions|Handlers/Data/DataManager=Commandline-parameters
 Handlers/Data/BoardDataReader|Handlers/Data/BoardData\.cs=Board-Excel Main-Excel
 Handlers/Data/BoardComponentHighlightStorage=Board-JSON

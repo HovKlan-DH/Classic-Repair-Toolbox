@@ -24,12 +24,12 @@ The workbook belongs to whichever board is selected when you create it, and it c
 
 Click **Create new workbook** in the bar.
 
-* **Description** - required. The job, in one line: `Dead C64, no video - J. Hansen`
-* **Note** - optional. Anything else: what the customer reported, phone number, etc.
+* **Description** - required. The repair, in one line: `Dead C64, no video - top attic find`
+* **Note** - optional. Anything else: how the fault showed itself, where the board came from, etc.
 
 Click **Create workbook** (or Ctrl+Enter).
 
-One workbook per job - not per fault. Three faults on the same board is one workbook with three worklogs.
+One workbook per repair - not per fault. Three faults on the same board is one workbook with three worklogs.
 
 ## 4. Record a worklog
 
@@ -43,20 +43,20 @@ The components your rectangle touched are already ticked under "Mark components 
 
 Cancel instead, and nothing at all is written.
 
-## 5. Work the job
+## 5. Work through it
 
 Click the `#1` marker on the board to reopen the worklog, and add as you go:
 
-* **Work done** - a note with hours and cost, which is totalled for you
+* **Work done** - a note with time and cost, which is totalled for you (time is typed as decimal hours and shown back everywhere as hours and minutes)
 * **Photos** - before/after, with a comment each
-* **Files** - datasheets, invoices, scope captures
+* **Files** - datasheets, receipts, scope captures
 * **Comments** and **Links**
 
 Set the worklog to **Closed** when it is done. When the last one closes, so does the workbook.
 
-## 6. Hand it over
+## 6. Export it
 
-"Workbooks" tab → **Export to PDF** for the customer, or **Export to ZIP** to include the original photos and files.
+"Workbooks" tab → **Export to PDF** for the write-up on its own, or **Export to ZIP** to include the original photos and files.
 
 See [Export and your data](Workbooks-Export-and-data).
 

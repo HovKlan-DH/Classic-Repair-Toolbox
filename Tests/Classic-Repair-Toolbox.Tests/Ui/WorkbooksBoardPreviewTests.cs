@@ -1123,6 +1123,73 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
 
         var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
 
+        // The currency is SET here rather than assumed: UserSettings is static and this class does
+        // not point it at a temp file, so the code left behind by whichever test ran before this one
+        // is what the card would otherwise print. Restored in the finally, for the same reason.
+        string savedCurrency = UserSettings.WorklogCurrencyCode;
+        try
+        {
+            UserSettings.WorklogCurrencyCode = "SEK";
+
+            UiTest.Run(() =>
+            {
+                var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+                var card = (Control)EntriesPanel(tab).Children[0];
+                var (_, _, _, stats) = ReadEntryCard(card);
+
+                // "2 hours", not "2 h" - the time reads as hours and minutes everywhere the user
+                // sees one (see WorklogDurationFormatter). Asserted with the WORD, since the old
+                // "2 h" is a substring of "2 hours" and would pass either way.
+                Assert.Contains("2 hours", stats);
+                Assert.DoesNotContain("2 h ", stats);
+
+                // The cost carries the configured currency code - not a bare "8" a reader has to
+                // guess at. Asserted WITH the code, since a bare "8" is a substring of "8 SEK" and
+                // so would pass against a card printing no currency at all.
+                Assert.Contains("8 SEK", stats);
+                Assert.Contains("2 comments", stats);
+                Assert.Contains("1 link", stats);
+                Assert.Contains("2 photos", stats);
+                Assert.Contains("1 file", stats);
+
+                // This entry HAS both a time and a cost, so both appear - the counterpart to
+                // An_entry_card_omits_every_stat_it_has_nothing_to_report_for, which pins the
+                // other side of the same rule.
+                Assert.Contains("2 hours", stats);
+            });
+        }
+        finally
+        {
+            UserSettings.WorklogCurrencyCode = savedCurrency;
+        }
+    }
+
+    // ###########################################################################################
+    // EVERY item on the stats row is omitted when it has nothing to report - reported directly,
+    // first for the time and the cost and then for the counts beside them. A brand-new worklog used
+    // to read "0 h . 0 CHF . 1 comment . 0 links . 0 photos . 0 files": six items, one of which
+    // carried information.
+    //
+    // AddEntry seeds one automatic "created" comment, so that single "1 comment" is the ONLY thing
+    // this card can honestly say - which makes it the assertion that matters. Asserting merely that
+    // the zeroes are gone would pass against a row that had stopped rendering altogether.
+    // ###########################################################################################
+    [Fact]
+    public void An_entry_card_omits_every_stat_it_has_nothing_to_report_for()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Empty stats", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        var entry = WorklogManager.AddEntry(
+            workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10),
+            "Just a note", "Nothing attached to this one.", "Note", "Open", Array.Empty<string>());
+        Assert.NotNull(entry);
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
         UiTest.Run(() =>
         {
             var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
@@ -1130,12 +1197,160 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
             var card = (Control)EntriesPanel(tab).Children[0];
             var (_, _, _, stats) = ReadEntryCard(card);
 
-            Assert.Contains("2 h", stats);
-            Assert.Contains("8", stats);
-            Assert.Contains("2 comments", stats);
-            Assert.Contains("1 link", stats);
-            Assert.Contains("2 photos", stats);
-            Assert.Contains("1 file", stats);
+            // The one true thing, still there.
+            Assert.Equal("1 comment", stats.Trim());
+
+            // And nothing reporting an absence. The cost is checked by its CODE rather than by a
+            // bare "0", which is a substring of any figure containing a zero (a "10 USD" cost would
+            // fail a naive Assert.DoesNotContain("0")).
+            Assert.DoesNotContain("USD", stats);
+            Assert.DoesNotContain("minute", stats);
+            Assert.DoesNotContain("hour", stats);
+            Assert.DoesNotContain("0 links", stats);
+            Assert.DoesNotContain("0 photos", stats);
+            Assert.DoesNotContain("0 files", stats);
+        });
+    }
+
+    // ###########################################################################################
+    // The stats row separates its items with the " · " dot every other multi-part line in this app
+    // uses - the summary strip's lines, the workbook card's "6 worklogs · started ...", the
+    // header's "#1 · Title". This row was the one exception: it relied on WrapPanel spacing alone,
+    // so "175 DKK 3 comments" read as one run of words with a gap in it. Reported directly.
+    //
+    // The interesting half is the interaction with the omit-empty rule: a separator decided up
+    // front leaves a LEADING dot when the first stat is dropped and a DOUBLED one when a middle
+    // stat is, which is why the row is asserted here in full rather than merely for containing a
+    // dot somewhere. This entry has no time and no cost (the two that lead the row) and no links,
+    // so the version that gets it wrong produces "· 1 comment · · 2 photos".
+    // ###########################################################################################
+    [Fact]
+    public void An_entry_cards_stats_are_separated_by_dots_with_none_leading_or_doubled()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Dot separators", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        var entry = WorklogManager.AddEntry(
+            workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10),
+            "Gaps", "No time, no cost, no links.", "Note", "Open", Array.Empty<string>());
+        Assert.NotNull(entry);
+
+        // Deliberately NO WorkDoneItems (so no hours and no cost) and NO links: that leaves the
+        // row's first two items and one of its middle items dropped, which is exactly what a
+        // naive separator gets wrong. AddEntry seeds the one automatic "created" comment.
+        entry!.Photos.Add(new WorklogAttachmentRecord { Id = 1, FileName = "before.png", DisplayOrder = 0 });
+        entry.Photos.Add(new WorklogAttachmentRecord { Id = 2, FileName = "after.png", DisplayOrder = 1 });
+        entry.Files.Add(new WorklogAttachmentRecord { Id = 1, FileName = "notes.txt", DisplayOrder = 0 });
+        Assert.True(WorklogManager.UpdateEntry(workbook.Id, entry));
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+            var (_, _, _, stats) = ReadEntryCard(card);
+
+            // AllText joins the row's TextBlocks with a single space, and each dot is its own block
+            // (so it can wrap down with the stat it introduces rather than dangling at a line end),
+            // which is what makes this the whole rendered row.
+            Assert.Equal("1 comment · 2 photos · 1 file", stats.Trim());
+        });
+    }
+
+    // ###########################################################################################
+    // The other half of that rule: a row with only ONE item carries no separator at all. A
+    // separator appended AFTER each item, rather than before all but the first, passes the test
+    // above and fails this one.
+    // ###########################################################################################
+    [Fact]
+    public void An_entry_card_with_a_single_stat_shows_no_dot_at_all()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "One stat", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        var entry = WorklogManager.AddEntry(
+            workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10),
+            "Lonely", "Only the automatic comment.", "Note", "Open", Array.Empty<string>());
+        Assert.NotNull(entry);
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+            var (_, _, _, stats) = ReadEntryCard(card);
+
+            Assert.Equal("1 comment", stats.Trim());
+            Assert.DoesNotContain("·", stats);
+        });
+    }
+
+    // ###########################################################################################
+    // The gap either side of the "·" is EQUAL, and it comes from the separator's own padding
+    // rather than from the WrapPanel.
+    //
+    // Reported: the dots on this row read wider than the summary strip's directly above it. The
+    // cause was WrapPanel.ItemSpacing, which falls between EVERY pair of children - so the panel
+    // added its gap between a stat and the following dot AND between that dot and its stat, on top
+    // of anything the dot carried itself. With ItemSpacing at 0 the padding IS the whole gap, which
+    // is what lets one number match the single " · " string every other line in the app uses.
+    //
+    // Asserted structurally, on the panel and the separator, because the thing that went wrong is
+    // invisible to any assertion about text: the row read correctly as "175 DKK · 3 comments" the
+    // whole time it was spaced wrongly.
+    // ###########################################################################################
+    [Fact]
+    public void An_entry_cards_stat_separators_carry_their_own_equal_side_spacing()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Dot spacing", "");
+        Assert.NotNull(workbook);
+
+        string imagePath = this.WriteSchematicImage("sheet1.png");
+        var entry = WorklogManager.AddEntry(
+            workbook!.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10),
+            "Spacing", "Two stats, so exactly one dot.", "Note", "Open", Array.Empty<string>());
+        Assert.NotNull(entry);
+
+        entry!.Photos.Add(new WorklogAttachmentRecord { Id = 1, FileName = "before.png", DisplayOrder = 0 });
+        Assert.True(WorklogManager.UpdateEntry(workbook.Id, entry));
+
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = imagePath });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            var card = (Control)EntriesPanel(tab).Children[0];
+
+            // The card's FOURTH stacked row, indexed the way ReadEntryCard reads it - not searched
+            // for by type, since the category/status row above it is a WrapPanel too.
+            var statsRow = (WrapPanel)((StackPanel)((Border)card).Child!).Children[3];
+
+            // Zero, or the panel contributes a second gap this row cannot account for.
+            Assert.Equal(0, statsRow.ItemSpacing);
+
+            var separator = statsRow.Children
+                .OfType<TextBlock>()
+                .Single(t => t.Text == "·");
+
+            // Equal left and right: the dot sits BETWEEN two facts, so any asymmetry visibly
+            // attaches it to one of them.
+            Assert.True(separator.Padding.Left > 0);
+            Assert.Equal(separator.Padding.Left, separator.Padding.Right);
+
+            // The stats themselves carry no padding of their own, or it would stack with the
+            // separator's and put the gap back where it started.
+            foreach (var stat in statsRow.Children.OfType<TextBlock>().Where(t => t.Text != "·"))
+                Assert.Equal(new Thickness(0), stat.Padding);
         });
     }
 

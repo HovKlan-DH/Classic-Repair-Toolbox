@@ -104,6 +104,25 @@ namespace CRT
         // destroys files.
         private bool thisWasSuccessfullySaved;
 
+        // Set once the "discard unsaved work?" question has been answered with yes, so the Closing
+        // handler does not ask it a second time on the way out. Also set by BOTH of Save's success
+        // paths, which have no work to lose by definition.
+        //
+        // Save setting it is not redundant belt-and-braces that could be dropped: this is the one
+        // flag meaning "the close question is already answered", and it is what keeps that answer
+        // independent of whatever WouldDiscardEnteredWork happens to cover. The comment claimed Save
+        // set it while only the discard paths actually did; the behaviour was right by accident,
+        // through that predicate short-circuiting on a separate flag.
+        private bool thisIsClosingConfirmed;
+
+        // What the draft's sub-lists held the moment it was created, so WouldDiscardEnteredWork can
+        // tell the user's own additions from what the editor seeded itself - see its own comment.
+        private int thisDraftInitialCommentCount;
+        private int thisDraftInitialWorkDoneCount;
+        private int thisDraftInitialLinkCount;
+        private int thisDraftInitialPhotoCount;
+        private int thisDraftInitialFileCount;
+
         // The draft entry actually saved, for the caller that has to know what was written (the
         // Schematics tab refreshes its overlay against it). Null unless a draft reached disk.
         public WorklogEntryRecord? SavedNewEntry { get; private set; }
@@ -448,8 +467,32 @@ namespace CRT
             // Closing, not Closed: the window's bounds are still meaningful here. It fires for every
             // route out - Save, Cancel, Escape and the title-bar close - so no exit path loses the
             // placement.
-            this.Closing += (_, _) =>
+            this.Closing += (_, closingArgs) =>
             {
+                // THE TITLE-BAR CLOSE does not go through OnCancelClick, so the discard guard has to
+                // be applied here too - otherwise the one exit route that bypasses Cancel is also
+                // the one that silently loses the work.
+                //
+                // Closing cannot await, so this CANCELS the close, asks, and closes again from the
+                // dialog's continuation if the user confirms. thisIsClosingConfirmed stops that
+                // second close re-entering this branch and asking forever.
+                if (!this.thisIsClosingConfirmed && this.WouldDiscardEnteredWork())
+                {
+                    closingArgs.Cancel = true;
+
+                    _ = Dispatcher.UIThread.InvokeAsync(async () =>
+                    {
+                        if (await this.ConfirmDiscardIfNeededAsync())
+                        {
+                            this.thisIsClosingConfirmed = true;
+                            this.WasSaved = false;
+                            this.Close(false);
+                        }
+                    });
+
+                    return;
+                }
+
                 // The title-bar close does not go through OnCancelClick, so an abandoned draft's
                 // attachment bytes would survive that one exit route. DiscardDraftAttachments is
                 // idempotent and only fires while the entry is still a draft.
@@ -676,6 +719,14 @@ namespace CRT
             WorklogManager.AppendAutomaticComment(draft.Comments, WorklogManager.CreatedCommentText);
 
             this.Initialize(workbookId, draft, schematicBitmap);
+
+            // AFTER Initialize, which clones the record into thisEntry - the counts have to describe
+            // the working copy the guard actually reads, not the local built above.
+            this.thisDraftInitialCommentCount = this.thisEntry.Comments.Count;
+            this.thisDraftInitialWorkDoneCount = this.thisEntry.WorkDoneItems.Count;
+            this.thisDraftInitialLinkCount = this.thisEntry.Links.Count;
+            this.thisDraftInitialPhotoCount = this.thisEntry.Photos.Count;
+            this.thisDraftInitialFileCount = this.thisEntry.Files.Count;
 
             // Initialize is written for a saved entry and ends by clearing the dirty flag, which is
             // right there and wrong here: an empty draft has nothing worth saving yet, but the
@@ -1534,7 +1585,7 @@ namespace CRT
                 CreatedDate = source.CreatedDate,
                 Links = source.Links?.Select(l => new WorklogLinkRecord { Id = l.Id, Headline = l.Headline, Url = l.Url }).ToList() ?? new(),
                 Comments = source.Comments?.Select(c => new WorklogCommentRecord { Id = c.Id, Text = c.Text, Date = c.Date }).ToList() ?? new(),
-                WorkDoneItems = source.WorkDoneItems?.Select(w => new WorklogWorkDoneRecord { Id = w.Id, Text = w.Text, Date = w.Date, HoursSpent = w.HoursSpent, Cost = w.Cost }).ToList() ?? new(),
+                WorkDoneItems = source.WorkDoneItems?.Select(w => new WorklogWorkDoneRecord { Id = w.Id, Text = w.Text, Date = w.Date, HoursSpent = w.HoursSpent, Cost = w.Cost, CurrencyCode = w.CurrencyCode }).ToList() ?? new(),
                 Photos = source.Photos?.Select(p => new WorklogAttachmentRecord { Id = p.Id, FileName = p.FileName, Comment = p.Comment, DisplayOrder = p.DisplayOrder }).ToList() ?? new(),
                 Files = source.Files?.Select(f => new WorklogAttachmentRecord { Id = f.Id, FileName = f.FileName, Comment = f.Comment, DisplayOrder = f.DisplayOrder }).ToList() ?? new(),
             };
@@ -1939,7 +1990,17 @@ namespace CRT
                     Id = work.Id,
                     Text = work.Text,
                     DateText = work.Date.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
-                    SummaryText = $"{work.HoursSpent:0.##} h · {work.Cost:0.##}"
+                    // The cost through WorklogCurrency.FormatCost rather than a bare "{Cost:0.##}",
+                    // and the time as WORDS through WorklogDurationFormatter, so a row reads
+                    // "1 hour and 30 minutes · 430 DKK" - the same shape the Workbooks tab's entry
+                    // card, the summary strip and the exported PDF all print. The decimal hours
+                    // this is stored as appear in exactly one place, the NumericUpDown that types
+                    // them. A row with no time logged shows the cost alone.
+                    SummaryText = JoinSummaryParts(
+                        WorklogDurationFormatter.Format(work.HoursSpent),
+                        WorklogCurrency.FormatCostOrEmpty(
+                            work.Cost,
+                            WorklogCurrency.ResolveRecordedCode(work.CurrencyCode, UserSettings.WorklogCurrencyCode)))
                 });
             }
 
@@ -1949,12 +2010,23 @@ namespace CRT
             var (totalHours, totalCost) = WorklogEntryScope.GetWorkDoneTotals(this.thisEntry);
             this.EditorWorkDoneCountText.Text = this.thisWorkDoneRows.Count == 0
                 ? "none"
-                : $"{FormatItemCount(this.thisWorkDoneRows.Count, "entry", "entries")} · {totalHours:0.##} h · {totalCost:0.##}";
+                : JoinSummaryParts(
+                    FormatItemCount(this.thisWorkDoneRows.Count, "entry", "entries"),
+                    WorklogDurationFormatter.Format(totalHours),
+                    WorklogCurrency.FormatCostOrEmpty(totalCost, UserSettings.WorklogCurrencyCode));
 
             this.EditorNoWorkDoneText.IsVisible = this.thisWorkDoneRows.Count == 0 && this.IsListSectionExpanded("EditorWorkDoneHeader");
 
             this.UpdateWorkDoneSortIconVisuals();
         }
+
+        // Joins the parts of a work-done summary with the app's " · ", DROPPING any that came back
+        // empty. That is what lets a zero duration and a zero cost each contribute nothing at all
+        // (WorklogDurationFormatter.Format and WorklogCurrency.FormatCostOrEmpty both return "" for
+        // one) without leaving a stray separator behind, which a plain string interpolation of the
+        // three would. A line with neither reads as just its count.
+        private static string JoinSummaryParts(params string[] parts) =>
+            string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 
         private void OnWorkDoneSortNewestFirstClick(object? sender, RoutedEventArgs e)
         {
@@ -1993,7 +2065,13 @@ namespace CRT
                 Text = result.Value.Text,
                 Date = DateTime.Now,
                 HoursSpent = result.Value.HoursSpent,
-                Cost = result.Value.Cost
+                Cost = result.Value.Cost,
+
+                // The currency is recorded ON the row, at the moment the figure is typed - the
+                // dialog labels its Cost field with this same setting, so this is the code the user
+                // was looking at. Reading the setting later instead would relabel every historical
+                // cost the next time the preference changed. See WorklogWorkDoneRecord.CurrencyCode.
+                CurrencyCode = UserSettings.WorklogCurrencyCode
             });
 
             this.EnsureListSectionExpanded("EditorWorkDoneHeader");
@@ -3013,8 +3091,99 @@ namespace CRT
         // along with the sub-list change (see PersistEntrySilently), so once one has run, the
         // direct-field values at that moment are already on disk and Cancel cannot take them back.
         // ###########################################################################################
-        private void OnCancelClick(object? sender, RoutedEventArgs e)
+        // ###########################################################################################
+        // Whether abandoning this window right now would throw away work the user has entered.
+        //
+        // TRUE ONLY FOR A DRAFT, and only one that actually holds something. A saved worklog writes
+        // every sub-list change to disk the moment it is made (PersistEntrySilently), so the most
+        // Cancel can cost there is a half-typed Title or Description - which is exactly what Cancel
+        // is FOR, and prompting about it on every Escape would train the user to dismiss the prompt.
+        //
+        // A draft is the opposite: nothing has been written, so everything goes - the typed fields,
+        // every comment and work-done row, and the attachment bytes with them. Because those
+        // sub-lists behave as "instantly saved" on a saved worklog, they FEEL saved here too, which
+        // is precisely how the reported data loss happened.
+        //
+        // An empty draft (opened and immediately abandoned) returns false: there is nothing to
+        // protect, and a prompt there is pure friction on the most common way to back out.
+        // ###########################################################################################
+        // ###########################################################################################
+        // Test seam for the discard guard's DECISION - whether closing right now would lose work.
+        //
+        // The decision is the whole of the correctness here: whether the confirmation appears at all,
+        // and it must be true for a draft holding anything and false for every saved worklog. The
+        // dialog it then opens cannot be driven headlessly (ShowDialog resolves with no user), so
+        // that half is verified by running the app - see the tests in WorklogEditorDiscardGuardTests.
+        // ###########################################################################################
+        internal bool WouldDiscardEnteredWorkForTests() => this.WouldDiscardEnteredWork();
+
+        private bool WouldDiscardEnteredWork()
         {
+            if (!this.thisIsDraftEntry || this.thisWasSuccessfullySaved)
+            {
+                return false;
+            }
+
+            // Read from the CONTROLS, not from thisEntry: the direct fields are only synced into the
+            // record on a save or an instant-save, so a user who typed a title and immediately hit
+            // Escape has it nowhere else. This is the case the guard most needs to catch.
+            if (!string.IsNullOrWhiteSpace(this.EditorTitleTextBox?.Text) ||
+                !string.IsNullOrWhiteSpace(this.EditorDescriptionTextBox?.Text))
+            {
+                return true;
+            }
+
+            // Compared against what the draft STARTED with, not against zero. A new worklog is
+            // seeded with the automatic "Worklog created" audit comment (InitializeForNewEntry), so
+            // a zero test reports work to lose the instant the editor opens and would prompt on
+            // every cancel - including the untouched empty form, which is the most common way to
+            // back out. Snapshotting is used rather than special-casing that one comment because it
+            // stays correct if anything else is ever seeded into a draft.
+            return this.thisEntry.Comments.Count > this.thisDraftInitialCommentCount
+                || this.thisEntry.WorkDoneItems.Count > this.thisDraftInitialWorkDoneCount
+                || this.thisEntry.Links.Count > this.thisDraftInitialLinkCount
+                || this.thisEntry.Photos.Count > this.thisDraftInitialPhotoCount
+                || this.thisEntry.Files.Count > this.thisDraftInitialFileCount;
+        }
+
+        // ###########################################################################################
+        // Asks before discarding, and reports whether the caller may go ahead.
+        //
+        // Returns true immediately when there is nothing to lose, so the ordinary Escape-out-of-an
+        // -empty-form path is unchanged and costs no dialog.
+        //
+        // The dialog itself takes no arguments: it asks one question, and WouldDiscardEnteredWork
+        // above has already decided that the question is worth asking. An earlier version listed
+        // what would be lost ("the title X, the description and 1 work done row"); that was cut back
+        // on request, so nothing here has to be described to it.
+        // ###########################################################################################
+        private async System.Threading.Tasks.Task<bool> ConfirmDiscardIfNeededAsync()
+        {
+            if (!this.WouldDiscardEnteredWork())
+            {
+                return true;
+            }
+
+            return await new DiscardWorklogChangesWindow().ShowDialog<bool>(this);
+        }
+
+        // ###########################################################################################
+        // Cancel/Escape. Asks first when abandoning would lose entered work - see
+        // ConfirmDiscardIfNeededAsync - and otherwise behaves exactly as before.
+        //
+        // async void because it is an event handler: there is nothing to await it. The guard sets
+        // thisIsClosingConfirmed before closing, so the Closing handler below knows the question has
+        // already been asked and does not ask it twice.
+        // ###########################################################################################
+        private async void OnCancelClick(object? sender, RoutedEventArgs e)
+        {
+            if (!await this.ConfirmDiscardIfNeededAsync())
+            {
+                return;
+            }
+
+            this.thisIsClosingConfirmed = true;
+
             // A draft has written nothing to entries.json, so there is nothing for the caller to
             // refresh and nothing for Cancel to have failed to undo - whatever
             // thisHasPersistedChange picked up along the way describes a save that never happened.
@@ -3132,6 +3301,15 @@ namespace CRT
                 this.EditorIdText.Text = $"#{saved.Id}";
 
                 this.WasSaved = true;
+
+                // A successful save has nothing left to lose, so the Closing handler must not ask
+                // "discard unsaved work?" on the way out. Set EXPLICITLY rather than relying on
+                // WouldDiscardEnteredWork happening to short-circuit on the draft flag: this is the
+                // flag whose whole job is "the close question is already answered", and a later
+                // change to what that predicate covers must not be able to reintroduce a discard
+                // prompt after a save. See thisIsClosingConfirmed.
+                this.thisIsClosingConfirmed = true;
+
                 this.Close(this.WasSaved);
                 return;
             }
@@ -3146,6 +3324,10 @@ namespace CRT
             }
 
             this.WasSaved = true;
+
+            // As above: the work is on disk, so the close question is answered.
+            this.thisIsClosingConfirmed = true;
+
             this.Close(this.WasSaved);
         }
     }

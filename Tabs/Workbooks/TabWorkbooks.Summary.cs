@@ -51,7 +51,7 @@ namespace CRT
         {
             var totals = WorkbookSummary.Summarize(this.GetEntriesForThisPass(workbook.Id));
 
-            ApplyStatRuns(this.WorkbookSummaryHeadlineText, WorkbookSummary.BuildHeadlineStats(totals));
+            ApplyStatRuns(this.WorkbookSummaryHeadlineText, WorkbookSummary.BuildHeadlineStats(totals, UserSettings.WorklogCurrencyCode));
             ApplyStatRuns(this.WorkbookSummaryAttachmentsText, WorkbookSummary.BuildAttachmentStats(totals));
 
             // The category and state counts as PILLS rather than as a line of text - each is the
@@ -106,7 +106,10 @@ namespace CRT
 
             for (int i = 0; i < stats.Count; i++)
             {
-                if (i > 0)
+                // JoinedToPrevious suppresses the separator - a duration arrives as TWO stats
+                // ("1", " hour and ") + ("45", " minutes") so that both its numbers can be bolded,
+                // and a " · " between them would split one figure into what reads as two.
+                if (i > 0 && !stats[i].JoinedToPrevious)
                     block.Inlines.Add(new Run(" · "));
 
                 var stat = stats[i];

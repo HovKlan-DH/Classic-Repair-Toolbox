@@ -1,0 +1,40 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.DiscardWorklogChangesWindow"
+        Title="Discard worklog?"
+        Width="440"
+        MinWidth="380"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeaderText" Text="Discard this worklog?" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<!-- One sentence, deliberately. This started as a four-paragraph explanation that also
+		     itemised what would be lost ("the title X, the description and 1 work done row"), and
+		     was cut back to this on request: the dialog only ever appears when there IS something to
+		     lose, and at that moment the user needs to answer a question rather than read a report.
+		     The two buttons already say what each choice does. -->
+		<TextBlock TextWrapping="Wrap"
+				   Text="The worklog has unsaved changes - are you sure you want to discard it?" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<!-- "Keep editing" is the safe option and the default for both Enter and Escape - see
+			     the code-behind. Deliberately NOT called "Cancel": this dialog is itself about
+			     cancelling, so a button called Cancel would be genuinely ambiguous about which
+			     action it cancels. -->
+			<Button Content="Keep editing" Click="OnKeepEditingClick" />
+			<Button x:Name="DiscardButton"
+					Content="Discard worklog"
+					Foreground="{DynamicResource Button_Cancel_Fg}"
+					Background="{DynamicResource Button_Cancel_Bg}"
+					BorderBrush="{DynamicResource Button_Cancel_Border}"
+					Click="OnDiscardClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

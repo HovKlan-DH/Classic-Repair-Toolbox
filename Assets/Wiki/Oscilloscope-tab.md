@@ -23,7 +23,7 @@ not behave.
 ## Image save folder
 
 Where screen captures pulled from the scope are written. They can also be filed straight into a
-repair job — see [Workbooks: daily use](Workbooks-Daily-use).
+repair — see [Workbooks: daily use](Workbooks-Daily-use).
 
 ## What you can do with it
 

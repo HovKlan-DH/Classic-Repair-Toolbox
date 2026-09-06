@@ -567,6 +567,46 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Deletes the file an attachment was sourced FROM, once its bytes have safely landed in the
+        // entry's attachments folder - turning what CopyAttachmentIntoFolder did into a MOVE.
+        //
+        // Deliberately a separate step rather than File.Move inside the copy. The attach sequence
+        // can still fail after the bytes land (WorklogAttachmentWriter rolls the copy back out when
+        // the metadata persist fails), and a move would already have destroyed the original by
+        // then - so a full disk would cost the user the file itself rather than just the filing.
+        // Copy first, delete only once nothing can still be rolled back.
+        //
+        // Reports whether the source is gone. An ALREADY-missing file counts as success: the goal
+        // is that it is no longer there, and a source removed by hand between the copy and this
+        // call has met it. A genuine failure (the file still open elsewhere, a read-only folder) is
+        // logged and reported false but is NOT an error the user needs to act on - the attachment
+        // itself is safely filed, and what is left behind is a duplicate, not a loss.
+        // ###########################################################################################
+        public static bool DeleteSourceFileAfterAttach(string? sourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (!File.Exists(sourcePath))
+                {
+                    return true;
+                }
+
+                File.Delete(sourcePath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Attached worklog file [{sourcePath}] could not be removed from its original folder: {ex.Message} - the copy in the worklog is unaffected");
+                return false;
+            }
+        }
+
+        // ###########################################################################################
         // Swaps an attachment's file for a newly chosen one, leaving exactly one file behind, and
         // returns the name to store on the record (unchanged when the copy failed).
         //

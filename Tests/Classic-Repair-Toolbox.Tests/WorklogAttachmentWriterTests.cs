@@ -130,10 +130,10 @@ public sealed class WorklogAttachmentWriterTests : IDisposable
         Assert.Equal(new byte[] { 9, 9, 9 }, File.ReadAllBytes(orphanPath));
     }
 
-    // A failed persist must leave NOTHING behind: no record in the list, and no copied bytes in the
-    // folder. Otherwise the folder keeps a file entries.json never mentions, which nothing will ever
-    // clean up. Driven through the list-addressed overload, the only one that can be handed a
-    // deliberately failing persist.
+    // A failed persist must leave NO COPIED BYTES behind, and no record in the list. Otherwise the
+    // folder keeps a file the worklog never mentions, which nothing will ever clean up. Driven
+    // through the list-addressed overload, the only one that can be handed a deliberately failing
+    // persist.
     [Fact]
     public void A_failed_persist_rolls_the_copied_bytes_back_out()
     {
@@ -155,10 +155,14 @@ public sealed class WorklogAttachmentWriterTests : IDisposable
         Assert.Null(added);
         Assert.Empty(records);
 
-        // The rollback goes through DeleteAttachmentFileAndFolderIfEmpty, which removes the folder
-        // itself once its last file is gone - so "no bytes left behind" is satisfied by the folder
-        // being empty OR by it no longer existing, and this attach created it.
-        Assert.True(!Directory.Exists(folder) || Directory.GetFiles(folder).Length == 0);
+        // The rolled-back ATTACHMENT must be gone. Asserted as "no attachment file remains" rather
+        // than "the folder is empty or absent", which is what this used to say: that folder is the
+        // worklog itself now and holds its own index.json, so it is legitimately non-empty and
+        // legitimately still there. Its own record is not litter, and deleting it would delete the
+        // worklog.
+        Assert.DoesNotContain(
+            Directory.GetFiles(folder),
+            file => Path.GetFileName(file).StartsWith(WorklogAttachmentStorage.PhotoFilePrefix, StringComparison.Ordinal));
     }
 
     // A missing attachments folder is reported rather than throwing, so the caller can say so in its
@@ -257,5 +261,87 @@ public sealed class WorklogAttachmentWriterTests : IDisposable
 
         Assert.Equal("Retitled elsewhere", stored.Title);
         Assert.Single(stored.Photos);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // DeleteSourceFileAfterAttach - the second half of MOVING a file into a worklog rather than
+    // copying it, used by the oscilloscope capture flow so a filed capture is not stored twice.
+    // ---------------------------------------------------------------------------------------------
+
+    // The move, end to end: the bytes are in the worklog folder and the original is gone.
+    [Fact]
+    public void Attaching_and_then_deleting_the_source_leaves_only_the_worklog_copy()
+    {
+        var (workbookId, entryId, sourcePath) = this.CreateWorkbookWithEntry();
+
+        var outcome = WorklogAttachmentWriter.AttachToEntry(
+            workbookId, entryId, sourcePath, WorklogAttachmentStorage.PhotoFilePrefix, "");
+
+        Assert.Equal(WorklogAttachmentWriter.AttachOutcome.Added, outcome);
+
+        Assert.True(WorklogAttachmentStorage.DeleteSourceFileAfterAttach(sourcePath));
+
+        Assert.False(File.Exists(sourcePath));
+
+        // The attachment itself is untouched by the source deletion - this is the half that must
+        // survive, since the whole point is that the image now lives in the worklog.
+        string folder = WorklogManager.GetEntryAttachmentsFolder(workbookId, entryId)!;
+        var stored = WorklogManager.GetEntries(workbookId).Single(e => e.Id == entryId);
+
+        Assert.Single(stored.Photos);
+        Assert.True(File.Exists(Path.Combine(folder, stored.Photos[0].FileName)));
+    }
+
+    // THE ORDERING THIS FEATURE DEPENDS ON. The attach is a copy followed by a separate delete,
+    // never a File.Move, precisely so a failure after the bytes land can still be rolled back
+    // (WorklogAttachmentWriter removes the copy when the metadata persist fails). A move would
+    // already have destroyed the original by then - and for an oscilloscope capture that is the
+    // measurement itself, which this flow promises never to lose.
+    [Fact]
+    public void A_failed_attach_leaves_the_source_file_untouched()
+    {
+        var (workbookId, _, sourcePath) = this.CreateWorkbookWithEntry();
+
+        var records = new List<WorklogAttachmentRecord>();
+        string folder = this.thisWorkspace.Path_("attachments-" + Guid.NewGuid().ToString("N"));
+
+        // persist returns false, which is the "disk full / file locked" case.
+        var outcome = WorklogAttachmentWriter.Attach(
+            sourcePath,
+            folder,
+            records,
+            WorklogAttachmentStorage.PhotoFilePrefix,
+            "",
+            () => false,
+            out var added);
+
+        Assert.Equal(WorklogAttachmentWriter.AttachOutcome.PersistFailed, outcome);
+        Assert.Null(added);
+
+        // The caller only deletes the source once the attach reported Added, so on this path the
+        // capture is still exactly where it was written.
+        Assert.True(File.Exists(sourcePath));
+    }
+
+    // An already-missing source counts as success: the goal is that it is no longer there, and a
+    // file removed by hand between the copy and the delete has met it. Reporting failure would make
+    // the caller log a warning about a state that is entirely correct.
+    [Fact]
+    public void Deleting_a_source_that_is_already_gone_reports_success()
+    {
+        this.LoadWorklog();
+
+        string missing = this.thisWorkspace.Path_("never-written.png");
+
+        Assert.True(WorklogAttachmentStorage.DeleteSourceFileAfterAttach(missing));
+    }
+
+    // A blank path is not a file to delete and must not be treated as one - it reports false rather
+    // than throwing, so a caller holding no capture path cannot take the flow down.
+    [Fact]
+    public void Deleting_a_blank_source_path_reports_failure_rather_than_throwing()
+    {
+        Assert.False(WorklogAttachmentStorage.DeleteSourceFileAfterAttach(null));
+        Assert.False(WorklogAttachmentStorage.DeleteSourceFileAfterAttach("   "));
     }
 }

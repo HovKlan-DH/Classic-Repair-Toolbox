@@ -9,19 +9,12 @@
   - Added application crash logging to prevent losing info when overwriting logfile
   - Changed contribution requirements via "Contribute" tab to version `2.5.0` or newer (server backend requires it)
   - Changed info banner to specifically show if BETA is used as source during data updates
-  - Changed from using `/wiki` to now using `/docs` to have documentation handled via repository
   - Fixed manifest file performance via server-side compression, resulting in faster online data checks
   - Fixed timeout issue when fetching manifest file
   - Fixed test case configuration to exclude them when compiling using `dotnet publish`
   - Refactored "Contribute" tab and server backend review process
-  - Refactored parts of project for better maintainability and added more test cases (2569 cases and ~54% coverage total)
+  - Refactored parts of project for better maintainability and added more test cases (2827 cases and ~54% coverage total)
   - Refactored documentation
-
-TAND!!!!!!!!!!!
-
-Telegraphic Style
-
-
 
 
 # 2.4.0, 2026-August-27

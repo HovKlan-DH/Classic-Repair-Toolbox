@@ -1,0 +1,52 @@
+# Which Wiki page was last pasted into the live Wiki.
+#
+# This is the machine-readable half of Assets/Wiki/!sync-status.md. That file
+# used to record sync state only in prose ("Verified against the live Wiki on
+# 2026-09-06"), which nothing could check - so when six pages had changed and
+# the prose still named three, nothing noticed and the maintainer had to ask
+# for a manual re-check every time.
+#
+# The HASH is the field that matters: it is the git blob hash of the exact
+# bytes that were pasted. The Stop hook wiki-sync-status.sh compares each page
+# against it and rewrites the waiting list. A commit SHA alone will not do -
+# pages are routinely pasted while their edits are uncommitted, and comparing
+# commits then reports every page as permanently stale.
+#
+# Stamped for you by .claude/hooks/wiki-mark-synced.sh when you confirm a
+# paste. README.md and images/ are not Wiki pages and never appear here.
+#
+# page<TAB>commit<TAB>date-confirmed<TAB>blob-hash
+About-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	a017f20d64681539bf31a5c7c74f1a0adb38a8b7
+Add-new-board-with-KiCad-data	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	1979f175aade5c8e3d43e0b9ed9de4010f5d704f
+Board-Excel	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	5a89b0ad531068064d87b8a49563eebd62f6192b
+Board-JSON	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	9b3c7b4675a51cf144c1cf515e7386d870c1b3ab
+Commandline-parameters	c33a3f84448dfaa4ac6cf6845a00ea3b32b8b699	2026-09-06	716fdadff2fed3fcd0e52bdc95c41353bcbaf6d7
+Compiling-yourself-from-source	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	a3efc60e071f6c6e1ad608d3c6d336520bb1eafe
+Configuration-tab	c33a3f84448dfaa4ac6cf6845a00ea3b32b8b699	2026-09-06	85d1e52d070ded0d951e65813a17a4d3137c3edf
+Contribute-data-via-CRT	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	c0105af54e3320e1a154d656669bbd2e14e93b9f
+Contribute-data-via-GitHub	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	2e39c3a2e3132646295bf767972d1f500ca213d0
+Contribute-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	cf56ffd474da2370c0673811b96bac46d120e568
+Controlling-oscilloscope-with-keyboard	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	ff782a2ce899700f8594a61b0fa728e69e742794
+Development-tools-used	c33a3f84448dfaa4ac6cf6845a00ea3b32b8b699	2026-09-06	2479c7947764c7e2e5eec88c61ebb8fa8570d5f2
+Explanation-of-data-files	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	117338d1645d2e1c5c5c312436e88d0d74660e55
+Feedback-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	d4d59e8b52ab8149b242bdbc809e2d8cb75e6724
+Getting-started	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	76cdf9c3aea01ff5a37b466ea0018ecd69aae9a6
+Home	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	325571444f8a6d578b993b2e0820746bcac2c4a5
+Information-collected	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	0a6d93e7e9fc44a2c3fea0b6a0a2020e1d0fcbd3
+Inspiration-for-creating-application	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	26e84e6b0f32af86e39f07543338f96fec55d5a5
+Installing-application-in-Linux	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	73860a1c7fbe59cbe698877b0c31964484dd0b5a
+KiCad-folder	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	413e224ace3cd76dcee44144ada49e72c318a910
+Main-Excel	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	a4efd2fd4180544e8340658e6eb98e7616d81282
+MiniPro-programmer	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	82f3359b7ce34fcd2a7cae5cde5f4194a14df4b3
+Oscilloscope-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	2eb7ecaca12d0aa2b5d30f15c0eb7fb8edd70cdc
+Overview-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	e8e02bc6c97628f2a7f96b90080fb2525fb6b9e7
+Resources-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	dfa38c1d8833348142d2980b8efbb5d101418a99
+Schematics-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	fe463a4dc3a823f2ab1297480675d692a0a1848c
+Scope-baseline-folder	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	d818f01ef1e82b17b0395d30fefa9b846ec54cc8
+Synchronize-oscilloscope	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	ee55f87c4b5583ba809931efb44509a1ab92df38
+Workbooks-Browsing-and-search	c33a3f84448dfaa4ac6cf6845a00ea3b32b8b699	2026-09-06	fa14a39db6972282a336129e6c66854ae1d47c71
+Workbooks-Daily-use	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	ae6ede1dbd19d416f1b57c52115e6dc26d1e61e1
+Workbooks-Export-and-data	c33a3f84448dfaa4ac6cf6845a00ea3b32b8b699	2026-09-06	cc8053a0f247e742e57474b69890c14c1f5ad85a
+Workbooks-Getting-started	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	4cc91a870d56729419f8ee6cbdedef056500ef1a
+Workbooks-tab	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	b5212d97759d543c5efbc0ce2fddbb7fcbc0b68d
+_Sidebar	cb577d5be284e7655ef6312e64932e4e76369d04	2026-09-06	7f6d0e9c363ee3c7fa74653f05d71212078fdfb9

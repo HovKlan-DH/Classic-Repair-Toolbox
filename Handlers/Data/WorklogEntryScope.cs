@@ -1,6 +1,8 @@
-using Avalonia;
+﻿using Avalonia;
 using Handlers.Geometry;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Handlers.DataHandling
@@ -74,6 +76,53 @@ namespace Handlers.DataHandling
             }
 
             return (entry.WorkDoneItems.Sum(w => w.HoursSpent), entry.WorkDoneItems.Sum(w => w.Cost));
+        }
+
+        // ###########################################################################################
+        // A workbook date as the app shows it: "2026-September-6".
+        //
+        // THE DAY CARRIES NO LEADING ZERO ("-d", not "-dd"), which is what this exists to pin. It is
+        // used by the worklog bar above the tabs AND by the workbook cards in the Workbooks tab, and
+        // those two must not disagree about the format - they had a copy each, under comments
+        // asserting they matched.
+        //
+        // Invariant rather than the current culture on purpose: the month is always a NAME, never an
+        // ambiguous number, so a date cannot be read as 06-09 or 09-06 depending on where the user
+        // is. That also means the format string is a CUSTOM one - a lone "d" would be the standard
+        // short-date specifier, but "yyyy-MMMM-d" has more than one character, so the "d" means
+        // "day, unpadded" as intended.
+        // ###########################################################################################
+        public static string FormatWorkbookDate(DateTime value) =>
+            value.ToString("yyyy-MMMM-d", CultureInfo.InvariantCulture);
+
+        // ###########################################################################################
+        // A workbook's date line as the app shows it: "started 2026-September-6" for an open
+        // workbook, "ended 2026-September-6" for a closed one that recorded a finish date.
+        //
+        // THE WORD AND THE DATE ARE CHOSEN TOGETHER, WHICH IS WHY THIS IS ONE FUNCTION. The worklog
+        // bar above the tabs and the workbook cards in the Workbooks tab both show this line for
+        // the same workbook, often at the same time and inches apart - the bar said "ended
+        // 2026-September-6" while the card underneath it said "started 2026-September-6" for that
+        // one workbook, because the card only ever wrote "started" and only ever read StartDate.
+        // Splitting the rule back into a label helper and a date helper would let exactly that
+        // recur: a caller can pair the right word with the wrong date and nothing complains.
+        //
+        // "ended", NOT "closed": these are the two ends of one span, and "Closed" is already the
+        // workbook's STATUS, showing in a pill beside this text in both places. Leave the status
+        // word to say the status.
+        //
+        // A closed workbook with no EndDate falls back to "started" AND its start date - both
+        // halves, together. That is every workbook closed before EndDate existed (there is
+        // deliberately no migration - see WorkbookRecord.EndDate); reporting the start it really
+        // has beats inventing a finish date, and beats showing nothing.
+        // ###########################################################################################
+        public static string FormatWorkbookDateLine(string? status, DateTime startDate, DateTime? endDate)
+        {
+            bool hasEnded = !WorklogManager.IsWorkbookStatusOpen(status) && endDate != null;
+
+            return hasEnded
+                ? $"ended {FormatWorkbookDate(endDate!.Value)}"
+                : $"started {FormatWorkbookDate(startDate)}";
         }
 
         // ###########################################################################################

@@ -512,7 +512,7 @@
 										  IsCheckedChanged="OnWorklogShowEntriesCheckedChanged" />
 							</StackPanel>
 							<Button x:Name="WorklogCancelEntryButton"
-									Content="Cancel entry"
+									Content="Cancel"
 									IsVisible="False"
 									FontSize="11"
 									Padding="10,4"

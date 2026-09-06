@@ -672,3 +672,47 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+
+================================================================================
+
+ADDITIONAL PERMISSION UNDER GNU GPL VERSION 3 SECTION 7
+
+Copyright (C) 2025-2026 Dennis Helligsoe
+
+This additional permission is granted by the copyright holder of Classic Repair
+Toolbox, and forms part of the license of this program.
+
+  As a special exception, you have permission to link Classic Repair Toolbox
+  with the EPPlus and QuestPDF libraries, and to copy and distribute the
+  resulting executable, notwithstanding the terms of the GNU General Public
+  License version 3. You may convey a covered work under the terms of the GNU
+  General Public License version 3 combined with these libraries, and this
+  permission extends to any modified version of Classic Repair Toolbox that
+  carries this same permission forward.
+
+  If you modify this program, you may extend this exception to your version of
+  the program, but you are not obliged to do so. If you do not wish to do so,
+  delete this exception statement from your version.
+
+WHY THIS EXCEPTION EXISTS, AND WHAT IT DOES NOT DO
+
+  EPPlus is licensed under the Polyform Noncommercial License 1.0.0, and
+  QuestPDF is used under its Community License. Neither is an OSI-approved
+  open-source license, and each imposes restrictions that GNU GPL version 3
+  section 10 would otherwise forbid being placed on downstream recipients.
+  Without this exception, distributing Classic Repair Toolbox as a GPL-3.0
+  program while it links those libraries would be self-contradictory.
+
+  This exception resolves that contradiction. It does NOT, and cannot, grant
+  you any rights in EPPlus or QuestPDF themselves - those belong to their
+  respective copyright holders, not to Classic Repair Toolbox. In particular,
+  the GPL-3.0 permits commercial use of this program, while the Polyform
+  Noncommercial License does not permit commercial use of EPPlus. If you intend
+  to use a fork of this program commercially, you must obtain your own license
+  from EPPlus Software, or replace EPPlus with a permissively licensed
+  alternative. The same applies to QuestPDF if you do not meet its Community
+  License eligibility criteria.
+
+  See THIRD-PARTY-NOTICES.md for the full list of third-party components, their
+  licenses, and what each requires of you.

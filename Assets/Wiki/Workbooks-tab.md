@@ -1,6 +1,6 @@
 [Wiki Home](Home)
 
-Record what you find on a board and what you did about it — and hand the finished job to a customer as a PDF.
+Record what you find on a board and what you did about it — and share the finished repair as a PDF.
 
 ---
 
@@ -11,11 +11,11 @@ Record what you find on a board and what you did about it — and hand the finis
 
 ## The two words
 
-**Workbook** = one repair job on one board.\
-**Worklog** = one thing you noted down inside that job.
+**Workbook** = one repair on one board.\
+**Worklog** = one thing you noted down inside that repair.
 
 ```
-Workbook  "Dead C64, no video - J. Hansen"        #3, Open
+Workbook  "Dead C64, no video - attic find"       #3, Open
 ├── Worklog #1  "VIC socket pin cracked"          Issue, Closed
 ├── Worklog #2  "Check the 9V AC rail"            Note, Open
 └── Worklog #3  "Scratched case lid"              Cosmetic, Open
@@ -40,6 +40,12 @@ State is **Open** or **Closed**. The category decides the colour the worklog is 
 You never set this yourself. A workbook is **Closed** when it has at least one worklog and all of them are Closed - otherwise it is Open.
 
 So closing the last worklog closes the workbook, and adding a new worklog reopens it.
+
+While a workbook is Open, it is shown as **started** on the date it began. Once it is Closed, it is shown as **ended** on the day the last outstanding worklog was closed. Reopening and closing it again updates that date; the start date never changes.
+
+This reads the same everywhere the workbook appears - the bar above the tabs, its card in the workbook list, and the header of an exported PDF.
+
+A workbook closed by an older version of the application has no ending date recorded, so it keeps showing its start date.
 
 ## Where it is stored
 

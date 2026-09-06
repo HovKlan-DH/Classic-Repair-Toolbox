@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Handlers.DataHandling;
@@ -22,7 +22,7 @@ public class WorklogSearchIndexTests
             Title = "Mr Jensens C64",
             Note = "collected tuesday",
             Status = "Open",
-            EntryCount = 12,
+            WorklogCount = 12,
         };
 
         var fields = WorklogSearchIndex.ForWorkbook(workbook).ToList();
@@ -127,6 +127,60 @@ public class WorklogSearchIndexTests
         Assert.Contains("before cleaning", fields);
         Assert.Contains("scope-trace.csv", fields);
         Assert.Contains("dot clock", fields);
+    }
+
+    // Searching for a component reference finds the worklogs that have it in scope. This is worth
+    // its own test rather than resting on the sub-list one above, because it is the example the
+    // Wiki teaches ("u8" -> every repair that touched U8) and the whole reason it works is that
+    // ComponentLabels is in the index at all - a field someone could reasonably think of as
+    // structured board data rather than as user-typed text, and drop.
+    //
+    // It is genuinely user-chosen: the labels are whatever the user ticked in the editor's
+    // "components in scope" checklist.
+    [Fact]
+    public void A_component_in_scope_is_findable_by_its_reference()
+    {
+        var entry = new WorklogEntryRecord
+        {
+            Title = "Replaced the PLA",
+            ComponentLabels = new List<string> { "U8", "U17" },
+        };
+
+        var query = WorklogSearchQuery.Parse("u8");
+
+        // Case-insensitive, like every other term.
+        Assert.True(query.Matches(WorklogSearchIndex.ForEntry(entry)));
+
+        // And an entry that never scoped it is not dragged in.
+        var other = new WorklogEntryRecord
+        {
+            Title = "Recapped the PSU",
+            ComponentLabels = new List<string> { "C38" },
+        };
+
+        Assert.False(query.Matches(WorklogSearchIndex.ForEntry(other)));
+    }
+
+    // The caveat that goes with the example above: matching is substring, so a short reference is
+    // a PREFIX of the longer ones and pulls them in too. "U8" finds U8, but also U80 and U81.
+    //
+    // This is not a defect to fix - narrowing it to whole words would break "cap" finding
+    // "capacitor", which is the far more common way the box is used - but it is the reason the Wiki
+    // tells the reader to add another word rather than to trust a two-character search.
+    [Fact]
+    public void A_short_component_reference_also_matches_longer_ones()
+    {
+        var longerLabel = new WorklogEntryRecord
+        {
+            Title = "Address decoding",
+            ComponentLabels = new List<string> { "U80" },
+        };
+
+        Assert.True(WorklogSearchQuery.Parse("u8").Matches(WorklogSearchIndex.ForEntry(longerLabel)));
+
+        // Adding a second term is what narrows it, which is what the documentation recommends.
+        Assert.False(
+            WorklogSearchQuery.Parse("u8 pla").Matches(WorklogSearchIndex.ForEntry(longerLabel)));
     }
 
     [Fact]

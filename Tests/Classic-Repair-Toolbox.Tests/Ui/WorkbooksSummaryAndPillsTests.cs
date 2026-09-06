@@ -50,9 +50,13 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
 
         // LoadFrom against a path that does not exist RETURNS EARLY without resetting the static
         // _data - it only logs "using defaults" - so a value another test in this collection wrote
-        // is still there. The summary's expanded flag is the one this class depends on starting
-        // false, so it is reset explicitly rather than assumed.
+        // is still there. The summary's expanded flag is one this class depends on starting false,
+        // so it is reset explicitly rather than assumed.
         UserSettings.WorkbooksSummaryExpanded = false;
+
+        // The currency is the other one, for the same reason: the headline prints it beside the
+        // cost, so a code another test left behind would change the string these tests assert on.
+        UserSettings.WorklogCurrencyCode = WorklogCurrency.DefaultCode;
 
         return root;
     }
@@ -181,6 +185,24 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
 
         Assert.NotNull(entry);
         return entry!.Id;
+    }
+
+    // Logs one Work done line against an entry, through the real persistence path - the totals
+    // strip reads what is on disk, so an in-memory record would not reach it.
+    private static void LogWorkDone(int workbookId, int entryId, double hours, double cost)
+    {
+        var entry = WorklogManager.GetEntries(workbookId).Single(e => e.Id == entryId);
+
+        entry.WorkDoneItems.Add(new WorklogWorkDoneRecord
+        {
+            Id = entry.WorkDoneItems.Count + 1,
+            Text = "Recap",
+            Date = DateTime.Now,
+            HoursSpent = hours,
+            Cost = cost
+        });
+
+        Assert.True(WorklogManager.UpdateEntry(workbookId, entry));
     }
 
     private static BoardData BuildBoardData(string schematicName, string imagePath) =>
@@ -344,8 +366,93 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
             var headline = tab.GetControl<TextBlock>("WorkbookSummaryHeadlineText");
 
             Assert.Null(headline.Text);
-            Assert.Equal("1 worklog · 0 h · 0 · 1 open", InlineText(headline));
+
+            // NEITHER a time NOR a cost item: this workbook has no Work done lines at all, and
+            // both of those figures are omitted when there is nothing to report rather than shown
+            // as "0 minutes . 0 USD" - a line of real figures should not spend two columns saying
+            // that two figures are absent. Asked for directly.
+            //
+            // "open" DOES stay at zero (it is 1 here) - see BuildHeadlineStats: it counts worklogs
+            // that exist rather than reporting a missing total, and "0 open" tells a reader the job
+            // is finished.
+            Assert.Equal("1 worklog · 1 open", InlineText(headline));
         });
+    }
+
+    // ###########################################################################################
+    // The other half of the above: once a workbook HAS time logged, the headline says it in hours
+    // and minutes rather than in the decimal hours it is stored as - 1.75 h is "1 hour and 45
+    // minutes". Decimal hours survives in exactly one place in the app, the NumericUpDown in the
+    // full editor that types the value.
+    //
+    // Driven through WorklogManager.UpdateEntry and the tab's own refresh rather than by calling
+    // WorkbookSummary directly, so it pins the WIRING - a strip still printing "1.75 h" would pass
+    // every WorklogDurationFormatter unit test.
+    // ###########################################################################################
+    [Fact]
+    public void The_summary_headline_says_the_time_in_hours_and_minutes()
+    {
+        this.LoadWorklog();
+        int entryId = this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Open", out int workbookId);
+        var boardData = BuildBoardData("Sheet 1", this.WriteSchematicImage("sheet1.png"));
+
+        LogWorkDone(workbookId, entryId, hours: 1.25, cost: 0);
+        LogWorkDone(workbookId, entryId, hours: 0.5, cost: 0);
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbookId);
+
+            string headline = InlineText(tab.GetControl<TextBlock>("WorkbookSummaryHeadlineText"));
+
+            Assert.Contains("1 hour and 45 minutes", headline);
+
+            // The two halves of the duration read as ONE figure: no " . " separator between them,
+            // which is what Stat.JoinedToPrevious exists for. Without it the strip would say
+            // "1 hour and . 45 minutes".
+            Assert.DoesNotContain("1 hour and ·", headline);
+        });
+    }
+
+    // ###########################################################################################
+    // The Configuration tab's currency reaches this strip - the whole point of the setting is that
+    // a repairer in Denmark sees DKK rather than a bare number a customer has to guess at.
+    //
+    // Driven through UserSettings and the tab's own refresh rather than by calling WorkbookSummary
+    // directly, so it pins the WIRING: the tab reads the setting and passes it to BuildHeadlineStats.
+    // A tab that kept printing the bare number would still pass every WorkbookSummary unit test.
+    // ###########################################################################################
+    [Fact]
+    public void The_summary_headline_prints_the_configured_currency()
+    {
+        this.LoadWorklog();
+        int entryId = this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Open", out int workbookId);
+        var boardData = BuildBoardData("Sheet 1", this.WriteSchematicImage("sheet1.png"));
+
+        // A REAL cost, because a zero one is now omitted from the headline entirely - with no cost
+        // logged there would be no currency code on the line to assert against, and this test would
+        // pass while proving nothing about the setting reaching the strip.
+        LogWorkDone(workbookId, entryId, hours: 0, cost: 120);
+
+        // Restored afterwards: UserSettings is static and LoadWorklog's own reset only runs at the
+        // START of a test, so a code left set here would reach whatever ran next in this collection.
+        try
+        {
+            UserSettings.WorklogCurrencyCode = "DKK";
+
+            UiTest.Run(() =>
+            {
+                var tab = BuildTab(this.thisBoardKey, boardData, workbookId);
+
+                var headline = tab.GetControl<TextBlock>("WorkbookSummaryHeadlineText");
+
+                Assert.Equal("1 worklog · 120 DKK · 1 open", InlineText(headline));
+            });
+        }
+        finally
+        {
+            UserSettings.WorklogCurrencyCode = WorklogCurrency.DefaultCode;
+        }
     }
 
     // ###########################################################################################
@@ -734,7 +841,7 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
             var document = tab.BuildExportDocumentForTests(workbook);
 
             Assert.Equal("Repair job", document.Title);
-            Assert.Equal(1, document.Totals.EntryCount);
+            Assert.Equal(1, document.Totals.WorklogCount);
 
             var section = Assert.Single(document.Sections);
             Assert.Equal("Sheet 1", section.SchematicName);

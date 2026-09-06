@@ -56,6 +56,8 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("workbooksScope")] public string WorkbooksScope { get; set; } = "CurrentBoard";
 
+        [JsonPropertyName("worklogCurrencyCode")] public string WorklogCurrencyCode { get; set; } = WorklogCurrency.DefaultCode;
+
         [JsonPropertyName("worklogCommentsSortNewestFirst")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? WorklogCommentsSortNewestFirst { get; set; }
@@ -642,6 +644,40 @@ namespace Handlers.DataHandling
             }
         }
 
+        public static event Action? WorklogCurrencyChanged;
+
+        // ###########################################################################################
+        // The ISO 4217 currency code every cost in a workbook is printed with - chosen in the
+        // Configuration tab by picking the country the user works in, and stored as the code rather
+        // than the country (see WorklogCurrency for why).
+        //
+        // Raises WorklogCurrencyChanged so the surfaces already on screen reprint their figures:
+        // the Workbooks tab's summary strip and entry cards are built once per refresh and would
+        // otherwise keep showing the previous code until something else happened to rebuild them.
+        // Like WorkbooksScope, the setter returns early on an unchanged value, so re-selecting the
+        // country already chosen costs no save and no rebuild.
+        //
+        // The getter normalizes rather than trusting the stored string: settings.json is a plain
+        // file a user can edit, and a code naming no country here would print as itself beside every
+        // cost in an exported PDF.
+        // ###########################################################################################
+        public static string WorklogCurrencyCode
+        {
+            get => WorklogCurrency.NormalizeCode(_data.WorklogCurrencyCode);
+            set
+            {
+                string normalized = WorklogCurrency.NormalizeCode(value);
+
+                if (string.Equals(_data.WorklogCurrencyCode, normalized, StringComparison.Ordinal))
+                    return;
+
+                _data.WorklogCurrencyCode = normalized;
+                Logger.Info($"Setting changed: [WorklogCurrencyCode] [{normalized}]");
+                Save();
+                WorklogCurrencyChanged?.Invoke();
+            }
+        }
+
         // ###########################################################################################
         // Sort order for the worklog entry editor's Comments list. Defaults to newest-first, matching
         // the editor's in-memory default before this was persisted.
@@ -1143,6 +1179,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
                     Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
                     Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
+                    Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
                     Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");
                     Logger.Info($"        [WorklogWorkDoneSortNewestFirst] [{WorklogWorkDoneSortNewestFirst}]");
                     Logger.Info($"        [WorklogShowEntriesChecked] [{WorklogShowEntriesChecked}]");

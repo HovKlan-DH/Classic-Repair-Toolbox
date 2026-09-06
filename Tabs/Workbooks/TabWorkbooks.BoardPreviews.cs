@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Handlers.DataHandling;
 using Handlers.Geometry;
+using Avalonia.VisualTree;
 using Handlers.Theming;
 using System;
 using System.Collections.Generic;
@@ -225,18 +226,45 @@ namespace CRT
         // none is selected - ApplySummaryForWorkbook needs the record, not just the id.
         private void RefreshSummaryForShownWorkbook()
         {
-            if (this.thisSelectedWorkbookId <= 0)
-                return;
-
-            string boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
-
-            var workbook = WorklogManager.GetWorkbooksForBoard(boardKey)
-                .FirstOrDefault(w => w.Id == this.thisSelectedWorkbookId);
+            var workbook = this.ResolveShownWorkbookRecord();
 
             if (workbook != null)
             {
                 this.ApplySummaryForWorkbook(workbook);
             }
+        }
+
+        // ###########################################################################################
+        // The RECORD for the workbook this tab is showing - the one ApplyHeaderForWorkbook was last
+        // handed, which is set immediately before every board-pane rebuild and is therefore current
+        // by construction.
+        //
+        // WHY NOT RE-READ IT FROM DISK, which is what both callers used to do: WorklogManager
+        // .GetWorkbooksForBoard goes through ReadAllWorkbooks, enumerating every workbook_N folder
+        // under the root and deserializing each index.json. This pane rebuilds on every board
+        // change, workbook switch, worklog save, workbook create/delete and debounced keystroke in
+        // the search box - and the summary and the schematic order each did that same full scan in
+        // the SAME pass, for one record RefreshWorkbooks was already holding a line earlier. Two
+        // complete directory walks per refresh, for nothing.
+        //
+        // The id is still checked against it. thisSelectedWorkbookId is what every other part of the
+        // pane keys off, and a mismatch would mean the two had drifted - in which case falling back
+        // to the disk read is right, since the header record would be the stale one.
+        // ###########################################################################################
+        private WorkbookRecord? ResolveShownWorkbookRecord()
+        {
+            if (this.thisSelectedWorkbookId <= 0)
+                return null;
+
+            if (this.thisHeaderWorkbook != null && this.thisHeaderWorkbook.Id == this.thisSelectedWorkbookId)
+            {
+                return this.thisHeaderWorkbook;
+            }
+
+            string boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
+
+            return WorklogManager.GetWorkbooksForBoard(boardKey)
+                .FirstOrDefault(w => w.Id == this.thisSelectedWorkbookId);
         }
 
         // ###########################################################################################
@@ -292,6 +320,12 @@ namespace CRT
                 .GroupBy(e => e.SchematicName, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            // The user's own drag-and-drop order, applied over that alphabetical grouping. A
+            // workbook nobody has rearranged has an empty stored order, which WorkbookSchematicOrder
+            // treats as "keep the order given" - so the alphabetical default above still stands and
+            // this is a no-op. See that class for why the order is stored as names.
+            entriesBySchematic = ReorderGroupsForDisplay(entriesBySchematic, this.ResolveStoredSchematicOrder());
 
             // A BOARD switch drops the selection outright, before the "still valid?" test below could
             // accidentally keep it: schematic names are not unique across boards, so a name that
@@ -358,6 +392,38 @@ namespace CRT
             // no cache (File.ReadAllText + Deserialize + a per-entry normalise loop, every call), and
             // this method and the entry list were reading the same workbook's file twice per rebuild.
             this.RefreshSelectedSchematicEntries(entries);
+        }
+
+        // ###########################################################################################
+        // Puts the grouped-by-schematic entries into the user's stored preview order.
+        //
+        // Static and taking both sides as arguments so the ordering itself stays in
+        // WorkbookSchematicOrder (pure, unit tested) and this is only the join back onto the
+        // grouping objects - a dictionary lookup per name rather than a second implementation of
+        // the rule.
+        // ###########################################################################################
+        private static List<IGrouping<string, WorklogEntryRecord>> ReorderGroupsForDisplay(
+            List<IGrouping<string, WorklogEntryRecord>> groups,
+            List<string> storedOrder)
+        {
+            if (groups.Count < 2)
+                return groups;
+
+            var byName = groups.ToDictionary(g => g.Key, g => g, StringComparer.OrdinalIgnoreCase);
+
+            return WorkbookSchematicOrder
+                .Apply(groups.Select(g => g.Key), storedOrder)
+                .Select(name => byName[name])
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // The selected workbook's saved schematic order, or an empty list when there is no workbook
+        // selected or it has never been rearranged.
+        // ###########################################################################################
+        private List<string> ResolveStoredSchematicOrder()
+        {
+            return this.ResolveShownWorkbookRecord()?.SchematicOrder ?? new List<string>();
         }
 
         // ###########################################################################################
@@ -774,11 +840,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The fourth row on an entry's detail card: total hours spent and total cost (both summed
+        // The fourth row on an entry's detail card: total time spent and total cost (both summed
         // across the entry's Work done rows, the same sums WorklogEntryEditorWindow's own
-        // RefreshWorkDoneRows shows beside that section's heading - "{hours} h" / the bare cost
-        // number, no currency symbol, matching SummaryText's own "{HoursSpent:0.##} h · {Cost:0.##}"
-        // formatting exactly), then how many comments, links, photos and files the entry carries -
+        // RefreshWorkDoneRows shows beside that section's heading - the time through
+        // WorklogDurationFormatter, which says it in hours and minutes rather than in the decimal
+        // hours it is stored as, and the cost through WorklogCurrency.FormatCost, which is what
+        // every surface in the app now prints a cost with: the same "0.##" invariant number,
+        // followed by the currency code the user chose in the Configuration tab), then how many
+        // comments, links, photos and files the entry carries -
         // one number each, since an entry can have any number of each and this card is meant to say
         // how much is behind the pill without opening it. A WrapPanel, matching every other
         // multi-item row on this card and in the full editor's own list headers: six items can
@@ -789,14 +858,100 @@ namespace CRT
         {
             var (totalHours, totalCost) = WorklogEntryScope.GetWorkDoneTotals(entry);
 
-            var row = new WrapPanel { ItemSpacing = 10, LineSpacing = 4 };
-            row.Children.Add(BuildEntryStatText($"{totalHours.ToString("0.##", CultureInfo.InvariantCulture)} h"));
-            row.Children.Add(BuildEntryStatText(totalCost.ToString("0.##", CultureInfo.InvariantCulture)));
-            row.Children.Add(BuildEntryStatText(WorklogEntryScope.FormatCount(entry.Comments.Count, "comment", "comments")));
-            row.Children.Add(BuildEntryStatText(WorklogEntryScope.FormatCount(entry.Links.Count, "link", "links")));
-            row.Children.Add(BuildEntryStatText(WorklogEntryScope.FormatCount(entry.Photos.Count, "photo", "photos")));
-            row.Children.Add(BuildEntryStatText(WorklogEntryScope.FormatCount(entry.Files.Count, "file", "files")));
+            // ItemSpacing ZERO - the separator owns the whole gap. See AddStat and
+            // StatSeparatorSideSpacing for why the spacing cannot come from the panel.
+            var row = new WrapPanel { ItemSpacing = 0, LineSpacing = 4 };
+
+            // EVERY item on this row is omitted when it has nothing to report, so a card says what
+            // the worklog HAS rather than listing what it has not: a fresh note used to read
+            // "0 h . 0 CHF . 1 comment . 0 links . 0 photos . 0 files", six items of which one
+            // carried information. Asked for directly, for the time and the cost first and then for
+            // the counts alongside them.
+            //
+            // Safe to do here precisely because it is a WrapPanel of independent items - dropping
+            // one simply closes the gap, where the same rule inside the summary strip's PILL row
+            // would change that row's width as a workbook is worked on (which is why the breakdown
+            // deliberately keeps its zeroes; see WorkbookSummary.BuildCategoryCounts).
+            //
+            // The time as words ("45 minutes", "1 hour and 15 minutes") through the one shared
+            // WorklogDurationFormatter, not the decimal hours it is stored as - see that class.
+            AddStatIfAny(row, WorklogDurationFormatter.Format(totalHours));
+            AddStatIfAny(row, WorklogCurrency.FormatCostOrEmpty(totalCost, UserSettings.WorklogCurrencyCode));
+
+            AddCountStatIfAny(row, entry.Comments.Count, "comment", "comments");
+            AddCountStatIfAny(row, entry.Links.Count, "link", "links");
+            AddCountStatIfAny(row, entry.Photos.Count, "photo", "photos");
+            AddCountStatIfAny(row, entry.Files.Count, "file", "files");
             return row;
+        }
+
+        // Adds one already-formatted stat, or nothing at all when the formatter had nothing to say.
+        private static void AddStatIfAny(WrapPanel row, string text)
+        {
+            if (text.Length > 0)
+                AddStat(row, text);
+        }
+
+        // The same for a count, which is empty at zero rather than "0 links". Formatted through
+        // WorklogEntryScope.FormatCount so the singular/plural rule stays in the one place that
+        // owns it - this only decides whether the item appears.
+        private static void AddCountStatIfAny(WrapPanel row, int count, string singular, string plural)
+        {
+            if (count > 0)
+                AddStat(row, WorklogEntryScope.FormatCount(count, singular, plural));
+        }
+
+        // ###########################################################################################
+        // How much air sits either side of this row's "·", in device-independent pixels.
+        //
+        // Everywhere ELSE in the app the separator is the literal string " · " inside one TextBlock,
+        // so its spacing is whatever a space glyph happens to measure - about 2.8px at this font
+        // size. This row cannot do that (see AddStat), so the gap has to be stated as a number, and
+        // the number is a deliberate MIDDLE GROUND: the first version left the panel's own
+        // ItemSpacing of 5 falling on both sides of the dot, which read visibly wider than the
+        // summary strip's dots directly above it, and matching the space glyph exactly would have
+        // this row read tighter than every other dotted line. Four splits the difference.
+        //
+        // It is applied as PADDING on the dot rather than as WrapPanel.ItemSpacing, which is the
+        // whole reason this constant exists: ItemSpacing goes between EVERY pair of children, so it
+        // would add the same gap between a stat and the next dot AND between that dot and its stat,
+        // and there would be no way to make the total match a single " · ". With ItemSpacing at 0,
+        // this padding is the entire gap and one number controls it.
+        // ###########################################################################################
+        private const double StatSeparatorSideSpacing = 4.0;
+
+        // ###########################################################################################
+        // Adds one stat, preceded by the "·" separator unless it is the row's first item.
+        //
+        // Every OTHER multi-part line in this app separates its parts with that dot - the summary
+        // strip's own lines (ApplyStatRuns), the workbook card's "6 worklogs · started ...", the
+        // header's "#1 · Title", the entry list's "KiCAD replica; Top · 5 worklogs". This row was
+        // the one exception: it leaned on WrapPanel.ItemSpacing alone, so "175 DKK 3 comments" read
+        // as one run of words with a gap in it rather than as two separate facts.
+        //
+        // The separator is emitted HERE, as each item is added, rather than by walking the finished
+        // row - the whole point of AddStatIfAny/AddCountStatIfAny is that an empty stat is never
+        // added at all, and a separator decided up front would leave a leading or doubled dot for
+        // every one they drop. Asking the row how many children it already has cannot get that
+        // wrong.
+        //
+        // It is its own TextBlock rather than being glued onto the text: this is a WrapPanel, so a
+        // long row wraps BETWEEN items, and a trailing "175 DKK · " left dangling at the end of a
+        // line would point at nothing. As a separate item the dot wraps down with the stat it
+        // introduces. It carries the same muted styling so it reads as punctuation, not content,
+        // and carries its own side padding so the gap does not depend on the panel - see
+        // StatSeparatorSideSpacing.
+        // ###########################################################################################
+        private static void AddStat(WrapPanel row, string text)
+        {
+            if (row.Children.Count > 0)
+            {
+                var separator = BuildEntryStatText("·");
+                separator.Padding = new Thickness(StatSeparatorSideSpacing, 0, StatSeparatorSideSpacing, 0);
+                row.Children.Add(separator);
+            }
+
+            row.Children.Add(BuildEntryStatText(text));
         }
 
         private static TextBlock BuildEntryStatText(string text) => new()
@@ -951,12 +1106,20 @@ namespace CRT
             imageLayer.Children.Add(overlay);
             imageLayer.Children.Add(badgeCanvas);
 
-            string displayName = string.IsNullOrWhiteSpace(schematic.CadName) ? schematic.SchematicName : schematic.CadName;
+            // The board Excel file's "Board schematics" sheet, "Schematic name" column - the name the
+            // user gave this schematic, and the one the thumbnail list, the entry list header above
+            // and every worklog's own SchematicName already use.
+            //
+            // NOT CadName, which this used to prefer whenever it was set. That column is the KiCad
+            // SHEET name, and it exists only so board labels can be matched to CAD geometry (see
+            // TabSchematics.KiCad.cs, the only other place it is read) - it is an internal
+            // identifier, frequently a bare file stem, and it is not what the schematic is called
+            // anywhere else in the app. A preview captioned with it disagreed with the header on
+            // the panel beside it about the name of the very same schematic.
             var caption = new TextBlock
             {
-                Text = displayName,
-                FontSize = 11,
-                FontWeight = FontWeight.Bold
+                Text = schematic.SchematicName,
+                FontSize = 11
             };
 
             var body = new StackPanel { Spacing = 6 };
@@ -969,7 +1132,11 @@ namespace CRT
                 BorderThickness = new Thickness(2),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(10),
-                Cursor = HandCursor,
+
+                // No Cursor here: EnablePreviewReorder sets the panel's own (a north/south move
+                // cursor) and the image's (Hand, for selecting), because that split is part of the
+                // same decision as which press starts a drag. A Hand set here as well would be a
+                // second opinion about the panel's cursor, and the two were free to disagree.
                 Tag = schematic.SchematicName,
                 Child = body
             };
@@ -977,11 +1144,28 @@ namespace CRT
             ApplySchematicPreviewSelectedBorder(preview, isSelected);
 
             string schematicName = schematic.SchematicName;
+
+            // Selecting the schematic - only from a press on the IMAGE. The rest of this panel
+            // (the caption and the padding around it) is the drag-to-reorder grab area, and the two
+            // must not both fire: e.Handled does NOT separate them here, because both handlers hang
+            // off this same Border and Avalonia runs every handler on one element regardless. So
+            // each tests the press position instead, against the one imageLayer boundary - this one
+            // acts only inside it, EnablePreviewReorder's only outside it.
+            //
+            // A press on a "#N" pill reaches neither: the pill's own handler opens that worklog and
+            // marks the event handled before it bubbles this far.
             preview.PointerPressed += (_, e) =>
             {
-                if (e.GetCurrentPoint(preview).Properties.IsLeftButtonPressed)
+                if (!e.GetCurrentPoint(preview).Properties.IsLeftButtonPressed)
+                    return;
+
+                if (e.Source is Visual source && IsWithinPreviewImage(source, imageLayer))
                     this.SelectSchematic(schematicName);
             };
+
+            // Drag-to-reorder, grabbed anywhere on this panel EXCEPT the schematic image - see the
+            // comment above and TabWorkbooks.PreviewReorder.cs.
+            this.EnablePreviewReorder(preview, imageLayer, schematicName);
 
             return preview;
         }

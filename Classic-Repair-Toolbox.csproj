@@ -10,7 +10,7 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>2.5.0-alpha.4</InformationalVersion>
+		<InformationalVersion>2.5.0-alpha.5</InformationalVersion>
         <OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>
@@ -168,12 +168,6 @@
 			<Pack>false</Pack>
 		</Content>
 	</ItemGroup>
-
-<!--
-    <ItemGroup>
-        <AvaloniaResource Include="Assets/Changelog.txt" />
-    </ItemGroup>
--->
 
   <ItemGroup>
     <EmbeddedResource Update="Properties/Resources.resx">

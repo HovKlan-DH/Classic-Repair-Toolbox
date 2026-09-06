@@ -67,17 +67,15 @@ namespace CRT
         // Used by: WorklogManager.Load
         public const string WorklogFolderName = "Workbooks";
 
-        // Name of the JSON file holding one workbook's own record, stored inside that workbook's
-        // own subfolder of WorklogFolderName (e.g. "Workbook/1/index.json"). There is deliberately
-        // no separate file indexing all workbooks - deleting a workbook's subfolder is how a
-        // workbook is removed, with nothing else left to keep in sync.
+        // Name of the JSON file holding one record, used at all three levels of the Workbooks
+        // folder: the root's own bookkeeping, one workbook ("Workbooks/workbook_1/index.json"), and
+        // one worklog inside it ("Workbooks/workbook_1/worklog_2/index.json").
+        //
+        // ONE FILE PER RECORD, IN THAT RECORD'S OWN FOLDER, is the whole storage model: there is no
+        // file listing workbooks and none listing worklogs, so deleting a folder is how either is
+        // removed and there is never a separate list left holding a row for something that is gone.
         // Used by: WorklogManager
         public const string WorklogIndexFileName = "index.json";
-
-        // Name of the JSON file holding one workbook's list of worklog entries, stored inside that
-        // same workbook subfolder alongside WorklogIndexFileName (e.g. "Workbook/1/entries.json").
-        // Used by: WorklogManager
-        public const string WorklogEntriesFileName = "entries.json";
 
         // Prefix and suffix for the versioned main Excel file containing hardware definitions.
         // Used by: DataManager.InitializeAsync, DataManager.LoadMainExcel
@@ -133,6 +131,24 @@ namespace CRT
         // GitHub repository name used to check for application updates via Velopack.
         // Used by: UpdateService.CheckForUpdateAsync
         public const string GitHubRepo = "Classic-Repair-Toolbox";
+
+        // ===== In-app Wiki help links =============================================================
+
+        // The Wiki pages opened by the "?" help buttons in the shipped application. Renaming or
+        // deleting one of these pages breaks a button in builds already installed, which no update
+        // can fix - so they are named here once rather than as literals at each call site, and
+        // WikiHelpPageNamesTests asserts each one still matches a file in Assets/Wiki/.
+        // Used by: TabConfiguration, ComponentInfoWindow
+        public const string WikiPageWorkbooks = "Workbooks-tab";
+        public const string WikiPageMiniPro = "MiniPro-programmer";
+        public const string WikiPageScopeKeyboard = "Controlling-oscilloscope-with-keyboard";
+        public const string WikiPageScopeSync = "Synchronize-oscilloscope";
+
+        // Builds the full URL of a Wiki page from the repository owner/name above, so a repository
+        // rename does not have to be chased through five string literals.
+        // Used by: TabConfiguration, ComponentInfoWindow
+        public static string WikiPageUrl(string pageName) =>
+            $"https://github.com/{GitHubOwner}/{GitHubRepo}/wiki/{pageName}";
 
         // ===== Schematics Viewer ==================================================================
 

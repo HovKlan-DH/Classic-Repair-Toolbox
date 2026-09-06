@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="CRT.WorklogAddWorkDoneWindow"
         Title="Add work done"
@@ -31,13 +31,31 @@
 		<Grid ColumnDefinitions="*,*" Margin="0,10,0,0">
 			<StackPanel Grid.Column="0" Spacing="4" Margin="0,0,6,0">
 				<TextBlock Text="Time spent (hours)" />
+				<!-- Maximum matches WorklogDurationFormatter.MaximumHours. Without one a
+					 NumericUpDown accepts up to decimal.MaxValue, and a pasted 1e20 overflowed the
+					 formatter's hours-to-minutes cast - which is unchecked in C#, so the readback
+					 came back either empty or as a nonsense figure that then flowed into the
+					 summary strip and the exported PDF. A century of hours is far past any real
+					 repair, so nothing legitimate is refused. -->
 				<NumericUpDown x:Name="HoursNumericUpDown"
 								Minimum="0"
+								Maximum="876000"
 								Increment="0.25"
-								FormatString="0.##" />
+								FormatString="0.##"
+								ValueChanged="OnHoursValueChanged" />
+				<!-- Reads the decimal hours above back as hours and minutes, live as they are
+					 typed. Its runs are built in code (the numbers bold, the words not), so it
+					 carries no Text here. Collapsed when there is nothing to say - see
+					 UpdateHoursReadback. -->
+				<TextBlock x:Name="HoursReadbackText"
+						   FontSize="11"
+						   Opacity="0.75"
+						   TextWrapping="Wrap"
+						   Margin="0,2,0,0"
+						   IsVisible="False" />
 			</StackPanel>
 			<StackPanel Grid.Column="1" Spacing="4" Margin="6,0,0,0">
-				<TextBlock Text="Cost" />
+				<TextBlock x:Name="CostLabelText" Text="Cost" />
 				<NumericUpDown x:Name="CostNumericUpDown"
 								Minimum="0"
 								Increment="1"

@@ -63,6 +63,6 @@ Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothi
 
 ## Which folders am I actually using?
 
-The "Configuration" tab has a button `Open data/workbooks/log/settings folder`, which opens the folder holding your settings and log.
+The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters below and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
 
 The log file also has a `Data root is [...]` line near the top.

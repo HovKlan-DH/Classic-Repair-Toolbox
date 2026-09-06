@@ -838,7 +838,7 @@ namespace CRT
         // ###########################################################################################
         private void OnNumpadOscilloscopeHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Controlling-oscilloscope-with-keyboard");
+            this.OpenExternalTarget(AppConfig.WikiPageUrl(AppConfig.WikiPageScopeKeyboard));
         }
 
         // ###########################################################################################
@@ -846,7 +846,7 @@ namespace CRT
         // ###########################################################################################
         private void OnMiniProHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer");
+            this.OpenExternalTarget(AppConfig.WikiPageUrl(AppConfig.WikiPageMiniPro));
         }
 
         // ###########################################################################################
@@ -854,7 +854,7 @@ namespace CRT
         // ###########################################################################################
         private void OnSyncOscilloscopeHelpClick(object? sender, RoutedEventArgs e)
         {
-            this.OpenExternalTarget("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Synchronize-oscilloscope");
+            this.OpenExternalTarget(AppConfig.WikiPageUrl(AppConfig.WikiPageScopeSync));
         }
 
         // ###########################################################################################
@@ -1671,8 +1671,10 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
                 return;
             }
 
+            this.RemoveCaptureFromOscilloscopeFolder(capturedPath);
+
             this.CapturedScopeImageText.Text =
-                $"Attached to worklog #{result.EntryId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                $"Moved to worklog #{result.EntryId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
             this.RefreshWorklogSurfacesAfterAttach();
         }
@@ -1725,7 +1727,66 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
 
             await editor.ShowDialog(this);
 
+            // ONLY once the draft was actually saved. A cancelled draft writes no entry and deletes
+            // its own attachment bytes again (DiscardDraftAttachments), so deleting the capture here
+            // regardless would destroy the measurement outright - the one thing this flow promises
+            // never to do. WasSaved is the editor's own record of whether anything reached disk.
+            if (editor.WasSaved)
+            {
+                this.RemoveCaptureFromOscilloscopeFolder(capturedPath);
+                this.CapturedScopeImageText.Text = "Moved to a new worklog";
+            }
+
             this.RefreshWorklogSurfacesAfterAttach();
+        }
+
+        // ###########################################################################################
+        // Completes the MOVE of a capture into a worklog by removing it from the oscilloscope image
+        // folder it was written to - asked for directly: once an image is filed against a worklog,
+        // one copy in the worklog folder is the whole point, and leaving the original behind means
+        // every capture is stored twice.
+        //
+        // The on-screen bitmap is released FIRST. ShowTemporaryCapturedOscilloscopeImage opens the
+        // file with Avalonia's Bitmap to display it in the popup, which holds the file open on
+        // Windows, so deleting underneath it fails with a sharing violation and the original
+        // silently survives - the exact bug this method exists to avoid. Clearing the temporary
+        // image disposes that bitmap and also drops thisCapturedScopeImagePath, so the caller's
+        // own local copy of the path is the one used here; and the banner is restored by the
+        // caller immediately afterwards, with the wording for what actually happened.
+        //
+        // A failed delete is logged inside DeleteSourceFileAfterAttach and deliberately not
+        // surfaced: the image IS filed in the worklog, and a leftover duplicate is untidy rather
+        // than a loss worth interrupting someone at the bench for.
+        // ###########################################################################################
+        // ###########################################################################################
+        // TEST SEAMS for the captured-image lifecycle. The capture itself needs a scope on the
+        // network, but everything AFTER it - showing the image, and releasing it again on the attach
+        // path - is ordinary control state, and releasing it is where a fatal render-thread crash
+        // lived: the bitmap was disposed while MainComponentImage was still pointing at it.
+        //
+        // The show seam takes a path rather than a bitmap so it drives the real method, decode and
+        // all, exactly as a capture does.
+        // ###########################################################################################
+        internal void ShowTemporaryCapturedOscilloscopeImageForTests(string savedFilePath) =>
+            this.ShowTemporaryCapturedOscilloscopeImage(savedFilePath);
+
+        internal void ClearTemporaryCapturedOscilloscopeImageForTests() =>
+            this.ClearTemporaryCapturedOscilloscopeImage();
+
+        // What the popup's large image is currently showing, so a test can assert that a disposed
+        // bitmap was never left in it.
+        internal Avalonia.Media.IImage? MainComponentImageSourceForTests => this.MainComponentImage.Source;
+
+        private void RemoveCaptureFromOscilloscopeFolder(string capturedPath)
+        {
+            this.ClearTemporaryCapturedOscilloscopeImage();
+
+            WorklogAttachmentStorage.DeleteSourceFileAfterAttach(capturedPath);
+
+            // The banner was hidden along with the bitmap just now, and the caller is about to put
+            // its own "moved to worklog #N" text in it - so it goes back on screen here rather than
+            // leaving the caller to know that clearing the image also took the banner down.
+            this.CapturedScopeImageBorder.IsVisible = true;
         }
 
         // ###########################################################################################
@@ -1799,6 +1860,19 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
 
             if (this.thisTemporaryCapturedScopeBitmap != null)
             {
+                // The main image is dropped BEFORE the bitmap is disposed, whenever it is the one
+                // still on screen. Every other caller happens to reassign MainComponentImage.Source
+                // immediately afterwards, so the disposed surface is never rendered; the attach
+                // flow's RemoveCaptureFromOscilloscopeFolder does not - it re-shows the banner
+                // instead, which forces a layout pass over the still-visible Image and threw
+                // ObjectDisposedException on the RENDER thread, which is fatal in Avalonia. The
+                // same failure mode the Workbooks board pane documents in its own detach path, so
+                // the release is done HERE rather than relying on each caller to remember.
+                if (ReferenceEquals(this.MainComponentImage.Source, this.thisTemporaryCapturedScopeBitmap))
+                {
+                    this.MainComponentImage.Source = null;
+                }
+
                 this.thisTemporaryCapturedScopeBitmap.Dispose();
                 this.thisTemporaryCapturedScopeBitmap = null;
             }

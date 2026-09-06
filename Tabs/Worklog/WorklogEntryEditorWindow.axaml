@@ -25,6 +25,16 @@
 		<Style Selector="Button.WorklogRowIconButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
 		</Style>
+		<!-- The delete rows all render trash-can (U+F2ED), which is drawn 16 design units past the
+		     font's declared ascent and therefore loses its top pixel row unless the line box is
+		     given the extra room - see Handlers/Geometry/FontAwesomeGlyphMetrics.cs. At the 13px
+		     these use, the reservation rounds up to 1px. It is set here rather than on each of the
+		     five TextBlocks so there is one place to change, and as a literal because a Setter
+		     cannot call GetTopOverflowThickness; the value is pinned by
+		     WorklogEditorDeleteIconPaddingTests. -->
+		<Style Selector="Button.WorklogRowIconButton > TextBlock">
+			<Setter Property="Padding" Value="0,1,0,0" />
+		</Style>
 
 		<!-- The clickable half of a list header: the expand/collapse icon, the title and the item
 		     count. A Border rather than a Button so the header keeps its plain look - only the
@@ -254,7 +264,12 @@
 												<Button Grid.Column="0" Classes="WorklogRowIconButton" Margin="0,0,8,0" Click="OnEditLinkClick" Tag="{Binding Id}" ToolTip.Tip="Edit link">
 													<TextBlock Text="&#xf044;" FontFamily="{DynamicResource FontAwesomeRegular}" FontSize="13" Foreground="{DynamicResource Schematics_Panels_Fg}" />
 												</Button>
-												<TextBlock Grid.Column="1" Text="{Binding Headline}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+												<!-- HighlightText, not Text: a link headline is searched (WorklogSearchIndex yields it),
+												     so a match in it must be visible. Highlight-only rather than
+												     LinkText because the whole ROW already opens the URL - see
+												     TextLinkRenderer.HighlightTextProperty, which also explains why
+												     the ellipsis below survives whenever no search is running. -->
+												<TextBlock Grid.Column="1" theme:TextLinkRenderer.HighlightText="{Binding Headline}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 												<Button Grid.Column="2" Classes="WorklogRowIconButton" Margin="8,0,0,0" Click="OnDeleteLinkClick" Tag="{Binding Id}" ToolTip.Tip="Delete link">
 													<TextBlock Text="&#xf2ed;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="13" Foreground="{DynamicResource Text_Fail_Fg}" />
 												</Button>

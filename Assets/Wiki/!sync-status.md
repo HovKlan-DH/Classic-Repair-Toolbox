@@ -5,14 +5,6 @@
 
 # Wiki pages waiting to be pasted
 
-**5 pages waiting.**
-
-| File in `Assets/Wiki` | Where it is in the Wiki |
-| --- | --- |
-| `Commandline-parameters.md` | Home > At the bench > Synchronize oscilloscope > Command-line parameters |
-| `Configuration-tab.md` | Home > The tabs > Configuration |
-| `Development-tools-used.md` | Home > Project > Tools used |
-| `Workbooks-Browsing-and-search.md` | Home > At the bench > Workbooks > Browsing and search |
-| `Workbooks-Export-and-data.md` | Home > At the bench > Workbooks > Export and data |
+**Nothing to paste.** Every page matches what is in the live Wiki.
 
 <!-- crt:waiting-end -->

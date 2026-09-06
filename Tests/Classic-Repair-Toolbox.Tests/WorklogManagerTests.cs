@@ -10,12 +10,17 @@ namespace ClassicRepairToolbox.Tests;
 // a test point it at a temporary folder instead of the user's real AppData folder. NOTHING here
 // calls Load().
 //
-// The storage model has no central index: each workbook is its own subfolder (named after its id)
-// holding its own index.json, and every query scans those subfolders fresh. That is deliberate -
-// deleting a workbook is just deleting its folder, with no separate bookkeeping file that could go
-// stale. One consequence, pinned down below: with no persisted id counter, the next id is simply
-// the highest numbered subfolder on disk plus one, so deleting the highest-id workbook lets its
-// number be reused by the next one created.
+// The storage model has no central index of WORKBOOKS: each workbook is its own subfolder (named
+// after its id) holding its own index.json, and every query scans those subfolders fresh. That is
+// deliberate - deleting a workbook is just deleting its folder, with no separate bookkeeping file
+// listing workbooks that could go stale.
+//
+// The root does hold one file of its own - its own index.json, carrying the id counter (it was
+// called counters.json until that name was retired for describing a single counter as plural).
+// That is NOT a workbook listing and nothing discovers workbooks through it: it records the highest
+// workbook id ever HANDED OUT, so a deleted id is never re-used. Pinned by
+// Creating_a_workbook_writes_its_own_index_file_inside_its_own_folder_named_after_its_id below,
+// which asserts the file's CONTENT rather than merely its absence.
 //
 // The class is global mutable state, so this whole file is one xUnit collection: the tests run
 // sequentially and each one re-loads a fresh workbook folder first.
@@ -37,6 +42,53 @@ public sealed class WorklogManagerTests : IDisposable
         string root = this.thisWorkspace.Path_("Workbook-" + Guid.NewGuid().ToString("N"));
         WorklogManager.LoadFrom(root);
         return root;
+    }
+
+    /// <summary>
+    /// The folder one workbook's data lives in - "workbook_{id}" under the root. Every test builds
+    /// its paths through this rather than by hand, so the layout is named in ONE place here as it is
+    /// in one place in the manager.
+    /// </summary>
+    private static string WorkbookFolder(string root, int workbookId) =>
+        Path.Combine(root, $"workbook_{workbookId}");
+
+    /// <summary>
+    /// The folder one worklog lives in - "worklog_{id}" inside its workbook's folder. This holds the
+    /// worklog's own index.json AND its photo/file bytes: a worklog is one folder, entirely.
+    /// </summary>
+    private static string WorklogFolder(string root, int workbookId, int entryId) =>
+        Path.Combine(WorkbookFolder(root, workbookId), $"worklog_{entryId}");
+
+    /// <summary>The index.json holding one worklog's own record.</summary>
+    private static string WorklogIndexPath(string root, int workbookId, int entryId) =>
+        Path.Combine(WorklogFolder(root, workbookId, entryId), "index.json");
+
+    /// <summary>
+    /// Removes one key from a saved worklog's index.json, reproducing exactly what a build that
+    /// predates that field wrote. Used by the "written before this field existed" tests, which are
+    /// the only way to prove a missing key reads back as the intended default rather than as
+    /// null/false.
+    /// </summary>
+    private static void StripKeyFromStoredWorklog(string root, int workbookId, int entryId, string keyName)
+    {
+        string indexPath = WorklogIndexPath(root, workbookId, entryId);
+
+        using (var document = JsonDocument.Parse(File.ReadAllText(indexPath)))
+        {
+            var stripped = new Dictionary<string, JsonElement>();
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, keyName, StringComparison.Ordinal))
+                {
+                    stripped[property.Name] = property.Value;
+                }
+            }
+
+            File.WriteAllText(indexPath, JsonSerializer.Serialize(stripped));
+        }
+
+        Assert.DoesNotContain(keyName, File.ReadAllText(indexPath));
     }
 
     /// <summary>
@@ -88,7 +140,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         Assert.Equal(1, record.Id);
         Assert.Equal("Open", record.Status);
-        Assert.Equal(0, record.EntryCount);
+        Assert.Equal(0, record.WorklogCount);
         Assert.Equal("Mr. Jensens C64", record.Title);
         Assert.Equal("Bought at auction", record.Note);
 
@@ -166,9 +218,23 @@ public sealed class WorklogManagerTests : IDisposable
 
         CreateWorkbook("Commodore 64|250469", "C64 job", "");
 
-        string ownIndexPath = Path.Combine(root, "1", "index.json");
+        string ownIndexPath = Path.Combine(WorkbookFolder(root, 1), "index.json");
         Assert.True(File.Exists(ownIndexPath));
-        Assert.False(File.Exists(Path.Combine(root, "index.json")), "there must be no central index file");
+
+        // The root carries an index.json of its own, but it must never become a central listing of
+        // workbooks - workbooks are discovered only by scanning the numbered subfolders, so a root
+        // file naming them is a second source of truth that can go stale. Asserting its CONTENT is
+        // what states that: it holds the id counter and nothing else. This used to assert the root
+        // file simply did not exist, which said the same thing only while the counter lived under
+        // the name counters.json.
+        string rootIndexPath = Path.Combine(root, "index.json");
+        Assert.True(File.Exists(rootIndexPath), "the root index.json carries the workbook id counter");
+
+        using var rootIndex = JsonDocument.Parse(File.ReadAllText(rootIndexPath));
+        Assert.Equal(1, rootIndex.RootElement.GetProperty("lastWorkbookId").GetInt32());
+        Assert.Equal(
+            new[] { "lastWorkbookId" },
+            rootIndex.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
     }
 
     [Fact]
@@ -198,7 +264,7 @@ public sealed class WorklogManagerTests : IDisposable
         CreateWorkbook("Commodore 64|250469", "C64 job", "");
         Assert.NotNull(WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469"));
 
-        Directory.Delete(Path.Combine(root, "1"), recursive: true);
+        Directory.Delete(WorkbookFolder(root, 1), recursive: true);
 
         Assert.Null(WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469"));
     }
@@ -217,7 +283,7 @@ public sealed class WorklogManagerTests : IDisposable
         bool deleted = WorklogManager.DeleteWorkbook(workbook.Id);
 
         Assert.True(deleted);
-        Assert.False(Directory.Exists(Path.Combine(root, workbook.Id.ToString())));
+        Assert.False(Directory.Exists(WorkbookFolder(root, workbook.Id)));
         Assert.Empty(WorklogManager.GetWorkbooksForBoard("Commodore 64|250469"));
     }
 
@@ -273,9 +339,224 @@ public sealed class WorklogManagerTests : IDisposable
     }
 
     // ---------------------------------------------------------------------------------------
-    // DeleteEntry - the Workbooks tab's per-card "Delete worklog" button. A worklog is a row in
-    // entries.json PLUS a "worklog_{id}" folder holding its photo/file bytes, so deleting one has
-    // to remove both or the workbook keeps orphaned attachment bytes forever.
+    // THE STORAGE LAYOUT ITSELF: one folder per record, each holding one index.json. A workbook is
+    // "workbook_{id}/index.json"; a worklog is "worklog_{id}/index.json" inside it, beside that
+    // worklog's own photos and files.
+    //
+    // The point of the layout - and the reason it was asked for - is that DELETING A FOLDER BY HAND
+    // removes the record and nothing is left over. Worklogs used to share one entries.json per
+    // workbook, so removing a worklog's folder in a file manager left its row behind, and the UI
+    // went on showing a worklog whose attachments were gone. There is deliberately no migration and
+    // no fallback, so data in the old shape is not read at all.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void A_workbook_is_stored_in_its_own_prefixed_folder()
+    {
+        string root = this.LoadWorklog();
+
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        // Named for what it holds rather than as a bare number, matching the worklog folders inside
+        // it - so the Workbooks folder explains itself when the user opens it.
+        Assert.Equal("workbook_1", Path.GetFileName(WorkbookFolder(root, workbook.Id)));
+        Assert.True(File.Exists(Path.Combine(WorkbookFolder(root, workbook.Id), "index.json")));
+        Assert.False(Directory.Exists(Path.Combine(root, "1")), "the bare-number folder name is not used any more");
+    }
+
+    // The STORED KEY NAMES, which the user reads: this file sits in their Workbooks folder and they
+    // open it. The app says "worklog" everywhere one is visible, so the data must not say "entry" -
+    // that is internal vocabulary. Asserted against the raw JSON text rather than through the
+    // properties, which would pass no matter what the keys were called.
+    //
+    // The old names were "entryCount" and "lastEntryId". There is deliberately no migration, so an
+    // older workbook simply reads 0 for both until its next recompute.
+    // A workbook written with the OLD key names reads both counters as 0, since neither is migrated.
+    // That must not let a worklog id be handed out twice: the walk-past-what-exists floor in
+    // PeekNextEntryIdIn covers it, so the next worklog lands ABOVE the ones already on disk rather
+    // than on top of #1. This is the exact shape of an index.json in the wild at the time of the
+    // rename - three worklogs, "entryCount"/"lastEntryId".
+    [Fact]
+    public void A_workbook_written_with_the_old_count_names_does_not_reuse_worklog_ids()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        AddEntry(workbook.Id, "Sch", "First");
+        AddEntry(workbook.Id, "Sch", "Second");
+        AddEntry(workbook.Id, "Sch", "Third");
+
+        // Rewrite index.json as an older build wrote it: the old key names, which the current
+        // reader does not recognise at all.
+        File.WriteAllText(Path.Combine(WorkbookFolder(root, workbook.Id), "index.json"), """
+        {
+          "id": 1,
+          "boardKey": "Commodore 64|250469",
+          "title": "C64 job",
+          "note": "",
+          "status": "Open",
+          "startDate": "2026-09-06T00:00:00+02:00",
+          "entryCount": 3,
+          "lastEntryId": 3
+        }
+        """);
+
+        // Both counters read as 0 - the names are simply not recognised.
+        var reloaded = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469").Single();
+        Assert.Equal(0, reloaded.WorklogCount);
+        Assert.Equal(0, reloaded.LastWorklogId);
+
+        // But the next worklog is still #4, because the id walk skips every folder that exists.
+        Assert.Equal(4, WorklogManager.PeekNextEntryId(workbook.Id));
+
+        var added = AddEntry(workbook.Id, "Sch", "Fourth");
+        Assert.Equal(4, added.Id);
+
+        // And the recompute that add triggers writes the count back under the new name.
+        Assert.Equal(4, WorklogManager.GetWorkbooksForBoard("Commodore 64|250469").Single().WorklogCount);
+    }
+
+    [Fact]
+    public void A_workbook_records_its_counts_using_worklog_vocabulary()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        AddEntry(workbook.Id, "Sch", "Bad cap");
+        AddEntry(workbook.Id, "Sch", "Cracked trace");
+
+        string json = File.ReadAllText(Path.Combine(WorkbookFolder(root, workbook.Id), "index.json"));
+
+        Assert.Contains("\"worklogCount\": 2", json);
+        Assert.Contains("\"lastWorklogId\": 2", json);
+
+        Assert.DoesNotContain("entryCount", json);
+        Assert.DoesNotContain("lastEntryId", json);
+    }
+
+    [Fact]
+    public void Each_worklog_is_stored_as_its_own_index_file_in_its_own_folder()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        var first = AddEntry(workbook.Id, "Sch", "Bad cap");
+        var second = AddEntry(workbook.Id, "Sch", "Cracked trace");
+
+        Assert.True(File.Exists(WorklogIndexPath(root, workbook.Id, first.Id)));
+        Assert.True(File.Exists(WorklogIndexPath(root, workbook.Id, second.Id)));
+
+        // No shared list file: that is what made a hand-deleted folder leave a row behind.
+        Assert.False(File.Exists(Path.Combine(WorkbookFolder(root, workbook.Id), "entries.json")));
+    }
+
+    // THE WHOLE POINT. Deleting a worklog's folder outside the application removes that worklog from
+    // the UI, with nothing left to clean up by hand and every other worklog untouched.
+    [Fact]
+    public void Deleting_a_worklog_folder_by_hand_removes_it_and_leaves_the_others()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        var first = AddEntry(workbook.Id, "Sch", "Bad cap");
+        var second = AddEntry(workbook.Id, "Sch", "Cracked trace");
+        var third = AddEntry(workbook.Id, "Sch", "Dead PLA");
+
+        Directory.Delete(WorklogFolder(root, workbook.Id, second.Id), recursive: true);
+
+        var remaining = WorklogManager.GetEntries(workbook.Id);
+
+        Assert.Equal(new[] { first.Id, third.Id }, remaining.Select(e => e.Id).ToArray());
+        Assert.Equal(new[] { "Bad cap", "Dead PLA" }, remaining.Select(e => e.Title).ToArray());
+    }
+
+    // A worklog's folder holds its record AND its attachments, so deleting the folder takes the
+    // photos with it - there is no second place left holding bytes for a worklog that is gone.
+    [Fact]
+    public void A_worklogs_attachments_live_in_the_same_folder_as_its_record()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var entry = AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        string attachmentsFolder = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, entry.Id)!;
+
+        Assert.Equal(WorklogFolder(root, workbook.Id, entry.Id), attachmentsFolder);
+        Assert.True(File.Exists(Path.Combine(attachmentsFolder, "index.json")));
+    }
+
+    // Only "worklog_{id}" folders are read. Anything else a user or another tool leaves inside a
+    // workbook folder is ignored rather than being taken for a worklog - and, since it is skipped
+    // rather than throwing, it cannot break the workbook for the worklogs that ARE valid.
+    [Fact]
+    public void A_folder_that_is_not_a_worklog_is_ignored()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        var entry = AddEntry(workbook.Id, "Sch", "Bad cap");
+
+        // Debris, an export, and a worklog folder holding no readable record.
+        Directory.CreateDirectory(Path.Combine(WorkbookFolder(root, workbook.Id), "notes"));
+        Directory.CreateDirectory(Path.Combine(WorkbookFolder(root, workbook.Id), "worklog_notanumber"));
+        Directory.CreateDirectory(WorklogFolder(root, workbook.Id, 99));
+
+        var entries = WorklogManager.GetEntries(workbook.Id);
+
+        Assert.Equal(new[] { entry.Id }, entries.Select(e => e.Id).ToArray());
+    }
+
+    // Directory enumeration order is whatever the filesystem returns, so the read sorts by id. The
+    // UI shows these ids ("#4") and the export prints them in order, both of which would otherwise
+    // vary between machines.
+    [Fact]
+    public void Worklogs_are_read_back_in_id_order()
+    {
+        this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+
+        for (int i = 0; i < 12; i++)
+        {
+            AddEntry(workbook.Id, "Sch", $"Fault {i}");
+        }
+
+        var ids = WorklogManager.GetEntries(workbook.Id).Select(e => e.Id).ToArray();
+
+        Assert.Equal(Enumerable.Range(1, 12).ToArray(), ids);
+    }
+
+    // Data in the OLD shape is not read - no migration and no fallback, as specified. A workbook
+    // folder named by the bare id is not a workbook, and an entries.json beside a workbook's
+    // index.json is not a source of worklogs.
+    [Fact]
+    public void Data_written_in_the_previous_layout_is_not_read()
+    {
+        string root = this.LoadWorklog();
+
+        // A workbook folder as an older build named it, with worklogs in the old shared file.
+        string legacyWorkbook = Path.Combine(root, "1");
+        Directory.CreateDirectory(legacyWorkbook);
+        File.WriteAllText(
+            Path.Combine(legacyWorkbook, "index.json"),
+            "{ \"id\": 1, \"boardKey\": \"Commodore 64|250469\", \"title\": \"Old job\", \"status\": \"Open\" }");
+        File.WriteAllText(
+            Path.Combine(legacyWorkbook, "entries.json"),
+            "[ { \"id\": 1, \"schematicName\": \"Sch\", \"title\": \"Old worklog\", \"state\": \"Open\" } ]");
+
+        Assert.Empty(WorklogManager.GetWorkbooksForBoard("Commodore 64|250469"));
+
+        // And a NEW workbook beside it reads none of those worklogs either.
+        var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
+        File.WriteAllText(
+            Path.Combine(WorkbookFolder(root, workbook.Id), "entries.json"),
+            "[ { \"id\": 7, \"schematicName\": \"Sch\", \"title\": \"Old worklog\", \"state\": \"Open\" } ]");
+
+        Assert.Empty(WorklogManager.GetEntries(workbook.Id));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // DeleteEntry - the Workbooks tab's per-card "Delete worklog" button. A worklog is one
+    // "worklog_{id}" folder holding its own index.json AND its photo/file bytes, so deleting it is
+    // one folder removal rather than a row edit plus a folder removal.
     // ---------------------------------------------------------------------------------------
 
     [Fact]
@@ -362,7 +643,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         var reloaded = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0];
         Assert.Equal("Closed", reloaded.Status);
-        Assert.Equal(1, reloaded.EntryCount);
+        Assert.Equal(1, reloaded.WorklogCount);
     }
 
     // The other side of the same rule: a workbook with NO entries is Open, per
@@ -381,7 +662,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         var reloaded = WorklogManager.GetWorkbooksForBoard("Commodore 64|250469")[0];
         Assert.Equal("Open", reloaded.Status);
-        Assert.Equal(0, reloaded.EntryCount);
+        Assert.Equal(0, reloaded.WorklogCount);
         Assert.Empty(WorklogManager.GetEntries(workbook.Id));
     }
 
@@ -431,10 +712,10 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal(workbook.Id, stored.Id);
         Assert.Equal(workbook.BoardKey, stored.BoardKey);
         Assert.Equal(workbook.StartDate, stored.StartDate);
-        Assert.Equal(1, stored.EntryCount);
+        Assert.Equal(1, stored.WorklogCount);
         Assert.Equal("Open", stored.Status);
 
-        Assert.True(File.Exists(Path.Combine(root, workbook.Id.ToString(), "index.json")));
+        Assert.True(File.Exists(Path.Combine(WorkbookFolder(root, workbook.Id), "index.json")));
     }
 
     [Fact]
@@ -552,7 +833,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         // A workbook as an older build left it: a numbered folder with an index.json, and no
         // counter file anywhere.
-        string legacyFolder = Path.Combine(root, "1");
+        string legacyFolder = WorkbookFolder(root, 1);
         Directory.CreateDirectory(legacyFolder);
         File.WriteAllText(
             Path.Combine(legacyFolder, "index.json"),
@@ -574,7 +855,7 @@ public sealed class WorklogManagerTests : IDisposable
     }
 
     // The same floor on the ENTRY side, and for the same reason: a workbook written before
-    // LastEntryId existed deserializes it as 0, so without the walk-past its next entry would be
+    // LastWorklogId existed deserializes it as 0, so without the walk-past its next entry would be
     // #1 on top of the entries it already has.
     [Fact]
     public void Entries_in_a_workbook_that_predates_the_counter_are_not_renumbered_from_one()
@@ -587,9 +868,9 @@ public sealed class WorklogManagerTests : IDisposable
 
         // Strip the counter back out of index.json, leaving the workbook exactly as an older build
         // would have written it: entries present, no lastEntryId.
-        string indexPath = Path.Combine(root, workbook.Id.ToString(), "index.json");
+        string indexPath = Path.Combine(WorkbookFolder(root, workbook.Id), "index.json");
         var record = JsonSerializer.Deserialize<WorkbookRecord>(File.ReadAllText(indexPath))!;
-        record.LastEntryId = 0;
+        record.LastWorklogId = 0;
         File.WriteAllText(indexPath, JsonSerializer.Serialize(record));
 
         Assert.Equal(3, WorklogManager.PeekNextEntryId(workbook.Id));
@@ -698,7 +979,7 @@ public sealed class WorklogManagerTests : IDisposable
         var record = WorklogManager.CreateWorkbook("Commodore 64|250469", "C64 job", "");
 
         Assert.Null(record);
-        Assert.False(Directory.Exists(Path.Combine(cwdBefore, "1")), "must not create a workbook folder relative to the working directory");
+        Assert.False(Directory.Exists(Path.Combine(cwdBefore, "workbook_1")), "must not create a workbook folder relative to the working directory");
     }
 
     [Fact]
@@ -708,8 +989,8 @@ public sealed class WorklogManagerTests : IDisposable
         // not 2: filling gaps would risk two different workbooks briefly sharing a folder name.
         string root = this.LoadWorklog();
 
-        Directory.CreateDirectory(Path.Combine(root, "1"));
-        Directory.CreateDirectory(Path.Combine(root, "3"));
+        Directory.CreateDirectory(WorkbookFolder(root, 1));
+        Directory.CreateDirectory(WorkbookFolder(root, 3));
 
         Assert.Equal(4, WorklogManager.PeekNextId());
     }
@@ -721,7 +1002,7 @@ public sealed class WorklogManagerTests : IDisposable
         // the board lookup for every other workbook.
         string root = this.LoadWorklog();
 
-        Directory.CreateDirectory(Path.Combine(root, "1"));
+        Directory.CreateDirectory(WorkbookFolder(root, 1));
         CreateWorkbook("Commodore 64|250469", "Real job", "");
 
         var active = WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469");
@@ -734,8 +1015,8 @@ public sealed class WorklogManagerTests : IDisposable
     public void A_malformed_index_file_is_skipped_instead_of_throwing()
     {
         string root = this.LoadWorklog();
-        Directory.CreateDirectory(Path.Combine(root, "1"));
-        File.WriteAllText(Path.Combine(root, "1", "index.json"), "{ this is not json");
+        Directory.CreateDirectory(WorkbookFolder(root, 1));
+        File.WriteAllText(Path.Combine(WorkbookFolder(root, 1), "index.json"), "{ this is not json");
 
         Exception? thrown = Record.Exception(() =>
             WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469"));
@@ -755,23 +1036,20 @@ public sealed class WorklogManagerTests : IDisposable
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
         WorklogManager.AddEntry(workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
 
-        string entriesPath = Path.Combine(root, workbook.Id.ToString(), "entries.json");
-        File.WriteAllText(entriesPath, """
-        [
-          {
-            "id": 1,
-            "schematicName": "Sch",
-            "title": "Bad cap",
-            "category": "Issue",
-            "state": "Open",
-            "componentLabels": null,
-            "links": null,
-            "comments": null,
-            "workDoneItems": null,
-            "photos": null,
-            "files": null
-          }
-        ]
+        File.WriteAllText(WorklogIndexPath(root, workbook.Id, 1), """
+        {
+          "id": 1,
+          "schematicName": "Sch",
+          "title": "Bad cap",
+          "category": "Issue",
+          "state": "Open",
+          "componentLabels": null,
+          "links": null,
+          "comments": null,
+          "workDoneItems": null,
+          "photos": null,
+          "files": null
+        }
         """);
 
         var entry = WorklogManager.GetEntries(workbook.Id).Single();
@@ -792,7 +1070,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         CreateWorkbook("Commodore 64|250469", "C64 job", "");
 
-        string json = File.ReadAllText(Path.Combine(root, "1", "index.json"));
+        string json = File.ReadAllText(Path.Combine(WorkbookFolder(root, 1), "index.json"));
         Assert.Contains("\n", json);
         Exception? thrown = Record.Exception(() => JsonDocument.Parse(json));
         Assert.True(thrown is null, "the index file must stay parseable");
@@ -836,7 +1114,8 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal("Leaking electrolyte", entry.Description);
         Assert.Equal(new[] { "C12", "R4" }, entry.ComponentLabels);
 
-        Assert.True(File.Exists(Path.Combine(root, workbook.Id.ToString(), "entries.json")));
+        // The worklog is its OWN folder holding its OWN index.json - there is no shared list file.
+        Assert.True(File.Exists(WorklogIndexPath(root, workbook.Id, entry.Id)));
 
         var storedEntries = WorklogManager.GetEntries(workbook.Id);
         Assert.Single(storedEntries);
@@ -917,7 +1196,7 @@ public sealed class WorklogManagerTests : IDisposable
         var active = WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469");
         Assert.NotNull(active);
         Assert.Equal("Open", active!.Status);
-        Assert.Equal(1, active.EntryCount);
+        Assert.Equal(1, active.WorklogCount);
     }
 
     [Fact]
@@ -966,7 +1245,7 @@ public sealed class WorklogManagerTests : IDisposable
         var active = WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469");
         Assert.NotNull(active);
         Assert.Equal("Open", active!.Status);
-        Assert.Equal(2, active.EntryCount);
+        Assert.Equal(2, active.WorklogCount);
     }
 
     [Fact]
@@ -1003,7 +1282,7 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.NotNull(latest);
         Assert.Equal(workbook.Id, latest!.Id);
         Assert.Equal("Closed", latest.Status);
-        Assert.Equal(1, latest.EntryCount);
+        Assert.Equal(1, latest.WorklogCount);
     }
 
     [Fact]
@@ -1038,7 +1317,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         var reopened = WorklogManager.GetLatestWorkbookForBoard("Commodore 64|250469");
         Assert.Equal("Open", reopened!.Status);
-        Assert.Equal(2, reopened.EntryCount);
+        Assert.Equal(2, reopened.WorklogCount);
         Assert.Equal(workbook.Id, WorklogManager.GetActiveWorkbookForBoard("Commodore 64|250469")!.Id);
     }
 
@@ -1114,9 +1393,9 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Contains(workbooks, w => w.Id == open.Id && w.Status == "Open");
         Assert.Contains(workbooks, w => w.Id == closed.Id && w.Status == "Closed");
 
-        // The card's third line reads "{EntryCount} worklogs", so the count has to come back on
+        // The card's third line reads "{WorklogCount} worklogs", so the count has to come back on
         // the listed records rather than only on the single-workbook lookups.
-        Assert.All(workbooks, w => Assert.Equal(1, w.EntryCount));
+        Assert.All(workbooks, w => Assert.Equal(1, w.WorklogCount));
     }
 
     [Fact]
@@ -1311,10 +1590,15 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal("Open", WorklogManager.GetLatestWorkbookForBoard("Commodore 64|250469")!.Status);
     }
 
-    // Regression: SaveEntries swallowed every write exception and returned void, so UpdateEntry
+    // Regression: the entry writer swallowed every write exception and returned void, so UpdateEntry
     // reported true even when nothing reached disk - the editor then closed looking saved and the
     // user watched their edits revert on the next refresh. A directory sitting where the ".tmp"
     // file must be written fails the write deterministically, with no permissions games.
+    //
+    // The blocked path is inside the WORKLOG's own folder now that each worklog is its own
+    // index.json. That also makes the failure LOCAL, which is the point of the per-folder layout:
+    // blocking this worklog's write leaves every other worklog in the workbook saveable, so the
+    // second half below adds one successfully while the first is still un-writable.
     [Fact]
     public void A_failed_write_is_reported_rather_than_being_swallowed()
     {
@@ -1322,15 +1606,20 @@ public sealed class WorklogManagerTests : IDisposable
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job");
         var entry = WorklogManager.AddEntry(workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>())!;
 
-        Directory.CreateDirectory(Path.Combine(root, workbook.Id.ToString(), "entries.json.tmp"));
+        Directory.CreateDirectory(Path.Combine(WorklogFolder(root, workbook.Id, entry.Id), "index.json.tmp"));
 
         entry.Title = "Bad cap - replaced";
 
         Assert.False(WorklogManager.UpdateEntry(workbook.Id, entry));
-        Assert.False(WorklogManager.AddEntry(workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Another", "", "Note", "Open", Array.Empty<string>()) is not null);
 
-        // The entry on disk is untouched, which is the point: the caller must not report success.
-        Assert.Equal("Bad cap", WorklogManager.GetEntries(workbook.Id).Single().Title);
+        // That worklog on disk is untouched, which is the point: the caller must not report success.
+        Assert.Equal("Bad cap", WorklogManager.GetEntries(workbook.Id).Single(e => e.Id == entry.Id).Title);
+
+        // A DIFFERENT worklog still saves. Under the old shared entries.json one un-writable file
+        // took the whole workbook down with it; now the damage stops at the worklog that owns the
+        // blocked folder.
+        Assert.NotNull(WorklogManager.AddEntry(
+            workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Another", "", "Note", "Open", Array.Empty<string>()));
     }
 
     [Fact]
@@ -1381,7 +1670,7 @@ public sealed class WorklogManagerTests : IDisposable
         // and the app says "worklog" everywhere a user can see one. Renamed deliberately, with no
         // migration of existing data: an older folder keeps its name and its attachments simply
         // stop being found.
-        Assert.Equal(Path.Combine(root, workbook.Id.ToString(), "worklog_1"), attachmentsFolder);
+        Assert.Equal(Path.Combine(WorkbookFolder(root, workbook.Id), "worklog_1"), attachmentsFolder);
         Assert.True(Directory.Exists(attachmentsFolder));
     }
 
@@ -1496,31 +1785,8 @@ public sealed class WorklogManagerTests : IDisposable
             workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
 
         // Strip the key back out, reproducing exactly what an older build wrote.
-        string entriesPath = Path.Combine(root, workbook.Id.ToString(), "entries.json");
-        string json = File.ReadAllText(entriesPath);
-        Assert.Contains("showMarkedArea", json);
-
-        using (var document = JsonDocument.Parse(json))
-        {
-            var stripped = document.RootElement.EnumerateArray()
-                .Select(e =>
-                {
-                    var map = new Dictionary<string, JsonElement>();
-                    foreach (var property in e.EnumerateObject())
-                    {
-                        if (!string.Equals(property.Name, "showMarkedArea", StringComparison.Ordinal))
-                        {
-                            map[property.Name] = property.Value;
-                        }
-                    }
-                    return map;
-                })
-                .ToList();
-
-            File.WriteAllText(entriesPath, JsonSerializer.Serialize(stripped));
-        }
-
-        Assert.DoesNotContain("showMarkedArea", File.ReadAllText(entriesPath));
+        Assert.Contains("showMarkedArea", File.ReadAllText(WorklogIndexPath(root, workbook.Id, 1)));
+        StripKeyFromStoredWorklog(root, workbook.Id, 1, "showMarkedArea");
 
         Assert.True(WorklogManager.GetEntries(workbook.Id).Single().ShowMarkedArea);
     }
@@ -1565,28 +1831,7 @@ public sealed class WorklogManagerTests : IDisposable
         WorklogManager.AddEntry(
             workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Recap", "", "Issue", "Open", new[] { "C1" });
 
-        string entriesPath = Path.Combine(root, workbook.Id.ToString(), "entries.json");
-        string json = File.ReadAllText(entriesPath);
-
-        using (var document = JsonDocument.Parse(json))
-        {
-            var stripped = document.RootElement.EnumerateArray()
-                .Select(e =>
-                {
-                    var map = new Dictionary<string, JsonElement>();
-                    foreach (var property in e.EnumerateObject())
-                    {
-                        if (!string.Equals(property.Name, "completedComponentLabels", StringComparison.Ordinal))
-                        {
-                            map[property.Name] = property.Value;
-                        }
-                    }
-                    return map;
-                })
-                .ToList();
-
-            File.WriteAllText(entriesPath, JsonSerializer.Serialize(stripped));
-        }
+        StripKeyFromStoredWorklog(root, workbook.Id, 1, "completedComponentLabels");
 
         var reloaded = WorklogManager.GetEntries(workbook.Id).Single();
 
@@ -1634,27 +1879,7 @@ public sealed class WorklogManagerTests : IDisposable
         WorklogManager.AddEntry(
             workbook.Id, "Sch", new Rect(0, 0, 1, 1), "Recap", "", "Issue", "Open", Array.Empty<string>());
 
-        string entriesPath = Path.Combine(root, workbook.Id.ToString(), "entries.json");
-
-        using (var document = JsonDocument.Parse(File.ReadAllText(entriesPath)))
-        {
-            var stripped = document.RootElement.EnumerateArray()
-                .Select(e =>
-                {
-                    var map = new Dictionary<string, JsonElement>();
-                    foreach (var property in e.EnumerateObject())
-                    {
-                        if (!string.Equals(property.Name, "collapsedSections", StringComparison.Ordinal))
-                        {
-                            map[property.Name] = property.Value;
-                        }
-                    }
-                    return map;
-                })
-                .ToList();
-
-            File.WriteAllText(entriesPath, JsonSerializer.Serialize(stripped));
-        }
+        StripKeyFromStoredWorklog(root, workbook.Id, 1, "collapsedSections");
 
         var reloaded = WorklogManager.GetEntries(workbook.Id).Single();
 
@@ -1824,25 +2049,21 @@ public sealed class WorklogManagerTests : IDisposable
     // ------------------------------------------------- retired entry states, migrated on read
 
     /// <summary>
-    /// Writes one entry to a workbook's entries.json with a raw State string, the way an older build
-    /// or a hand edit would leave it. The state has to go in by hand: nothing in the app can produce
-    /// a retired value any more, which is exactly why the read-time mapping is the only thing
-    /// standing between such a file and being misread.
+    /// Writes one worklog's own index.json with a raw State string, the way an older build or a hand
+    /// edit would leave it. The state has to go in by hand: nothing in the app can produce a retired
+    /// value any more, which is exactly why the read-time mapping is the only thing standing between
+    /// such a file and being misread.
     /// </summary>
     private static void OverwriteSingleEntryState(string root, int workbookId, string rawState)
     {
-        string entriesPath = Path.Combine(root, workbookId.ToString(), "entries.json");
-
-        File.WriteAllText(entriesPath, $$"""
-        [
-          {
-            "id": 1,
-            "schematicName": "Sch",
-            "title": "Bad cap",
-            "category": "Issue",
-            "state": "{{rawState}}"
-          }
-        ]
+        File.WriteAllText(WorklogIndexPath(root, workbookId, 1), $$"""
+        {
+          "id": 1,
+          "schematicName": "Sch",
+          "title": "Bad cap",
+          "category": "Issue",
+          "state": "{{rawState}}"
+        }
         """);
     }
 
@@ -2231,7 +2452,7 @@ public sealed class WorklogManagerTests : IDisposable
         // with only a log line nobody reads. So the two folders are MERGED.
         string root = this.LoadWorklog();
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
-        string workbookFolder = Path.Combine(root, workbook.Id.ToString());
+        string workbookFolder = WorkbookFolder(root, workbook.Id);
 
         string from = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 1)!;
         File.WriteAllText(Path.Combine(from, "photo_1_draft.png"), "draft bytes");
@@ -2260,7 +2481,7 @@ public sealed class WorklogManagerTests : IDisposable
         // than overwritten: the file already there is the one some record may still name.
         string root = this.LoadWorklog();
         var workbook = CreateWorkbook("Commodore 64|250469", "C64 job", "");
-        string workbookFolder = Path.Combine(root, workbook.Id.ToString());
+        string workbookFolder = WorkbookFolder(root, workbook.Id);
 
         string from = WorklogManager.GetEntryAttachmentsFolder(workbook.Id, 1)!;
         File.WriteAllText(Path.Combine(from, "photo_1_shared.png"), "draft bytes");
@@ -2322,7 +2543,7 @@ public sealed class WorklogManagerTests : IDisposable
 
         var reloaded = WorklogManager.GetLatestWorkbookForBoard("Commodore 64|250469")!;
         Assert.Equal("Closed", reloaded.Status);
-        Assert.Equal(1, reloaded.EntryCount);
+        Assert.Equal(1, reloaded.WorklogCount);
     }
 
     // No workbook folder means nothing was persisted, and the caller must be told so rather than
@@ -2403,4 +2624,49 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Null(WorklogManager.ResolveExplicitWorkbookRoot(Array.Empty<string>()));
     }
 
+    // ###########################################################################################
+    // A WORKBOOK ROOT POINTED AT A WORKBOOK FOLDER MUST NOT EAT THAT WORKBOOK.
+    //
+    // The root's id counter shares its file NAME with a workbook's own record - both index.json -
+    // and normally only the folder they sit in keeps them apart: the counter at the root, records
+    // one level down. Point --workbooks-root AT a workbook folder, though, and the two paths become
+    // the same file. That is a plausible mistake, and any restore or hand-copy that nests the root
+    // one level too deep produces it.
+    //
+    // Without the guard, the first CreateWorkbook there writes a counters object straight over the
+    // existing record - destroying its title, note, status, dates, schematic order and worklog
+    // counter in one write, with all of its worklog_N folders still on disk and now unreachable.
+    //
+    // The create is still allowed: the fallback is max-id-on-disk, which is worse than a counter
+    // but can never collide with anything that exists. Losing "a deleted id stays spent" on a
+    // misconfigured root is a far smaller cost than eating a repair.
+    //
+    // Fails against the version that wrote the counter unconditionally.
+    // ###########################################################################################
+    [Fact]
+    public void A_root_that_is_itself_a_workbook_folder_does_not_have_its_record_overwritten()
+    {
+        string root = this.LoadWorklog();
+
+        var original = WorklogManager.CreateWorkbook("Commodore|C64", "Recap the board", "Bought at a fair");
+        Assert.NotNull(original);
+
+        string workbookFolder = WorkbookFolder(root, original!.Id);
+        string recordPath = Path.Combine(workbookFolder, "index.json");
+        Assert.True(File.Exists(recordPath));
+
+        // The root is now the workbook's OWN folder - so the counter path and the record path are
+        // one and the same file.
+        WorklogManager.LoadFrom(workbookFolder);
+
+        var created = WorklogManager.CreateWorkbook("Commodore|C64", "A second repair", "");
+        Assert.NotNull(created);
+
+        // The original record is intact - not replaced by a counters object.
+        using var document = JsonDocument.Parse(File.ReadAllText(recordPath));
+
+        Assert.Equal("Recap the board", document.RootElement.GetProperty("title").GetString());
+        Assert.Equal("Bought at a fair", document.RootElement.GetProperty("note").GetString());
+        Assert.Equal("Commodore|C64", document.RootElement.GetProperty("boardKey").GetString());
+    }
 }

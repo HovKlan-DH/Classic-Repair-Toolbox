@@ -14,6 +14,12 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-wiki-mirror.sh\"",
             "timeout": 20,
             "statusMessage": "Checking whether any Wiki page needs updating..."
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/wiki-sync-status.sh\"",
+            "timeout": 30,
+            "statusMessage": "Refreshing the Wiki sync status..."
           }
         ]
       }

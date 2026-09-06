@@ -47,7 +47,8 @@ public class WorkbookExportModelTests : IDisposable
             entries,
             images,
             attachments ?? (_ => null),
-            new DateTime(2026, 9, 4));
+            new DateTime(2026, 9, 4),
+            "DKK");
 
     // ###########################################################################################
     // Sections are per schematic and alphabetical; entries within one are in ID order - the number
@@ -115,7 +116,7 @@ public class WorkbookExportModelTests : IDisposable
 
         var document = Build(Workbook(), entries);
 
-        Assert.Equal(2, document.Totals.EntryCount);
+        Assert.Equal(2, document.Totals.WorklogCount);
         Assert.Equal(2, document.Totals.EntriesByCategory["Issue"]);
     }
 
@@ -271,7 +272,7 @@ public class WorkbookExportModelTests : IDisposable
         workbook.StartDate = new DateTime(2020, 1, 2);
 
         var document = WorkbookExportModel.Build(
-            workbook, Array.Empty<WorklogEntryRecord>(), null, _ => null, new DateTime(2026, 12, 31));
+            workbook, Array.Empty<WorklogEntryRecord>(), null, _ => null, new DateTime(2026, 12, 31), "DKK");
 
         Assert.EndsWith("_20261231", WorkbookExportModel.BuildFileBaseName(document));
     }

@@ -194,20 +194,39 @@ public class FontAwesomeAssetTests
         // The measured outline top, from the table this test validates. The reader deliberately
         // does not parse CFF charstrings - that is a disproportionate amount of machinery for a
         // number that fontTools already measured and that this test's job is to keep honest.
+        //
+        // AN UNMEASURED GLYPH THROWS rather than falling back to the declared ascent. That
+        // fallback is exactly how trash-can (U+F2ED) shipped clipped: it is drawn to 464, sixteen
+        // units past the ascent, but it had no entry here, so it measured as an overshoot of
+        // precisely zero and every assertion below waved it through. A test whose "no problem"
+        // answer and its "never measured" answer are the same value cannot report the bug it
+        // exists to catch. Every codepoint in UsedGlyphs must therefore appear here.
         public double GetGlyphYMax(int codepoint) => KnownGlyphYMax.TryGetValue(codepoint, out double yMax)
             ? yMax
-            : this.Ascender;
+            : throw new InvalidOperationException(
+                $"U+{codepoint:X4} is used by the app but has no measured yMax in KnownGlyphYMax, so its " +
+                "overshoot cannot be checked. Measure it with the fontTools command in " +
+                "FontAwesomeGlyphMetrics' header comment and add it here.");
 
         // Measured with fontTools against the shipped OTFs (see the command in
-        // FontAwesomeGlyphMetrics' header comment). Anything not listed sits at or below the
-        // declared ascent.
+        // FontAwesomeGlyphMetrics' header comment), which are Font Awesome 7 Free 7.3.1 in both
+        // faces. This must list EVERY codepoint in UsedGlyphs - see GetGlyphYMax above for what
+        // an omission costs.
         private static readonly Dictionary<int, double> KnownGlyphYMax = new()
         {
-            [0xF3C1] = 480, // lock-open
-            [0xF023] = 480, // lock
+            // Solid
+            [0xF3C1] = 480, // lock-open           overshoots by 32
+            [0xF023] = 480, // lock                overshoots by 32
+            [0xF2ED] = 464, // trash-can           overshoots by 16
             [0xF188] = 448, // bug
-            [0xF15C] = 448, // file-lines
             [0xF5D0] = 448, // spray-can-sparkles
+            [0xF160] = 416, // sort-down
+            [0xF161] = 416, // sort-up
+
+            // Regular
+            [0xF15C] = 448, // file-lines
+            [0xF059] = 448, // circle-question
+            [0xF044] = 444, // pen-to-square
             [0xF0FE] = 416, // square-plus
             [0xF146] = 416, // square-minus
         };

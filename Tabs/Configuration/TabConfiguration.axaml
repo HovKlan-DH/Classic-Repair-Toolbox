@@ -204,11 +204,46 @@
 							 Content="Show only workbooks for selected board" />
 			</StackPanel>
 
-			<Button x:Name="OpenAppDataFolderButton"
-                    Content="Open data/workbooks/log/settings folder"
+			<TextBlock Text="Currency used for worklog costs:"
+                       Margin="0,12,0,0" />
+
+			<ComboBox x:Name="WorklogCurrencyComboBox"
+                      MinWidth="280"
+                      HorizontalAlignment="Left"
+                      Margin="0,4,0,0"
+                      ToolTip.Tip="Pick the country you live in; its currency is shown beside every cost in a workbook, and in exported PDF and ZIP documents" />
+
+			<!-- Three separate buttons rather than one, because these are three different folders
+			     and two of them can be moved elsewhere by the data-root and workbooks-root
+			     command-line switches. Each opens the path the app is ACTUALLY using, so a
+			     relocated folder still opens where it really is. Equal Width so they read as one
+			     group rather than a ragged stack. -->
+			<Button x:Name="OpenDataFolderButton"
+                    Content="Open data folder"
                     Margin="0,16,0,0"
                     HorizontalAlignment="Left"
-                    Click="OnOpenAppDataFolderClick" />
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="The hardware reference data - schematics, component images and board files"
+                    Click="OnOpenDataFolderClick" />
+
+			<Button x:Name="OpenWorkbooksFolderButton"
+                    Content="Open workbooks folder"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="Your own workbooks - worklogs, photos and attached files"
+                    Click="OnOpenWorkbooksFolderClick" />
+
+			<Button x:Name="OpenLogsFolderButton"
+                    Content="Open logs and settings folder"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="The log file, the crash log and your settings file - the files to attach when reporting a problem"
+                    Click="OnOpenLogsFolderClick" />
 		</StackPanel>
 
 		</ScrollViewer>

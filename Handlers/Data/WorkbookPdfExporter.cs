@@ -403,7 +403,16 @@ namespace Handlers.DataHandling
                     if (!string.IsNullOrWhiteSpace(document.BoardKey))
                         text.Span($"  \u00b7  {document.BoardKey.Replace("|", " \u00b7 ")}");
 
-                    text.Span($"  \u00b7  started {FormatDate(document.StartDate)}");
+                    // The WORD comes from the same rule the two on-screen surfaces use
+                    // (WorklogEntryScope.FormatWorkbookDateLine), so a closed workbook reads
+                    // "ended" here too; only the DATE is formatted the document's own way. This
+                    // line said "started" unconditionally while the app already said "ended" for
+                    // the same workbook.
+                    bool hasEnded = !WorklogManager.IsWorkbookStatusOpen(document.Status) && document.EndDate != null;
+
+                    text.Span(hasEnded
+                        ? $"  \u00b7  ended {FormatDate(document.EndDate!.Value)}"
+                        : $"  \u00b7  started {FormatDate(document.StartDate)}");
                     text.Span($"  \u00b7  exported {FormatDate(document.GeneratedAt)}");
                 });
 
@@ -425,7 +434,7 @@ namespace Handlers.DataHandling
                     column.Item().Element(e => ComposeLinkedText(e, document.Note, 10, HeadingColor));
                 }
 
-                column.Item().Element(e => ComposeSummary(e, document.Totals));
+                column.Item().Element(e => ComposeSummary(e, document.Totals, document.CurrencyCode));
 
                 if (document.Sections.Count == 0)
                 {
@@ -444,7 +453,7 @@ namespace Handlers.DataHandling
                     if (i > 0)
                         column.Item().PageBreak();
 
-                    column.Item().Element(e => ComposeSection(e, document.Sections[i]));
+                    column.Item().Element(e => ComposeSection(e, document.Sections[i], document.CurrencyCode));
                 }
             });
         }
@@ -465,13 +474,13 @@ namespace Handlers.DataHandling
         // different kinds of pill running together in one row read as one long list of five, with
         // nothing marking where "what kind of work" ends and "how it is progressing" begins.
         // ###########################################################################################
-        private static void ComposeSummary(IContainer container, WorkbookSummary.Totals totals)
+        private static void ComposeSummary(IContainer container, WorkbookSummary.Totals totals, string currencyCode)
         {
             container.Background(PanelColor).CornerRadius(3).Padding(10).Column(column =>
             {
                 column.Spacing(5);
                 column.Item().Text("Summary").FontSize(11).Bold().FontColor(HeadingColor);
-                column.Item().Element(e => ComposeStatLine(e, WorkbookSummary.BuildHeadlineStats(totals), 10));
+                column.Item().Element(e => ComposeStatLine(e, WorkbookSummary.BuildHeadlineStats(totals, currencyCode), 10));
 
                 column.Item().PaddingTop(2).Row(row =>
                 {
@@ -518,7 +527,9 @@ namespace Handlers.DataHandling
 
                 for (int i = 0; i < stats.Count; i++)
                 {
-                    if (i > 0)
+                    // Suppressed for a duration's second half - see Stat.JoinedToPrevious and the
+                    // matching branch in TabWorkbooks.Summary's ApplyStatRuns.
+                    if (i > 0 && !stats[i].JoinedToPrevious)
                         text.Span("  \u00b7  ").FontColor(LabelColor);
 
                     var stat = stats[i];
@@ -542,7 +553,7 @@ namespace Handlers.DataHandling
         // is often a single chip on a board scan, and at the half-page size this used to draw, a
         // reader could see that something was marked but not what.
         // ###########################################################################################
-        private static void ComposeSection(IContainer container, WorkbookExportModel.Section section)
+        private static void ComposeSection(IContainer container, WorkbookExportModel.Section section, string currencyCode)
         {
             container.Column(column =>
             {
@@ -558,7 +569,7 @@ namespace Handlers.DataHandling
 
                 foreach (var entry in section.Entries)
                 {
-                    column.Item().Element(e => ComposeEntry(e, entry));
+                    column.Item().Element(e => ComposeEntry(e, entry, currencyCode));
                 }
             });
         }
@@ -974,7 +985,7 @@ namespace Handlers.DataHandling
         // state pill, so an entry in the list is recognisably the same object as its mark on the
         // picture above.
         // ###########################################################################################
-        private static void ComposeEntry(IContainer container, WorkbookExportModel.Entry entry)
+        private static void ComposeEntry(IContainer container, WorkbookExportModel.Entry entry, string currencyCode)
         {
             var record = entry.Record;
 
@@ -1030,8 +1041,30 @@ namespace Handlers.DataHandling
                 {
                     column.Item().Element(e => ComposeSubList(e, "Work done", record.WorkDoneItems.Select(w =>
                     {
-                        string totals = $"{w.HoursSpent.ToString("0.##", CultureInfo.InvariantCulture)} h \u00b7 {w.Cost.ToString("0.##", CultureInfo.InvariantCulture)}";
-                        return $"{FormatDate(w.Date)} - {w.Text}  ({totals})";
+                        // The time as words through WorklogDurationFormatter, exactly as the app's
+                        // own work-done rows print it - a customer reading this document must not
+                        // be handed a different vocabulary for the same figure. Time and cost are
+                        // each omitted when there is none, as they are on screen, so an item with
+                        // neither prints as the note alone rather than trailing an empty "(0 h .
+                        // 0 USD)" - and the brackets go with them rather than being left hanging
+                        // empty.
+                        string totals = string.Join(" \u00b7 ", new[]
+                        {
+                            WorklogDurationFormatter.Format(w.HoursSpent),
+                            // The ROW's own recorded code, not the document's. A cost entered in
+                            // DKK stays DKK in every export of it, however the app-wide preference
+                            // has moved since - a re-exported PDF that silently relabelled old
+                            // money is precisely what recording it per row prevents. The document
+                            // code is the fallback for rows written before the field existed; see
+                            // WorklogCurrency.ResolveRecordedCode.
+                            WorklogCurrency.FormatCostOrEmpty(
+                                w.Cost,
+                                WorklogCurrency.ResolveRecordedCode(w.CurrencyCode, currencyCode))
+                        }.Where(part => part.Length > 0));
+
+                        return totals.Length > 0
+                            ? $"{FormatDate(w.Date)} - {w.Text}  ({totals})"
+                            : $"{FormatDate(w.Date)} - {w.Text}";
                     })));
                 }
 

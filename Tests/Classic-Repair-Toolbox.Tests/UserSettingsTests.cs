@@ -794,6 +794,90 @@ public sealed class UserSettingsTests : IDisposable
         }
     }
 
+    // ---------------------------------------------------------------------- worklog currency
+
+    // An existing installation has no key in its file, and every cost it has already recorded was
+    // typed as a bare number. USD is what those numbers become - the choice the Configuration tab
+    // opens on until the user picks their own country.
+    [Fact]
+    public void The_worklog_currency_defaults_to_the_dollar()
+    {
+        this.LoadSettings("{}");
+
+        Assert.Equal("USD", UserSettings.WorklogCurrencyCode);
+    }
+
+    // The getter normalises rather than trusting the stored string - settings.json is a plain file
+    // a user can edit, and this code is printed beside every cost in a customer's exported PDF.
+    [Theory]
+    [InlineData("DKK", "DKK")]
+    [InlineData("dkk", "DKK")]        // matched case-insensitively
+    [InlineData("  NOK  ", "NOK")]    // and trimmed
+    [InlineData("XYZ", "USD")]        // a code no country here uses falls back
+    [InlineData("nonsense", "USD")]
+    [InlineData("", "USD")]
+    public void The_worklog_currency_is_normalised_to_a_known_code(string input, string expected)
+    {
+        this.LoadSettings("{}");
+
+        UserSettings.WorklogCurrencyCode = input;
+
+        Assert.Equal(expected, UserSettings.WorklogCurrencyCode);
+    }
+
+    // A code stored by hand in the file, not through the setter, is normalised on the way OUT too -
+    // otherwise the setter's guard is the only defence and a hand-edited file bypasses it entirely.
+    [Fact]
+    public void A_hand_edited_currency_code_is_normalised_when_read_back()
+    {
+        this.LoadSettings("""{"worklogCurrencyCode": "eur"}""");
+
+        Assert.Equal("EUR", UserSettings.WorklogCurrencyCode);
+    }
+
+    [Fact]
+    public void The_worklog_currency_persists_across_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.WorklogCurrencyCode = "DKK";
+
+        UserSettings.LoadFrom(path);
+
+        Assert.Equal("DKK", UserSettings.WorklogCurrencyCode);
+    }
+
+    // The Workbooks tab's summary strip and entry cards are built once per refresh, so they only
+    // reprint their figures because this event fires. The unchanged-value guard matters for the
+    // same reason WorkbooksScope's does: a rebuild is a full disk rescan and schematic re-decode,
+    // and re-selecting the country already chosen must not cost one.
+    [Fact]
+    public void Changing_the_worklog_currency_raises_its_change_event_only_when_it_actually_changes()
+    {
+        this.LoadSettings("""{"worklogCurrencyCode": "USD"}""");
+
+        int raised = 0;
+        void Handler() => raised++;
+
+        UserSettings.WorklogCurrencyChanged += Handler;
+        try
+        {
+            UserSettings.WorklogCurrencyCode = "DKK";
+            Assert.Equal(1, raised);
+
+            UserSettings.WorklogCurrencyCode = "DKK";   // unchanged
+            Assert.Equal(1, raised);
+
+            // Same code, different case - still unchanged once normalised, so still no rebuild.
+            UserSettings.WorklogCurrencyCode = "dkk";
+            Assert.Equal(1, raised);
+        }
+        finally
+        {
+            UserSettings.WorklogCurrencyChanged -= Handler;
+        }
+    }
+
     [Fact]
     public void Changing_check_data_on_launch_raises_its_change_event_with_the_new_value()
     {

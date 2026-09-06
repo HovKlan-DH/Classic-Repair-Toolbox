@@ -53,13 +53,13 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 
 ## 5. Record what you find
 
-The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the schematic, log hours and cost, attach photos, and export the finished job as a PDF for a customer.
+The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the schematic, log time and cost, attach photos, and export the finished repair as a PDF to keep or to share.
 
 That is the one feature worth reading about before you need it — see [Workbooks](Workbooks-tab).
 
 ## Where next
 
-* [Workbooks](Workbooks-tab) — track a repair from start to invoice
+* [Workbooks](Workbooks-tab) — track a repair from first fault to finished write-up
 * [Synchronize oscilloscope](Synchronize-oscilloscope) — if you have a network-capable scope
 * [MiniPro programmer](MiniPro-programmer) — to test a logic IC out of the board
 * [Contribute data via CRT](Contribute-data-via-CRT) — when you spot something wrong or missing

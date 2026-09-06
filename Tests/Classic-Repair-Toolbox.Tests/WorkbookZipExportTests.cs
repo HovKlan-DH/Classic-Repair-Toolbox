@@ -67,7 +67,8 @@ public class WorkbookZipExportTests : IDisposable
             entries,
             null,
             entryId => Path.Combine(this.thisWorkspace.Root, $"worklog_{entryId}"),
-            new DateTime(2026, 9, 4));
+            new DateTime(2026, 9, 4),
+            "DKK");
 
     private string ZipPath() => Path.Combine(this.thisWorkspace.Root, "export.zip");
 
@@ -257,7 +258,8 @@ public class WorkbookZipExportTests : IDisposable
                 new[] { entry },
                 new Dictionary<string, string> { [entry.SchematicName] = schematic },
                 entryId => Path.Combine(this.thisWorkspace.Root, $"worklog_{entryId}"),
-                new DateTime(2026, 9, 4)),
+                new DateTime(2026, 9, 4),
+                "DKK"),
             path);
 
         Assert.True(new FileInfo(path).Length > 0);
@@ -286,7 +288,8 @@ public class WorkbookZipExportTests : IDisposable
                 new[] { entry },
                 new Dictionary<string, string> { [entry.SchematicName] = schematic },
                 entryId => Path.Combine(this.thisWorkspace.Root, $"worklog_{entryId}"),
-                new DateTime(2026, 9, 4)),
+                new DateTime(2026, 9, 4),
+                "DKK"),
             path);
 
         Assert.True(new FileInfo(path).Length > 0);

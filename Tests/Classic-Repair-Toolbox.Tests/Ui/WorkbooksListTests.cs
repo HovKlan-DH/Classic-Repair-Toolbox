@@ -159,9 +159,18 @@ public sealed class WorkbooksListTests : IDisposable
         var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "No picture, black screen", "");
         Assert.NotNull(workbook);
 
-        // "0 worklogs · started 2026-September-01" - the date format is the worklog bar's
-        // (yyyy-MMMM-dd, invariant), so a workbook's start date reads the same in both places.
-        string expectedDate = workbook!.StartDate.ToString("yyyy-MMMM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        // "0 worklogs · started 2026-September-6" - the date format is the worklog bar's
+        // (yyyy-MMMM-d, invariant), so a workbook's start date reads the same in both places.
+        //
+        // Built from the PARTS rather than by calling ToString with the same format the code uses:
+        // re-deriving it that way makes the assertion agree with any format, including a wrong one,
+        // so it could never catch a change. Spelling out "no leading zero on the day" is the point -
+        // that is the thing being pinned.
+        var startDate = workbook!.StartDate;
+        string expectedDate =
+            $"{startDate.Year}-{startDate.ToString("MMMM", System.Globalization.CultureInfo.InvariantCulture)}-{startDate.Day}";
+
+        Assert.DoesNotContain("-0", expectedDate[5..]);
 
         UiTest.Run(() =>
         {
@@ -173,8 +182,50 @@ public sealed class WorkbooksListTests : IDisposable
         });
     }
 
+    // THE REPORTED BUG: the worklog bar above the tabs said "ended {date}" for a closed workbook
+    // while that same workbook's CARD, a few inches below it on the same screen, still said
+    // "started {date}". The card wrote the word "started" as a literal and read StartDate
+    // unconditionally, so it could not report a finish at all.
+    //
+    // What this pins is that the card asks the SHARED WorklogEntryScope.FormatWorkbookDateLine -
+    // the expectation is built by calling it, so the card cannot answer this question its own way.
+    // The date halves are deliberately NOT compared here: a workbook created and closed inside one
+    // test is created and closed on the same day, so start and end read identically and no UI test
+    // could tell one field from the other. That the WORD and the DATE move together is pinned where
+    // the two can actually be set apart - WorklogEntryScopeTests, on the pure helper.
+    [Fact]
+    public void A_closed_workbook_card_reports_when_it_ended_not_when_it_started()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Recapped and returned", "");
+        Assert.NotNull(workbook);
+
+        // Closing every worklog in a workbook is what closes the workbook - RecomputeWorkbookStatus
+        // stamps EndDate on that transition. Driven through the real path rather than by writing a
+        // status onto the record, so the EndDate under test is the one the app actually records.
+        WorklogManager.AddEntry(workbook!.Id, "Sch", new Avalonia.Rect(0, 0, 1, 1), "Done", "", "Issue", "Closed", Array.Empty<string>());
+
+        var closed = WorklogManager.GetWorkbooksForBoard(this.thisBoardKey).Single(w => w.Id == workbook.Id);
+        Assert.False(WorklogManager.IsWorkbookStatusOpen(closed.Status));
+        Assert.NotNull(closed.EndDate);
+
+        string expected = WorklogEntryScope.FormatWorkbookDateLine(closed.Status, closed.StartDate, closed.EndDate);
+        Assert.StartsWith("ended ", expected);
+
+        UiTest.Run(() =>
+        {
+            var texts = CardTexts(BuildTab(this.thisBoardKey), 0);
+
+            Assert.Contains($"1 worklog · {expected}", texts);
+
+            // And the card no longer claims a start anywhere on that line - the failing version
+            // printed "started" here while the bar printed "ended".
+            Assert.DoesNotContain(texts, t => t.Contains("started", StringComparison.Ordinal));
+        });
+    }
+
     // The count on the card is worklog ENTRIES, and it has to move when entries are added - it is
-    // a stored field on the record, not something recomputed at read time, so a stale EntryCount
+    // a stored field on the record, not something recomputed at read time, so a stale WorklogCount
     // is a real possibility rather than a theoretical one.
     [Fact]
     public void The_card_counts_worklogs_and_uses_the_singular_for_one()
@@ -985,7 +1036,13 @@ public sealed class WorkbooksListTests : IDisposable
     }
 
     // A card for a board other than the one currently loaded names that board, so the list is
-    // not just a pile of identical-looking cards - see BuildWorkbookCard's board-label row.
+    // not just a pile of identical-looking cards - see BuildWorkbookCard's board-name rows.
+    //
+    // The name is shown as the TWO FULL NAMES on their own lines ("Commodore 64" above
+    // "250407 (...)"), matching the hardware and board drop-downs at the top-left. It used to be
+    // the single folder-derived "C64/250407" from Main.FormatBoardKeyForDisplay - a storage-layout
+    // detail the user sees nowhere else - which is why this now asserts the halves separately
+    // rather than the raw key as one string.
     [Fact]
     public void AllBoards_scope_labels_a_cross_board_card_with_its_own_board()
     {
@@ -1004,12 +1061,18 @@ public sealed class WorkbooksListTests : IDisposable
                 var tab = BuildTab(this.thisBoardKey);
 
                 var texts = CardTexts(tab, 0);
+
                 // No Main and so no synced hardware/board data for either key, so
-                // FormatBoardKeyForDisplay's fallback (the raw key) is what actually renders -
-                // this only proves the label is present and matches the CARD's own board, not
-                // the tab's, not that the short-name lookup itself succeeded (that needs a real
-                // Main and is out of scope for this file).
-                Assert.Contains(otherBoardKey, texts);
+                // FormatBoardKeyAsFullNames falls back to splitting the key itself - which is the
+                // branch that renders here. This proves the two halves are shown SEPARATELY and
+                // match the CARD's own board rather than the tab's; whether the synced-data lookup
+                // succeeds needs a real Main and is out of scope for this file.
+                Assert.Contains("Commodore 64", texts);
+                Assert.Contains("250407 (other board, label test)", texts);
+
+                // The raw key, pipe and all, must not appear as one string any more - that is
+                // exactly what was replaced.
+                Assert.DoesNotContain(otherBoardKey, texts);
             });
         }
         finally

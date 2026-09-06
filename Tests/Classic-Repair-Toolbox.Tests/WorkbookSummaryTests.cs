@@ -1,4 +1,5 @@
-﻿using Handlers.DataHandling;
+﻿using System.Globalization;
+using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
 
@@ -65,11 +66,11 @@ public class WorkbookSummaryTests
     {
         var totals = WorkbookSummary.Summarize(null);
 
-        Assert.Equal(0, totals.EntryCount);
+        Assert.Equal(0, totals.WorklogCount);
         Assert.Equal(0.0, totals.TotalHours);
         Assert.Equal(0.0, totals.TotalCost);
-        Assert.Equal(0, totals.OpenEntryCount);
-        Assert.Equal(0, totals.ClosedEntryCount);
+        Assert.Equal(0, totals.OpenWorklogCount);
+        Assert.Equal(0, totals.ClosedWorklogCount);
     }
 
     [Fact]
@@ -82,7 +83,7 @@ public class WorkbookSummaryTests
             Entry(3)
         });
 
-        Assert.Equal(3, totals.EntryCount);
+        Assert.Equal(3, totals.WorklogCount);
         Assert.Equal(3.75, totals.TotalHours);
         Assert.Equal(130.5, totals.TotalCost);
     }
@@ -118,7 +119,7 @@ public class WorkbookSummaryTests
 
     // An entry carrying a category or state from a future build (or a hand-edited entries.json)
     // must not be miscounted as one of the known values - that would quietly misreport the
-    // workbook. It still counts toward EntryCount, so nothing goes missing.
+    // workbook. It still counts toward WorklogCount, so nothing goes missing.
     [Fact]
     public void An_unrecognised_category_is_counted_in_no_bucket_but_still_counts_as_an_entry()
     {
@@ -128,14 +129,14 @@ public class WorkbookSummaryTests
             Entry(2, category: "Catastrophic", state: "Deferred")
         });
 
-        Assert.Equal(2, totals.EntryCount);
+        Assert.Equal(2, totals.WorklogCount);
         Assert.Equal(1, totals.EntriesByCategory["Note"]);
         Assert.Equal(0, totals.EntriesByCategory["Cosmetic"]);
         Assert.Equal(0, totals.EntriesByCategory["Issue"]);
 
-        // Only the recognised entry is in a state bucket, so the two do not add up to EntryCount.
-        Assert.Equal(1, totals.OpenEntryCount);
-        Assert.Equal(0, totals.ClosedEntryCount);
+        // Only the recognised entry is in a state bucket, so the two do not add up to WorklogCount.
+        Assert.Equal(1, totals.OpenWorklogCount);
+        Assert.Equal(0, totals.ClosedWorklogCount);
     }
 
     // ###########################################################################################
@@ -213,7 +214,39 @@ public class WorkbookSummaryTests
             Entry(3, state: "Open")
         });
 
-        Assert.Equal("3 worklogs · 3.5 h · 130 · 2 open", WorkbookSummary.FormatHeadline(totals));
+        // The time reads as HOURS AND MINUTES, not as the decimal hours it is stored as - 3.5
+        // is "3 hours and 30 minutes". See WorklogDurationFormatter; decimal hours survives in
+        // exactly one place, the NumericUpDown that types it.
+        //
+        // Asserted on the PARTS, which is what both renderers consume - the summary strip and the
+        // PDF each bold the numbers and leave the words plain, so neither ever builds this as one
+        // string. Joining them here is the test saying what the line reads as end to end without
+        // requiring a shipped method that only the test would call.
+        Assert.Equal("3 worklogs · 3 hours and 30 minutes · 130 DKK · 2 open",
+            JoinHeadline(WorkbookSummary.BuildHeadlineStats(totals, "DKK")));
+    }
+
+    // ###########################################################################################
+    // The headline as one string, joined the way both renderers lay the parts out: " · " between
+    // stats, and NOTHING before a part flagged JoinedToPrevious (a duration's second half), so the
+    // separator never lands inside "2 hours and 30 minutes".
+    //
+    // Lives in the test rather than in WorkbookSummary because nothing that ships wants a finished
+    // headline string - see that class's own note where FormatHeadline used to be.
+    // ###########################################################################################
+    private static string JoinHeadline(IReadOnlyList<WorkbookSummary.Stat> stats)
+    {
+        var text = new System.Text.StringBuilder();
+
+        for (int i = 0; i < stats.Count; i++)
+        {
+            if (i > 0 && !stats[i].JoinedToPrevious)
+                text.Append(" · ");
+
+            text.Append(stats[i].Prefix).Append(stats[i].Number).Append(stats[i].Suffix);
+        }
+
+        return text.ToString();
     }
 
     // A one-worklog workbook must not read "1 worklogs" - the kind of bug that shipped once
@@ -223,7 +256,7 @@ public class WorkbookSummaryTests
     {
         var totals = WorkbookSummary.Summarize(new[] { Entry(1) });
 
-        Assert.StartsWith("1 worklog ·", WorkbookSummary.FormatHeadline(totals));
+        Assert.StartsWith("1 worklog ·", JoinHeadline(WorkbookSummary.BuildHeadlineStats(totals, "DKK")));
     }
 
     // ###########################################################################################
@@ -237,13 +270,26 @@ public class WorkbookSummaryTests
     {
         var totals = WorkbookSummary.Summarize(new[] { Entry(1, hours: 2.5, cost: 100) });
 
-        var stats = WorkbookSummary.BuildHeadlineStats(totals);
+        var stats = WorkbookSummary.BuildHeadlineStats(totals, "DKK");
 
-        Assert.Equal(new[] { "1", "2.5", "100", "1" }, stats.Select(s => s.Number));
-        Assert.Equal(new[] { " worklog", " h", "", " open" }, stats.Select(s => s.Suffix));
+        // A DURATION carrying both halves contributes TWO bold numbers - "2 hours and 30
+        // minutes" - which is why the headline is built as a list rather than a fixed four-part
+        // array.
+        Assert.Equal(new[] { "1", "2", "30", "100", "1" }, stats.Select(s => s.Number));
 
-        // The flat string the PDF prints is those same parts joined, so the two cannot disagree.
-        Assert.Equal("1 worklog · 2.5 h · 100 · 1 open", WorkbookSummary.FormatHeadline(totals));
+        // The currency code rides in the cost's SUFFIX, not in its Number - the strip bolds every
+        // Number and leaves the suffixes plain, so a code in the number would come out bold while
+        // the words beside it did not.
+        Assert.Equal(new[] { " worklog", " hours and ", " minutes", " DKK", " open" },
+            stats.Select(s => s.Suffix));
+
+        // Only the duration's SECOND half is joined to the one before it, so a renderer's " . "
+        // separator never lands inside "2 hours and 30 minutes" and splits one figure into two.
+        Assert.Equal(new[] { false, false, true, false, false }, stats.Select(s => s.JoinedToPrevious));
+
+        // Those same parts, laid out the way both renderers lay them out, read as one sentence -
+        // which is what pins the Prefix/Number/Suffix split above to something a reader recognises.
+        Assert.Equal("1 worklog · 2 hours and 30 minutes · 100 DKK · 1 open", JoinHeadline(stats));
     }
 
     // ###########################################################################################
@@ -323,9 +369,14 @@ public class WorkbookSummaryTests
         var entries = Enumerable.Range(1, 3).Select(i => Entry(i, hours: 0.1)).ToList();
 
         var totals = WorkbookSummary.Summarize(entries);
-        var hours = WorkbookSummary.BuildHeadlineStats(totals)[1];
 
-        Assert.Equal("0.3", hours.Number);
+        // Asserted on the RAW total rather than through the headline: the headline now says the
+        // time in whole minutes, which would absorb the very tail this test exists to notice. That
+        // rounding is a second layer of protection, not a replacement for the "0.##" one.
+        Assert.Equal("0.3", totals.TotalHours.ToString("0.##", CultureInfo.InvariantCulture));
+
+        // And what the reader actually sees is 18 minutes, with no tail of its own.
+        Assert.Equal("18 minutes", WorklogDurationFormatter.Format(totals.TotalHours));
     }
 
     [Fact]
@@ -334,9 +385,9 @@ public class WorkbookSummaryTests
         var entries = Enumerable.Range(1, 20).Select(i => Entry(i, hours: 1.15)).ToList();
 
         var totals = WorkbookSummary.Summarize(entries);
-        var hours = WorkbookSummary.BuildHeadlineStats(totals)[1];
 
-        Assert.Equal("23", hours.Number);
+        Assert.Equal("23", totals.TotalHours.ToString("0.##", CultureInfo.InvariantCulture));
+        Assert.Equal("23 hours", WorklogDurationFormatter.Format(totals.TotalHours));
     }
 
     // Cost is the same arithmetic on money, and matters more: a customer reads this figure.
@@ -346,8 +397,87 @@ public class WorkbookSummaryTests
         var entries = Enumerable.Range(1, 3).Select(i => Entry(i, cost: 0.1)).ToList();
 
         var totals = WorkbookSummary.Summarize(entries);
-        var cost = WorkbookSummary.BuildHeadlineStats(totals)[2];
+        // Found by its currency suffix rather than by index: these entries log no time at all, so
+        // the duration contributes no part and the cost is not at a fixed position.
+        var cost = WorkbookSummary.BuildHeadlineStats(totals, "USD").Single(s => s.Suffix == " USD");
 
         Assert.Equal("0.3", cost.Number);
     }
+    // ---------------------------------------------------------------------------------------------
+    // The summary strip's COMPONENT stats, which render side by side as
+    // "5 components in scope · 0 components completed".
+    //
+    // The second one used to read just "0 completed", which said nothing about WHAT was completed -
+    // beside a line already listing comments, links, photos, files and work-done rows, it read as
+    // though it could be counting any of them.
+    // ---------------------------------------------------------------------------------------------
+
+    private static string Render(WorkbookSummary.Stat stat) => stat.Prefix + stat.Number + stat.Suffix;
+
+    [Fact]
+    public void The_completed_component_stat_says_what_it_counts()
+    {
+        var totals = WorkbookSummary.Summarize(new[]
+        {
+            new WorklogEntryRecord
+            {
+                Id = 1,
+                ComponentLabels = new List<string> { "U1", "U2", "C3" },
+                CompletedComponentLabels = new List<string>()
+            }
+        });
+
+        var stats = WorkbookSummary.BuildComponentStats(totals);
+
+        Assert.Equal("3 components in scope", Render(stats[0]));
+        Assert.Equal("0 components completed", Render(stats[1]));
+    }
+
+    // Through the same CountStat every other count uses, so the singular reads correctly rather than
+    // saying "1 components completed".
+    [Fact]
+    public void One_completed_component_reads_in_the_singular()
+    {
+        var totals = WorkbookSummary.Summarize(new[]
+        {
+            new WorklogEntryRecord
+            {
+                Id = 1,
+                ComponentLabels = new List<string> { "U1" },
+                CompletedComponentLabels = new List<string> { "U1" }
+            }
+        });
+
+        var stats = WorkbookSummary.BuildComponentStats(totals);
+
+        Assert.Equal("1 component in scope", Render(stats[0]));
+        Assert.Equal("1 component completed", Render(stats[1]));
+    }
+
+    // Only the NUMBER is bold on screen, which is why these are Stat parts rather than finished
+    // strings - the count has to stay in its own field for the UI to weight it differently.
+    [Fact]
+    public void The_component_stats_keep_their_number_separate_from_their_words()
+    {
+        var totals = WorkbookSummary.Summarize(new[]
+        {
+            new WorklogEntryRecord
+            {
+                Id = 1,
+                ComponentLabels = new List<string> { "U1", "U2" },
+                CompletedComponentLabels = new List<string> { "U1" }
+            }
+        });
+
+        var stats = WorkbookSummary.BuildComponentStats(totals);
+
+        Assert.Equal("2", stats[0].Number);
+        Assert.Equal(" components in scope", stats[0].Suffix);
+
+        // One completed, so the singular - the count and its words are separate fields, and the
+        // words follow the count.
+        Assert.Equal("1", stats[1].Number);
+        Assert.Equal(" component completed", stats[1].Suffix);
+    }
+
 }

@@ -12,4 +12,16 @@ It is used only for the logic/PLA vector tests (which feed their vectors via
 "--logicic", so no device database is bundled).
 
 Both "minipro" and "Classic Repair Toolbox" is GPL-3.0 licenced, and "minipro"
-runs as a separate subprocess (mere aggregation).
+runs as a separate subprocess (mere aggregation). Upstream minipro is
+GPL-3.0-or-later; CRT is GPL-3.0, which is compatible.
+
+SOURCE (GPL-3.0 section 6)
+Because this is a MODIFIED GPL binary, its corresponding source must be offered
+to anyone who receives it. That offer is:
+
+  Upstream:     https://gitlab.com/DavidGriffith/minipro
+  Windows fork: https://github.com/KevinWelton/minipro-win
+
+plus the two patches described above, which are the only changes made on top of
+that fork. See THIRD-PARTY-NOTICES.md in the repository root for the same
+information.

@@ -1,6 +1,7 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
@@ -398,11 +399,11 @@ public sealed class WorkbooksSearchTests : IDisposable
         });
     }
 
-    // A board change is a change of subject: carrying the query over lands the user on a filtered,
-    // often empty list for a board they just picked, with the reason sitting in a box they are not
-    // looking at. Main.OnBoardSelectionChanged calls this before it refreshes.
+    // The filter is cleared by the user and by nothing else - the button at the end of the box.
+    // It empties the box AND the filter, and rebuilds the list unfiltered on its own (it used to be
+    // ClearSearchForBoardChange, whose callers refreshed separately).
     [Fact]
-    public void Clearing_the_search_for_a_board_change_empties_the_box_and_the_filter()
+    public void Clearing_the_search_empties_the_box_and_the_filter()
     {
         this.LoadWorklog();
         WorklogManager.CreateWorkbook(this.thisBoardKey, "Black screen", "");
@@ -415,11 +416,118 @@ public sealed class WorkbooksSearchTests : IDisposable
             Search(tab, "PLA");
             Assert.Single(ListPanel(tab).Children);
 
-            tab.ClearSearchForBoardChange();
-            tab.RefreshWorkbooks();
+            tab.ClearSearch();
 
             Assert.Equal(string.Empty, tab.GetControl<TextBox>("FindRepairTextBox").Text);
             Assert.Equal(2, ListPanel(tab).Children.Count);
+        });
+    }
+
+    // THE REPORTED BUG. A board change must NOT clear the query.
+    //
+    // In "Show all workbooks" scope a search routinely matches a workbook on another board, and
+    // clicking that result is how the user follows the search to it - which switches the board. The
+    // old behaviour cleared on that switch, so the filter vanished exactly when it had found what
+    // was asked for and had to be retyped.
+    //
+    // A board change reaches this tab as a plain RefreshWorkbooks (Main.RefreshWorklogBar), which is
+    // what this drives - the clearing call that used to sit in front of it is gone.
+    [Fact]
+    public void A_board_change_keeps_the_search_and_its_filtering()
+    {
+        this.LoadWorklog();
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Black screen", "");
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+
+            Search(tab, "PLA");
+            Assert.Single(ListPanel(tab).Children);
+
+            // What a board change does to this tab.
+            tab.RefreshWorkbooks();
+
+            Assert.Equal("PLA", tab.GetControl<TextBox>("FindRepairTextBox").Text);
+            Assert.Single(ListPanel(tab).Children);
+        });
+    }
+
+    // The filter also survives the other refresh triggers - an entry save, a workbook create or
+    // delete - all of which land in RefreshWorkbooks the same way. Pinned alongside the board-change
+    // case so "nothing clears it implicitly" is stated as a rule rather than one example.
+    [Fact]
+    public void Creating_a_workbook_keeps_the_search_applied()
+    {
+        this.LoadWorklog();
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Black screen", "");
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+
+            Search(tab, "PLA");
+            Assert.Single(ListPanel(tab).Children);
+
+            WorklogManager.CreateWorkbook(this.thisBoardKey, "Another job entirely", "");
+            tab.RefreshWorkbooks();
+
+            // Still filtered: the new workbook does not match, so it is not shown.
+            Assert.Equal("PLA", tab.GetControl<TextBox>("FindRepairTextBox").Text);
+            Assert.Single(ListPanel(tab).Children);
+        });
+    }
+
+    // The clear button is the ONLY way to drop the query now, so it has to be visible whenever there
+    // is a query - and absent when there is not, where it would be a control that does nothing.
+    [Fact]
+    public void The_clear_button_appears_only_while_there_is_something_to_clear()
+    {
+        this.LoadWorklog();
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+            var clearButton = tab.GetControl<Button>("ClearSearchButton");
+
+            Assert.False(clearButton.IsVisible);
+
+            Search(tab, "PLA");
+            Assert.True(clearButton.IsVisible);
+
+            tab.ClearSearch();
+            Assert.False(clearButton.IsVisible);
+        });
+    }
+
+    // The box reserves room on its right while the button is over it, so typed text cannot run
+    // underneath the button - and gives that room back when the button goes away.
+    [Fact]
+    public void The_search_box_reserves_room_for_the_clear_button_only_while_it_is_shown()
+    {
+        this.LoadWorklog();
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+            var box = tab.GetControl<TextBox>("FindRepairTextBox");
+
+            double unfiltered = box.Padding.Right;
+
+            Search(tab, "PLA");
+            double filtered = box.Padding.Right;
+
+            Assert.True(
+                filtered > unfiltered,
+                $"the box reserved no extra room for the button ({filtered} vs {unfiltered})");
+
+            tab.ClearSearch();
+
+            Assert.Equal(unfiltered, box.Padding.Right, precision: 3);
         });
     }
 
@@ -558,5 +666,51 @@ public sealed class WorkbooksSearchTests : IDisposable
                 new() { SchematicName = schematicName, SchematicImageFile = imagePath },
             },
         };
+    }
+
+    // ###########################################################################################
+    // CLEARING THE SEARCH MUST NOT LEAVE A SECOND REBUILD ARMED BEHIND IT.
+    //
+    // ClearSearch assigns the box's Text, and that assignment raises TextChanged - whose handler
+    // RESTARTS the debounce timer. Stopping the timer BEFORE the assignment therefore simply re-arms
+    // it, and the immediate rebuild ClearSearch performs was followed ~200ms later by a second,
+    // identical full pass: every workbook's worklogs re-read from disk, the whole board pane
+    // re-laid-out, and a visible flicker on a workbook with several previews. It also re-entered
+    // RefreshBoardPreviews, which the tab's own comments warn can re-enter while a badge's editor is
+    // open.
+    //
+    // The fix is ordering - stop AFTER the assignment. Fails against the version that stopped first.
+    // ###########################################################################################
+    //
+    // DRIVEN THROUGH RaiseSearchTextChangedForTests rather than by assigning the box's Text: a
+    // headless TextBox does not raise TextChanged even with the tab attached to a shown window
+    // (which is why every other test in this file sets Text and then calls RefreshWorkbooks by
+    // hand). So the handler is invoked directly, which is exactly what the real assignment does -
+    // and it is invoked AGAIN after ClearSearch's own assignment, standing in for the raise the
+    // running app performs there. That second call is the whole scenario: it is the one the old
+    // ordering left un-stopped.
+    [Fact]
+    public void Clearing_the_search_leaves_no_debounced_rebuild_pending()
+    {
+        this.LoadWorklog();
+        WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+
+            // Typing arms the timer - which is what makes the assertions below meaningful rather
+            // than merely observing a timer that was never started.
+            tab.GetControl<TextBox>("FindRepairTextBox").Text = "PLA";
+            tab.RaiseSearchTextChangedForTests();
+            Assert.True(tab.IsSearchRebuildPendingForTests);
+
+            // ClearSearch as the app runs it: it empties the box, which raises TextChanged (re-arming
+            // the timer), and only then stops it.
+            tab.SimulateSearchTextChangedForTests = tab.RaiseSearchTextChangedForTests;
+            tab.ClearSearch();
+
+            Assert.False(tab.IsSearchRebuildPendingForTests);
+        });
     }
 }

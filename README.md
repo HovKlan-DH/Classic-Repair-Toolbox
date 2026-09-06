@@ -222,6 +222,12 @@ Some images can also have detailed explanation:
 CRT is licensed under the **GNU General Public License v3** - see [LICENSE.txt](LICENSE.txt) for the
 full license text.
 
+Two of the libraries CRT uses are not open source: **EPPlus** (Polyform Noncommercial) and
+**QuestPDF** (used under its free Community License). A GPL-3.0 exception covering them is at the
+end of [LICENSE.txt](LICENSE.txt), and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists every
+bundled component and what it requires. The short version: CRT is free to use, but if you fork it
+for commercial use you will need your own EPPlus license, or a replacement for it.
+
 Do note that this covers the application itself. The hardware reference data (schematics, datasheets,
 component images and similar) is collected and contributed material, and the individual pieces of it
 have their own origins and rights holders. For most important authors and contributors there is a link.

@@ -5,7 +5,7 @@ New here? Start with [Getting started](Getting-started).
 ## Using CRT at the bench
 
 * [Getting started](Getting-started) — what CRT does, and what to do after installing it
-* [Workbooks](Workbooks-tab) — record what you found and what you did, and hand the job over as a PDF
+* [Workbooks](Workbooks-tab) — record what you found and what you did, and export it as a PDF
   - [Getting started](Workbooks-Getting-started)
   - [Daily use](Workbooks-Daily-use)
   - [Browsing and search](Workbooks-Browsing-and-search)
@@ -21,7 +21,7 @@ New here? Start with [Getting started](Getting-started).
 * [Schematics](Schematics-tab) — the board, its components and its traces
 * [Overview](Overview-tab) — every component as a list, and a printable bill of materials
 * [Resources](Resources-tab) — datasheets, manuals and links for this board
-* [Workbooks](Workbooks-tab) — record a repair from start to invoice
+* [Workbooks](Workbooks-tab) — record a repair from first fault to finished write-up
 * [Oscilloscope](Oscilloscope-tab) — connect to a network-capable scope
 * [Contribute](Contribute-tab) — fix or add board data from inside the app
 * [Configuration](Configuration-tab) — every setting, and where your files are

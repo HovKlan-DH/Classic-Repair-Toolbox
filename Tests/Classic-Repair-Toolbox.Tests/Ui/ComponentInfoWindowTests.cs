@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using CRT;
 using Handlers.DataHandling;
 
@@ -471,5 +471,102 @@ public class ComponentInfoWindowTests : IDisposable
         return itemsSource is null
             ? new List<T>()
             : itemsSource.Cast<T>().ToList();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The captured oscilloscope image, and releasing it again
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>A real PNG on disk, so the show path performs a genuine decode as a capture does.</summary>
+    private string WriteCaptureImage()
+    {
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".png");
+
+        using var renderTarget = new Avalonia.Media.Imaging.RenderTargetBitmap(
+            new Avalonia.PixelSize(24, 24), new Avalonia.Vector(96, 96));
+
+        using (var context = renderTarget.CreateDrawingContext())
+        {
+            context.DrawRectangle(Avalonia.Media.Brushes.White, null, new Avalonia.Rect(0, 0, 24, 24));
+        }
+
+        using (var stream = File.Create(path))
+        {
+            renderTarget.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+
+        return path;
+    }
+
+    // ###########################################################################################
+    // RELEASING THE CAPTURE MUST DROP IT OUT OF THE IMAGE CONTROL BEFORE DISPOSING IT.
+    //
+    // The clear disposes the decoded bitmap, and the popup's large Image was still pointing at it.
+    // Every long-standing caller happened to reassign that Source immediately afterwards, so the
+    // freed surface was never rendered - but the attach flow's own caller does not: it re-shows the
+    // banner instead, which forces a layout pass over the still-visible Image. That is an
+    // ObjectDisposedException on the RENDER thread, which is fatal in Avalonia - the same failure
+    // mode the Workbooks board pane carries a warning about in its detach path.
+    //
+    // So the release now happens inside the clear itself rather than depending on each caller to
+    // remember. Asserting on the Source is what makes that provable: a disposed bitmap cannot be
+    // rendered by a headless test, but a Source still holding one is exactly the state that crashes.
+    //
+    // Fails against the version that disposed without clearing.
+    // ###########################################################################################
+    [Fact]
+    public void Clearing_a_captured_image_does_not_leave_the_main_image_holding_the_disposed_bitmap()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            Assert.NotNull(window.MainComponentImageSourceForTests);
+
+            window.ClearTemporaryCapturedOscilloscopeImageForTests();
+
+            Assert.Null(window.MainComponentImageSourceForTests);
+        });
+    }
+
+    // The clear runs at the START of every show too (a second capture replaces the first), so it
+    // must not sabotage the assignment that follows it - the new bitmap has to survive.
+    [Fact]
+    public void Showing_a_second_capture_leaves_the_new_bitmap_in_the_main_image()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            var first = window.MainComponentImageSourceForTests;
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            var second = window.MainComponentImageSourceForTests;
+
+            Assert.NotNull(second);
+            Assert.NotSame(first, second);
+        });
+    }
+
+    // A clear with no capture showing must leave whatever else the popup is displaying alone - the
+    // release is targeted at the capture bitmap, not a blanket "empty the image".
+    [Fact]
+    public void Clearing_with_no_capture_showing_does_not_blank_the_main_image()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            var unrelated = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                new Avalonia.PixelSize(8, 8), new Avalonia.Vector(96, 96));
+
+            window.GetControl<Image>("MainComponentImage").Source = unrelated;
+
+            window.ClearTemporaryCapturedOscilloscopeImageForTests();
+
+            Assert.Same(unrelated, window.MainComponentImageSourceForTests);
+        });
     }
 }

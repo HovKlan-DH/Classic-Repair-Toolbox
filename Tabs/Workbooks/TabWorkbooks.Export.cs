@@ -178,7 +178,12 @@ namespace CRT
                 entries,
                 this.BuildSchematicImagePaths(),
                 entryId => WorklogManager.GetEntryAttachmentsFolderPath(workbook.Id, entryId),
-                DateTime.Now);
+                DateTime.Now,
+
+                // The currency is captured HERE, on the UI thread, and travels in the document -
+                // the write itself runs on a background thread, where a settings read would race a
+                // user changing the setting mid-export.
+                UserSettings.WorklogCurrencyCode);
         }
 
         // ###########################################################################################

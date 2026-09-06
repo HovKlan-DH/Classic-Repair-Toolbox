@@ -80,9 +80,10 @@ One or two lines: what this page gets you.
 ## Updating a page
 
 1. Edit the `.md` file here, in the same commit as whatever code change made it necessary.
-2. When ready to publish, ask for the pages that have drifted — see
-   [`!sync-status.md`](./%21sync-status.md) for what has been copied across and when.
-3. Open the named Wiki page, select all, paste the file's contents, save.
+2. When ready to publish, open [`!sync-status.md`](./%21sync-status.md). It lists every file still
+   waiting to be pasted, and where in the Wiki each one lives — it is generated at the end of every
+   turn, so it needs no double-checking first.
+3. Open the Wiki page it names, select all, paste the file's contents, save.
 4. Confirm, so [`!sync-status.md`](./%21sync-status.md) can be brought up to date.
 
 ## Pages deliberately NOT mirrored here
@@ -102,16 +103,21 @@ superseded by a page that is here:
 They still exist in the Wiki and are untouched. If any should be kept alive, mirror it here first
 so it stops being edited in two places.
 
-## The five in-app help links
+## The in-app help links
 
-These Wiki pages are opened by buttons in the shipped application:
+These four Wiki pages are opened by five "?" buttons in the shipped application:
 
 | Page | Opened from |
 | --- | --- |
-| `Workbooks` | Configuration tab, "?" beside "Enable Workbooks tab" |
+| `Workbooks-tab` | Configuration tab, "?" beside "Enable Workbooks tab" |
 | `MiniPro-programmer` | Configuration tab "?", and the component popup |
 | `Controlling-oscilloscope-with-keyboard` | Component popup |
 | `Synchronize-oscilloscope` | Component popup |
 
 Renaming or deleting one of those pages breaks a button in a released build, which no update can
-fix for versions already installed. Grep for the page name before touching it.
+fix for versions already installed.
+
+The page names live in `AppConfig` (`WikiPageWorkbooks`, `WikiPageMiniPro`, `WikiPageScopeKeyboard`,
+`WikiPageScopeSync`), so there is one place to change and one place to grep. `WikiHelpPageNamesTests`
+asserts each of them still matches a file in this folder — so a rename that forgets a button fails
+the suite instead of shipping.

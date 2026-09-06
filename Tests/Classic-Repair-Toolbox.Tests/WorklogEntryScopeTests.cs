@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
@@ -170,4 +170,135 @@ public class WorklogEntryScopeTests
     {
         Assert.Equal(expected, WorklogEntryScope.FormatCount(count, "entry", "entries"));
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // FormatWorkbookDate - the date shown in the worklog bar above the tabs and on the workbook
+    // cards. One formatter for both, so those two cannot disagree; they used to hold a format string
+    // each.
+    // ---------------------------------------------------------------------------------------------
+
+    // THE REPORTED POINT: no leading zero on the day. The 6th is "2026-September-6", not
+    // "2026-September-06".
+    [Fact]
+    public void A_single_digit_day_carries_no_leading_zero()
+    {
+        Assert.Equal("2026-September-6", WorklogEntryScope.FormatWorkbookDate(new DateTime(2026, 9, 6)));
+        Assert.Equal("2026-January-1", WorklogEntryScope.FormatWorkbookDate(new DateTime(2026, 1, 1)));
+    }
+
+    // The other half: suppressing the padding must not truncate a two-digit day. Worth its own case
+    // because "d" and "dd" only differ for days 1-9, so a test written on a single-digit day alone
+    // passes for both formats.
+    [Fact]
+    public void A_two_digit_day_is_shown_in_full()
+    {
+        Assert.Equal("2026-September-26", WorklogEntryScope.FormatWorkbookDate(new DateTime(2026, 9, 26)));
+        Assert.Equal("2026-December-31", WorklogEntryScope.FormatWorkbookDate(new DateTime(2026, 12, 31)));
+    }
+
+    // The month is a NAME and the format is invariant, so the date cannot be read as 06-09 or 09-06
+    // depending on the machine's locale - which is the whole reason this format was chosen over a
+    // numeric one.
+    [Fact]
+    public void The_month_is_always_an_english_name_regardless_of_the_current_culture()
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("da-DK");
+
+            Assert.Equal("2026-September-6", WorklogEntryScope.FormatWorkbookDate(new DateTime(2026, 9, 6)));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // FormatWorkbookDateLine - the WORD and the DATE together. Both the worklog bar above the tabs
+    // and the workbook cards in the Workbooks tab print this line for the same workbook, feet apart
+    // on the same screen, and they disagreed: the bar chose "ended"/EndDate for a closed workbook
+    // while the card wrote "started" against StartDate unconditionally. These tests are why the
+    // word and the date are chosen by ONE function - pairing them at the call site is what let the
+    // two drift.
+    // ---------------------------------------------------------------------------------------------
+
+    // An OPEN workbook reports when it started, even when a stale EndDate is sitting on the record.
+    // That is not hypothetical: RecomputeWorkbookStatus deliberately leaves EndDate standing when a
+    // workbook REOPENS, so an open workbook carrying a finish date is the normal state of any job
+    // that was closed and then had a worklog reopened in it.
+    [Fact]
+    public void An_open_workbook_reports_when_it_started_even_carrying_a_stale_end_date()
+    {
+        Assert.Equal(
+            "started 2026-September-6",
+            WorklogEntryScope.FormatWorkbookDateLine("Open", new DateTime(2026, 9, 6), null));
+
+        Assert.Equal(
+            "started 2026-September-6",
+            WorklogEntryScope.FormatWorkbookDateLine("Open", new DateTime(2026, 9, 6), new DateTime(2026, 10, 1)));
+    }
+
+    // THE REPORTED POINT: a closed workbook reports when it ENDED - the word AND the date move
+    // together. A version that changed only the word would produce "ended 2026-September-6" against
+    // the start date, which is a wrong fact rather than a wrong label, so both halves are asserted.
+    [Fact]
+    public void A_closed_workbook_reports_the_end_word_and_the_end_date_together()
+    {
+        Assert.Equal(
+            "ended 2026-October-1",
+            WorklogEntryScope.FormatWorkbookDateLine("Closed", new DateTime(2026, 9, 6), new DateTime(2026, 10, 1)));
+    }
+
+    // A closed workbook with NO EndDate falls back to BOTH halves of the started form - every
+    // workbook closed before that field existed reads this way, and there is deliberately no
+    // migration. Showing the start it really has beats inventing a finish date.
+    [Fact]
+    public void A_closed_workbook_with_no_end_date_falls_back_to_the_whole_started_line()
+    {
+        Assert.Equal(
+            "started 2026-September-6",
+            WorklogEntryScope.FormatWorkbookDateLine("Closed", new DateTime(2026, 9, 6), null));
+    }
+
+    // The status is matched the way IsWorkbookStatusOpen matches it - trimmed and case-insensitive,
+    // since a status read back off disk (or hand-edited) can carry other casing. An unrecognised
+    // status reads as open, matching how every status pill in the app already falls back.
+    [Theory]
+    [InlineData("Closed")]
+    [InlineData("closed")]
+    [InlineData("  CLOSED  ")]
+    public void A_closed_status_is_recognised_whatever_its_casing_or_padding(string status)
+    {
+        Assert.Equal(
+            "ended 2026-October-1",
+            WorklogEntryScope.FormatWorkbookDateLine(status, new DateTime(2026, 9, 6), new DateTime(2026, 10, 1)));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Something else")]
+    public void An_unrecognised_status_reads_as_open_and_reports_the_start(string? status)
+    {
+        Assert.Equal(
+            "started 2026-September-6",
+            WorklogEntryScope.FormatWorkbookDateLine(status, new DateTime(2026, 9, 6), new DateTime(2026, 10, 1)));
+    }
+
+    // The line uses the SAME date formatter as FormatWorkbookDate above, so the no-leading-zero rule
+    // it pins holds here too - a second formatter inside this method would be exactly the drift both
+    // of these exist to prevent.
+    [Fact]
+    public void The_line_carries_the_shared_date_format()
+    {
+        var date = new DateTime(2026, 12, 31);
+
+        Assert.Equal(
+            $"started {WorklogEntryScope.FormatWorkbookDate(date)}",
+            WorklogEntryScope.FormatWorkbookDateLine("Open", date, null));
+    }
+
 }

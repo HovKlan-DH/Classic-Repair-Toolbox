@@ -29,6 +29,26 @@ one request, not the rest of the session.
 The published documentation is the **GitHub Wiki**. Its source of truth is
 [Assets/Wiki/](../Assets/Wiki/) — one `.md` file per Wiki page, named **exactly** as the page is.
 
+### Know who is reading: hobbyists, not professionals
+
+**CRT's users are hobby hardware enthusiasts repairing their own vintage computers.** Some are
+deeply technical; most are ad-hoc "I want to see what this is" users. As a rule of thumb **nobody
+is doing this for a living and nobody earns significant income from it.**
+
+So documentation and user-visible strings must never assume a job, a workplace, customers, clients,
+billing or a trade. "Pick the country you work in" was wrong for exactly this reason — a reader
+simply *lives* somewhere. The same goes for "what you bill in", "your customer", "hand the job
+over", "at invoice time", and example data like a customer's name in a workbook description.
+
+Write "the country you live in", "the repair", "share the write-up", "export it". Where a page has
+to name the thing a workbook represents, it is **a repair**, not a job. If a phrasing is genuinely
+ambiguous, ask rather than guess.
+
+Two things this rule does **not** touch: the app's own domain nouns (a workbook holds worklogs -
+that is product naming and is fine), and ordinary English "job" meaning a task ("a re-labelling
+job", "a data job"). The problem is only prose implying paid work. Code comments explaining design
+rationale are also out of scope - the rule is about what a user reads.
+
 **Nothing publishes automatically.** GitHub offers no way to push a folder in this repository to
 the Wiki, so the maintainer copies changed files across by hand. Editing a file here changes what
 the page *should* say; the page itself changes only when they paste it. Never tell the user a Wiki
@@ -44,10 +64,53 @@ page has been updated — say which files changed and that they are ready to be 
 - **`Assets/Wiki/images/`** holds reference copies only. The Wiki does not read from it, and
   repointing a page at it would break the image.
 - **[Assets/Wiki/!sync-status.md](../Assets/Wiki/%21sync-status.md)** records which pages have been
-  pasted, and at which commit. Update it only when the maintainer CONFIRMS a page is pasted — it
-  is a record of the Wiki's real state, not of this folder's.
-- **When asked for a sync diff**, list the pages whose files changed since their last-synced
-  commit, say what changed in each, and leave the pasting to the maintainer.
+  pasted. It is a record of the Wiki's real state, not of this folder's.
+
+  **The WHOLE FILE is generated and you must not hand-edit any of it, or add anything to it.** The
+  `Stop` hook [hooks/wiki-sync-status.sh](hooks/wiki-sync-status.sh) rewrites everything between
+  the `<!-- crt:waiting-start -->` / `<!-- crt:waiting-end -->` markers on every turn, and those
+  markers are the first and last lines of the file - there is nothing outside them. Comparing each
+  page against the blob hash recorded for it in [.claude/wiki-synced.tsv](wiki-synced.tsv).
+
+  This exists because the file previously recorded sync state only in prose ("Verified against the
+  live Wiki on 2026-09-06"), which nothing could check. Six pages had changed while the prose still
+  named three, and the maintainer had to ask for a manual re-check every time. The point of the
+  automation is that they no longer have to: the table can be trusted on sight.
+
+  **It holds ONE table and exactly two columns: the FILE, and where that page lives in the live
+  Wiki** (`Workbooks-Daily-use.md` | `Home > At the bench > Workbooks > Daily use`). Both halves of
+  that are a maintainer instruction, not a default to improve on:
+
+  - **No other columns.** It used to carry "Last pasted" and "Changed since", which answer a
+    question nobody asks - a page is listed because it needs pasting, and how stale it is changes
+    nothing about what to do. What was missing was the only thing that costs real time: *where in
+    the Wiki the page actually is*, so it can be found and opened.
+  - **No other content.** The mechanism explanation, the "what changed in each page" prose and the
+    "not a Wiki page" notes were all removed outright. The maintainer opens this file to go and
+    paste pages and reads nothing else in it, and that prose pushed the table itself below the
+    fold. **Do not write a "what changed" section back into it** - if a change needs explaining,
+    say it in your turn summary. Mechanism notes belong here in CLAUDE.md and in
+    [Assets/Wiki/README.md](../Assets/Wiki/README.md).
+
+  **The Wiki location is DERIVED from [Assets/Wiki/_Sidebar.md](../Assets/Wiki/_Sidebar.md) at hook
+  run time, never hardcoded.** The sidebar is what GitHub renders beside every Wiki page, so it is
+  what the maintainer actually navigates by, and deriving it means a sidebar edit cannot leave this
+  table describing a structure that no longer exists. A page listed twice there (`Workbooks-tab` is
+  under both "At the bench" and "The tabs") keeps its FIRST, deeper trail; a page the sidebar does
+  not list falls back to `Home`. **If you restructure `_Sidebar.md`, re-run the hook and glance at
+  the trails** rather than assuming the parse still fits.
+
+  **The comparison is on CONTENT, not on commits**, and that is load-bearing. Pages are routinely
+  pasted while their edits are still uncommitted, and a commit-based check then reports every
+  stamped page as dirty against HEAD forever, so the list could never be cleared - which is exactly
+  what happened when it was first built that way.
+- **When the maintainer CONFIRMS a paste** ("I pasted Configuration-tab and Workbooks-tab", or
+  "pasted all of them"), run [hooks/wiki-mark-synced.sh](hooks/wiki-mark-synced.sh) with those page
+  names (or `--all`). It stamps each at its current content, and they drop off the table on the
+  next turn. Never stamp a page the maintainer has not confirmed.
+- **When asked for a sync diff**, the table already IS the answer - read it rather than re-deriving
+  it, then say what changed in each page **in your reply** (not in the file) and leave the pasting
+  to the maintainer.
 
 **Documentation changes ship in the same commit as the code they describe.** When a change alters
 behaviour a mirrored page documents, update that page in the same commit and say so.
@@ -58,10 +121,15 @@ did not. It WARNS rather than blocking - whether a change is user-visible is a j
 unlike a red suite there is no objective pass/fail - so read the list and decide. When a page starts
 documenting new code, add the mapping to that script's `MAP`.
 
-**Five Wiki pages are opened by buttons in the shipped app** (`Workbooks`, `MiniPro-programmer`,
-`Controlling-oscilloscope-with-keyboard`, `Synchronize-oscilloscope` — see
-`TabConfiguration.axaml.cs` and `ComponentInfoWindow.axaml.cs`). Renaming or deleting one breaks a
-button in builds already installed, which no update can fix. Grep before touching those names.
+**Four Wiki pages are opened by buttons in the shipped app**, across five buttons:
+`Workbooks-tab`, `MiniPro-programmer` (two buttons), `Controlling-oscilloscope-with-keyboard` and
+`Synchronize-oscilloscope`. **They are named once, in `AppConfig`** (`WikiPage*` plus
+`WikiPageUrl`), and the buttons in `TabConfiguration.axaml.cs` and `ComponentInfoWindow.axaml.cs`
+read them from there rather than carrying URL literals — a repository rename then changes one
+place, not five. Renaming or deleting one of these pages breaks a button in builds already
+installed, which no update can fix, so `WikiHelpPageNamesTests` asserts each name still matches a
+file in `Assets/Wiki/`; that test failing is the rename being caught. Add an entry there for any
+new help button.
 
 **Six Wiki pages are deliberately not mirrored** (orphans superseded by newer pages) — see
 [Assets/Wiki/README.md](../Assets/Wiki/README.md). Do not add them back without being asked.

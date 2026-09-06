@@ -32,7 +32,7 @@ namespace Handlers.DataHandling
 
         public sealed class Totals
         {
-            public int EntryCount { get; init; }
+            public int WorklogCount { get; init; }
 
             public double TotalHours { get; init; }
 
@@ -64,17 +64,18 @@ namespace Handlers.DataHandling
             public IReadOnlyDictionary<string, int> EntriesByState { get; init; } =
                 new Dictionary<string, int>();
 
-            public int OpenEntryCount =>
+            public int OpenWorklogCount =>
                 this.EntriesByState.TryGetValue("Open", out int open) ? open : 0;
 
-            public int ClosedEntryCount =>
+            public int ClosedWorklogCount =>
                 this.EntriesByState.TryGetValue("Closed", out int closed) ? closed : 0;
         }
 
         // ###########################################################################################
-        // Sums a workbook's entries. A null or empty list gives an all-zero Totals rather than null,
-        // because every caller renders the result and a workbook with no entries yet is an ordinary
-        // state, not a failure - "0 entries · 0 h" is the correct thing to show for it.
+        // Sums a workbook's worklogs. A null or empty list gives an all-zero Totals rather than null,
+        // because every caller renders the result and a workbook with no worklogs yet is an ordinary
+        // state, not a failure - "0 worklogs · 0 DKK · 0 open" is the correct thing to show for it.
+        // (The hours contribute no part at all at zero - see BuildHeadlineStats.)
         // ###########################################################################################
         public static Totals Summarize(IEnumerable<WorklogEntryRecord>? entries)
         {
@@ -117,7 +118,7 @@ namespace Handlers.DataHandling
                 // An unrecognised category or state - a value from a future build, or an entry
                 // edited by hand - is counted nowhere rather than being forced into one of the
                 // known buckets. Miscounting it as "Note" would quietly misreport the workbook;
-                // EntryCount below still counts the entry itself, so nothing goes missing.
+                // WorklogCount below still counts the entry itself, so nothing goes missing.
                 if (byCategory.ContainsKey(entry.Category ?? string.Empty))
                     byCategory[entry.Category!]++;
 
@@ -127,7 +128,7 @@ namespace Handlers.DataHandling
 
             return new Totals
             {
-                EntryCount = list.Count,
+                WorklogCount = list.Count,
                 TotalHours = totalHours,
                 TotalCost = totalCost,
                 CommentCount = comments,
@@ -153,7 +154,12 @@ namespace Handlers.DataHandling
         //
         // Prefix is what comes before the number (usually empty), Suffix the unit or noun after it.
         // ###########################################################################################
-        public readonly record struct Stat(string Prefix, string Number, string Suffix);
+        // JoinedToPrevious says this part continues the one before it rather than being a new
+        // stat, so a renderer must NOT put its " - " separator in front of it. It exists for
+        // DURATIONS, which are the one stat carrying TWO bold numbers: "1 hour and 15 minutes" is
+        // built as ("1", " hour and ") + ("15", " minutes"), and a separator between the two halves
+        // would read as two separate figures. Everything else leaves it false.
+        public readonly record struct Stat(string Prefix, string Number, string Suffix, bool JoinedToPrevious = false);
 
         // ###########################################################################################
         // The always-visible headline, as its parts: worklogs, hours, cost, and how many are open.
@@ -163,18 +169,50 @@ namespace Handlers.DataHandling
         // leaking out through this one line.
         //
         // Hours and cost are formatted exactly as WorklogEntryEditorWindow's own SummaryText and the
-        // entry detail card's stats row do - "{0:0.##}" in InvariantCulture, and a bare cost number
-        // with no currency symbol. The app never asks which currency the user works in, so printing
-        // one would be a guess; the number is the user's own figure back again.
+        // entry detail card's stats row do - "{0:0.##}" in InvariantCulture - and the cost carries
+        // the user's chosen currency CODE as its suffix, so the figure says what it is rather than
+        // being a bare number the reader has to guess at. It used to be bare because the app never
+        // asked; the Configuration tab asks now (see WorklogCurrency).
+        //
+        // The code is a PARAMETER rather than a read of UserSettings, because this class is pure -
+        // both callers (the Workbooks tab's strip and the PDF export) already hold it, and reading
+        // a static setting here would make every test of these numbers depend on the user's
+        // settings file. It rides in the SUFFIX so the currency stays unbolded alongside the words,
+        // while the number keeps the bold the rest of the strip gives it.
         // ###########################################################################################
-        public static IReadOnlyList<Stat> BuildHeadlineStats(Totals totals) => new[]
+        public static IReadOnlyList<Stat> BuildHeadlineStats(Totals totals, string? currencyCode)
         {
-            new Stat(string.Empty, totals.EntryCount.ToString(CultureInfo.InvariantCulture),
-                totals.EntryCount == 1 ? " worklog" : " worklogs"),
-            new Stat(string.Empty, totals.TotalHours.ToString("0.##", CultureInfo.InvariantCulture), " h"),
-            new Stat(string.Empty, totals.TotalCost.ToString("0.##", CultureInfo.InvariantCulture), string.Empty),
-            new Stat(string.Empty, totals.OpenEntryCount.ToString(CultureInfo.InvariantCulture), " open")
-        };
+            var stats = new List<Stat>
+            {
+                new Stat(string.Empty, totals.WorklogCount.ToString(CultureInfo.InvariantCulture),
+                    totals.WorklogCount == 1 ? " worklog" : " worklogs")
+            };
+
+            // The time as WORDS - "45 minutes", "1 hour and 15 minutes" - not the decimal hours it
+            // is stored as. See WorklogDurationFormatter for why; the short of it is that decimal
+            // hours is a storage format, and "1.4 h" is read as an hour and forty by everyone who
+            // has not just done the arithmetic. It contributes NO stat at all when the workbook has
+            // no time logged, which is why the headline is built as a list rather than a fixed
+            // array: a zero here would be the only "0" in a line of real figures.
+            stats.AddRange(WorklogDurationFormatter.BuildStats(totals.TotalHours));
+
+            // The cost is dropped when there is none, exactly as the time above is - "1 worklog .
+            // 0 USD . 1 open" spends a column reporting the absence of a figure, which the absence
+            // itself says better. Asked for directly.
+            if (WorklogCurrency.FormatCostOrEmpty(totals.TotalCost, currencyCode).Length > 0)
+            {
+                stats.Add(new Stat(string.Empty, totals.TotalCost.ToString("0.##", CultureInfo.InvariantCulture),
+                    " " + WorklogCurrency.NormalizeCode(currencyCode)));
+            }
+
+            // "open" STAYS at zero, unlike the two above. It is not a total that is missing - it is
+            // a state count over worklogs that exist, and "0 open" on a finished job says something
+            // a reader wants ("everything here is closed"), where "0 USD" says only that nobody has
+            // billed anything yet.
+            stats.Add(new Stat(string.Empty, totals.OpenWorklogCount.ToString(CultureInfo.InvariantCulture), " open"));
+
+            return stats;
+        }
 
         // The attachment counts as parts, so each number can be bolded. Same content as
         // FormatAttachmentBreakdown below, which the PDF still uses as plain text.
@@ -190,7 +228,13 @@ namespace Handlers.DataHandling
         public static IReadOnlyList<Stat> BuildComponentStats(Totals totals) => new[]
         {
             CountStat(totals.ComponentCount, "component in scope", "components in scope"),
-            new Stat(string.Empty, totals.CompletedComponentCount.ToString(CultureInfo.InvariantCulture), " completed")
+
+            // "components completed", not the bare "completed" this used to say. The two stats are
+            // rendered side by side as "5 components in scope · 0 completed", where the second one
+            // read as though it could be counting anything - worklogs, work-done rows - rather than
+            // components. Through CountStat like every other count here, so "1 component completed"
+            // reads correctly too.
+            CountStat(totals.CompletedComponentCount, "component completed", "components completed")
         };
 
         private static Stat CountStat(int count, string singular, string plural) =>
@@ -217,8 +261,13 @@ namespace Handlers.DataHandling
         // These share the Stat/count builders above rather than formatting the numbers a second
         // time, so the document and the screen cannot disagree about what a workbook adds up to.
         // ###########################################################################################
-        public static string FormatHeadline(Totals totals) =>
-            string.Join(" · ", BuildHeadlineStats(totals).Select(FormatStat));
+        // THERE IS DELIBERATELY NO FormatHeadline HERE. The headline is the one line where BOTH
+        // renderers - the summary strip and the PDF - bold the numbers and leave the words plain, so
+        // both walk BuildHeadlineStats' parts directly and neither ever wanted a finished string.
+        // One existed anyway, joined the parts back together, and had no caller outside the tests
+        // that asserted on it - a public API shipping nothing, maintained through every future
+        // change to the currency and duration formats for no user-visible effect. The parts are what
+        // is tested now, which is what both renderers actually consume.
 
         public static string FormatCategoryBreakdown(Totals totals) =>
             string.Join(" · ", BuildCategoryCounts(totals).Select(c => $"{c.Count} {c.Label}"));

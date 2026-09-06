@@ -77,11 +77,19 @@
 		</Style>
 
 		<!-- The four workbook-header action buttons (Edit/Delete workbook, Export to PDF/ZIP) -
-		     one fixed Width so all four line up on the same two edges across both rows, rather
-		     than each sizing to its own label ("Delete workbook" is the widest). HorizontalContentAlignment
-		     centers the shorter labels within that width instead of leaving them flush left. -->
+		     all four share ONE width so their edges line up across the two rows, rather than each
+		     sizing to its own label.
+
+		     That width is MEASURED at runtime (TabWorkbooks.EqualiseHeaderActionButtonWidths) and
+		     deliberately NOT set here. It used to be a hardcoded Width="100", which was narrower
+		     than "Delete workbook" actually needs and clipped its final character to "Delete
+		     workboo" - a hardcoded width is a guess about text the font decides the size of, and it
+		     silently goes wrong when a label, the font or the font size changes. The code sizes them
+		     to whichever button is genuinely widest instead, so the label can never be cut off.
+
+		     HorizontalContentAlignment centers the shorter labels within that shared width instead
+		     of leaving them flush left. -->
 		<Style Selector="Button.WorkbookHeaderAction">
-			<Setter Property="Width" Value="100" />
 			<Setter Property="Padding" Value="8,4" />
 			<Setter Property="HorizontalContentAlignment" Value="Center" />
 		</Style>
@@ -100,11 +108,50 @@
 			     matching against every user-typed text field on a workbook and on each of its
 			     entries - see Handlers/Data/WorklogSearchIndex.cs for exactly which, and
 			     WorklogSearchQuery.cs for the query grammar the placeholder summarises. Matched runs
-			     are highlighted wherever the filtered results are drawn. -->
-			<TextBox x:Name="FindRepairTextBox"
-					 PlaceholderText="Find a previous repair - words are ANDed, &quot;use quotes&quot; for a phrase, -minus excludes"
-					 FontSize="11"
-					 TextChanged="OnFindRepairTextChanged" />
+			     are highlighted wherever the filtered results are drawn.
+
+			     The query survives EVERYTHING until the user clears it here - including a board
+			     change, which used to wipe it. In "Show all workbooks" scope a search routinely
+			     finds a workbook on another board, and clicking that result is how you follow the
+			     search to it; clearing on the board switch that follows meant the filter vanished at
+			     the exact moment it had done its job, and the search had to be retyped to see where
+			     the match was.
+
+			     Because nothing clears it implicitly any more, there has to be an obvious way to
+			     clear it explicitly - hence the button, overlaid on the right-hand end of the box
+			     and shown only while there is something to clear. -->
+			<Grid>
+				<TextBox x:Name="FindRepairTextBox"
+						 PlaceholderText="Find a previous repair - words are ANDed, &quot;use quotes&quot; for a phrase, -minus excludes"
+						 FontSize="11"
+						 TextChanged="OnFindRepairTextChanged" />
+
+				<!-- Right-aligned INSIDE the box rather than beside it, so the field keeps the full
+				     width of the panel. The TextBox's own right padding (set in the code-behind
+				     alongside this button's visibility) keeps typed text from running underneath it.
+
+				     A plain "✕" rather than a Font Awesome glyph: an icon-font character that is
+				     missing from the shipped subset renders as a blank box, which has bitten this
+				     project before (see the export buttons, which carry no icon for that reason),
+				     and this one has to be unmistakable. -->
+				<Button x:Name="ClearSearchButton"
+						Content="&#x2715;"
+						ToolTip.Tip="Clear the filter"
+						IsVisible="False"
+						FontSize="11"
+						Width="20"
+						Height="20"
+						Padding="0"
+						Margin="0,0,4,0"
+						Background="Transparent"
+						BorderThickness="0"
+						Cursor="Hand"
+						HorizontalAlignment="Right"
+						VerticalAlignment="Center"
+						HorizontalContentAlignment="Center"
+						VerticalContentAlignment="Center"
+						Click="OnClearSearchClick" />
+			</Grid>
 		</Border>
 
 		<!-- Left = the board's workbooks, right = the selected workbook. The splitter matches the
@@ -381,10 +428,11 @@
 						     widths. Aligning left instead would leave a ragged right edge against
 						     the window border they sit next to.
 
-						     All four buttons share the same fixed Width (the four Button.WorkbookHeaderAction
-						     style below), sized to fit "Delete workbook", the widest label - without
-						     it each button sized to its own content and the four edges did not line
-						     up between the two rows, which read as untidy. -->
+						     All four buttons share one width, measured from the widest of them by
+						     EqualiseHeaderActionButtonWidths - without it each button sized to its
+						     own content and the four edges did not line up between the two rows,
+						     which read as untidy. See the Button.WorkbookHeaderAction style for why
+						     that width is measured rather than hardcoded. -->
 						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
 							<Button x:Name="EditWorkbookButton"
 									Classes="WorkbookHeaderAction"

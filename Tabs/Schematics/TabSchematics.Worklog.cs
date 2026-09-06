@@ -114,6 +114,18 @@ public partial class TabSchematics
     private const double WorklogParkedBadgeSpacing = 6.0;
 
     // ###########################################################################################
+    // Whether "Add worklog" area-marking mode is currently waiting for an area to be drawn.
+    //
+    // Exists so Main's WINDOW-level Escape handler can tell whether to cancel the mode or leave the
+    // key alone for whatever else wants it. The mode is entered by a button in the top bar above
+    // the tabs, which keeps keyboard focus, so the tab's own OnSchematicsKeyDown never sees the
+    // keypress - see Main.OnMainKeyDownCloseSinglePopup, which is where Escape actually lands.
+    //
+    // Public and read-only, the same shape and for the same reason as IsLabelEditorActive.
+    // ###########################################################################################
+    public bool IsWorklogEntryModeActive => this.thisIsWorklogEntryMode;
+
+    // ###########################################################################################
     // Enters worklog entry-drawing mode for the given active workbook. Refuses to start while the
     // label editor or KiCad calibration mode is active, or while no schematic image is loaded, so
     // the caller can tell whether the mode actually started.
@@ -148,7 +160,7 @@ public partial class TabSchematics
     // ###########################################################################################
     // Exits worklog entry-drawing mode from any point in the flow (top-bar Cancel, Escape, or the
     // card's own close/Cancel/Save), clearing the drawn area and telling the main window to reset
-    // the "Add entry" / "Cancel entry" buttons. Safe to call when the mode is not active.
+    // the "Add worklog" / "Cancel" buttons. Safe to call when the mode is not active.
     // ###########################################################################################
     public void CancelWorklogEntryMode()
     {

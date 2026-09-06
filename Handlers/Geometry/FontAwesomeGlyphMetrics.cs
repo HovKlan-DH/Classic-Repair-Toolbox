@@ -21,14 +21,25 @@ namespace Handlers.Geometry
     // WHICH ICONS ARE AFFECTED. Only those whose outline exceeds the declared ascent, which is a
     // property of each individual glyph rather than of the font. In the faces this app ships:
     //
-    //     lock (U+F023)          yMax 480   overshoot 32   AFFECTED
-    //     lock-open (U+F3C1)     yMax 480   overshoot 32   AFFECTED
-    //     bug (U+F188)           yMax 448   overshoot  0   fine
-    //     file-lines (U+F15C)    yMax 448   overshoot  0   fine
-    //     square-plus (U+F0FE)   yMax 416   overshoot  0   fine
-    //     square-minus (U+F146)  yMax 416   overshoot  0   fine
+    //     lock (U+F023)            yMax 480   overshoot 32   AFFECTED
+    //     lock-open (U+F3C1)       yMax 480   overshoot 32   AFFECTED
+    //     trash-can (U+F2ED)       yMax 464   overshoot 16   AFFECTED
+    //     bug (U+F188)             yMax 448   overshoot  0   fine
+    //     file-lines (U+F15C)      yMax 448   overshoot  0   fine
+    //     circle-question (U+F059) yMax 448   overshoot  0   fine
+    //     pen-to-square (U+F044)   yMax 444   overshoot  0   fine
+    //     square-plus (U+F0FE)     yMax 416   overshoot  0   fine
+    //     square-minus (U+F146)    yMax 416   overshoot  0   fine
+    //     sort-down (U+F160)       yMax 416   overshoot  0   fine
+    //     sort-up (U+F161)         yMax 416   overshoot  0   fine
     //
     // So "it worked last time" proves nothing about the next icon. Measure the glyph.
+    //
+    // trash-can is the one that proves the point. It sits 16 units over - half the padlocks'
+    // overshoot, so the clipping is a single pixel row at UI sizes and reads as the lid simply
+    // being drawn flat. It went unnoticed through the original fix because the test that should
+    // have caught it treated "never measured" and "does not overshoot" as the same answer; see
+    // FontAwesomeAssetTests.GetGlyphYMax.
     //
     // HOW TO MEASURE ONE. Read the shipped OTF directly - do not trust a value from memory, and do
     // not trust the headless test renderer, which returns zeroed glyph metrics and paints filled
@@ -65,6 +76,7 @@ namespace Handlers.Geometry
         {
             [0xF023] = 32.0, // lock
             [0xF3C1] = 32.0, // lock-open
+            [0xF2ED] = 16.0, // trash-can
         };
 
         // ###########################################################################################

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using Avalonia;
 using Avalonia.Controls;
@@ -278,11 +278,11 @@ public class WorklogListSectionTests
 
             Assert.Contains("2 entries", text);
 
-            // Formatted with the CURRENT culture, so the decimal separator is "," on a Danish
-            // machine and "." on an invariant one. Asserting a literal "3.5" pins the developer's
-            // locale rather than the behaviour.
-            string hours = 3.5.ToString("0.##", CultureInfo.CurrentCulture);
-            Assert.Contains(hours, text);
+            // The time as HOURS AND MINUTES, not the decimal hours it is stored as - see
+            // WorklogDurationFormatter. That also settles what used to be a locale problem here:
+            // "3.5" needed the CURRENT culture's decimal separator to be asserted safely, while
+            // "3 hours and 30 minutes" is two whole integers and reads the same everywhere.
+            Assert.Contains("3 hours and 30 minutes", text);
             Assert.Contains("30", text);
         }, entry);
     }

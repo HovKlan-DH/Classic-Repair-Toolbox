@@ -27,6 +27,10 @@ namespace CRT
     //   TabWorkbooks.BoardPreviews.cs the board pane and the entry list beside it - schematic
     //                                previews, entry badges, schematic selection, entry detail
     //                                cards, and the editor a badge opens
+    //   TabWorkbooks.PreviewReorder.cs drag-to-reorder for those schematic previews, grabbed by a
+    //                                preview's caption and persisted per workbook
+    //   TabWorkbooks.Summary.cs      the collapsible workbook-summary strip above the board pane
+    //   TabWorkbooks.Export.cs       exporting a workbook to PDF or ZIP
     //
     // What IS real:
     //   - the left panel, listing the workbooks WorklogManager holds for the selected board,
@@ -186,6 +190,24 @@ namespace CRT
         // ###########################################################################################
         private DispatcherTimer? thisSearchDebounceTimer;
 
+        // Whether a debounced rebuild is still pending. Exposed so a test can prove ClearSearch does
+        // not leave one armed - clearing rebuilds immediately, and a timer still running behind that
+        // fires a second, identical full rebuild ~200ms later. See ClearSearch.
+        internal bool IsSearchRebuildPendingForTests => this.thisSearchDebounceTimer?.IsEnabled == true;
+
+        // Drives the box's own TextChanged handler, which is what arms the debounce.
+        //
+        // A SEAM rather than assigning FindRepairTextBox.Text in the test, because a headless
+        // TextBox does not raise TextChanged even with the tab attached to a shown window - the
+        // reason the search tests here set Text and then call RefreshWorkbooks by hand. Without this
+        // there is no way to reach OnFindRepairTextChanged at all, and the thing under test is
+        // precisely the interaction between that handler and ClearSearch.
+        internal void RaiseSearchTextChangedForTests() => this.OnFindRepairTextChanged(null, null!);
+
+        // Set by the one test that has to see ClearSearch behave as it does in the app - see the
+        // call site in ClearSearch. Null in the app and in every other test.
+        internal Action? SimulateSearchTextChangedForTests;
+
         private static readonly TimeSpan SearchDebounceInterval = TimeSpan.FromMilliseconds(200);
 
         // One pass's worth of entry reads, keyed by workbook id, so the filter and the board pane
@@ -238,6 +260,14 @@ namespace CRT
 
             this.ClearBoardPreviewsBeforeDisposingBitmaps();
             this.DisposeSchematicBitmaps();
+
+            // The shared search highlighting is dropped with the tab. It is process-wide state
+            // written only by this tab's refresh, so a query left in the box would otherwise keep
+            // washing runs everywhere else in the app once this tab stops refreshing - hidden by the
+            // Configuration checkbox, or simply never returned to while worklogs are opened from the
+            // Schematics tab's own badges. Re-attaching republishes it from the box, so a plain tab
+            // switch loses nothing. See TextLinkRenderer.ClearActiveHighlightQuery.
+            TextLinkRenderer.ClearActiveHighlightQuery();
         }
 
         // ###########################################################################################
@@ -271,7 +301,76 @@ namespace CRT
             {
                 this.RefreshWorkbooks();
             }
+
+            // After the refresh, and on every attach rather than once: a tab switch detaches and
+            // re-attaches this tab, and the measurement is cheap (four buttons, no I/O). Doing it
+            // here rather than in the constructor is what gives the buttons a template and a text
+            // layout to measure - see the method's own header.
+            this.EqualiseHeaderActionButtonWidths();
         }
+
+        // ###########################################################################################
+        // Gives the four workbook-header action buttons (Edit/Delete workbook, Export to PDF/ZIP)
+        // ONE shared width, measured from whichever of them is actually widest.
+        //
+        // WHY MEASURED RATHER THAN HARDCODED. These carried Width="100" in the markup, chosen to fit
+        // "Delete workbook". It did not: the label rendered clipped as "Delete workboo", and nothing
+        // said so - a Button just cuts its content off. A fixed number is a guess about text whose
+        // real size is decided by the font, the font size and the theme's padding, so it is wrong
+        // the moment any of those move, and wrong SILENTLY. Asking the buttons how wide they want to
+        // be cannot drift: change a label, the font size or the theme and the width follows.
+        //
+        // Measure(Infinity), not Bounds: Bounds is whatever the last arrange pass gave them, which
+        // on the first call is either zero (never laid out) or the old shared width (already
+        // equalised) - measuring against an unbounded space asks for the natural, unclipped size the
+        // content wants instead.
+        //
+        // Width is cleared to NaN ("auto") before measuring, or each pass would measure the width
+        // the previous pass imposed and the buttons could only ever grow.
+        //
+        // Runs on attach rather than in the constructor: the buttons need their template applied and
+        // a text layout available, neither of which exists before the tab joins a visual tree.
+        // ###########################################################################################
+        private void EqualiseHeaderActionButtonWidths()
+        {
+            var buttons = new[]
+            {
+                this.EditWorkbookButton,
+                this.DeleteWorkbookButton,
+                this.ExportWorkbookButton,
+                this.ExportWorkbookZipButton
+            };
+
+            // Null-guarded like every other named-control access here: this runs during attach, and
+            // a missing control must not take the whole tab (and with it the main window) down.
+            if (buttons.Any(button => button == null))
+                return;
+
+            double widest = 0;
+
+            foreach (var button in buttons)
+            {
+                button!.Width = double.NaN;
+                button.Measure(Size.Infinity);
+
+                widest = Math.Max(widest, button.DesiredSize.Width);
+            }
+
+            // Zero means nothing could be measured yet (no text layout available); leaving the
+            // buttons at auto is correct in that case - each sizes to its own label, which is
+            // untidy but never clipped. Better than pinning all four to a width of 0.
+            if (widest <= 0)
+                return;
+
+            foreach (var button in buttons)
+            {
+                button!.Width = widest;
+            }
+        }
+
+        // Exposed so the headless tests can drive the real equalisation after a layout pass - the
+        // running app reaches it from OnAttachedToVisualTree.
+        internal void EqualiseHeaderActionButtonWidthsForTests() => this.EqualiseHeaderActionButtonWidths();
 
         // ###########################################################################################
         // Hands the tab its main-window reference, matching TabSchematics/TabOverview/TabContribute.
@@ -428,30 +527,107 @@ namespace CRT
         // twice per refresh pass was the single most expensive thing this tab did.
         // ###########################################################################################
         // ###########################################################################################
-        // Clears the "Find a previous repair" box, for a BOARD CHANGE specifically - called from
-        // Main.OnBoardSelectionChanged before it refreshes.
+        // Clears the "Find a previous repair" box and rebuilds the tab unfiltered.
         //
-        // A board switch is a change of subject, not a refresh of the same view: carrying the query
-        // over lands the user on a filtered (often empty) list for a board they just chose, reading
-        // as "this board has nothing" while the reason sits in a text box at the top of the panel
-        // they are not looking at. Main.OnHardwareSelectionChanged already clears
-        // ComponentSearchTextBox for exactly this reason.
+        // THE ONLY THING THAT CLEARS THE QUERY, and it is driven by the user - the button in the
+        // box. Nothing clears it implicitly any more.
         //
-        // Every OTHER refresh trigger - an entry save, a workbook create/delete - deliberately keeps
-        // the query, since those are refreshes of the view the user is already looking at.
+        // A BOARD CHANGE used to clear it (this method was ClearSearchForBoardChange, called from
+        // Main.OnBoardSelectionChanged), on the reasoning that a board switch is a change of subject
+        // and a carried-over filter would leave the user on an apparently empty list. That is true
+        // when the user picks a board from the drop-down, but it broke the case the search exists
+        // for: in "Show all workbooks" scope a query routinely matches a workbook on ANOTHER board,
+        // and clicking that result is precisely how the user follows the search to it. Doing so
+        // switched the board, which wiped the query - so the filter disappeared at the very moment
+        // it had found what was asked for, and had to be retyped to see where the match actually
+        // was. Reported as exactly that.
+        //
+        // The empty-list risk that reasoning was guarding against is handled where it belongs: the
+        // empty states say "no match" rather than "none recorded yet" whenever a search is what
+        // emptied them, and the clear button sits next to the text that caused it.
         //
         // Sets the field as well as the box because the box's TextChanged is debounced: without it,
-        // the refresh that follows immediately would still parse the OLD text.
+        // the refresh below would still parse the OLD text.
         // ###########################################################################################
-        public void ClearSearchForBoardChange()
+        public void ClearSearch()
         {
             if (this.FindRepairTextBox == null)
                 return;
 
-            this.thisSearchDebounceTimer?.Stop();
             this.FindRepairTextBox.Text = string.Empty;
+
+            // Stands in for the TextChanged the assignment above raises in the running app. A
+            // headless TextBox raises none, even attached to a shown window, so without this hook
+            // the ordering being fixed here is unreachable by any test - and the ordering IS the
+            // fix. Null everywhere except the one test that supplies it.
+            this.SimulateSearchTextChangedForTests?.Invoke();
+
+            // Stopped AFTER the assignment, not before. Setting Text raises TextChanged, whose
+            // handler RESTARTS the debounce timer - so stopping first simply re-armed it, and the
+            // immediate refresh below was followed ~200ms later by a second, identical full rebuild:
+            // every workbook's worklogs re-read from disk, the whole board pane re-laid-out, and a
+            // visible flicker on a workbook with several previews. It also re-entered
+            // RefreshBoardPreviews, which can already re-enter while a badge's editor is open.
+            this.thisSearchDebounceTimer?.Stop();
+
             this.thisSearchQuery = WorklogSearchQuery.Parse(null);
+
+            this.RefreshWorkbooks();
         }
+
+        // ###########################################################################################
+        // The clear button at the end of the search box. Returns focus to the box afterwards:
+        // clearing a filter is usually the start of typing a different one, and leaving focus on a
+        // button that has just hidden itself would strand the caret nowhere.
+        // ###########################################################################################
+        private void OnClearSearchClick(object? sender, RoutedEventArgs e)
+        {
+            this.ClearSearch();
+            this.FindRepairTextBox?.Focus();
+        }
+
+        // ###########################################################################################
+        // Shows the clear button only while there is something to clear, and keeps the box's
+        // right-hand padding in step so typed text never runs underneath it.
+        //
+        // Called from RefreshWorkbooks rather than from the TextChanged handler, so it follows the
+        // query wherever it is set from - including ClearSearch itself and any programmatic change.
+        // ###########################################################################################
+        private void UpdateClearSearchButtonVisibility()
+        {
+            if (this.FindRepairTextBox == null || this.ClearSearchButton == null)
+                return;
+
+            // Captured on the first pass, before anything has been reserved, so clearing the filter
+            // restores the theme's own value rather than a hardcoded guess at it.
+            if (double.IsNaN(this.thisSearchBoxNaturalRightPadding))
+            {
+                this.thisSearchBoxNaturalRightPadding = this.FindRepairTextBox.Padding.Right;
+            }
+
+            bool hasText = !string.IsNullOrEmpty(this.FindRepairTextBox.Text);
+
+            this.ClearSearchButton.IsVisible = hasText;
+
+            // Only the RIGHT padding is touched; the rest keeps the theme's own values, which is why
+            // this reads the current Padding rather than writing a whole new Thickness of hardcoded
+            // numbers.
+            var padding = this.FindRepairTextBox.Padding;
+            double reserved = hasText ? ClearSearchButtonReservedWidth : this.thisSearchBoxNaturalRightPadding;
+
+            if (Math.Abs(padding.Right - reserved) > 0.5)
+            {
+                this.FindRepairTextBox.Padding = new Thickness(padding.Left, padding.Top, reserved, padding.Bottom);
+            }
+        }
+
+        // The button's width plus its margin plus a little breathing room, reserved inside the text
+        // box so the caret and any typed text stop short of the clear button.
+        private const double ClearSearchButtonReservedWidth = 28;
+
+        // The box's own right padding before anything was reserved. NaN until the first
+        // UpdateClearSearchButtonVisibility captures it.
+        private double thisSearchBoxNaturalRightPadding = double.NaN;
 
         public void RefreshWorkbooks(List<WorkbookRecord>? boardWorkbooks = null)
         {
@@ -461,10 +637,22 @@ namespace CRT
             // Re-read from the box rather than trusting the copy OnFindRepairTextChanged cached.
             // Every refresh path lands here - an entry save, a workbook create or delete - and each
             // of those must keep showing the filtered view rather than silently reverting to the
-            // unfiltered one because it did not come through the (debounced) text handler. A BOARD
-            // change is the one case that deliberately drops the query, via ClearSearchForBoardChange
-            // above, before this runs.
+            // unfiltered one because it did not come through the (debounced) text handler. A board
+            // change keeps it too, deliberately - see ClearSearch, which is now the only thing that
+            // drops the query and is driven by the user.
             this.thisSearchQuery = WorklogSearchQuery.Parse(this.FindRepairTextBox?.Text);
+
+            // Publishes the query for the blocks this tab does NOT build - above all the full
+            // worklog editor's own rows, which are DataTemplates over bindings and so have no place
+            // a caller could hand segments in. Without this the filter would find a worklog by a
+            // comment or a link and then show that comment unmarked once opened, leaving the user to
+            // re-read the entry hunting for what matched. See
+            // TextLinkRenderer.SetActiveHighlightQuery.
+            TextLinkRenderer.SetActiveHighlightQuery(this.thisSearchQuery, this.FindRepairTextBox?.Text);
+
+            // The clear button follows the QUERY rather than the keystroke, so it is right whatever
+            // set the text - typing, clearing, or a programmatic change.
+            this.UpdateClearSearchButtonVisibility();
 
             // Fresh per pass - this caches reads WITHIN one rebuild, never across them, so an entry
             // saved between refreshes is picked up by the next one. See the field's own comment.
@@ -813,6 +1001,28 @@ namespace CRT
 
             this.WorkbookHeaderActionsPanel.IsVisible = true;
 
+            // The panel has only just become visible, and it may never have been measurable before:
+            // OnAttachedToVisualTree runs the equalisation immediately after a RefreshWorkbooks that
+            // hides this panel whenever no workbook is selected - the ordinary state on a board with
+            // no workbooks, and in AllBoards scope. Hidden buttons have no applied template, so that
+            // pass measures zero, bails on its own "widest <= 0" guard and leaves all four at auto,
+            // for the rest of the session unless the user happens to switch tabs and back. Retrying
+            // here is what makes the shared width appear as soon as there is something to measure.
+            //
+            // Guarded on the width still being unset so the ordinary case - a workbook selected on
+            // an already-equalised tab - costs nothing: this runs on every refresh, which is every
+            // board change, workbook switch and worklog save.
+            //
+            // DEFERRED, not called straight away: IsVisible was set one line ago, so the buttons
+            // have not been through a layout pass yet and Measure would still report zero - the
+            // same "nothing to measure" the attach-time call already fell foul of. Posting it runs
+            // it after the pass this refresh triggers, the same reason the splitter handlers defer
+            // before reading a column's Bounds.
+            if (double.IsNaN(this.EditWorkbookButton?.Width ?? 0))
+            {
+                Dispatcher.UIThread.Post(this.EqualiseHeaderActionButtonWidths, DispatcherPriority.Loaded);
+            }
+
             // The summary reads the workbook's entries through the within-pass cache, so a refresh
             // that has already read them for the search filter and the board pane does not read
             // the same files a third time - see GetEntriesForThisPass.
@@ -1112,15 +1322,24 @@ namespace CRT
             // on each card would just be noise.
             if (IsAllBoardsScope)
             {
-                var boardLabelText = new TextBlock
+                // The FULL hardware and board names, on two lines - "Commodore 128" above
+                // "310378 (C128 & C128D)", exactly as the two drop-downs at the top-left name them.
+                //
+                // This used to be the one-line "C128/310378" from Main.FormatBoardKeyForDisplay,
+                // which is derived from the data folder structure: a storage detail the user never
+                // sees anywhere else, so it had to be mapped back to the board they actually chose.
+                // Two lines rather than one joined string because the pair is a hardware AND a
+                // board, and running them together on one line reads as a single name.
+                var (hardwareName, boardName) = Main.FormatBoardKeyAsFullNames(workbook.BoardKey);
+
+                body.Children.Add(BuildBoardNameLine(hardwareName));
+
+                // Only when there is one - FormatBoardKeyAsFullNames returns a blank board for a key
+                // it cannot split, and an empty TextBlock would leave a visible gap under the card.
+                if (!string.IsNullOrWhiteSpace(boardName))
                 {
-                    Text = this.MainWindow != null ? Main.FormatBoardKeyForDisplay(workbook.BoardKey) : workbook.BoardKey,
-                    FontSize = 10,
-                    TextWrapping = TextWrapping.Wrap,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                boardLabelText.Classes.Add("WorkbooksMuted");
-                body.Children.Add(boardLabelText);
+                    body.Children.Add(BuildBoardNameLine(boardName));
+                }
             }
 
             var card = new Border
@@ -1141,18 +1360,51 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The card's third line: "{x} worklogs · started 2026-August-26".
+        // One of the two board-name lines on a workbook card ("Commodore 128", then
+        // "310378 (C128 & C128D)"). Both carry the same muted styling, so they read as one block
+        // naming the board rather than as two unrelated facts.
         //
-        // The date format matches the worklog bar's (yyyy-MMMM-dd, invariant), so a workbook's start
-        // date reads the same in both places. Invariant rather than the current culture on purpose:
-        // the bar chose it so the month is always a name and never an ambiguous number, and the two
-        // must not disagree.
+        // Both are RIGHT-aligned, against the card's right edge - the rest of the card reads from
+        // the left (id, title, counts), so hanging the board off the opposite edge separates "which
+        // board this is" from the workbook's own details instead of adding two more left-aligned
+        // lines to the same column. TextAlignment as well as HorizontalAlignment: a line long
+        // enough to WRAP fills the card's width, at which point HorizontalAlignment has nothing
+        // left to align and only TextAlignment still pushes the wrapped runs right.
+        // ###########################################################################################
+        private static TextBlock BuildBoardNameLine(string text)
+        {
+            var line = new TextBlock
+            {
+                Text = text,
+                FontSize = 10,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                TextAlignment = TextAlignment.Right
+            };
+
+            line.Classes.Add("WorkbooksMuted");
+            return line;
+        }
+
+        // ###########################################################################################
+        // The card's third line: "{x} worklogs · started 2026-August-26", or "· ended ..." once the
+        // workbook is closed.
+        //
+        // Both the word and the date come from the shared WorklogEntryScope.FormatWorkbookDateLine,
+        // which the worklog bar above the tabs uses too - so a workbook cannot read differently in
+        // the two places it appears. This card used to write "started" unconditionally against
+        // StartDate while the bar was already reporting "ended" for the very same workbook, one row
+        // above it.
         // ###########################################################################################
         private static string BuildWorkbookMetaText(WorkbookRecord workbook)
         {
-            string startDate = workbook.StartDate.ToString("yyyy-MMMM-dd", CultureInfo.InvariantCulture);
+            string dateLine = WorklogEntryScope.FormatWorkbookDateLine(
+                workbook.Status,
+                workbook.StartDate,
+                workbook.EndDate);
 
-            return $"{WorklogEntryScope.FormatCount(workbook.EntryCount, "worklog", "worklogs")} · started {startDate}";
+            return $"{WorklogEntryScope.FormatCount(workbook.WorklogCount, "worklog", "worklogs")} · {dateLine}";
         }
 
     }

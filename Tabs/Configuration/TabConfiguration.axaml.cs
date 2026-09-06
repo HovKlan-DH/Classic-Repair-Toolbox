@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Handlers.DataHandling;
@@ -42,6 +43,8 @@ namespace CRT
             this.WorkbooksScopeAllBoardsRadioButton.IsChecked = isAllBoardsScope;
             this.WorkbooksScopeCurrentBoardRadioButton.IsChecked = !isAllBoardsScope;
 
+            this.PopulateWorklogCurrencyComboBox();
+
             this.EnableMiniproExperimentalDemoModeCheckBox.IsCheckedChanged += this.OnEnableMiniproExperimentalDemoModeChanged;
 
             this.UpdateAllowDeletionOfOrphanAndNonUsedFilesCheckBoxState();
@@ -62,6 +65,7 @@ namespace CRT
             this.EnableWorklogCheckBox.IsCheckedChanged += this.OnEnableWorklogChanged;
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
+            this.WorklogCurrencyComboBox.SelectionChanged += this.OnWorklogCurrencySelectionChanged;
         }
 
         // ###########################################################################################
@@ -223,7 +227,7 @@ namespace CRT
         // ###########################################################################################
         private void OnEnableWorklogHelpClick(object? sender, RoutedEventArgs e)
         {
-            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Workbooks-tab";
+            string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageWorkbooks);
 
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {
@@ -237,7 +241,7 @@ namespace CRT
         // ###########################################################################################
         private void OnEnableMiniproExperimentalModeHelpClick(object? sender, RoutedEventArgs e)
         {
-            const string helpUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/MiniPro-programmer";
+            string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageMiniPro);
 
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {
@@ -307,6 +311,45 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // Fills the currency drop-down from WorklogCurrency.Options and selects the row for the
+        // stored code.
+        //
+        // Built in code rather than as ComboBoxItems in the markup like the Theme drop-down above:
+        // there are 68 countries, the list is data that belongs beside the codes it maps to, and
+        // hand-written markup rows would be a second copy of that table to keep sorted and in sync.
+        //
+        // The items are the Option values themselves, with DisplayMemberBinding rendering
+        // DisplayName - so the selection handler reads a typed Option back rather than parsing a
+        // country and a code out of a formatted string.
+        //
+        // Selection is set BEFORE the handler is subscribed (in the constructor), matching every
+        // other control on this tab: a SelectionChanged raised while restoring the stored value
+        // would write that same value straight back.
+        // ###########################################################################################
+        private void PopulateWorklogCurrencyComboBox()
+        {
+            this.WorklogCurrencyComboBox.DisplayMemberBinding =
+                new Binding(nameof(WorklogCurrency.Option.DisplayName));
+            this.WorklogCurrencyComboBox.ItemsSource = WorklogCurrency.Options;
+            this.WorklogCurrencyComboBox.SelectedItem = WorklogCurrency.ResolveOption(UserSettings.WorklogCurrencyCode);
+        }
+
+        // ###########################################################################################
+        // Persists the chosen country's currency CODE - not the country, which is only how the user
+        // picks it (see WorklogCurrency). UserSettings raises WorklogCurrencyChanged from the setter,
+        // so the Workbooks tab reprints its figures without this tab knowing it exists.
+        // ###########################################################################################
+        private void OnWorklogCurrencySelectionChanged(object? sender, SelectionChangedEventArgs e)
+        {
+            if (this.WorklogCurrencyComboBox.SelectedItem is not WorklogCurrency.Option option)
+            {
+                return;
+            }
+
+            UserSettings.WorklogCurrencyCode = option.Code;
+        }
+
+        // ###########################################################################################
         // Persists the "Enable experimental demo mode for Minipro" preference when toggled.
         // ###########################################################################################
         private void OnEnableMiniproExperimentalDemoModeChanged(object? sender, RoutedEventArgs e)
@@ -316,13 +359,73 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the persistent AppData folder that contains the log and settings files.
+        // The three "Open ... folder" buttons.
+        //
+        // These are three DIFFERENT folders, which is why they are three buttons rather than the
+        // single "data/workbooks/log/settings" one they replaced: that button could only ever open
+        // one of them, and named four things while opening the parent of two of them.
+        //
+        // Each resolves the path the app is ACTUALLY using rather than rebuilding the AppData
+        // default, because "--data-root=" and "--workbooks-root=" can move the first two elsewhere.
+        // Rebuilding the default would open a folder the app is not reading from, which is worse
+        // than not offering the button - the user would be looking at stale files while reporting
+        // that a change did not take effect.
+        //
+        // WHICH IS WHY AN UNRESOLVED ROOT IS REPORTED RATHER THAN GUESSED AT. An empty DataRoot or
+        // WorkbookRoot means that layer never loaded - and the likeliest reason is a
+        // "--workbooks-root=" pointing somewhere currently unreachable, an external drive being the
+        // obvious case. Substituting the AppData default there would create an empty folder the app
+        // is not using and present it as the user's own, which reads as "my workbooks are gone"
+        // rather than as "that drive is not mounted". Naming the problem is the smaller harm.
         // ###########################################################################################
-        private async void OnOpenAppDataFolderClick(object? sender, RoutedEventArgs e)
+        private async void OnOpenDataFolderClick(object? sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(DataManager.DataRoot))
+            {
+                Logger.Warning("Open data folder: the data root is not resolved, so there is no folder to open");
+                await this.ShowFolderUnavailableDialogAsync("data");
+                return;
+            }
+
+            await this.OpenFolderOrExplainAsync(DataManager.DataRoot, "data");
+        }
+
+        private async void OnOpenWorkbooksFolderClick(object? sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(WorklogManager.WorkbookRoot))
+            {
+                Logger.Warning("Open workbooks folder: the workbook root is not resolved, so there is no folder to open");
+                await this.ShowFolderUnavailableDialogAsync("workbooks");
+                return;
+            }
+
+            await this.OpenFolderOrExplainAsync(WorklogManager.WorkbookRoot, "workbooks");
+        }
+
+        // The log, the crash log and the settings file all sit directly in the AppData folder, so
+        // this one is the folder itself rather than anything below it.
+        private async void OnOpenLogsFolderClick(object? sender, RoutedEventArgs e)
+        {
+            await this.OpenFolderOrExplainAsync(ResolveAppDataFolder(), "logs and settings");
+        }
+
+        // ###########################################################################################
+        // The persistent AppData folder that survives Velopack updates - the parent of the default
+        // data and workbook folders, and the home of the log, crash log and settings files.
+        // ###########################################################################################
+        private static string ResolveAppDataFolder()
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var directory = Path.Combine(appData, AppConfig.AppFolderName);
+            return Path.Combine(appData, AppConfig.AppFolderName);
+        }
 
+        // ###########################################################################################
+        // Opens one folder, creating it first so a button never fails merely because nothing has
+        // been written there yet, and falling back to a dialog naming the path when the platform's
+        // file manager cannot be launched. "description" names the folder in the log line only.
+        // ###########################################################################################
+        private async System.Threading.Tasks.Task OpenFolderOrExplainAsync(string directory, string description)
+        {
             try
             {
                 Directory.CreateDirectory(directory);
@@ -333,21 +436,58 @@ namespace CRT
                 }
 
                 Logger.Warning(
-                    $"Failed to open AppData folder: [{directory}] - launcher details: [{failureDetails}]");
+                    $"Failed to open {description} folder: [{directory}] - launcher details: [{failureDetails}]");
 
                 await this.ShowOpenAppDataFolderFailedDialogAsync(directory);
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to open AppData folder: [{directory}] - [{ex.Message}]");
+                Logger.Warning($"Failed to open {description} folder: [{directory}] - [{ex.Message}]");
                 await this.ShowOpenAppDataFolderFailedDialogAsync(directory);
             }
         }
 
         // ###########################################################################################
-        // Shows a dialog with the AppData folder path when automatic opening fails.
+        // Shown when a folder cannot be opened because the app never resolved where it is - an empty
+        // DataManager.DataRoot or WorklogManager.WorkbookRoot.
+        //
+        // Deliberately says nothing about a path: the whole point is that there ISN'T one to name,
+        // and printing the AppData default here would send the user to the same wrong folder that
+        // opening it would have. The log is where the reason actually is, which is why it is the
+        // thing pointed at.
+        // ###########################################################################################
+        private async System.Threading.Tasks.Task ShowFolderUnavailableDialogAsync(string description)
+        {
+            await this.ShowFolderDialogAsync(
+                "Folder not available",
+                $"The {description} folder could not be opened, because the application has not resolved where it is.",
+                "This usually means the folder was moved with a command-line parameter and is not reachable right now - " +
+                "an external drive that is not connected, for example. The log file records the folder it tried to use.",
+                path: null);
+        }
+
+        // ###########################################################################################
+        // Shows a dialog with the folder's path when the path is known but the platform's file
+        // manager could not be launched for it.
         // ###########################################################################################
         private async System.Threading.Tasks.Task ShowOpenAppDataFolderFailedDialogAsync(string directory)
+        {
+            await this.ShowFolderDialogAsync(
+                "Unable to open folder",
+                "The application could not open the folder automatically.",
+                "You can open it manually using this path:",
+                directory);
+        }
+
+        // ###########################################################################################
+        // The shared body of the two dialogs above: a title, two lines of explanation, and - when
+        // there is a path worth showing - a selectable copy of it.
+        // ###########################################################################################
+        private async System.Threading.Tasks.Task ShowFolderDialogAsync(
+            string title,
+            string firstLine,
+            string secondLine,
+            string? path)
         {
             if (TopLevel.GetTopLevel(this) is not Window owner)
             {
@@ -364,7 +504,7 @@ namespace CRT
 
             var dialog = new Window
             {
-                Title = "Unable to open folder",
+                Title = title,
                 Width = 520,
                 MinWidth = 420,
                 CanResize = false,
@@ -375,32 +515,37 @@ namespace CRT
 
             closeButton.Click += (_, _) => dialog.Close();
 
+            var body = new StackPanel { Spacing = 14 };
+
+            body.Children.Add(new TextBlock
+            {
+                Text = firstLine,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            body.Children.Add(new TextBlock
+            {
+                Text = secondLine,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            // Only when there is a real path. An empty SelectableTextBlock would render as a blank
+            // gap the user reads as something failing to load.
+            if (!string.IsNullOrEmpty(path))
+            {
+                body.Children.Add(new SelectableTextBlock
+                {
+                    Text = path,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+
+            body.Children.Add(closeButton);
+
             dialog.Content = new Border
             {
                 Padding = new Thickness(18),
-                Child = new StackPanel
-                {
-                    Spacing = 14,
-                    Children =
-            {
-                new TextBlock
-                {
-                    Text = "The application could not open the data/log/settings folder automatically.",
-                    TextWrapping = TextWrapping.Wrap
-                },
-                new TextBlock
-                {
-                    Text = "You can open it manually using this path:",
-                    TextWrapping = TextWrapping.Wrap
-                },
-                new SelectableTextBlock
-                {
-                    Text = directory,
-                    TextWrapping = TextWrapping.Wrap
-                },
-                closeButton
-            }
-                }
+                Child = body
             };
 
             await dialog.ShowDialog(owner);

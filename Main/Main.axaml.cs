@@ -302,6 +302,7 @@ namespace CRT
 
             UserSettings.CheckDataOnLaunchChanged += this.OnCheckDataOnLaunchSettingChanged;
             UserSettings.WorkbooksScopeChanged += this.OnWorkbooksScopeSettingChanged;
+            UserSettings.WorklogCurrencyChanged += this.OnWorklogCurrencySettingChanged;
             this.UpdateDataSyncStatusIcon();
         }
 
@@ -830,10 +831,13 @@ namespace CRT
         {
             this.TabSchematicsControl.CancelWorklogEntryMode();
 
-            // A board change is a change of subject, so the Workbooks tab's search box is cleared
-            // with it - the same reason OnHardwareSelectionChanged clears ComponentSearchTextBox.
-            // Before the refreshes below, so every one of them sees the cleared query.
-            this.TabWorkbooks?.ClearSearchForBoardChange();
+            // The Workbooks tab's search box is deliberately NOT cleared here. It used to be, on
+            // the reasoning that a board change is a change of subject - but in "Show all workbooks"
+            // scope, clicking a search result on another board IS how the user follows the search,
+            // and that click switches the board, so clearing here wiped the query at the exact
+            // moment it had done its job. See TabWorkbooks.ClearSearch, which is now the only thing
+            // that clears it. (OnHardwareSelectionChanged still clears ComponentSearchTextBox, which
+            // is a different box with no cross-board results to follow.)
 
             this._suppressCategoryFilterSave = true;
             int loadVersion = unchecked(++this._boardSelectionLoadVersion);
@@ -1327,6 +1331,51 @@ namespace CRT
             FindEntryForBoardKey(boardKey)?.ShortHardwareBoardLabel is { Length: > 0 } shortLabel
                 ? shortLabel
                 : boardKey;
+
+        // ###########################################################################################
+        // The FULL hardware and board names for a workbook's BoardKey, as the two drop-downs at the
+        // top-left show them - "Commodore 128" and "310378 (C128 & C128D)".
+        //
+        // For the Workbooks tab's cards, which have a line of their own to spend on this and are
+        // read while deciding which repair job to open. They used to show
+        // FormatBoardKeyForDisplay's short folder-derived label ("C128/310378"), which is a
+        // storage-layout detail rather than a name the user chose the board by - the drop-downs
+        // never show it, so it had to be mentally mapped back. The short form is still right for
+        // the worklog PICKER, where several boards sit in one dropdown row and the full names run
+        // too long, so both formatters exist deliberately.
+        //
+        // The names come from the KEY ITSELF ("HardwareName|BoardName") rather than from the synced
+        // data, so a workbook whose board was later removed from classic-repair-toolbox.dk still
+        // names its board properly instead of falling back to a raw key with a pipe in it. The
+        // resolved entry is preferred when there is one, since that is the authority on the current
+        // names; the split is the fallback.
+        //
+        // Returns the two parts rather than one joined string: the card renders them on separate
+        // lines, and joining here would make the caller split them again.
+        // ###########################################################################################
+        internal static (string Hardware, string Board) FormatBoardKeyAsFullNames(string boardKey)
+        {
+            var entry = FindEntryForBoardKey(boardKey);
+
+            if (entry != null &&
+                !string.IsNullOrWhiteSpace(entry.HardwareName) &&
+                !string.IsNullOrWhiteSpace(entry.BoardName))
+            {
+                return (entry.HardwareName, entry.BoardName);
+            }
+
+            // "Hardware|Board" is the key's own shape - see FindEntryForBoardKey, which builds it.
+            int separator = boardKey?.IndexOf('|') ?? -1;
+
+            if (separator > 0 && separator < boardKey!.Length - 1)
+            {
+                return (boardKey[..separator], boardKey[(separator + 1)..]);
+            }
+
+            // Not a key of the expected shape at all (blank, or hand-edited): show whatever it is on
+            // one line rather than an empty card row.
+            return (boardKey ?? string.Empty, string.Empty);
+        }
 
         // ###########################################################################################
         // Resolves the full path to the currently selected board Excel file.
@@ -1953,17 +2002,27 @@ namespace CRT
                 this.WorklogJobStatusPillText,
                 activeWorkbook.Status);
 
-            string startDate = activeWorkbook.StartDate.ToString("yyyy-MMMM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            // A CLOSED workbook reports when it finished; an open one reports when it started -
+            // the whole rule, word and date together, lives in the shared
+            // WorklogEntryScope.FormatWorkbookDateLine, which the Workbooks tab's own cards use
+            // too. This bar had the rule and the card had a hardcoded "started" against StartDate,
+            // so the same workbook read "ended 2026-September-6" here and "started 2026-September-6"
+            // on its card a row below. See that method for why "ended" rather than "closed", and
+            // for the no-EndDate fallback.
+            string dateLine = WorklogEntryScope.FormatWorkbookDateLine(
+                activeWorkbook.Status,
+                activeWorkbook.StartDate,
+                activeWorkbook.EndDate);
 
-            if (activeWorkbook.EntryCount == 0)
+            if (activeWorkbook.WorklogCount == 0)
             {
-                this.WorklogJobStatusText.Text = $"No worklogs yet · started {startDate}";
+                this.WorklogJobStatusText.Text = $"No worklogs yet · {dateLine}";
                 return;
             }
 
-            string worklogWord = activeWorkbook.EntryCount == 1 ? "worklog" : "worklogs";
+            string worklogWord = activeWorkbook.WorklogCount == 1 ? "worklog" : "worklogs";
             this.WorklogJobStatusText.Text =
-                $"{activeWorkbook.EntryCount} {worklogWord} · started {startDate}";
+                $"{activeWorkbook.WorklogCount} {worklogWord} · {dateLine}";
         }
 
         // ###########################################################################################
@@ -2063,7 +2122,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Restores the worklog bar's "Add worklog" / "Cancel entry" buttons to their idle state.
+        // Restores the worklog bar's "Add worklog" / "Cancel" buttons to their idle state.
         // Called by TabSchematics whenever worklog entry-drawing mode ends, regardless of trigger.
         // ###########################################################################################
         public void ResetWorklogEntryModeButtons()
@@ -2181,6 +2240,7 @@ namespace CRT
         {
             UserSettings.CheckDataOnLaunchChanged -= this.OnCheckDataOnLaunchSettingChanged;
             UserSettings.WorkbooksScopeChanged -= this.OnWorkbooksScopeSettingChanged;
+            UserSettings.WorklogCurrencyChanged -= this.OnWorklogCurrencySettingChanged;
 
             if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
             {
@@ -2602,8 +2662,26 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Closes single popup when pressing Escape while the main window is focused.
-        // F11 opens the schematics fullscreen window.
+        // Cancels "Add worklog" area-marking mode on Escape, closes the single component popup on
+        // Escape otherwise, and opens the schematics fullscreen window on F11.
+        //
+        // WHY THE WORKLOG BRANCH IS HERE AND NOT ONLY IN TabSchematics: the mode is started by the
+        // "Add worklog" button in this bar, which KEEPS keyboard focus afterwards, so the tab's own
+        // OnSchematicsKeyDown - which also handles Escape for this mode - never receives the press
+        // unless the user first clicks the schematic. Escape did nothing in exactly the moment it
+        // is most wanted: right after clicking the button, before committing to a drag. This
+        // handler is registered on the WINDOW at the Tunnel phase, so it sees the key wherever
+        // focus happens to be.
+        //
+        // The tab's own handler is deliberately KEPT rather than replaced: it is the one that runs
+        // once the user has clicked into the schematic (which takes focus), and it also covers the
+        // fullscreen schematics window, which is a different window and never routes through here.
+        // CancelWorklogEntryMode is safe to call twice, so the overlap costs nothing.
+        //
+        // Ordered ABOVE the popup close, and gated on the mode actually being active so Escape
+        // still reaches the popup at every other time: while an area is being marked the mode is
+        // what Escape means, and cancelling both at once on one press would be two undos for one
+        // keystroke.
         // ###########################################################################################
         private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
         {
@@ -2616,6 +2694,16 @@ namespace CRT
 
             if (e.Key != Key.Escape)
                 return;
+
+            if (this.TabSchematicsControl.IsWorklogEntryModeActive)
+            {
+                // Resets this bar's own buttons too, via the ResetWorklogEntryModeButtons callback
+                // the tab makes on the way out - so cancelling by keyboard leaves the bar in
+                // exactly the state the Cancel button would.
+                this.TabSchematicsControl.CancelWorklogEntryMode();
+                e.Handled = true;
+                return;
+            }
 
             if (UserSettings.MultipleInstancesForComponentPopup)
                 return;
@@ -3079,6 +3167,23 @@ namespace CRT
         // raised from a UserSettings setter, so this keeps the rebuild off the setter's own stack.
         // ###########################################################################################
         private void OnWorkbooksScopeSettingChanged()
+        {
+            Dispatcher.UIThread.Post(() => this.RefreshWorklogBar());
+        }
+
+        // ###########################################################################################
+        // Reprints every cost on screen when the Configuration tab's currency drop-down changes,
+        // through the same funnel and for the same reason as the scope handler above.
+        //
+        // The Workbooks tab's summary strip, its entry cards and the worklog editor all build their
+        // figures once per refresh, so a currency changed while that tab is on screen would leave
+        // the old code beside every number until something else happened to rebuild them - and the
+        // most likely moment to change this setting is right after noticing the wrong currency on
+        // exactly that screen.
+        //
+        // Posted rather than run inline, so the rebuild stays off the UserSettings setter's stack.
+        // ###########################################################################################
+        private void OnWorklogCurrencySettingChanged()
         {
             Dispatcher.UIThread.Post(() => this.RefreshWorklogBar());
         }

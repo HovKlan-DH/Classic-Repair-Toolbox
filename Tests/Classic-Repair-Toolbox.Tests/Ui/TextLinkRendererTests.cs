@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
@@ -566,6 +566,261 @@ public class TextLinkRendererTests
             // WidthIncludingTrailingWhitespace is bounded by - never inside any run.
             var url = ResolveUrlAt(block, new Point(block.Bounds.Width + 50, y));
             Assert.Null(url);
+        });
+    }
+    // ---------------------------------------------------------------------------------------------
+    // CARRYING THE WORKBOOKS FILTER INTO THE FULL EDITOR.
+    //
+    // The Workbooks tab publishes its "Find a previous repair" query through
+    // TextLinkRenderer.SetActiveHighlightQuery, and every block this class renders marks it. That is
+    // what makes a match visible inside the worklog editor, whose rows are DataTemplates over
+    // bindings and so have no code-behind moment where a caller could hand segments in.
+    //
+    // Without it the filter would find a worklog by a comment left months ago, and then show that
+    // comment unmarked once opened - leaving the user to re-read the entry hunting for the match.
+    //
+    // EVERY TEST HERE MUST RESET THE QUERY in a finally block: it is process-wide display state, so
+    // a leaked value would mark runs in unrelated tests.
+    // ---------------------------------------------------------------------------------------------
+
+    private static void WithActiveQuery(string queryText, Action body)
+    {
+        TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse(queryText), queryText);
+
+        try
+        {
+            body();
+        }
+        finally
+        {
+            TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse(null), null);
+        }
+    }
+
+    // The core of the feature: a block rendered through the LinkText property - which is what the
+    // editor's Work done, Comments, Photo and File rows use - marks the active query's matches.
+    [Fact]
+    public void A_templated_row_highlights_the_active_search_query()
+    {
+        UiTest.Run(() =>
+        {
+            WithActiveQuery("socket", () =>
+            {
+                var block = new TextBlock();
+                TextLinkRenderer.SetLinkText(block, "Replaced the CPU socket today");
+
+                // Highlighted text moves into Inlines, so Text is null - see the note on
+                // WorkbooksSearchTests.VisibleText.
+                Assert.Null(block.Text);
+
+                var runs = block.Inlines!.OfType<Run>().ToList();
+                Assert.Equal("Replaced the CPU socket today", string.Concat(runs.Select(r => r.Text)));
+
+                var marked = runs.Where(r => r.Background != null).Select(r => r.Text).ToList();
+                Assert.Equal(new[] { "socket" }, marked);
+            });
+        });
+    }
+
+    // With no search running the row keeps the cheap plain-Text path - the overwhelmingly common
+    // case, and the one the Inlines split would cost layout time for nothing.
+    [Fact]
+    public void A_templated_row_with_no_active_search_stays_plain_text()
+    {
+        UiTest.Run(() =>
+        {
+            var block = new TextBlock();
+            TextLinkRenderer.SetLinkText(block, "Replaced the CPU socket today");
+
+            Assert.Equal("Replaced the CPU socket today", block.Text);
+            Assert.True(block.Inlines == null || block.Inlines.Count == 0);
+        });
+    }
+
+    // Links and search highlighting have to COMPOSE, not overwrite one another: a search term
+    // routinely lands inside a URL. Both markings must survive on the same text.
+    [Fact]
+    public void A_row_carrying_both_a_link_and_a_match_keeps_both_markings()
+    {
+        UiTest.Run(() =>
+        {
+            WithActiveQuery("example", () =>
+            {
+                var block = new TextBlock();
+                TextLinkRenderer.SetLinkText(block, "See https://example.com for the pinout");
+
+                var runs = block.Inlines!.OfType<Run>().ToList();
+
+                Assert.Equal("See https://example.com for the pinout", string.Concat(runs.Select(r => r.Text)));
+                Assert.Contains(runs, r => r.Background != null);              // the search hit
+                Assert.Contains(runs, r => r.TextDecorations != null);          // the link
+            });
+        });
+    }
+
+    // The highlight-only property, for the editor's link-row headlines: those are searched, but the
+    // whole row already opens the URL, so the headline must not offer a second clickable target.
+    [Fact]
+    public void The_highlight_only_property_marks_matches_without_linkifying()
+    {
+        UiTest.Run(() =>
+        {
+            WithActiveQuery("pinout", () =>
+            {
+                var block = new TextBlock();
+                TextLinkRenderer.SetHighlightText(block, "https://example.com pinout sheet");
+
+                var runs = block.Inlines!.OfType<Run>().ToList();
+
+                Assert.Equal("https://example.com pinout sheet", string.Concat(runs.Select(r => r.Text)));
+                Assert.Contains(runs, r => r.Background != null);
+                Assert.DoesNotContain(runs, r => r.TextDecorations != null);
+            });
+        });
+    }
+
+    // Highlighting splits into Inlines, which disables TextTrimming - so with no search running the
+    // block must fall back to plain Text and keep its ellipsis. That is what confines the trade-off
+    // to the rows the user is actively hunting through.
+    [Fact]
+    public void The_highlight_only_property_keeps_plain_text_when_nothing_is_searched()
+    {
+        UiTest.Run(() =>
+        {
+            var block = new TextBlock();
+            TextLinkRenderer.SetHighlightText(block, "A very long link headline");
+
+            Assert.Equal("A very long link headline", block.Text);
+            Assert.True(block.Inlines == null || block.Inlines.Count == 0);
+        });
+    }
+
+    // Setting the same query twice reports no change, so a refresh pass whose query has not moved
+    // does not force everything on screen to re-render. WorklogSearchQuery has no value equality of
+    // its own, so this is compared on the raw text - a bug worth pinning, since comparing the parsed
+    // objects would report a change on every single pass.
+    [Fact]
+    public void Setting_the_same_query_text_reports_no_change()
+    {
+        try
+        {
+            Assert.True(TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("cpu"), "cpu"));
+
+            // A DIFFERENT parsed object built from the same text - the shape the tab produces on
+            // every refresh, since it re-parses the box each pass.
+            Assert.False(TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("cpu"), "cpu"));
+
+            Assert.True(TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("pla"), "pla"));
+        }
+        finally
+        {
+            TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse(null), null);
+        }
+    }
+
+    // Clearing the filter must stop the marking everywhere, not just in the tab.
+    [Fact]
+    public void Clearing_the_active_query_stops_highlighting()
+    {
+        UiTest.Run(() =>
+        {
+            WithActiveQuery("socket", () =>
+            {
+                var block = new TextBlock();
+                TextLinkRenderer.SetLinkText(block, "CPU socket");
+                Assert.Null(block.Text);
+            });
+
+            // Re-rendered after the query was reset by WithActiveQuery's finally.
+            var after = new TextBlock();
+            TextLinkRenderer.SetLinkText(after, "CPU socket");
+
+            Assert.Equal("CPU socket", after.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // A BLOCK ALREADY ON SCREEN PICKS UP A QUERY CHANGE.
+    //
+    // This is what the return value of SetActiveHighlightQuery used to be for - the caller was
+    // supposed to re-render whatever was showing - and the one call site discarded it, so blocks
+    // already rendered kept marking the previous query's terms. Nothing else could have fixed the
+    // worst case: ShowDialog does not block the dispatcher, so a worklog editor can be open over
+    // the tab while a debounced refresh changes the query, and its rows are DataTemplate output
+    // that only re-renders when the BOUND VALUE changes - which a query change is not.
+    //
+    // So the re-render is done inside SetActiveHighlightQuery itself. This fails against the
+    // version that only stored the new query.
+    // ###########################################################################################
+    [Fact]
+    public void Changing_the_query_re_marks_a_block_that_is_already_rendered()
+    {
+        UiTest.Run(() =>
+        {
+            try
+            {
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("socket"), "socket");
+
+                var block = new TextBlock();
+                TextLinkRenderer.SetLinkText(block, "CPU socket replaced");
+
+                // Marked for "socket": split into Inlines, so Text is null.
+                Assert.Null(block.Text);
+
+                // The query moves to a term this text does NOT contain. The block has to come back
+                // to plain text on its own - nothing re-sets its bound value.
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("bravo"), "bravo");
+
+                Assert.Equal("CPU socket replaced", block.Text);
+
+                // And back again, so the re-render is not a one-way "give up highlighting".
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("CPU"), "CPU");
+
+                Assert.Null(block.Text);
+            }
+            finally
+            {
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse(null), null);
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // THE QUERY CAN BE DROPPED WITHOUT ONE, which is what stops it outliving the box it was typed
+    // into. It is process-wide state written only by the Workbooks tab's refresh, so once that tab
+    // stops refreshing - hidden by the "Enable Worklog" checkbox, or simply never returned to while
+    // worklogs are opened from the Schematics tab's own badges - the last query would keep washing
+    // runs for a search the user is no longer running and can no longer see the box for.
+    //
+    // The Workbooks tab calls this from its detach; re-attaching republishes from the box, so a
+    // plain tab switch loses nothing.
+    // ###########################################################################################
+    [Fact]
+    public void Clearing_the_shared_query_stops_marking_blocks_already_rendered()
+    {
+        UiTest.Run(() =>
+        {
+            try
+            {
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse("socket"), "socket");
+
+                var block = new TextBlock();
+                TextLinkRenderer.SetLinkText(block, "CPU socket replaced");
+                Assert.Null(block.Text);
+
+                TextLinkRenderer.ClearActiveHighlightQuery();
+
+                Assert.Equal("CPU socket replaced", block.Text);
+
+                // And nothing rendered afterwards is marked either.
+                var after = new TextBlock();
+                TextLinkRenderer.SetLinkText(after, "CPU socket replaced");
+                Assert.Equal("CPU socket replaced", after.Text);
+            }
+            finally
+            {
+                TextLinkRenderer.SetActiveHighlightQuery(WorklogSearchQuery.Parse(null), null);
+            }
         });
     }
 }
