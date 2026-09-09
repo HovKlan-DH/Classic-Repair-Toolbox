@@ -102,7 +102,7 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
     - Interactive (KiCad) traces and netlists
-- **Commodore 128 and 128D** 
+- **Commodore 128 and 128D**
   - **310378** (C128 and C128D, plastic cabinet)
     - Covers _all_ components
     - Oscilloscope baseline measurements for PAL and NTSC
@@ -123,7 +123,7 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 
 Please let me know if you want to contribute with something, so it can be visualized here to avoid duplicate work.
 
-**Commodore 128 and 128D** 
+**Commodore 128 and 128D**
   - **250477** (C128DCR, metal cabinet)
     - As soon as time allows, then I will do a full PAL oscilloscope baseline
 
@@ -182,6 +182,7 @@ You can help specifically with these topics:
 - Do you have (better) datasheets or pinouts for any of the components?
 - Do you see missing components in either the component list or as a highlight?
 - Can you improve any data or fill in more technical details anywhere?
+- Can you improve the YouTube introduction/helper videos, as I hate doing training material 😂
 
 
 ## Contact developer

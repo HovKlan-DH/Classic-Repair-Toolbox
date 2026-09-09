@@ -7,10 +7,10 @@
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
 		<AssemblyVersion>2.5.0</AssemblyVersion>
-		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
+		<!--
+		<InformationalVersion>2.5.0-beta.1</InformationalVersion>
 		-->
-		<InformationalVersion>2.5.0-alpha.5</InformationalVersion>
         <OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>

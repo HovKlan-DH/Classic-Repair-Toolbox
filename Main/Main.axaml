@@ -433,7 +433,7 @@
 									   Foreground="{DynamicResource Schematics_Panels_Fg}"
 									   VerticalAlignment="Center" />
 							<TextBlock x:Name="WorklogNoJobText"
-									   Text="No jobs recorded for this board"
+									   Text="No repairs recorded for this board"
 									   FontSize="12"
 									   Foreground="{DynamicResource Schematics_Panels_Fg}"
 									   VerticalAlignment="Center" />

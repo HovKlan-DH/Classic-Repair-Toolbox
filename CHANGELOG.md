@@ -1,4 +1,4 @@
-# 2.5.0, 2026-September-?
+# 2.5.0, 2026-September-9
 -------------------------
 - **Application**
   - Added "Workbooks" for tracking repairs
@@ -7,14 +7,15 @@
   - Added ability to add new component in "Contribute" tab
   - Added ability to delete an existing component in "Contribute" tab
   - Added application crash logging to prevent losing info when overwriting logfile
+  - Added THIRD-PARTY-NOTICES.md and a GPL-3.0 section 7 exception covering `EPPlus` and `QuestPDF`
   - Changed contribution requirements via "Contribute" tab to version `2.5.0` or newer (server backend requires it)
   - Changed info banner to specifically show if BETA is used as source during data updates
   - Fixed manifest file performance via server-side compression, resulting in faster online data checks
   - Fixed timeout issue when fetching manifest file
   - Fixed test case configuration to exclude them when compiling using `dotnet publish`
   - Refactored "Contribute" tab and server backend review process
-  - Refactored parts of project for better maintainability and added more test cases (2827 cases and ~54% coverage total)
-  - Refactored documentation
+  - Refactored documentation and will now be semi-automatically kept up-to-date
+  - Refactored parts of project for better maintainability and added more test cases (55% test coverage total)
 
 
 # 2.4.0, 2026-August-27
