@@ -63,6 +63,7 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 - [How to sync oscilloscope](https://youtu.be/CbTh1FFp3tU)
 - [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
 - [How to use interactive traces](https://youtu.be/Y55nC_gJbH4)
+- [How to use workbooks](https://youtu.be/yg7CT0yrglA)
 
 
 ## Built-in hardware and boards
