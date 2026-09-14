@@ -6,12 +6,12 @@
 		<Authors>Dennis Helligsø</Authors>
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
-		<AssemblyVersion>2.5.0</AssemblyVersion>
-		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
+		<AssemblyVersion>2.6.0</AssemblyVersion>
 		<!--
-		<InformationalVersion>2.5.0-beta.1</InformationalVersion>
+		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-        <OutputType>WinExe</OutputType>
+		<InformationalVersion>2.6.0-alpha.1</InformationalVersion>
+		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>
         <Nullable>enable</Nullable>
