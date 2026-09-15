@@ -165,7 +165,7 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
                 var button = tab.GetControl<Button>("DetachThumbnailsContextMenuButton");
                 var label = Assert.IsType<TextBlock>(button.Content);
 
-                Assert.Equal("Detach thumbnails to its own window", label.Text);
+                Assert.Equal("Detach thumbnails into their own window", label.Text);
                 Assert.Equal(TextWrapping.Wrap, label.TextWrapping);
 
                 // The button fits inside its own menu...
@@ -205,7 +205,7 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
                 // A wrapping TextBlock rather than a plain string Content, so the label survives a
                 // narrow thumbnail column instead of being clipped - see the width tests above.
                 var label = Assert.IsType<TextBlock>(button.Content);
-                Assert.Equal("Detach thumbnails to its own window", label.Text);
+                Assert.Equal("Detach thumbnails into their own window", label.Text);
             }
             finally
             {

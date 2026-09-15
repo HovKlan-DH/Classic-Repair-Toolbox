@@ -383,7 +383,7 @@ public sealed class MainWindowTests : IDisposable
     }
 
     // -----------------------------------------------------------------------------------------
-    // "Detach thumbnails to its own window" persistence
+    // "Detach thumbnails into their own window" persistence
     // -----------------------------------------------------------------------------------------
 
     // Reported: the setting never survived to the next launch. The detached window is OWNED by the

@@ -57,6 +57,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.True(UserSettings.EnableWorklog);
         Assert.Equal("CurrentBoard", UserSettings.WorkbooksScope);
         Assert.False(UserSettings.DetachSchematicsThumbnails);
+        Assert.False(UserSettings.RememberThumbnailWindowSettingsPerBoard);
     }
 
     [Fact]
@@ -1002,6 +1003,76 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(700, UserSettings.SchematicsThumbnailsWindowHeight);
         Assert.Equal(60, UserSettings.SchematicsThumbnailsWindowX);
         Assert.Equal(40, UserSettings.SchematicsThumbnailsWindowY);
+    }
+
+    // "Remember thumbnail window settings per board": a board with nothing saved yet returns null -
+    // the caller's cue to start it embedded, per TabSchematics.ThumbnailsDetach.cs's own contract.
+    [Fact]
+    public void A_board_with_no_saved_thumbnail_window_settings_returns_null()
+    {
+        this.LoadSettings("{}");
+
+        Assert.False(UserSettings.RememberThumbnailWindowSettingsPerBoard);
+        Assert.Null(UserSettings.GetThumbnailWindowSettingsForBoard("C64/250407"));
+    }
+
+    [Fact]
+    public void RememberThumbnailWindowSettingsPerBoard_round_trips()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.RememberThumbnailWindowSettingsPerBoard = true;
+        UserSettings.LoadFrom(path);
+
+        Assert.True(UserSettings.RememberThumbnailWindowSettingsPerBoard);
+    }
+
+    [Fact]
+    public void Setting_a_boards_thumbnail_window_detached_state_does_not_touch_its_layout()
+    {
+        this.LoadSettings("{}");
+
+        UserSettings.SetThumbnailWindowDetachedForBoard("C64/250407", true);
+
+        var settings = UserSettings.GetThumbnailWindowSettingsForBoard("C64/250407");
+
+        Assert.NotNull(settings);
+        Assert.True(settings!.IsDetached);
+        Assert.False(settings.HasWindowLayout);
+    }
+
+    [Fact]
+    public void Per_board_thumbnail_window_layout_round_trips_independently_per_board()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.SetThumbnailWindowDetachedForBoard("C64/250407", true);
+        UserSettings.SaveThumbnailWindowLayoutForBoard("C64/250407", "Maximized", 500, 700, 60, 40);
+
+        UserSettings.SetThumbnailWindowDetachedForBoard("Plus4/310163", false);
+        UserSettings.SaveThumbnailWindowLayoutForBoard("Plus4/310163", "Normal", 320, 480, 10, 20);
+
+        UserSettings.LoadFrom(path);
+
+        var c64Settings = UserSettings.GetThumbnailWindowSettingsForBoard("C64/250407");
+        Assert.NotNull(c64Settings);
+        Assert.True(c64Settings!.IsDetached);
+        Assert.True(c64Settings.HasWindowLayout);
+        Assert.Equal("Maximized", c64Settings.WindowState);
+        Assert.Equal(500, c64Settings.WindowWidth);
+        Assert.Equal(700, c64Settings.WindowHeight);
+        Assert.Equal(60, c64Settings.WindowX);
+        Assert.Equal(40, c64Settings.WindowY);
+
+        var plus4Settings = UserSettings.GetThumbnailWindowSettingsForBoard("Plus4/310163");
+        Assert.NotNull(plus4Settings);
+        Assert.False(plus4Settings!.IsDetached);
+        Assert.True(plus4Settings.HasWindowLayout);
+        Assert.Equal("Normal", plus4Settings.WindowState);
+        Assert.Equal(320, plus4Settings.WindowWidth);
+
+        // A third board, never touched, still starts with nothing saved.
+        Assert.Null(UserSettings.GetThumbnailWindowSettingsForBoard("Amstrad/CPC464"));
     }
 
     [Fact]

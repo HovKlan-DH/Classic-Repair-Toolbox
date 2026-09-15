@@ -5,7 +5,7 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// The "Detach thumbnails to its own window" checkbox on the Configuration tab: that it sits
+// The "Detach thumbnails into their own window" checkbox on the Configuration tab: that it sits
 // directly under "Open multiple component info windows" as asked for, that it loads its checked
 // state from UserSettings and persists a toggle back, and that RefreshDetachSchematicsThumbnailsCheckBoxFromSettings
 // (used when the detached window is closed via its own OS close button rather than the checkbox)
@@ -120,6 +120,132 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
 
             Assert.False(checkBox.IsChecked);
             Assert.False(UserSettings.DetachSchematicsThumbnails);
+        });
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // "Remember thumbnail window settings per board"
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_remember_per_board_checkbox_is_disabled_by_default_since_detach_starts_off()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var detachCheckBox = tab.GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
+            var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+
+            Assert.False(detachCheckBox.IsChecked);
+            Assert.False(rememberCheckBox.IsEnabled);
+        });
+    }
+
+    // Constructing the tab while "Detach thumbnails" is already on (a prior session's setting)
+    // must enable the dependent checkbox immediately, not only after the user re-toggles the
+    // parent - otherwise it would look permanently greyed out for anyone who already has detach on.
+    [Fact]
+    public void The_remember_per_board_checkbox_is_enabled_on_construction_when_detach_is_already_on()
+    {
+        UserSettings.DetachSchematicsThumbnails = true;
+
+        try
+        {
+            UiTest.Run(() =>
+            {
+                var tab = new TabConfiguration();
+                var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+
+                Assert.True(rememberCheckBox.IsEnabled);
+            });
+        }
+        finally
+        {
+            UserSettings.DetachSchematicsThumbnails = false;
+        }
+    }
+
+    [Fact]
+    public void Toggling_detach_enables_and_disables_the_remember_per_board_checkbox()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+            var detachCheckBox = tab.GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
+            var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+
+            Assert.False(rememberCheckBox.IsEnabled);
+
+            detachCheckBox.IsChecked = true;
+            Assert.True(rememberCheckBox.IsEnabled);
+
+            detachCheckBox.IsChecked = false;
+            Assert.False(rememberCheckBox.IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void Toggling_the_remember_per_board_checkbox_persists_the_setting()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+            var detachCheckBox = tab.GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
+            var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+
+            // Only reachable while enabled, as it would be in the running app.
+            detachCheckBox.IsChecked = true;
+
+            rememberCheckBox.IsChecked = true;
+            Assert.True(UserSettings.RememberThumbnailWindowSettingsPerBoard);
+
+            rememberCheckBox.IsChecked = false;
+            Assert.False(UserSettings.RememberThumbnailWindowSettingsPerBoard);
+        });
+    }
+
+    [Fact]
+    public void Constructing_the_tab_loads_the_remember_per_board_checkbox_from_settings()
+    {
+        UserSettings.DetachSchematicsThumbnails = true;
+        UserSettings.RememberThumbnailWindowSettingsPerBoard = true;
+
+        try
+        {
+            UiTest.Run(() =>
+            {
+                var tab = new TabConfiguration();
+                var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+
+                Assert.True(rememberCheckBox.IsChecked);
+            });
+        }
+        finally
+        {
+            UserSettings.RememberThumbnailWindowSettingsPerBoard = false;
+            UserSettings.DetachSchematicsThumbnails = false;
+        }
+    }
+
+    // RefreshDetachSchematicsThumbnailsCheckBoxFromSettings is also the seam that fires when the
+    // detached window closes itself - it must re-evaluate the dependent checkbox's enabled state
+    // too, or turning detach off that way would leave "remember per board" visibly enabled while
+    // meaning nothing.
+    [Fact]
+    public void RefreshFromSettings_also_updates_the_remember_per_board_checkbox_enabled_state()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.DetachSchematicsThumbnails = true;
+            var tab = new TabConfiguration();
+            var rememberCheckBox = tab.GetControl<CheckBox>("RememberThumbnailWindowSettingsPerBoardCheckBox");
+            Assert.True(rememberCheckBox.IsEnabled);
+
+            UserSettings.DetachSchematicsThumbnails = false;
+            tab.RefreshDetachSchematicsThumbnailsCheckBoxFromSettings();
+
+            Assert.False(rememberCheckBox.IsEnabled);
         });
     }
 }

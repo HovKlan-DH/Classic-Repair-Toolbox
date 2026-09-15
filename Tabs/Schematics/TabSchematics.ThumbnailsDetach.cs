@@ -271,7 +271,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // "Detach thumbnails to its own window" from the panel's own right-click menu - a quicker route
+    // "Detach thumbnails into their own window" from the panel's own right-click menu - a quicker route
     // to the SAME Main.SetThumbnailsDetached entry point the Configuration checkbox and the
     // detached window's own close button use, rather than a second copy of the persist/apply/resync
     // sequence. Reimplementing those steps here is how the two routes came to differ by one.
