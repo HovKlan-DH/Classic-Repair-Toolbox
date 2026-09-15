@@ -1007,7 +1007,7 @@
 				<Button x:Name="DetachThumbnailsContextMenuButton"
 						HorizontalAlignment="Stretch"
 						Click="OnDetachThumbnailsContextMenuButtonClick">
-					<TextBlock Text="Detach thumbnails to its own window"
+					<TextBlock Text="Detach thumbnails into their own window"
 							   TextWrapping="Wrap" />
 				</Button>
 			</StackPanel>

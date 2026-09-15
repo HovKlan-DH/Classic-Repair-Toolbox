@@ -33,11 +33,13 @@ namespace Tabs.TabSchematics
         }
 
         // ###########################################################################################
-        // Closes the fullscreen schematics window when Escape is pressed.
+        // Closes the fullscreen schematics window when Escape OR F11 is pressed - F11 toggles the
+        // same way it opened this window, so pressing it again turns fullscreen back off rather than
+        // only Escape being able to.
         // ###########################################################################################
         private void OnWindowKeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Escape)
+            if (e.Key == Key.Escape || e.Key == Key.F11)
             {
                 this.Close();
                 e.Handled = true;

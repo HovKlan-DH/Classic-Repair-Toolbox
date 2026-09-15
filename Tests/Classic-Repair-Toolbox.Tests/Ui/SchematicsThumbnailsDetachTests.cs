@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
 using CRT;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -7,7 +9,7 @@ using Tabs.TabSchematics;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// The "Detach thumbnails to its own window" feature: collapsing/restoring the Schematics tab's
+// The "Detach thumbnails into their own window" feature: collapsing/restoring the Schematics tab's
 // inline thumbnail column (TabSchematics.ThumbnailsDetach.cs), the detached window and gallery's
 // construction, and the two-way selection sync between the gallery and the (now-hidden) inline
 // SchematicsThumbnailList - the same pattern SchematicsFullscreenPlaceholder already uses to keep
@@ -38,6 +40,57 @@ public sealed class SchematicsThumbnailsDetachTests
             var window = new SchematicsThumbnailsWindow();
 
             Assert.NotNull(window);
+        });
+    }
+
+    // F11 while this window is the active one must fullscreen the schematic, the same as it does
+    // from the main window - asked for explicitly, since this window used to ignore F11 entirely.
+    // Main itself is never constructed by any test (see CLAUDE.md), so the actual
+    // ToggleSchematicsFullscreenWindow call cannot be observed here; what IS covered is that the
+    // key reaches the handler and is marked handled rather than falling through to something else,
+    // and that it does so safely with no MainWindow wired up (TabSchematics.MainWindow stays null
+    // in every headless test, so this is also the ordinary test-time path).
+    [Fact]
+    public void F11_is_handled_by_the_detached_window_with_no_MainWindow_wired_up()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabSchematics();
+            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
+
+            var window = new SchematicsThumbnailsWindow();
+            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Show();
+
+            Assert.Null(tab.MainWindow);
+
+            window.KeyPress(Key.F11, RawInputModifiers.None, PhysicalKey.F11, keySymbol: null);
+        });
+    }
+
+    // A key other than F11 must be left alone - only F11 is this window's business.
+    [Fact]
+    public void A_non_F11_key_is_not_swallowed_by_the_detached_window()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabSchematics();
+            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
+
+            var window = new SchematicsThumbnailsWindow();
+            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Show();
+
+            bool bubbledToWindow = false;
+            window.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.A)
+                    bubbledToWindow = true;
+            };
+
+            window.KeyPress(Key.A, RawInputModifiers.None, PhysicalKey.A, keySymbol: null);
+
+            Assert.True(bubbledToWindow);
         });
     }
 

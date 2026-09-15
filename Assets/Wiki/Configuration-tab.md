@@ -20,7 +20,7 @@ Edit the file, then click **Reload user preference colors** to see the result wi
 **Open multiple component info windows** — off, each component you click reuses the same popup
 window. On, every component opens its own, so you can put two chips side by side and compare.
 
-**Detach thumbnails to its own window** — moves the [Schematics](Schematics-tab) tab's thumbnail
+**Detach thumbnails into their own window** — moves the [Schematics](Schematics-tab) tab's thumbnail
 strip out of the tab and into its own resizable window, freeing up the space it used for the main
 image. The window fits every thumbnail to whatever size you give it, so a small window shows them
 smaller and a maximized one shows them bigger - never scrolled. Selecting or dragging a thumbnail
@@ -28,6 +28,16 @@ to reorder it there works the same as in the tab, and you can now also drag side
 off puts the thumbnail strip back in the tab exactly as before; closing the window directly does
 the same. You can also turn it on with a right-click directly on the thumbnail strip, without
 coming here.
+
+**Remember thumbnail window settings per board** — only available while the above is ticked. Off
+(the default), detached/embedded and the window's size and position are one setting for every
+board. On, each board remembers its own: one board's thumbnail window can be maximized, another's a
+small window in a particular spot, and another can simply have thumbnails embedded in the tab
+instead of shown in a window at all. A board you have not touched yet starts embedded.
+
+Switching this on or off takes effect straight away for the board you are on, so the thumbnails may
+move into a window or back into the tab as you tick it - that is the setting for that particular
+board taking over from the shared one, or handing back to it.
 
 ## Data
 

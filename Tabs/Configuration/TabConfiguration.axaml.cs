@@ -36,6 +36,8 @@ namespace CRT
             this.AllowAlphaVersionNotificationCheckBox.IsChecked = UserSettings.AllowAlphaVersionNotification;
             this.MultipleInstancesForComponentPopupCheckBox.IsChecked = UserSettings.MultipleInstancesForComponentPopup;
             this.DetachSchematicsThumbnailsCheckBox.IsChecked = UserSettings.DetachSchematicsThumbnails;
+            this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsChecked = UserSettings.RememberThumbnailWindowSettingsPerBoard;
+            this.UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState();
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsChecked = UserSettings.EnableNetworkConnectedOscilloscopeTab;
             this.EnableMiniproExperimentalModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalMode;
             this.EnableMiniproExperimentalDemoModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalDemoMode;
@@ -65,6 +67,7 @@ namespace CRT
             this.AllowAlphaVersionNotificationCheckBox.IsCheckedChanged += this.OnAllowAlphaVersionNotificationChanged;
             this.MultipleInstancesForComponentPopupCheckBox.IsCheckedChanged += this.OnMultipleInstancesForComponentPopupChanged;
             this.DetachSchematicsThumbnailsCheckBox.IsCheckedChanged += this.OnDetachSchematicsThumbnailsChanged;
+            this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsCheckedChanged += this.OnRememberThumbnailWindowSettingsPerBoardChanged;
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsCheckedChanged += this.OnEnableNetworkConnectedOscilloscopeTabChanged;
             this.EnableMiniproExperimentalModeCheckBox.IsCheckedChanged += this.OnEnableMiniproExperimentalModeChanged;
             this.EnableWorklogCheckBox.IsCheckedChanged += this.OnEnableWorklogChanged;
@@ -587,7 +590,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists the "Detach thumbnails to its own window" preference and applies it live: moves
+        // Persists the "Detach thumbnails into their own window" preference and applies it live: moves
         // the Schematics tab's thumbnail gallery into its own window, or restores it into the tab,
         // to match.
         // ###########################################################################################
@@ -597,6 +600,8 @@ namespace CRT
                 return;
 
             bool isDetached = this.DetachSchematicsThumbnailsCheckBox.IsChecked == true;
+
+            this.UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState();
 
             if (TopLevel.GetTopLevel(this) is Main mainWindow)
             {
@@ -612,16 +617,67 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Re-reads the "Detach thumbnails to its own window" checkbox from UserSettings without
+        // Re-reads the "Detach thumbnails into their own window" checkbox from UserSettings without
         // re-entering OnDetachSchematicsThumbnailsChanged - used when the detached window is closed
         // directly (its own OS close button) rather than via this checkbox, so the two stay in sync
         // without looping back into Main.ApplyThumbnailsDetachedState() a second time.
+        //
+        // The state is PASSED IN by Main (which resolves it once, in
+        // ResolveThumbnailsDetachedForCurrentBoard) rather than read from
+        // UserSettings.DetachSchematicsThumbnails here: with "Remember thumbnail window settings per
+        // board" on it is the PER-BOARD flag that SetThumbnailsDetached writes, so resyncing against
+        // the global one made the checkbox visibly re-tick itself to the wrong state after every
+        // toggle. Passing it in rather than looking Main up via TopLevel.GetTopLevel also means this
+        // works before the tab has been attached to the visual tree - Main holds it as a field and
+        // resyncs it whether or not the Configuration tab is the selected one.
+        //
+        // The parameterless overload keeps the pre-existing behaviour for any caller that has no
+        // Main to resolve against (the tab constructed on its own).
         // ###########################################################################################
         internal void RefreshDetachSchematicsThumbnailsCheckBoxFromSettings()
+            => this.RefreshDetachSchematicsThumbnailsCheckBoxFromSettings(UserSettings.DetachSchematicsThumbnails);
+
+        internal void RefreshDetachSchematicsThumbnailsCheckBoxFromSettings(bool isDetached)
         {
             this.thisSuppressDetachCheckBoxChanged = true;
-            this.DetachSchematicsThumbnailsCheckBox.IsChecked = UserSettings.DetachSchematicsThumbnails;
+            this.DetachSchematicsThumbnailsCheckBox.IsChecked = isDetached;
             this.thisSuppressDetachCheckBoxChanged = false;
+            this.UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState();
+        }
+
+        // ###########################################################################################
+        // Keeps the "Remember thumbnail window settings per board" checkbox enabled only while
+        // "Detach thumbnails into their own window" is ticked - remembering a per-board window layout
+        // means nothing while thumbnails are never shown in their own window at all.
+        // ###########################################################################################
+        private void UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState()
+        {
+            this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsEnabled =
+                this.DetachSchematicsThumbnailsCheckBox.IsChecked == true;
+        }
+
+        // ###########################################################################################
+        // Persists the "Remember thumbnail window settings per board" preference. Only reachable
+        // while the checkbox is enabled, i.e. while thumbnails are detached - see
+        // UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState.
+        // ###########################################################################################
+        private void OnRememberThumbnailWindowSettingsPerBoardChanged(object? sender, RoutedEventArgs e)
+        {
+            UserSettings.RememberThumbnailWindowSettingsPerBoard =
+                this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsChecked == true;
+
+            // This toggle switches which TIER "detached or not" is read from (global flag vs. this
+            // board's own record), so the answer for the current board can change the moment it is
+            // ticked - a board with no per-board record of its own goes from the global "detached"
+            // to embedded, and back again when unticked. Re-applying makes the open window and the
+            // collapsed thumbnail column follow immediately rather than staying out of line until
+            // the next board change or restart, and the resync leaves the detach checkbox showing
+            // the tier now in force.
+            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            {
+                mainWindow.ApplyThumbnailsDetachedStateForPerBoardModeChange();
+                mainWindow.RefreshDetachThumbnailsCheckBox();
+            }
         }
 
         // ###########################################################################################

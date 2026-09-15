@@ -145,6 +145,17 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsThumbnailsWindowHeight")] public double SchematicsThumbnailsWindowHeight { get; set; } = 600.0;
         [JsonPropertyName("schematicsThumbnailsWindowX")] public int SchematicsThumbnailsWindowX { get; set; } = 0;
         [JsonPropertyName("schematicsThumbnailsWindowY")] public int SchematicsThumbnailsWindowY { get; set; } = 0;
+
+        // Whether "Detach thumbnails into their own window" and the detached window's own size/state/
+        // position are remembered PER BOARD rather than as the single set above. Only meaningful
+        // while DetachSchematicsThumbnails-the-checkbox has ever been usable - see
+        // TabConfiguration's RememberThumbnailWindowSettingsPerBoardCheckBox, enabled only while
+        // that checkbox is ticked.
+        [JsonPropertyName("rememberThumbnailWindowSettingsPerBoard")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? RememberThumbnailWindowSettingsPerBoard { get; set; }
+
+        [JsonPropertyName("thumbnailWindowSettingsByBoard")] public Dictionary<string, ThumbnailWindowBoardSettings> ThumbnailWindowSettingsByBoard { get; set; } = new();
         [JsonPropertyName("componentInfoScrollAction")] public string ComponentInfoScrollAction { get; set; } = "Image change";
         [JsonPropertyName("schematicsLabelBoard")] public bool SchematicsLabelBoard { get; set; } = false;
         [JsonPropertyName("schematicsLabelTechnical")] public bool SchematicsLabelTechnical { get; set; } = false;
@@ -184,6 +195,26 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? AllowDeletionOfOrphanAndNonUsedFiles { get; set; }
 
+    }
+
+    // ###########################################################################################
+    // One board's remembered thumbnail-window state, used only while
+    // UserSettings.RememberThumbnailWindowSettingsPerBoard is on - see that property's header.
+    // Mirrors the single-set-of-fields shape the always-on SchematicsThumbnailsWindow* properties
+    // above use (HasSchematicsThumbnailsWindowLayout etc.), one record per board key instead of one
+    // for the whole app. IsDetached is stored separately from HasWindowLayout: a board can have been
+    // switched to detached mode without ever having been moved/resized (still at the 420x600
+    // default), and a board that was only ever embedded has neither.
+    // ###########################################################################################
+    public sealed class ThumbnailWindowBoardSettings
+    {
+        [JsonPropertyName("isDetached")] public bool IsDetached { get; set; }
+        [JsonPropertyName("hasWindowLayout")] public bool HasWindowLayout { get; set; }
+        [JsonPropertyName("windowState")] public string WindowState { get; set; } = "Normal";
+        [JsonPropertyName("windowWidth")] public double WindowWidth { get; set; } = 420.0;
+        [JsonPropertyName("windowHeight")] public double WindowHeight { get; set; } = 600.0;
+        [JsonPropertyName("windowX")] public int WindowX { get; set; }
+        [JsonPropertyName("windowY")] public int WindowY { get; set; }
     }
 
     // ###########################################################################################
@@ -604,6 +635,17 @@ namespace Handlers.DataHandling
             {
                 _data.DetachSchematicsThumbnails = value;
                 Logger.Info($"Setting changed: [DetachSchematicsThumbnails] [{value}]");
+                Save();
+            }
+        }
+
+        public static bool RememberThumbnailWindowSettingsPerBoard
+        {
+            get => _data.RememberThumbnailWindowSettingsPerBoard ?? false;
+            set
+            {
+                _data.RememberThumbnailWindowSettingsPerBoard = value;
+                Logger.Info($"Setting changed: [RememberThumbnailWindowSettingsPerBoard] [{value}]");
                 Save();
             }
         }
@@ -1035,6 +1077,56 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Returns the given board's remembered thumbnail-window state, or null when this board has
+        // never had one saved - the caller's cue to start it embedded (see
+        // TabSchematics.ThumbnailsDetach.cs / Main.ApplyThumbnailsDetachedState, which only consult
+        // this while RememberThumbnailWindowSettingsPerBoard is on).
+        // ###########################################################################################
+        public static ThumbnailWindowBoardSettings? GetThumbnailWindowSettingsForBoard(string boardKey)
+            => _data.ThumbnailWindowSettingsByBoard.TryGetValue(boardKey, out var settings) ? settings : null;
+
+        // ###########################################################################################
+        // Persists whether the given board's thumbnails are currently detached to their own window,
+        // without touching any window layout already saved for it (a board can be switched to
+        // detached mode before its window has ever been moved/resized away from the default).
+        // ###########################################################################################
+        public static void SetThumbnailWindowDetachedForBoard(string boardKey, bool isDetached)
+        {
+            if (!_data.ThumbnailWindowSettingsByBoard.TryGetValue(boardKey, out var settings))
+            {
+                settings = new ThumbnailWindowBoardSettings();
+                _data.ThumbnailWindowSettingsByBoard[boardKey] = settings;
+            }
+
+            settings.IsDetached = isDetached;
+            Logger.Info($"Setting changed: [ThumbnailWindowDetached] [{boardKey}] [{isDetached}]");
+            Save();
+        }
+
+        // ###########################################################################################
+        // Saves the given board's detached-thumbnails window placement atomically in a single disk
+        // write, the per-board twin of SaveSchematicsThumbnailsWindowLayout above.
+        // ###########################################################################################
+        public static void SaveThumbnailWindowLayoutForBoard(
+            string boardKey, string state, double width, double height, int x, int y)
+        {
+            if (!_data.ThumbnailWindowSettingsByBoard.TryGetValue(boardKey, out var settings))
+            {
+                settings = new ThumbnailWindowBoardSettings();
+                _data.ThumbnailWindowSettingsByBoard[boardKey] = settings;
+            }
+
+            settings.HasWindowLayout = true;
+            settings.WindowState = state;
+            settings.WindowWidth = width;
+            settings.WindowHeight = height;
+            settings.WindowX = x;
+            settings.WindowY = y;
+            Logger.Info($"Setting changed: [ThumbnailWindowLayout] [{boardKey}] [{state}] [{width:F0}x{height:F0}] [Position: {x},{y}]");
+            Save();
+        }
+
+        // ###########################################################################################
         // Returns true when the given board already has a persisted schematics splitter ratio.
         // ###########################################################################################
         public static bool HasSchematicsSplitterRatio(string boardKey)
@@ -1237,6 +1329,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [Theme] [{ThemeVariant}]");
                     Logger.Info($"        [OpenMultiplePopups] [{MultipleInstancesForComponentPopup}]");
                     Logger.Info($"        [DetachSchematicsThumbnails] [{DetachSchematicsThumbnails}]");
+                    Logger.Info($"        [RememberThumbnailWindowSettingsPerBoard] [{RememberThumbnailWindowSettingsPerBoard}]");
                     Logger.Info($"        [EnableNetworkConnectedOscilloscopeTab] [{EnableNetworkConnectedOscilloscopeTab}]");
                     Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
                     Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
@@ -1289,6 +1382,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [ContributorModeByBoard] [{_data.ContributorModeByBoard.Count} entries]");
                     Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
                     Logger.Info($"        [ActiveWorkbookIdByBoard] [{_data.ActiveWorkbookIdByBoard.Count} entries]");
+                    Logger.Info($"        [ThumbnailWindowSettingsByBoard] [{_data.ThumbnailWindowSettingsByBoard.Count} entries]");
                     Logger.Info($"        [OscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
                     Logger.Info($"        [OscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
                     Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");

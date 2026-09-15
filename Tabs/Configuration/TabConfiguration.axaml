@@ -109,7 +109,11 @@
 					  Content="Open multiple component info windows" />
 
 			<CheckBox x:Name="DetachSchematicsThumbnailsCheckBox"
-					  Content="Detach thumbnails to its own window" />
+					  Content="Detach thumbnails into their own window" />
+
+			<CheckBox x:Name="RememberThumbnailWindowSettingsPerBoardCheckBox"
+					  Content="Remember thumbnail window settings per board"
+					  IsEnabled="False" />
 
 			<TextBlock Text="Application Update"
                        FontSize="12"
