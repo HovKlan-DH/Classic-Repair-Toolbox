@@ -16,9 +16,9 @@
 		<RollForward>LatestMajor</RollForward>
         <Nullable>enable</Nullable>
         <!--
-        Warnings are errors in Release - the configuration CI, the release gate and the
-        Stop hook all build. Debug stays warnings-only so a half-finished edit does not
-        break the F5/watch loop. The build was at zero warnings when this went in.
+        Warnings are considered errors in Release - the configuration CI, the release gate
+		and the "Stop hook" all build. Debug stays warnings-only so a half-finished edit does
+		not break the F5/watch loop.
         -->
         <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
         <!--

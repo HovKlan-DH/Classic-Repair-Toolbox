@@ -133,6 +133,20 @@ public class SmallTabsTests : IDisposable
     }
 
     [Fact]
+    public void Ticking_the_alpha_notification_checkbox_persists_the_setting()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.AllowAlphaVersionNotification = false;
+
+            var tab = new TabConfiguration();
+            tab.GetControl<CheckBox>("AllowAlphaVersionNotificationCheckBox").IsChecked = true;
+
+            Assert.True(UserSettings.AllowAlphaVersionNotification);
+        });
+    }
+
+    [Fact]
     public void Choosing_a_theme_persists_it()
     {
         UiTest.Run(() =>

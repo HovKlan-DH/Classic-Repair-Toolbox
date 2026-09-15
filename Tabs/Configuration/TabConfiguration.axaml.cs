@@ -13,6 +13,7 @@ namespace CRT
     public partial class TabConfiguration : UserControl
     {
         private bool thisSuppressCheckDataOnLaunchChanged;
+        private bool thisSuppressDetachCheckBoxChanged;
 
         public TabConfiguration()
         {
@@ -32,7 +33,9 @@ namespace CRT
             this.AllowDeletionOfOrphanAndNonUsedFilesCheckBox.IsChecked =
                 UserSettings.AllowDeletionOfOrphanAndNonUsedFiles;
             this.ShowDevelopmentVersionNotificationCheckBox.IsChecked = UserSettings.ShowDevelopmentVersionNotification;
+            this.AllowAlphaVersionNotificationCheckBox.IsChecked = UserSettings.AllowAlphaVersionNotification;
             this.MultipleInstancesForComponentPopupCheckBox.IsChecked = UserSettings.MultipleInstancesForComponentPopup;
+            this.DetachSchematicsThumbnailsCheckBox.IsChecked = UserSettings.DetachSchematicsThumbnails;
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsChecked = UserSettings.EnableNetworkConnectedOscilloscopeTab;
             this.EnableMiniproExperimentalModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalMode;
             this.EnableMiniproExperimentalDemoModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalDemoMode;
@@ -59,7 +62,9 @@ namespace CRT
             this.AllowDeletionOfOrphanAndNonUsedFilesCheckBox.IsCheckedChanged += this.OnAllowDeletionOfOrphanAndNonUsedFilesChanged;
             this.DownloadDataFromTestSourceCheckBox.IsCheckedChanged += this.OnDownloadDataFromTestSourceChanged;
             this.ShowDevelopmentVersionNotificationCheckBox.IsCheckedChanged += this.OnShowDevelopmentVersionNotificationChanged;
+            this.AllowAlphaVersionNotificationCheckBox.IsCheckedChanged += this.OnAllowAlphaVersionNotificationChanged;
             this.MultipleInstancesForComponentPopupCheckBox.IsCheckedChanged += this.OnMultipleInstancesForComponentPopupChanged;
+            this.DetachSchematicsThumbnailsCheckBox.IsCheckedChanged += this.OnDetachSchematicsThumbnailsChanged;
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsCheckedChanged += this.OnEnableNetworkConnectedOscilloscopeTabChanged;
             this.EnableMiniproExperimentalModeCheckBox.IsCheckedChanged += this.OnEnableMiniproExperimentalModeChanged;
             this.EnableWorklogCheckBox.IsCheckedChanged += this.OnEnableWorklogChanged;
@@ -195,6 +200,14 @@ namespace CRT
         private void OnShowDevelopmentVersionNotificationChanged(object? sender, RoutedEventArgs e)
         {
             UserSettings.ShowDevelopmentVersionNotification = this.ShowDevelopmentVersionNotificationCheckBox.IsChecked == true;
+        }
+
+        // ###########################################################################################
+        // Persists the "Show notification for ALPHA versions" preference when the checkbox is toggled.
+        // ###########################################################################################
+        private void OnAllowAlphaVersionNotificationChanged(object? sender, RoutedEventArgs e)
+        {
+            UserSettings.AllowAlphaVersionNotification = this.AllowAlphaVersionNotificationCheckBox.IsChecked == true;
         }
 
         // ###########################################################################################
@@ -571,6 +584,44 @@ namespace CRT
         {
             UserSettings.MultipleInstancesForComponentPopup =
                 this.MultipleInstancesForComponentPopupCheckBox.IsChecked == true;
+        }
+
+        // ###########################################################################################
+        // Persists the "Detach thumbnails to its own window" preference and applies it live: moves
+        // the Schematics tab's thumbnail gallery into its own window, or restores it into the tab,
+        // to match.
+        // ###########################################################################################
+        private void OnDetachSchematicsThumbnailsChanged(object? sender, RoutedEventArgs e)
+        {
+            if (this.thisSuppressDetachCheckBoxChanged)
+                return;
+
+            bool isDetached = this.DetachSchematicsThumbnailsCheckBox.IsChecked == true;
+
+            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            {
+                // Through Main's single entry point, the same one the thumbnail panel's right-click
+                // menu and the detached window's own close button use. Its checkbox resync lands
+                // back here behind thisSuppressDetachCheckBoxChanged, so it cannot re-enter.
+                mainWindow.SetThumbnailsDetached(isDetached);
+            }
+            else
+            {
+                UserSettings.DetachSchematicsThumbnails = isDetached;
+            }
+        }
+
+        // ###########################################################################################
+        // Re-reads the "Detach thumbnails to its own window" checkbox from UserSettings without
+        // re-entering OnDetachSchematicsThumbnailsChanged - used when the detached window is closed
+        // directly (its own OS close button) rather than via this checkbox, so the two stay in sync
+        // without looping back into Main.ApplyThumbnailsDetachedState() a second time.
+        // ###########################################################################################
+        internal void RefreshDetachSchematicsThumbnailsCheckBoxFromSettings()
+        {
+            this.thisSuppressDetachCheckBoxChanged = true;
+            this.DetachSchematicsThumbnailsCheckBox.IsChecked = UserSettings.DetachSchematicsThumbnails;
+            this.thisSuppressDetachCheckBoxChanged = false;
         }
 
         // ###########################################################################################

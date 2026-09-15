@@ -65,6 +65,7 @@ Handlers/MiniPro/=MiniPro-programmer
 Handlers/Oscilloscope/|Tabs/Oscilloscope/=Synchronize-oscilloscope Controlling-oscilloscope-with-keyboard
 Handlers/Data/KiCadRawProjectLoader|Handlers/Data/KiCadProjectData=KiCad-folder Add-new-board-with-KiCad-data
 Tabs/Contribute/=Contribute-data-via-CRT
+Handlers/Online/UpdateService|Handlers/Online/UpdateChannelFilter|Handlers/Online/StageFilteredUpdateSource=Configuration-tab
 Classic-Repair-Toolbox\.csproj=Compiling-yourself-from-source Development-tools-used
 "
 

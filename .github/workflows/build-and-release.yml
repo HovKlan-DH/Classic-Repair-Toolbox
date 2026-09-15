@@ -368,10 +368,6 @@ jobs:
                 STAGE_LABEL="BETA"
                 BODY_LABEL="TEST"
                 ;;
-              *-rc.*)
-                STAGE_LABEL="RELEASE CANDIDATE"
-                BODY_LABEL="RELEASE CANDIDATE"
-                ;;
               *)
                 STAGE_LABEL="ALPHA"
                 BODY_LABEL="DEVELOPMENT"

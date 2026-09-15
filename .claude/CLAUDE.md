@@ -233,6 +233,7 @@ number formats.
 | Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `DeleteEntry`, the non-reusing id counters, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only), `WorklogAttachTargets`, `WorklogAttachmentWriter` |
 | Text links | `TextLinkFinder` (which runs in a user-typed note are web links) |
 | Settings / startup | `UserSettings`, `DataManager` (data-root + master workbook), `DataValidator` (smoke only), `SimulationOptions` |
+| Updates | `UpdateChannelFilter` (which release stages the ALPHA/BETA checkboxes admit) |
 | Headless UI (`Tests/.../Ui/`) | All nine tabs built headlessly, the worklog and Workbooks palettes, component highlight selection and schematics zoom, plus `Main` itself, the label editor's full edit cycle, the worklog area-marking flow, `ComponentInfoWindow`, the oscilloscope's SCPI sequencing, and the Configuration/Overview/About tabs - see [Headless UI tests](#headless-ui-tests) |
 | Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry` |
 
@@ -384,6 +385,13 @@ interaction tests that assert observable state over more construction tests.
   reasoning as `ExternalTargetLauncherTests`). They decide where a downloaded file lands and which
   server it may come from, on input that arrives over the network, so they are a trust boundary
   rather than an I/O one.
+  **`UpdateService` is half excluded for the same reason.** Which release STAGE a user has opted
+  into is pure string work and *is* covered, by `UpdateChannelFilterTests`. It lives in
+  `UpdateChannelFilter` rather than inside the service precisely so it can be: GitHub's "prerelease"
+  flag is all-or-nothing, so the stage has to be read off the version string, and getting that
+  classification wrong silently offers a user a channel they never asked for. `StageFilteredUpdateSource`
+  (the `IUpdateSource` decorator that applies it to the feed BEFORE Velopack ranks it) stays
+  uncovered - it is a thin pass-through over the real network source.
 - **`DataValidator`'s findings.** `ValidateAllDataAsync` returns a bare `Task` and reports everything
   through `Logger`, so the tests only prove it walks real data without throwing. Testing what it
   actually detects means changing it to return its findings — a public API change, and a decision for
@@ -1171,6 +1179,7 @@ before grepping** — the same header map is repeated in
 | `TabSchematics.Viewport.cs` | Zoom, pan, the transform matrix, matrix clamping, content/viewport rects |
 | `TabSchematics.Input.cs` | Pointer, wheel, gesture and keyboard handlers — these only dispatch |
 | `TabSchematics.Thumbnails.cs` | Thumbnail list, selection, thumbnail bitmaps, drag-to-reorder |
+| `TabSchematics.ThumbnailsDetach.cs` | Detach-to-window mode: collapses/restores the inline thumbnail column, mirroring `EnterFullscreenMode`/`ExitFullscreenMode`. The detached window and its own 2D gallery/drag logic live in `SchematicsThumbnailGallery`/`SchematicsThumbnailsWindow`/`ThumbnailGalleryPanel` |
 | `TabSchematics.Highlights.cs` | Component highlight overlays, blink visuals, hover UI, on-schematic labels |
 | `TabSchematics.LabelEditor.cs` | Label editor lifecycle, menu, apply/cancel, validation and save dialogs, search, undo/redo |
 | `TabSchematics.LabelEditor.TestSeams.cs` | `...ForTests` seams letting headless tests drive the editor (see its header) |
@@ -1189,7 +1198,10 @@ before grepping** — the same header map is repeated in
 Supporting classes in the same folder are ordinary (non-partial) types: `KiCadOverlayRenderControl`,
 `SchematicHighlightsOverlay`, `PolylineManagement` (user-drawn traces; reaches into
 `TabSchematics.schematicsMatrix`), `HighlightSpatialIndex`, `SchematicThumbnail`, `ComponentInfoWindow`,
-`ComponentLabelEditorOverlay`, and `IcTestPanel`.
+`ComponentLabelEditorOverlay`, `IcTestPanel`, `SchematicsThumbnailGallery` (the detached-window
+thumbnail gallery), `SchematicsThumbnailsWindow` (the window that hosts it), and
+`ThumbnailGalleryPanel` (its auto-fit layout panel — the maths itself is
+`Handlers/Geometry/ThumbnailGalleryGeometry`).
 
 ### Data layer (`Handlers/Data/`)
 

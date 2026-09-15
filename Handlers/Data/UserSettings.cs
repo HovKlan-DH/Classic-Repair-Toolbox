@@ -26,6 +26,10 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? ShowDevelopmentVersionNotification { get; set; }
 
+        [JsonPropertyName("allowAlphaVersionNotification")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? AllowAlphaVersionNotification { get; set; }
+
         [JsonPropertyName("validateDataOnLaunch")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? ValidateDataOnLaunch { get; set; }
@@ -37,6 +41,10 @@ namespace Handlers.DataHandling
         [JsonPropertyName("multipleInstancesForComponentPopup")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? MultipleInstancesForComponentPopup { get; set; }
+
+        [JsonPropertyName("detachSchematicsThumbnails")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? DetachSchematicsThumbnails { get; set; }
 
         [JsonPropertyName("enableNetworkConnectedOscilloscopeTab")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -130,6 +138,13 @@ namespace Handlers.DataHandling
         [JsonPropertyName("worklogEntryWindowScreenY")] public int WorklogEntryWindowScreenY { get; set; } = 0;
 
         [JsonPropertyName("worklogEntryWindowLeftColumnRatio")] public double WorklogEntryWindowLeftColumnRatio { get; set; } = 0.6;
+
+        [JsonPropertyName("hasSchematicsThumbnailsWindowLayout")] public bool HasSchematicsThumbnailsWindowLayout { get; set; } = false;
+        [JsonPropertyName("schematicsThumbnailsWindowState")] public string SchematicsThumbnailsWindowState { get; set; } = "Normal";
+        [JsonPropertyName("schematicsThumbnailsWindowWidth")] public double SchematicsThumbnailsWindowWidth { get; set; } = 420.0;
+        [JsonPropertyName("schematicsThumbnailsWindowHeight")] public double SchematicsThumbnailsWindowHeight { get; set; } = 600.0;
+        [JsonPropertyName("schematicsThumbnailsWindowX")] public int SchematicsThumbnailsWindowX { get; set; } = 0;
+        [JsonPropertyName("schematicsThumbnailsWindowY")] public int SchematicsThumbnailsWindowY { get; set; } = 0;
         [JsonPropertyName("componentInfoScrollAction")] public string ComponentInfoScrollAction { get; set; } = "Image change";
         [JsonPropertyName("schematicsLabelBoard")] public bool SchematicsLabelBoard { get; set; } = false;
         [JsonPropertyName("schematicsLabelTechnical")] public bool SchematicsLabelTechnical { get; set; } = false;
@@ -536,6 +551,17 @@ namespace Handlers.DataHandling
             }
         }
 
+        public static bool AllowAlphaVersionNotification
+        {
+            get => _data.AllowAlphaVersionNotification ?? false; // Default is false
+            set
+            {
+                _data.AllowAlphaVersionNotification = value;
+                Logger.Info($"Setting changed: [AllowAlphaVersionNotification] [{value}]");
+                Save();
+            }
+        }
+
         public static bool ValidateDataOnLaunch
         {
             get => IsContributorModeEnabled();
@@ -567,6 +593,17 @@ namespace Handlers.DataHandling
             {
                 _data.MultipleInstancesForComponentPopup = value;
                 Logger.Info($"Setting changed: [MultipleInstancesForComponentPopup] [{value}]");
+                Save();
+            }
+        }
+
+        public static bool DetachSchematicsThumbnails
+        {
+            get => _data.DetachSchematicsThumbnails ?? false;
+            set
+            {
+                _data.DetachSchematicsThumbnails = value;
+                Logger.Info($"Setting changed: [DetachSchematicsThumbnails] [{value}]");
                 Save();
             }
         }
@@ -973,6 +1010,30 @@ namespace Handlers.DataHandling
             Save();
         }
 
+        // Detached schematics-thumbnails window layout — read-only; written atomically via
+        // SaveSchematicsThumbnailsWindowLayout.
+        public static bool HasSchematicsThumbnailsWindowLayout => _data.HasSchematicsThumbnailsWindowLayout;
+        public static string SchematicsThumbnailsWindowState => _data.SchematicsThumbnailsWindowState;
+        public static double SchematicsThumbnailsWindowWidth => _data.SchematicsThumbnailsWindowWidth;
+        public static double SchematicsThumbnailsWindowHeight => _data.SchematicsThumbnailsWindowHeight;
+        public static int SchematicsThumbnailsWindowX => _data.SchematicsThumbnailsWindowX;
+        public static int SchematicsThumbnailsWindowY => _data.SchematicsThumbnailsWindowY;
+
+        // ###########################################################################################
+        // Saves the detached schematics-thumbnails window's placement atomically in a single disk write.
+        // ###########################################################################################
+        public static void SaveSchematicsThumbnailsWindowLayout(string state, double width, double height, int x, int y)
+        {
+            _data.HasSchematicsThumbnailsWindowLayout = true;
+            _data.SchematicsThumbnailsWindowState = state;
+            _data.SchematicsThumbnailsWindowWidth = width;
+            _data.SchematicsThumbnailsWindowHeight = height;
+            _data.SchematicsThumbnailsWindowX = x;
+            _data.SchematicsThumbnailsWindowY = y;
+            Logger.Info($"Setting changed: [SchematicsThumbnailsWindowLayout] [{state}] [{width:F0}x{height:F0}] [Position: {x},{y}]");
+            Save();
+        }
+
         // ###########################################################################################
         // Returns true when the given board already has a persisted schematics splitter ratio.
         // ###########################################################################################
@@ -1175,6 +1236,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"    Configuration:");
                     Logger.Info($"        [Theme] [{ThemeVariant}]");
                     Logger.Info($"        [OpenMultiplePopups] [{MultipleInstancesForComponentPopup}]");
+                    Logger.Info($"        [DetachSchematicsThumbnails] [{DetachSchematicsThumbnails}]");
                     Logger.Info($"        [EnableNetworkConnectedOscilloscopeTab] [{EnableNetworkConnectedOscilloscopeTab}]");
                     Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
                     Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
@@ -1188,11 +1250,13 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [AllowDeletionOfOrphanAndNonUsedFiles] [{AllowDeletionOfOrphanAndNonUsedFiles}]");
                     Logger.Info($"        [CheckVersionOnLaunch] [{CheckVersionOnLaunch}]");
                     Logger.Info($"        [AllowBetaNotification] [{ShowDevelopmentVersionNotification}]");
+                    Logger.Info($"        [AllowAlphaVersionNotification] [{AllowAlphaVersionNotification}]");
                     Logger.Info($"        [ValidateDataOnLaunch] [{ValidateDataOnLaunch}]");
                     Logger.Info($"        [DebugLogging] [{DebugLogging}]");
                     Logger.Info($"    Various other settings:");
                     Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
                     Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
+                    Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
                     Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                     Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
                     Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");

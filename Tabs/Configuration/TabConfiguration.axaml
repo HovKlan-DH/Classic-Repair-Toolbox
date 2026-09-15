@@ -108,6 +108,9 @@
 			<CheckBox x:Name="MultipleInstancesForComponentPopupCheckBox"
 					  Content="Open multiple component info windows" />
 
+			<CheckBox x:Name="DetachSchematicsThumbnailsCheckBox"
+					  Content="Detach thumbnails to its own window" />
+
 			<TextBlock Text="Application Update"
                        FontSize="12"
                        FontWeight="SemiBold"
@@ -127,8 +130,47 @@
 			<CheckBox x:Name="CheckVersionOnLaunchCheckBox"
                       Content="Check for new version at application launch" />
 
-			<CheckBox x:Name="ShowDevelopmentVersionNotificationCheckBox"
-                      Content="Allow notification for BETA versions" />
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="ShowDevelopmentVersionNotificationCheckBox"
+						  Content="Allow notification for BETA versions"
+						  VerticalAlignment="Center" />
+				<Button x:Name="ShowDevelopmentVersionNotificationHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="A BETA version is when development has reached a mature level, and everything should work as intended. However, it is for TEST purposes only, and should only be used in agreement with the developer.">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="AllowAlphaVersionNotificationCheckBox"
+						  Content="Allow notification for ALPHA versions"
+						  VerticalAlignment="Center" />
+				<Button x:Name="AllowAlphaVersionNotificationHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="An ALPHA version is a development version, meaning almost anything could be broken. Do not download it unless agreed with the developer.">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
 
 			<TextBlock Text="External tooling availability"
                        FontSize="12"

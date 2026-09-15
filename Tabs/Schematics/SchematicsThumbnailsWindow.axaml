@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.SchematicsThumbnailsWindow"
+        Title="Classic Repair Toolbox - Schematics Thumbnails"
+        Width="420"
+        Height="600"
+        MinWidth="200"
+        MinHeight="200">
+
+	<local:SchematicsThumbnailGallery x:Name="Gallery" />
+</Window>

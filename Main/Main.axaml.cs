@@ -113,6 +113,29 @@ namespace CRT
         // Fullscreen
         private SchematicsFullscreenWindow? _schematicsFullscreenWindow;
 
+        // Detached schematics thumbnails window
+        private SchematicsThumbnailsWindow? _schematicsThumbnailsWindow;
+
+        // True from the moment this window starts closing. Lets owned windows tell "the user closed
+        // me" apart from "the application is exiting" - see OnWindowClosing.
+        private bool _isApplicationShuttingDown;
+
+        // Lets a headless test put the window into the shutting-down state without actually closing
+        // it, which would tear the test's own window down. Set by OnWindowClosing in the real app.
+        internal bool IsApplicationShuttingDownForTests
+        {
+            get => this._isApplicationShuttingDown;
+            set => this._isApplicationShuttingDown = value;
+        }
+
+        // Whether the detached thumbnails window is currently open, for tests that need to assert
+        // the open/close half of ApplyThumbnailsDetachedState without reaching into the field.
+        internal bool IsThumbnailsWindowOpenForTests => this._schematicsThumbnailsWindow != null;
+
+        // Closes the detached thumbnails window the way the user's own OS close button does, so a
+        // test can drive the Closed handler's "did the user dismiss it" branch.
+        internal void CloseThumbnailsWindowAsUserForTests() => this._schematicsThumbnailsWindow?.Close();
+
         // Exposes the Oscilloscope tab control so other UI windows can route scope actions through it.
         public TabOscilloscope TabOscilloscopeControl => this.TabOscilloscope;
 
@@ -148,6 +171,15 @@ namespace CRT
             // whose workbooks could be shown. That population raises OnBoardSelectionChanged, which
             // refreshes with a real board key.
             this.ApplyWorklogBarVisibility();
+
+            // Only collapses the inline thumbnail column here if the setting is already on -
+            // opening the detached window itself is deferred to OnWindowFirstOpened, since
+            // Window.Show requires its owner to already be visible, which this window is not yet
+            // at constructor time.
+            if (UserSettings.DetachSchematicsThumbnails)
+            {
+                this.TabSchematicsControl.EnterThumbnailsDetachedMode();
+            }
 
             // Restore left panel width from settings
             this.RootGrid.ColumnDefinitions[0].Width = new GridLength(UserSettings.LeftPanelWidth);
@@ -892,20 +924,30 @@ namespace CRT
             UserSettings.SetLastBoardForHardware(selectedHardware, selectedBoard);
 
             string boardKey = this.GetCurrentBoardKey();
-            var innerGrid = this.TabSchematicsControl.FindControl<Grid>("SchematicsInnerGrid");
 
-            if (innerGrid != null)
+            // Skipped while thumbnails are detached or the schematic is fullscreen: both modes
+            // collapse columns 0/2 down to their own layout (see TabSchematics.ThumbnailsDetach.cs
+            // and EnterFullscreenMode), and this per-board splitter restore runs on every board
+            // change - applying it here would silently re-expand column 2 right back out from
+            // under either mode, leaving an empty widened column since the inline list itself
+            // stays hidden either way.
+            if (!this.TabSchematicsControl.IsThumbnailsDetached && !this.TabSchematicsControl.IsFullscreenModeActive)
             {
-                if (UserSettings.HasSchematicsSplitterRatio(boardKey))
+                var innerGrid = this.TabSchematicsControl.FindControl<Grid>("SchematicsInnerGrid");
+
+                if (innerGrid != null)
                 {
-                    double ratio = UserSettings.GetSchematicsSplitterRatio(boardKey);
-                    innerGrid.ColumnDefinitions[0].Width = new GridLength(ratio * 100.0, GridUnitType.Star);
-                    innerGrid.ColumnDefinitions[2].Width = new GridLength((1.0 - ratio) * 100.0, GridUnitType.Star);
-                }
-                else
-                {
-                    innerGrid.ColumnDefinitions[0].Width = new GridLength(1.0, GridUnitType.Star);
-                    innerGrid.ColumnDefinitions[2].Width = new GridLength(300.0, GridUnitType.Pixel);
+                    if (UserSettings.HasSchematicsSplitterRatio(boardKey))
+                    {
+                        double ratio = UserSettings.GetSchematicsSplitterRatio(boardKey);
+                        innerGrid.ColumnDefinitions[0].Width = new GridLength(ratio * 100.0, GridUnitType.Star);
+                        innerGrid.ColumnDefinitions[2].Width = new GridLength((1.0 - ratio) * 100.0, GridUnitType.Star);
+                    }
+                    else
+                    {
+                        innerGrid.ColumnDefinitions[0].Width = new GridLength(1.0, GridUnitType.Star);
+                        innerGrid.ColumnDefinitions[2].Width = new GridLength(300.0, GridUnitType.Pixel);
+                    }
                 }
             }
 
@@ -1461,6 +1503,18 @@ namespace CRT
         {
             this.Opened -= this.OnWindowFirstOpened;
 
+            // Deferred from the constructor - see its own comment. Only opens the window; the
+            // inline column was already collapsed there if the setting was on.
+            //
+            // No fullscreen guard: the two modes COMPOSE (see ApplyThumbnailsDetachedState). The
+            // gallery binds to the tab's own hosted ListBox, which travels WITH the tab into the
+            // fullscreen window and keeps working from there, so a detached window opened during
+            // fullscreen is fully usable rather than wired to something unreachable.
+            if (UserSettings.DetachSchematicsThumbnails)
+            {
+                this.OpenSchematicsThumbnailsWindow();
+            }
+
             if (UserSettings.HasWindowPlacement && this.WindowState == Avalonia.Controls.WindowState.Normal)
             {
                 if (UserSettings.WindowState == nameof(Avalonia.Controls.WindowState.Maximized))
@@ -1619,6 +1673,108 @@ namespace CRT
             this._worklogShowEntriesWorkbookId = 0;
 
             this.MoveSelectionOffHiddenTab(this.WorkbooksTabItem);
+        }
+
+        // ###########################################################################################
+        // Shows/hides the Schematics tab's inline thumbnail column and opens/closes the detached
+        // thumbnails window to match the "Detach thumbnails to its own window" setting.
+        //
+        // Composes with F11 schematics fullscreen rather than excluding it: fullscreen collapses the
+        // same column this mode does, so the two agree about the layout and only have to agree about
+        // who restores the strip. EnterThumbnailsDetachedMode sets its flag and leaves the columns
+        // alone while fullscreen is active, and ExitFullscreenMode checks that flag before bringing
+        // the strip back - so the detached window stays usable beside a fullscreen schematic, and
+        // leaving fullscreen lands on whichever state the setting actually describes.
+        // ###########################################################################################
+        // ###########################################################################################
+        // The ONE way to turn "Detach thumbnails to its own window" on or off: persist the setting,
+        // apply the layout, and resync the Configuration checkbox to match. Every surface that
+        // offers the toggle goes through here - the checkbox itself, the thumbnail panel's
+        // right-click menu, and the detached window's own OS close button - so a step added to the
+        // feature is added once rather than found and updated at three call sites.
+        //
+        // Resyncing the checkbox is harmless when the checkbox IS the caller: it re-reads the
+        // setting it just wrote, behind the suppress flag that stops it re-entering its own handler.
+        // ###########################################################################################
+        internal void SetThumbnailsDetached(bool isDetached)
+        {
+            UserSettings.DetachSchematicsThumbnails = isDetached;
+
+            this.ApplyThumbnailsDetachedState();
+            this.TabConfiguration.RefreshDetachSchematicsThumbnailsCheckBoxFromSettings();
+        }
+
+        public void ApplyThumbnailsDetachedState()
+        {
+            bool isEnabled = UserSettings.DetachSchematicsThumbnails;
+
+            if (isEnabled)
+            {
+                this.TabSchematicsControl.EnterThumbnailsDetachedMode();
+                this.OpenSchematicsThumbnailsWindow();
+            }
+            else
+            {
+                this.CloseSchematicsThumbnailsWindow();
+                this.TabSchematicsControl.ExitThumbnailsDetachedMode();
+            }
+
+        }
+
+        // ###########################################################################################
+        // Opens the detached thumbnails window, bound to the same currentThumbnails collection and
+        // hosted (now-hidden) SchematicsThumbnailList the inline gallery uses. A no-op if already open.
+        // ###########################################################################################
+        private void OpenSchematicsThumbnailsWindow()
+        {
+            if (this._schematicsThumbnailsWindow != null)
+                return;
+
+            var hostedThumbnailList = this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList");
+            if (hostedThumbnailList == null)
+                return;
+
+            this._schematicsThumbnailsWindow = new SchematicsThumbnailsWindow();
+            this._schematicsThumbnailsWindow.Initialize(
+                this.TabSchematicsControl.currentThumbnails,
+                hostedThumbnailList,
+                this.TabSchematicsControl);
+
+            this._schematicsThumbnailsWindow.Closed += (_, _) =>
+            {
+                this._schematicsThumbnailsWindow = null;
+
+                // Not on the way out: this window is OWNED by the main window, so quitting the
+                // application closes it too and lands here. Turning the setting off then meant the
+                // preference was wiped on every exit and never survived to the next launch.
+                if (this._isApplicationShuttingDown)
+                    return;
+
+                // Closed via its own OS close button rather than the checkbox - the window is a
+                // third way to turn the feature off, so it goes through the same one entry point
+                // the other two do. The field above is already null, so the CloseSchematicsThumbnailsWindow
+                // inside it finds nothing to close and this cannot recurse.
+                if (UserSettings.DetachSchematicsThumbnails)
+                {
+                    this.SetThumbnailsDetached(false);
+                }
+            };
+
+            this._schematicsThumbnailsWindow.Show(this);
+
+        }
+
+        // ###########################################################################################
+        // Closes the detached thumbnails window, if open.
+        // ###########################################################################################
+        private void CloseSchematicsThumbnailsWindow()
+        {
+            // The field is NOT nulled here: Close() raises Closed synchronously and that handler
+            // owns this field's lifetime. Nulling it again afterwards would mask a close that
+            // actually refused (a future Closing handler setting e.Cancel), leaving a visible
+            // window Main can no longer find or close - and the next toggle opening a second one
+            // on top of it.
+            this._schematicsThumbnailsWindow?.Close();
         }
 
         // ###########################################################################################
@@ -2222,6 +2378,21 @@ namespace CRT
         // ###########################################################################################
         private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
         {
+            // Set before anything closes, but only once the close is known to be going ahead: the
+            // detached thumbnails window is owned by this one, so Avalonia closes it as part of
+            // this shutdown and its Closed handler would otherwise read that as the user dismissing
+            // it and turn the setting off - losing the preference on every single exit.
+            //
+            // The Cancel check matters because this flag is never cleared again. Nothing cancels a
+            // close today, but a later confirm-on-exit prompt would leave the flag stuck true for
+            // the rest of the session, and the detached window's own OS close button would then
+            // silently skip unticking the setting and re-embedding the strip - thumbnails gone from
+            // both the tab and the window, with the checkbox still ticked.
+            if (e.Cancel)
+                return;
+
+            this._isApplicationShuttingDown = true;
+
             if (this._schematicsFullscreenWindow != null)
             {
                 this._schematicsFullscreenWindow.Close();

@@ -56,6 +56,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.EnableMiniproExperimentalDemoMode);
         Assert.True(UserSettings.EnableWorklog);
         Assert.Equal("CurrentBoard", UserSettings.WorkbooksScope);
+        Assert.False(UserSettings.DetachSchematicsThumbnails);
     }
 
     [Fact]
@@ -120,6 +121,19 @@ public sealed class UserSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Turning_detach_schematics_thumbnails_on_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.DetachSchematicsThumbnails = true;
+
+        Assert.True(ReadJson(path)["detachSchematicsThumbnails"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.DetachSchematicsThumbnails);
+    }
+
+    [Fact]
     public void Turning_the_worklog_bar_off_persists_and_survives_a_reload()
     {
         string path = this.LoadSettings("{}");
@@ -130,6 +144,36 @@ public sealed class UserSettingsTests : IDisposable
 
         UserSettings.LoadFrom(path);
         Assert.False(UserSettings.EnableWorklog);
+    }
+
+    [Fact]
+    public void Allowing_beta_version_notifications_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.False(UserSettings.ShowDevelopmentVersionNotification); // Default is false
+
+        UserSettings.ShowDevelopmentVersionNotification = true;
+
+        Assert.True(ReadJson(path)["showDevelopmentVersionNotification"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.ShowDevelopmentVersionNotification);
+    }
+
+    [Fact]
+    public void Allowing_alpha_version_notifications_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.False(UserSettings.AllowAlphaVersionNotification); // Default is false
+
+        UserSettings.AllowAlphaVersionNotification = true;
+
+        Assert.True(ReadJson(path)["allowAlphaVersionNotification"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.AllowAlphaVersionNotification);
     }
 
     [Fact]
@@ -931,6 +975,33 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(150, json["componentInfoWindowX"]!.GetValue<int>());
         Assert.Equal(80, json["componentInfoWindowY"]!.GetValue<int>());
         Assert.True(json["hasComponentInfoWindowLayout"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void Schematics_thumbnails_window_layout_round_trips()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.False(UserSettings.HasSchematicsThumbnailsWindowLayout);
+
+        UserSettings.SaveSchematicsThumbnailsWindowLayout("Maximized", 500, 700, 60, 40);
+        UserSettings.LoadFrom(path);
+
+        JsonNode json = ReadJson(path);
+
+        Assert.Equal("Maximized", json["schematicsThumbnailsWindowState"]!.GetValue<string>());
+        Assert.Equal(500, json["schematicsThumbnailsWindowWidth"]!.GetValue<double>());
+        Assert.Equal(700, json["schematicsThumbnailsWindowHeight"]!.GetValue<double>());
+        Assert.Equal(60, json["schematicsThumbnailsWindowX"]!.GetValue<int>());
+        Assert.Equal(40, json["schematicsThumbnailsWindowY"]!.GetValue<int>());
+        Assert.True(json["hasSchematicsThumbnailsWindowLayout"]!.GetValue<bool>());
+
+        Assert.True(UserSettings.HasSchematicsThumbnailsWindowLayout);
+        Assert.Equal("Maximized", UserSettings.SchematicsThumbnailsWindowState);
+        Assert.Equal(500, UserSettings.SchematicsThumbnailsWindowWidth);
+        Assert.Equal(700, UserSettings.SchematicsThumbnailsWindowHeight);
+        Assert.Equal(60, UserSettings.SchematicsThumbnailsWindowX);
+        Assert.Equal(40, UserSettings.SchematicsThumbnailsWindowY);
     }
 
     [Fact]

@@ -4,15 +4,20 @@ using CRT;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// The Configuration tab's help icons - the small "?" buttons that open a wiki page for the setting
-// they sit beside.
+// The Configuration tab's help icons - the small "?" buttons that sit beside a setting.
 //
-// What is NOT tested here is the click itself: the handler goes through ExternalTargetLauncher,
-// whose accept path calls Process.Start, and rule 6 keeps that out of the suite (the launcher's own
-// containment predicates are covered by ExternalTargetLauncherTests instead). What IS worth pinning
-// is that the button exists at all and carries the glyph: a mis-typed Click handler name fails the
-// XAML parse and so is already caught by construction, but a button silently dropped from the
-// markup, or one left with no icon in it, is invisible until someone opens the tab and looks.
+// Two flavours share the same "HelpIconButton" look but do different things: the MiniPro/Workbooks
+// ones OPEN a wiki page (Click, tested only for existence - see below), while the ALPHA/BETA
+// notification ones show their explanation as a TOOLTIP instead, since there is no wiki page for a
+// single checkbox's meaning. Both are worth pinning for the same reason: a button silently dropped
+// from the markup, or one left with no icon or no tip text in it, is invisible until someone opens
+// the tab and looks.
+//
+// What is NOT tested here is the wiki-opening click itself: the handler goes through
+// ExternalTargetLauncher, whose accept path calls Process.Start, and rule 6 keeps that out of the
+// suite (the launcher's own containment predicates are covered by ExternalTargetLauncherTests
+// instead). A mis-typed Click handler name fails the XAML parse and so is already caught by
+// construction.
 [Collection("HeadlessUi")]
 public sealed class ConfigurationHelpIconTests
 {
@@ -64,6 +69,69 @@ public sealed class ConfigurationHelpIconTests
 
             Assert.Contains("HelpIconButton", helpButton.Classes);
             Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+        });
+    }
+
+    [Fact]
+    public void The_alpha_notification_setting_has_a_help_icon_with_explanatory_tooltip_text()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButton = tab.GetControl<Button>("AllowAlphaVersionNotificationHelpButton");
+            var checkBox = tab.GetControl<CheckBox>("AllowAlphaVersionNotificationCheckBox");
+
+            Assert.Contains("HelpIconButton", helpButton.Classes);
+            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
+
+            var tip = Assert.IsType<string>(ToolTip.GetTip(helpButton));
+            Assert.Contains("ALPHA", tip);
+            Assert.Contains("development version", tip);
+        });
+    }
+
+    [Fact]
+    public void The_beta_notification_setting_has_a_help_icon_with_explanatory_tooltip_text()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButton = tab.GetControl<Button>("ShowDevelopmentVersionNotificationHelpButton");
+            var checkBox = tab.GetControl<CheckBox>("ShowDevelopmentVersionNotificationCheckBox");
+
+            Assert.Contains("HelpIconButton", helpButton.Classes);
+            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
+
+            var tip = Assert.IsType<string>(ToolTip.GetTip(helpButton));
+            Assert.Contains("BETA", tip);
+            Assert.Contains("TEST", tip);
+        });
+    }
+
+    // Pins the ALPHA row sitting immediately after the BETA row, since that ordering was asked for
+    // explicitly rather than being incidental to where the checkbox was added in the markup.
+    [Fact]
+    public void The_alpha_notification_row_comes_directly_after_the_beta_notification_row()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var betaRow = tab.GetControl<CheckBox>("ShowDevelopmentVersionNotificationCheckBox").GetVisualParent();
+            var alphaRow = tab.GetControl<CheckBox>("AllowAlphaVersionNotificationCheckBox").GetVisualParent();
+
+            Assert.NotNull(betaRow);
+            Assert.NotNull(alphaRow);
+
+            var siblings = ((Avalonia.Controls.Controls)((StackPanel)betaRow!.GetVisualParent()!).Children);
+            int betaIndex = siblings.IndexOf((Control)betaRow);
+            int alphaIndex = siblings.IndexOf((Control)alphaRow!);
+
+            Assert.Equal(betaIndex + 1, alphaIndex);
         });
     }
 }
