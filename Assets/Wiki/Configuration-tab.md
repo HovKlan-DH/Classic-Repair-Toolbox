@@ -20,6 +20,15 @@ Edit the file, then click **Reload user preference colors** to see the result wi
 **Open multiple component info windows** — off, each component you click reuses the same popup
 window. On, every component opens its own, so you can put two chips side by side and compare.
 
+**Detach thumbnails to its own window** — moves the [Schematics](Schematics-tab) tab's thumbnail
+strip out of the tab and into its own resizable window, freeing up the space it used for the main
+image. The window fits every thumbnail to whatever size you give it, so a small window shows them
+smaller and a maximized one shows them bigger - never scrolled. Selecting or dragging a thumbnail
+to reorder it there works the same as in the tab, and you can now also drag sideways. Turning this
+off puts the thumbnail strip back in the tab exactly as before; closing the window directly does
+the same. You can also turn it on with a right-click directly on the thumbnail strip, without
+coming here.
+
 ## Data
 
 **Check for new or updated data at application launch** — CRT downloads new and corrected board data
@@ -42,8 +51,17 @@ launch-time data checking is on, since the cleanup runs as part of that check.
 **Check for new version at application launch** — tells you when a new CRT release is out. You can
 then update from inside the application.
 
-**Allow notification for BETA versions** — also offers pre-release versions. These are for testing;
-leave it off unless you want to help find problems before a release.
+**Allow notification for BETA versions** — also offers BETA releases. A BETA is a version where
+development has reached a mature level and everything should work as intended, but it is still for
+testing only. Leave it off unless you want to help find problems before a release.
+
+**Allow notification for ALPHA versions** — also offers ALPHA releases. An ALPHA is a development
+version where almost anything could be broken. Leave it off unless you have agreed with the
+developer to try one.
+
+The two boxes are independent, and each one only adds its own kind of release. Ticking BETA alone
+never offers you an ALPHA, even when a newer ALPHA exists. With both unticked you are offered
+ordinary releases only — which you always are, whatever these are set to.
 
 ## Oscilloscope
 

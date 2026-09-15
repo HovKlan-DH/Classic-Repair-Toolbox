@@ -13,6 +13,12 @@ The board, its components and its traces. This is where you will spend your time
 
 Clicking a component in the left-hand list highlights it here. Click again to unhighlight.
 
+**Detach thumbnails to its own window** in [Configuration](Configuration-tab) moves this
+thumbnail strip out of the tab into its own resizable window, giving the main image more room.
+Selecting and reordering thumbnails there works the same as here, and since the window lays them
+out in a grid rather than a single column, you can drag sideways too. **Right-click anywhere in
+the thumbnail strip** for the same option without leaving this tab.
+
 ## Traces
 
 If the board has [KiCad data](KiCad-folder), the copper is live: click a pin or a trace and the whole net it belongs to lights up, across every image that has been calibrated.

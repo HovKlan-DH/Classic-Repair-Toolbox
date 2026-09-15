@@ -1,3 +1,10 @@
+# 2.6.0, 2026-October-?
+-----------------------
+- **Application**
+  - Added ability to detach thumbnails into its own window
+  - Added update notification to `ALPHA` development versions from "Configuration" tab
+
+
 # 2.5.0, 2026-September-9
 -------------------------
 - **Application**

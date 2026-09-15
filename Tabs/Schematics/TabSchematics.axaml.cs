@@ -12,6 +12,12 @@
 //   TabSchematics.Viewport.cs                 Zoom, pan and the schematic transform matrix
 //   TabSchematics.Input.cs                    Pointer, wheel, gesture and keyboard event handlers
 //   TabSchematics.Thumbnails.cs               The schematic thumbnail list and drag-to-reorder
+//   TabSchematics.ThumbnailsDetach.cs         Detach-to-window mode: collapses/restores the
+//                                             inline thumbnail column, mirroring
+//                                             EnterFullscreenMode/ExitFullscreenMode. The
+//                                             detached window and its own 2D gallery/drag logic
+//                                             live in SchematicsThumbnailGallery/
+//                                             SchematicsThumbnailsWindow/ThumbnailGalleryPanel
 //   TabSchematics.Highlights.cs               Component highlight overlays and on-schematic labels
 //   TabSchematics.LabelEditor.cs              Label editor mode: lifecycle, save/validate, undo
 //   TabSchematics.LabelEditor.TestSeams.cs    ...ForTests seams letting headless tests drive the
@@ -90,6 +96,12 @@ public partial class TabSchematics : UserControl
     // Fullscreen
     private bool thisIsFullscreenMode;
 
+    // Exposed so Main can skip re-applying the per-board schematics/thumbnail splitter ratio
+    // (OnBoardSelectionChanged) while this mode owns the columns - the same reason
+    // IsThumbnailsDetached is exposed. The two modes COMPOSE rather than exclude each other; see
+    // TabSchematics.ThumbnailsDetach.cs's header for how they hand the restore widths between them.
+    internal bool IsFullscreenModeActive => this.thisIsFullscreenMode;
+
     private GridLength thisRestoreLeftColumnWidth = new(1, GridUnitType.Star);
 
     private GridLength thisRestoreSplitterColumnWidth = new(4, GridUnitType.Pixel);
@@ -132,6 +144,8 @@ public partial class TabSchematics : UserControl
                 this.RefreshKiCadOverlay(forceImmediate: true);
             }
         };
+
+        this.InitializeThumbnailsContextMenu();
     }
 
     public void Initialize(Main mainWindow)
@@ -896,8 +910,15 @@ public partial class TabSchematics : UserControl
         this.SchematicsInnerGrid.ColumnDefinitions[2].Width = this.thisRestoreRightColumnWidth;
         this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = this.thisRestoreRightColumnMinWidth;
 
-        this.SchematicsSplitter.IsVisible = true;
-        this.SchematicsThumbnailList.IsVisible = true;
+        // Not while thumbnails are detached: the inline column belongs to that mode, which is
+        // still active underneath. The widths restored above are the ones fullscreen captured on
+        // the way in, which were already that mode's collapsed values, so the column stays
+        // collapsed - only these two flags would wrongly bring the strip back.
+        if (!this.thisIsThumbnailsDetached)
+        {
+            this.SchematicsSplitter.IsVisible = true;
+            this.SchematicsThumbnailList.IsVisible = true;
+        }
 
         this.RefreshAfterHostChanged();
     }

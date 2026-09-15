@@ -38,12 +38,26 @@ namespace Handlers.OnlineHandling
 
             try
             {
-                _manager = new UpdateManager(new GithubSource(
-                    $"https://github.com/{AppConfig.GitHubOwner}/{AppConfig.GitHubRepo}",
-                    null,
-                    UserSettings.ShowDevelopmentVersionNotification));
+                bool allowAlpha = UserSettings.AllowAlphaVersionNotification;
+                bool allowBeta = UserSettings.ShowDevelopmentVersionNotification;
+
+                // GitHub's "prerelease" flag has no concept of ALPHA vs BETA - it either considers
+                // every pre-release or none - so the stage is read back off the version string and
+                // the feed is filtered BEFORE Velopack ranks it. Filtering afterwards, on the single
+                // candidate it returns, meant a newer alpha permanently hid an available beta from a
+                // beta-only user; see StageFilteredUpdateSource's header.
+                var source = new StageFilteredUpdateSource(
+                    new GithubSource(
+                        $"https://github.com/{AppConfig.GitHubOwner}/{AppConfig.GitHubRepo}",
+                        null,
+                        allowAlpha || allowBeta),
+                    allowAlpha,
+                    allowBeta);
+
+                _manager = new UpdateManager(source);
 
                 _pendingUpdate = await _manager.CheckForUpdatesAsync();
+
                 return _pendingUpdate != null;
             }
             catch (Velopack.Exceptions.NotInstalledException)

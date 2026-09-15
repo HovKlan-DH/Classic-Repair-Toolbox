@@ -979,6 +979,40 @@
 			</Grid>
 		</Border>
 
+		<!-- Right-click menu over the inline thumbnail panel - a quick way to detach thumbnails to
+		     their own window without going to the Configuration tab. Same visual style as
+		     SchematicsLabelEditorMenuBorder below (Schematics_Panels_Bg/Border, CornerRadius 6),
+		     but a separate control: that menu is contributor-mode/label-editor/calibration specific
+		     and lives over the schematic image, not the thumbnail column. -->
+		<!-- Spans ALL THREE columns (no Grid.Column), deliberately. Confined to the thumbnail
+		     column it could never be wider than that column, which is routinely ~170px - the text
+		     then wrapped down to one character per line. It opens to the LEFT of the cursor
+		     instead (see OnThumbnailsPanelPointerPressedForContextMenu), growing over the schematic
+		     image where there is room, so it stays one readable line whatever the splitter is set
+		     to. Its own Width keeps that line from being re-wrapped by the measure pass. -->
+		<Border x:Name="SchematicsThumbnailsContextMenuBorder"
+				Grid.Column="0"
+				Grid.ColumnSpan="3"
+				IsVisible="False"
+				ZIndex="5000"
+				HorizontalAlignment="Left"
+				VerticalAlignment="Top"
+				Width="260"
+				Background="{DynamicResource Schematics_Panels_Bg}"
+				BorderBrush="{DynamicResource Schematics_Panels_Border}"
+				BorderThickness="1"
+				CornerRadius="6"
+				Padding="10,8">
+			<StackPanel Spacing="8">
+				<Button x:Name="DetachThumbnailsContextMenuButton"
+						HorizontalAlignment="Stretch"
+						Click="OnDetachThumbnailsContextMenuButtonClick">
+					<TextBlock Text="Detach thumbnails to its own window"
+							   TextWrapping="Wrap" />
+				</Button>
+			</StackPanel>
+		</Border>
+
 		<Border x:Name="SchematicsLabelEditorMenuBorder"
 				IsVisible="False"
 				ZIndex="5000"

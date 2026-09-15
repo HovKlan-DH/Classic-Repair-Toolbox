@@ -41,10 +41,22 @@ public sealed class MainWindowTests : IDisposable
         WorklogManager.LoadFrom(this.thisWorkspace.Path_("Workbook-" + Guid.NewGuid().ToString("N")));
     }
 
+    // The same for UserSettings, and just as necessary: tests here WRITE settings (the detached
+    // thumbnails pair below), and every write calls Save() against the static _settingsFilePath -
+    // which, without this, is whatever the previously-run class left it at, or the user's real
+    // AppData settings.json if this class runs first. Restoring the value in a finally block is not
+    // enough on its own, since SchematicsThumbnailsWindow's Closing handler also stamps its own
+    // window-layout keys into that file with nothing restoring them.
+    private void RedirectSettingsToTemp()
+    {
+        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+    }
+
     public void Dispose()
     {
-        // Leave the manager pointed somewhere disposable rather than at the real folder.
+        // Leave both pointed somewhere disposable rather than at the real folder/file.
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         this.thisWorkspace.Dispose();
     }
 
@@ -59,6 +71,7 @@ public sealed class MainWindowTests : IDisposable
     public void The_main_window_constructs_without_running_its_startup()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -75,6 +88,7 @@ public sealed class MainWindowTests : IDisposable
     public void Constructing_the_window_initializes_its_tabs()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -92,6 +106,7 @@ public sealed class MainWindowTests : IDisposable
     public void With_no_board_selected_the_board_key_is_empty_and_the_entry_is_null()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -110,6 +125,7 @@ public sealed class MainWindowTests : IDisposable
     public void The_oscilloscope_tab_follows_its_setting()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         bool saved = UserSettings.EnableNetworkConnectedOscilloscopeTab;
 
         try
@@ -140,6 +156,7 @@ public sealed class MainWindowTests : IDisposable
     public void The_worklog_bar_and_workbooks_tab_follow_their_setting_together()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         bool saved = UserSettings.EnableWorklog;
 
         try
@@ -173,6 +190,7 @@ public sealed class MainWindowTests : IDisposable
     public void Hiding_the_selected_workbooks_tab_moves_selection_to_a_visible_tab()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         bool saved = UserSettings.EnableWorklog;
 
         try
@@ -209,6 +227,7 @@ public sealed class MainWindowTests : IDisposable
     public void Hiding_an_unselected_tab_leaves_the_current_selection_alone()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         bool savedWorklog = UserSettings.EnableWorklog;
         bool savedScope = UserSettings.EnableNetworkConnectedOscilloscopeTab;
 
@@ -250,6 +269,7 @@ public sealed class MainWindowTests : IDisposable
     public void Clicking_a_region_button_switches_the_local_region_and_the_active_class()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
         string savedRegion = UserSettings.Region;
 
         try
@@ -283,6 +303,7 @@ public sealed class MainWindowTests : IDisposable
     public void The_region_toggle_is_hidden_when_the_board_has_no_region_components()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -303,6 +324,7 @@ public sealed class MainWindowTests : IDisposable
     public void Both_update_banners_start_hidden()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -320,6 +342,7 @@ public sealed class MainWindowTests : IDisposable
     public void Dismissing_the_main_excel_banner_leaves_the_update_banner_alone()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -341,6 +364,7 @@ public sealed class MainWindowTests : IDisposable
     public void Dismissing_the_update_banner_leaves_the_main_excel_banner_alone()
     {
         this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
 
         UiTest.Run(() =>
         {
@@ -356,6 +380,113 @@ public sealed class MainWindowTests : IDisposable
             Assert.True(excelBanner.IsVisible);
             Assert.False(updateBanner.IsVisible);
         });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // "Detach thumbnails to its own window" persistence
+    // -----------------------------------------------------------------------------------------
+
+    // Reported: the setting never survived to the next launch. The detached window is OWNED by the
+    // main window, so quitting the application closes it too and raised its Closed handler - which
+    // could not tell that apart from the user dismissing the window, and turned the setting off on
+    // every single exit. This test fails against that version.
+    [Fact]
+    public void Quitting_with_thumbnails_detached_keeps_the_setting_on_for_the_next_launch()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+        bool saved = UserSettings.DetachSchematicsThumbnails;
+
+        try
+        {
+            UiTest.Run(() =>
+            {
+                var main = new CRT.Main();
+
+                // Shown because the detached window is opened with Show(owner), which Avalonia
+                // refuses against a non-visible owner.
+                main.Show();
+
+                try
+                {
+                    UserSettings.DetachSchematicsThumbnails = true;
+                    main.ApplyThumbnailsDetachedState();
+                    Assert.True(main.IsThumbnailsWindowOpenForTests);
+
+                    // The application is exiting: OnWindowClosing sets this before Avalonia closes
+                    // the owned thumbnails window.
+                    main.IsApplicationShuttingDownForTests = true;
+                    main.CloseThumbnailsWindowAsUserForTests();
+
+                    // The preference must be untouched, so the next launch comes back detached.
+                    Assert.True(UserSettings.DetachSchematicsThumbnails);
+                }
+                finally
+                {
+                    main.IsApplicationShuttingDownForTests = true;
+                    main.Close();
+                }
+            });
+        }
+        finally
+        {
+            UserSettings.DetachSchematicsThumbnails = saved;
+        }
+    }
+
+    // The other half: closing the detached window by hand means "I don't want this any more", so
+    // the thumbnails EMBED BACK into the Schematics tab and the Configuration checkbox unticks
+    // itself - the window is a third way to turn the feature off, alongside the checkbox.
+    [Fact]
+    public void Closing_the_detached_window_by_hand_re_embeds_the_thumbnails_and_unticks_the_checkbox()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+        bool saved = UserSettings.DetachSchematicsThumbnails;
+
+        try
+        {
+            UiTest.Run(() =>
+            {
+                var main = new CRT.Main();
+                main.Show();
+
+                try
+                {
+                    var schematics = main.GetControl<TabSchematics>("TabSchematicsControl");
+                    var thumbnailList = schematics.GetControl<ListBox>("SchematicsThumbnailList");
+                    var checkBox = main.GetControl<TabConfiguration>("TabConfiguration")
+                        .GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
+
+                    UserSettings.DetachSchematicsThumbnails = true;
+                    main.ApplyThumbnailsDetachedState();
+
+                    Assert.True(main.IsThumbnailsWindowOpenForTests);
+                    Assert.False(thumbnailList.IsVisible);
+
+                    // Not shutting down - the user pressed the window's own close button.
+                    main.CloseThumbnailsWindowAsUserForTests();
+
+                    // The thumbnails are back in the tab...
+                    Assert.True(thumbnailList.IsVisible);
+                    Assert.False(schematics.IsThumbnailsDetached);
+
+                    // ...the window is gone, and both the setting and its checkbox are off.
+                    Assert.False(main.IsThumbnailsWindowOpenForTests);
+                    Assert.False(UserSettings.DetachSchematicsThumbnails);
+                    Assert.False(checkBox.IsChecked);
+                }
+                finally
+                {
+                    main.IsApplicationShuttingDownForTests = true;
+                    main.Close();
+                }
+            });
+        }
+        finally
+        {
+            UserSettings.DetachSchematicsThumbnails = saved;
+        }
     }
 
     // Raises a Button's Click the way a real press does. The handlers under test are private

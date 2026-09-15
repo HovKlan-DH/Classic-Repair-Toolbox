@@ -59,14 +59,26 @@ public partial class TabSchematics
 
     private bool thisSuppressThumbnailSelectionChanged;
 
-    // Lets a headless test put the tab into the mid-drag state SelectSchematicByName has to refuse
-    // to act in, without driving a whole pointer drag-reorder through the list. Set by the drag
-    // handlers in the running app, never by anything else - the same test-seam pattern the
-    // LabelEditor and Worklog parts use.
-    internal bool SuppressThumbnailSelectionChangedForTests
+    // The shared "a reorder is in progress, refuse to change schematic" guard. Set by this tab's
+    // own inline drag handlers, and by the DETACHED gallery's drag
+    // (SchematicsThumbnailGallery.BeginTileDrag/EndTileDrag) - the two reorder surfaces share one
+    // flag rather than each carrying their own, so SelectSchematicByName has a single thing to
+    // check whichever surface the drag is happening on.
+    internal bool SuppressThumbnailSelectionChanged
     {
         get => this.thisSuppressThumbnailSelectionChanged;
         set => this.thisSuppressThumbnailSelectionChanged = value;
+    }
+
+    // Test-only alias, so a headless test can put the tab into that mid-drag state without driving
+    // a whole pointer drag-reorder through the list. Kept SEPARATE from the property above rather
+    // than being the only name for it: production code setting a "...ForTests" member made the
+    // seam's own "never set by anything else" contract false, and any later cleanup that trusted
+    // it would have silently broken the detached drag's cross-tab guard.
+    internal bool SuppressThumbnailSelectionChangedForTests
+    {
+        get => this.SuppressThumbnailSelectionChanged;
+        set => this.SuppressThumbnailSelectionChanged = value;
     }
 
     private PointerPressedEventArgs? thisThumbnailDragStartEventArgs;
@@ -603,8 +615,13 @@ public partial class TabSchematics
 
     // ###########################################################################################
     // Saves the current thumbnail order for the active board, excluding the placeholder item.
+    //
+    // internal rather than private so the detached-window gallery (SchematicsThumbnailGallery,
+    // same assembly) can persist its own 2D reordering through the exact same
+    // UserSettings.SetSchematicsOrder path the inline list uses - order stays consistent whether
+    // thumbnails are inline or detached.
     // ###########################################################################################
-    private void SaveCurrentThumbnailOrder()
+    internal void SaveCurrentThumbnailOrder()
     {
         var boardKey = this.MainWindow?.GetCurrentBoardKey();
         if (string.IsNullOrWhiteSpace(boardKey))
