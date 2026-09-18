@@ -54,6 +54,71 @@ public partial class TabSchematics
     private Point thisKiCadTraceCalibrationDragStartPixelPoint;
 
     // ###########################################################################################
+    // The pointer the calibration press captured to SchematicsContainer, held so the capture can
+    // be released by whatever ends the drag - not only by OnSchematicsPointerReleased.
+    //
+    // The release handler only releases inside its "drag mode is not None" branch, and ESC
+    // (CancelKiCadTraceCalibrationMode) and Apply (ApplyKiCadTraceCalibration) both clear that
+    // mode while the button is still down. The release that follows then falls through to the
+    // "not panning, so nothing to tear down" early return and the capture outlives the gesture,
+    // routing every later pointer event to SchematicsContainer even once the pointer has left it -
+    // the same fault the worklog-resize and worklog-drawing branches each carry a comment about
+    // having already had to fix, recoverable only by switching board.
+    // ###########################################################################################
+    private IPointer? thisKiCadTraceCalibrationCapturedPointer;
+
+    // ###########################################################################################
+    // Releases the calibration drag's pointer capture, if one is still held. Safe to call when
+    // nothing is captured, so every path that ends a calibration drag can call it unconditionally.
+    // ###########################################################################################
+    private void ReleaseKiCadTraceCalibrationPointerCapture()
+    {
+        this.thisKiCadTraceCalibrationCapturedPointer?.Capture(null);
+        this.thisKiCadTraceCalibrationCapturedPointer = null;
+    }
+
+    // ###########################################################################################
+    // What makes a calibration drag cheap: the overlay geometry is built ONCE, at the calibration
+    // recorded here, and every pointer move after that only updates a matrix on the render control.
+    //
+    // The problem this solves, measured on a real board (451 nets, ~5,200 primitives): rebuilding
+    // the overlay costs ~390-540 ms, essentially all of it in the per-net geometry loop
+    // (SetGeometry is only ~15-20 ms). The per-net primitive cache cannot absorb any of it during
+    // a drag, because the calibration values sit in its generation key (see KiCadOverlayCacheKeys)
+    // - it recorded 0 hits and 451 MISSES on every single frame. So each frame rebuilt identical
+    // shapes at slightly shifted coordinates.
+    //
+    // A calibration change is a pure affine transform though - scale, optional mirror, translate,
+    // no rotation or shear - so the shift can be applied at draw time instead. That is exactly how
+    // zoom and pan already behave here (KiCadOverlayRenderControl.ArrangeOverride deliberately does
+    // not re-record primitives when only the transform changes). The matrix is derived by
+    // Handlers/Geometry/KiCadCalibrationTransform, which is unit tested against the very same
+    // world-to-local mapping the geometry was built with, so "transformed" and "rebuilt" provably
+    // land in the same place.
+    //
+    // MEASURED before and after, on the same board, so the next person does not have to re-derive
+    // any of it. Before: ~390-540 ms per drag frame, essentially all of it the per-net geometry
+    // loop. After: ~0.7-1.0 ms in this handler, ~0.7 ms in SetGeometry and ~6 ms in the control's
+    // Render - roughly 7 ms of measurable work per frame, with no rebuild at all.
+    //
+    // What is left is Avalonia rasterising the primitives themselves: Render reports drawing 5,853
+    // of 5,853, because at calibration zoom the whole board is on screen and the viewport cull has
+    // nothing to discard. That is the floor for this approach, and it is NOT worth chasing with
+    // another "cheaper geometry while dragging" attempt - one was tried (dropping zone fills) and
+    // measured as buying nothing, because the primitive count barely moved. Reducing it further
+    // means drawing genuinely fewer traces, which costs the user the alignment feedback that is the
+    // entire point of calibration mode.
+    //
+    // These three are only meaningful while a drag is in progress; HasValue on the reference is
+    // what says a drag-time transform is currently possible at all.
+    // ###########################################################################################
+    private KiCadCalibrationValues? thisKiCadTraceCalibrationDragReferenceCalibration;
+
+    private Rect thisKiCadTraceCalibrationDragReferenceWorldBounds;
+
+    private Rect thisKiCadTraceCalibrationDragReferenceContentRect;
+
+    // ###########################################################################################
     // The four calibration edges as the one value KiCadCalibrationGeometry works on, and back.
     //
     // The fields stay the storage - this is only the adapter that lets the maths live outside
@@ -178,7 +243,16 @@ public partial class TabSchematics
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
         this.thisIsKiCadTraceCalibrationMode = true;
 
+        // Entering the mode switches the active calibration source, so anything recorded from the
+        // previous geometry is stale; the refresh at the end of this method records it afresh.
+        this.ClearKiCadTraceCalibrationDragTransform();
+
         this.CheckGlobalShowCalibrationTracesAndPads.IsChecked = true;
+
+        // Hover hit-test caches bake in whichever calibration was active when they were built,
+        // and entering calibration mode switches GetKiCadViewCalibration from the persisted box
+        // to the live drag box - see InvalidateKiCadHoverHitTestCachesForCalibrationChange.
+        this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
         this.HideLabelEditorMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
@@ -196,6 +270,12 @@ public partial class TabSchematics
     // ###########################################################################################
     private void CancelKiCadTraceCalibrationMode()
     {
+        this.ClearKiCadTraceCalibrationDragTransform();
+
+        // ESC can arrive with the button still down, mid-drag. Clearing the drag mode below is what
+        // makes the eventual PointerReleased skip its own release, so the capture has to go here.
+        this.ReleaseKiCadTraceCalibrationPointerCapture();
+
         this.thisIsKiCadTraceCalibrationMode = false;
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
         this.thisKiCadCalibrationImageLeft = 0.0;
@@ -208,6 +288,10 @@ public partial class TabSchematics
         this.thisKiCadCalibrationStartImageBottom = 0.0;
 
         this.CheckGlobalShowCalibrationTracesAndPads.IsChecked = true;
+
+        // Same reasoning as on entry: leaving calibration mode switches the active calibration
+        // back to the persisted box, and any cache built against the live drag box must go with it.
+        this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
         this.HideLabelEditorMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
@@ -263,9 +347,24 @@ public partial class TabSchematics
             mirrorX,
             mirrorY);
 
+        this.ClearKiCadTraceCalibrationDragTransform();
+
+        // Same reason as the cancel path: Apply can be reached from the keyboard while a drag is
+        // still live, and clearing the drag mode below stops PointerReleased releasing it.
+        this.ReleaseKiCadTraceCalibrationPointerCapture();
+
         this.thisIsKiCadTraceCalibrationMode = false;
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
         this.CheckGlobalShowCalibrationTracesAndPads.IsChecked = true;
+
+        // The bug this fixes: the newly-saved calibration takes effect for RENDERING immediately
+        // (RefreshKiCadOverlay recomputes every primitive on every call), but the hover hit-test
+        // caches do not recompute - they are built once and served from a dictionary keyed by
+        // schematic/pcb identity only, never by calibration. Without this, hover kept testing
+        // against whichever calibration (live drag box, or the pre-calibration persisted one) was
+        // active the first time hover ran, so a freshly-calibrated schematic highlighted nothing
+        // where the visible traces now are, until the app restarted and rebuilt the caches fresh.
+        this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
         this.HideLabelEditorMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
@@ -638,6 +737,11 @@ public partial class TabSchematics
         this.thisKiCadCalibrationStartImageTop = this.thisKiCadCalibrationImageTop;
         this.thisKiCadCalibrationStartImageRight = this.thisKiCadCalibrationImageRight;
         this.thisKiCadCalibrationStartImageBottom = this.thisKiCadCalibrationImageBottom;
+
+        // One full rebuild at the box's starting position, so the geometry the rest of this drag
+        // transforms is known to exist and is known to match the reference recorded by
+        // NoteKiCadOverlayBuiltCalibration. Every move after this is a matrix update.
+        this.RefreshKiCadOverlay(forceImmediate: true);
     }
 
     // ###########################################################################################
@@ -664,16 +768,181 @@ public partial class TabSchematics
                 dx,
                 dy));
 
-        this.RefreshKiCadOverlay(forceImmediate: true);
+        this.RefreshKiCadTraceCalibrationDragOverlay();
     }
 
     // ###########################################################################################
-    // Completes the active KiCad calibration drag and clears the transient drag mode so the overlay
-    // returns to idle calibration interaction state.
+    // Redraws the calibration overlay during a drag WITHOUT rebuilding the trace/pad geometry.
+    //
+    // The traces were built once at the drag's starting calibration; this only works out how that
+    // geometry has to be shifted and scaled to match the box's current position, hands the result
+    // to the render control as a matrix, and rebuilds the box/handles (which are a handful of
+    // rectangles, not thousands of primitives).
+    //
+    // Falls back to a full rebuild whenever the delta cannot be built - no reference recorded yet,
+    // or a degenerate calibration. Correct output always wins over a fast one.
+    // ###########################################################################################
+    private void RefreshKiCadTraceCalibrationDragOverlay()
+    {
+        if (!this.TryApplyKiCadTraceCalibrationDragTransform())
+        {
+            this.RefreshKiCadOverlay(forceImmediate: true);
+            return;
+        }
+
+        this.RefreshKiCadCalibrationBoxPrimitiveOnly();
+    }
+
+    // ###########################################################################################
+    // Works out the drag-time overlay transform and applies it, returning false when there is no
+    // usable reference to transform from.
+    // ###########################################################################################
+    private bool TryApplyKiCadTraceCalibrationDragTransform()
+    {
+        if (this.thisKiCadTraceCalibrationDragReferenceCalibration == null ||
+            this.currentFullResBitmap == null)
+        {
+            return false;
+        }
+
+        var current = this.GetKiCadViewCalibration(this.GetCurrentSchematicName());
+
+        if (!KiCadCalibrationTransform.TryBuildDeltaTransform(
+                this.thisKiCadTraceCalibrationDragReferenceCalibration.Value,
+                new KiCadCalibrationValues(
+                    current.ScaleX,
+                    current.ScaleY,
+                    current.OffsetX,
+                    current.OffsetY,
+                    current.MirrorX,
+                    current.MirrorY),
+                this.thisKiCadTraceCalibrationDragReferenceWorldBounds,
+                this.thisKiCadTraceCalibrationDragReferenceContentRect,
+                this.currentFullResBitmap.PixelSize.Width,
+                this.currentFullResBitmap.PixelSize.Height,
+                out var transform))
+        {
+            return false;
+        }
+
+        this.SchematicsKiCadOverlayCanvas.OverlayTransform = transform;
+        return true;
+    }
+
+    // ###########################################################################################
+    // Records the calibration (and the world/content rects) that the overlay geometry currently on
+    // screen was built against, so a drag can transform that geometry instead of rebuilding it.
+    //
+    // Called from both render paths rather than from the drag, because only the render knows what
+    // it actually baked in - and a rebuild triggered by anything else mid-drag (a hover, a
+    // background net cache finishing) must re-point the reference at the new geometry, or the next
+    // move would transform from a calibration that is no longer on screen.
+    //
+    // It also clears any transform already applied: the geometry has just been rebuilt at the
+    // current calibration, so it needs no shifting, and leaving a stale matrix on the control would
+    // double-apply the drag so far.
+    // ###########################################################################################
+    private void NoteKiCadOverlayBuiltCalibration(
+        KiCadViewCalibration calibration,
+        Rect worldBounds,
+        Rect contentRect)
+    {
+        this.thisKiCadTraceCalibrationDragReferenceCalibration = new KiCadCalibrationValues(
+            calibration.ScaleX,
+            calibration.ScaleY,
+            calibration.OffsetX,
+            calibration.OffsetY,
+            calibration.MirrorX,
+            calibration.MirrorY);
+
+        this.thisKiCadTraceCalibrationDragReferenceWorldBounds = worldBounds;
+        this.thisKiCadTraceCalibrationDragReferenceContentRect = contentRect;
+
+        this.SchematicsKiCadOverlayCanvas.OverlayTransform = Matrix.Identity;
+    }
+
+    // ###########################################################################################
+    // Drops the drag-time reference and any transform applied from it. Anything that changes which
+    // geometry is on screen, or that ends calibration, goes through here so a later drag can never
+    // transform from a reference belonging to different geometry.
+    // ###########################################################################################
+    private void ClearKiCadTraceCalibrationDragTransform()
+    {
+        this.thisKiCadTraceCalibrationDragReferenceCalibration = null;
+        this.thisKiCadTraceCalibrationDragReferenceWorldBounds = default;
+        this.thisKiCadTraceCalibrationDragReferenceContentRect = default;
+
+        this.SchematicsKiCadOverlayCanvas.OverlayTransform = Matrix.Identity;
+    }
+
+    // ###########################################################################################
+    // Replaces just the calibration box/handles primitive in the already-drawn overlay, leaving
+    // whichever trace/pad primitives were last rebuilt untouched. RefreshKiCadOverlayNow always
+    // appends the box as the LAST primitive (calibration mode's branch), which is what makes this
+    // safe - there is exactly one to replace and it is always at the end.
+    // ###########################################################################################
+    private void RefreshKiCadCalibrationBoxPrimitiveOnly()
+    {
+        var primitives = this.SchematicsKiCadOverlayCanvas.Primitives;
+        var updatedPrimitives = primitives.Count > 0
+            ? primitives.Take(primitives.Count - 1).ToList()
+            : new List<KiCadOverlayPrimitive>();
+
+        updatedPrimitives.Add(this.BuildKiCadCalibrationBoxPrimitiveForCurrentOverlayTransform());
+        this.SchematicsKiCadOverlayCanvas.SetGeometry(updatedPrimitives);
+    }
+
+    // ###########################################################################################
+    // The calibration box, pre-compensated for whatever overlay transform is currently applied.
+    //
+    // The box shares a canvas with the traces, so it is drawn through the same transform - but the
+    // traces NEED that transform (they were built at the drag's starting calibration) while the box
+    // is built fresh at the box's actual position and needs none. Without this the box would be
+    // shifted twice and would drift away from the pointer as the drag went on.
+    //
+    // Pre-multiplying by the inverse cancels the transform for this one primitive. A non-invertible
+    // transform cannot arise from a usable calibration - TryBuildDeltaTransform refuses to produce
+    // one - but it falls back to the plain box rather than dropping the box entirely.
+    // ###########################################################################################
+    private KiCadOverlayPrimitive BuildKiCadCalibrationBoxPrimitiveForCurrentOverlayTransform()
+    {
+        var primitive = this.BuildKiCadCalibrationBoxPrimitive();
+        var overlayTransform = this.SchematicsKiCadOverlayCanvas.OverlayTransform;
+
+        if (overlayTransform == Matrix.Identity ||
+            primitive.Geometry == null ||
+            !overlayTransform.TryInvert(out var inverseTransform))
+        {
+            return primitive;
+        }
+
+        var compensatedGeometry = primitive.Geometry.Clone();
+        compensatedGeometry.Transform = new MatrixTransform(inverseTransform);
+
+        return new KiCadOverlayPrimitive
+        {
+            Kind = primitive.Kind,
+            Geometry = compensatedGeometry,
+            Pen = primitive.Pen,
+            Fill = primitive.Fill
+        };
+    }
+
+    // ###########################################################################################
+    // Completes the active KiCad calibration drag, clears the transient drag mode, and forces one
+    // final full-quality refresh - the throttle above can otherwise leave the traces/pads one step
+    // behind the box's true resting position after the last pointer move of the drag.
     // ###########################################################################################
     private void CompleteKiCadTraceCalibrationDrag()
     {
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
+
+        // One real rebuild at the box's final position, which also re-points the drag reference at
+        // the freshly built geometry and clears the transform (NoteKiCadOverlayBuiltCalibration).
+        // The transformed overlay is geometrically identical to this, so nothing visibly jumps -
+        // but from here on the primitives are genuinely built at the calibration they represent,
+        // which is what the hover hit-test caches and the next drag both need.
+        this.RefreshKiCadOverlay(forceImmediate: true);
     }
 
     // ###########################################################################################

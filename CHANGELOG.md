@@ -2,7 +2,10 @@
 -----------------------
 - **Application**
   - Added ability to detach thumbnails into its own window
+  - Added ability to hide hardware, board or schematic images from "Configuration" tab
   - Added update notification to `ALPHA` development versions from "Configuration" tab
+  - Fixed traces will react correctly after KiCad calibration applied
+  - Fixed KiCad calibration now feels more responsive when dragging traces
 
 
 # 2.5.0, 2026-September-9

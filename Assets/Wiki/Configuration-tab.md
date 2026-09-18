@@ -105,6 +105,28 @@ so reopening this tab may show a different country with the same code. Nothing i
 setting only changes how your own figures are labelled, and changing it relabels costs you have
 already recorded rather than recalculating them.
 
+## Visible hardware, boards and schematics
+
+The right-hand panel lists every hardware, board and schematic image CRT knows about, each with
+its own checkbox, fully expanded. Untick anything you do not want cluttering the hardware and board
+drop-downs or the schematic thumbnails - useful once the list of supported hardware grows past what
+you personally work on.
+
+Unticking an item disables its children (they grey out) rather than clearing their own ticks, so
+nothing is lost: retick the parent and everything underneath reappears exactly as you left it. A
+hardware with no ticked boards left, or a board with no ticked schematics left, drops out of its
+drop-down entirely.
+
+An unticked item is shown in red, but only while it is still active - once its parent is also
+unticked (and greyed out), its own red is hidden too, so unticking a whole hardware does not turn
+its entire board and schematic list red as well.
+
+Every hardware and board also has a small arrow to collapse and expand it - handy for hiding a
+hardware or board you have unticked a lot of, so it stops taking up space in the list. Each one
+remembers whether you left it collapsed or expanded.
+
+Drag the splitter between the two panels to resize; the width is remembered.
+
 ## Your files
 
 Three buttons, one per folder:

@@ -85,6 +85,24 @@ namespace Handlers.DataHandling
         [JsonPropertyName("leftPanelWidth")] public double LeftPanelWidth { get; set; } = 200.0;
         [JsonPropertyName("workbooksLeftPanelWidth")] public double WorkbooksLeftPanelWidth { get; set; } = 200.0;
         [JsonPropertyName("workbooksEntryListWidth")] public double WorkbooksEntryListWidth { get; set; } = 347.0;
+        [JsonPropertyName("configurationCataloguePanelWidth")] public double ConfigurationCataloguePanelWidth { get; set; } = 320.0;
+
+        // Hardware/board/schematic keys the user has UNCHECKED in the Configuration tab's
+        // visibility tree - see CatalogueVisibility. Unlisted keys default to checked/visible, so
+        // newly synced hardware, boards and schematics show up with no migration needed.
+        //
+        // Case-insensitive, like every other hardware/board/schematic name comparison in the app.
+        // System.Text.Json REPLACES the set on deserialization rather than filling this one, which
+        // drops the comparer - NormalizeCatalogueKeySets re-applies it after every load.
+        [JsonPropertyName("catalogueUncheckedKeys")] public HashSet<string> CatalogueUncheckedKeys { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        // Hardware/board keys the user has COLLAPSED in the same tree - only hardware and board
+        // rows can collapse (a schematic row has no children). Unlisted keys default to expanded,
+        // matching the tree's "fully expanded by default" starting state. Same comparer, same
+        // deserialization caveat as above.
+        [JsonPropertyName("catalogueCollapsedKeys")] public HashSet<string> CatalogueCollapsedKeys { get; set; } =
+            new(StringComparer.OrdinalIgnoreCase);
 
         // Whether the Workbooks tab's workbook-summary strip is expanded to its full breakdown.
         // Collapsed by default: the one-line headline is always visible either way, and starting
@@ -871,6 +889,91 @@ namespace Handlers.DataHandling
             }
         }
 
+        public static double ConfigurationCataloguePanelWidth
+        {
+            get => _data.ConfigurationCataloguePanelWidth;
+            set
+            {
+                _data.ConfigurationCataloguePanelWidth = value;
+                Logger.Info($"Setting changed: [ConfigurationCataloguePanelWidth] [{value:F1}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // Rebuilds both catalogue key sets with the case-insensitive comparer they are declared
+        // with. Needed because System.Text.Json constructs its OWN HashSet for a collection
+        // property and assigns it, so the comparer on the field initializer is thrown away on every
+        // load - leaving an ordinal set that treats "Commodore 64|250407" and "commodore 64|250407"
+        // as different keys, which silently un-hides an item the user hid if the synced data ever
+        // recases a name, with no orphaned entry visible anywhere to clear.
+        //
+        // Deliberately NOT a migration: nothing is written back, the sets are simply rebuilt in
+        // memory on each load. A duplicate that differs only in case (possible in a hand-edited
+        // settings file) collapses into one entry, which is the correct reading of it.
+        // ###########################################################################################
+        private static void NormalizeCatalogueKeySets()
+        {
+            _data.CatalogueUncheckedKeys =
+                new HashSet<string>(_data.CatalogueUncheckedKeys ?? new HashSet<string>(), CatalogueVisibility.KeyComparer);
+
+            _data.CatalogueCollapsedKeys =
+                new HashSet<string>(_data.CatalogueCollapsedKeys ?? new HashSet<string>(), CatalogueVisibility.KeyComparer);
+        }
+
+        // Test seam: re-applies the comparer without going through a file load, so a test can prove
+        // an ordinal set deserialized from disk answers case-insensitively afterwards.
+        internal static void NormalizeCatalogueKeySetsForTests() => NormalizeCatalogueKeySets();
+
+        // ###########################################################################################
+        // Which hardware/board/schematic keys are checked (visible) in the Configuration tab's
+        // catalogue tree - see CatalogueVisibility for the key format and the ancestor-AND
+        // visibility rule applied to these. Unlisted keys default to checked.
+        // ###########################################################################################
+        public static bool IsCatalogueKeyChecked(string key) =>
+            !CatalogueVisibility.IsKeyListed(_data.CatalogueUncheckedKeys, key);
+
+        public static void SetCatalogueKeyChecked(string key, bool isChecked)
+        {
+            bool changed = isChecked
+                ? _data.CatalogueUncheckedKeys.Remove(key)
+                : _data.CatalogueUncheckedKeys.Add(key);
+
+            if (!changed)
+            {
+                return;
+            }
+
+            Logger.Info($"Setting changed: [CatalogueUncheckedKeys] [{key}] [{(isChecked ? "checked" : "unchecked")}]");
+            Save();
+        }
+
+        public static IReadOnlySet<string> CatalogueUncheckedKeysSnapshot => _data.CatalogueUncheckedKeys;
+
+        // ###########################################################################################
+        // Which hardware/board rows are collapsed in the Configuration tab's catalogue tree.
+        // Unlisted keys default to expanded.
+        // ###########################################################################################
+        public static bool IsCatalogueKeyCollapsed(string key) =>
+            CatalogueVisibility.IsKeyListed(_data.CatalogueCollapsedKeys, key);
+
+        public static void SetCatalogueKeyCollapsed(string key, bool isCollapsed)
+        {
+            bool changed = isCollapsed
+                ? _data.CatalogueCollapsedKeys.Add(key)
+                : _data.CatalogueCollapsedKeys.Remove(key);
+
+            if (!changed)
+            {
+                return;
+            }
+
+            Logger.Info($"Setting changed: [CatalogueCollapsedKeys] [{key}] [{(isCollapsed ? "collapsed" : "expanded")}]");
+            Save();
+        }
+
+        public static IReadOnlySet<string> CatalogueCollapsedKeysSnapshot => _data.CatalogueCollapsedKeys;
+
         public static string ThemeVariant
         {
             get => string.Equals(_data.ThemeVariant, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
@@ -1319,6 +1422,7 @@ namespace Handlers.DataHandling
                 {
                     _data = loaded;
 
+                    NormalizeCatalogueKeySets();
                     MigrateLegacyContributorModeSettings();
 
                     var addedUserThemeDefaults = EnsureUserThemeColors();
@@ -1382,6 +1486,8 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [ContributorModeByBoard] [{_data.ContributorModeByBoard.Count} entries]");
                     Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
                     Logger.Info($"        [ActiveWorkbookIdByBoard] [{_data.ActiveWorkbookIdByBoard.Count} entries]");
+                    Logger.Info($"        [CatalogueUncheckedKeys] [{_data.CatalogueUncheckedKeys.Count} entries]");
+                    Logger.Info($"        [CatalogueCollapsedKeys] [{_data.CatalogueCollapsedKeys.Count} entries]");
                     Logger.Info($"        [ThumbnailWindowSettingsByBoard] [{_data.ThumbnailWindowSettingsByBoard.Count} entries]");
                     Logger.Info($"        [OscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
                     Logger.Info($"        [OscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");

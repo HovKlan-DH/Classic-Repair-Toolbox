@@ -172,6 +172,14 @@ public partial class TabSchematics
     {
         this.ClearKiCadOverlay();
 
+        // Dropped up front, and re-established only by a render path that actually builds geometry
+        // (NoteKiCadOverlayBuiltCalibration). Several paths below return without drawing anything -
+        // no project, no view, the calibration traces toggle unticked - and a reference surviving
+        // one of those would describe geometry that is no longer on screen, which the next
+        // calibration drag would then transform from. Clearing here makes that impossible rather
+        // than relying on every early return remembering to do it.
+        this.ClearKiCadTraceCalibrationDragTransform();
+
         var activeTracePreviewReferences = this.BuildActiveKiCadTracePreviewReferences();
         var activeTracePreviewNets = this.BuildActiveKiCadTracePreviewNetNames();
 
@@ -406,6 +414,10 @@ public partial class TabSchematics
 
         string currentSchematicName = this.GetCurrentSchematicName();
         var calibration = this.GetKiCadViewCalibration(currentSchematicName);
+
+        // Records what this geometry was baked against, so a calibration drag can transform it
+        // rather than rebuild it. See the drag-reference fields in TabSchematics.KiCad.Calibration.
+        this.NoteKiCadOverlayBuiltCalibration(calibration, worldBounds, contentRect);
 
         Color overlayColor = Colors.DeepSkyBlue;
         double baseOpacity = 0.20;
@@ -873,7 +885,6 @@ public partial class TabSchematics
             }
         }
 
-
         this.SchematicsKiCadOverlayCanvas.SetGeometry(primitives);
     }
 
@@ -912,6 +923,9 @@ public partial class TabSchematics
 
         string currentSchematicName = this.GetCurrentSchematicName();
         var calibration = this.GetKiCadViewCalibration(currentSchematicName);
+
+        // Same reason as the PCB path - see NoteKiCadOverlayBuiltCalibration.
+        this.NoteKiCadOverlayBuiltCalibration(calibration, worldBounds, contentRect);
 
         Color overlayColor = Colors.Orange;
         double baseOpacity = 0.20;

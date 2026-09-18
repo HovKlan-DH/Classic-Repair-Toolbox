@@ -67,6 +67,39 @@ namespace Tabs.TabSchematics
         public Matrix ViewMatrix { get; set; } = Matrix.Identity;
 
         // ###########################################################################################
+        // An extra transform applied to every primitive at DRAW time, on top of the coordinates they
+        // already carry.
+        //
+        // This is what lets a KiCad calibration drag move the whole overlay without rebuilding it.
+        // The primitives bake the calibration that was active when they were built, and rebuilding
+        // them costs ~390-540 ms on a real board (451 nets, every one of them a per-net cache miss,
+        // because the calibration values are part of that cache's key). A calibration change is a
+        // pure affine transform though, so during a drag the geometry is built ONCE and only this
+        // matrix is updated - see Handlers/Geometry/KiCadCalibrationTransform, which derives it and
+        // is tested against the real world-to-local mapping.
+        //
+        // Identity is the normal state, and it means the primitives are drawn exactly as built.
+        // Setting this invalidates on its own, unlike ViewMatrix: nothing else changes when only
+        // this moves, so there is no other invalidation to ride along with.
+        // ###########################################################################################
+        public Matrix OverlayTransform
+        {
+            get => this.thisOverlayTransform;
+            set
+            {
+                if (this.thisOverlayTransform == value)
+                {
+                    return;
+                }
+
+                this.thisOverlayTransform = value;
+                this.InvalidateVisual();
+            }
+        }
+
+        private Matrix thisOverlayTransform = Matrix.Identity;
+
+        // ###########################################################################################
         // Replaces the current render geometry, prepares each primitive's cached path, pen and
         // bounds, and triggers a redraw.
         // ###########################################################################################
@@ -286,6 +319,21 @@ namespace Tabs.TabSchematics
             var visibleRect = OverlayCullGeometry.GetVisibleLocalRect(
                 new Rect(0, 0, this.Bounds.Width, this.Bounds.Height),
                 this.ViewMatrix);
+
+            bool hasOverlayTransform = this.thisOverlayTransform != Matrix.Identity;
+
+            // The prepared bounds are in the primitives' OWN coordinates, so when a transform is
+            // being applied the visible rect has to be pulled back into that same space before
+            // anything is compared against it. Culling against the untransformed rect instead makes
+            // traces vanish exactly when the calibration box is dragged far enough to matter.
+            if (hasOverlayTransform && this.thisOverlayTransform.TryInvert(out var inverseOverlay))
+            {
+                visibleRect = visibleRect.TransformToAABB(inverseOverlay);
+            }
+
+            using var overlayTransformState = hasOverlayTransform
+                ? context.PushTransform(this.thisOverlayTransform)
+                : default;
 
             int drawn = 0;
 

@@ -600,6 +600,45 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
+    // Drops the SCHEMATIC KiCad hover hit-test caches, then resets the hover throttle so the next
+    // pointer move rebuilds from scratch.
+    //
+    // The schematic cache is keyed by schematicName/schematicIndex - never by the active
+    // calibration - because it bakes the CURRENT calibration's LOCAL points directly into the
+    // cached candidates (GetOrCreateKiCadSchematicHoverHitTestCache maps every one of them through
+    // MapKiCadWorldToLocal). That is fine while calibration never changes under a cached entry, but
+    // calibrating (dragging the box, then Apply) changes exactly that without touching the key, so
+    // a cache built from a hover during the drag - or from the pre-calibration persisted values -
+    // keeps being served after Apply, even though RefreshKiCadOverlay draws correctly because it
+    // recomputes on every call instead of caching. Reported as: hovering with SHIFT (or the
+    // always-on hover mode) missed traces after calibrating a schematic for the first time, until
+    // the app was restarted (which clears these dictionaries via
+    // LoadKiCadProjectForCurrentBoardAsync anyway).
+    //
+    // The PCB caches are deliberately NOT cleared here, although an earlier version of this method
+    // did clear them. KiCadHoverIndex.BuildKiCadPcbHoverHitTestCache(pcb, requiredLayer) takes no
+    // calibration and stores WORLD-space geometry only - the calibration is applied per hit-test,
+    // after the cache is consulted - so nothing in it can go stale when the calibration changes.
+    // Clearing it therefore bought nothing and cost a full asynchronous rebuild of a dense board's
+    // index three times per calibration session (mode entry, and again on cancel or apply).
+    //
+    // It was also unsound: clearing thisKiCadPcbHoverHitTestBuildTaskByKey destroys the de-dup
+    // guard without being able to cancel the task it was guarding, so a second concurrent build of
+    // the same index starts, and whichever task finishes first removes the registry entry the other
+    // one now owns.
+    //
+    // Called when calibration mode starts, is cancelled, and is applied - any of the three can
+    // leave a schematic cache behind that was built against a calibration different from what is
+    // active afterwards.
+    // ###########################################################################################
+    private void InvalidateKiCadHoverHitTestCachesForCalibrationChange()
+    {
+        this.thisKiCadSchematicHoverHitTestCacheByKey.Clear();
+
+        this.ResetKiCadHoverHitTestThrottle();
+    }
+
+    // ###########################################################################################
     // Limits how often expensive KiCad hover hit-tests can run while the pointer is moving.
     // This keeps dense PCB overlays responsive during fast pan and pointer motion.
     // ###########################################################################################
