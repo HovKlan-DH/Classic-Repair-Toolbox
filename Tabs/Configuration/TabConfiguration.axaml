@@ -69,8 +69,25 @@
 		</Style>
 	</UserControl.Styles>
 
-	<Grid RowDefinitions="*,Auto"
+	<Grid x:Name="RootSplitGrid"
           Margin="16">
+
+		<!--
+		The two MinWidths plus the splitter have to FIT inside the narrowest this tab can get,
+		or the catalogue panel is simply clipped: nothing here scrolls horizontally, and the
+		window's own MinWidth="800" leaves this tab about 530 DIP once Main's 200 DIP sidebar,
+		its splitter and this Grid's own 16 DIP margins are taken off. 300 + 4 + 200 fits that
+		with room to spare; 360 + 4 + 260 did not. 300 still clears the widest fixed content on
+		the left (the three 260-wide folder buttons), and every other row wraps.
+		-->
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="*" MinWidth="300" />
+			<ColumnDefinition Width="4" />
+			<ColumnDefinition Width="320" MinWidth="200" />
+		</Grid.ColumnDefinitions>
+
+		<Grid Grid.Column="0"
+              RowDefinitions="*,Auto">
 
 		<ScrollViewer Grid.Row="0"
                       HorizontalScrollBarVisibility="Disabled"
@@ -293,6 +310,47 @@
 		</StackPanel>
 
 		</ScrollViewer>
+
+		</Grid>
+
+		<GridSplitter x:Name="CatalogueSplitter"
+                      Grid.Column="1" />
+
+		<Border x:Name="CataloguePanelBorder"
+                Grid.Column="2"
+                Background="{DynamicResource Form_Bg}"
+                BorderBrush="{DynamicResource Form_Border}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12">
+
+			<Grid RowDefinitions="Auto,Auto,*">
+
+				<TextBlock Grid.Row="0"
+                           Text="Visible hardware, boards and schematics"
+                           FontSize="12"
+                           FontWeight="SemiBold" />
+
+				<TextBlock Grid.Row="1"
+                           Text="Uncheck anything you want hidden from the hardware, board and schematic selections."
+                           TextWrapping="Wrap"
+                           Opacity="0.75"
+                           FontSize="11"
+                           Margin="0,4,0,10" />
+
+				<ScrollViewer Grid.Row="2"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              AllowAutoHide="False">
+
+					<StackPanel x:Name="CatalogueTreePanel"
+                                Spacing="0" />
+
+				</ScrollViewer>
+
+			</Grid>
+
+		</Border>
 
 	</Grid>
 </UserControl>

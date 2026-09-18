@@ -182,6 +182,7 @@ namespace CRT
             this.TabOverview.Initialize(this);
             this.TabContribute.Initialize(this);
             this.TabWorkbooks.Initialize(this);
+            this.TabConfiguration.Initialize(this);
 
             this.MainTabControl.SelectionChanged += this.OnMainTabControlSelectionChanged;
 
@@ -783,10 +784,7 @@ namespace CRT
         // ###########################################################################################
         private void PopulateHardwareDropDown()
         {
-            var hardwareNames = DataManager.HardwareBoards
-                .Select(e => e.HardwareName)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var hardwareNames = BuildVisibleHardwareNames(UserSettings.CatalogueUncheckedKeysSnapshot);
 
             this.HardwareComboBox.ItemsSource = hardwareNames;
 
@@ -801,6 +799,22 @@ namespace CRT
                 string.Equals(h, lastHardware, StringComparison.OrdinalIgnoreCase));
 
             this.HardwareComboBox.SelectedIndex = savedIndex >= 0 ? savedIndex : 0;
+        }
+
+        // ###########################################################################################
+        // Whether a hardware belongs in the Hardware drop-down: not itself unchecked, AND has at
+        // least one board that is not itself unchecked. Schematic-level visibility is deliberately
+        // NOT considered here - that would mean loading every board's Excel file just to populate a
+        // drop-down, which the board dropdown/thumbnail filters already handle lazily per selection.
+        // ###########################################################################################
+        private static bool HasAnyVisibleBoard(IReadOnlySet<string> uncheckedKeys, string hardwareName)
+        {
+            if (!CatalogueVisibility.IsHardwareVisible(uncheckedKeys, hardwareName))
+                return false;
+
+            return DataManager.HardwareBoards.Any(entry =>
+                string.Equals(entry.HardwareName, hardwareName, StringComparison.OrdinalIgnoreCase) &&
+                CatalogueVisibility.IsBoardVisible(uncheckedKeys, hardwareName, entry.BoardName));
         }
 
         // ###########################################################################################
@@ -854,11 +868,8 @@ namespace CRT
 
             var selectedHardware = this.HardwareComboBox.SelectedItem as string;
 
-            var boards = DataManager.HardwareBoards
-                .Where(entry => string.Equals(entry.HardwareName, selectedHardware, StringComparison.OrdinalIgnoreCase))
-                .Select(entry => entry.BoardName)
-                .Where(b => !string.IsNullOrWhiteSpace(b))
-                .ToList();
+            var boards = this.BuildVisibleBoardNamesForSelectedHardware(
+                UserSettings.CatalogueUncheckedKeysSnapshot);
 
             this.BoardComboBox.ItemsSource = boards;
 
@@ -889,6 +900,21 @@ namespace CRT
         // ###########################################################################################
         private async void OnBoardSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
+            await this.LoadSelectedBoardAsync(clearComponentSearch: ReferenceEquals(sender, this.BoardComboBox));
+        }
+
+        // ###########################################################################################
+        // The board load itself, separated from the SelectionChanged handler so it can also be
+        // invoked where no selection actually changed - see ApplyCatalogueVisibility, which needs a
+        // reload when a schematic under the CURRENT board is hidden or shown and re-selecting the
+        // same index raises no event.
+        //
+        // clearComponentSearch carries what the handler used to read off its sender: the component
+        // search box is emptied for a board change the user made in the drop-down, but not for a
+        // load triggered some other way.
+        // ###########################################################################################
+        private async Task LoadSelectedBoardAsync(bool clearComponentSearch)
+        {
             this.TabSchematicsControl.CancelWorklogEntryMode();
 
             // The Workbooks tab's search box is deliberately NOT cleared here. It used to be, on
@@ -902,9 +928,7 @@ namespace CRT
             this._suppressCategoryFilterSave = true;
             int loadVersion = unchecked(++this._boardSelectionLoadVersion);
 
-            bool thisShouldClearComponentSearch = ReferenceEquals(sender, this.BoardComboBox);
-
-            if (thisShouldClearComponentSearch)
+            if (clearComponentSearch)
             {
                 this._suppressComponentSearchRefresh = true;
                 this.ComponentSearchTextBox.Text = string.Empty;
@@ -1065,8 +1089,14 @@ namespace CRT
                     var highlightRects = await Task.Run(() =>
                         HighlightRectBuilder.BuildHighlightRects(boardData, UserSettings.Region));
 
+                    var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
+                    bool IsSchematicVisible(string schematicName) =>
+                        selectedHardware != null && selectedBoard != null &&
+                        CatalogueVisibility.IsSchematicVisible(uncheckedKeys, selectedHardware, selectedBoard, schematicName);
+
                     var schematicByName = boardData.Schematics
                         .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicName))
+                        .Where(schematic => IsSchematicVisible(schematic.SchematicName))
                         .ToDictionary(
                             schematic => schematic.SchematicName,
                             schematic => schematic,
@@ -1079,6 +1109,11 @@ namespace CRT
                         foreach (var schematic in boardData.Schematics)
                         {
                             if (string.IsNullOrWhiteSpace(schematic.SchematicImageFile))
+                            {
+                                continue;
+                            }
+
+                            if (!IsSchematicVisible(schematic.SchematicName))
                             {
                                 continue;
                             }
@@ -1493,7 +1528,9 @@ namespace CRT
                 BoardDataReader.ClearCache(entry.ExcelDataFile);
             }
 
-            this.OnBoardSelectionChanged(null, null!);
+            // Not a board CHANGE, so the component search box is deliberately left alone - the same
+            // thing passing a null sender used to express before this became a typed argument.
+            _ = this.LoadSelectedBoardAsync(clearComponentSearch: false);
         }
 
         // ###########################################################################################
@@ -1641,6 +1678,113 @@ namespace CRT
 
             if (firstVisibleTab != null)
                 this.MainTabControl.SelectedItem = firstVisibleTab;
+        }
+
+        // ###########################################################################################
+        // Re-filters the Hardware/Board drop-downs against the Configuration tab's catalogue
+        // visibility tree after a checkbox there changes, so an unchecked hardware/board disappears
+        // immediately rather than only after the next board load.
+        //
+        // Reuses RefreshHardwareAndBoardSelectionsAfterMainExcelSync, which already preserves the
+        // current selection where it is still valid and falls back to index 0 otherwise - exactly
+        // what is needed here too. If the currently selected board's own visibility changed (now
+        // hidden), the selection-index change that follows re-fires OnHardwareSelectionChanged/
+        // OnBoardSelectionChanged through the normal SelectionChanged event, which rebuilds the
+        // schematic thumbnails using the same filter.
+        //
+        // WHICH of those two happens is decided here, rather than by always doing both. That
+        // refresh reassigns HardwareComboBox.ItemsSource, and reassigning it re-fires the whole
+        // selection chain even when the list is identical - which means a full board reload: the
+        // board Excel re-read, every schematic bitmap re-decoded. Running that on EVERY checkbox
+        // toggle made ticking through a tree of schematics, none of which belong to the board on
+        // screen, cost a board reload each time.
+        //
+        // So: a hardware/board key rebuilds the drop-downs, but only when their contents actually
+        // changed (unchecking an already-hidden board's schematic changes nothing). A SCHEMATIC key
+        // never changes a drop-down at all - it only changes which thumbnails the current board
+        // shows, and then only when the key belongs to the board on screen, which is the one case
+        // that still needs a reload.
+        // ###########################################################################################
+        public void ApplyCatalogueVisibility(string changedKey)
+        {
+            var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
+
+            if (CatalogueVisibility.IsSchematicKey(changedKey))
+            {
+                // A schematic toggle only matters to the board currently on screen; the filter is
+                // applied while a board loads, so any other board picks it up on its next load.
+                if (CatalogueVisibility.KeyNamesBoard(changedKey, this.GetCurrentBoardKeyParts()))
+                {
+                    this.ReloadCurrentBoardForCatalogueVisibility();
+                }
+
+                return;
+            }
+
+            var previousHardwareNames = this.HardwareComboBox.ItemsSource?
+                .Cast<string>()
+                .ToList() ?? new List<string>();
+
+            var previousBoardNames = this.BoardComboBox.ItemsSource?
+                .Cast<string>()
+                .ToList() ?? new List<string>();
+
+            var hardwareNames = BuildVisibleHardwareNames(uncheckedKeys);
+            var boardNames = this.BuildVisibleBoardNamesForSelectedHardware(uncheckedKeys);
+
+            if (hardwareNames.SequenceEqual(previousHardwareNames, StringComparer.OrdinalIgnoreCase) &&
+                boardNames.SequenceEqual(previousBoardNames, StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
+        }
+
+        // ###########################################################################################
+        // Re-runs the current board's load so the schematic-visibility filter inside it is applied
+        // afresh. Re-selecting the same index raises no SelectionChanged, so the load is invoked
+        // directly. The component search box is left alone: the board has not changed, and the user
+        // was ticking a checkbox on another tab, not choosing a different board.
+        // ###########################################################################################
+        private void ReloadCurrentBoardForCatalogueVisibility()
+        {
+            if (this.BoardComboBox.SelectedItem is not string)
+            {
+                return;
+            }
+
+            _ = this.LoadSelectedBoardAsync(clearComponentSearch: false);
+        }
+
+        // ###########################################################################################
+        // The selected hardware and board as the pair CatalogueVisibility compares a key against -
+        // empty strings when nothing is selected, which no key can match.
+        // ###########################################################################################
+        private (string HardwareName, string BoardName) GetCurrentBoardKeyParts() =>
+            (this.HardwareComboBox.SelectedItem as string ?? string.Empty,
+             this.BoardComboBox.SelectedItem as string ?? string.Empty);
+
+        private static List<string> BuildVisibleHardwareNames(IReadOnlySet<string> uncheckedKeys) =>
+            DataManager.HardwareBoards
+                .Select(e => e.HardwareName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(hardwareName => HasAnyVisibleBoard(uncheckedKeys, hardwareName))
+                .ToList();
+
+        private List<string> BuildVisibleBoardNamesForSelectedHardware(IReadOnlySet<string> uncheckedKeys)
+        {
+            if (this.HardwareComboBox.SelectedItem is not string selectedHardware)
+            {
+                return new List<string>();
+            }
+
+            return DataManager.HardwareBoards
+                .Where(entry => string.Equals(entry.HardwareName, selectedHardware, StringComparison.OrdinalIgnoreCase))
+                .Select(entry => entry.BoardName)
+                .Where(b => !string.IsNullOrWhiteSpace(b))
+                .Where(b => CatalogueVisibility.IsBoardVisible(uncheckedKeys, selectedHardware, b))
+                .ToList();
         }
 
         // ###########################################################################################

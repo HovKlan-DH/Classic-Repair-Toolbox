@@ -169,6 +169,18 @@ public partial class TabSchematics
                 {
                     this.StartKiCadTraceCalibrationDrag(pixelPoint, resizeMode);
                     this.UpdateKiCadTraceCalibrationCursor(point);
+
+                    // Captured for the same reason every other drag on this surface captures: without
+                    // it the drag only lasts as long as the pointer happens to stay over the handle's
+                    // own hit rect. A handle is ~10 px, and the pointer routinely outruns the overlay
+                    // redraw, so the box kept letting go mid-drag - reported as the box being hard to
+                    // resize, and worse the slower the redraw is.
+                    //
+                    // Remembered on the tab (rather than only released from the matching release
+                    // branch) so ESC or Apply mid-drag can release it too - see
+                    // thisKiCadTraceCalibrationCapturedPointer.
+                    e.Pointer.Capture(this.SchematicsContainer);
+                    this.thisKiCadTraceCalibrationCapturedPointer = e.Pointer;
                     e.Handled = true;
                     return;
                 }
@@ -177,6 +189,9 @@ public partial class TabSchematics
                 {
                     this.StartKiCadTraceCalibrationDrag(pixelPoint, LabelEditorDragMode.Move);
                     this.UpdateKiCadTraceCalibrationCursor(point);
+
+                    e.Pointer.Capture(this.SchematicsContainer);
+                    this.thisKiCadTraceCalibrationCapturedPointer = e.Pointer;
                     e.Handled = true;
                     return;
                 }
@@ -571,6 +586,13 @@ public partial class TabSchematics
         if (this.thisIsKiCadTraceCalibrationMode && this.thisKiCadTraceCalibrationDragMode != LabelEditorDragMode.None)
         {
             this.CompleteKiCadTraceCalibrationDrag();
+
+            // Released here rather than left hanging: the press captured the pointer to keep the drag
+            // alive, and a capture that outlives the drag routes every later event to
+            // SchematicsContainer even once the pointer has left it - the fault the worklog branch
+            // above carries its own comment about.
+            this.ReleaseKiCadTraceCalibrationPointerCapture();
+
             this.UpdateKiCadTraceCalibrationCursor(point);
             this.SchematicsContainer.Focus();
             this.Focus();

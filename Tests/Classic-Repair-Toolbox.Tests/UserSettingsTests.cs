@@ -497,6 +497,101 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Null(UserSettings.GetSelectedCategories("Plus4/310163"));
     }
 
+    // An unlisted catalogue key defaults to checked (visible) - see CatalogueVisibility - so
+    // newly synced hardware/boards/schematics show up with no migration.
+    [Fact]
+    public void An_unlisted_catalogue_key_is_checked_by_default()
+    {
+        this.LoadSettings("{}");
+
+        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64"));
+    }
+
+    [Fact]
+    public void Catalogue_key_checked_state_round_trips()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", false);
+        UserSettings.LoadFrom(path);
+
+        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
+
+        UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", true);
+        UserSettings.LoadFrom(path);
+
+        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+    }
+
+    // An unlisted catalogue key defaults to expanded - see ConfigurationCatalogueTree.
+    [Fact]
+    public void An_unlisted_catalogue_key_is_expanded_by_default()
+    {
+        this.LoadSettings("{}");
+
+        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+    }
+
+    [Fact]
+    public void Catalogue_key_collapsed_state_round_trips()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.SetCatalogueKeyCollapsed("Commodore 64", true);
+        UserSettings.LoadFrom(path);
+
+        Assert.True(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 128"));
+
+        UserSettings.SetCatalogueKeyCollapsed("Commodore 64", false);
+        UserSettings.LoadFrom(path);
+
+        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+    }
+
+    // Catalogue keys are compared case-insensitively, like every other hardware/board/schematic
+    // name in the app. That cannot be left to the HashSet's own comparer: System.Text.Json builds
+    // its OWN set for a collection property and assigns it, throwing away the comparer the field
+    // initializer declares - so a settings file written before a synced data file recased a name
+    // would silently un-hide (or re-expand) that item, with no orphaned entry visible anywhere.
+    //
+    // Loaded straight from JSON rather than through the setters, which is exactly the path that
+    // produces the ordinal set.
+    [Fact]
+    public void Catalogue_keys_loaded_from_disk_are_matched_case_insensitively()
+    {
+        this.LoadSettings(
+            """
+            {
+              "catalogueUncheckedKeys": [ "commodore 64|250407" ],
+              "catalogueCollapsedKeys": [ "commodore 64" ]
+            }
+            """);
+
+        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.False(UserSettings.IsCatalogueKeyChecked("COMMODORE 64|250407"));
+        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
+
+        Assert.True(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 128"));
+    }
+
+    // Unchecking through the setter and then re-checking with a DIFFERENT casing must clear the
+    // stored key rather than leaving it behind - the set has to remove case-insensitively too, or
+    // the item stays hidden with its checkbox showing ticked.
+    [Fact]
+    public void Re_checking_a_catalogue_key_in_another_casing_clears_it()
+    {
+        this.LoadSettings("{}");
+
+        UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", false);
+        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+
+        UserSettings.SetCatalogueKeyChecked("commodore 64|250407", true);
+        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+    }
+
     // The workbook the Workbooks tab "activated" (Main.ActivateWorkbook) for a board - what
     // Main.ResolveActiveWorkbookForBoard reads back to decide which workbook the worklog bar,
     // "Show worklogs" and "Add worklog" all act on, in place of the board's newest workbook.

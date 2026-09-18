@@ -1,12 +1,17 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Handlers.DataHandling;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
@@ -14,10 +19,15 @@ namespace CRT
     {
         private bool thisSuppressCheckDataOnLaunchChanged;
         private bool thisSuppressDetachCheckBoxChanged;
+        private Main? thisMainWindow;
+        private List<ConfigurationCatalogueTree.Row> thisCatalogueHardwareRows = new();
 
         public TabConfiguration()
         {
             this.InitializeComponent();
+
+            this.ApplyCatalogueSplitterWidth();
+            this.WireCatalogueSplitterPersistence();
 
             this.ThemeVariantComboBox.SelectedIndex = UserSettings.ThemeVariant switch
             {
@@ -74,6 +84,148 @@ namespace CRT
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorklogCurrencyComboBox.SelectionChanged += this.OnWorklogCurrencySelectionChanged;
+        }
+
+        // ###########################################################################################
+        // Builds the hardware/board/schematic visibility tree. Called from Main's constructor
+        // alongside the other tabs' own Initialize(this) calls - by that point
+        // DataManager.HardwareBoards is already fully populated (App.OnFrameworkInitializationCompleted
+        // awaits DataManager.InitializeAsync before Main is even opened), but each board's own
+        // schematic list is loaded lazily per board and is not yet in memory, so the tree itself is
+        // built asynchronously and dropped in once every board's schematics have loaded.
+        // ###########################################################################################
+        internal void Initialize(Main mainWindow)
+        {
+            this.thisMainWindow = mainWindow;
+            _ = this.BuildCatalogueTreeAsync();
+        }
+
+        private async Task BuildCatalogueTreeAsync()
+        {
+            var hardwareBoards = DataManager.HardwareBoards.ToList();
+            var schematicsByBoardKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in hardwareBoards)
+            {
+                if (string.IsNullOrWhiteSpace(entry.ExcelDataFile))
+                {
+                    continue;
+                }
+
+                var boardData = await DataManager.LoadBoardDataAsync(entry);
+                if (boardData == null)
+                {
+                    continue;
+                }
+
+                string boardKey = $"{entry.HardwareName}|{entry.BoardName}";
+                schematicsByBoardKey[boardKey] = boardData.Schematics
+                    .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicName))
+                    .Select(schematic => schematic.SchematicName)
+                    .ToList();
+            }
+
+            var result = ConfigurationCatalogueTree.Build(
+                hardwareBoards,
+                schematicsByBoardKey,
+                UserSettings.CatalogueUncheckedKeysSnapshot,
+                UserSettings.CatalogueCollapsedKeysSnapshot,
+                this.OnCatalogueCheckedChanged,
+                this.OnCatalogueCollapsedChanged);
+
+            this.thisCatalogueHardwareRows = result.HardwareRows;
+            this.CatalogueTreePanel.Children.Clear();
+            this.CatalogueTreePanel.Children.Add(result.RootControl);
+        }
+
+        // ###########################################################################################
+        // Persists a tree row's checked state, refreshes which rows are enabled (children of an
+        // unchecked row are disabled, not erased - their own IsChecked stays untouched), re-applies
+        // the IndianRed "unchecked and active" label colour (an ancestor toggling can change whether
+        // a DESCENDANT counts as active, so this must re-run on every checkbox change, not just the
+        // row that was clicked), and asks Main to re-filter the Hardware/Board drop-downs and
+        // schematic thumbnails immediately.
+        // ###########################################################################################
+        private void OnCatalogueCheckedChanged(string key, bool isChecked)
+        {
+            UserSettings.SetCatalogueKeyChecked(key, isChecked);
+            var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
+            ConfigurationCatalogueTree.ApplyEnabledState(this.thisCatalogueHardwareRows, uncheckedKeys);
+            ConfigurationCatalogueTree.ApplyAlertState(this.thisCatalogueHardwareRows, uncheckedKeys);
+
+            // The key is passed on so Main can act narrowly: a schematic toggle never changes a
+            // drop-down, and a hardware/board toggle only needs the drop-downs rebuilt when their
+            // contents actually change - see Main.ApplyCatalogueVisibility for why rebuilding them
+            // unconditionally cost a full board reload per checkbox click.
+            (this.thisMainWindow ?? TopLevel.GetTopLevel(this) as Main)?.ApplyCatalogueVisibility(key);
+        }
+
+        // ###########################################################################################
+        // Persists a tree row's collapsed state and re-applies show/hide across the tree. Purely a
+        // display concern - unlike a checkbox change, it never changes what the rest of the app
+        // shows, so it does not call into Main.
+        // ###########################################################################################
+        private void OnCatalogueCollapsedChanged(string key, bool isCollapsed)
+        {
+            UserSettings.SetCatalogueKeyCollapsed(key, isCollapsed);
+            ConfigurationCatalogueTree.ApplyCollapsedState(this.thisCatalogueHardwareRows, UserSettings.CatalogueCollapsedKeysSnapshot);
+        }
+
+        // ###########################################################################################
+        // Restores the catalogue panel's saved width, clamped so a width saved on a large monitor
+        // cannot restore off-screen on a small one - same reasoning as TabWorkbooks.ClampPanelWidth.
+        // ###########################################################################################
+        // Must not be BELOW the catalogue column's own MinWidth in the markup, or a restored width
+        // is silently widened back by the layout and saved back differently than it was stored.
+        private const double MinimumCataloguePanelWidth = 200.0;
+        private const double MaximumCataloguePanelWidth = 900.0;
+
+        private static double ClampCataloguePanelWidth(double width) =>
+            double.IsNaN(width) || width < MinimumCataloguePanelWidth
+                ? MinimumCataloguePanelWidth
+                : Math.Min(width, MaximumCataloguePanelWidth);
+
+        private void ApplyCatalogueSplitterWidth()
+        {
+            this.RootSplitGrid.ColumnDefinitions[2].Width =
+                new GridLength(ClampCataloguePanelWidth(UserSettings.ConfigurationCataloguePanelWidth));
+        }
+
+        // Test seam: re-applies the saved splitter width without going through the constructor.
+        internal void ApplyCatalogueSplitterWidthForTests() => this.ApplyCatalogueSplitterWidth();
+
+        // Test seam: the catalogue panel column's current width in device-independent pixels.
+        internal double CataloguePanelColumnWidthForTests => this.RootSplitGrid.ColumnDefinitions[2].Width.Value;
+
+        // Test seam: the split's total DECLARED minimum width - both columns' MinWidth plus the
+        // fixed splitter between them. Nothing on this tab scrolls horizontally, so this figure
+        // has to fit inside the narrowest width the tab can ever be given or the catalogue panel
+        // is clipped with no way to reach it.
+        internal double SplitMinimumWidthForTests =>
+            this.RootSplitGrid.ColumnDefinitions[0].MinWidth +
+            this.RootSplitGrid.ColumnDefinitions[1].Width.Value +
+            this.RootSplitGrid.ColumnDefinitions[2].MinWidth;
+
+        // ###########################################################################################
+        // GridSplitter marks PointerReleased handled as part of its own drag-completion, so a plain
+        // "PointerReleased=..." XAML attribute never fires - must use AddHandler with
+        // handledEventsToo: true. Same gotcha documented on TabWorkbooks' own splitters.
+        // ###########################################################################################
+        private void WireCatalogueSplitterPersistence()
+        {
+            this.CatalogueSplitter.AddHandler(
+                InputElement.PointerReleasedEvent,
+                this.OnCatalogueSplitterPointerReleased,
+                RoutingStrategies.Bubble,
+                handledEventsToo: true);
+        }
+
+        private void OnCatalogueSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            // Deferred: at the moment PointerReleased fires, the drag has not yet been applied to
+            // the column's width, so a synchronous read would save the width from before this drag.
+            Dispatcher.UIThread.Post(() =>
+                UserSettings.ConfigurationCataloguePanelWidth = this.CataloguePanelBorder.Bounds.Width);
         }
 
         // ###########################################################################################
