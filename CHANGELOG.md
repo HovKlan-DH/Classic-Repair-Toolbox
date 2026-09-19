@@ -6,6 +6,7 @@
   - Added update notification to `ALPHA` development versions from "Configuration" tab
   - Fixed traces will react correctly after KiCad calibration applied
   - Fixed KiCad calibration now feels more responsive when dragging traces
+  - Refactored parts of code base
 
 
 # 2.5.0, 2026-September-9

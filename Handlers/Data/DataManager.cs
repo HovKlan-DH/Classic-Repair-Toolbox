@@ -1598,6 +1598,14 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Returns whether a fully normalized path is located inside the current data root.
+        //
+        // The comparison is against the root plus a TRAILING SEPARATOR, not against the bare root.
+        // A plain StartsWith treats a SIBLING whose name merely begins with the root's name as
+        // being inside it - with a root of [...\CRT\Data], the folder [...\CRT\DataBackup] passes -
+        // and this predicate guards orphan-file deletion and empty-directory deletion, so that
+        // mistake is the difference between cleaning up the data root and walking into a folder
+        // next to it. ExternalTargetLauncher.IsContainedWithinRoot draws the same boundary the same
+        // way for the same reason; the two are deliberately identical in behaviour.
         // ###########################################################################################
         private static bool thisIsPathWithinDataRoot(string dataRootFullPath, string candidateFullPath)
         {
@@ -1605,7 +1613,13 @@ namespace Handlers.DataHandling
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
 
-            return candidateFullPath.StartsWith(dataRootFullPath, comparison);
+            if (string.Equals(candidateFullPath, dataRootFullPath, comparison))
+            {
+                return false;
+            }
+
+            return candidateFullPath.StartsWith(
+                thisEnsureTrailingDirectorySeparator(dataRootFullPath), comparison);
         }
 
         // ###########################################################################################

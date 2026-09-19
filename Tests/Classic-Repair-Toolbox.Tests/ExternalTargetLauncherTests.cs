@@ -179,6 +179,126 @@ public sealed class ExternalTargetLauncherTests : IDisposable
         Assert.False(TryResolveDataRootScopedFilePath(planted, this.thisDataRoot, out _));
     }
 
+    // ###########################################################################################
+    // A LINKED DIRECTORY inside the data root, pointing outside it, must not smuggle a file
+    // through the containment check.
+    //
+    // Path.GetFullPath is purely lexical - it never touches the filesystem, so it cannot see that
+    // "<root>/link" is really "<outsideRoot>". Proven with a real link on disk rather than argued
+    // from documentation, and on WHICHEVER kind of link this platform can create without special
+    // privilege:
+    //
+    //   - Linux (the CI runner, ubuntu-latest per build-and-unittest.yml): an ordinary user can
+    //     always create a symlink, so Directory.CreateSymbolicLink is the real, unconditional test
+    //     there.
+    //   - Windows: Directory.CreateSymbolicLink needs a privilege this account may not hold
+    //     outside Developer Mode (confirmed on this project's own dev box), but a JUNCTION
+    //     (mklink /J) needs none and .NET's Directory.ResolveLinkTarget follows one exactly like a
+    //     symlink - RealPathResolver's own header records the reflection-based proof this test
+    //     mirrors. So Windows falls back to a junction rather than skipping outright, and every
+    //     platform this suite runs on gets a real, non-conditional assertion.
+    // ###########################################################################################
+    private static void CreateDirectoryLink(string linkPath, string targetPath)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "cmd.exe", $"/c mklink /J \"{linkPath}\" \"{targetPath}\"")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            })!;
+            mklink.WaitForExit();
+
+            if (mklink.ExitCode != 0)
+            {
+                throw new IOException(
+                    $"mklink /J failed ({mklink.ExitCode}): {mklink.StandardError.ReadToEnd()}");
+            }
+
+            return;
+        }
+
+        Directory.CreateSymbolicLink(linkPath, targetPath);
+    }
+
+    // ###########################################################################################
+    // Removes a directory link ITSELF, never its target - the reparse point/link entry, not what
+    // it points at.
+    //
+    // WHY THIS EXISTS: Directory.Delete(recursive: true) on a folder that CONTAINS one of these
+    // links follows it and deletes the TARGET's real contents too - confirmed directly, and it is
+    // not a theoretical edge case: this class's own Dispose() calls exactly that recursive delete
+    // on thisDataRoot's parent, and thisOutsideRoot (holding secrets.txt, the fixture several
+    // other tests in this file also use) sits right next to it. A test that plants a link and
+    // then lets Dispose's recursive delete reach it would destroy that shared fixture's real
+    // files. Removing the link explicitly, before Dispose ever runs, is what keeps that recursive
+    // delete confined to the actual data-root tree it means to clean up.
+    // ###########################################################################################
+    private static void RemoveDirectoryLink(string linkPath)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                // rmdir with no /S removes only the reparse point, not what it targets.
+                var rmdir = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "cmd.exe", $"/c rmdir \"{linkPath}\"")
+                {
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                })!;
+                rmdir.WaitForExit();
+                return;
+            }
+
+            Directory.Delete(linkPath);
+        }
+        catch
+        {
+            // Best-effort, same reasoning as Dispose's own catch: a leftover link in a temp
+            // folder that is about to be abandoned anyway is not worth failing a test run over.
+        }
+    }
+
+    [Fact]
+    public void A_linked_directory_pointing_outside_the_root_is_rejected()
+    {
+        string linkPath = Path.Combine(this.thisDataRoot, "escape-link");
+        CreateDirectoryLink(linkPath, this.thisOutsideRoot);
+
+        try
+        {
+            Assert.False(TryResolveDataRootScopedFilePath(
+                "escape-link/secrets.txt", this.thisDataRoot, out _));
+        }
+        finally
+        {
+            RemoveDirectoryLink(linkPath);
+        }
+    }
+
+    // The other direction: a link whose target IS still inside the root must be accepted - the
+    // fix must not reject every link, only the ones that escape.
+    [Fact]
+    public void A_linked_directory_pointing_back_inside_the_root_is_accepted()
+    {
+        string realTarget = Path.Combine(this.thisDataRoot, "Commodore", "C64");
+        string linkPath = Path.Combine(this.thisDataRoot, "alias");
+        CreateDirectoryLink(linkPath, realTarget);
+
+        try
+        {
+            Assert.True(TryResolveDataRootScopedFilePath("alias/notes.txt", this.thisDataRoot, out _));
+        }
+        finally
+        {
+            RemoveDirectoryLink(linkPath);
+        }
+    }
+
     [Fact]
     public void A_path_inside_the_data_root_that_does_not_exist_is_rejected()
     {

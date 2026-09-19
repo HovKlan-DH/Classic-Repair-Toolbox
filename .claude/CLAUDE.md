@@ -462,11 +462,14 @@ excludes `Tests/**` from its compile glob. Leave that exclusion in place.
   `Handlers/` (`Handlers/Geometry/` for maths and geometry) as a plain static class, not as a private
   member of a `UserControl` — that is the difference between logic that can be tested and logic that
   cannot. It then gets tests, per the [Tests](#tests) rules.
-- Biggest files right now, for context budgeting: [Tabs/Oscilloscope/TabOscilloscope.axaml.cs](../Tabs/Oscilloscope/TabOscilloscope.axaml.cs)
-  (~3,400 lines), [Main/Main.axaml.cs](../Main/Main.axaml.cs) (~2,700),
-  [Tabs/Schematics/ComponentInfoWindow.axaml.cs](../Tabs/Schematics/ComponentInfoWindow.axaml.cs) (~1,800),
-  [Handlers/Data/DataManager.cs](../Handlers/Data/DataManager.cs) (~1,600). Read the part you need rather
-  than the whole file.
+- Biggest files right now, for context budgeting: [Tabs/Contribute/ComponentContribution.axaml.cs](../Tabs/Contribute/ComponentContribution.axaml.cs)
+  (~2,200 lines), [Tabs/Schematics/ComponentInfoWindow.axaml.cs](../Tabs/Schematics/ComponentInfoWindow.axaml.cs) (~1,900),
+  [Handlers/Data/UserSettings.cs](../Handlers/Data/UserSettings.cs) (~1,900),
+  [Handlers/Data/WorklogManager.cs](../Handlers/Data/WorklogManager.cs) (~1,900),
+  [Tabs/Schematics/TabSchematics.Worklog.cs](../Tabs/Schematics/TabSchematics.Worklog.cs) (~1,700),
+  [Handlers/Data/DataManager.cs](../Handlers/Data/DataManager.cs) (~1,700). Read the part you need rather
+  than the whole file. `TabOscilloscope`, `Main` and `WorklogEntryEditorWindow` used to head this list
+  and no longer do - each has been split into partials, so go via the file map in its `.axaml.cs`.
 
 ## Architecture
 

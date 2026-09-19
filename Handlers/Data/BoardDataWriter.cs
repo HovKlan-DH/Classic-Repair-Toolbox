@@ -31,7 +31,6 @@ namespace Handlers.DataHandling
     internal static class BoardDataWriter
     {
         private const string SheetComponents = "Components";
-        private const string SheetComponentHighlights = "Component highlights";
 
         private const string ColUuidV4 = "UUID v4";
         private const string ColBoardLabel = "Board label";
@@ -42,24 +41,8 @@ namespace Handlers.DataHandling
         private const string ColPartNumber = "Part-number";
         private const string ColDescription = "Short one-liner description (one short line only!)";
 
-        private const string ColSchematicName = "Schematic name";
-        private const string ColX = "X";
-        private const string ColY = "Y";
-        private const string ColWidth = "Width";
-        private const string ColHeight = "Height";
-
         private static readonly IComparer<string> BoardLabelNaturalComparer =
             Comparer<string>.Create(CompareBoardLabelsNaturally);
-
-        private static readonly string[] ComponentHighlightsHeaders = new[]
-        {
-            ColSchematicName,
-            ColBoardLabel,
-            ColX,
-            ColY,
-            ColWidth,
-            ColHeight
-        };
 
         private static readonly string[] ComponentsHeaders = new[]
         {

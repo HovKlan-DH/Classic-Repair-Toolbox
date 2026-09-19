@@ -14,7 +14,6 @@ namespace Handlers.DataHandling
         private const string SheetBoardSchematics = "Board schematics";
         private const string SheetComponents = "Components";
         private const string SheetComponentImages = "Component images";
-        private const string SheetComponentHighlights = "Component highlights";
         private const string SheetComponentLocalFiles = "Component local files";
         private const string SheetComponentLinks = "Component links";
         private const string SheetBoardLocalFiles = "Board local files";
@@ -55,12 +54,6 @@ namespace Handlers.DataHandling
         private const string ColVoltsDiv = "V/DIV";
         private const string ColTriggerLevelVolts = "T.LVL";
 
-        // Component highlights columns
-        private const string ColX = "X";
-        private const string ColY = "Y";
-        private const string ColWidth = "Width";
-        private const string ColHeight = "Height";
-
         // Credits columns
         private const string ColSubCategory = "Sub-category";
         private const string ColNameOrHandle = "Name or handle";
@@ -73,7 +66,6 @@ namespace Handlers.DataHandling
         private static readonly string[] SchematicsHeaders = new[] { ColSchematicName, ColSchematicImageFile };
         private static readonly string[] ComponentsHeaders = new[] { ColBoardLabel, ColFriendlyName, ColTechnicalNameOrValue };
         private static readonly string[] ComponentImagesHeaders = new[] { ColBoardLabel, ColPin, ColName, ColFile };
-        private static readonly string[] ComponentHighlightsHeaders = new[] { ColSchematicName, ColBoardLabel, ColX, ColY };
         private static readonly string[] ComponentLocalFilesHeaders = new[] { ColBoardLabel, ColName, ColFile };
         private static readonly string[] ComponentLinksHeaders = new[] { ColBoardLabel, ColName, ColUrl };
         private static readonly string[] BoardLocalFilesHeaders = new[] { ColCategory, ColName, ColFile };

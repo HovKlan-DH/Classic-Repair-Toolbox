@@ -1,3 +1,4 @@
+using System.Reflection;
 using Handlers.DataHandling;
 using OfficeOpenXml;
 
@@ -307,5 +308,58 @@ public sealed class DataManagerTests : IDisposable
 
         Assert.Equal("1ms", mapped.MatchedDisplayValue);
         Assert.Equal("0.001", mapped.ScpiValue);
+    }
+
+    // ------------------------------------------------------------ data-root containment
+    //
+    // thisIsPathWithinDataRoot guards the two DELETING paths in this class - orphan-file cleanup
+    // and the empty-directory sweep that follows it - so what it calls "inside the root" decides
+    // what may be removed from a user's disk. It is private, and reached here by reflection for
+    // the same reason ExternalTargetLauncherTests reaches its own containment predicate that way:
+    // driving it through the public sync path would mean actually deleting files to observe the
+    // answer.
+
+    private static bool IsPathWithinDataRoot(string dataRootFullPath, string candidateFullPath)
+    {
+        MethodInfo? method = typeof(DataManager).GetMethod(
+            "thisIsPathWithinDataRoot", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.True(method is not null,
+            "DataManager.thisIsPathWithinDataRoot not found - if it was renamed, update these tests.");
+
+        return (bool)method!.Invoke(null, new object?[] { dataRootFullPath, candidateFullPath })!;
+    }
+
+    [Fact]
+    public void A_file_inside_the_data_root_is_within_it()
+    {
+        Assert.True(IsPathWithinDataRoot(
+            @"C:\CRT\Data", @"C:\CRT\Data\Commodore\C64\board.xlsx"));
+    }
+
+    // The bug this pins: a bare StartsWith against the root treats a SIBLING whose name merely
+    // BEGINS with the root's name as being inside it, because "C:\CRT\DataBackup" does start with
+    // "C:\CRT\Data". Both callers delete what this admits, so that would let orphan cleanup and
+    // the empty-directory sweep walk into a folder sitting next to the data root. Fails against
+    // the version without the trailing-separator guard.
+    [Fact]
+    public void A_sibling_folder_whose_name_merely_starts_with_the_root_name_is_not_within_it()
+    {
+        Assert.False(IsPathWithinDataRoot(
+            @"C:\CRT\Data", @"C:\CRT\DataBackup\secret.xlsx"));
+    }
+
+    // The root is not inside itself - the empty-directory sweep would otherwise consider deleting
+    // the data root itself once it happened to be empty.
+    [Fact]
+    public void The_data_root_itself_is_not_within_itself()
+    {
+        Assert.False(IsPathWithinDataRoot(@"C:\CRT\Data", @"C:\CRT\Data"));
+    }
+
+    [Fact]
+    public void A_path_entirely_outside_the_data_root_is_not_within_it()
+    {
+        Assert.False(IsPathWithinDataRoot(@"C:\CRT\Data", @"C:\Windows\System32\config"));
     }
 }
