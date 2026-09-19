@@ -330,23 +330,30 @@ public sealed class DataManagerTests : IDisposable
         return (bool)method!.Invoke(null, new object?[] { dataRootFullPath, candidateFullPath })!;
     }
 
+    // Built with Path.Combine rather than a hardcoded @"C:\..." literal - thisIsPathWithinDataRoot
+    // appends Path.DirectorySeparatorChar (a backslash on Windows, a forward slash on Linux/macOS),
+    // and CI runs this suite on Linux. A literal backslash path compared against a forward-slash
+    // trailing separator fails containment for the wrong reason - reported by a CI run that was
+    // green locally on Windows and red on GitHub Actions for exactly this test.
+    private static string DataRootPath => Path.Combine("CRT-root", "Data");
+
     [Fact]
     public void A_file_inside_the_data_root_is_within_it()
     {
         Assert.True(IsPathWithinDataRoot(
-            @"C:\CRT\Data", @"C:\CRT\Data\Commodore\C64\board.xlsx"));
+            DataRootPath, Path.Combine(DataRootPath, "Commodore", "C64", "board.xlsx")));
     }
 
     // The bug this pins: a bare StartsWith against the root treats a SIBLING whose name merely
-    // BEGINS with the root's name as being inside it, because "C:\CRT\DataBackup" does start with
-    // "C:\CRT\Data". Both callers delete what this admits, so that would let orphan cleanup and
-    // the empty-directory sweep walk into a folder sitting next to the data root. Fails against
+    // BEGINS with the root's name as being inside it, because "CRT-root/DataBackup" does start
+    // with "CRT-root/Data". Both callers delete what this admits, so that would let orphan cleanup
+    // and the empty-directory sweep walk into a folder sitting next to the data root. Fails against
     // the version without the trailing-separator guard.
     [Fact]
     public void A_sibling_folder_whose_name_merely_starts_with_the_root_name_is_not_within_it()
     {
         Assert.False(IsPathWithinDataRoot(
-            @"C:\CRT\Data", @"C:\CRT\DataBackup\secret.xlsx"));
+            DataRootPath, Path.Combine("CRT-root", "DataBackup", "secret.xlsx")));
     }
 
     // The root is not inside itself - the empty-directory sweep would otherwise consider deleting
@@ -354,12 +361,13 @@ public sealed class DataManagerTests : IDisposable
     [Fact]
     public void The_data_root_itself_is_not_within_itself()
     {
-        Assert.False(IsPathWithinDataRoot(@"C:\CRT\Data", @"C:\CRT\Data"));
+        Assert.False(IsPathWithinDataRoot(DataRootPath, DataRootPath));
     }
 
     [Fact]
     public void A_path_entirely_outside_the_data_root_is_not_within_it()
     {
-        Assert.False(IsPathWithinDataRoot(@"C:\CRT\Data", @"C:\Windows\System32\config"));
+        Assert.False(IsPathWithinDataRoot(
+            DataRootPath, Path.Combine("elsewhere", "System32", "config")));
     }
 }
