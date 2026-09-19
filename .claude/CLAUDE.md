@@ -485,10 +485,14 @@ excludes `Tests/**` from its compile glob. Leave that exclusion in place.
 - [Main/Main.ModeHint.cs](../Main/Main.ModeHint.cs) — the khaki "what to do next" label in the tab-header
   row, shown while a mode (e.g. worklog area-marking) is waiting for the user to act. `ShowModeHint`/
   `HideModeHint`; it clears itself on the first pointer press.
-- [Main/Main.axaml.cs](../Main/Main.axaml.cs) — the main window's code-behind (~2,700 lines). It acts as
-  the central controller coordinating board selection, schematics zoom/pan/thumbnails, and cross-tab
-  state. It reaches directly into `TabSchematicsControl` members (`currentThumbnails`,
-  `highlightIndexBySchematic`), so changes to those ripple here.
+- [Main/Main.axaml.cs](../Main/Main.axaml.cs) — the main window's code-behind. It acts as the central
+  controller coordinating board selection, schematics zoom/pan/thumbnails, and cross-tab state. It
+  reaches directly into `TabSchematicsControl` members (`currentThumbnails`,
+  `highlightIndexBySchematic`), so changes to those ripple here. **Split into partials by area** -
+  `Main.BoardSelection.cs`, `Main.ComponentPopup.cs`, `Main.DataSyncStatus.cs`,
+  `Main.SchematicsWindows.cs`, `Main.Updates.cs`, `Main.Worklog.cs` and `Main.ModeHint.cs`, each with
+  its own header; the file map in the `.axaml.cs` is the index, so go there rather than grepping.
+  `TabOscilloscope` and `WorklogEntryEditorWindow` were split the same way at the same time.
 
 ### Tabs (`Tabs/`)
 
