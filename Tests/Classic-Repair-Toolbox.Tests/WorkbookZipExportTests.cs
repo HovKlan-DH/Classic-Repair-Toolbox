@@ -508,6 +508,47 @@ public class WorkbookZipExportTests : IDisposable
         Assert.Equal((1024, 768), TryReadImageSize(path));
     }
 
+    // ###########################################################################################
+    // THE REGRESSION: all EIGHT PNG signature bytes must match, not just the \x89PNG that names the
+    // format.
+    //
+    // The trailing four (\r \n \x1a \n) exist to catch a file damaged in transit - a
+    // line-ending-translating copy rewrites the \r\n, and \x1a is an MS-DOS end-of-file that
+    // truncates a text-mode read. Because the dimensions are then read from a FIXED offset rather
+    // than by locating IHDR, accepting such a file means whatever bytes sit at offset 16 become the
+    // image size: no exception and nothing logged, just every marked area on that schematic placed
+    // against a size that is not the image's.
+    //
+    // Each case below keeps a VALID IHDR, so a reader that checks only the first four bytes returns
+    // 4220x2941 happily and these fail. The point is that the file is refused on its signature.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(4, "CR rewritten by a text-mode copy")]
+    [InlineData(5, "LF rewritten by a text-mode copy")]
+    [InlineData(6, "DOS end-of-file byte lost")]
+    [InlineData(7, "trailing LF lost")]
+    public void A_png_with_a_damaged_signature_tail_has_no_size(int corruptIndex, string _)
+    {
+        var bytes = BuildPng(4220, 2941);
+
+        // Sanity: intact, this same file reads as the real board scan - so the assertion below is
+        // about the one corrupted byte and nothing else.
+        Assert.Equal((4220, 2941), TryReadImageSize(this.WriteBytes("intact.png", bytes)));
+
+        bytes[corruptIndex] = 0x00;
+
+        Assert.Null(TryReadImageSize(this.WriteBytes($"damaged-{corruptIndex}.png", bytes)));
+    }
+
+    // A file only as long as the \x89PNG prefix must not be read either - the size would come from
+    // past the end of the file.
+    [Fact]
+    public void A_file_that_is_only_the_png_prefix_has_no_size()
+    {
+        Assert.Null(TryReadImageSize(this.WriteBytes(
+            "stub.png", new byte[] { 0x89, 0x50, 0x4E, 0x47 })));
+    }
+
     [Fact]
     public void A_file_that_is_not_a_png_or_jpeg_has_no_size()
     {

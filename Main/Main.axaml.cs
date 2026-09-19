@@ -35,6 +35,17 @@ namespace CRT
         private bool _suppressCategoryFilterSave;
         private bool _suppressComponentSearchRefresh;
 
+        // ###########################################################################################
+        // Suppresses OnHardwareSelectionChanged/OnBoardSelectionChanged while ApplyCatalogueVisibility
+        // re-populates the drop-downs' ItemsSource for a hardware/board that is NOT the one currently
+        // selected. Reassigning ItemsSource momentarily clears SelectedItem even when the caller then
+        // restores the same selected value, which still raises SelectionChanged - and without this
+        // flag that cascades into a full board reload (Excel re-read, every schematic bitmap
+        // re-decoded, the detached thumbnails window closed and reopened) for a checkbox toggle on
+        // hardware/board that has nothing to do with what is on screen. See ApplyCatalogueVisibility.
+        // ###########################################################################################
+        private bool _suppressBoardHardwareSelectionReload;
+
         private BoardData? _currentBoardData;
         private bool _suppressComponentHighlightUpdate;
         private ComponentInfoWindow? _singleComponentInfoWindow;
@@ -765,19 +776,66 @@ namespace CRT
 
         // ###########################################################################################
         // Downloads and installs the pending update, showing progress in the banner text.
+        //
+        // A SUCCESSFUL install never returns: ApplyUpdatesAndRestart replaces the process. So every
+        // path that reaches the code after the await is a FAILURE, and the banner has to be handed
+        // back to the user - it was left reading "Downloading update..." with all three buttons
+        // disabled, which is a dead end: no way to retry, no way to dismiss it, and no indication
+        // that anything went wrong. DownloadAndInstallAsync catches its own exceptions and reports
+        // failure by returning false (the detail is in the log), so the false branch is not an
+        // unusual case to be ignored - it is the only way a failure can present at all.
+        //
+        // The try is there for the same reason TabWorkbooks.OpenEntryEditor carries one: this is an
+        // "async void" handler, so anything thrown here - including by the button property writes
+        // before the await - is rethrown on the sync context with no caller to catch it and reaches
+        // App's global handler as a process-fatal crash. Losing the whole application over a failed
+        // update check would be a far worse outcome than the update not installing.
         // ###########################################################################################
         private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e)
         {
-            this.UpdateBannerInstallButton.IsEnabled = false;
-            this.UpdateBannerViewNotesButton.IsEnabled = false;
-            this.UpdateBannerDismissButton.IsEnabled = false;
-            this.UpdateBannerText.Text = "Downloading update...";
-
-            await UpdateService.DownloadAndInstallAsync(progress =>
+            try
             {
-                Dispatcher.UIThread.Post(() => this.UpdateBannerText.Text = $"Downloading update: {progress}%");
-            });
+                this.UpdateBannerInstallButton.IsEnabled = false;
+                this.UpdateBannerViewNotesButton.IsEnabled = false;
+                this.UpdateBannerDismissButton.IsEnabled = false;
+                this.UpdateBannerText.Text = "Downloading update...";
+
+                bool installed = await UpdateService.DownloadAndInstallAsync(progress =>
+                {
+                    Dispatcher.UIThread.Post(() => this.UpdateBannerText.Text = $"Downloading update: {progress}%");
+                });
+
+                if (!installed)
+                {
+                    this.RestoreUpdateBannerAfterFailedInstall();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Installing the update failed unexpectedly: [{ex.Message}]");
+                this.RestoreUpdateBannerAfterFailedInstall();
+            }
         }
+
+        // ###########################################################################################
+        // Puts the update banner back into an actionable state after a failed install, so the user
+        // can retry or dismiss it. Says the install failed and points at the log, since the reason
+        // itself was written there by whatever gave up (UpdateService logs the exception).
+        // ###########################################################################################
+        private void RestoreUpdateBannerAfterFailedInstall()
+        {
+            this.UpdateBannerText.Text = "The update could not be installed - see the log for details.";
+
+            this.UpdateBannerInstallButton.IsEnabled = true;
+            this.UpdateBannerViewNotesButton.IsEnabled = true;
+            this.UpdateBannerDismissButton.IsEnabled = true;
+        }
+
+        // Lets a headless test drive the failed-install recovery without a real update to fail.
+        // The click handler itself cannot be exercised: UpdateService.DownloadAndInstallAsync reaches
+        // GitHub over the network, which no test may do.
+        internal void RestoreUpdateBannerAfterFailedInstallForTests() =>
+            this.RestoreUpdateBannerAfterFailedInstall();
 
         // ###########################################################################################
         // Populates the hardware drop-down with distinct hardware names from loaded data.
@@ -862,6 +920,17 @@ namespace CRT
         // ###########################################################################################
         private void OnHardwareSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
+            // ApplyCatalogueVisibility is repopulating ItemsSource around a selection it restores to
+            // the SAME value, so there is nothing here to do: the board list it would rebuild is
+            // assigned by that caller itself, and clearing the component search or re-persisting
+            // LastHardware would both be acting on a hardware change that is not happening.
+            //
+            // The guard sits at the top rather than only around the board rebuild BECAUSE of that -
+            // every statement below is a response to the selection having changed. Anything added to
+            // this method that must run even for an unchanged selection belongs ABOVE this line.
+            if (this._suppressBoardHardwareSelectionReload)
+                return;
+
             this._suppressComponentSearchRefresh = true;
             this.ComponentSearchTextBox.Text = string.Empty;
             this._suppressComponentSearchRefresh = false;
@@ -900,7 +969,27 @@ namespace CRT
         // ###########################################################################################
         private async void OnBoardSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            await this.LoadSelectedBoardAsync(clearComponentSearch: ReferenceEquals(sender, this.BoardComboBox));
+            if (this._suppressBoardHardwareSelectionReload)
+                return;
+
+            // Wrapped for the reason TabWorkbooks.OpenEntryEditor documents: this is an "async void"
+            // handler, so anything thrown - including by the long SYNCHRONOUS prologue in
+            // LoadSelectedBoardAsync, which disposes every thumbnail bitmap and reaches into
+            // TabSchematics' controls before the first await - is rethrown on the sync context with
+            // no caller to catch it, and reaches App's global handler as a PROCESS-FATAL crash.
+            //
+            // The board load's own I/O is already guarded (BoardDataReader.LoadAsync catches and
+            // returns null), so this is about everything else: a disposed bitmap, a renamed control,
+            // a board whose Excel is mid-sync. Losing the whole application on a board change - the
+            // single most-used action in the app - is the outcome being prevented.
+            try
+            {
+                await this.LoadSelectedBoardAsync(clearComponentSearch: ReferenceEquals(sender, this.BoardComboBox));
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Loading the selected board failed: [{ex.Message}]");
+            }
         }
 
         // ###########################################################################################
@@ -1695,15 +1784,24 @@ namespace CRT
         // WHICH of those two happens is decided here, rather than by always doing both. That
         // refresh reassigns HardwareComboBox.ItemsSource, and reassigning it re-fires the whole
         // selection chain even when the list is identical - which means a full board reload: the
-        // board Excel re-read, every schematic bitmap re-decoded. Running that on EVERY checkbox
-        // toggle made ticking through a tree of schematics, none of which belong to the board on
-        // screen, cost a board reload each time.
+        // board Excel re-read, every schematic bitmap re-decoded, and (see
+        // TabSchematics.ThumbnailsDetach.cs / ApplyThumbnailsDetachedStateForBoardChange) the detached
+        // thumbnails window closed and reopened on whatever OTHER monitor it is sitting on. Running
+        // that on EVERY checkbox toggle made ticking through a tree of hardware/boards, none of which
+        // belong to the board on screen, cost a full reload - including that window flicker - each
+        // time. Reported exactly that way: unchecking hardware unrelated to the active board still
+        // refreshed the detached thumbnails window.
         //
-        // So: a hardware/board key rebuilds the drop-downs, but only when their contents actually
-        // changed (unchecking an already-hidden board's schematic changes nothing). A SCHEMATIC key
-        // never changes a drop-down at all - it only changes which thumbnails the current board
-        // shows, and then only when the key belongs to the board on screen, which is the one case
-        // that still needs a reload.
+        // So: a hardware/board key rebuilds the drop-downs' CONTENTS unconditionally (so a hidden
+        // entry disappears from the list next time it is opened, and the board list picks up an
+        // added/removed sibling board), but only RESELECTS - and so only reloads - when the currently
+        // selected hardware or board no longer survives in the new lists. Repopulating the ItemsSource
+        // while the current selection is still valid goes through _suppressBoardHardwareSelectionReload
+        // so the momentary SelectedItem loss that ItemsSource reassignment causes cannot cascade into
+        // OnHardwareSelectionChanged/OnBoardSelectionChanged. A SCHEMATIC key never touches a
+        // drop-down at all - it only changes which thumbnails the current board shows, and then only
+        // when the key belongs to the board on screen, which is the one case that still needs a
+        // reload.
         // ###########################################################################################
         public void ApplyCatalogueVisibility(string changedKey)
         {
@@ -1738,7 +1836,45 @@ namespace CRT
                 return;
             }
 
-            this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
+            var (currentHardware, currentBoard) = this.GetCurrentBoardKeyParts();
+
+            bool currentSelectionStillValid =
+                CatalogueVisibility.CurrentSelectionSurvives(hardwareNames, boardNames, currentHardware, currentBoard);
+
+            if (!currentSelectionStillValid)
+            {
+                // The board or hardware actually on screen was hidden (or nothing was selected to
+                // begin with) - the existing reselect-and-reload path is exactly what is needed here.
+                this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
+                return;
+            }
+
+            // The current selection survives untouched: some OTHER hardware/board's checkbox changed.
+            // Repopulate the drop-downs' items so the change is reflected next time either is opened,
+            // but suppress the SelectionChanged cascade that reassigning ItemsSource would otherwise
+            // raise for a selection that is not actually changing.
+            //
+            // Both drop-downs are assigned the SAME way - ItemsSource, then the live selected value
+            // back. Deliberately NOT PopulateHardwareDropDown() for the hardware half, even though it
+            // assigns the identical list: that method exists to apply the SAVED last hardware
+            // (UserSettings.GetLastHardware, else index 0), which is a different value from the one on
+            // screen whenever the two have diverged. The end result is the same either way, because
+            // the SelectedItem line below immediately corrects it and the suppression flag stops
+            // anything reacting in between - but only by luck of the ordering of those two lines.
+            // Restoring what IS selected is the whole intent here, so it is what the code says,
+            // rather than setting the wrong value and relying on the next statement to undo it.
+            this._suppressBoardHardwareSelectionReload = true;
+            try
+            {
+                this.HardwareComboBox.ItemsSource = hardwareNames;
+                this.HardwareComboBox.SelectedItem = currentHardware;
+                this.BoardComboBox.ItemsSource = boardNames;
+                this.BoardComboBox.SelectedItem = currentBoard;
+            }
+            finally
+            {
+                this._suppressBoardHardwareSelectionReload = false;
+            }
         }
 
         // ###########################################################################################
@@ -2593,18 +2729,27 @@ namespace CRT
         // ###########################################################################################
         private async void OnWorklogCreateWorkbookClick(object? sender, RoutedEventArgs e)
         {
-            string boardKey = this.GetCurrentBoardKey();
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return;
+            // "async void" - see OnBoardSelectionChanged. The prologue here is not exception-free
+            // either: Initialize loads XAML, and ShowDialog can throw synchronously.
+            try
+            {
+                string boardKey = this.GetCurrentBoardKey();
+                if (string.IsNullOrWhiteSpace(boardKey))
+                    return;
 
-            var dialog = new CreateWorkbookWindow();
-            dialog.Initialize(boardKey);
+                var dialog = new CreateWorkbookWindow();
+                dialog.Initialize(boardKey);
 
-            var record = await dialog.ShowDialog<WorkbookRecord?>(this);
-            if (record == null)
-                return;
+                var record = await dialog.ShowDialog<WorkbookRecord?>(this);
+                if (record == null)
+                    return;
 
-            this.ActivateWorkbook(boardKey, record.Id);
+                this.ActivateWorkbook(boardKey, record.Id);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Creating a workbook failed: [{ex.Message}]");
+            }
         }
 
         // ###########################################################################################
@@ -4058,8 +4203,17 @@ namespace CRT
 
             e.Handled = true;
 
-            // Allow the banner to update with progress + current file (2-line banner).
-            await this.CheckForDataUpdatesNowAsync(keepBannerTextStatic: false);
+            // "async void" - see OnBoardSelectionChanged. CheckForDataUpdatesNowAsync guards its own
+            // network work, so this covers the rest of the path rather than the sync itself.
+            try
+            {
+                // Allow the banner to update with progress + current file (2-line banner).
+                await this.CheckForDataUpdatesNowAsync(keepBannerTextStatic: false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Checking for data updates failed: [{ex.Message}]");
+            }
         }
 
         // ###########################################################################################

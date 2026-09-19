@@ -53,8 +53,6 @@ public partial class TabSchematics
 
     private bool thisIsShowingLabelEditorMenu;
 
-    private Point thisLastLabelEditorMenuPoint;
-
     private string thisLabelEditorSchematicName = string.Empty;
 
     private readonly List<EditableComponentHighlight> thisLabelEditorWorkingHighlights = new();
@@ -93,7 +91,6 @@ public partial class TabSchematics
             return;
         }
 
-        this.thisLastLabelEditorMenuPoint = containerPoint;
         this.UpdateLabelEditorMenuButtons();
 
         double estimatedWidth = 250.0;
@@ -248,7 +245,6 @@ public partial class TabSchematics
         this.thisIsDrawingLabelEditorRectangle = false;
         this.thisLabelEditorDraftRectangle = null;
         this.thisLabelEditorDragMode = LabelEditorDragMode.None;
-        this.thisLabelEditorOriginalSelectionBounds = default;
         this.thisLabelEditorOriginalDragRectangles.Clear();
         this.thisLabelEditorWorkingHighlights.Clear();
         this.thisLabelEditorUndoStack.Clear();
@@ -333,7 +329,6 @@ public partial class TabSchematics
         this.thisIsDrawingLabelEditorRectangle = false;
         this.thisLabelEditorDraftRectangle = null;
         this.thisLabelEditorDragMode = LabelEditorDragMode.None;
-        this.thisLabelEditorOriginalSelectionBounds = default;
         this.thisLabelEditorOriginalDragRectangles.Clear();
         this.thisLabelEditorWorkingHighlights.Clear();
         this.thisLabelEditorUndoStack.Clear();
@@ -970,7 +965,6 @@ public partial class TabSchematics
         this.thisIsDrawingLabelEditorRectangle = false;
         this.thisLabelEditorDraftRectangle = null;
         this.thisLabelEditorDragMode = LabelEditorDragMode.None;
-        this.thisLabelEditorOriginalSelectionBounds = default;
         this.thisLabelEditorOriginalDragRectangles.Clear();
 
         this.HideNewLabelEditorPrompt();

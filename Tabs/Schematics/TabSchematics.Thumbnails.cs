@@ -621,9 +621,16 @@ public partial class TabSchematics
     // UserSettings.SetSchematicsOrder path the inline list uses - order stays consistent whether
     // thumbnails are inline or detached.
     // ###########################################################################################
+    // The board key normally comes from the main window's hardware/board selection, which no test
+    // constructs. This is the seam that lets a headless test prove the ORDER this method persists -
+    // placeholders and blank names filtered out - rather than only that the call does not throw.
+    // The same idea, and the same wording, as TabWorkbooks.BoardKeyOverrideForTests. Null in the
+    // running app, always.
+    internal string? BoardKeyOverrideForTests { get; set; }
+
     internal void SaveCurrentThumbnailOrder()
     {
-        var boardKey = this.MainWindow?.GetCurrentBoardKey();
+        var boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey();
         if (string.IsNullOrWhiteSpace(boardKey))
             return;
 

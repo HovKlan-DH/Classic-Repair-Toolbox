@@ -542,15 +542,5 @@ namespace Handlers.DataHandling
             return false;
         }
 
-        // ###########################################################################################
-        // Formats a highlight coordinate or size as an integer string using midpoint rounding away
-        // from zero so the saved Excel value stays compact while remaining predictable.
-        // ###########################################################################################
-        private static string FormatRoundedInteger(double value)
-        {
-            return Math.Round(value, 0, MidpointRounding.AwayFromZero)
-                .ToString(CultureInfo.InvariantCulture);
-        }
-
     }
 }

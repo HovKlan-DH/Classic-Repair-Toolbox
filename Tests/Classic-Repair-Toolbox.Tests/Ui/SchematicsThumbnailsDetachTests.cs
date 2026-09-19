@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using CRT;
+using Handlers.DataHandling;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Tabs.TabSchematics;
@@ -668,17 +669,59 @@ public sealed class SchematicsThumbnailsDetachTests
     // simulating a full pointer drag headlessly (with no real board/MainWindow to resolve a board
     // key from) is impractical; SaveCurrentThumbnailOrder itself is what the gallery calls after a
     // drop, so this pins that it is reachable and internal rather than private.
+    // ###########################################################################################
+    // What SaveCurrentThumbnailOrder actually PERSISTS - the gallery's whole reason for calling it.
+    //
+    // This test used to assert only that the call "compiles and does not throw", which the compiler
+    // already guarantees, and it could not do more: the method reads its board key off MainWindow,
+    // which no test constructs, so it returned at the first line and exercised nothing. With
+    // BoardKeyOverrideForTests it now drives the real path and checks the two things the method
+    // decides: that the drop PLACEHOLDER is excluded (it is a UI artefact of an in-flight drag and
+    // must never be written into a board's saved order) and that a blank name is skipped.
+    // ###########################################################################################
     [Fact]
-    public void SaveCurrentThumbnailOrder_is_reachable_from_the_same_assembly()
+    public void Saving_the_thumbnail_order_persists_real_names_and_drops_the_placeholder()
     {
+        using var workspace = new TempWorkspace();
+        UserSettings.LoadFrom(workspace.Path_("settings.json"));
+
+        UiTest.Run(() =>
+        {
+            var tab = new TabSchematics
+            {
+                BoardKeyOverrideForTests = "Commodore 64|250407"
+            };
+
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "Top" });
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "Placeholder", IsDropPlaceholder = true });
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "   " });
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "Bottom" });
+
+            tab.SaveCurrentThumbnailOrder();
+
+            // Order preserved, placeholder and blank gone.
+            Assert.Equal(
+                new[] { "Top", "Bottom" },
+                UserSettings.GetSchematicsOrder("Commodore 64|250407"));
+        });
+    }
+
+    // With no board selected there is nothing to key the order by, so nothing may be written -
+    // otherwise a drag performed before a board loads would persist under an empty key.
+    [Fact]
+    public void Saving_with_no_board_selected_writes_nothing()
+    {
+        using var workspace = new TempWorkspace();
+        UserSettings.LoadFrom(workspace.Path_("settings.json"));
+
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "Top" });
 
-            // No board selected, so this is a no-op internally (GetCurrentBoardKey needs a
-            // MainWindow) - the point of this test is only that the call compiles and does not
-            // throw, i.e. that the method is internal rather than private.
             tab.SaveCurrentThumbnailOrder();
+
+            Assert.Null(UserSettings.GetSchematicsOrder(string.Empty));
         });
     }
 }

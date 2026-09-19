@@ -1,4 +1,6 @@
 using Handlers.DataHandling;
+using System;
+using System.IO;
 
 namespace ClassicRepairToolbox.Tests;
 
@@ -551,5 +553,126 @@ public class ContributionPackagingTests
         Assert.Equal(
             "The component [U1] will be removed from the board data. It carries no images, highlights, files or links.",
             ContributionPackaging.BuildDeleteComponentSummary("U1", -3, 0, 0, 0));
+    }
+
+    // -------------------------------------------------------------- TryGetDataRootRelativeFolder
+    //
+    // THE REGRESSION these exist for: the Contribute tab used to decide "is this picked file inside
+    // the data root" with a bare dir.StartsWith(dataRoot) - no trailing separator, no normalization.
+    // A SIBLING folder whose name merely begins with the root's name therefore passed, and
+    // GetRelativePath turned it into a TRAVERSING relative path ("../Data-backup/Commodore") that was
+    // written into the row and shipped in the uploaded payload, where the server merge concatenates
+    // it onto its own data root to build a copy() target.
+    //
+    // Note the three-valued contract, which is what the caller branches on:
+    //   a relative path -> inside, in that sub-folder
+    //   ""              -> inside, directly in the root (no sub-folder to name)
+    //   null            -> NOT inside; the caller keeps the user's chosen drop-down folder
+
+    private static string Root => OperatingSystem.IsWindows()
+        ? @"C:\Users\test\AppData\Roaming\Classic-Repair-Toolbox\Data"
+        : "/home/test/.config/Classic-Repair-Toolbox/Data";
+
+    private static string Sibling(string name) =>
+        Path.Combine(Path.GetDirectoryName(Root)!, name);
+
+    [Fact]
+    public void A_folder_inside_the_data_root_yields_its_relative_path()
+    {
+        Assert.Equal(
+            "Commodore/C64",
+            ContributionPackaging.TryGetDataRootRelativeFolder(Root, Path.Combine(Root, "Commodore", "C64")));
+    }
+
+    // Separators are normalised to forward slashes, because that is what the payload and the
+    // server's own path handling use.
+    [Fact]
+    public void The_relative_path_uses_forward_slashes()
+    {
+        string? result = ContributionPackaging.TryGetDataRootRelativeFolder(
+            Root, Path.Combine(Root, "Commodore", "C64", "250407"));
+
+        Assert.Equal("Commodore/C64/250407", result);
+        Assert.DoesNotContain('\\', result!);
+    }
+
+    [Fact]
+    public void The_data_root_itself_is_inside_it_with_no_sub_folder()
+    {
+        Assert.Equal(string.Empty, ContributionPackaging.TryGetDataRootRelativeFolder(Root, Root));
+    }
+
+    // ###########################################################################################
+    // The reported bug, asserted by NAME rather than by mere difference: a sibling folder sharing
+    // the root's leading characters is NOT inside it. Against the StartsWith version each of these
+    // returns a "../" path instead of null.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Data-backup")]
+    [InlineData("DataOld")]
+    [InlineData("Data2")]
+    public void A_sibling_folder_sharing_the_roots_name_prefix_is_not_inside(string siblingName)
+    {
+        Assert.Null(ContributionPackaging.TryGetDataRootRelativeFolder(Root, Sibling(siblingName)));
+    }
+
+    // The same thing one level deeper - the exact shape that produced "../Data-backup/Commodore".
+    [Fact]
+    public void A_sub_folder_of_a_prefix_sharing_sibling_is_not_inside_either()
+    {
+        string? result = ContributionPackaging.TryGetDataRootRelativeFolder(
+            Root, Path.Combine(Sibling("Data-backup"), "Commodore"));
+
+        Assert.Null(result);
+    }
+
+    // Whatever this returns, it must NEVER be a traversing path - that is the property that
+    // actually protects the payload, independent of which folder was picked.
+    [Theory]
+    [InlineData("Data-backup")]
+    [InlineData("DataOld")]
+    public void A_result_is_never_a_traversing_path(string siblingName)
+    {
+        string? result = ContributionPackaging.TryGetDataRootRelativeFolder(
+            Root, Path.Combine(Sibling(siblingName), "Commodore"));
+
+        Assert.True(result == null || !result.Contains(".."), $"got [{result}]");
+    }
+
+    [Fact]
+    public void A_folder_plainly_outside_the_root_is_not_inside()
+    {
+        string outside = OperatingSystem.IsWindows() ? @"C:\Users\test\Desktop" : "/home/test/Desktop";
+
+        Assert.Null(ContributionPackaging.TryGetDataRootRelativeFolder(Root, outside));
+    }
+
+    // An unnormalised root (trailing separator, or a "." segment in the middle) must still compare
+    // correctly - the caller passes whatever DataManager resolved, not a canonical string.
+    [Fact]
+    public void An_unnormalised_root_still_matches_a_folder_inside_it()
+    {
+        Assert.Equal(
+            "Commodore",
+            ContributionPackaging.TryGetDataRootRelativeFolder(
+                Root + Path.DirectorySeparatorChar, Path.Combine(Root, "Commodore")));
+    }
+
+    [Theory]
+    [InlineData(null, "somewhere")]
+    [InlineData("", "somewhere")]
+    [InlineData("   ", "somewhere")]
+    public void A_blank_root_is_not_something_to_be_inside_of(string? root, string directory)
+    {
+        Assert.Null(ContributionPackaging.TryGetDataRootRelativeFolder(root, directory));
+    }
+
+    // Path.GetDirectoryName returns null for a bare file name, which is what this receives then.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void A_blank_directory_is_not_inside(string? directory)
+    {
+        Assert.Null(ContributionPackaging.TryGetDataRootRelativeFolder(Root, directory));
     }
 }

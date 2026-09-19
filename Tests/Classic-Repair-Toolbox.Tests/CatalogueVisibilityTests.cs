@@ -205,4 +205,105 @@ public class CatalogueVisibilityTests
         Assert.False(CatalogueVisibility.KeyNamesBoard("Commodore 64|250407", (string.Empty, string.Empty)));
         Assert.False(CatalogueVisibility.KeyNamesBoard("Commodore 64|250407", ("Commodore 64", string.Empty)));
     }
+
+    // -------------------------------------------------------------- CurrentSelectionSurvives
+    //
+    // Main.ApplyCatalogueVisibility's actual bug report: unchecking/rechecking a hardware or board
+    // UNRELATED to the one on screen still forced a full board reload (and, with the detached
+    // thumbnails window open, closed and reopened it) because the drop-down repopulation reselected
+    // the current item even though it never stopped being visible. These pin the rule that decides
+    // whether that reselect-and-reload is actually warranted.
+
+    [Fact]
+    public void The_current_selection_survives_when_both_names_are_still_in_the_visible_lists()
+    {
+        var hardwareNames = new[] { "Commodore 64", "Commodore 128" };
+        var boardNames = new[] { "250407", "KU-14194HB" };
+
+        Assert.True(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
+
+    // The exact reported shape: hiding a DIFFERENT hardware shrinks the visible hardware list, but
+    // the one actually on screen is still in it, so the selection survives and no reload is needed.
+    [Fact]
+    public void Hiding_an_unrelated_hardware_does_not_break_survival_of_the_selected_one()
+    {
+        // "Commodore 128" has just been unchecked and so is no longer in the visible list -
+        // "Commodore 64" (the one on screen) still is.
+        var hardwareNames = new[] { "Commodore 64" };
+        var boardNames = new[] { "250407" };
+
+        Assert.True(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
+
+    // The mirror for a board: hiding a SIBLING board under the same hardware must not break the
+    // currently selected board's own survival.
+    [Fact]
+    public void Hiding_a_sibling_board_does_not_break_survival_of_the_selected_one()
+    {
+        var hardwareNames = new[] { "Commodore 64" };
+
+        // "KU-14194HB" has just been unchecked; "250407" (the one on screen) still shows.
+        var boardNames = new[] { "250407" };
+
+        Assert.True(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
+
+    [Fact]
+    public void The_selection_does_not_survive_when_the_current_hardware_itself_was_hidden()
+    {
+        var hardwareNames = new[] { "Commodore 128" };
+        var boardNames = System.Array.Empty<string>();
+
+        Assert.False(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
+
+    [Fact]
+    public void The_selection_does_not_survive_when_the_current_board_itself_was_hidden()
+    {
+        var hardwareNames = new[] { "Commodore 64" };
+        var boardNames = new[] { "KU-14194HB" };
+
+        Assert.False(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
+
+    // No hardware selected at all never "survives" - there is nothing on screen for a checkbox
+    // change to leave alone, so the caller should fall back to its ordinary reselect path.
+    [Fact]
+    public void Nothing_survives_when_no_hardware_is_currently_selected()
+    {
+        var hardwareNames = new[] { "Commodore 64" };
+        var boardNames = new[] { "250407" };
+
+        Assert.False(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, string.Empty, string.Empty));
+    }
+
+    // Hardware selected but no board yet (e.g. that hardware has no boards, or none is selected
+    // yet) trivially survives on the board half - there is no board selection to invalidate.
+    [Fact]
+    public void A_selected_hardware_with_no_board_selected_survives_on_the_hardware_check_alone()
+    {
+        var hardwareNames = new[] { "Commodore 64" };
+        var boardNames = System.Array.Empty<string>();
+
+        Assert.True(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", string.Empty));
+    }
+
+    // Case-insensitive, matching every other name comparison in this class and the rest of the app.
+    [Fact]
+    public void Survival_is_case_insensitive()
+    {
+        var hardwareNames = new[] { "commodore 64" };
+        var boardNames = new[] { "250407" };
+
+        Assert.True(CatalogueVisibility.CurrentSelectionSurvives(
+            hardwareNames, boardNames, "Commodore 64", "250407"));
+    }
 }

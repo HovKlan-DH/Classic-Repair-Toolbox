@@ -46,8 +46,6 @@ public partial class TabSchematics
 
     private Point thisLabelEditorDragStartPixelPoint;
 
-    private Rect thisLabelEditorOriginalSelectionBounds;
-
     private readonly Dictionary<EditableComponentHighlight, Rect> thisLabelEditorOriginalDragRectangles = new();
 
     // ###########################################################################################
@@ -403,11 +401,6 @@ public partial class TabSchematics
 
         this.thisLabelEditorDragMode = dragMode;
         this.thisLabelEditorDragStartPixelPoint = startPixelPoint;
-        this.thisLabelEditorOriginalSelectionBounds = new Rect(
-            anchorHighlight.X,
-            anchorHighlight.Y,
-            anchorHighlight.Width,
-            anchorHighlight.Height);
 
         this.CaptureSelectedLabelEditorDragState();
         this.RefreshLabelEditorOverlay();
@@ -941,28 +934,6 @@ public partial class TabSchematics
     private bool HasSelectedLabelEditorHighlightsForCurrentSchematic()
     {
         return this.GetSelectedLabelEditorHighlightsForCurrentSchematic().Count > 0;
-    }
-
-    // ###########################################################################################
-    // Computes the combined selection bounds for all selected editor highlights on the current schematic.
-    // ###########################################################################################
-    private bool TryGetSelectedLabelEditorBounds(out Rect selectionBounds)
-    {
-        selectionBounds = default;
-
-        var selected = this.GetSelectedLabelEditorHighlightsForCurrentSchematic();
-        if (selected.Count == 0)
-        {
-            return false;
-        }
-
-        double left = selected.Min(row => row.X);
-        double top = selected.Min(row => row.Y);
-        double right = selected.Max(row => row.X + row.Width);
-        double bottom = selected.Max(row => row.Y + row.Height);
-
-        selectionBounds = new Rect(left, top, right - left, bottom - top);
-        return true;
     }
 
     // ###########################################################################################

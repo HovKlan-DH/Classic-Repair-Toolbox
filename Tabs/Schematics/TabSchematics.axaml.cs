@@ -831,7 +831,6 @@ public partial class TabSchematics : UserControl
         this.thisIsDrawingLabelEditorRectangle = false;
         this.thisLabelEditorDraftRectangle = null;
         this.thisLabelEditorDragMode = LabelEditorDragMode.None;
-        this.thisLabelEditorOriginalSelectionBounds = default;
         this.thisLabelEditorOriginalDragRectangles.Clear();
         this.thisLabelEditorWorkingHighlights.Clear();
         this.UpdateLabelEditorLockState();

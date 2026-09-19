@@ -327,6 +327,75 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // The data-root-relative folder for a picked file, or null when the file sits OUTSIDE the
+        // data root (in which case the caller keeps whatever folder the user chose in the drop-down).
+        //
+        // Extracted from TabContribute's ApplySelectedFilePathToRow, which tested containment with a
+        // bare dir.StartsWith(dataRoot) - no trailing separator and no normalization - so a SIBLING
+        // folder whose name merely begins with the root's own name passed. With a root of
+        // "...\Classic-Repair-Toolbox\Data", picking a file from "...\Classic-Repair-Toolbox\Data-backup"
+        // was reported as inside it, and GetRelativePath then produced "../Data-backup/Commodore":
+        // a traversing relative path written into the row and shipped in the uploaded payload, where
+        // the server merge concatenates it onto ITS data root (see the ".." rejection in the
+        // webserver's normalizeRelativeWorkbookPath, the other half of this contract).
+        //
+        // Both sides are normalized with GetFullPath and the root is compared WITH a trailing
+        // separator, which is what makes "Data-backup" fail against "Data\" - the same approach
+        // ExternalTargetLauncher.TryResolveDataRootScopedFilePath already uses for the same reason.
+        //
+        // Returns an empty string (not null) for a file sitting directly IN the root: that is inside
+        // it, with no sub-folder, and the caller stores an empty FileLocation for exactly that case.
+        // Null means "not inside", which is a different answer and drives a different branch.
+        // ###########################################################################################
+        public static string? TryGetDataRootRelativeFolder(string? dataRoot, string? fileDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(dataRoot) || string.IsNullOrWhiteSpace(fileDirectory))
+            {
+                return null;
+            }
+
+            try
+            {
+                string normalizedRoot = Path.GetFullPath(dataRoot);
+                string normalizedDirectory = Path.GetFullPath(fileDirectory);
+
+                var comparison = OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+
+                // The directory IS the root: inside, but with no sub-folder to name.
+                if (string.Equals(normalizedDirectory, normalizedRoot, comparison))
+                {
+                    return string.Empty;
+                }
+
+                string rootWithSeparator = normalizedRoot.EndsWith(Path.DirectorySeparatorChar)
+                    ? normalizedRoot
+                    : normalizedRoot + Path.DirectorySeparatorChar;
+
+                if (!normalizedDirectory.StartsWith(rootWithSeparator, comparison))
+                {
+                    return null;
+                }
+
+                string relative = Path.GetRelativePath(normalizedRoot, normalizedDirectory);
+
+                if (relative == "." || relative.Length == 0)
+                {
+                    return string.Empty;
+                }
+
+                return relative.Replace('\\', '/');
+            }
+            catch
+            {
+                // GetFullPath throws on genuinely malformed input; treat that as "not inside"
+                // rather than letting a bad pick take down the row.
+                return null;
+            }
+        }
+
+        // ###########################################################################################
         // Resolves an edited file path so it can be verified for existence and attached.
         // Accepts both relative paths (resolved against the data root) and external absolute
         // paths chosen through the file picker. Returns null when the file does not exist.
