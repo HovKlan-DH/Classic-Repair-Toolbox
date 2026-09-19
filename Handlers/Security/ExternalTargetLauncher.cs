@@ -1,5 +1,6 @@
 ﻿using Handlers.DataHandling;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -136,6 +137,19 @@ namespace CRT
         // Resolves a local file path and rejects anything outside the configured data-root, plus
         // any file whose extension is not on the openable-document allowlist.
         // Relative paths are resolved against data-root; absolute paths must still stay inside it.
+        //
+        // The containment check runs TWICE: once on the lexically-normalized path (cheap, and
+        // enough to reject an ordinary traversal or an absolute path elsewhere on disk before ever
+        // touching the filesystem for the file's existence), and again on each side's REAL path
+        // via RealPathResolver, which follows any symlink or junction along the way to where it
+        // actually points. Path.GetFullPath alone cannot see a symlinked directory inside the data
+        // root that redirects outside it - see RealPathResolver's own header for how that was
+        // proven against a real Windows junction. Currently unreachable in this application (see
+        // that header), which is exactly why it is worth having: the day something changes that,
+        // this check does not need to change with it.
+        //
+        // The path handed back is the REAL one, which is also what the shell is given - see the
+        // comment at the assignment for why the lexical path must not be substituted there.
         // ###########################################################################################
         private static bool TryResolveDataRootScopedFilePath(string target, string dataRoot, out string localPath)
         {
@@ -153,13 +167,9 @@ namespace CRT
                     ? Path.GetFullPath(normalizedTargetInput)
                     : Path.GetFullPath(Path.Combine(normalizedDataRoot, normalizedTargetInput));
 
-                string normalizedDataRootWithSeparator = ExternalTargetLauncher.AppendDirectorySeparator(normalizedDataRoot);
                 StringComparison pathComparison = ExternalTargetLauncher.GetPathComparison();
 
-                if (string.Equals(normalizedTarget, normalizedDataRoot, pathComparison))
-                    return false;
-
-                if (!normalizedTarget.StartsWith(normalizedDataRootWithSeparator, pathComparison))
+                if (!ExternalTargetLauncher.IsContainedWithinRoot(normalizedTarget, normalizedDataRoot, pathComparison))
                     return false;
 
                 if (!ExternalTargetLauncher.HasAllowedFileExtension(normalizedTarget))
@@ -168,13 +178,84 @@ namespace CRT
                 if (!File.Exists(normalizedTarget))
                     return false;
 
-                localPath = normalizedTarget;
+                // The existence check above is also what makes it safe to resolve real paths now:
+                // RealPathResolver walks the filesystem, and calling it on something that might not
+                // exist is the caller's job to guard, not its own (see its own header).
+                //
+                // BOTH sides must genuinely resolve. A resolved path compared against an unresolved
+                // one is a verdict about neither: when the data root itself sits behind a link (an
+                // AppData folder redirected to another volume, or --data-root= pointing at one) and
+                // the root's own resolve fails while the target's succeeds, the two disagree and a
+                // legitimate file is refused. So a failure to resolve either side refuses the open
+                // outright rather than falling back to a comparison that cannot mean anything.
+                if (!RealPathResolver.TryResolveRealPath(normalizedTarget, out string realTarget) ||
+                    !ExternalTargetLauncher.TryGetRealDataRoot(normalizedDataRoot, out string realDataRoot))
+                {
+                    return false;
+                }
+
+                if (!ExternalTargetLauncher.IsContainedWithinRoot(realTarget, realDataRoot, pathComparison))
+                    return false;
+
+                // The RESOLVED path, not the lexical one. TryStart hands this to the shell, and
+                // handing over a different string than the one just validated leaves a window in
+                // which swapping a directory component for a link opens a file that never passed
+                // the check. The two are identical whenever no link is involved, so this costs
+                // nothing in the normal case.
+                localPath = realTarget;
                 return true;
             }
             catch
             {
                 return false;
             }
+        }
+
+        // ###########################################################################################
+        // The data root's own real path, resolved once per distinct root and remembered.
+        //
+        // Resolving it walks the root component by component, issuing a Directory.Exists plus a
+        // Directory.ResolveLinkTarget per segment - roughly sixteen syscalls for a typical AppData
+        // root, on EVERY link and file the user opens, for an answer that cannot change while the
+        // app runs. DataManager.DataRoot is fixed for the process lifetime, and the only other
+        // value that reaches here is a test's explicit override, so the root is keyed rather than
+        // assumed single: a test pointing at a fresh temp folder must not be handed the previous
+        // one's answer.
+        //
+        // Only SUCCESSFUL resolutions are cached. A failure is transient by nature (a permission
+        // blip, a race with something being deleted), and remembering it would turn one bad moment
+        // into every subsequent open being refused for the life of the process.
+        // ###########################################################################################
+        private static readonly ConcurrentDictionary<string, string> RealDataRootCache = new();
+
+        private static bool TryGetRealDataRoot(string normalizedDataRoot, out string realDataRoot)
+        {
+            if (ExternalTargetLauncher.RealDataRootCache.TryGetValue(normalizedDataRoot, out string? cached))
+            {
+                realDataRoot = cached;
+                return true;
+            }
+
+            if (!RealPathResolver.TryResolveRealPath(normalizedDataRoot, out realDataRoot))
+            {
+                return false;
+            }
+
+            ExternalTargetLauncher.RealDataRootCache[normalizedDataRoot] = realDataRoot;
+            return true;
+        }
+
+        // ###########################################################################################
+        // Whether normalizedTarget sits inside normalizedRoot - shared by the lexical and the
+        // real-path passes above, so the two cannot disagree about what "contained" means.
+        // ###########################################################################################
+        private static bool IsContainedWithinRoot(string normalizedTarget, string normalizedRoot, StringComparison pathComparison)
+        {
+            if (string.Equals(normalizedTarget, normalizedRoot, pathComparison))
+                return false;
+
+            string normalizedRootWithSeparator = ExternalTargetLauncher.AppendDirectorySeparator(normalizedRoot);
+            return normalizedTarget.StartsWith(normalizedRootWithSeparator, pathComparison);
         }
 
         // ###########################################################################################
