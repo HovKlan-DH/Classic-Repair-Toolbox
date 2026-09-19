@@ -2167,21 +2167,20 @@ namespace CRT
             row.File = Path.GetFileName(selectedPath);
             row.OriginalFilePath = selectedPath;
 
-            try
+            // Containment is decided by ContributionPackaging.TryGetDataRootRelativeFolder (pure,
+            // unit tested) rather than by a prefix test here - see its header for the sibling-folder
+            // case a bare StartsWith let through, and why a traversing FileLocation must never reach
+            // the uploaded payload.
+            //
+            // null means the file is OUTSIDE the data root, and FileLocation is then deliberately
+            // left alone: the file keeps whatever drop-down folder the user selected.
+            string? relativeFolder = ContributionPackaging.TryGetDataRootRelativeFolder(
+                this.thisDataRoot,
+                Path.GetDirectoryName(selectedPath));
+
+            if (relativeFolder != null)
             {
-                string? dir = Path.GetDirectoryName(selectedPath);
-                if (!string.IsNullOrWhiteSpace(dir) &&
-                    !string.IsNullOrWhiteSpace(this.thisDataRoot) &&
-                    dir.StartsWith(this.thisDataRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    string rel = Path.GetRelativePath(this.thisDataRoot, dir);
-                    row.FileLocation = (rel != "." && rel != "") ? rel.Replace('\\', '/') : string.Empty;
-                }
-                // We intentionally do NOT overwrite FileLocation if the user selects an external file.
-                // The file should retain whatever drop-down folder the user selected.
-            }
-            catch
-            {
+                row.FileLocation = relativeFolder;
             }
 
             this.SetAvailableFileLocations(row);

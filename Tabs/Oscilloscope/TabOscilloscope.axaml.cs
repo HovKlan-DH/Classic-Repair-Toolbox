@@ -1213,6 +1213,11 @@ namespace CRT
                 }
                 catch
                 {
+                    // ObjectDisposedException when the connectivity monitor was already
+                    // torn down - Cancel() on a disposed CancellationTokenSource throws, and every
+                    // caller here is a "stop it if it is running" path that has nothing to do
+                    // differently when it was not. The Dispose() below still runs, via the
+                    // statement after this block.
                 }
 
                 this.thisOscilloscopeMonitorCancellationTokenSource.Dispose();
@@ -1578,8 +1583,18 @@ namespace CRT
                 enteredSemaphore = true;
                 await this.DisposeConnectedScopeClientCoreAsync();
             }
-            catch
+            catch (Exception ex)
             {
+                // Tearing a connection down is best-effort: the socket is being abandoned either
+                // way, and throwing here would take out whatever is disconnecting (a tab switch, a
+                // host change, application shutdown) over a scope that is already gone.
+                //
+                // LOGGED rather than swallowed silently, because this try covers the semaphore WAIT
+                // as well as the dispose. A failure to acquire the session semaphore is not a
+                // teardown race - it means scope commands are no longer being serialized, which
+                // presents to the user only as the oscilloscope going unresponsive, with nothing
+                // anywhere to explain it. The two cases are indistinguishable without this line.
+                Logger.Warning($"Failed to dispose the oscilloscope connection cleanly: [{ex.Message}]");
             }
             finally
             {
@@ -1606,6 +1621,10 @@ namespace CRT
             }
             catch
             {
+                // Deliberately silent, and the one bare catch here that should stay that way: the
+                // caller (DisposeConnectedScopeClientAsync) already logs, and a scope that dropped
+                // the link mid-session throws here on EVERY disconnect - logging it again would put
+                // a warning in the log for the ordinary case of unplugging the instrument.
             }
             finally
             {
@@ -2026,6 +2045,10 @@ namespace CRT
             }
             catch
             {
+                // ObjectDisposedException when the auto-connect retry loop was already
+                // torn down - Cancel() on a disposed CancellationTokenSource throws, and every
+                // caller here is a "stop it if it is running" path that has nothing to do
+                // differently when it was not. The Dispose() below still runs.
             }
 
             this.thisOscilloscopeAutoConnectCancellationTokenSource.Dispose();
@@ -2255,6 +2278,10 @@ namespace CRT
             }
             catch
             {
+                // ObjectDisposedException when the trigger-level keyboard worker was already
+                // torn down - Cancel() on a disposed CancellationTokenSource throws, and every
+                // caller here is a "stop it if it is running" path that has nothing to do
+                // differently when it was not. The Dispose() below still runs.
             }
 
             this.thisTriggerLevelKeyboardWorkerCts.Dispose();
@@ -2460,6 +2487,10 @@ namespace CRT
             }
             catch
             {
+                // ObjectDisposedException when the time/div keyboard worker was already
+                // torn down - Cancel() on a disposed CancellationTokenSource throws, and every
+                // caller here is a "stop it if it is running" path that has nothing to do
+                // differently when it was not. The Dispose() below still runs.
             }
 
             this.thisTimeDivKeyboardWorkerCts.Dispose();
@@ -2657,6 +2688,10 @@ namespace CRT
             }
             catch
             {
+                // ObjectDisposedException when the volts/div keyboard worker was already
+                // torn down - Cancel() on a disposed CancellationTokenSource throws, and every
+                // caller here is a "stop it if it is running" path that has nothing to do
+                // differently when it was not. The Dispose() below still runs.
             }
 
             this.thisVoltsDivKeyboardWorkerCts.Dispose();

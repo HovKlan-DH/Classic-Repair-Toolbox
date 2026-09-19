@@ -63,6 +63,55 @@ namespace Handlers.DataHandling
                    key.StartsWith(boardKey + KeySeparator, StringComparison.OrdinalIgnoreCase);
         }
 
+        // ###########################################################################################
+        // Whether the currently selected hardware/board still survives in freshly recomputed visible
+        // name lists - i.e. whether a catalogue checkbox change actually affects what is on screen,
+        // as opposed to some other, unrelated hardware/board. Used by Main.ApplyCatalogueVisibility
+        // to decide between two very different responses to a checkbox toggle: reselecting (and so
+        // reloading the whole board - Excel, thumbnails, KiCad, and closing/reopening the detached
+        // thumbnails window if one is open) when the item actually on screen was hidden or shown, or
+        // simply refreshing the drop-downs' contents with no reselect at all when it was not.
+        //
+        // No selection (an empty hardware name) never "survives" - GetCurrentBoardKeyParts documents
+        // empty strings for that state, matching the same "no board selected" convention used
+        // throughout Main (see KeyNamesBoard and GetCurrentBoardKey). A blank board name (hardware
+        // selected, no board yet) is treated as trivially surviving, since there is no board
+        // selection for a hidden board to invalidate.
+        // ###########################################################################################
+        public static bool CurrentSelectionSurvives(
+            IEnumerable<string> visibleHardwareNames,
+            IEnumerable<string> visibleBoardNamesForSelectedHardware,
+            string currentHardwareName,
+            string currentBoardName)
+        {
+            if (string.IsNullOrEmpty(currentHardwareName))
+            {
+                return false;
+            }
+
+            bool hardwareSurvives = Contains(visibleHardwareNames, currentHardwareName);
+            if (!hardwareSurvives)
+            {
+                return false;
+            }
+
+            return string.IsNullOrEmpty(currentBoardName) ||
+                   Contains(visibleBoardNamesForSelectedHardware, currentBoardName);
+        }
+
+        private static bool Contains(IEnumerable<string> names, string name)
+        {
+            foreach (string candidate in names)
+            {
+                if (KeyComparer.Equals(candidate, name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static int CountSeparators(string key)
         {
             if (string.IsNullOrEmpty(key))

@@ -489,6 +489,57 @@ public sealed class MainWindowTests : IDisposable
         }
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Update banner
+    // ---------------------------------------------------------------------------------------
+
+    // ###########################################################################################
+    // A FAILED update install must hand the banner back to the user.
+    //
+    // A successful install never returns - ApplyUpdatesAndRestart replaces the process - so every
+    // path that reaches the code after the await is a failure. The banner was left reading
+    // "Downloading update..." with all three buttons disabled: no retry, no dismiss, and nothing
+    // saying anything had gone wrong. DownloadAndInstallAsync reports failure by RETURNING FALSE
+    // (it catches its own exceptions), so ignoring that return was the whole bug.
+    //
+    // Driven through the test seam rather than the click handler, because the handler reaches
+    // GitHub over the network - which no test may do.
+    // ###########################################################################################
+    [Fact]
+    public void A_failed_update_install_re_enables_the_banner_buttons_and_says_so()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+
+            var install = main.GetControl<Button>("UpdateBannerInstallButton");
+            var viewNotes = main.GetControl<Button>("UpdateBannerViewNotesButton");
+            var dismiss = main.GetControl<Button>("UpdateBannerDismissButton");
+            var text = main.GetControl<TextBlock>("UpdateBannerText");
+
+            // The state the click handler leaves behind while the download is in flight.
+            install.IsEnabled = false;
+            viewNotes.IsEnabled = false;
+            dismiss.IsEnabled = false;
+            text.Text = "Downloading update...";
+
+            main.RestoreUpdateBannerAfterFailedInstallForTests();
+
+            // All three actionable again - the dead end is what made this a bug rather than a
+            // cosmetic problem.
+            Assert.True(install.IsEnabled);
+            Assert.True(viewNotes.IsEnabled);
+            Assert.True(dismiss.IsEnabled);
+
+            // And it no longer claims to still be downloading.
+            Assert.DoesNotContain("Downloading", text.Text!);
+            Assert.Contains("could not be installed", text.Text!);
+        });
+    }
+
     // Raises a Button's Click the way a real press does. The handlers under test are private
     // event handlers wired in markup, so there is nothing else to call.
     private static void RaiseClick(Button button)

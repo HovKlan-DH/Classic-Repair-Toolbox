@@ -1366,8 +1366,18 @@ namespace Handlers.DataHandling
 
                 // PNG: an 8-byte signature, then an IHDR chunk whose width and height are big-endian
                 // 32-bit integers at a fixed offset.
-                if (signature.Length == 8 &&
-                    signature[0] == 0x89 && signature[1] == 0x50 && signature[2] == 0x4E && signature[3] == 0x47)
+                //
+                // ALL EIGHT signature bytes are checked, not just the \x89PNG that identifies the
+                // format. The last four (\r \n \x1a \n) are there precisely to detect a file damaged
+                // in transit - a line-ending-translating copy rewrites the \r\n pair, and \x1a is an
+                // MS-DOS end-of-file that truncates a text-mode read. Matching only the first four
+                // accepts exactly those damaged files, and since the dimensions are then read from a
+                // FIXED offset rather than by locating IHDR, whatever bytes sit at 16 become the
+                // image size: no exception, nothing logged, and every marked area on that schematic
+                // silently placed against a bogus size (a mangled file measured 12345x12345 in
+                // testing). Cheap to check, and the only thing standing between a corrupt file and a
+                // wrong answer that looks right.
+                if (IsPngSignature(signature))
                 {
                     stream.Position = 16;
                     int width = ReadBigEndianInt32(reader);
@@ -1454,6 +1464,16 @@ namespace Handlers.DataHandling
             (marker >= 0xC0 && marker <= 0xC3) ||
             (marker >= 0xC5 && marker <= 0xC7) ||
             (marker >= 0xC9 && marker <= 0xCB);
+
+        // ###########################################################################################
+        // The full 8-byte PNG signature: \x89 P N G \r \n \x1a \n. Its own header explains why all
+        // eight matter rather than only the recognisable first four.
+        // ###########################################################################################
+        private static readonly byte[] PngSignature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+
+        private static bool IsPngSignature(byte[] signature) =>
+            signature.Length >= PngSignature.Length &&
+            signature.AsSpan(0, PngSignature.Length).SequenceEqual(PngSignature);
 
         private static int ReadBigEndianInt32(BinaryReader reader)
         {

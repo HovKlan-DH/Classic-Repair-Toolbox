@@ -217,7 +217,7 @@ public partial class TabSchematics
         // Load persisted mirror flags and re-apply them onto the calibration box.
         string excelPath = this.MainWindow?.GetCurrentBoardExcelPath() ?? string.Empty;
         string schematicName = this.GetCurrentSchematicName();
-        if (BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+        bool hasSavedCalibration = BoardComponentHighlightStorage.TryLoadKiCadCalibration(
                 excelPath,
                 schematicName,
                 out _,
@@ -226,9 +226,25 @@ public partial class TabSchematics
                 out _,
                 out _,
                 out bool mirrorX,
-                out bool mirrorY))
+                out bool mirrorY);
+
+        if (hasSavedCalibration)
         {
             this.ApplyKiCadCalibrationMirrorFlagsToBox(mirrorX, mirrorY);
+        }
+        else
+        {
+            // First-time calibration for this schematic: imageBounds is the raw full-image
+            // bounds, whose corners sit exactly on the image edges - reported directly as the
+            // resize handles being clamped onto the viewport frame and hard to grab. Pull them
+            // in so every handle starts comfortably inside the visible schematic. A schematic
+            // that already has a saved calibration skips this entirely, so re-entering
+            // calibration mode on an already-aligned board never moves the box the user set.
+            this.SetKiCadCalibrationBox(
+                KiCadCalibrationGeometry.InsetForInitialVisibility(
+                    this.GetKiCadCalibrationBox(),
+                    this.currentFullResBitmap.PixelSize.Width,
+                    this.currentFullResBitmap.PixelSize.Height));
         }
 
         this.thisKiCadCalibrationStartImageLeft = this.thisKiCadCalibrationImageLeft;
@@ -528,20 +544,14 @@ public partial class TabSchematics
         double thisHandleSize = Math.Clamp(10.0 / thisScale, 5.0, 12.0);
         double thisHalfHandleSize = thisHandleSize / 2.0;
 
-        var thisHandleBrush = new SolidColorBrush(Colors.LimeGreen, 1.0);
+        // IndianRed, matching the worklog/selection accent used elsewhere in this tab - asked for
+        // directly in place of the original solid LimeGreen, which read as just another trace
+        // colour rather than as the calibration tool's own overlay. The border is dashed so it is
+        // visually distinct from both KiCad copper and the solid worklog-area rectangles; the
+        // handles stay solid squares since dashing a mark this small would leave it barely visible.
+        var thisHandleBrush = new SolidColorBrush(Colors.IndianRed, 1.0);
         var thisHandlePen = new Pen(thisHandleBrush, 1.0);
-        var thisBorderPen = new Pen(thisHandleBrush, 1.0);
-
-        var thisPrimitives = new List<KiCadOverlayPrimitive>
-    {
-        new KiCadOverlayPrimitive
-        {
-            Kind = KiCadOverlayPrimitiveKind.Rectangle,
-            Rect = thisLocalRect,
-            Pen = thisBorderPen,
-            Fill = null
-        }
-    };
+        var thisBorderPen = new Pen(thisHandleBrush, 1.0) { DashStyle = DashStyle.Dash };
 
         var thisHandleCenters = new[]
         {
@@ -555,36 +565,43 @@ public partial class TabSchematics
         new Point(thisLocalRect.Left, thisLocalRect.Center.Y)
     };
 
-        foreach (var thisHandleCenter in thisHandleCenters)
-        {
-            thisPrimitives.Add(new KiCadOverlayPrimitive
-            {
-                Kind = KiCadOverlayPrimitiveKind.Rectangle,
-                Rect = new Rect(
-                    thisHandleCenter.X - thisHalfHandleSize,
-                    thisHandleCenter.Y - thisHalfHandleSize,
-                    thisHandleSize,
-                    thisHandleSize),
-                Pen = thisHandlePen,
-                Fill = thisHandleBrush
-            });
-        }
-
+        // One StreamGeometry holding both the border figure and the eight handle figures, exactly
+        // as before - RefreshKiCadCalibrationBoxPrimitiveOnly and the full rebuild path both rely
+        // on the calibration box being exactly one primitive, always last (see that method's own
+        // header), so the border and handles cannot become two separate primitives.
+        //
+        // Each figure's own isFilled controls whether IT is filled when the geometry is drawn with
+        // a non-null Fill brush - it is a per-figure flag, not a per-geometry one, so the border can
+        // stay unfilled (isFilled: false) while the handles are filled (isFilled: true) within this
+        // one geometry/one DrawGeometry call. The border is stroked with the dashed pen; the shared
+        // Pen also strokes the handle squares' 1px edge, but at handle size that dash is not visible
+        // against the filled square underneath it. The original code built each handle primitive
+        // with Fill set but folded every figure's isFilled through "Fill != null" against the WRONG
+        // (per-sub-primitive) Fill, then discarded all of that and drew the combined geometry with
+        // Fill = null - so the handles were never actually filled despite the Fill assignment
+        // implying they should be. This restores what that assignment always intended.
         var thisGeometry = new StreamGeometry();
 
         using (var thisGeometryContext = thisGeometry.Open())
         {
-            foreach (var thisPrimitive in thisPrimitives)
-            {
-                if (thisPrimitive.Kind != KiCadOverlayPrimitiveKind.Rectangle)
-                {
-                    continue;
-                }
+            thisGeometryContext.BeginFigure(thisLocalRect.TopLeft, isFilled: false);
+            thisGeometryContext.LineTo(thisLocalRect.TopRight);
+            thisGeometryContext.LineTo(thisLocalRect.BottomRight);
+            thisGeometryContext.LineTo(thisLocalRect.BottomLeft);
+            thisGeometryContext.EndFigure(isClosed: true);
 
-                thisGeometryContext.BeginFigure(thisPrimitive.Rect.TopLeft, isFilled: thisPrimitive.Fill != null);
-                thisGeometryContext.LineTo(thisPrimitive.Rect.TopRight);
-                thisGeometryContext.LineTo(thisPrimitive.Rect.BottomRight);
-                thisGeometryContext.LineTo(thisPrimitive.Rect.BottomLeft);
+            foreach (var thisHandleCenter in thisHandleCenters)
+            {
+                var thisHandleRect = new Rect(
+                    thisHandleCenter.X - thisHalfHandleSize,
+                    thisHandleCenter.Y - thisHalfHandleSize,
+                    thisHandleSize,
+                    thisHandleSize);
+
+                thisGeometryContext.BeginFigure(thisHandleRect.TopLeft, isFilled: true);
+                thisGeometryContext.LineTo(thisHandleRect.TopRight);
+                thisGeometryContext.LineTo(thisHandleRect.BottomRight);
+                thisGeometryContext.LineTo(thisHandleRect.BottomLeft);
                 thisGeometryContext.EndFigure(isClosed: true);
             }
         }
@@ -594,7 +611,7 @@ public partial class TabSchematics
             Kind = KiCadOverlayPrimitiveKind.Geometry,
             Geometry = thisGeometry,
             Pen = thisBorderPen,
-            Fill = null
+            Fill = thisHandleBrush
         };
     }
 

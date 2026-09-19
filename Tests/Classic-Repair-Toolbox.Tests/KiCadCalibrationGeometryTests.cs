@@ -502,4 +502,131 @@ public class KiCadCalibrationGeometryTests
         Assert.Equal(110, twice.Right);
         Assert.Equal(220, twice.Bottom);
     }
+
+    // -----------------------------------------------------------------------------------------
+    // InsetForInitialVisibility - first-time calibration's corner handles landing on the image edge
+    // -----------------------------------------------------------------------------------------
+    //
+    // Reported directly, with a screenshot: entering calibration mode for the first time on a
+    // schematic (no saved calibration yet) seeds the box from the raw full-image bounds, so all
+    // four corner handles sit exactly on the image's own edge - some clipped by the viewport frame
+    // and effectively ungrabbable. These pin the fix: an edge sitting at (or within the margin of)
+    // the image's own border gets pulled in; an edge that already has room is left alone.
+
+    // The exact reported shape: a box seeded at the full image bounds gets every edge pulled in.
+    [Fact]
+    public void A_box_at_the_full_image_bounds_is_inset_on_every_edge()
+    {
+        var box = new KiCadCalibrationBox(0, 0, 1000, 800);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 1000, imageHeight: 800);
+
+        Assert.True(inset.Left > 0);
+        Assert.True(inset.Top > 0);
+        Assert.True(inset.Right < 1000);
+        Assert.True(inset.Bottom < 800);
+    }
+
+    // A box that already has room on every side (e.g. seeded from a saved calibration covering
+    // only part of the board) must be left exactly as computed - this only exists for the
+    // full-image case, and must never nudge an already-reasonable box.
+    [Fact]
+    public void A_box_already_away_from_every_edge_is_left_untouched()
+    {
+        var box = new KiCadCalibrationBox(200, 150, 800, 600);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 1000, imageHeight: 800);
+
+        Assert.Equal(200, inset.Left);
+        Assert.Equal(150, inset.Top);
+        Assert.Equal(800, inset.Right);
+        Assert.Equal(600, inset.Bottom);
+    }
+
+    // Only the edges actually AT the image border move - a box touching just the left/top must
+    // not have its already-fine right/bottom edges disturbed.
+    [Fact]
+    public void Only_edges_touching_the_image_border_are_pulled_in()
+    {
+        var box = new KiCadCalibrationBox(0, 0, 500, 400);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 1000, imageHeight: 800);
+
+        Assert.True(inset.Left > 0);
+        Assert.True(inset.Top > 0);
+        Assert.Equal(500, inset.Right);
+        Assert.Equal(400, inset.Bottom);
+    }
+
+    // The margin scales with the image, not a fixed pixel count - a large hi-res board scan gets a
+    // proportionally larger inset than a small preview schematic.
+    [Fact]
+    public void The_margin_scales_with_the_image_size()
+    {
+        var small = KiCadCalibrationGeometry.InsetForInitialVisibility(
+            new KiCadCalibrationBox(0, 0, 200, 100), imageWidth: 200, imageHeight: 100);
+
+        var large = KiCadCalibrationGeometry.InsetForInitialVisibility(
+            new KiCadCalibrationBox(0, 0, 4000, 2000), imageWidth: 4000, imageHeight: 2000);
+
+        // Both insets are the same FRACTION of their own image, so the large image's absolute
+        // inset is proportionally larger.
+        Assert.Equal(small.Left / 200.0, large.Left / 4000.0, 6);
+        Assert.Equal(small.Top / 100.0, large.Top / 2000.0, 6);
+    }
+
+    // Mirroring must survive the inset exactly as it survives every other edge operation in this
+    // class - the inset works in normalised (ascending) edges and must come back out flipped.
+    [Fact]
+    public void Mirroring_survives_the_inset()
+    {
+        var mirroredBox = new KiCadCalibrationBox(1000, 0, 0, 800);
+        Assert.True(mirroredBox.IsMirroredX);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(mirroredBox, imageWidth: 1000, imageHeight: 800);
+
+        Assert.True(inset.IsMirroredX);
+        Assert.False(inset.IsMirroredY);
+
+        // The mirrored Left (stored as the box's Right, numerically) still moved in from 1000.
+        Assert.True(inset.Left < 1000);
+        Assert.True(inset.Right > 0);
+    }
+
+    // A degenerate box (already pinched down to a sliver against the image's own edge) must fall
+    // back to the box exactly as given rather than producing an inverted or empty rectangle. The
+    // margin is 3% of the IMAGE, so this needs a box whose own width/height is smaller than that
+    // margin, with its far edge nowhere near the OPPOSITE margin (otherwise only the near edge
+    // moves and nothing inverts) - a small image's own margin is too small to invert anything on
+    // its own, which is what an earlier version of this test got wrong.
+    [Fact]
+    public void A_degenerate_box_leaves_it_untouched_rather_than_inverting_it()
+    {
+        // 3% of 1000 is 30: Left (0) is pulled in to 30, but Right (25) is nowhere near the
+        // opposite margin (970) so it is left alone - and now sits BEHIND the pulled-in Left,
+        // which is exactly the inversion the fallback exists to refuse.
+        var box = new KiCadCalibrationBox(0, 0, 25, 800);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 1000, imageHeight: 800);
+
+        Assert.Equal(0, inset.Left);
+        Assert.Equal(0, inset.Top);
+        Assert.Equal(25, inset.Right);
+        Assert.Equal(800, inset.Bottom);
+    }
+
+    // A zero/negative image size (no bitmap loaded yet) must not divide by zero or otherwise
+    // misbehave - the box is simply returned as given.
+    [Fact]
+    public void A_zero_image_size_leaves_the_box_untouched()
+    {
+        var box = new KiCadCalibrationBox(0, 0, 100, 100);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 0, imageHeight: 0);
+
+        Assert.Equal(box.Left, inset.Left);
+        Assert.Equal(box.Top, inset.Top);
+        Assert.Equal(box.Right, inset.Right);
+        Assert.Equal(box.Bottom, inset.Bottom);
+    }
 }

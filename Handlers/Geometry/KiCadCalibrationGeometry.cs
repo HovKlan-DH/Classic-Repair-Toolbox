@@ -98,6 +98,77 @@ namespace Handlers.Geometry
                 mirrorX ? box.Left : box.Right,
                 mirrorY ? box.Top : box.Bottom);
 
+        // How far in from the image edge the box's own edge must sit before its corner handles
+        // are comfortably inside the visible schematic rather than clamped onto the viewport
+        // frame - see InsetForInitialVisibility.
+        private const double MinimumEdgeMarginFraction = 0.03;
+
+        // ###################################################################################
+        // Insets a freshly seeded calibration box so its corner handles do not land exactly on
+        // the schematic image's own edges - reported directly: on first-time calibration (no
+        // saved calibration yet, so the box starts at the full image bounds) all four handles
+        // sat right at the image border, some of them clipped by the viewport frame and nearly
+        // impossible to grab.
+        //
+        // Only pulls an edge IN, and only when it is within the margin of the image's own edge -
+        // a box that already has room on a given side (for instance because it was seeded from a
+        // saved calibration that only covers part of the board) is left exactly as computed, so
+        // this only ever affects the "starts at the full image" case it exists for. The margin is
+        // a FRACTION of the image dimension rather than a fixed pixel count, so it scales with
+        // both a small preview schematic and a large hi-res board scan alike.
+        //
+        // Deliberately unaware of mirroring: it works in NORMALISED (ascending) edges and comes
+        // back out through WithNormalisedEdges, the same pattern every other edge-arithmetic
+        // method here uses, so a mirrored box's flip survives the inset untouched.
+        // ###################################################################################
+        public static KiCadCalibrationBox InsetForInitialVisibility(
+            KiCadCalibrationBox box,
+            double imageWidth,
+            double imageHeight)
+        {
+            if (imageWidth <= 0.0 || imageHeight <= 0.0)
+            {
+                return box;
+            }
+
+            double marginX = imageWidth * MinimumEdgeMarginFraction;
+            double marginY = imageHeight * MinimumEdgeMarginFraction;
+
+            double left = box.NormalisedLeft;
+            double top = box.NormalisedTop;
+            double right = box.NormalisedRight;
+            double bottom = box.NormalisedBottom;
+
+            if (left <= marginX)
+            {
+                left = marginX;
+            }
+
+            if (top <= marginY)
+            {
+                top = marginY;
+            }
+
+            if (right >= imageWidth - marginX)
+            {
+                right = imageWidth - marginX;
+            }
+
+            if (bottom >= imageHeight - marginY)
+            {
+                bottom = imageHeight - marginY;
+            }
+
+            // A degenerate result (an image too small for both margins to fit) falls back to the
+            // box exactly as computed rather than producing an inverted or zero-sized rectangle.
+            if (right <= left || bottom <= top)
+            {
+                return box;
+            }
+
+            return box.WithNormalisedEdges(left, top, right, bottom);
+        }
+
         // ###################################################################################
         // Remaps a VISUALLY grabbed resize handle onto the stored edge it actually controls.
         //
