@@ -187,7 +187,12 @@ public sealed class DraftFolderLayoutTests
     public void The_MARKER_is_recognised_as_draft_only_wherever_it_is_found()
     {
         Assert.True(DraftFolderLayout.IsDraftOnlyFile(".crt-draft.json"));
-        Assert.True(DraftFolderLayout.IsDraftOnlyFile(@"C:\Drafts\Commodore\C64\250407\.crt-draft.json"));
+
+        // A full path in THIS machine's own form, as the app hands it over. Built with Path.Combine,
+        // never a literal @"C:\..." - on the Linux CI runner a backslash is not a separator, so the
+        // whole literal read as one file name and the test failed there alone.
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(
+            Path.Combine(Path.GetTempPath(), "Drafts", "Commodore", "C64", "250407", ".crt-draft.json")));
 
         // Case-insensitively, since the filesystem is.
         Assert.True(DraftFolderLayout.IsDraftOnlyFile(".CRT-Draft.JSON"));
