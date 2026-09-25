@@ -1,0 +1,305 @@
+using CRT.Server.Handlers.Accounts;
+
+namespace CRT.Server.Tests.Fakes
+{
+    // ###########################################################################################
+    // An in-memory IAccountStore, so the account flows can be tested with no database.
+    //
+    // This is the direct equivalent of MockMiniproRunner in CRT.App: the interface is the seam,
+    // the real implementation is an untested I/O boundary, and this stands in under test. Without
+    // it, "registering with an existing address sends the already-registered mail rather than
+    // creating a second account" could not be tested at all.
+    //
+    // IT BEHAVES LIKE THE REAL THING WHERE THAT MATTERS. In particular it looks accounts up by
+    // NORMALISED email only, so a test cannot accidentally pass because the fake was more
+    // forgiving than MariaDB's unique index.
+    //
+    // The public collections let a test assert on what was written - which sessions were revoked,
+    // what audit rows exist - rather than only on the returned outcome.
+    // ###########################################################################################
+    public sealed class FakeAccountStore : IAccountStore
+    {
+        private long thisNextAccountId = 1;
+        private long thisNextTokenId = 1;
+        private long thisNextSessionId = 1;
+
+        public Dictionary<long, AccountRecord> Accounts { get; } = [];
+
+        public Dictionary<long, AccountTokenRecord> Tokens { get; } = [];
+
+        // The plaintext hash that was stored for each token, so a test can look a token up the
+        // way the flow does.
+        public Dictionary<long, string> TokenHashes { get; } = [];
+
+        public Dictionary<long, SessionRecord> Sessions { get; } = [];
+
+        public Dictionary<long, string> SessionHashes { get; } = [];
+
+        public List<AuditEntry> Audit { get; } = [];
+
+        public List<(string? Email, string? Ip, DateTimeOffset When)> AuthFailures { get; } = [];
+
+        // -----------------------------------------------------------------------------------
+        // Accounts.
+        // -----------------------------------------------------------------------------------
+
+        public Task<AccountRecord?> FindByNormalisedEmailAsync(string normalisedEmail, CancellationToken cancellationToken = default)
+        {
+            AccountRecord? found = this.Accounts.Values
+                .FirstOrDefault(account => string.Equals(account.NormalisedEmail, normalisedEmail, StringComparison.Ordinal));
+
+            return Task.FromResult(found);
+        }
+
+        public Task<AccountRecord?> FindByIdAsync(long accountId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(this.Accounts.TryGetValue(accountId, out AccountRecord? account) ? account : null);
+        }
+
+        public Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
+        {
+            long id = this.thisNextAccountId++;
+
+            this.Accounts[id] = new AccountRecord(
+                id,
+                account.Email,
+                account.NormalisedEmail,
+                account.PasswordHash,
+                account.DisplayName,
+                IsVerified: false,
+                IsAdministrator: false,
+                IsReviewer: false,
+                IsLocked: false,
+                account.CreatedUtc,
+                LastLoginUtc: null);
+
+            return Task.FromResult(id);
+        }
+
+        public Task SetPasswordHashAsync(long accountId, string passwordHash, CancellationToken cancellationToken = default)
+        {
+            this.Accounts[accountId] = this.Accounts[accountId] with { PasswordHash = passwordHash };
+            return Task.CompletedTask;
+        }
+
+        public Task SetVerifiedAsync(long accountId, CancellationToken cancellationToken = default)
+        {
+            this.Accounts[accountId] = this.Accounts[accountId] with { IsVerified = true };
+            return Task.CompletedTask;
+        }
+
+        public Task SetLastLoginAsync(long accountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.Accounts[accountId] = this.Accounts[accountId] with { LastLoginUtc = whenUtc };
+            return Task.CompletedTask;
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Tokens.
+        // -----------------------------------------------------------------------------------
+
+        public Task CreateTokenAsync(NewAccountToken token, CancellationToken cancellationToken = default)
+        {
+            long id = this.thisNextTokenId++;
+
+            this.Tokens[id] = new AccountTokenRecord(
+                id, token.AccountId, token.Purpose, token.CreatedUtc, token.ExpiresUtc, ConsumedUtc: null);
+
+            this.TokenHashes[id] = token.TokenHash;
+
+            return Task.CompletedTask;
+        }
+
+        public Task<AccountTokenRecord?> FindTokenByHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        {
+            foreach ((long id, string hash) in this.TokenHashes)
+            {
+                if (string.Equals(hash, tokenHash, StringComparison.Ordinal))
+                    return Task.FromResult<AccountTokenRecord?>(this.Tokens[id]);
+            }
+
+            return Task.FromResult<AccountTokenRecord?>(null);
+        }
+
+        public Task ConsumeTokenAsync(long tokenId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.Tokens[tokenId] = this.Tokens[tokenId] with { ConsumedUtc = whenUtc };
+            return Task.CompletedTask;
+        }
+
+        public Task ConsumeOutstandingTokensAsync(long accountId, string purpose, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            foreach (long id in this.Tokens.Keys.ToList())
+            {
+                AccountTokenRecord token = this.Tokens[id];
+
+                if (token.AccountId == accountId &&
+                    string.Equals(token.Purpose, purpose, StringComparison.Ordinal) &&
+                    token.ConsumedUtc is null)
+                {
+                    this.Tokens[id] = token with { ConsumedUtc = whenUtc };
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Sessions.
+        // -----------------------------------------------------------------------------------
+
+        public Task<long> CreateSessionAsync(NewSession session, CancellationToken cancellationToken = default)
+        {
+            long id = this.thisNextSessionId++;
+
+            this.Sessions[id] = new SessionRecord(
+                id, session.AccountId, session.CreatedUtc, session.ExpiresUtc,
+                LastUsedUtc: null, RevokedUtc: null, RevokedReason: null, ReplacedById: null);
+
+            this.SessionHashes[id] = session.RefreshTokenHash;
+
+            return Task.FromResult(id);
+        }
+
+        public Task<SessionRecord?> FindSessionByHashAsync(string refreshTokenHash, CancellationToken cancellationToken = default)
+        {
+            foreach ((long id, string hash) in this.SessionHashes)
+            {
+                if (string.Equals(hash, refreshTokenHash, StringComparison.Ordinal))
+                    return Task.FromResult<SessionRecord?>(this.Sessions[id]);
+            }
+
+            return Task.FromResult<SessionRecord?>(null);
+        }
+
+        public Task RotateSessionAsync(long sessionId, long replacedBySessionId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.Sessions[sessionId] = this.Sessions[sessionId] with
+            {
+                ReplacedById = replacedBySessionId,
+                LastUsedUtc = whenUtc
+            };
+
+            return Task.CompletedTask;
+        }
+
+        public Task RevokeSessionAsync(long sessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.Sessions[sessionId] = this.Sessions[sessionId] with
+            {
+                RevokedUtc = whenUtc,
+                RevokedReason = reason
+            };
+
+            return Task.CompletedTask;
+        }
+
+        // ###########################################################################################
+        // Sliding expiry.
+        //
+        // *** THE GUARDS MIRROR MySqlAccountStore.ExtendSessionAsync's WHERE CLAUSE, and that is
+        // the whole value of this method. *** A permissive fake would happily extend a revoked,
+        // rotated or expired session and certify a caller the real database silently refuses -
+        // so a test proving "a signed-out session cannot be revived" would prove nothing at all.
+        // If that SQL gains or loses a condition, change this in the same sitting.
+        // ###########################################################################################
+        public Task ExtendSessionAsync(long sessionId, DateTimeOffset newExpiresUtc, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            if (!this.Sessions.TryGetValue(sessionId, out SessionRecord? session))
+                return Task.CompletedTask;
+
+            if (session.RevokedUtc is not null || session.ReplacedById is not null || session.ExpiresUtc <= whenUtc)
+                return Task.CompletedTask;
+
+            this.Sessions[sessionId] = session with
+            {
+                ExpiresUtc = newExpiresUtc,
+                LastUsedUtc = whenUtc
+            };
+
+            this.ExtensionCount++;
+
+            return Task.CompletedTask;
+        }
+
+        // How many times an extension actually landed. Lets a test assert that a read-only screen
+        // is NOT writing a row on every single request, which is the thing the half-lifetime
+        // threshold exists to prevent.
+        public int ExtensionCount { get; private set; }
+
+        public Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            foreach (long id in this.Sessions.Keys.ToList())
+            {
+                SessionRecord session = this.Sessions[id];
+
+                if (session.AccountId == accountId && session.RevokedUtc is null)
+                    this.Sessions[id] = session with { RevokedUtc = whenUtc, RevokedReason = reason };
+            }
+
+            return Task.CompletedTask;
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Rate limiting and audit.
+        // -----------------------------------------------------------------------------------
+
+        public Task<IReadOnlyList<DateTimeOffset>> GetRecentAuthFailuresAsync(
+            string? normalisedEmail,
+            string? ipAddress,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<DateTimeOffset> matches = this.AuthFailures
+                .Where(failure => failure.When > since)
+                .Where(failure => normalisedEmail is null || string.Equals(failure.Email, normalisedEmail, StringComparison.Ordinal))
+                .Where(failure => ipAddress is null || string.Equals(failure.Ip, ipAddress, StringComparison.Ordinal))
+                .Select(failure => failure.When)
+                .ToList();
+
+            return Task.FromResult(matches);
+        }
+
+        public Task RecordAuthFailureAsync(string? normalisedEmail, string? ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.AuthFailures.Add((normalisedEmail, ipAddress, whenUtc));
+            return Task.CompletedTask;
+        }
+
+        public Task ClearAuthFailuresAsync(string normalisedEmail, CancellationToken cancellationToken = default)
+        {
+            this.AuthFailures.RemoveAll(failure => string.Equals(failure.Email, normalisedEmail, StringComparison.Ordinal));
+            return Task.CompletedTask;
+        }
+
+        // The mail-sending budget, per IP. Kept as its own list for the same reason the real store
+        // keys it on its own action: it counts successful requests, not failures.
+        public List<(string Ip, DateTimeOffset When)> MailRequests { get; } = [];
+
+        public Task<IReadOnlyList<DateTimeOffset>> GetRecentMailRequestsAsync(
+            string ipAddress,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<DateTimeOffset> matches = this.MailRequests
+                .Where(request => request.When > since)
+                .Where(request => string.Equals(request.Ip, ipAddress, StringComparison.Ordinal))
+                .Select(request => request.When)
+                .ToList();
+
+            return Task.FromResult(matches);
+        }
+
+        public Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.MailRequests.Add((ipAddress, whenUtc));
+            return Task.CompletedTask;
+        }
+
+        public Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default)
+        {
+            this.Audit.Add(entry);
+            return Task.CompletedTask;
+        }
+    }
+}

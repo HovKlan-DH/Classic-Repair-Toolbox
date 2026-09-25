@@ -1,0 +1,135 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.SubmitDraftWindow"
+        Title="Submit contribution"
+        Width="520"
+        MinWidth="460"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- ###########################################################################################
+	     The confirmation shown before anything is sent.
+
+	     "Showing exactly what will be sent" is a requirement in NewContributeStrategy.md, not a
+	     nicety: a contributor is about to publish their work to a server other people download
+	     from, and they should be able to see what that means before they commit to it.
+
+	     THE PANELS ARE SWAPPED IN CODE, not by a wizard: Confirm -> Progress -> Outcome. One window
+	     that changes its contents keeps the dialog in one place on screen and means Cancel has one
+	     meaning throughout.
+	     ########################################################################################### -->
+	<StackPanel Margin="18" Spacing="4">
+
+		<TextBlock x:Name="HeaderText"
+				   Text="Submit contribution"
+				   FontSize="16"
+				   FontWeight="Bold"
+				   Margin="0,0,0,10" />
+
+		<!-- ============================ CONFIRM ============================ -->
+		<StackPanel x:Name="ConfirmPanel" Spacing="4">
+
+			<TextBlock TextWrapping="Wrap"
+					   Text="Your changes will be sent for review. Nothing is published until a maintainer approves it, and your local draft stays exactly as it is." />
+
+			<TextBlock x:Name="SystemNameText"
+					   TextWrapping="Wrap"
+					   FontWeight="Bold"
+					   Margin="0,10,0,10" />
+
+			<!-- What will be sent. Built in code so the counts cannot drift from the manifest. -->
+			<Border BorderBrush="{DynamicResource Form_Border}"
+					BorderThickness="1"
+					CornerRadius="3"
+					Padding="12,8"
+					Margin="0,0,0,12">
+				<StackPanel x:Name="SummaryPanel" Spacing="3" />
+			</Border>
+
+			<TextBlock Text="Your email address"
+					   FontWeight="Bold"
+					   Margin="0,0,0,2" />
+
+			<!-- The contact address. The explanatory line below it is load-bearing: somebody asked
+			     for an email address reasonably expects a sign-up to follow, and saying plainly
+			     that one is not coming is the difference between a contribution and an abandoned
+			     one. See NewContributeStrategy.md, "CONTRIBUTING NEEDS NO ACCOUNT". -->
+			<TextBox x:Name="EmailTextBox"
+					 Watermark="you@example.com"
+					 TextChanged="OnFormChanged" />
+
+			<TextBlock TextWrapping="Wrap"
+					   Opacity="0.75"
+					   FontSize="12"
+					   Margin="0,2,0,10"
+					   Text="Used only so a reviewer can contact you if they need to ask something. The outcome itself is shown in &quot;My submissions&quot; on the Drafts tab. There is no account to create and no password to choose." />
+
+			<TextBlock Text="What did you change?"
+					   FontWeight="Bold"
+					   Margin="0,0,0,2" />
+
+			<TextBox x:Name="SummaryTextBox"
+					 AcceptsReturn="True"
+					 TextWrapping="Wrap"
+					 Height="70"
+					 Watermark="Corrected the value of R12 and added a scope capture for U8 pin 3."
+					 TextChanged="OnFormChanged" />
+
+			<TextBlock TextWrapping="Wrap"
+					   Opacity="0.75"
+					   FontSize="12"
+					   Margin="0,2,0,0"
+					   Text="A sentence is enough. It is the first thing whoever reviews this will read." />
+
+			<!-- Local problems - a referenced file that is missing, for instance. Hidden unless
+			     there are any. -->
+			<Border x:Name="ProblemsBorder"
+					IsVisible="False"
+					BorderBrush="{DynamicResource Button_Cancel_Border}"
+					BorderThickness="1"
+					CornerRadius="3"
+					Padding="12,8"
+					Margin="0,12,0,0">
+				<StackPanel x:Name="ProblemsPanel" Spacing="3" />
+			</Border>
+		</StackPanel>
+
+		<!-- ============================ PROGRESS ============================ -->
+		<StackPanel x:Name="ProgressPanel" IsVisible="False" Spacing="8" Margin="0,10,0,0">
+
+			<TextBlock x:Name="ProgressText" TextWrapping="Wrap" />
+
+			<ProgressBar x:Name="ProgressBar" Height="6" Minimum="0" Maximum="1" />
+
+			<TextBlock TextWrapping="Wrap"
+					   Opacity="0.75"
+					   FontSize="12"
+					   Text="You can keep using CRT while this runs. Cancelling is safe - nothing is published until a maintainer approves it." />
+		</StackPanel>
+
+		<!-- ============================ OUTCOME ============================ -->
+		<StackPanel x:Name="OutcomePanel" IsVisible="False" Spacing="6" Margin="0,10,0,0">
+			<TextBlock x:Name="OutcomeText" TextWrapping="Wrap" />
+			<StackPanel x:Name="FindingsPanel" Spacing="3" Margin="0,6,0,0" />
+		</StackPanel>
+
+		<!-- ============================ BUTTONS ============================ -->
+		<StackPanel Orientation="Horizontal"
+					Spacing="8"
+					HorizontalAlignment="Right"
+					Margin="0,16,0,0">
+
+			<Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" />
+
+			<Button x:Name="SubmitButton"
+					Content="Submit"
+					IsEnabled="False"
+					Click="OnSubmitClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

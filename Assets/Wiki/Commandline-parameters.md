@@ -4,10 +4,11 @@ Move the data or workbooks folder elsewhere, and fake an update.
 
 ---
 
-CRT has three commandline parameters:
+CRT has four commandline parameters:
 
 * [--data-root](#--data-root)
 * [--workbooks-root](#--workbooks-root)
+* [--drafts-root](#--drafts-root)
 * [--simulate-update](#--simulate-update)
 
 ## --data-root
@@ -48,6 +49,22 @@ Default if you do not use it:
 
 Same rules as `--data-root` above.
 
+## --drafts-root
+
+Puts your local, unpublished edits to hardware and board data somewhere else - the same idea as `--workbooks-root` above, but for drafted contributions rather than repair jobs.
+
+```
+--drafts-root=D:\CRT-drafts
+--drafts-root="D:\My Draft Edits"
+```
+
+Default if you do not use it:
+
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Drafts`
+* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+
+Same rules as `--data-root` above.
+
 ## --simulate-update
 
 Shows the "a new version is available" banner without a new version existing, so you can see what it looks like.
@@ -65,4 +82,4 @@ Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothi
 
 The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters below and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
 
-The log file also has a `Data root is [...]` line near the top.
+The log file also has a `Data root is [...]` line near the top, and a `Drafts root is [...]` line alongside it.

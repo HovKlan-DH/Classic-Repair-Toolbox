@@ -1,0 +1,320 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.BoardTableEditor">
+
+	<UserControl.Styles>
+		<!-- One TAB per workbook sheet (maintainer request, 2026-09-24 - they were buttons at
+		     first). A real TabControl rather than restyled buttons, so a sheet tab looks and behaves
+		     exactly like the application's own tabs: the same IndianRed underline for the selected
+		     one and faint one on hover (App.axaml's TabItem styles), the same keyboard handling.
+
+		     Its items carry NO content - the one grid below shows whichever sheet is selected.
+
+		     The font and padding are Main.axaml's own TabItem setters, repeated here and scoped to
+		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - it
+		     is meant to move to the review application later, which has no Main.axaml. -->
+		<Style Selector="TabControl#SheetTabs TabItem">
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="Padding" Value="12,4" />
+		</Style>
+
+		<Style Selector="TabControl#SheetTabs TabItem:pointerover /template/ Border#PART_SelectedPipe">
+			<Setter Property="IsVisible" Value="True" />
+		</Style>
+
+		<!-- The colour key beside the toolbar: ONE PILL PER KIND, in the wash its rows are painted
+		     in, holding both the count and the word - "[ 2 Added ]" (2026-09-24). The count was a
+		     separate badge before the word at first, and with the gaps all alike "Added 1 Modified"
+		     read as easily one way as the other (reported). Count first and bold, the word plain,
+		     as the Workbooks tab's counted pills are. -->
+		<Style Selector="Border.LegendPill">
+			<Setter Property="Height" Value="22" />
+			<Setter Property="Padding" Value="8,0" />
+			<Setter Property="CornerRadius" Value="11" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.LegendPill TextBlock">
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.LegendPill TextBlock.LegendCount">
+			<Setter Property="FontWeight" Value="Bold" />
+		</Style>
+
+		<!-- A pill counting nothing fades back like a disabled control (maintainer request,
+		     2026-09-24), so the kinds actually present are what catches the eye. The class is set
+		     in UpdateToolbar. -->
+		<!-- The two notices about the draft FILE (changed underneath the table, open in Excel). -->
+		<Style Selector="Border.TableNotice">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Notice_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Notice_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="3" />
+			<!-- Roomy on purpose (maintainer request, 2026-09-24: 5px more than at first), so a
+			     notice that matters reads as one rather than as another line of text. -->
+			<Setter Property="Padding" Value="15,11" />
+			<Setter Property="Margin" Value="0,0,0,6" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Empty">
+			<Setter Property="Opacity" Value="0.4" />
+		</Style>
+
+		<!-- A deleted row is struck through as well as red: colour alone is not enough for the
+		     roughly one man in twelve who cannot tell red from green. The row's "-" marker says
+		     the same thing a third way. The class is set per row in OnLoadingRow.
+
+		     *** :is(TextBlock), NOT TextBlock. *** The grid draws cell text with
+		     DataGridSearchTextBlock, a SUBCLASS, and a plain type selector matches only the exact
+		     type - so "TextBlock" here matched nothing at all while the row class looked right. -->
+		<Style Selector="DataGridRow.BoardTableDeleted :is(TextBlock)">
+			<Setter Property="TextDecorations" Value="Strikethrough" />
+		</Style>
+
+		<!-- *** THE ROW DRAG GRIP IS ALWAYS SHOWN, FAINTLY (2026-09-24). *** The grid template's own
+		     grip, borrowed as the handle for the editor's OWN row drag (BoardTableEditor.RowDrag.cs -
+		     the grid's drag is off). Full strength on hover.
+
+		     Every selector here carries a trigger (the RowsDraggable class, set while rows can be
+		     moved) on purpose: the template hides the grip with a TEMPLATE-priority value, which
+		     only a style with a trigger outranks - a plain "DataGridRowHeader /template/
+		     Border#DragGrip" style loses and changes nothing. -->
+		<Style Selector="DataGrid#TableGrid.RowsDraggable DataGridRowHeader /template/ Border#DragGrip">
+			<Setter Property="IsVisible" Value="True" />
+			<Setter Property="Opacity" Value="0.45" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="ToolTip.Tip" Value="Drag to move this row (or Alt+Up / Alt+Down)" />
+			<!-- Centred in the whole header (maintainer request, 2026-09-24). The template puts
+			     the grip in a 16px first column of a two-column grid, so on its own it sat
+			     centred in that column - visibly to the left of the header's middle. -->
+			<Setter Property="Grid.ColumnSpan" Value="2" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid.RowsDraggable DataGridRowHeader:pointerover /template/ Border#DragGrip">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
+		<!-- *** THE DRAGGED ROW IS DRAWN AS AN EMPTY DASHED SLOT (maintainer request, 2026-09-24:
+		     "like moving an image in the worklog"). *** The same red, dash and rounding as the
+		     worklog's photo and file placeholders (WorklogEntryEditorWindow.axaml), drawn on the
+		     row's own BackgroundRectangle with the cells and grip faded out, so what shows is the
+		     space the row will take. The class follows the dragged ROW across recycled containers -
+		     see ApplyDropPlaceholderClasses. -->
+		<Style Selector="DataGrid#TableGrid DataGridRow.BoardTableDropPlaceholder /template/ Rectangle#BackgroundRectangle">
+			<Setter Property="IsVisible" Value="True" />
+			<Setter Property="Fill" Value="{DynamicResource Bg}" />
+			<Setter Property="Stroke" Value="{DynamicResource Text_Fail_Fg}" />
+			<Setter Property="StrokeThickness" Value="2" />
+			<Setter Property="StrokeDashArray" Value="4,3" />
+			<Setter Property="RadiusX" Value="3" />
+			<Setter Property="RadiusY" Value="3" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridRow.BoardTableDropPlaceholder DataGridCell">
+			<Setter Property="Opacity" Value="0" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridRow.BoardTableDropPlaceholder DataGridRowHeader">
+			<Setter Property="Opacity" Value="0" />
+		</Style>
+
+		<!-- *** THE CURRENT CELL: NO FILL, A 2px DASHED RED FRAME (maintainer request,
+		     2026-09-24). *** The grid's own look filled it with the accent colour, which could be
+		     taken for "added" (and hid the cell's own colour - the cell theme now keeps that, see
+		     BuildCellTheme), inside a solid frame drawn twice over: the cell's FocusVisual and the
+		     grid's selection outline, with Excel's fill handle in its corner.
+
+		     The frame is the cell template's own CurrencyVisual rectangle, restyled: a Rectangle
+		     can dash its stroke, a Border cannot. The dash lengths are in multiples of the stroke
+		     width, so "2,1" is a 4px dash and a 2px gap. Every selector carries :current, a
+		     trigger, to outrank what the template sets itself (see the grip's note below). -->
+		<Style Selector="DataGrid#TableGrid DataGridCell:current /template/ Grid#FocusVisual">
+			<Setter Property="IsVisible" Value="False" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridCell:current /template/ Rectangle#CurrencyVisual">
+			<Setter Property="IsVisible" Value="True" />
+			<Setter Property="Stroke" Value="{DynamicResource BoardTable_CurrentCell_Border}" />
+			<Setter Property="StrokeThickness" Value="2" />
+			<Setter Property="StrokeDashArray" Value="2,1" />
+		</Style>
+
+		<!-- The grid's selection overlay: its outline (the second solid frame) and the fill handle
+		     - Excel's drag-to-fill square, which writes a whole run of cells in one gesture that
+		     this table was never built or tested for. Hidden, and the handle made unclickable. -->
+		<Style Selector="DataGrid#TableGrid /template/ Border#PART_SelectionOutline">
+			<Setter Property="Opacity" Value="0" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid /template/ Border#PART_FillHandle">
+			<Setter Property="Opacity" Value="0" />
+			<Setter Property="IsHitTestVisible" Value="False" />
+		</Style>
+
+		<!-- A deleted row cannot be dragged (BoardTableSheet.BeginRowDrag refuses it), so it offers
+		     no grip. Kept AFTER the grip styles above, which it must outrank. -->
+		<Style Selector="DataGridRow.BoardTableDeleted DataGridRowHeader /template/ Border#DragGrip">
+			<Setter Property="IsVisible" Value="False" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid RowDefinitions="Auto,Auto,Auto,*">
+
+		<TabControl Grid.Row="0"
+					x:Name="SheetTabs"
+					Padding="0"
+					Margin="0,0,0,6" />
+
+		<Grid Grid.Row="1" ColumnDefinitions="Auto,16,Auto,*,Auto" Margin="0,0,0,6">
+			<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+				<Button x:Name="InsertRowAboveButton"
+						Content="Insert row above"
+						ToolTip.Tip="Add an empty row above the selected one"
+						Click="OnInsertRowAboveClick" />
+				<Button x:Name="InsertRowBelowButton"
+						Content="Insert row below"
+						ToolTip.Tip="Add an empty row below the selected one"
+						Click="OnInsertRowBelowClick" />
+				<Button x:Name="DeleteRowButton"
+						Content="Delete row"
+						ToolTip.Tip="Remove the selected row. A published row stays visible in red, where it was. Ctrl+Z undoes it."
+						Click="OnDeleteRowClick" />
+				<!-- No Move up / Move down buttons (removed by the maintainer, 2026-09-24): a row is
+				     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
+			</StackPanel>
+
+			<!-- For a system with nothing published, only the Flagged pill shows (Attach): there is
+			     nothing to be added, changed or deleted against, but a duplicate is still one. -->
+			<StackPanel Grid.Column="2" x:Name="LegendPanel" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+				<Border x:Name="AddedPill"
+						Classes="LegendPill"
+						Background="{DynamicResource BoardTable_Added_Bg}"
+						ToolTip.Tip="Rows that are not in the published data (marked +)">
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBlock x:Name="AddedCountText" Classes="LegendCount" Text="0" />
+						<TextBlock Text="Added" />
+					</StackPanel>
+				</Border>
+				<Border x:Name="ModifiedPill"
+						Classes="LegendPill"
+						Background="{DynamicResource BoardTable_Modified_Bg}"
+						ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value.">
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBlock x:Name="ModifiedCountText" Classes="LegendCount" Text="0" />
+						<TextBlock Text="Modified" />
+					</StackPanel>
+				</Border>
+				<Border x:Name="DeletedPill"
+						Classes="LegendPill"
+						Background="{DynamicResource BoardTable_Deleted_Bg}"
+						ToolTip.Tip="Published rows your draft no longer has (marked -)">
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBlock x:Name="DeletedCountText" Classes="LegendCount" Text="0" />
+						<TextBlock Text="Deleted" />
+					</StackPanel>
+				</Border>
+				<!-- Rows marked "!": not a change, and not in the tab's number - worth a second look. -->
+				<Border x:Name="FlaggedPill"
+						Classes="LegendPill"
+						Background="{DynamicResource BoardTable_Flagged_Bg}"
+						ToolTip.Tip="Rows marked ! - a duplicate of a row above, or missing a value it needs and so left out when saving. Hover a row to see which.">
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBlock x:Name="FlaggedCountText" Classes="LegendCount" Text="0" />
+						<TextBlock Text="Flagged" />
+					</StackPanel>
+				</Border>
+
+				<!-- Hides every unchanged row, leaving what was added, changed or deleted - and any
+				     row still needing a second look (flagged, or new and still empty). Moving rows is
+				     off while it is on: a position among hidden rows means nothing. -->
+				<CheckBox x:Name="OnlyChangesCheckBox"
+						  Content="Show changes only"
+						  FontSize="12"
+						  Margin="6,0,0,0"
+						  VerticalAlignment="Center"
+						  ToolTip.Tip="Hide the rows you have not touched, leaving what you added, changed or deleted and any flagged row"
+						  IsCheckedChanged="OnOnlyChangesChanged" />
+			</StackPanel>
+
+			<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+				<Button x:Name="ReloadButton"
+						Content="Reload"
+						ToolTip.Tip="Read the draft again from its file, for example after editing it in Excel"
+						Click="OnReloadClick" />
+				<!-- The same red as the Drafts row's "Discard" button (maintainer request,
+				     2026-09-24), so the one button that writes the draft stands out. Disabled - and
+				     therefore greyed by the theme - while there is nothing to save. -->
+				<Button x:Name="SaveButton"
+						Content="Save changes"
+						Foreground="{DynamicResource Button_Cancel_Fg}"
+						Background="{DynamicResource Button_Cancel_Bg}"
+						BorderBrush="{DynamicResource Button_Cancel_Border}"
+						ToolTip.Tip="Write your edits into the draft"
+						Click="OnSaveClick" />
+			</StackPanel>
+		</Grid>
+
+		<StackPanel Grid.Row="2">
+			<!-- The draft file changed underneath a table with unsaved edits - in Excel, most
+			     likely (BoardTableEditor.FileWatch.cs). Stays up until the table is reloaded. -->
+			<Border x:Name="ChangedOnDiskBar" Classes="TableNotice" IsVisible="False">
+				<Grid ColumnDefinitions="*,Auto">
+					<TextBlock Grid.Column="0"
+							   x:Name="ChangedOnDiskText"
+							   TextWrapping="Wrap"
+							   VerticalAlignment="Center"
+							   Text="The draft was changed outside this table - in Excel, for example - after the table was opened. What you see here is out of date, and your unsaved edits can no longer be saved into it. Copy anything you need, then press Reload." />
+					<Button Grid.Column="1"
+							x:Name="ChangedOnDiskReloadButton"
+							Content="Reload"
+							Margin="12,0,0,0"
+							VerticalAlignment="Center"
+							Click="OnReloadClick" />
+				</Grid>
+			</Border>
+
+			<!-- A spreadsheet program has the draft open, going by its lock file. "Appears": a
+			     program that crashed can leave the lock file behind. -->
+			<Border x:Name="OpenElsewhereBar" Classes="TableNotice" IsVisible="False">
+				<TextBlock x:Name="OpenElsewhereText"
+						   TextWrapping="Wrap"
+						   Text="This draft appears to be open in Excel (or another spreadsheet program). Edit it in one place at a time: the table follows what you save in Excel, but cannot save its own edits until the file is closed there." />
+			</Border>
+
+			<!-- What just happened (saved, refused, a paste that did not fit) or what to know about
+			     this table. Collapsed when there is nothing to say. -->
+			<TextBlock x:Name="StatusText"
+					   TextWrapping="Wrap"
+					   Margin="0,0,0,6"
+					   IsVisible="False" />
+		</StackPanel>
+
+		<!-- Sorting is off on purpose: deleted rows are shown where they used to be, which only
+		     means something in the sheet's own order.
+
+		     A smaller font and fixed row height than the grid's defaults (2026-09-24, maintainer
+		     request), so a sheet shows more rows at once - closer to how dense Excel is. -->
+		<DataGrid Grid.Row="3"
+				  x:Name="TableGrid"
+				  FontSize="12"
+				  RowHeight="26"
+				  ColumnHeaderHeight="28"
+				  AutoGenerateColumns="False"
+				  CanUserSortColumns="False"
+				  CanUserReorderColumns="False"
+				  CanUserResizeColumns="True"
+				  SelectionUnit="Cell"
+				  SelectionMode="Single"
+				  HeadersVisibility="All"
+				  RowHeaderWidth="22"
+				  GridLinesVisibility="All"
+				  FrozenColumnCount="1"
+				  BorderThickness="1"
+				  BorderBrush="{DynamicResource Table_BorderRowLine}"
+				  Background="{DynamicResource Table_Bg}" />
+	</Grid>
+</UserControl>

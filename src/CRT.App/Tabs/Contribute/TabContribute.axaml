@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TabContribute">
+
+	<UserControl.Styles>
+		<Style Selector="Button.ComponentEntryButton">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+			<Setter Property="HorizontalContentAlignment" Value="Left" />
+			<Setter Property="Foreground" Value="{DynamicResource Link_Fg}" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+
+		<Style Selector="Button.ComponentEntryButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Border.ContributeRow">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Border.ContributeRow:pointerover">
+			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
+		</Style>
+
+		<Style Selector="Button.AddNewComponentButton">
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Highlighted_Border}" />
+			<Setter Property="Padding" Value="14,8" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<!-- The intro text, with the "add" button parked in the top-right corner of the tab. The
+		     text column is star-sized and wraps, so it gives way to the button instead of running
+		     underneath it however narrow the window gets. -->
+		<Grid Grid.Row="0"
+			  ColumnDefinitions="*,16,Auto"
+			  Margin="12,12,12,12">
+			<StackPanel Grid.Column="0" Spacing="6">
+				<TextBlock TextWrapping="Wrap" >
+					To improve the data for this board, select a component and correct or add to what it says. Every edit is saved into your own local draft and shows up on the board straight away - nothing is shared with anyone until you submit it.
+				</TextBlock>
+				<TextBlock Text="The list below holds the components the board data already has - use the buttons to the right for one that is missing from it, or for a board that is not in the list at all."
+						   TextWrapping="Wrap" />
+			</StackPanel>
+
+			<!-- "Add a new system" is NOT gated on a loaded board, unlike "Add new component" -
+			     creating a board is exactly what someone does when the board they want is not
+			     there. It lives here rather than only on the Drafts tab because that tab is hidden
+			     until a draft exists, so on a fresh install it would be unreachable. -->
+			<StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Top">
+				<Button x:Name="AddNewComponentButton"
+						Classes="AddNewComponentButton"
+						Content="Add new component"
+						IsEnabled="False"
+						HorizontalAlignment="Stretch"
+						HorizontalContentAlignment="Center"
+						ToolTip.Tip="Add a component that is missing from this board entirely"
+						Click="OnAddNewComponentClick" />
+
+				<Button x:Name="AddNewSystemButton"
+						Content="Add a new system"
+						HorizontalAlignment="Stretch"
+						HorizontalContentAlignment="Center"
+						ToolTip.Tip="Create a whole new hardware and board of your own, as a local draft"
+						Click="OnAddNewSystemClick" />
+			</StackPanel>
+		</Grid>
+
+		<!-- Board revision date section -->
+		<StackPanel x:Name="RevisionDatePanel"
+					Grid.Row="1"
+					Orientation="Horizontal"
+					Spacing="4"
+					Margin="12,0,12,12"
+					IsVisible="False">
+			<TextBlock Text="Board Excel data last revisioned:"
+					   FontSize="14" />
+			<TextBlock x:Name="RevisionDateText"
+					   FontSize="14"
+					   FontWeight="Bold" />
+		</StackPanel>
+
+		<ScrollViewer Grid.Row="2"
+					  HorizontalScrollBarVisibility="Auto"
+					  VerticalScrollBarVisibility="Auto"
+					  AllowAutoHide="False">
+			<ItemsControl x:Name="CategoriesItemsControl" Margin="12,0,12,12">
+				<ItemsControl.ItemsPanel>
+					<ItemsPanelTemplate>
+						<StackPanel Orientation="Horizontal" Spacing="60" />
+					</ItemsPanelTemplate>
+				</ItemsControl.ItemsPanel>
+				<ItemsControl.ItemTemplate>
+					<DataTemplate x:DataType="local:CategoryColumn">
+						<Grid Width="110"
+						      VerticalAlignment="Top">
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+							</Grid.RowDefinitions>
+							<TextBlock Grid.Row="0"
+							           Text="{Binding CategoryName}"
+							           FontWeight="Bold"
+							           FontSize="14"
+							           TextTrimming="CharacterEllipsis"/>
+							<Border Grid.Row="1"
+							        Height="1"
+							        Background="{DynamicResource Table_BorderRowLine}"
+							        Margin="0,4,0,8" />
+							<ItemsControl Grid.Row="2" ItemsSource="{Binding Components}">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ContributeComponentItem">
+										<Border Classes="ContributeRow"
+										        Margin="0,2,0,2">
+											<Button Classes="ComponentEntryButton"
+											        Content="{Binding DisplayText}"
+											        Tag="{Binding}"
+											        ToolTip.Tip="{Binding ToolTipText}"
+											        Click="OnComponentClick" />
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</Grid>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</ScrollViewer>
+	</Grid>
+</UserControl>

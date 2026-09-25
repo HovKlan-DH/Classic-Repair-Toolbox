@@ -15,6 +15,7 @@ NuGet packages used:
 - [Avalonia](https://avaloniaui.net/) - the user interface
 - [EPPlus](https://epplussoftware.com/) - reads and writes the Excel data files
 - [QuestPDF](https://www.questpdf.com/) - the workbook PDF export
+- [ProDataGrid](https://github.com/wieslawsoltes/ProDataGrid) - the table you edit a draft in on the Drafts tab (an open-source continuation of Avalonia's own DataGrid)
 - [Velopack](https://github.com/velopack/velopack) - the in-application updater
 
 Bundled with the application:

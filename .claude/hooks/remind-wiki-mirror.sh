@@ -57,16 +57,21 @@ CHANGED="$(
 # code-path regex -> the Wiki pages that document it.
 # Kept deliberately short: only pages whose content is decided by that code.
 MAP="
-Tabs/Workbooks/|Tabs/Worklog/|Handlers/Data/Worklog|Handlers/Data/Workbook=Workbooks-tab Workbooks-Daily-use Workbooks-Browsing-and-search Workbooks-Export-and-data Workbooks-Getting-started
-Handlers/Data/SimulationOptions|Handlers/Data/DataManager=Commandline-parameters
-Handlers/Data/BoardDataReader|Handlers/Data/BoardData\.cs=Board-Excel Main-Excel
-Handlers/Data/BoardComponentHighlightStorage=Board-JSON
-Handlers/MiniPro/=MiniPro-programmer
-Handlers/Oscilloscope/|Tabs/Oscilloscope/=Synchronize-oscilloscope Controlling-oscilloscope-with-keyboard
-Handlers/Data/KiCadRawProjectLoader|Handlers/Data/KiCadProjectData=KiCad-folder Add-new-board-with-KiCad-data
-Tabs/Contribute/=Contribute-data-via-CRT
-Handlers/Online/UpdateService|Handlers/Online/UpdateChannelFilter|Handlers/Online/StageFilteredUpdateSource=Configuration-tab
-Classic-Repair-Toolbox\.csproj=Compiling-yourself-from-source Development-tools-used
+src/CRT.App/Tabs/Workbooks/|src/CRT.App/Tabs/Worklog/|src/CRT.App/Handlers/Data/Worklog|src/CRT.App/Handlers/Data/Workbook=Workbooks-tab Workbooks-Daily-use Workbooks-Browsing-and-search Workbooks-Export-and-data Workbooks-Getting-started
+src/CRT.App/Handlers/Data/SimulationOptions|src/CRT.App/Handlers/Data/DataManager|src/CRT.App/Handlers/Data/DraftManager=Commandline-parameters
+src/CRT.Data/BoardDataReader|src/CRT.Data/BoardData\.cs=Board-Excel Main-Excel
+src/CRT.Data/BoardComponentHighlightStorage=Board-JSON
+src/CRT.App/Handlers/MiniPro/=MiniPro-programmer
+src/CRT.App/Handlers/Oscilloscope/|src/CRT.App/Tabs/Oscilloscope/=Synchronize-oscilloscope Controlling-oscilloscope-with-keyboard
+src/CRT.App/Handlers/Data/KiCadRawProjectLoader|src/CRT.App/Handlers/Data/KiCadProjectData=KiCad-folder Add-new-board-with-KiCad-data
+src/CRT.App/Tabs/Contribute/=Contribute-data-via-CRT Contribute-tab
+src/CRT.App/Tabs/Drafts/|src/CRT.App/Main/Main\.NewSystem|src/CRT.Data/NewSystem=Add-new-board-with-KiCad-data Contribute-tab Contribute-data-via-CRT
+src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession=Contribute-data-via-CRT
+src/CRT.Data/DraftDrift|src/CRT.Data/DraftRevisionComparer|src/CRT.Data/DraftBaseRevision|src/CRT.App/Main/Main\.DraftDrift=Contribute-data-via-CRT Contribute-tab Board-Excel
+src/CRT.Data/DraftRetirement|src/CRT.App/Handlers/Data/PublishedDraftRetirer|src/CRT.Data/DraftWorkbookStore=Contribute-data-via-CRT
+src/CRT.Data/DraftFileResolver|src/CRT.Data/DraftBoardSource=Configuration-tab
+src/CRT.App/Handlers/Online/UpdateService|src/CRT.App/Handlers/Online/UpdateChannelFilter|src/CRT.App/Handlers/Online/StageFilteredUpdateSource=Configuration-tab
+src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-from-source Development-tools-used
 "
 
 HITS=""

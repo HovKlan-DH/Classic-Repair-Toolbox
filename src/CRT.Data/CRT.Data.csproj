@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+  Shared, Avalonia-free data layer: board Excel/JSON read-write, the shared cache they use, board
+  data validation and a handful of pure text helpers. Referenced by CRT.App today; from Phase 3
+  onward, CRT.Server and the review app reference it too, so the board-reading and merging rules
+  exist exactly once rather than being re-implemented per host (or, as before Phase 1, once in C#
+  and once in PHP). See ".claude/CLAUDE.md"'s "Why this is being done" for the duplication this
+  removes.
+
+  NO Avalonia PackageReference belongs in this project, ever - a server process has no business
+  depending on a desktop UI framework, and that constraint is exactly why three geometry helpers
+  (HighlightRectBuilder, PolygonGeometry, RectGeometry) that the original plan named for this move
+  were deliberately left in CRT.App: all three are built on Avalonia's Point/Rect/Matrix and are
+  called from 21 files across the Schematics/Worklog rendering pipeline, so converting them to a
+  portable representation is a real refactor of its own, not a file move, and belongs in whichever
+  phase actually needs a portable geometry library (most likely when the review app is built).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Same rule as CRT.App: no new warning sneaks into Release. -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EPPlus" Version="8.7.1" />
+  </ItemGroup>
+
+  <!--
+  The grant is by ASSEMBLY NAME, not project name - CRT.App's project file is named
+  "CRT.App.csproj" (Phase 0) but its AssemblyName is still "Classic-Repair-Toolbox", kept
+  unchanged deliberately so Velopack's update identity for installed users never moves. Granting
+  "CRT.App" here would silently grant nothing, since no assembly by that name is ever produced.
+
+  CRT.App needs to see internal types here too, not only CRT.Data.Tests: BoardDataReader,
+  BoardDataWriter and BoardComponentHighlightStorage are internal by design (see CLAUDE.md's
+  Handlers/Geometry/ note on the same "internal costs no coverage" pattern), and the app's own
+  Schematics tab (TabSchematics.LabelEditor.cs) constructs BoardDataWriter's internal
+  LabelEditorSaveRow rows directly to save label-editor changes. From Phase 3 onward CRT.Server
+  and the review app will need the same grant for the same reason - add each one here as it is
+  created, rather than widening a type to public just because a new caller needs it.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Classic-Repair-Toolbox" />
+    <InternalsVisibleTo Include="CRT.Data.Tests" />
+
+    <!--
+    CRT.Server.Tests needs BoardDataReader specifically, so that PublishExecutorTests can assert
+    the one property everything else rests on: that a published board LOADS afterwards, read
+    through the ordinary reader rather than through a test-only parser that could agree with a
+    broken writer. Added here per the note above rather than making the reader public - the
+    publish path is the only reason it is wanted, and the server itself does not read workbooks.
+    -->
+    <InternalsVisibleTo Include="CRT.Server.Tests" />
+
+    <!--
+    CRT.Server itself needs BoardDataReader from Phase 5 task 3: computing a change summary for a
+    reviewer means comparing the SUBMITTED board (which the manifest carries whole) against the
+    PUBLISHED one, and only the server has the data tree to read that second half from.
+
+    *** THIS IS WHERE EPPlus BEGINS EXECUTING SERVER-SIDE. *** Open question 8 predicted it would
+    happen at Phase 4 task 3 and was wrong - the submission diff works on the manifest and opens
+    no workbook. It arrives HERE instead, and at Phase 5 task 6's publish writer. The maintainer
+    has decided to proceed on the current licence and settle it separately; see that question.
+    -->
+    <InternalsVisibleTo Include="CRT.Server" />
+  </ItemGroup>
+
+</Project>

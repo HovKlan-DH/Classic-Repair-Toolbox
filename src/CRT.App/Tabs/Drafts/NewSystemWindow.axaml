@@ -1,0 +1,101 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.NewSystemWindow"
+        Title="Add a new system"
+        Width="560"
+        MinWidth="480"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock Text="Add a new system"
+				   FontSize="16"
+				   FontWeight="Bold"
+				   Margin="0,0,0,10" />
+
+		<TextBlock TextWrapping="Wrap"
+				   Text="This creates a new, empty board in your own local drafts. It appears in the hardware and board lists straight away, and you build it up exactly like editing any other board - add schematic images, label the components, attach files." />
+
+		<TextBlock TextWrapping="Wrap"
+				   Margin="0,8,0,12"
+				   Text="Nothing is shared with anyone until you submit it. A system you never submit stays yours and keeps working locally." />
+
+		<TextBlock Text="Manufacturer" FontWeight="SemiBold" />
+		<TextBlock Text="The company that made it, for example Commodore. This becomes the top folder your board is stored in."
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.75"
+				   Margin="0,0,0,2" />
+		<AutoCompleteBox x:Name="ManufacturerBox"
+						 FilterMode="ContainsOrdinal"
+						 MinimumPrefixLength="0"
+						 PlaceholderText="Commodore" />
+
+		<TextBlock Text="Hardware" FontWeight="SemiBold" Margin="0,10,0,0" />
+		<TextBlock Text="The machine itself, for example C64 or Amiga 500."
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.75"
+				   Margin="0,0,0,2" />
+		<TextBox x:Name="HardwareBox" PlaceholderText="C64" />
+
+		<TextBlock Text="Board" FontWeight="SemiBold" Margin="0,10,0,0" />
+		<TextBlock Text="The board revision, for example 250407. If you do not know it, use something that identifies the board to you."
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.75"
+				   Margin="0,0,0,2" />
+		<TextBox x:Name="BoardBox" PlaceholderText="250407" />
+
+		<TextBlock Text="Notes (optional)" FontWeight="SemiBold" Margin="0,10,0,0" />
+		<TextBlock Text="Anything worth knowing about this hardware. Shown on the Overview tab."
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.75"
+				   Margin="0,0,0,2" />
+		<TextBox x:Name="NotesBox"
+				 AcceptsReturn="True"
+				 TextWrapping="Wrap"
+				 Height="60" />
+
+		<!-- A live preview of what is about to be created, so the folder layout is never a surprise
+		     and a typo in a name is visible before it becomes a folder on disk. -->
+		<Border Margin="0,14,0,0"
+				Padding="10,8"
+				Background="{DynamicResource Form_Bg}"
+				BorderBrush="{DynamicResource Form_Border}"
+				BorderThickness="1">
+			<StackPanel Spacing="3">
+				<TextBlock Text="This will create"
+						   FontSize="11"
+						   FontWeight="SemiBold"
+						   Opacity="0.75" />
+				<TextBlock x:Name="PreviewText"
+						   TextWrapping="Wrap"
+						   FontSize="12" />
+			</StackPanel>
+		</Border>
+
+		<!-- Hidden until there is something to say - an always-present empty line would push the
+		     buttons down and read as a rendering fault. -->
+		<TextBlock x:Name="ValidationText"
+				   TextWrapping="Wrap"
+				   Margin="0,10,0,0"
+				   IsVisible="False"
+				   FontWeight="Bold"
+				   Foreground="{DynamicResource Text_Fail_Fg}" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="CreateButton"
+					Content="Create system"
+					IsEnabled="False"
+					Click="OnCreateClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

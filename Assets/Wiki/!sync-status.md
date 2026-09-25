@@ -5,11 +5,20 @@
 
 # Wiki pages waiting to be pasted
 
-**2 pages waiting.**
+**11 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
+| `About-tab.md` | Home > The tabs > About |
+| `Add-new-board-with-KiCad-data.md` | Home > Contributing > Add a board (KiCad) |
+| `Board-Excel.md` | Home > Data files > Overview > Board Excel |
+| `Board-JSON.md` | Home > Data files > Overview > Board JSON |
+| `Commandline-parameters.md` | Home > At the bench > Synchronize oscilloscope > Command-line parameters |
+| `Compiling-yourself-from-source.md` | Home > Project > Build from source |
 | `Configuration-tab.md` | Home > The tabs > Configuration |
+| `Contribute-data-via-CRT.md` | Home > Contributing > Via CRT |
+| `Contribute-tab.md` | Home > The tabs > Contribute |
+| `Development-tools-used.md` | Home > Project > Tools used |
 | `Schematics-tab.md` | Home > The tabs > Schematics |
 
 <!-- crt:waiting-end -->

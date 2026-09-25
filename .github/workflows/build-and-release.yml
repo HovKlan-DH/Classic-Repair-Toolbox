@@ -20,7 +20,7 @@ env:
   PACK_ID: Classic-Repair-Toolbox
   EXE_WINDOWS: Classic-Repair-Toolbox.exe
   EXE_UNIX: Classic-Repair-Toolbox
-  PROJECT: Classic-Repair-Toolbox.csproj
+  PROJECT: src/CRT.App/CRT.App.csproj
   SOLUTION: Classic-Repair-Toolbox.slnx
   TFM_MODERN: net10.0
 

@@ -1,0 +1,69 @@
+<!--
+TreatAsLocalProperty lets this project override SelfContained even when it arrives as a
+command-line (global) property - see the comment on SelfContained below. Copied deliberately from
+CRT.Data.Tests.csproj, which solved this first.
+-->
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="SelfContained;PublishSelfContained">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!--
+    A self-contained "dotnet publish" run from the repo root with no "-r <rid>" targets the
+    SOLUTION, so SelfContained=true lands on this project too. A VSTest project is RID-agnostic
+    by SDK design, so the SDK will not infer a RID for it and the whole publish dies with
+    NETSDK1191 - even though nothing here is ever published. Force it back off, and skip this
+    project entirely when a solution-wide publish walks past it.
+    -->
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>false</PublishSelfContained>
+    <IsPublishable>false</IsPublishable>
+    <RootNamespace>CRT.Server.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Same rule as the other projects: no new warning sneaks into Release. -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    <!--
+    xUnit1051 ("pass TestContext.Current.CancellationToken to every call that takes a token") is
+    switched off, deliberately. It arrived with xunit v3 and fired 208 times on the move from v2,
+    nearly all of them CRT.Server.Tests calling a flow against an in-memory fake. The token exists
+    so that a test stuck on real I/O can be cancelled, and test rule 6 in CLAUDE.md already rules
+    that I/O out (no network, no hardware, no spawned process) - so threading it through every call
+    would add noise to tests meant to read as specifications, and cancel nothing. Set in all four
+    test projects alike, so the first async call added to any of them does not break Release.
+    -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+  NO WebApplicationFactory / Microsoft.AspNetCore.Mvc.Testing here, deliberately.
+  That package starts a real HTTP pipeline in-process, which CLAUDE.md test rule 6 rules out
+  (no test may need a network call or a spawned process) and which the strategy document restates
+  for the server: "test against an in-memory or temp-folder seam rather than the live box".
+
+  It is also unnecessary by construction: every endpoint in this service is a thin rim over a pure
+  decision function under Handlers/, and those functions are what these tests exercise. If a test
+  here ever genuinely needs a live pipeline, that is a signal the logic is in the wrong place -
+  move it into a pure class rather than adding the package.
+  -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CRT.Server\CRT.Server.csproj" />
+    <ProjectReference Include="..\..\src\CRT.Data\CRT.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -10,7 +10,7 @@
 			"request": "launch",
 			"preLaunchTask": "build",
 			// If you have changed target frameworks, make sure to update the program path.
-			"program": "${workspaceFolder}/bin/Debug/net10.0/Classic-Repair-Toolbox.dll",
+			"program": "${workspaceFolder}/src/CRT.App/bin/Debug/net10.0/Classic-Repair-Toolbox.dll",
 			// Reproduces the old DEBUG-build behaviour: the update banner is exercised without
 			// publishing a release. Remove it to see the real update check.
 			"args": ["--simulate-update"],

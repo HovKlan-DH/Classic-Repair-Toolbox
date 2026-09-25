@@ -1,0 +1,356 @@
+using CRT.Server.Configuration;
+using CRT.Server.Handlers.Accounts;
+using Handlers.DataHandling;
+
+namespace CRT.Server.Handlers.Submissions
+{
+    // ###########################################################################################
+    // Maps the submission flows onto HTTP. A RIM AND NOTHING ELSE, the same rule AccountEndpoints
+    // follows: read the request into plain values, call one SubmissionFlows method, turn the
+    // verdict into a status code.
+    //
+    // *** CONTRIBUTING REQUIRES NO ACCOUNT. *** Anyone may submit; they give an email address so
+    // they can be told whether their work was accepted, and nothing else. See
+    // NewContributeStrategy.md, "CONTRIBUTING NEEDS NO ACCOUNT" - in short, the threat model never
+    // claimed accounts defended against bad submissions, and a sign-up wall before a hobbyist can
+    // fix a typo is how a contribution does not happen.
+    //
+    // OWNERSHIP IS PROVED BY A CAPABILITY TOKEN, not by identity. Creating a submission returns a
+    // random 256-bit token; every later call for that submission presents it in the
+    // X-Submission-Token header. Without it, the submission id - a small consecutive integer -
+    // would be all anyone needed to upload into a stranger's work.
+    //
+    // An Authorization header is still HONOURED when present, so a signed-in maintainer's
+    // submission is attributed to their account. Its absence is the ordinary case.
+    //
+    // THE STATUS CODES:
+    //   201 Created  - submission accepted, here is the token and what to upload.
+    //   400          - the manifest is wrong; the findings say how.
+    //   404          - no such submission, OR the token does not match. The two are deliberately
+    //                  indistinguishable: distinguishing them would confirm which ids exist and
+    //                  let a caller enumerate submissions by walking integers.
+    //   409          - the submission is no longer accepting uploads.
+    //   416          - the offset does not match; the body says where to resume.
+    // ###########################################################################################
+    public static class SubmissionEndpoints
+    {
+        public static void MapSubmissionEndpoints(this WebApplication app)
+        {
+            ArgumentNullException.ThrowIfNull(app);
+
+            RouteGroupBuilder submissions = app.MapGroup("/api/submissions");
+
+            submissions.MapPost("/", SubmissionEndpoints.CreateAsync);
+            submissions.MapPut("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.UploadAsync);
+            submissions.MapGet("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.GetUploadStateAsync);
+            submissions.MapPost("/{submissionId:long}/finalise", SubmissionEndpoints.FinaliseAsync);
+            submissions.MapGet("/{submissionId:long}", SubmissionEndpoints.GetSubmissionAsync);
+        }
+
+        // ###########################################################################################
+        // POST /api/submissions
+        //
+        // Steps 1 and 2 of the transport in one round trip: the manifest goes up, the list of
+        // hashes the server lacks comes back.
+        // ###########################################################################################
+        private static async Task<IResult> CreateAsync(
+            SubmissionManifest manifest,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore store,
+            BlobStore blobs,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            // NO AUTHENTICATION REQUIRED - see the class header. An Authorization header is
+            // honoured when present, so a signed-in maintainer's submission is attributed to their
+            // account, but its absence is the ordinary case and not an error.
+            AccountRecord? account = await SubmissionEndpoints.AuthenticateAsync(context, accounts, cancellationToken);
+
+            Submitter submitter = account is null
+                ? Submitter.Anonymous(manifest.ContactEmail, SubmissionEndpoints.ClientAddress(context))
+                : Submitter.SignedIn(account.Id, SubmissionEndpoints.ClientAddress(context));
+
+            // Where this system's files would land. Used ONLY to resolve and containment-check the
+            // submitted paths - nothing is written here at submission time, because nothing is
+            // published until a maintainer promotes it by hand.
+            string containmentRoot = SubmissionEndpoints.ResolveContainmentRoot(options);
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                manifest, submitter, containmentRoot, store, blobs, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (!outcome.IsAccepted)
+                return Results.BadRequest(new { errors = outcome.Findings });
+
+            return Results.Created(
+                $"/api/submissions/{outcome.Negotiation!.SubmissionId}",
+                outcome.Negotiation);
+        }
+
+        // ###########################################################################################
+        // PUT /api/submissions/{id}/blobs/{hash}?offset=N
+        //
+        // The body is the raw bytes, not a form or a JSON wrapper: a 200 MB file base64-encoded
+        // inside JSON is a third larger and has to be buffered to be parsed, which defeats
+        // streaming entirely.
+        // ###########################################################################################
+        private static async Task<IResult> UploadAsync(
+            long submissionId,
+            string hash,
+            long? offset,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore store,
+            BlobStore blobs,
+            CancellationToken cancellationToken)
+        {
+            BlobUploadOutcome outcome = await SubmissionFlows.UploadChunkAsync(
+                submissionId,
+                hash,
+                offset ?? 0,
+                context.Request.Body,
+                SubmissionEndpoints.UploadToken(context),
+                store,
+                blobs,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            return outcome.Status switch
+            {
+                BlobUploadStatus.Completed =>
+                    Results.Ok(new { uploaded = outcome.ResumeFrom, complete = true }),
+
+                BlobUploadStatus.Partial =>
+                    Results.Ok(new { uploaded = outcome.ResumeFrom, complete = false }),
+
+                // 404 for both "no such submission" and "not yours" - see the class header.
+                BlobUploadStatus.NotFound => Results.NotFound(),
+
+                BlobUploadStatus.Expired or BlobUploadStatus.WrongState =>
+                    Results.Json(new { message = outcome.Error }, statusCode: StatusCodes.Status409Conflict),
+
+                BlobUploadStatus.UnexpectedHash =>
+                    Results.BadRequest(new { message = outcome.Error }),
+
+                // 416 Range Not Satisfiable, carrying where to actually resume from.
+                BlobUploadStatus.ChunkRejected =>
+                    Results.Json(
+                        new { message = outcome.Error, resumeFrom = outcome.ResumeFrom },
+                        statusCode: StatusCodes.Status416RangeNotSatisfiable),
+
+                BlobUploadStatus.HashMismatch =>
+                    Results.BadRequest(new { message = outcome.Error }),
+
+                _ => Results.BadRequest(new { message = "The upload could not be accepted." })
+            };
+        }
+
+        // ###########################################################################################
+        // GET /api/submissions/{id}/blobs/{hash}
+        //
+        // How much of this blob has arrived. A client that lost its connection asks this before
+        // resuming, rather than guessing or restarting - which is what makes resumption work
+        // across a client restart, not just a retry.
+        // ###########################################################################################
+        private static async Task<IResult> GetUploadStateAsync(
+            long submissionId,
+            string hash,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore store,
+            BlobStore blobs,
+            CancellationToken cancellationToken)
+        {
+            SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
+
+            if (!SubmissionEndpoints.HoldsToken(submission, context))
+                return Results.NotFound();
+
+            return Results.Ok(new
+            {
+                uploaded = blobs.GetUploadedLength(submissionId, hash),
+                complete = blobs.Contains(hash)
+            });
+        }
+
+        // ###########################################################################################
+        // POST /api/submissions/{id}/finalise
+        //
+        // 200 with IsAccepted true means QUEUED FOR REVIEW - never published.
+        // ###########################################################################################
+        private static async Task<IResult> FinaliseAsync(
+            long submissionId,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore store,
+            BlobStore blobs,
+            CancellationToken cancellationToken)
+        {
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                submissionId, SubmissionEndpoints.UploadToken(context), store, blobs,
+                DateTimeOffset.UtcNow, cancellationToken);
+
+            if (result.Findings.Any(finding => finding.Code == "submission.not_found"))
+                return Results.NotFound();
+
+            return Results.Ok(result);
+        }
+
+        // ###########################################################################################
+        // GET /api/submissions/{id}
+        //
+        // The state of ONE submission, for the "my submissions" view (Phase 4 task 6).
+        //
+        // ONE AT A TIME, BY TOKEN - there is deliberately no "list everything I have submitted".
+        // With no account there is no identity to list against, and using the contact address as
+        // one would turn it into exactly the identity the whole design avoids: anyone who knew
+        // somebody's address could enumerate their contributions.
+        //
+        // So the CLIENT keeps the record. CRT stores the id and token of each submission it made
+        // and asks about them individually, which needs no identity at all and means the server
+        // holds no queryable link between a person and their work.
+        // ###########################################################################################
+        private static async Task<IResult> GetSubmissionAsync(
+            long submissionId,
+            HttpContext context,
+            ISubmissionStore store,
+            CancellationToken cancellationToken)
+        {
+            SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
+
+            if (!SubmissionEndpoints.HoldsToken(submission, context))
+                return Results.NotFound();
+
+            IReadOnlyList<ValidationFinding> findings =
+                await store.GetFindingsAsync(submissionId, cancellationToken);
+
+            return Results.Ok(new
+            {
+                id = submission!.Id,
+                systemId = submission.SystemId,
+                state = submission.State,
+                summary = submission.Summary,
+                createdUtc = submission.CreatedUtc,
+                decidedUtc = submission.DecidedUtc,
+
+                // ###########################################################################################
+                // *** THE CONTRIBUTOR'S ONLY FEEDBACK. *** Contributing needs no account, so there
+                // is no inbox and no thread - the contact email and this sentence are the whole
+                // channel back to the person who did the work.
+                //
+                // Reserved from the start as "always present, always empty for now", on the
+                // reasoning that filling it in later would be a server change alone with nothing
+                // to update on contributors' machines. That is exactly what happened: the review
+                // decisions landed 2026-09-22 and this needed only to stop returning empty.
+                // ###########################################################################################
+                reviewerComment = submission.DecisionComment ?? string.Empty,
+
+                findings
+            });
+        }
+
+        // -------------------------------------------------------------------------------------
+        // Helpers.
+        // -------------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // The capability token proving ownership of a submission in flight.
+        //
+        // A HEADER RATHER THAN A QUERY PARAMETER, deliberately: query strings are written to access
+        // logs by default on most web servers, and this value is what authorises writing to a
+        // submission. A header is not logged unless somebody asks for it to be.
+        // ###########################################################################################
+        private const string UploadTokenHeader = "X-Submission-Token";
+
+        // ###########################################################################################
+        // The client's address, recorded against a submission for rate limiting.
+        //
+        // WITH NO ACCOUNT THIS IS THE ONLY THING TO LIMIT AGAINST, and it is weak: one address can
+        // be a household, an office or a whole country behind CGNAT, and an attacker can rotate
+        // addresses. That is an acknowledged cost of anonymous submission - the blob size cap and
+        // the 24-hour abandoned-upload sweep are what actually bound the damage.
+        //
+        // UseForwardedHeaders has already run and trusts only loopback proxies (see Program.cs),
+        // so this is the real client address rather than Apache's.
+        // ###########################################################################################
+        private static string? ClientAddress(HttpContext context)
+        {
+            return context.Connection.RemoteIpAddress?.ToString();
+        }
+
+        private static string? UploadToken(HttpContext context)
+        {
+            string value = context.Request.Headers[SubmissionEndpoints.UploadTokenHeader].ToString();
+
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        // Used by the read-only upload-state endpoint, which does not go through SubmissionFlows.
+        // The comparison is fixed-time for the same reason SubmissionFlows.OwnsSubmission's is.
+        private static bool HoldsToken(SubmissionRecord? submission, HttpContext context)
+        {
+            string? presented = SubmissionEndpoints.UploadToken(context);
+
+            if (submission is null || presented is null)
+                return false;
+
+            return SecureToken.HashesEqual(submission.UploadTokenHash, SecureToken.Hash(presented));
+        }
+
+        private static async Task<AccountRecord?> AuthenticateAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            CancellationToken cancellationToken)
+        {
+            string header = context.Request.Headers.Authorization.ToString();
+
+            const string prefix = "Bearer ";
+
+            if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            string token = header[prefix.Length..].Trim();
+
+            return token.Length == 0
+                ? null
+                : await AccountFlows.AuthenticateAsync(token, accounts, DateTimeOffset.UtcNow, cancellationToken);
+        }
+
+        // ###########################################################################################
+        // Where this system's files would live in the BETA tree.
+        //
+        // BUILT FROM THE CONFIGURED ROOT PLUS THE MANIFEST'S OWN IDENTITY, and every path in the
+        // submission is then containment-checked against it. The identity values are untrusted, so
+        // they are passed through SubmissionPathRules like everything else - a manufacturer of
+        // "../.." would otherwise relocate the whole system folder.
+        //
+        // The folder is NOT created here and nothing is written to it: a submission is queued, and
+        // publication remains a manual act by the maintainer.
+        // ###########################################################################################
+        // ###########################################################################################
+        // The root a submission's file paths are contained to.
+        //
+        // *** THE DATA ROOT, NOT THE SYSTEM'S OWN FOLDER (fixed 2026-09-23). *** This used to
+        // resolve down to "<root>/Commodore/C64/250407" and hand that over as the containment base,
+        // which was wrong twice over:
+        //
+        //   - a submitted path is ALREADY data-root-relative ("Commodore/C64/250407/Sheet1.png"),
+        //     so validating it against the system folder measured it from one level too deep;
+        //   - a SHARED file ("Commodore/Shared files/Component images/6526.png") sits outside the
+        //     system folder by design, so a submission citing one would have been refused.
+        //
+        // The publish side made the identical mistake and it is what actually broke: PublishPlan
+        // wrote 1,215 files into "250407/Commodore/C64/250407/...", duplicating the whole board
+        // inside itself. The two must use the same base or a submission validates against one
+        // location and publishes to another, which is precisely how that went unnoticed.
+        //
+        // Containment is not weakened: every path is still resolved and refused if it escapes.
+        // What decides a path BELONGS to this submission is SubmissionValidator's identity check,
+        // which is where that question belongs.
+        // ###########################################################################################
+        private static string ResolveContainmentRoot(ServerOptions options)
+        {
+            return options.DataTreeRoot ?? string.Empty;
+        }
+    }
+}

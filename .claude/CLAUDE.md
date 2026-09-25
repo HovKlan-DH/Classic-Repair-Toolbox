@@ -10,6 +10,48 @@ oscilloscope baselines, and interactive KiCad traces for a curated set of hardwa
 plus Amstrad and ZX Spectrum boards). It also drives real test equipment: SCPI oscilloscopes over TCP
 and a MiniPro USB IC programmer/tester.
 
+## One change, every side of it
+
+**This is one system in four parts, and a change to shared behaviour is not done until every
+part that shares it has been changed in the SAME session.** The parts are the CRT desktop app
+(`src/CRT.App/`), the contribution service (`src/CRT.Server/`), the review application
+(`src/CRT.Review/`), the shared library they all reference (`src/CRT.Data/`), and the board DATA
+itself (`Assets/Data/`, and the published tree the server writes).
+
+**The legacy PHP contribution path is NOT one of them, by maintainer decision (2026-09-23).**
+`Assets/Webserver/app-contribution/` is going away when the new pipeline ships, and the old
+method will not be supported alongside it - so a shared change does NOT have to be mirrored into
+the PHP, and a change is not blocked by it. Do not spend effort keeping it in step, and do not
+let its contract constrain the new design. This REPLACES the older "change both sides in the
+same sitting" instruction for that pair, which is still recorded further down in the webserver
+section and now applies only while something is deliberately still using the old path.
+(`app-feedback` and `app-checkin` are unrelated and stay.)
+
+**The compiler covers less of this than it looks.** All three applications reference `CRT.Data`,
+so a changed method signature or a renamed property fails the build everywhere at once. That is
+exactly why the dangerous surfaces are the ones it CANNOT see:
+
+- **HTTP routes and JSON field names.** `CRT.Review` calls `CRT.Server` over the wire. A renamed
+  endpoint or a renamed JSON property compiles perfectly on both sides and fails at runtime, in
+  the user's hands. The Phase 5 password-reset link was a live example: the email named a path
+  the server mapped nothing at, and the tests asserted the dead URL, so nothing caught it until
+  a real reset was attempted.
+- **The workbook schema.** `BoardWorkbookSchema` names the columns the reader reads and the
+  writer writes. A column added on one side only is silently blank on the other.
+- **On-disk formats.** The data tree's layout, the JSON sidecar, the draft folder, the sync
+  manifest. Nothing type-checks a file format.
+- **Vocabulary the user reads.** A state name, a status word or a date format that appears in
+  more than one application must be changed in all of them, or the same submission describes
+  itself differently depending on which window it is shown in.
+
+**So before finishing a change to anything shared, ask which of the five parts also speak it, and
+change them together.** If one of them genuinely cannot be changed yet, say so explicitly in the
+turn summary rather than leaving the divergence to be discovered later.
+
+**A shared change needs a test that would fail if only one side moved.** A test per side, each
+asserting its own half, passes happily while the two halves disagree - which is precisely the
+failure this rule exists to prevent.
+
 ## Hands off CHANGELOG.md
 
 **Never create, edit, rewrite, reformat or delete [CHANGELOG.md](../CHANGELOG.md) unless the
@@ -139,8 +181,9 @@ new help button.
 There is a unit test suite covering the UI-free logic in `Handlers/`. **Always run it, always add
 tests for new logic, and always update the existing tests when you change covered behaviour** — see
 [Tests](#tests) below for the full rules. UI behaviour has no automated coverage, so changes to the
-tabs and overlays still need the app built and run by hand (see [BUILDING.md](../BUILDING.md) for full
-per-OS instructions).
+tabs and overlays still need the app built and run by hand (see
+[Assets/Wiki/Compiling-yourself-from-source.md](../Assets/Wiki/Compiling-yourself-from-source.md)
+for full per-OS instructions).
 
 - **Run the tests: `dotnet test Classic-Repair-Toolbox.slnx`** (~2s; needs no hardware and no display)
 - Build (Release, matches CI): `dotnet build Classic-Repair-Toolbox.slnx -c Release`
@@ -162,7 +205,7 @@ per-OS instructions).
     See `WorklogManager.ResolveExplicitWorkbookRoot`.
   - `--simulate-update[=<version>]` — offer a fake application update (default `99.0.0`), fake the
     download and skip the restart, so the update banner can be exercised without a release. See
-    [Handlers/Data/SimulationOptions.cs](../Handlers/Data/SimulationOptions.cs). Active in RELEASE
+    [Handlers/Data/SimulationOptions.cs](../src/CRT.App/Handlers/Data/SimulationOptions.cs). Active in RELEASE
     builds too, on purpose; the startup log shouts about it and the banner says `(simulated)`.
   - All three are parsed the same way (case-insensitive, surrounding quotes stripped, first match
     wins, unrecognised arguments ignored). `--simulate-update` is set for F5 and the `watch` task in
@@ -174,8 +217,37 @@ per-OS instructions).
 
 ## Tests
 
-`Tests/Classic-Repair-Toolbox.Tests/` (xUnit) covers the UI-free logic in `Handlers/`. It needs no
-oscilloscope, no MiniPro programmer and no display, and runs in about two seconds.
+**There are FOUR test projects, one per source project**, all xUnit and all run by the one
+`dotnet test Classic-Repair-Toolbox.slnx`. None needs an oscilloscope, a MiniPro programmer, a
+display, a database or a network; the whole suite is about 75 seconds in Release.
+
+| Project | Covers | Rough size |
+| --- | --- | --- |
+| [tests/CRT.App.Tests/](../tests/CRT.App.Tests/) | the desktop app's `Handlers/`, plus the headless UI tests | ~3,100 |
+| [tests/CRT.Data.Tests/](../tests/CRT.Data.Tests/) | the shared board-data library | ~940 |
+| [tests/CRT.Server.Tests/](../tests/CRT.Server.Tests/) | the contribution service's flows and rules | ~440 |
+| [tests/CRT.Review.Tests/](../tests/CRT.Review.Tests/) | the review application's parsing and presentation | ~200 |
+
+Counts go stale, so treat them as "what order of magnitude", not as a figure to quote - read the
+real numbers off a run.
+
+**The framework is xunit v3 (4.x), as the `xunit.v3.mtp-off` package, on VSTest.** From 4.0 the
+plain `xunit.v3` package runs on Microsoft Testing Platform v2, where `coverlet.collector` - the
+`--collect:"XPlat Code Coverage"` CI relies on - is not supported, and `dotnet test` on the .NET 10
+SDK then needs the new test mode opted into in `global.json`. The `mtp-off` package is the same
+framework with that runner left out, so `dotnet test`, CI, the release gate, the Stop hook and
+coverage all work exactly as they did on xunit 2. Moving to MTP is possible but is a change to all
+of those at once, not a package bump. **xUnit1051** (pass `TestContext.Current.CancellationToken`
+to every call that takes a token) is in `NoWarn` in all four test projects: it fired 208 times on
+the move from v2, and rule 6 below already rules out the real I/O the token would cancel.
+
+**v3 RANDOMISES test order on every run**, where v2's was effectively fixed - so a test that leaks
+state into whichever test follows it now fails (or hangs) at random rather than in one place. The
+run header prints the seed (`Starting: CRT.App.Tests (parallel mode = none, ..., seed = N)`), and
+running the test executable directly replays that exact order:
+`tests/CRT.App.Tests/bin/Release/net10.0/CRT.App.Tests.exe :N -reporter verbose -longRunning 30`
+(the last two print each test as it starts and name any test running past 30s - the fastest way to
+find a hang, since `dotnet test` shows nothing until the run ends).
 
 **Tests are part of the change, not a follow-up. These rules are not optional:**
 
@@ -229,8 +301,9 @@ number formats.
 | IC testing | `MiniproOutputParser`, `IcTestService` (via `MockMiniproRunner` and local test doubles) |
 | Security | `ExternalTargetLauncher`, `OnlineServices`' manifest-validation predicates |
 | KiCad | `KiCadRawProjectLoader`, `KiCadProjectLoader`, the `KiCadProjectData` model |
-| Board data | `BoardDataReader`, `BoardDataWriter`, `BoardComponentHighlightStorage`, `ComponentListBuilder`, `ComponentImageQueries`, `OverviewHtmlBuilder`, `ContactLinkFormatter` |
-| Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `DeleteEntry`, the non-reusing id counters, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only), `WorklogAttachTargets`, `WorklogAttachmentWriter` |
+| Board data | `BoardDataReader`, `BoardDataWriter`, `BoardComponentHighlightStorage`, `ComponentListBuilder`, `ComponentImageQueries`, `OverviewHtmlBuilder`, `ContactLinkFormatter`, `BoardWorkbookSchema` (both directions) |
+| Draft table editor | `BoardTableDocument`/`BoardTableSheet` (colours, ghost placement, agreement with `BoardDataDiffer`, moving rows, placing new components on save), `BoardTableHistory` (undo/redo of every change kind, the saved state), `BoardTableRowDrag` (live row drag, ghosts never targets, one step per drag, a return trip leaves none), `BoardTableClipboard`, `DraftTableSession` and `DraftWorkbookStore.EditIfUnchanged` (the refuse-a-stale-save rule), `ComponentPlacement` |
+| Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `DeleteEntry`, the non-reusing id counters, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only), `WorkbookPdfExporter.ConfigureQuestPdf` and the icon font (the QuestPDF settings, not the layout), `WorklogAttachTargets`, `WorklogAttachmentWriter` |
 | Text links | `TextLinkFinder` (which runs in a user-typed note are web links) |
 | Settings / startup | `UserSettings`, `DataManager` (data-root + master workbook), `DataValidator` (smoke only), `SimulationOptions` |
 | Updates | `UpdateChannelFilter` (which release stages the ALPHA/BETA checkboxes admit) |
@@ -248,15 +321,22 @@ dotnet test Classic-Repair-Toolbox.slnx --collect:"XPlat Code Coverage"
 ```
 
 and read `lines-covered` / `lines-valid` from the `coverage.cobertura.xml` it writes under
-`Tests/.../TestResults/`. **Always quote the denominator alongside the percentage, and say which
-build configuration you used** - Debug and Release instrument different numbers of lines (~26.7k vs
-~21.4k), so two bare percentages from different configurations are not comparable.
+each test project's `TestResults/`. **There is ONE REPORT PER TEST PROJECT - four of them - and none
+of them is the total.** Each covers what its own project exercised, and adding them up counts
+`CRT.Data` four times. Merge them line by line first, the way CI does, with ReportGenerator
+(`reportgenerator "-reports:<all four, ;-separated>" -targetdir:<dir> -reporttypes:Cobertura`), and
+read the merged `Cobertura.xml`. **Always quote the denominator alongside the percentage, and say
+which build configuration you used** - Debug and Release instrument different numbers of lines
+(~26.7k vs ~21.4k), so two bare percentages from different configurations are not comparable.
 
 **CI already computes it on every push**, which is the one place a figure cannot go stale:
 [build-and-unittest.yml](../.github/workflows/build-and-unittest.yml) collects coverage alongside
-the test run and renders the totals into the run's GitHub job summary via
-[coverage-summary.sh](../.github/workflows/coverage-summary.sh), with the raw Cobertura XML kept as
-a 7-day artifact for per-file numbers. It is **reported, never enforced** - there is deliberately no
+the test run, merges the four reports with a pinned ReportGenerator, and renders the merged totals
+into the run's GitHub job summary via [coverage-summary.sh](../.github/workflows/coverage-summary.sh),
+with each project's raw Cobertura XML and the merged one kept as a 7-day artifact for per-file
+numbers. It used to summarise whichever single report `find | head -1` returned first, so the job
+summary quoted one project's figure as the total; if the merge fails it now skips the summary
+instead. It is **reported, never enforced** - there is deliberately no
 threshold that fails the build, since a floor set while the suite is growing either blocks unrelated
 work or is meaningless. Read the number from a recent run rather than writing it down anywhere.
 
@@ -275,7 +355,7 @@ spatial hover index, highlight rect building and label-editor handle geometry.
 extracted from a tab that nothing outside the assembly needs (`LabelEditorGeometry`,
 `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, and the
 `KiCadRenderNodes.cs` DTOs) stays `internal`; the tests reach it through the
-`InternalsVisibleTo` entry in [Classic-Repair-Toolbox.csproj](../Classic-Repair-Toolbox.csproj), so
+`InternalsVisibleTo` entry in [CRT.App.csproj](../src/CRT.App/CRT.App.csproj), so
 `internal` costs no coverage. Do not widen one to `public` for consistency's sake — a type is
 `public` here only if something genuinely consumes it from outside.
 
@@ -332,8 +412,19 @@ no display, no GPU, so it runs on CI like any other test. Two of the files are t
 empty, since the real one calls `Logger.Initialize()`, shows a splash and syncs over the network)
 and `UiTest.cs` (runs a body on the UI thread). The rest are the tests themselves:
 
+**`UiTest.RunAsync` must hand the test back OFF the dispatcher thread, and it does so explicitly.**
+The session completes the awaited task from its own dispatcher thread with no
+`RunContinuationsAsynchronously`, so a plain `await` continues inline THERE. xunit 2 hid this by
+running every test under its own `SynchronizationContext`; xunit v3 has none, so the rest of the
+test - and xunit, running the next test - stayed on the dispatcher thread, and the next synchronous
+`UiTest.Run` queued its body to the thread it was blocking. The whole CRT.App.Tests run hung, idle,
+on whichever sync UI test the random order put after an async one. `RunAsync` now hops to the pool
+via `ContinueWith(..., TaskScheduler.Default)`; `UiTestTests.cs` pins it, both tests failing against
+the plain-await version. Do not "simplify" it back to one `await`.
+
 | File | Covers |
 | --- | --- |
+| `UiTestTests.cs` | The harness itself: that after `UiTest.RunAsync` the test is no longer on the headless dispatcher thread, and that a synchronous `UiTest.Run` completes straight after an async body (asserted with a 30s timeout, so a broken harness fails the test rather than hanging the suite) |
 | `TabConstructionTests.cs` | Every tab constructs without throwing |
 | `ConfigurationHelpIconTests.cs` | The Configuration tab's "?" help icons (Workbooks and MiniPro): that each button exists, carries the `HelpIconButton` class and the Font Awesome circle-question glyph, and shares a row with the checkbox it explains. The CLICK is deliberately not tested - it goes through `ExternalTargetLauncher`, whose accept path calls `Process.Start` (rule 6); a mis-typed `Click` handler name already fails the XAML parse |
 | `ComponentHighlightSelectionTests.cs` | Selecting/deselecting in the component filter box, and the highlights that appear and vanish across the main image and every thumbnail |
@@ -355,12 +446,16 @@ and `UiTest.cs` (runs a body on the UI thread). The rest are the tests themselve
 | `WorklogAttachCaptureWindowTests.cs` | The modal that files a captured oscilloscope image into a worklog: that the PRESELECTED row is the ranked-first one (asserted with a component match that is NOT lowest by id, so a dialog doing no ranking at all fails it), that "Create new worklog" is always offered and is always LAST so it never displaces a real entry from the preselected slot (and is correctly the only row, and preselected, when the workbook has no entries), that the button reads "Attach to existing worklog" for an existing worklog and "Create worklog" for the new-entry row (it opens the full editor rather than attaching there and then, and a button still reading "Attach" would misdescribe that), that the target workbook is NAMED (this dialog opens from the component popup, which can be sitting over a schematic while the user has been looking at the scope), and the GROUP HEADERS - that both bands are named in the list itself ("Worklogs with U8 in scope" / "All other worklogs"), that every header is disabled so it can never be selected while the preselected row is still a real worklog, that a header is faint enough not to read as an option and is OUTDENTED with its worklogs indented under it (asserted past the Fluent theme's own 11px item padding, since a row at the default already sits right of the header - verified by removing the `ContainerPrepared` hook), that the matched heading picks the component out in BOLD inside brackets with only that run bold and the joined runs still reading "Worklogs with [U8] in scope", that the "All other worklogs" heading stays a plain string, and that no headers appear at all when nothing matches the component |
 | `TextLinkRendererTests.cs` | Rendering a user-typed note with its web links clickable: that link-free text stays a plain single-`Text` block with no Hand cursor, that a linked one moves its content into `Inlines` with `Text == null` (a block carrying both renders the Text and silently ignores the Inlines), that only the link run is underlined, that re-rendering replaces the previous pass rather than layering on it, and the LINK + SEARCH-HIGHLIGHT merge - a search term landing inside a URL, one outside it, highlighting with no link present, and that the merged runs are never empty and always rebuild the original string. Plus the `LinkText` attached property the editor's DataTemplates use, including re-rendering when a recycled container is handed a different row |
 | `WorklogEntryModeTests.cs` | The parked-pill canvas (separate from the anchored badge canvas, so parked pills do not pan and zoom with the board; no `Background`, since one would swallow every press across the schematic panel; below the "Netlist names" panel in z-order) and the "Add worklog" mode hint (its wording, that it starts hidden and is not hit-testable, that it covers the data-sync icon, that its text wraps inside its box rather than overflowing - a horizontal `StackPanel` measures with infinite width and would never wrap - and that it is plain text with no icon). Formerly `WorklogCreateCardTests.cs`; the quick card's own tests went with the card |
+| `BoardTableEditorTests.cs` | The Drafts tab's table editor as painted: one tab per sheet with its change count, the marker column then the schema's columns, and - in a SHOWN window, reading real `DataGridCell.Background`s - a changed cell orange while its neighbour is not, an added row green, a deleted row red with the `BoardTableDeleted` strike-through class, a duplicate row violet and counted as flagged but not on the tab, each legend count sharing one pill with its own word, "Show changes only" surviving a sheet switch, a clicked cell unfilled (or keeping its orange) inside a 2px dashed red frame with the grid's own frame and fill handle hidden, the drag grip centred, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on real keys (a typed word is ONE step, Ctrl+Z inside a cell being edited is left to it, undo returns to the sheet of the change, works after "Delete row" and from the check box, and greys "Save changes" out again), and a cell edit recolouring once the posted refresh runs (fails if the per-column cell theme binds the wrong column). Plus a REAL pointer drag by the grip (the dashed placeholder row mid-drag, the order live, one undo step; a click is not a drag; past the top edge steps; ghosts and the filtered view refuse), insert above/below and no move buttons, zero pills faded, Credits the last sheet tab, the toolbar's enablement per selected cell, insert/delete (there are NO "Restore row" / "Revert cell" buttons - removed by the maintainer once undo existed; the model keeps `RestoreRow`/`RevertCell` for the review app), "Show changes only" surviving a MAIN tab switch and never left on, hidden, for a draft with nothing published, single-cell paste (Excel's trailing line break dropped, a block refused with a message, a ghost refused), copy quoting, `EditTriggers` not editing on a single click, save and the refused-when-changed-on-disk message, watching the draft file (an outside change reloads when nothing is unsaved, raises the warning bar and greys Save when something is, never reloads under a cell being typed in; the open-in-Excel notice follows the lock file, edits or not, and shows at once when a table is opened on a draft already open in Excel; the outside-change reload is announced; the timer runs only while on screen), and every `BoardTable_*` key in BOTH themes |
+| `UnsavedTableEditsWindowTests.cs` | The table editor's unsaved-edits prompt: Enter and Escape both CANCEL, including with "Discard edits" focused (Tunnel route, as `DeleteWorklogWindowTests`), and neither the reload wording nor the draft-changed-on-disk one offers Save (the latter says why), and the saving-elsewhere notice has Cancel alone and sends you to the Drafts tab |
 
-**Do NOT add the `Avalonia.Headless.XUnit` package to get `[AvaloniaFact]`.** At 12.1.1 it depends
-on xunit **v3** while this suite is on xunit 2.9.3; adding it makes every `Fact` and `InlineData`
-in the project ambiguous and produces ~850 build errors. `UiTest.Run(...)` drives the same public
-session API directly and keeps xunit 2. Anything touching a control must go through it, or
-Avalonia throws for want of a dispatcher.
+**Do NOT add the `Avalonia.Headless.XUnit` package to get `[AvaloniaFact]`.** It was first kept out
+because it needed xunit v3 while this suite was on xunit 2 (adding it made every `Fact` and
+`InlineData` ambiguous, ~850 build errors). The suite is on v3 now, but at 12.1.3 the adapter is
+built against xunit v3's 3.2 extensibility API, which the 4.0 this suite runs on changed, and it
+has not been tried against 4.x. `UiTest.Run(...)` drives the same public session API directly and
+depends on no test framework at all. Anything touching a control must go through it, or Avalonia
+throws for want of a dispatcher.
 
 **Know what these do and do not catch.** The XAML compiler already fails the build on a renamed
 `x:Name` (CS1061) and on a broken `avares://` path, and a missing `StaticResource` key is silently
@@ -443,8 +538,13 @@ candidates that look pure are not:
 - **`TabConfiguration`'s launchers and `ComponentContribution.BuildPayload`** — `Process.Start` and
   zip/file I/O respectively, which rule 6 puts out of scope.
 
-The test project lives inside the app's project folder, so [Classic-Repair-Toolbox.csproj](../Classic-Repair-Toolbox.csproj)
-excludes `Tests/**` from its compile glob. Leave that exclusion in place.
+The test project lives as a sibling at [tests/CRT.App.Tests/](../tests/CRT.App.Tests/), not inside
+the app's own project folder ([src/CRT.App/](../src/CRT.App/)), so
+[CRT.App.csproj](../src/CRT.App/CRT.App.csproj) needs no `Tests/**` compile-glob exclusion — the
+SDK's default `**/*.cs` glob only ever walks down from a project file, so it cannot reach a sibling
+directory in the first place. This replaced an earlier layout where both projects shared one folder
+and the app csproj carried explicit `Compile Remove` blocks for `Tests/**` and `Assets/Webserver/**`
+to keep the SDK's glob from pulling either into the build.
 
 ## Code layout conventions
 
@@ -462,12 +562,12 @@ excludes `Tests/**` from its compile glob. Leave that exclusion in place.
   `Handlers/` (`Handlers/Geometry/` for maths and geometry) as a plain static class, not as a private
   member of a `UserControl` — that is the difference between logic that can be tested and logic that
   cannot. It then gets tests, per the [Tests](#tests) rules.
-- Biggest files right now, for context budgeting: [Tabs/Contribute/ComponentContribution.axaml.cs](../Tabs/Contribute/ComponentContribution.axaml.cs)
-  (~2,200 lines), [Tabs/Schematics/ComponentInfoWindow.axaml.cs](../Tabs/Schematics/ComponentInfoWindow.axaml.cs) (~1,900),
-  [Handlers/Data/UserSettings.cs](../Handlers/Data/UserSettings.cs) (~1,900),
-  [Handlers/Data/WorklogManager.cs](../Handlers/Data/WorklogManager.cs) (~1,900),
-  [Tabs/Schematics/TabSchematics.Worklog.cs](../Tabs/Schematics/TabSchematics.Worklog.cs) (~1,700),
-  [Handlers/Data/DataManager.cs](../Handlers/Data/DataManager.cs) (~1,700). Read the part you need rather
+- Biggest files right now, for context budgeting: [Tabs/Contribute/ComponentContribution.axaml.cs](../src/CRT.App/Tabs/Contribute/ComponentContribution.axaml.cs)
+  (~2,200 lines), [Tabs/Schematics/ComponentInfoWindow.axaml.cs](../src/CRT.App/Tabs/Schematics/ComponentInfoWindow.axaml.cs) (~1,900),
+  [Handlers/Data/UserSettings.cs](../src/CRT.App/Handlers/Data/UserSettings.cs) (~1,900),
+  [Handlers/Data/WorklogManager.cs](../src/CRT.App/Handlers/Data/WorklogManager.cs) (~1,900),
+  [Tabs/Schematics/TabSchematics.Worklog.cs](../src/CRT.App/Tabs/Schematics/TabSchematics.Worklog.cs) (~1,700),
+  [Handlers/Data/DataManager.cs](../src/CRT.App/Handlers/Data/DataManager.cs) (~1,700). Read the part you need rather
   than the whole file. `TabOscilloscope`, `Main` and `WorklogEntryEditorWindow` used to head this list
   and no longer do - each has been split into partials, so go via the file map in its `.axaml.cs`.
 
@@ -475,17 +575,17 @@ excludes `Tests/**` from its compile glob. Leave that exclusion in place.
 
 ### Bootstrap (`Main/`)
 
-- [Main/Program.cs](../Main/Program.cs) — entry point; initializes Velopack then starts Avalonia.
-- [Main/App.axaml.cs](../Main/App.axaml.cs) — contains `AppConfig`, a static class holding nearly every
+- [Main/Program.cs](../src/CRT.App/Main/Program.cs) — entry point; initializes Velopack then starts Avalonia.
+- [Main/App.axaml.cs](../src/CRT.App/Main/App.axaml.cs) — contains `AppConfig`, a static class holding nearly every
   tunable value in the app (file/folder names, sync URLs, timeouts, zoom limits, debug flags, version
   helpers). **Check here first before hardcoding a new constant elsewhere.** `App` itself wires up theme
   application (including JSON-defined user-preference theme colors), global exception logging, and the
   startup sequence: show `Splash` → `DataManager.InitializeAsync` (loads/syncs hardware data) → open
   `Main` window → fire-and-forget version check-in.
-- [Main/Main.ModeHint.cs](../Main/Main.ModeHint.cs) — the khaki "what to do next" label in the tab-header
+- [Main/Main.ModeHint.cs](../src/CRT.App/Main/Main.ModeHint.cs) — the khaki "what to do next" label in the tab-header
   row, shown while a mode (e.g. worklog area-marking) is waiting for the user to act. `ShowModeHint`/
   `HideModeHint`; it clears itself on the first pointer press.
-- [Main/Main.axaml.cs](../Main/Main.axaml.cs) — the main window's code-behind. It acts as the central
+- [Main/Main.axaml.cs](../src/CRT.App/Main/Main.axaml.cs) — the main window's code-behind. It acts as the central
   controller coordinating board selection, schematics zoom/pan/thumbnails, and cross-tab state. It
   reaches directly into `TabSchematicsControl` members (`currentThumbnails`,
   `highlightIndexBySchematic`), so changes to those ripple here. **Split into partials by area** -
@@ -496,10 +596,197 @@ excludes `Tests/**` from its compile glob. Leave that exclusion in place.
 
 ### Tabs (`Tabs/`)
 
-One folder per UI tab — `About`, `Configuration`, `Contribute`, `Feedback`, `Oscilloscope`, `Overview`,
-`Resources`, `Schematics`, `Workbooks` — each an Avalonia `UserControl` (`.axaml`) with its logic in
-the paired `.axaml.cs`. `Worklog/` is the odd one out: it holds the worklog's dialog windows, not a
-tab.
+One folder per UI tab — `About`, `Configuration`, `Contribute`, `Drafts`, `Feedback`, `Oscilloscope`,
+`Overview`, `Resources`, `Schematics`, `Workbooks` — each an Avalonia `UserControl` (`.axaml`) with
+its logic in the paired `.axaml.cs`. `Worklog/` is the odd one out: it holds the worklog's dialog
+windows, not a tab.
+
+**`Drafts/` is the local-first authoring tab** from Phase 2 of
+[Assets/NewContributeStrategy.md](../Assets/NewContributeStrategy.md) — a contributor edits a board
+locally, sees how it has drifted from the published copy, and submits when ready. Alongside
+`TabDrafts` itself the folder holds that flow's dialog windows (`NewSystemWindow`,
+`NewSystemMaintainerWindow` - the maintainer agreement "Create system" must pass through,
+`SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `SystemFilesWindow`,
+`DiscardDraftWindow`, `ForgetSubmissionWindow`), the same way `Worklog/` holds the worklog's.
+
+**"Save to draft" in the Contribute tab's component editor lands on the Drafts tab** (maintainer
+request, 2026-09-24): `ComponentContributionWindow.SetAfterSaved`, which Main sets to close the
+window and call `SwitchToDraftsTab` - only after a SUCCESSFUL save, so a refused one keeps the
+window and its message. The board refresh (which also shows the Drafts tab for a first draft)
+runs before it.
+
+**While the table is on screen it watches its draft file** (`BoardTableEditor.FileWatch.cs`,
+maintainer request, 2026-09-24): every 2 s, `DraftTableSession.CheckFile` - one stat call unless
+the file's time or size moved, and judged against the session's CURRENT fingerprint, so the table's
+own save never counts. Changed and nothing unsaved: reload in place. Changed with unsaved edits: the
+`ChangedOnDiskBar` (with Reload) and "Save changes" OFF. Never reloads while a cell is being edited
+(the typing is not in the model yet) or a row dragged. The reload raises `ReloadedFromOutside`,
+which `TabDrafts` answers exactly like `Saved` - without it the draft row's "N rows changed" and the
+board on screen stayed stale (seen by the maintainer). `OpenElsewhereBar` shows the WHOLE time Excel's `~$`
+owner file or LibreOffice's `.~lock.<name>#` sits beside the workbook, set the moment a table is
+read (`ShowWhetherOpenElsewhere` in `Attach`) - the maintainer's choice after a round where it only
+showed with unsaved edits, since "edit in one place at a time" matters most before editing starts.
+"Save changes" is OFF while the workbook is REALLY held open (`DraftTableSession.IsHeldOpen`: an
+exclusive open that fails while another program has it, probed only while a lock file exists) -
+not on the lock file alone, which a crashed Excel leaves behind and which would then block the
+table for good. The close prompt then offers no Save either (`DraftOpenElsewhere`), for the same
+reason `DraftChangedOnDisk` offers none. File sharing is advisory outside Windows, so there nothing
+is ever held and a save goes ahead; the held tests `Assert.SkipUnless` Windows. The timer runs only while the editor is attached and
+holds a table; it replaced `CatchUpWithOutsideChanges`, which checked only on returning to the tab.
+
+**No other editor writes a draft under a table with unsaved edits** (maintainer design,
+2026-09-24). The Contribute window's "Save to draft" and the label editor's save both ask
+`TabDrafts.HasUnsavedTableEditsFor(excelDataFile)` first; when the table is open on that board
+with unsaved edits they save NOTHING and show the `SavingElsewhere` notice (Cancel alone) sending
+the contributor to the Drafts tab. Writing anyway made the table's own save refused and its edits
+lost. The maintainer rejected offering "save the table first" from there: from another tab you may
+not remember what you did in the table. Excel is the one writer that cannot be held back - for it
+the refusal, Reload and the `DraftChangedOnDisk` prompt remain.
+
+**"Edit in table format" (2026-09-24) opens a draft's workbook as editable sheets** directly below
+its row, hiding the other drafts (`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` is the
+control; `UnsavedTableEditsWindow` the prompt). Colours are the maintainer's: green added, orange
+modified (the changed CELL only, published value in its tooltip), red + strikethrough deleted,
+shown WHERE THE ROW USED TO BE. Things to know before touching it:
+
+- **The control only paints.** Every rule is in `CRT.Data` - `BoardTableDocument`/`BoardTableSheet`
+  (pairing, colours, ghost placement), `DraftTableSession` (open/save), `BoardTableClipboard` - because
+  the maintainer wants the same table in `CRT.Review` later. Logic added to the control is logic the
+  reviewer's copy would have to duplicate.
+- **Pairing is `BoardDataDiffer`'s rule, deliberately** (`BoardDraftNaturalKeys`, keys
+  case-insensitive, values trimmed + ordinal, first row per key wins). The sheet tabs' counts sit
+  right under the draft row's own "N rows changed", and
+  `BoardTableDocumentTests.The_change_counts_agree_with_BoardDataDiffer_on_the_board_a_save_writes`
+  holds them equal. A key edit (U8 -> U9) is an add plus a deleted ghost, as the differ and the
+  reviewer see it.
+- **A save replaces all nine sheets, so it may only land on the file it was read from.**
+  `DraftWorkbookStore.EditIfUnchanged` compares a SHA-256 of the workbook taken BEFORE the read;
+  anything else is `ChangedOnDisk` and the table offers Reload. Never route the table's save through
+  plain `Edit`: that would silently undo an Excel edit or a label-editor save made meanwhile.
+- **The grid is ProDataGrid** (MIT fork of Avalonia's DataGrid, which is deprecated in 12; the
+  maintained TreeDataGrid needs a paid Avalonia Accelerate licence, not an option for this GPL
+  project). Its assembly keeps the name `Avalonia.Controls.DataGrid`, so its theme is included in
+  `App.axaml` as `avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml`. Cell colours come from a
+  per-column `CellTheme` whose `Background` BINDS to the cell's state - never set a cell's colour in
+  code, since containers are recycled while scrolling. `EditTriggers` is set explicitly (double-click,
+  typing, F2): the grid's default edits on a single click, which makes "select, then Ctrl+V" impossible.
+- **The table must never sit inside the list's ScrollViewer** - a grid measured with unlimited
+  height realises every row. `DraftsBodyGrid` holds them as siblings, and in table mode the list is
+  hidden and the open draft's row shows alone in `OpenDraftRow` (the row template is the shared
+  `DraftRowTemplate` resource). `ApplyTableMode` changes the two rows' `Height`s IN PLACE:
+  assigning a new `RowDefinitions` collection left the Grid measuring against the old row kinds and
+  drew the open row at zero height - pinned by
+  `TabDraftsTests.In_table_mode_the_open_drafts_row_is_really_drawn_above_the_table`.
+- **Style selectors match exact types.** The grid draws cell text with `DataGridSearchTextBlock`, a
+  `TextBlock` subclass, so the deleted-row strike-through needs `:is(TextBlock)`; a plain `TextBlock`
+  selector silently matched nothing while the row class looked right.
+- **Data columns set `IsReadOnly = false` explicitly.** Left unset, the grid infers read-only-ness
+  from the binding path, and `Cells[i]` indexes an `IReadOnlyList` - so every column came out
+  read-only and nothing at all could be typed (reported by the maintainer). Tests that set cell text
+  through the MODEL cannot see this; `BoardTableEditorTests` now types with real key input too.
+- **The table owns the keyboard while it is open.** The always-on component filter pulls focus back
+  after every click in the window (`Main.ShouldReturnFocusToComponentSearch`, extracted from that
+  pointer-release handler so it could be tested), and a click on a grid cell focuses the grid - not
+  a TextBox - so typing went into the filter. It now backs off on the Drafts tab while a table is
+  open, and `TabDrafts.FocusTableIfOpen` puts focus in the grid when a table opens or the tab is
+  shown again.
+- **The sheets are real `TabItem`s in a `TabControl`** (they were buttons at first), with no content
+  of their own - the one grid shows the selected sheet. Their font and padding repeat Main.axaml's
+  `TabItem` setters, scoped to the control, so they match wherever the editor is hosted.
+- **Rows move through the TABLE, never the grid - and the drag is the EDITOR'S OWN, with a
+  placeholder** (2026-09-24, "like moving an image in the worklog"). ProDataGrid's row drag is OFF:
+  it only draws a line and moves the row once on the drop, so it cannot show a travelling slot.
+  `BoardTableEditor.RowDrag.cs` does it the worklog's way: pressing the grip arms, 4px of movement
+  starts `BoardTableSheet.BeginRowDrag`, and the row then moves LIVE onto the row under the pointer
+  (`BoardTableRowDrag.MoveOnto`, or `Step` past the top/bottom edge), drawn as a red dashed slot -
+  the row's `BackgroundRectangle` restyled, its cells faded out, the class following the ROW across
+  recycled containers. The GRID captures the pointer, not the pressed header, whose container can
+  change rows mid-drag. **The target is read off a FROZEN layout** (`CaptureRowSlots`, the worklog's
+  `CapturePhotoRowBoundaries` idea): the first version hit-tested the LIVE grid and scrolled the
+  moved row into view, and over the half-visible bottom row that scroll slid a new row under a still
+  pointer - the row ran away or flickered (reported). Only a step past the edge scrolls, and the
+  slots are captured again after it and after a mouse-wheel scroll;
+  `Holding_a_dragged_row_still_over_the_half_visible_bottom_row_does_not_run_away` fails against the
+  live version. The rules are in CRT.Data: a red ghost is never a drop target (the refresh
+  would put it straight back and the row would flicker), a whole drag is ONE undo step (the
+  history's group), and a drag back to its start leaves no step and no "moved by hand" mark. There
+  are no Move up / Move down buttons any more (maintainer request); Alt+Up / Alt+Down remain. The
+  grid template hides the grip; the editor's styles show it, with the `RowsDraggable` CLASS in the
+  selector - a trigger is needed to outrank the template's Template-priority value.
+- **The unsaved-edits prompt has THREE wordings** (`UnsavedTableEditsPrompt`): Leaving (Save /
+  Discard / Cancel), Reloading, and DraftChangedOnDisk - leaving a table whose draft file changed
+  after it was read (typically "Save to draft" in the Contribute tab). That one offers NO Save: the
+  save would be refused, and offering it made "Close table" a loop (reported). Asked from
+  `TabDrafts.AskAboutUnsavedTableEditsAsync`, which checks `BoardTableEditor.HasDraftChangedOnDisk`.
+- **"Insert row above" / "Insert row below"** (`BoardTableSheet.InsertRowAbove` / `InsertRow`), and
+  a legend pill counting nothing fades to 0.4 opacity (the `Empty` class) so the kinds present stand
+  out.
+- **Row order is what the user sees, and new components are PLACED (2026-09-24).** The main
+  window's component list, category list and Overview all show the Components sheet in its own
+  order. `ComponentPlacement` is the one rule: a NEW component goes into its category in natural
+  label order (C1, C2, C10), a new category goes last, and an EDITED component stays put. The
+  Contribute window's save (`ComponentBoardWriter`) used to remove and re-append a component at
+  the bottom on every save - so editing C1 after adding C2 put C2 first, which was reported. The
+  label editor's new components and the table's inserted rows (on save, unless moved by hand)
+  follow the same rule. Existing rows are never re-sorted.
+- **A component row's identity is its label PLUS its region** (`BoardDraftNaturalKeys.ForComponent`,
+  2026-09-24) - a regionalised component is one row per region. It used to be the label alone, so
+  an added U1/NTSC beside U1/PAL was flagged a duplicate in the table, counted nowhere, and never
+  shown to a reviewer. Rows with no region key exactly as before. The price, pinned by
+  `ReviewFieldDiffTests`: giving a component a region is now a removal plus an addition, like a
+  label change. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
+  `ComponentPlacement` puts a new regional variant straight after its twin (a blank category used
+  to send it to the end of the sheet, where the maintainer thought it had vanished).
+- **Excel keys:** Tab / Shift+Tab move right/left and wrap rows (handled on the tunnel route, since
+  left alone Tab is the window's focus navigation and left the table); Enter moves down (the grid's
+  own). "Show changes only" filters through a `DataGridCollectionView` over the sheet's rows and
+  switches moving off. **The grid's `FilteringModel.OwnsViewFilter` is set FALSE** - left true,
+  the grid writes its own empty predicate over the view's `Filter` whenever it takes the view or
+  is re-attached, so the filter was lost with the box still ticked on every sheet switch and then
+  on every MAIN tab switch (both reported). A draft with nothing published turns the filter OFF
+  when it opens: the box is hidden there and every row is unchanged, so a filter left on from
+  another draft (the editor is reused) hid every row - reported as an "empty" Board schematics
+  sheet. The text size is set on EVERY column (`CellFontSize`) - a text column carries
+  its own size, so the grid's `FontSize` alone shrank only the headers - and cells get `MinHeight` 0
+  so the denser rows do not clip the current cell's frame.
+- **Order is NOT a change `BoardDataDiffer` counts** (it pairs by key). A reorder is saved into the
+  draft and published with a submission - `PublishMerge` takes rows as submitted - but a draft whose
+  ONLY change is a new order reads "0 rows changed" and cannot be submitted, and a reviewer is not
+  shown it. Making order count would touch the differ the server and review app share; that is a
+  maintainer decision, not yet taken.
+- **No "Restore row" / "Revert cell" buttons** (removed at the maintainer's request, 2026-09-24,
+  once undo existed). Undo only reaches back to the last save, so a row deleted or a cell changed
+  BEFORE it is put back by typing - the red row and the orange cell's tooltip still show the
+  published values. `BoardTableSheet.RestoreRow`/`RevertCell` stay in the model, tested, for the
+  review application's table.
+- **Undo and redo (Ctrl+Z / Ctrl+Y, the platform's own gestures) live in the model**, in
+  `BoardTableHistory` (`BoardTableDocument.History`). Each step is a SNAPSHOT of one sheet's live
+  rows - the row OBJECTS, their values and their two placement flags - taken just before the
+  change, and undo puts it back and lets `Refresh` rebuild colours and ghosts. So every change
+  kind is undone by the same code, and **a new kind of change is undoable only if it calls
+  `History.Record` before it mutates** - the cell `Text` setter and every row operation do. The
+  history dies with the document, so it reaches back to the last SAVE (a save reloads). While a
+  cell is being edited, Ctrl+Z is its text box's own. Undoing back to the saved state clears
+  "unsaved" again (`IsAtSavedState`).
+- **The row and cell buttons hand focus back to the grid** (`ThenFocusGrid`). "Delete row" leaves
+  the cursor on the red ghost, which disables the button, and a focused button that disables
+  drops the focus to NOTHING - so Ctrl+Z straight after reached no handler at all. Undo is also
+  handled on the whole editor, not just the grid, for focus on the check box beside it.
+- **The current cell has no fill and a 2px dashed red frame** (maintainer request). The grid
+  theme's selected fill looked like "added" and covered the cell's own state colour, so the cell
+  theme re-binds `Background` in a `^:selected` trigger of its own (added after the grid
+  theme's, so it wins). The frame is the template's `CurrencyVisual` RECTANGLE restyled - a
+  `Rectangle` can dash its stroke, a `Border` cannot - and the grid's `FocusVisual`, its
+  selection overlay's `PART_SelectionOutline` and the `PART_FillHandle` (Excel's drag-to-fill,
+  which writes a run of cells the table was never built for) are hidden. The drag grip spans
+  both of the row header's columns (`Grid.ColumnSpan`), or it sits centred in the first, 16px one.
+- **Four colours, four counted pills.** Besides green/orange/red, a row marked `!` (a duplicate
+  key, or incomplete so dropped on save) is FLAGGED: violet across the row
+  (`BoardTableCellState.Flagged`, `BoardTable_Flagged_Bg`), its cells' tooltip giving the reason,
+  and a fourth pill in the colour key. Flagged is NOT a change - `ChangeCount` and the tab's number
+  leave it out, so they keep agreeing with `BoardDataDiffer` - and it is coloured even with nothing
+  published. Each pill holds its count AND its word ("[ 2 Added ]"): a count badge beside a
+  separate word read as belonging to either neighbour (reported).
 
 Two tabs are conditional, both hidden by a Configuration checkbox and both shown from `Main.axaml.cs`:
 `Oscilloscope` (`ApplyOscilloscopeTabVisibility`) and `Workbooks` (`ApplyWorklogBarVisibility`, which
@@ -617,7 +904,7 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   decoration. An UNCOUNTED pill keeps its glyph, because on an entry card that glyph is the only
   thing separating Open from Closed at a glance — `WorklogInfoPillBuilder` branches on `count`, and
   both halves are pinned. The numbers all come from
-  [Handlers/Data/WorkbookSummary.cs](../Handlers/Data/WorkbookSummary.cs) (pure, unit tested), which
+  [Handlers/Data/WorkbookSummary.cs](../src/CRT.App/Handlers/Data/WorkbookSummary.cs) (pure, unit tested), which
   the PDF export prints as its own opening section too — so an exported document cannot report
   different totals from the screen it was produced from. Collapsed by default and persisted in
   `UserSettings.WorkbooksSummaryExpanded` (per user, not per board), re-applied on every refresh
@@ -641,7 +928,7 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
 
 - **Each entry card carries a "Delete worklog" button in its TOP-RIGHT corner**, the per-worklog
   twin of the header's "Delete workbook" and confirmed by the same shape of modal
-  ([DeleteWorklogWindow](../Tabs/Worklog/DeleteWorklogWindow.axaml.cs) — a near-copy of
+  ([DeleteWorklogWindow](../src/CRT.App/Tabs/Worklog/DeleteWorklogWindow.axaml.cs) — a near-copy of
   `DeleteWorkbookWindow`, kept as its own window rather than merged into a shared "confirm a
   delete" dialog: the two say different things about different objects, and the point of the copy
   is that changing one cannot silently change what the other promises about a permanent delete).
@@ -726,10 +1013,10 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   the one deliberate exception to "the PDF writer is not tested": the archive's contents and naming
   are this app's decisions, not QuestPDF's. It also pins `EnsureIconFontLoaded` being safe to call
   with no Avalonia available — the other half of the icon-font contract above.
-  [WorkbookExportModel](../Handlers/Data/WorkbookExportModel.cs) decides WHAT goes in and in what
+  [WorkbookExportModel](../src/CRT.App/Handlers/Data/WorkbookExportModel.cs) decides WHAT goes in and in what
   order (grouped per schematic, entries by id, missing attachment files dropped, an entry with no
   schematic filed under `(no schematic)` rather than silently lost) and is unit tested;
-  [WorkbookPdfExporter](../Handlers/Data/WorkbookPdfExporter.cs) only paints it, and its LAYOUT is
+  [WorkbookPdfExporter](../src/CRT.App/Handlers/Data/WorkbookPdfExporter.cs) only paints it, and its LAYOUT is
   deliberately not tested — asserting on PDF bytes tests QuestPDF rather than this app.
 
   **The PDF mirrors the app's own visuals**, asked for directly: outlined status pills and category
@@ -793,7 +1080,7 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   **How the overlay is positioned — and the trap to avoid.** An entry's area is stored in the
   schematic's own PIXEL coordinates, while the page draws the image at whatever width the margins
   leave, a size QuestPDF decides during layout and never reports. So the placement is entirely
-  PROPORTIONAL: [ExportOverlayGeometry](../Handlers/Geometry/ExportOverlayGeometry.cs) turns a pixel
+  PROPORTIONAL: [ExportOverlayGeometry](../src/CRT.App/Handlers/Geometry/ExportOverlayGeometry.cs) turns a pixel
   rect into fractions of the image, and each band is then expressed as an **aspect ratio**, which
   QuestPDF can satisfy against any width. No page dimension appears in the drawing code at all.
 
@@ -847,12 +1134,12 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   refuse every export and log a warning about the file it had just written.
 
 - **The "Find a previous repair" field is now wired up** and filters the whole tab as you type.
-  The query language lives in [Handlers/Data/WorklogSearchQuery.cs](../Handlers/Data/WorklogSearchQuery.cs)
+  The query language lives in [Handlers/Data/WorklogSearchQuery.cs](../src/CRT.App/Handlers/Data/WorklogSearchQuery.cs)
   (pure, unit tested by `WorklogSearchQueryTests`): space-separated terms are ANDed, `"a phrase"`
   quotes a run containing spaces, a leading `-` excludes, matching is case-insensitive substring
   throughout (so `p c u` finds `CPU`, and `"full text"` finds `Afull textB`). An empty box is not a
   filter and matches everything. Which fields are searched is
-  [WorklogSearchIndex](../Handlers/Data/WorklogSearchIndex.cs): every user-typed TEXT field on the
+  [WorklogSearchIndex](../src/CRT.App/Handlers/Data/WorklogSearchIndex.cs): every user-typed TEXT field on the
   workbook (title, note) and on each of its entries (title, description, category, schematic name,
   component labels, plus every link/comment/work-done/photo/file row) - **numbers
   are deliberately excluded** (ids, hours, cost, display order, dates), since a search for "2"
@@ -978,7 +1265,7 @@ binding cannot express — the same reason `Main` builds the worklog bar's own p
 twice.** A pill is either SELECTABLE — only inside `WorklogEntryEditorWindow`, where clicking one
 chooses it, and the chosen one is FILLED with its colour — or INFORMATIONAL, which is everywhere
 else. Every informational one now comes from
-[Handlers/Theme/WorklogInfoPillBuilder.cs](../Handlers/Theme/WorklogInfoPillBuilder.cs): a `Form_Bg`
+[Handlers/Theme/WorklogInfoPillBuilder.cs](../src/CRT.App/Handlers/Theme/WorklogInfoPillBuilder.cs): a `Form_Bg`
 fill, a **1px** border in the thing's OWN colour (the state colour for a status pill, the category
 colour for a category chip), glyph and label in that same colour. Five sites used to draw these by
 hand — the worklog bar and the workbook card and the top-line at 2px in the status colour, the entry
@@ -1057,14 +1344,14 @@ earlier capture's file.
 
 **The WORKBOOK is never in question; the ENTRY is.** `ResolveActiveWorkbook` already settles which
 workbook is active app-wide, so the only thing the user has to answer is which worklog - which is
-why [WorklogAttachCaptureWindow](../Tabs/Worklog/WorklogAttachCaptureWindow.axaml.cs) is ONE modal
+why [WorklogAttachCaptureWindow](../src/CRT.App/Tabs/Worklog/WorklogAttachCaptureWindow.axaml.cs) is ONE modal
 (image, workbook, worklog, comment) rather than a picker followed by the editor's Add photo dialog.
 It resolves the choice and returns it; the caller performs the write, the same division
 `WorklogAddPhotoWindow` keeps. The popup asks `Main.ResolveActiveWorkbookForBoard` (made `internal`
 for this) rather than re-deriving "which workbook" a third time.
 
 **The entry list is RANKED, and the first row is preselected** -
-[WorklogAttachTargets](../Handlers/Data/WorklogAttachTargets.cs) (pure, unit tested). The rule is
+[WorklogAttachTargets](../src/CRT.App/Handlers/Data/WorklogAttachTargets.cs) (pure, unit tested). The rule is
 deliberately just TWO levels: entries whose `ComponentLabels` contain the component being measured
 come first, then everything else, **both bands in ascending id order**. Someone probing U8 while
 working a fault on U8 gets a single Attach click. Closed entries are KEPT rather than hidden - a
@@ -1134,7 +1421,7 @@ seam sets both the checkbox and the record, or the editor's own save would write
 default of "ticked" and the entry would promise a rectangle it does not have.
 
 **Ticking "Show marked area" on such an entry gives it a real, draggable square** -
-[WorklogDefaultAreaGeometry](../Handlers/Geometry/WorklogDefaultAreaGeometry.cs) (pure, unit tested),
+[WorklogDefaultAreaGeometry](../src/CRT.App/Handlers/Geometry/WorklogDefaultAreaGeometry.cs) (pure, unit tested),
 via the editor's `EnsureMarkedAreaExistsWhenShown`. Without it the tick left a ZERO-SIZED rect, which
 draws as nothing or as a hairline and can never be grabbed and dragged into place - the entry looked
 broken with no way to fix it from the UI. The square is placed in the board's **BOTTOM**-right
@@ -1146,7 +1433,7 @@ than comparing to zero - a rect that has been through a JSON round-trip or a han
 sliver that is still not grabbable.
 
 **Both attach paths share one writer** -
-[WorklogAttachmentWriter](../Handlers/Data/WorklogAttachmentWriter.cs), which the editor's own Photos
+[WorklogAttachmentWriter](../src/CRT.App/Handlers/Data/WorklogAttachmentWriter.cs), which the editor's own Photos
 section now calls too rather than keeping its own copy. It carries four subtleties that are each
 invisible when wrong and were each fixed once already: the id is allocated through
 `AllocateAttachmentId` (which SKIPS ids whose bytes are already in the folder, since plain
@@ -1177,7 +1464,7 @@ headline, not something to navigate to.
 
 `TabSchematics` is one partial class split by area across the files below. **Find the right file here
 before grepping** — the same header map is repeated in
-[Tabs/Schematics/TabSchematics.axaml.cs](../Tabs/Schematics/TabSchematics.axaml.cs):
+[Tabs/Schematics/TabSchematics.axaml.cs](../src/CRT.App/Tabs/Schematics/TabSchematics.axaml.cs):
 
 | File | Owns |
 | --- | --- |
@@ -1210,32 +1497,90 @@ thumbnail gallery), `SchematicsThumbnailsWindow` (the window that hosts it), and
 `ThumbnailGalleryPanel` (its auto-fit layout panel — the maths itself is
 `Handlers/Geometry/ThumbnailGalleryGeometry`).
 
-### Data layer (`Handlers/Data/`)
+### Data layer (`Handlers/Data/`, split across `src/CRT.Data/` and `src/CRT.App/Handlers/Data/`)
+
+**Phase 1 of [Assets/NewContributeStrategy.md](../Assets/NewContributeStrategy.md) split this
+folder across two projects.** `src/CRT.Data/` (a plain, Avalonia-free `net10.0` library, no
+namespace change — everything stayed in `Handlers.DataHandling`) holds the board-data schema and
+read/write logic shared with the future server and review app; everything that orchestrates the
+app itself (data-root resolution, sync, settings, logging) stayed in `src/CRT.App/Handlers/Data/`.
+**Before moving anything else here, check which side it actually belongs on** — `DataValidator` was
+in the original move list and was pulled back out because it calls `DataManager.HardwareBoards`/
+`LoadBoardDataAsync`/`DataRoot` directly, which would have meant either moving `DataManager` (a
+1600+ line app-orchestration class, clearly out of scope) or rewriting `DataValidator`'s signature
+(a public API change the strategy doc's own coverage table already flags as a maintainer decision,
+not something to do in passing). A class with a hidden dependency like this is not a "move."
+
+**In `src/CRT.Data/`:**
+
+- `BoardData` / `BoardDataReader` / `BoardDataWriter` — the schema (in
+  [src/CRT.Data/BoardData.cs](../src/CRT.Data/BoardData.cs)) and read/write logic (via EPPlus) for
+  per-board Excel files: schematics, components, component images/highlights, local files, links,
+  credits, and KiCad signal mappings.
+- `BoardWorkbookSchema` — the sheets and columns, `BuildRows` (BoardData -> cells) and, since
+  2026-09-24, its inverse: the `Map*` row mappers, `MapRows`, `EntriesOf` and `WithRows`. They moved
+  out of `BoardDataReader` so the table editor saves through the same mapping the reader loads
+  through; `BoardWorkbookSchemaTests` round-trips every field of every sheet by reflection.
+  **`AllSheets` is the sheet order of every workbook the app or server WRITES and of the table's
+  tabs, and it ends in "Credits"** - as all published workbooks do ("Important signals" before it;
+  it was the other way round until 2026-09-24, reported). Readers find sheets by name, so the order
+  never affected reading.
+- `BoardTableDocument` / `BoardTableSheet` / `BoardTableRow` / `DraftTableSession` /
+  `BoardTableClipboard` — the Drafts tab's table editor model (see the Drafts paragraph under Tabs).
+  Avalonia-free so `CRT.Review` can reuse it.
+- `BoardTableHistory` — the table editor's undo/redo: one sheet snapshot per step, back to the
+  last save. In `CRT.Data` so the review application's table gets it too.
+- `BoardTableRowDrag` — one row being dragged in the table: `MoveOnto` the row under the pointer,
+  `Step` past an edge, `Finish`. Ghosts are never targets; one undo step per drag.
+- `ComponentPlacement` — where a NEW component's rows go (its category, natural label order) and
+  that an edited one stays put. Every writer that adds components goes through it.
+- `ComponentListBuilder` — the main window's component list: region filter, category filter, search,
+  and the `ComponentListItem` rows it produces. Also owns `IsSupportedKiCadRawFile`.
+- `ContactLinkFormatter` — classifies a contributor's contact string and builds its href.
+- `TextLinkFinder` — which runs inside a user-typed free-text field are web links, so the UI can
+  render them as clickable. Deliberately conservative: only `http://`, `https://` and `www.` at a
+  word boundary count. A bare `example.com` does NOT, because that is the shape repair prose
+  collides with — `74LS08.pin3`, `5.0V`, `notes.txt` — and a false link is worse than none. Pure
+  string work, unit tested; the Avalonia half (`Handlers/Theme/TextLinkRenderer.cs`) stayed in
+  `CRT.App`, since rendering a clickable run needs a control.
+- `ICrtLog` / `CrtLog` — the logging seam these classes call instead of the app's own `Logger`
+  (which is a static singleton tied to Velopack's AppData folder and has no place in a library
+  the server will also reference). `CrtLog.Sink` defaults to null (writes nothing, which is exactly
+  what every test in `CRT.Data.Tests`/`CRT.App.Tests` relies on — no test may call
+  `Logger.Initialize()`, and by construction none needs to for this reason either); `CRT.App`
+  installs `AppLoggerAdapter` as the sink from `App.OnFrameworkInitializationCompleted`,
+  immediately after `Logger.Initialize()`, so a moved class logs to the exact same file it always
+  did.
+
+**Stayed in `src/CRT.App/Handlers/Data/`, deliberately:**
 
 - `DataManager` (static) — resolves the data root (default location or `--data-root=`), loads the master
-  Excel workbook, and drives sync against the online checksum manifest.
-- `BoardData` / `BoardDataReader` / `BoardDataWriter` — the schema (in [Handlers/Data/BoardData.cs](../Handlers/Data/BoardData.cs))
-  and read/write logic (via EPPlus) for per-board Excel files: schematics, components, component
-  images/highlights, local files, links, credits, and KiCad signal mappings.
-- `DataValidator` — validates board/contribution data.
+  Excel workbook, and drives sync against the online checksum manifest. App orchestration, not schema.
+- `DataValidator` — validates board/contribution data. See the note above for why it stayed.
+- `PublishedDraftRetirer` — the sequencing around deleting a draft whose work is published: the
+  check (`DraftRetirement`, in `CRT.Data`) runs off the UI thread, each folder is re-stamped just
+  before it is deleted, a draft with unsaved table edits is kept, and the board cache is cleared for
+  every folder touched. `Main.RetirePublishedDraftsAsync` runs it after EVERY launch status check
+  (`SubmissionStatusRefresh`'s `onFinished`, not `onChanged` - retirement depends on a state, and a
+  receipt already stored as merged never changes again) and when "My submissions" closes.
 - `UserSettings` — JSON-persisted user preferences (theme, window placement, MiniPro path override, etc.).
 - `KiCadProjectData` / `KiCadProjectLoader` / `KiCadRawProjectLoader` — parse raw KiCad PCB/schematic
   files into a normalized bundle so the Schematics tab can highlight matching copper and wire geometry.
 - `Logger` — writes to the app's log file in the AppData folder alongside settings.
-- `ComponentListBuilder` — the main window's component list: region filter, category filter, search,
-  and the `ComponentListItem` rows it produces. Also owns `IsSupportedKiCadRawFile`.
 - `ComponentImageQueries` — which component images and entries the popup shows for a region, and
   which of them carry an oscilloscope baseline.
 - `OverviewHtmlBuilder` / `OverviewModels` — bill-of-materials grouping and the printable HTML for
   the Overview tab, plus the `OverviewRow`/`OverviewLink` models it renders. **The Overview AXAML
   binds these through an `xmlns:data="clr-namespace:Handlers.DataHandling"` mapping** — if you move
   or rename them, update `TabOverview.axaml` too.
-- `ContactLinkFormatter` — classifies a contributor's contact string and builds its href.
-- `TextLinkFinder` — which runs inside a user-typed free-text field are web links, so the UI can
-  render them as clickable. Deliberately conservative: only `http://`, `https://` and `www.` at a
-  word boundary count. A bare `example.com` does NOT, because that is the shape repair prose
-  collides with — `74LS08.pin3`, `5.0V`, `notes.txt` — and a false link is worse than none. Pure
-  string work, unit tested; the Avalonia half is `Handlers/Theme/TextLinkRenderer.cs`.
+
+**Three Avalonia-based geometry helpers were also left behind on purpose** despite an earlier plan
+naming them for this move: `Handlers/Geometry/HighlightRectBuilder.cs`, `PolygonGeometry.cs` and
+`RectGeometry.cs` are all built on `Avalonia.Point`/`Rect`/`Matrix` and are called from 21 files
+across the Schematics/Worklog rendering pipeline. `CRT.Data` must never carry an Avalonia
+dependency — a server has no business depending on a desktop UI framework — so converting these to
+a portable representation is a real refactor of its own (touching all 21 call sites), not a file
+move, and belongs in whichever later phase actually needs a portable geometry library.
 
 ### Content (`Assets/Data/`)
 
@@ -1264,7 +1609,7 @@ contribution, not a code change.
   the abstraction; `MiniproProcessRunner` spawns the bundled `minipro.exe` (streamed, cancellable output),
   `MockMiniproRunner` simulates it without hardware attached. `IcTestCatalogue`/`IcTestModel`/`IcTestService`
   manage the IC test definitions. Only Windows (`win-x64`) currently bundles the `minipro` binary — see the
-  conditional `ItemGroup` in [Classic-Repair-Toolbox.csproj](../Classic-Repair-Toolbox.csproj).
+  conditional `ItemGroup` in [CRT.App.csproj](../src/CRT.App/CRT.App.csproj).
 - `Security/ExternalTargetLauncher` — the only sanctioned way to open an external link or local file from
   the UI; it restricts targets to HTTP/HTTPS/mailto URIs or local paths that resolve inside the current
   data root *and* carry a document/image/data file extension from its allowlist (it hands files to the
@@ -1272,17 +1617,71 @@ contribution, not a code change.
   Use this rather than shelling out directly when opening user/data-supplied links or files.
 
 **QuestPDF** (the workbook PDF export) is the app's one non-Avalonia UI dependency worth knowing
-about. Two things about it:
+about. Three things about it:
 
 - **Its licence is a condition on this project, not just a package reference.** The Community
   licence QuestPDF is used under is free for individuals and for organisations under $1M USD annual
   revenue — which this project is. An organisation above that threshold shipping a fork would need
   its own commercial licence from QuestPDF.
 - **`QuestPDF.Settings.License` must be set before it generates anything**, or the first export
-  throws. It is set once in `App.OnFrameworkInitializationCompleted`, not at the export call site,
-  so a missing line fails at launch in development rather than in a user's hands.
+  throws. It is set by `WorkbookPdfExporter.ConfigureQuestPdf()`, called once in
+  `App.OnFrameworkInitializationCompleted`, not at the export call site, so a missing call fails at
+  launch in development rather than in a user's hands. The tests call the same method rather than
+  setting the licence themselves, so they export under the app's settings.
+- **QuestPDF 2026.9.0 flipped its font defaults, and `ConfigureQuestPdf` deliberately flips them
+  back.** The new defaults use no system fonts and THROW on any glyph or font family they cannot
+  find, so one emoji or CJK character typed into one repair note failed the whole export
+  (reproduced by `WorkbookPdfExporterTests`, which fails without it). So `UseSystemFonts` is true,
+  `ThrowOnMissingTextGlyphs` and `ThrowOnMissingFontFamilies` are false, and
+  `EnableDetailedLayoutErrors` is false (its message quotes document content into the log). **Check
+  QuestPDF's release notes on every bump** - this one changed behaviour without breaking the build.
+  The same release made registering a font under a custom name obsolete, so the icon font is now
+  referenced by the family stored in the .otf (`WorkbookPdfExporter.IconFontFamily`,
+  "Font Awesome 7 Free") at weight 900 (`.Black()`), which keeps a system-installed Font Awesome
+  REGULAR face from being picked instead.
 
-### Contribution webserver (`Assets/Webserver/`)
+### Contribution service (`src/CRT.Server/`) — the PHP's replacement, not yet its retirement
+
+An ASP.NET Core minimal-API service on the maintainer's own AlmaLinux box, built by phases 3-5 of
+[Assets/NewContributeStrategy.md](../Assets/NewContributeStrategy.md). **Read that document before
+touching this project** — it carries the phase status, the decisions already settled, and the traps
+per phase. It is the handoff document between sessions; nothing else records that state.
+
+**It runs alongside the PHP rather than having replaced it.** Retiring the PHP is Phase 7 and has
+not started, so both exist and the legacy path below is still live.
+
+**The shape to keep: endpoints are a RIM, flows hold the decisions.** `*Endpoints.cs` reads a
+request into plain values, calls one method on a `*Flows` class, and maps the verdict onto a status
+code — nothing else. Every rule lives in a pure class taking its store and mailer as arguments, so
+it tests against fakes with no database and no network. A rule that migrates into a handler body is
+a rule no test can reach, the same defect this file describes for logic trapped in a `UserControl`.
+
+Things that are load-bearing and easy to undo by accident:
+
+- **The status codes are the security design, not presentation.** Registration and password reset
+  always answer 202 whether or not the address is known, and login answers 401 with no reason for
+  every failure. A 409 for a taken address is an account-enumeration oracle.
+- **The rate limiter runs BEFORE the Argon2 hasher**, which allocates ~128 MiB per verification.
+  Checking the password first makes the limiter decoration and leaves a memory-exhaustion vector.
+- **Only token HASHES are stored**, for sessions, verification links, reset links and the
+  submission capability token alike.
+- **`SubmissionPathRules` is the single path-containment rule** and it RESOLVES then checks
+  containment rather than pattern-matching for `..`. Every write path and the reviewer's file-read
+  path go through it. Do not add a second way to turn a submitted string into a path.
+- **`ApprovePublishFlow` is the only irreversible operation in the system** — no revision history is
+  retained, so a publish overwrites in place. Its header explains why the order of its checks is
+  the design.
+- **A reviewer may reject and return, but never publish.** `ReviewAuthority` answers that question
+  in one place, deliberately, so Phase 6 changes one file rather than hunting call sites.
+
+### Review application (`src/CRT.Review/`)
+
+A separate Avalonia desktop app for working the submission queue (Phase 5). It talks to CRT.Server
+over HTTP and holds its session token **in memory only** — see `ReviewSession`, whose header also
+explains the API's `refreshToken` naming trap: that field IS the bearer token, and there is no
+access-token exchange to go looking for.
+
+### Contribution webserver (`Assets/Webserver/`) — the LEGACY path
 
 A working copy of the PHP deployed at `classic-repair-toolbox.dk/app-contribution/` — the server
 side of the Contribute tab, split into two entities: `api/index.php` receives the uploads the app
@@ -1292,8 +1691,14 @@ the live server data and merges or rejects it. `api/index.php` requires `review/
 its shared helpers. It is deployed by hand and never ships with the app (Assets are whitelisted
 per-file in the csproj).
 
+**This whole path is being retired and is NOT kept in step any more** (maintainer decision,
+2026-09-23) - see "One change, every side of it" above. The new pipeline replaces it, the old
+method will not be supported alongside it, and a change to shared behaviour does not have to be
+mirrored here. What follows describes how it works and stays accurate for as long as it is
+deployed; it is no longer an instruction to update it.
+
 **The payload is a two-sided contract.** `ComponentContributionPayload` in
-[Tabs/Contribute/ComponentContribution.axaml.cs](../Tabs/Contribute/ComponentContribution.axaml.cs)
+[Tabs/Contribute/ComponentContribution.axaml.cs](../src/CRT.App/Tabs/Contribute/ComponentContribution.axaml.cs)
 is what `review/functions.php` parses, and the PHP deliberately mirrors the app's Excel-reading
 rules (case-insensitive headers, exact board-file resolution, `.json`-beside-the-Excel highlights,
 the `# Revision date:` marker). When you change either side, change the other in the same
@@ -1307,7 +1712,7 @@ message. Full details, file inventory (including which files are legacy) and kno
 
 ## Release process
 
-Versioning lives in [Classic-Repair-Toolbox.csproj](../Classic-Repair-Toolbox.csproj)
+Versioning lives in [CRT.App.csproj](../src/CRT.App/CRT.App.csproj)
 (`AssemblyVersion`/`InformationalVersion`) — bump `InformationalVersion` there before releasing, since
 that is the only place a release version is entered. Releases are made by hand from the GitHub Actions
 tab — run [.github/workflows/build-and-release.yml](../.github/workflows/build-and-release.yml) with no

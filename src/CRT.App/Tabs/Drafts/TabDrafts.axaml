@@ -1,0 +1,267 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TabDrafts">
+
+	<!-- One draft row. A resource rather than inline in the list because TABLE MODE shows the open
+	     draft's row on its own, outside the list (OpenDraftRow below), and two copies of this
+	     markup would drift apart one button at a time. -->
+	<UserControl.Resources>
+		<DataTemplate x:Key="DraftRowTemplate" DataType="local:DraftListItem">
+			<Border Classes="DraftRow"
+					BorderBrush="{DynamicResource Table_BorderRowLine}"
+					BorderThickness="0,0,0,1"
+					Padding="8,8">
+				<Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto">
+					<StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+						<StackPanel Orientation="Horizontal" Spacing="8">
+							<TextBlock Text="{Binding DisplayName}"
+									   FontWeight="SemiBold"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Table_Fg}" />
+
+							<!-- The same amber chip vocabulary the component list uses for
+							     a drafted row - one visual language for "your local view
+							     and the official data are not the same thing". -->
+							<Border IsVisible="{Binding HasDrift}"
+									Background="{DynamicResource Draft_Chip_Bg}"
+									BorderBrush="{DynamicResource Draft_Chip_Border}"
+									BorderThickness="1"
+									CornerRadius="3"
+									Padding="5,1"
+									VerticalAlignment="Center">
+								<TextBlock Text="Updated officially"
+										   FontSize="10"
+										   Foreground="{DynamicResource Draft_Chip_Fg}" />
+							</Border>
+						</StackPanel>
+
+						<TextBlock Text="{Binding RowSummary}"
+								   FontSize="11"
+								   Foreground="{DynamicResource Table_Fg}"
+								   Opacity="0.75" />
+						<TextBlock Text="{Binding DriftSummary}"
+								   IsVisible="{Binding HasDrift}"
+								   FontSize="11"
+								   TextWrapping="Wrap"
+								   Foreground="{DynamicResource Table_Fg}"
+								   Opacity="0.75" />
+					</StackPanel>
+
+					<Button Grid.Column="1"
+							Content="What changed"
+							IsVisible="{Binding HasDrift}"
+							VerticalAlignment="Center"
+							Margin="0,0,8,0"
+							ToolTip.Tip="See how your edits line up with the official data now"
+							Command="{Binding ViewDriftCommand}" />
+
+					<!-- Opens this draft's workbook as editable sheets directly below the
+					     row, hiding every other draft while it is open (maintainer request,
+					     2026-09-24). Reads "Close table" while open. See BoardTableEditor. -->
+					<Button Grid.Column="2"
+							Content="{Binding TableButtonText}"
+							VerticalAlignment="Center"
+							Margin="0,0,8,0"
+							ToolTip.Tip="{Binding TableButtonTooltip}"
+							Command="{Binding EditTableCommand}" />
+
+					<!-- One button per kind of file (maintainer request, 2026-09-24) - they
+					     used to share one "Schematic images and KiCad data" button. Both
+					     open SystemFilesWindow, each on its own section. -->
+					<Button Grid.Column="3"
+							Content="Schematic images"
+							VerticalAlignment="Center"
+							Margin="0,0,8,0"
+							ToolTip.Tip="Add or remove the schematic images of this system"
+							Command="{Binding ManageSchematicImagesCommand}" />
+
+					<Button Grid.Column="4"
+							Content="KiCad data"
+							VerticalAlignment="Center"
+							Margin="0,0,8,0"
+							ToolTip.Tip="Import or remove this system's KiCad data, and see what it lines up with"
+							Command="{Binding ManageKiCadDataCommand}" />
+
+					<!-- Sends this system for review. Disabled rather than hidden when the
+					     draft has nothing in it, so the action stays where the user
+					     learned it is and the tooltip can say why it is unavailable - a
+					     button that appears only sometimes reads as the app having lost
+					     it. No account is needed to press this; the dialog asks only for
+					     an email address, so a reviewer can contact the contributor if
+					     they need to. The OUTCOME is reported in "My submissions" - no
+					     email is sent, see SubmissionReceipt's header. -->
+					<Button Grid.Column="5"
+							Content="Submit"
+							VerticalAlignment="Center"
+							Margin="0,0,8,0"
+							IsEnabled="{Binding CanSubmit}"
+							ToolTip.Tip="{Binding SubmitTooltip}"
+							Command="{Binding SubmitCommand}" />
+
+					<Button Grid.Column="6"
+							Content="Discard"
+							Foreground="{DynamicResource Button_Cancel_Fg}"
+							Background="{DynamicResource Button_Cancel_Bg}"
+							BorderBrush="{DynamicResource Button_Cancel_Border}"
+							VerticalAlignment="Center"
+							Command="{Binding DiscardCommand}" />
+				</Grid>
+			</Border>
+		</DataTemplate>
+	</UserControl.Resources>
+
+	<UserControl.Styles>
+		<Style Selector="Border.DraftRow">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Border.DraftRow:pointerover">
+			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid RowDefinitions="Auto,*">
+
+		<Grid Grid.Row="0" ColumnDefinitions="*,16,Auto" Margin="16,16,16,8">
+			<StackPanel Grid.Column="0" Spacing="4">
+				<TextBlock Text="Drafts"
+						   FontSize="16"
+						   FontWeight="Bold" />
+				<TextBlock TextWrapping="Wrap"
+						   Text="Local, unpublished edits to hardware and board data. A draft is not visible to anyone else until it is submitted; see the Contribute tab. A system you never submit keeps working here as your own." />
+
+				<!-- Shown only when a Discard could not delete the whole draft folder - most
+				     often because its workbook is open in Excel, which locks it on Windows.
+				     Set and cleared by TabDrafts.DiscardAsync. -->
+				<TextBlock x:Name="DiscardFailedText"
+						   TextWrapping="Wrap"
+						   Foreground="{DynamicResource Text_Warning_Fg}"
+						   IsVisible="False" />
+			</StackPanel>
+
+			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+				<!-- Always offered, even with nothing sent yet - its own empty state explains what
+				     will appear there, which is more use than a button that is simply absent until
+				     the day it silently appears. -->
+				<!--
+				THE BUTTON CARRIES A BADGE when a reviewer has said something that has not been
+				read. Contributing needs no account, so there is no inbox and no email thread -
+				the reviewer's sentence inside this window is the ENTIRE channel back to the
+				person who did the work, and before the badge it was reachable only by pressing a
+				button nobody had a reason to press.
+
+				The count sits INSIDE the button rather than floating over its corner: an overlaid
+				badge needs a Panel and clips against the button's own bounds, and this row is a
+				plain horizontal stack where a wider button costs nothing.
+				-->
+				<Button x:Name="MySubmissionsButton"
+						ToolTip.Tip="See what you have sent from this computer and how each one is getting on"
+						Click="OnMySubmissionsClick">
+					<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+						<TextBlock Text="My submissions" VerticalAlignment="Center" />
+
+						<!--
+						Collapsed entirely when there is nothing unread, so the ordinary button is
+						exactly as it was. IndianRed is the same accent the app already uses for
+						"this needs you" rather than a new colour introduced here.
+						-->
+						<!--
+						*** A CIRCLE, NOT A LOZENGE (maintainer request, 2026-09-23). *** The
+						earlier badge was MinWidth 16 with 5px side padding and CornerRadius 8, so
+						a single digit rendered as a rounded rectangle wider than it was tall. The
+						fix is a fixed square - Width and Height equal, with CornerRadius at half
+						that - which is the only way to guarantee a true circle for the one-digit
+						case that is almost always what is shown.
+
+						MinWidth alongside Width keeps a hypothetical three-digit count from being
+						clipped: Width is a preferred size, so the badge grows into a lozenge
+						rather than truncating if the number ever outgrows the circle. Nobody has
+						100 unread replies, but a clipped number would be worse than a wide badge.
+						-->
+						<Border x:Name="MySubmissionsBadge"
+								IsVisible="False"
+								Background="IndianRed"
+								CornerRadius="11"
+								Width="22"
+								Height="22"
+								MinWidth="22"
+								Padding="2,0"
+								VerticalAlignment="Center">
+							<TextBlock x:Name="MySubmissionsBadgeText"
+									   Foreground="White"
+									   FontSize="13"
+									   FontWeight="SemiBold"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Center" />
+						</Border>
+					</StackPanel>
+				</Button>
+
+				<!-- The same action as the Contribute tab's button, offered again here because this
+				     is where someone returning to their drafts looks for it. -->
+				<Button x:Name="AddNewSystemButton"
+						Content="Add a new system"
+						ToolTip.Tip="Create a whole new hardware and board of your own, as a local draft"
+						Click="OnAddNewSystemClick" />
+			</StackPanel>
+		</Grid>
+
+		<!--
+		THE BODY HAS TWO LAYOUTS (2026-09-24). Normally the list fills it and scrolls. In TABLE MODE
+		("Edit in table format") the list is hidden, the open draft's row is shown on its own in
+		OpenDraftRow, and the table editor takes the rest of the height.
+
+		*** THE TABLE MUST NOT SIT INSIDE THE LIST'S SCROLLVIEWER. *** A ScrollViewer offers its
+		content unlimited height, and a grid given unlimited height lays out EVERY row instead of
+		only the visible ones - a sheet of a thousand component images would then crawl.
+
+		The open row is shown on its own rather than as the list filtered to one row, so the list
+		keeps `Drafts` as its source untouched (Main counts it) and no ScrollViewer is squeezed into
+		an Auto row with nothing to scroll.
+
+		*** TabDrafts.ApplyTableMode CHANGES THESE TWO ROWS' HEIGHTS IN PLACE. *** The first version
+		assigned a new RowDefinitions collection instead, and the open row drew at ZERO height: the
+		Grid kept measuring its cells against the old row kinds.
+		-->
+		<Grid Grid.Row="1" x:Name="DraftsBodyGrid" RowDefinitions="*,Auto">
+
+		<!-- Shown when there is at least one drafted system - see EmptyStateText below for the
+		     alternative. Toggled from code (RefreshDrafts), not markup, since which one is visible
+		     depends on data that is not known until the tab loads. -->
+		<ScrollViewer Grid.Row="0"
+					  x:Name="DraftsScrollViewer"
+					  Margin="16,0,16,16">
+			<ItemsControl x:Name="DraftsItemsControl"
+						  ItemTemplate="{StaticResource DraftRowTemplate}"
+						  Background="{DynamicResource Table_Bg}" />
+		</ScrollViewer>
+
+		<!-- Table mode's own copy of the open draft's row, shown INSTEAD of the list. -->
+		<ContentControl Grid.Row="0"
+						x:Name="OpenDraftRow"
+						ContentTemplate="{StaticResource DraftRowTemplate}"
+						Background="{DynamicResource Table_Bg}"
+						Margin="16,0,16,8"
+						IsVisible="False" />
+
+		<local:BoardTableEditor Grid.Row="1"
+								x:Name="TableEditor"
+								Margin="16,0,16,16"
+								IsVisible="False" />
+
+		</Grid>
+
+		<!-- The alternative to the list above - one TextBlock, Top-aligned (a TextBlock in a Grid
+		     cell defaults to Stretch, which floats a single line down the middle of an empty tab -
+		     the same trap WorkbooksBoardPreviewTests documents for its own empty state). -->
+		<TextBlock Grid.Row="1"
+				   x:Name="EmptyStateText"
+				   Text="No local drafts yet. Edits made through the Contribute tab that have not been submitted will appear here."
+				   Margin="16,0,16,16"
+				   TextWrapping="Wrap"
+				   VerticalAlignment="Top"
+				   IsVisible="False" />
+
+	</Grid>
+</UserControl>

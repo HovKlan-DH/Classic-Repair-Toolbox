@@ -15,6 +15,32 @@ Below is the documentation for each of these worksheets and the columns inside t
 
 Depicts which schematic images are available for the board.
 
+### The revision date marker
+
+Somewhere in the top-left corner of this worksheet - anywhere within the first 10 rows and 10
+columns - put a cell reading:
+
+```
+# Revision date: 2026-August-21
+```
+
+The application scans for the first cell starting `# Revision date:` and takes the rest of it as the
+board's revision date. It is shown on the Contribute tab ("Board Excel data last revisioned") and in
+the board information panel.
+
+**Use `yyyy-MMMM-dd` with the full English month name**, as every shipped board does. The value is
+free text and nothing rejects another format, but two things read it as a date:
+
+* the **drift warning** - when you have a local draft on a board and the official data is updated
+  underneath it, CRT compares this value against the one your draft was started from, and tells you
+  the official data has been *updated* rather than merely *changed*;
+* nothing else. It is never used for sorting or for deciding which file to load.
+
+If the value cannot be read as a date, nothing breaks - CRT simply says the data "has changed"
+instead of "has been updated", which is all it can honestly claim.
+
+### The columns
+
 These are the columns and how to understand them:
 
 ### Column: Schematic name

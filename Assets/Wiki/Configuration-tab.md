@@ -105,6 +105,13 @@ so reopening this tab may show a different country with the same code. Nothing i
 setting only changes how your own figures are labelled, and changing it relabels costs you have
 already recorded rather than recalculating them.
 
+## Drafts
+
+**View boards as officially published** — hides your own local, unpublished draft edits, so a
+board shows exactly what everyone else sees. That covers everything in a draft: its rows, and also
+any schematic image or file you replaced, KiCad data you imported and KiCad calibration you
+changed. Untick it again to see your edits marked and applied as usual. See [Contribute data via CRT](Contribute-data-via-CRT) for what a draft is.
+
 ## Visible hardware, boards and schematics
 
 The right-hand panel lists every hardware, board and schematic image CRT knows about, each with

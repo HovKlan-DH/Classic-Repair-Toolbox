@@ -19,6 +19,7 @@ material with its own origins and rights holders - see the License section of
 | [Avalonia](https://avaloniaui.net/) (plus `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.Fonts.Inter`, `Avalonia.Controls.ColorPicker`) | MIT | Yes |
 | [AvaloniaUI.DiagnosticsSupport](https://github.com/AvaloniaUI/Avalonia) | MIT | Yes |
 | [Velopack](https://github.com/velopack/velopack) | MIT | Yes |
+| [ProDataGrid](https://github.com/wieslawsoltes/ProDataGrid) (plus its dependencies `ProDataGrid.FormulaEngine`, `ProDataGrid.FormulaEngine.Excel`) | MIT | Yes |
 | [EPPlus](https://epplussoftware.com/) | **Polyform Noncommercial 1.0.0** | Yes - see below |
 | [QuestPDF](https://www.questpdf.com/) | **Dual-licensed; used under the Community License** | Yes - see below |
 | [SonarAnalyzer.CSharp](https://www.sonarsource.com/) | LGPL-3.0 | No - `PrivateAssets="all"`, build-time analyzer only |
