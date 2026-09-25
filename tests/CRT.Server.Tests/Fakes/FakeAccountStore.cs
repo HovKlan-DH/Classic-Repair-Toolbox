@@ -39,6 +39,10 @@ namespace CRT.Server.Tests.Fakes
 
         public List<(string? Email, string? Ip, DateTimeOffset When)> AuthFailures { get; } = [];
 
+        // The reviewer pools: (system id, account id), exactly the `reviewers` table's key. A
+        // test puts an account in a pool by adding to this directly.
+        public HashSet<(string SystemId, long AccountId)> Reviewers { get; } = [];
+
         // -----------------------------------------------------------------------------------
         // Accounts.
         // -----------------------------------------------------------------------------------
@@ -68,7 +72,6 @@ namespace CRT.Server.Tests.Fakes
                 account.DisplayName,
                 IsVerified: false,
                 IsAdministrator: false,
-                IsReviewer: false,
                 IsLocked: false,
                 account.CreatedUtc,
                 LastLoginUtc: null);
@@ -294,6 +297,84 @@ namespace CRT.Server.Tests.Fakes
         {
             this.MailRequests.Add((ipAddress, whenUtc));
             return Task.CompletedTask;
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Reviewer pools (Phase 6 roles).
+        // -----------------------------------------------------------------------------------
+
+        public Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
+        {
+            IReadOnlySet<string> ids = this.Reviewers
+                .Where(row => row.AccountId == accountId)
+                .Select(row => row.SystemId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            return Task.FromResult(ids);
+        }
+
+        public Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(this.ReviewerRows(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal)));
+        }
+
+        public Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(this.ReviewerRows(_ => true));
+        }
+
+        // Joined to the account the way the real query is, and an orphan pair (no such account)
+        // is dropped the way an inner join drops it.
+        private IReadOnlyList<ReviewerRecord> ReviewerRows(Func<(string SystemId, long AccountId), bool> where)
+        {
+            return this.Reviewers
+                .Where(where)
+                .Where(row => this.Accounts.ContainsKey(row.AccountId))
+                .Select(row => new ReviewerRecord(
+                    row.SystemId,
+                    row.AccountId,
+                    this.Accounts[row.AccountId].DisplayName,
+                    this.Accounts[row.AccountId].Email,
+                    this.Accounts[row.AccountId].IsAdministrator,
+                    this.Accounts[row.AccountId].IsVerified,
+                    this.Accounts[row.AccountId].IsLocked))
+                .OrderBy(row => row.SystemId, StringComparer.Ordinal)
+                .ThenBy(row => row.DisplayName, StringComparer.Ordinal)
+                .ThenBy(row => row.AccountId)
+                .ToList();
+        }
+
+        public Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            this.Reviewers.Add((systemId, accountId));
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        {
+            this.Reviewers.Remove((systemId, accountId));
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<AccountRecord>> ListAccountsAsync(int limit, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<AccountRecord> accounts = this.Accounts.Values
+                .OrderBy(account => account.DisplayName, StringComparer.Ordinal)
+                .ThenBy(account => account.Id)
+                .Take(Math.Clamp(limit, 1, 1000))
+                .ToList();
+
+            return Task.FromResult(accounts);
+        }
+
+        public Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<AccountRecord> admins = this.Accounts.Values
+                .Where(account => account.IsAdministrator)
+                .OrderBy(account => account.Id)
+                .ToList();
+
+            return Task.FromResult(admins);
         }
 
         public Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default)

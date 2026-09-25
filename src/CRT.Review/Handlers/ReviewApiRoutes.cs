@@ -77,6 +77,13 @@ namespace CRT.Review.Handlers
         public static string Approve(string baseAddress, long submissionId) =>
             $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/approve";
 
+        // The reviewer's table (2026-09-25): both boards to open it on, and saving a change.
+        public static string SubmissionTable(string baseAddress, long submissionId) =>
+            $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/table";
+
+        public static string SubmissionAmend(string baseAddress, long submissionId) =>
+            $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/amend";
+
         public static string Reject(string baseAddress, long submissionId) =>
             $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/reject";
 
@@ -112,6 +119,47 @@ namespace CRT.Review.Handlers
 
             return $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/published/{escaped}";
         }
+
+        // ###########################################################################################
+        // The ADMINISTRATOR's routes (Phase 6 roles): the lists, and changing a pool. Under
+        // "/api/admin" rather than "/api/review", matching AdminEndpoints' own group - see its
+        // header for why the two are kept apart.
+        //
+        // Add and remove are both POSTs with a body: a system id carries slashes and cannot sit
+        // in a route in front of the account id.
+        // ###########################################################################################
+        public static string AdminSystems(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems";
+
+        public static string AdminAccounts(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/accounts";
+
+        public static string AdminAddReviewer(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/reviewers";
+
+        public static string AdminRemoveReviewer(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/reviewers/remove";
+
+        // The "Unused files" screen (2026-09-25): the list for one tree ("beta" or "production"),
+        // and removing the files the administrator chose.
+        public static string AdminUnusedFiles(string baseAddress, string tree) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/unused-files?tree={Uri.EscapeDataString(tree ?? string.Empty)}";
+
+        public static string AdminRemoveUnusedFiles(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/unused-files/remove";
+
+        // ###########################################################################################
+        // BETA to production (2026-09-25) - ProductionEndpoints.MapProductionEndpoints. The plan and
+        // the publish are POSTs with a body, because a system id carries slashes.
+        // ###########################################################################################
+        public static string ProductionList(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/production";
+
+        public static string ProductionPlan(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/production/plan";
+
+        public static string ProductionPublish(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/production/publish";
 
         // ###########################################################################################
         // The base address with any trailing slashes removed.

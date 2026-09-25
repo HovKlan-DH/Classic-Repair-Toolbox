@@ -176,4 +176,38 @@ public sealed class SubmissionFileLocatorTests : IDisposable
             System.IO.Path.GetFullPath(writtenTo),
             System.IO.Path.GetFullPath(locatedAt));
     }
+    // ###########################################################################################
+    // *** THE REPORTED BUG (maintainer, 2026-09-25): "Some files are missing ... HotCPU.png". ***
+    // A new image filed in a SHARED folder is written inside the draft under its whole path, and
+    // the locator only looked in the draft for the board's own files - so the contributor's
+    // attachment was on disk and the submission called it missing.
+    // ###########################################################################################
+    [Fact]
+    public void A_SHARED_file_the_contributor_attached_is_submitted_from_where_it_was_written()
+    {
+        string relative = "Commodore/Shared files/Component images/HotCPU.png";
+
+        string writtenTo = DraftFileResolver.BuildDraftFileDestination(this.DraftFolder, relative);
+
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(writtenTo)!);
+        File.WriteAllText(writtenTo, "drafted");
+
+        Assert.True(SubmissionFileLocator.TryLocate(
+            this.DataRoot, this.DraftFolder, relative, out string locatedAt, out string reason), reason);
+
+        Assert.Equal(
+            System.IO.Path.GetFullPath(writtenTo),
+            System.IO.Path.GetFullPath(locatedAt));
+    }
+
+    // Containment still holds for the drafted shared copy: a stored path climbing out of the draft
+    // is refused, whatever sits where it points.
+    [Fact]
+    public void A_shared_path_climbing_out_of_the_draft_is_still_refused()
+    {
+        Assert.False(SubmissionFileLocator.TryLocate(
+            this.DataRoot, this.DraftFolder, "Commodore/Shared files/../../../../secret.txt", out _, out string reason));
+
+        Assert.NotEmpty(reason);
+    }
 }

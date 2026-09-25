@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -49,6 +50,11 @@ namespace Handlers.DataHandling
         // Null when there is none. Reads ONE small JSON file and touches no workbook, so a surface
         // listing every drafted system pays almost nothing.
         // ###########################################################################################
+        //
+        // *** THE KEY IS THE BOARD'S WORKBOOK PATH ("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
+        // NOT A SYSTEM ID. *** Handed "Commodore/C64/250407" it strips the last segment as a file
+        // name and looks in "Drafts/Commodore/C64" - finding nothing. A submission receipt names its
+        // system by id, so go through ResolveForSystem for one.
         public static DraftStatus? Resolve(string dataRoot, string draftsRoot, string excelDataFile)
         {
             DraftMarker? marker = DraftMarkerStore.Load(
@@ -66,6 +72,77 @@ namespace Handlers.DataHandling
                 NewSystem = marker.NewSystem,
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile),
                 PublishedWorkbookPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile),
+            };
+        }
+
+        // ###########################################################################################
+        // The draft a SUBMISSION RECEIPT is about. A receipt names its system by id
+        // ("Commodore/C64/250407"), built from the board's workbook path by
+        // SystemDescriptorRules.SystemIdFromExcelDataFile when it was submitted; this finds that
+        // workbook again among the boards the app knows, the same way round, and resolves it.
+        //
+        // It used to be Resolve called with the id itself, which looks one folder too high and finds
+        // nothing - so a draft whose work had been published was never retired (maintainer report,
+        // 2026-09-25: published to BETA, and the draft stayed in the list).
+        //
+        // Null when no known board has that id - the draft is then left alone, which is the safe way.
+        //
+        // *** THE DRAFT AND THE PUBLISHED BOARD CAN HAVE DIFFERENT WORKBOOK NAMES (2026-09-25). ***
+        // A NEW system's draft is keyed by the name it was created with ("Data HW Board.xlsx"),
+        // and its publish writes the tree's generation ("Data HW Board v2.0.0.xlsx"). So the draft
+        // is found by its FOLDER (the marker) and keeps its own key (the marker's SystemKey), and the
+        // published side is the board the app lists. For an existing board the two are the same.
+        // Where several listed boards carry the id, one whose published copy is on disk wins.
+        // ###########################################################################################
+        public static DraftStatus? ResolveForSystem(
+            string dataRoot,
+            string draftsRoot,
+            string systemId,
+            IEnumerable<string>? excelDataFiles)
+        {
+            if (string.IsNullOrWhiteSpace(systemId))
+            {
+                return null;
+            }
+
+            string id = systemId.Trim();
+
+            List<string> matching = (excelDataFiles ?? [])
+                .Where(file => string.Equals(
+                    SystemDescriptorRules.SystemIdFromExcelDataFile(file),
+                    id,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            string? published = matching.FirstOrDefault(file => File.Exists(DraftBoardSource.PublishedPathOf(dataRoot, file)))
+                ?? matching.FirstOrDefault();
+
+            if (published is null)
+            {
+                return null;
+            }
+
+            DraftMarker? marker = DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(draftsRoot, published));
+
+            if (marker is null)
+            {
+                return null;
+            }
+
+            // The draft's own key, when the marker names this same system; the listed board's
+            // otherwise (a marker written before the key was recorded).
+            string draftKey = !string.IsNullOrWhiteSpace(marker.SystemKey) &&
+                string.Equals(SystemDescriptorRules.SystemIdFromExcelDataFile(marker.SystemKey), id, StringComparison.OrdinalIgnoreCase)
+                    ? marker.SystemKey.Trim()
+                    : published;
+
+            return new DraftStatus
+            {
+                SystemKey = draftKey,
+                BaseRevision = marker.BaseRevision,
+                NewSystem = marker.NewSystem,
+                WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, draftKey),
+                PublishedWorkbookPath = DraftBoardSource.PublishedPathOf(dataRoot, published),
             };
         }
 

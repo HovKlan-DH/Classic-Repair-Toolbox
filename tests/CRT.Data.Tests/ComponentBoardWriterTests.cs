@@ -455,14 +455,16 @@ public sealed class ComponentBoardWriterTests
     }
 
     // ###########################################################################################
-    // *** A DELETE LEAVES HIGHLIGHTS AND BOARD-SCOPED ROWS ALONE. ***
+    // *** A DELETE TAKES THE COMPONENT'S HIGHLIGHTS TOO, AND LEAVES THE BOARD'S OWN ROWS ALONE. ***
     //
-    // Carried over verbatim from ComponentDraftWriter's own rule: removing a component from the
-    // parts list is not a request to erase every rectangle naming it from every schematic, nor to
-    // drop the board's own documentation.
+    // Changed 2026-09-25 (maintainer: "if a component really is deleted, then it should remove
+    // EVERYTHING related to this component"). Highlights used to be kept as "the label editor's
+    // concern", which left rectangles naming a component the board no longer had - while this
+    // window's own notice said they would go. The board's own files and links are not the
+    // component's, and stay.
     // ###########################################################################################
     [Fact]
-    public void Deleting_a_component_does_NOT_remove_its_highlights_or_the_boards_own_rows()
+    public void Deleting_a_component_removes_its_highlights_but_not_the_boards_own_rows()
     {
         var board = new BoardData();
         board.Components.Add(new ComponentEntry { BoardLabel = "U8" });
@@ -473,9 +475,12 @@ public sealed class ComponentBoardWriterTests
         });
         board.BoardLinks.Add(new BoardLinkEntry { Category = "Docs", Name = "Manual" });
 
+        board.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Sheet 2", BoardLabel = "u8" });
+        board.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U9" });
+
         BoardData result = ComponentBoardWriter.ApplyComponentDelete(board, "U8");
 
-        Assert.Single(result.ComponentHighlights);
+        Assert.Equal("U9", Assert.Single(result.ComponentHighlights).BoardLabel);
         Assert.Single(result.BoardLinks);
     }
 

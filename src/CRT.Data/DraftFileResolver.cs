@@ -83,27 +83,22 @@ namespace Handlers.DataHandling
             // The published tree is still the fallback, which is what lets seeding skip SHARED
             // files (a manufacturer "Shared files" image belongs to many boards, so it is not
             // copied into any one draft - see DraftFolderLayout.GetReferencedFilePath).
+            //
+            // *** THE DRAFTED COPY IS LOOKED FOR EXACTLY WHERE BuildDraftFileDestination WRITES
+            // IT (maintainer report, 2026-09-25). *** For the board's own files that is the draft
+            // folder with the system's prefix stripped. For a NEW file the contributor filed in a
+            // shared folder it is the draft folder plus the WHOLE path - and this used to look only
+            // for the first kind, so "Commodore/Shared files/Component images/HotCPU.png" was on
+            // disk in the draft and nothing could find it. Asking the writer's own function means
+            // the two cannot disagree again.
             // ###########################################################################################
             if (!string.IsNullOrWhiteSpace(draftSystemFolder))
             {
-                // *** THE SYSTEM'S OWN PREFIX IS STRIPPED. *** A stored path is relative to the
-                // DATA ROOT ("Commodore/C64/250407/top.png"), while the draft folder already IS
-                // those three segments - so combining them unstripped looks for
-                // "<draft>/Commodore/C64/250407/Commodore/C64/250407/top.png".
-                string? withinSystem = DraftFolderLayout.RelativeToSystemFolder(
-                    DraftFileResolver.SystemKeyFromFolder(draftSystemFolder),
-                    trimmed);
+                string draftedPath = DraftFileResolver.BuildDraftFileDestination(draftSystemFolder, trimmed);
 
-                if (withinSystem is not null)
+                if (File.Exists(draftedPath))
                 {
-                    string draftedPath = Path.Combine(
-                        draftSystemFolder,
-                        withinSystem.Replace('/', Path.DirectorySeparatorChar));
-
-                    if (File.Exists(draftedPath))
-                    {
-                        return new DraftFileResolution(draftedPath, draftSystemFolder, IsDrafted: true);
-                    }
+                    return new DraftFileResolution(draftedPath, draftSystemFolder, IsDrafted: true);
                 }
             }
 
@@ -124,6 +119,11 @@ namespace Handlers.DataHandling
         // path (FileLocation + file name, "/"-separated) the drafted entry is about to store. Does
         // not create the file or its directory - the caller copies the bytes and is the one place
         // that should decide when directory creation happens (see ComponentDraftWriter).
+        //
+        // A file of the board's OWN folder goes to the draft folder with the system's prefix
+        // stripped; a file filed in a SHARED folder (or anywhere else outside the board) goes to
+        // the draft folder plus its whole path. Resolve and SubmissionFileLocator both read the
+        // drafted copy from exactly here.
         // ###########################################################################################
         public static string BuildDraftFileDestination(string draftSystemFolder, string relativeFile)
         {

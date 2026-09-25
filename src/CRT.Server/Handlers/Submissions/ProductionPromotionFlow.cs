@@ -1,0 +1,522 @@
+using CRT.Server.Configuration;
+using CRT.Server.Handlers.Accounts;
+using Handlers.DataHandling;
+
+namespace CRT.Server.Handlers.Submissions
+{
+    // ###########################################################################################
+    // PUBLISHING A SYSTEM FROM BETA TO PRODUCTION (maintainer request, 2026-09-25): "first
+    // published to BETA and then it is published to the real production. The reviewer is still
+    // allowed to do this, but only after he has checked that the data looks correct in BETA."
+    //
+    // A COORDINATOR, like ApprovePublishFlow: ProductionPromotionPlan decides what is copied,
+    // ProductionPromoter copies it, ReviewAuthority decides who may. The order of the checks is the
+    // design, cheapest refusal first:
+    //
+    //   1. CONFIGURED    - is publishing to production switched on at all?
+    //   2. AUTHORITY     - may this account publish anything?
+    //   3. EXISTENCE     - is there such a system, and is its BETA state ahead of production?
+    //   4. WHAT WAS SEEN - is BETA still exactly what the reviewer checked? (the content hash)
+    //   5. PLAN          - what would be copied, and is anything refused?
+    //   6. APPROVAL      - does this account's approval publish it? A plan that changes a shared
+    //                      file needs a reviewer of the board AND the administrator (maintainer
+    //                      decision, 2026-09-25): the first is recorded against this BETA state
+    //                      and nothing is copied until the second arrives. See ApprovalRules.
+    //   7. COPY, then record it.
+    //
+    // *** "CHECKED IN BETA" IS MADE CONCRETE BY STEP 4. *** A reviewer cannot be proved to have
+    // looked, but they can be held to promoting exactly what they could have looked at: the
+    // request names the BETA content hash the review application showed them, and a publish that
+    // has landed in BETA since changes that hash and refuses the promotion. The review application
+    // adds the human half - a box the reviewer ticks to say they checked it in CRT.
+    //
+    // Steps 3 to 7 run under PublishLock, so no publish can land in BETA between the check in
+    // step 4 and the copy in step 7.
+    // ###########################################################################################
+    public sealed class ProductionPromotionFlow
+    {
+        private readonly ISubmissionStore thisStore;
+        private readonly IAccountStore thisAccounts;
+        private readonly PublishedBoardReader thisBoards;
+        private readonly PublishLock thisLock;
+        private readonly ILogger<ProductionPromotionFlow> thisLogger;
+
+        public ProductionPromotionFlow(
+            ISubmissionStore store,
+            IAccountStore accounts,
+            PublishedBoardReader boards,
+            PublishLock publishLock,
+            ILogger<ProductionPromotionFlow> logger)
+        {
+            this.thisStore = store;
+            this.thisAccounts = accounts;
+            this.thisBoards = boards;
+            this.thisLock = publishLock;
+            this.thisLogger = logger;
+        }
+
+        public const string NotConfiguredMessage =
+            "Publishing to production is not switched on for this server. Until it is, BETA is copied to production by hand.";
+
+        // ###########################################################################################
+        // The systems whose BETA state is ahead of production, that this account may promote -
+        // leaving out only what the plan alone can reveal (a shared-file change), which the plan
+        // step reports when the system is opened.
+        // ###########################################################################################
+        public async Task<IReadOnlyList<SystemRecord>> ListAwaitingAsync(
+            ReviewAccess? access,
+            CancellationToken cancellationToken = default)
+        {
+            if (!ReviewAuthority.CanReviewAnything(access))
+                return [];
+
+            IReadOnlyList<SystemRecord> systems = await this.thisStore.ListSystemsAsync(cancellationToken);
+
+            return systems
+                .Where(ProductionPromotionRules.IsAwaitingProduction)
+                .Where(system => ReviewAuthority.CanPublish(access, system.SystemId))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // What promoting this system would copy - shown to the reviewer before they press the
+        // button, from the same code that performs it.
+        // ###########################################################################################
+        public async Task<PromotionPlanOutcome> PlanAsync(
+            ReviewAccess? access,
+            string? systemId,
+            ServerOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            if (!options.IsProductionPublishingConfigured)
+                return PromotionPlanOutcome.NotConfigured();
+
+            if (!ReviewAuthority.CanReviewAnything(access))
+                return PromotionPlanOutcome.Forbidden(ReviewAuthority.DescribeRefusal(access, null));
+
+            SystemRecord? system = string.IsNullOrWhiteSpace(systemId)
+                ? null
+                : await this.thisStore.FindSystemAsync(systemId, cancellationToken);
+
+            if (system is null)
+                return PromotionPlanOutcome.NotFound("No such system.");
+
+            if (!ReviewAuthority.CanPublish(access, system.SystemId))
+                return PromotionPlanOutcome.Forbidden($"This account is not a reviewer of {system.SystemId}.");
+
+            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+            ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
+
+            // What the promotion would REMOVE from production, shown before anyone approves it.
+            FileRemovalPreview removals = plan.CanPromote
+                ? ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system)
+                : FileRemovalPreview.Nothing;
+
+            return PromotionPlanOutcome.Planned(system, plan, ProductionPromotionFlow.RefusalFor(plan), approval) with { Removals = removals };
+        }
+
+        // ###########################################################################################
+        // Promotes. See the class header for the order of the checks.
+        // ###########################################################################################
+        public Task<PromotionOutcome> PromoteAsync(
+            ReviewAccess? access,
+            string? systemId,
+            string? expectedBetaContentHash,
+            ServerOptions options,
+            DateTimeOffset nowUtc,
+            CancellationToken cancellationToken = default) =>
+            this.PromoteAsync(access, systemId, expectedBetaContentHash, options, nowUtc, shownRemovals: null, cancellationToken);
+
+        // `shownRemovals`: the files the reviewer was shown this would remove from production. The
+        // publishing approval is refused when the list differs now - the same rule as a BETA
+        // publish (ApprovePublishFlow step 5b).
+        public async Task<PromotionOutcome> PromoteAsync(
+            ReviewAccess? access,
+            string? systemId,
+            string? expectedBetaContentHash,
+            ServerOptions options,
+            DateTimeOffset nowUtc,
+            IReadOnlyCollection<string>? shownRemovals,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+
+            // ---- 1 and 2 ----------------------------------------------------------------------
+            if (!options.IsProductionPublishingConfigured)
+                return PromotionOutcome.NotConfigured();
+
+            if (!ReviewAuthority.CanReviewAnything(access))
+                return PromotionOutcome.Forbidden(ReviewAuthority.DescribeRefusal(access, null));
+
+            if (string.IsNullOrWhiteSpace(systemId))
+                return PromotionOutcome.NotFound();
+
+            using IDisposable gate = await this.thisLock.EnterAsync(cancellationToken);
+
+            // ---- 3. The system, re-read under the lock ---------------------------------------
+            SystemRecord? system = await this.thisStore.FindSystemAsync(systemId, cancellationToken);
+
+            if (system is null)
+                return PromotionOutcome.NotFound();
+
+            if (!ReviewAuthority.CanPublish(access, system.SystemId))
+                return PromotionOutcome.Forbidden($"This account is not a reviewer of {system.SystemId}.");
+
+            if (!ProductionPromotionRules.IsAwaitingProduction(system))
+                return PromotionOutcome.Conflict("Production already has this system as it is in BETA. There is nothing to publish.");
+
+            // ---- 4. What the reviewer checked ------------------------------------------------
+            if (!string.Equals(system.ContentHash, expectedBetaContentHash?.Trim(), StringComparison.Ordinal))
+            {
+                return PromotionOutcome.Conflict(
+                    "This system has changed in BETA since you opened it - another contribution has been published " +
+                    "there. Check it again in CRT with the BETA data, then publish it to production.");
+            }
+
+            // ---- 5. The plan -----------------------------------------------------------------
+            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+
+            string? refusal = ProductionPromotionFlow.RefusalFor(plan);
+
+            if (refusal is not null)
+                return PromotionOutcome.Refused(refusal);
+
+            // ---- 6. Is this the approval that publishes? --------------------------------------
+            ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
+
+            if (!approval.CanApprove)
+                return PromotionOutcome.Conflict(ApprovePublishFlow.WhyNot(approval, "publishing this to production"));
+
+            if (!approval.ApprovalPublishes)
+            {
+                await this.thisStore.AddProductionApprovalAsync(
+                    system.SystemId, system.ContentHash!, approval.YourRole!.Value,
+                    access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken);
+
+                IReadOnlyList<ApproverRole> stillWaiting = approval.WaitingFor
+                    .Where(role => role != approval.YourRole)
+                    .ToList();
+
+                this.thisLogger.LogInformation(
+                    "{Account} approved publishing {SystemId} to production as {Role}; waiting for {Waiting}.",
+                    access.Account.Email, system.SystemId, approval.YourRole, string.Join(", ", stillWaiting));
+
+                return PromotionOutcome.AwaitingApproval(system, stillWaiting);
+            }
+
+            // ---- 7. Copy, then record ---------------------------------------------------------
+            // What this removes from production, and is it what the reviewer was shown?
+            FileRemovalPreview removals = ProductionPromotionFlow.PreviewRemovals(
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system);
+
+            // No list at all is an older review application, not a changed list - see
+            // ApprovePublishFlow.RemovalsNotSentMessage.
+            if (!removals.Matches(shownRemovals))
+            {
+                return shownRemovals is null
+                    ? PromotionOutcome.Refused(ApprovePublishFlow.RemovalsNotSentMessage)
+                    : PromotionOutcome.Conflict(ProductionPromotionFlow.RemovalsChangedMessage);
+            }
+
+            PromotionCopyOutcome copy = await ProductionPromoter.CopyAsync(
+                plan.Files,
+                options.DataTreeRoot!,
+                options.ProductionDataTreeRoot!,
+                cancellationToken);
+
+            if (!copy.IsDone)
+            {
+                this.thisLogger.LogError(
+                    "Publishing {SystemId} to production stopped after {Copied} file(s): {Error}",
+                    system.SystemId, copy.FilesCopied, copy.Error);
+
+                return PromotionOutcome.Refused(copy.Error ?? "The copy did not complete.");
+            }
+
+            // A system.json in production's copy of this board - retired, and possibly carried
+            // across by hand from BETA before promotions existed. See RetiredSystemDescriptor.
+            if (SubmissionPathRules.TryResolve(
+                    options.ProductionDataTreeRoot!,
+                    $"{system.Manufacturer}/{system.Hardware}/{system.Board}",
+                    out string productionSystemFolder,
+                    out _))
+            {
+                RetiredSystemDescriptor.TryRemove(options.ProductionDataTreeRoot!, productionSystemFolder, this.thisLogger);
+            }
+
+            // What the board no longer uses in production - only the files shown, and only those
+            // still unused now the new workbooks are in place. Never fails the promotion.
+            UnusedFileRemoval removal = UnusedFileRemover.Remove(options.ProductionDataTreeRoot!, removals.Files, this.thisLogger);
+
+            await this.thisStore.AddProductionApprovalAsync(
+                system.SystemId, system.ContentHash!, approval.YourRole!.Value,
+                access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken);
+
+            await this.thisStore.SetSystemInProductionAsync(
+                system.SystemId, system.CurrentRevision, system.ContentHash, nowUtc, cancellationToken);
+
+            await this.thisAccounts.WriteAuditAsync(
+                new AuditEntry(
+                    access!.Account.Id,
+                    access.Account.Email,
+                    ProductionPromotionFlow.PublishedAction,
+                    system.SystemId,
+                    $"revision {system.CurrentRevision}; {copy.FilesCopied} file(s) copied; {plan.UnchangedCount} unchanged; " +
+                    $"{removal.Removed.Count} unused file(s) removed",
+                    nowUtc),
+                cancellationToken);
+
+            this.thisLogger.LogInformation(
+                "{Account} published {SystemId} revision {Revision} to production ({Copied} file(s) copied).",
+                access.Account.Email, system.SystemId, system.CurrentRevision, copy.FilesCopied);
+
+            return PromotionOutcome.Published(system, copy.FilesCopied, system.ProductionPublishedUtc) with { RemovedFiles = removal.Removed };
+        }
+
+        public const string RemovalsChangedMessage =
+            "The files this would remove from production have changed since you opened it - another publish has " +
+            "changed what uses them. Refresh, check the list, then publish.";
+
+        // ###########################################################################################
+        // THE FILES A PROMOTION WOULD REMOVE FROM PRODUCTION.
+        //
+        // After the promotion the system's workbooks in production are BETA's, so the candidates
+        // are what production's workbooks cite that BETA's do not, and production is then read
+        // with BETA's citations standing in for its own. A file another production board still
+        // cites is kept; so is anything an older generation cites. A workbook that cannot be read
+        // in either tree blocks the removal rather than guessing.
+        // ###########################################################################################
+        internal static FileRemovalPreview PreviewRemovals(string betaRoot, string productionRoot, SystemRecord system)
+        {
+            string folder = $"{system.Manufacturer}/{system.Hardware}/{system.Board}";
+
+            if (!ProductionPromotionFlow.TryReadCitations(productionRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> before, out string? why) ||
+                !ProductionPromotionFlow.TryReadCitations(betaRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> after, out why))
+            {
+                return new FileRemovalPreview([], "Nothing is removed, because " + why);
+            }
+
+            IReadOnlyList<string> candidates = DataTreeUsage.NoLongerCited(
+                before.Values.SelectMany(files => files),
+                after.Values.SelectMany(files => files));
+
+            return FileRemovalPreview.Compute(productionRoot, candidates, after, ApprovePublishFlow.PreviewReads);
+        }
+
+        // Each board workbook at the top of the system's folder -> what it cites.
+        private static bool TryReadCitations(
+            string root,
+            string folder,
+            out Dictionary<string, IReadOnlyCollection<string>> citations,
+            out string? why)
+        {
+            citations = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
+            why = null;
+
+            if (!SubmissionPathRules.TryResolve(root, folder, out string full, out _) || !Directory.Exists(full))
+                return true;
+
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(full, "*" + DataGenerationRules.WorkbookExtension))
+                {
+                    string relative = $"{folder}/{Path.GetFileName(file)}";
+
+                    if (!DataTreeUsage.IsBoardFolderWorkbook(relative))
+                        continue;
+
+                    // Through the preview cache: these citations only choose what to SHOW; the
+                    // removal itself re-reads the tree (UnusedFileRemover).
+                    if (!ApprovePublishFlow.PreviewReads.TryGetCitations(file, out IReadOnlyCollection<string> cited))
+                    {
+                        why = $"the board workbook [{relative}] could not be read.";
+                        return false;
+                    }
+
+                    citations[relative] = cited.ToList();
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                why = $"the folder [{folder}] could not be read.";
+                return false;
+            }
+
+            return true;
+        }
+
+        public const string PublishedAction = "production.published";
+
+        // ###########################################################################################
+        // Why this plan cannot be carried out at all, or null when it can.
+        // ###########################################################################################
+        private static string? RefusalFor(ProductionPromotionResult plan) =>
+            plan.CanPromote ? null : string.Join(" ", plan.Problems.Select(problem => problem.Message));
+
+        // ###########################################################################################
+        // Where publishing this system to production stands for this account: the same rule as a
+        // submission (ApprovalRules), with "changes a shared file" read off the PLAN and the
+        // approvals given against the BETA content hash the plan was made from.
+        // ###########################################################################################
+        private async Task<ApprovalStatus> ApprovalStatusAsync(
+            ReviewAccess? access,
+            SystemRecord system,
+            ProductionPromotionResult plan,
+            CancellationToken cancellationToken)
+        {
+            bool hasReviewers = plan.TouchesSharedFiles &&
+                (await this.thisAccounts.GetReviewersOfSystemAsync(system.SystemId, cancellationToken))
+                    .Any(ReviewAuthority.CanGiveReviewerApproval);
+
+            IReadOnlyList<GivenApproval> given = string.IsNullOrWhiteSpace(system.ContentHash)
+                ? []
+                : await this.thisStore.GetProductionApprovalsAsync(system.SystemId, system.ContentHash, cancellationToken);
+
+            return ApprovalRules.Status(
+                ApprovalRules.Required(plan.TouchesSharedFiles, hasReviewers),
+                given,
+                ReviewAuthority.RoleIn(access, system.SystemId),
+                access?.Account.Id);
+        }
+
+        // ###########################################################################################
+        // The plan, from the two trees as they are now. The BETA board is read for what it CITES,
+        // which is how its shared files are found; the walk of its folder is what it OWNS.
+        // ###########################################################################################
+        private async Task<ProductionPromotionResult> BuildPlanAsync(
+            SystemRecord system,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            string betaRoot = options.DataTreeRoot ?? string.Empty;
+            string productionRoot = options.ProductionDataTreeRoot ?? string.Empty;
+
+            PublishedTreeView? beta = PublishedTreeProbe.For(betaRoot);
+            PublishedTreeView? production = PublishedTreeProbe.For(productionRoot);
+
+            if (beta is null || production is null)
+            {
+                return new ProductionPromotionResult(
+                    [],
+                    0,
+                    [new ValidationFinding
+                    {
+                        Severity = ValidationSeverity.Error,
+                        Code = "promote.tree_unavailable",
+                        Subject = system.SystemId,
+                        Message = "The BETA or production data tree could not be read on the server."
+                    }],
+                    TouchesSharedFiles: false);
+            }
+
+            var identity = new SubmissionManifest
+            {
+                SystemId = system.SystemId,
+                Manufacturer = system.Manufacturer,
+                Hardware = system.Hardware,
+                Board = system.Board
+            };
+
+            BoardData? board = await this.thisBoards.TryReadAsync(betaRoot, identity, cancellationToken);
+
+            IReadOnlyList<string> cited = board is null
+                ? []
+                : SubmissionManifestBuilder.CollectReferencedFiles(board);
+
+            return ProductionPromotionPlan.Build(
+                system.Manufacturer,
+                system.Hardware,
+                system.Board,
+                ProductionPromotionFlow.WalkSystemFolder(betaRoot, system),
+                cited,
+                beta,
+                production);
+        }
+
+        // Every file under the system's BETA folder, data-root-relative with forward slashes.
+        // Empty when the folder does not resolve or is not there - which the plan refuses.
+        internal static IReadOnlyList<string> WalkSystemFolder(string betaRoot, SystemRecord system)
+        {
+            string relative = $"{system.Manufacturer}/{system.Hardware}/{system.Board}";
+
+            if (!SubmissionPathRules.TryResolve(betaRoot, relative, out string folder, out _) || !Directory.Exists(folder))
+                return [];
+
+            string fullRoot = Path.GetFullPath(betaRoot);
+
+            try
+            {
+                return Directory
+                    .EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+                    .Select(path => Path.GetRelativePath(fullRoot, path).Replace(Path.DirectorySeparatorChar, '/'))
+                    .ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return [];
+            }
+        }
+    }
+
+    public sealed record PromotionPlanOutcome(
+        SystemRecord? System,
+        ProductionPromotionResult? Plan,
+        string? Refusal,
+        bool IsNotConfigured = false,
+        bool IsForbidden = false,
+        bool IsNotFound = false,
+        ApprovalStatus? Approval = null)
+    {
+        public static PromotionPlanOutcome Planned(SystemRecord system, ProductionPromotionResult plan, string? refusal, ApprovalStatus approval) =>
+            new(system, plan, refusal, Approval: approval);
+
+        public static PromotionPlanOutcome NotConfigured() =>
+            new(null, null, ProductionPromotionFlow.NotConfiguredMessage, IsNotConfigured: true);
+
+        public static PromotionPlanOutcome Forbidden(string why) => new(null, null, why, IsForbidden: true);
+
+        public static PromotionPlanOutcome NotFound(string why) => new(null, null, why, IsNotFound: true);
+
+        // What promoting would remove from production - see ProductionPromotionFlow.PreviewRemovals.
+        public FileRemovalPreview Removals { get; init; } = FileRemovalPreview.Nothing;
+    }
+
+    public sealed record PromotionOutcome(
+        bool IsPublished,
+        string Error,
+        SystemRecord? System = null,
+        int FilesCopied = 0,
+        DateTimeOffset? PreviousProductionPublishedUtc = null,
+        bool IsNotConfigured = false,
+        bool IsForbidden = false,
+        bool IsNotFound = false,
+        bool IsConflict = false)
+    {
+        public static PromotionOutcome Published(SystemRecord system, int filesCopied, DateTimeOffset? previous) =>
+            new(true, string.Empty, system, filesCopied, previous);
+
+        public static PromotionOutcome NotConfigured() =>
+            new(false, ProductionPromotionFlow.NotConfiguredMessage, IsNotConfigured: true);
+
+        public static PromotionOutcome Forbidden(string why) => new(false, why, IsForbidden: true);
+
+        public static PromotionOutcome NotFound() => new(false, "No such system.", IsNotFound: true);
+
+        public static PromotionOutcome Conflict(string why) => new(false, why, IsConflict: true);
+
+        public static PromotionOutcome Refused(string why) => new(false, why);
+
+        // The first of two approvals: recorded against this BETA state, nothing copied.
+        public static PromotionOutcome AwaitingApproval(SystemRecord system, IReadOnlyList<ApproverRole> waitingFor) =>
+            new(false, string.Empty, system) { WaitingFor = waitingFor };
+
+        public IReadOnlyList<ApproverRole> WaitingFor { get; init; } = [];
+
+        public bool IsAwaitingApproval => this.WaitingFor.Count > 0;
+
+        // The files the promotion removed from production because nothing there used them any more.
+        public IReadOnlyList<string> RemovedFiles { get; init; } = [];
+    }
+}

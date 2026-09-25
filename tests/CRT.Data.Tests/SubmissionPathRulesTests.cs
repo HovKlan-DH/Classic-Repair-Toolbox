@@ -130,6 +130,31 @@ namespace CRT.Data.Tests
                 $"Expected [{relativePath}] to be REFUSED as absolute.");
         }
 
+        // ###########################################################################################
+        // IsSafelyShaped is TryResolve's checks without a folder (code review, 2026-09-25), so the
+        // file rules can skip a path the path rules already refused. It must agree with TryResolve
+        // on every shape - a path one accepts and the other refuses would slip between them.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("Commodore/C64/250407/sheet1.png", true)]
+        [InlineData("Generic shared files/Datasheets/7805.pdf", true)]
+        [InlineData("../outside.png", false)]
+        [InlineData("Commodore/../../x.png", false)]
+        [InlineData("Commodore/./x.png", false)]
+        [InlineData("Commodore//x.png", false)]
+        [InlineData("/etc/passwd", false)]
+        [InlineData("C:/Windows/x.png", false)]
+        [InlineData(@"Commodore\x.png", false)]
+        [InlineData("Commodore/CON.png", false)]
+        [InlineData("Commodore/x.png ", false)]
+        [InlineData("", false)]
+        public void The_shape_check_agrees_with_resolving(string relativePath, bool safe)
+        {
+            Assert.Equal(safe, SubmissionPathRules.IsSafelyShaped(relativePath, out string why));
+            Assert.Equal(safe, SubmissionPathRulesTests.Allows(relativePath));
+            Assert.Equal(safe, why.Length == 0);
+        }
+
         [Fact]
         public void A_backslash_is_refused_rather_than_translated()
         {

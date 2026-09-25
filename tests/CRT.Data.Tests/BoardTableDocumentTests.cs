@@ -928,4 +928,165 @@ public sealed class BoardTableDocumentTests
         Assert.True(BoardTableSheet.IsChangeRow(Row(sheet, "U2", deleted: true)));
         Assert.True(BoardTableSheet.IsChangeRow(blank));
     }
+
+    // ------------------------------------------------------------------ A deleted component
+
+    // ###########################################################################################
+    // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (maintainer request, 2026-09-25):
+    // "if a component really is deleted, then it should remove EVERYTHING related to this
+    // component." *** Its rows on the image, local file and link sheets are deleted at once (red on
+    // their own sheets), its highlights go when the table is saved, and one undo brings it all back.
+    // It used to leave all of that behind - rows pointing at a component the board no longer had.
+    // ###########################################################################################
+    private static BoardData BoardWithU8AndU9()
+    {
+        var board = new BoardData
+        {
+            Components = [Component("U8"), Component("U9")],
+            ComponentImages =
+            [
+                new ComponentImageEntry { BoardLabel = "U8", Name = "Clock", File = "a/u8.png" },
+                new ComponentImageEntry { BoardLabel = "U9", Name = "Clock", File = "a/u9.png" }
+            ],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "a/u8.pdf" }],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U8", Name = "Ref", Url = "https://example.org" }],
+            ComponentHighlights =
+            [
+                new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U8", X = "1", Y = "1", Width = "5", Height = "5" },
+                new ComponentHighlightEntry { SchematicName = "Sheet 2", BoardLabel = "u8", X = "1", Y = "1", Width = "5", Height = "5" },
+                new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U9", X = "9", Y = "9", Width = "5", Height = "5" }
+            ]
+        };
+
+        return board;
+    }
+
+    private static List<string> LiveLabels(BoardTableDocument document, string sheet) =>
+        document.FindSheet(sheet)!.Rows.Where(row => !row.IsDeleted).Select(Label).ToList();
+
+    [Fact]
+    public void Deleting_a_component_deletes_its_rows_on_the_other_sheets_and_its_highlights_on_save()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+
+        Assert.True(Components(document).DeleteRow(Row(Components(document), "U8"), out BoardTableDeletedWith? deletedWith));
+
+        // Shown as deleted on their own sheets, where the contributor or reviewer can see them.
+        Assert.Equal(["U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
+        Assert.True(Row(document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!, "U8", deleted: true).IsDeleted);
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLocalFiles));
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLinks));
+
+        Assert.NotNull(deletedWith);
+        Assert.Equal(
+            [BoardWorkbookSchema.SheetComponentImages, BoardWorkbookSchema.SheetComponentLocalFiles, BoardWorkbookSchema.SheetComponentLinks],
+            deletedWith!.Rows.Select(count => count.Sheet));
+        Assert.Equal(2, deletedWith.Highlights);
+
+        BoardData saved = document.ApplyTo(board);
+
+        Assert.Equal("U9", Assert.Single(saved.Components).BoardLabel);
+        Assert.Equal("U9", Assert.Single(saved.ComponentImages).BoardLabel);
+        Assert.Empty(saved.ComponentLocalFiles);
+        Assert.Empty(saved.ComponentLinks);
+        Assert.Equal("U9", Assert.Single(saved.ComponentHighlights).BoardLabel);
+    }
+
+    // One Ctrl+Z undoes the component AND what went with it - on every sheet.
+    [Fact]
+    public void One_undo_brings_back_the_component_and_everything_it_took()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableRow u8 = Row(Components(document), "U8");
+
+        Components(document).DeleteRow(u8);
+
+        BoardTableHistoryResult? undone = document.History.Undo();
+
+        Assert.Same(Components(document), undone!.Sheet);
+        Assert.Same(u8, undone.Row);
+        Assert.Equal(0, document.TotalChangeCount);
+        Assert.Equal(["U8", "U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
+        Assert.Equal(["U8"], LiveLabels(document, BoardWorkbookSchema.SheetComponentLinks));
+        Assert.Equal(3, document.ApplyTo(board).ComponentHighlights.Count);
+
+        // And redo takes it all again.
+        document.History.Redo();
+
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLinks));
+        Assert.Single(document.ApplyTo(board).ComponentHighlights);
+    }
+
+    // A component RENAMED in the table is the same component: it keeps its highlights. Only the
+    // table can tell the two apart - the row object is still there.
+    [Fact]
+    public void A_renamed_component_keeps_its_highlights_and_its_rows_elsewhere()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+
+        Cell(Row(Components(document), "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U10";
+        Components(document).Refresh();
+
+        BoardData saved = document.ApplyTo(board);
+
+        Assert.Equal(3, saved.ComponentHighlights.Count);
+        Assert.Equal(2, saved.ComponentImages.Count);
+    }
+
+    // A regional variant deleted beside its twin takes only ITS region's images: the files, the
+    // links, the region-less images and the highlights still belong to the twin.
+    [Fact]
+    public void Deleting_one_regional_variant_takes_only_that_regions_images()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Region = "PAL", FriendlyName = "VIC", TechnicalNameOrValue = "6569" },
+                new ComponentEntry { BoardLabel = "U8", Region = "NTSC", FriendlyName = "VIC", TechnicalNameOrValue = "6567" }
+            ],
+            ComponentImages =
+            [
+                new ComponentImageEntry { BoardLabel = "U8", Region = "PAL", Name = "Clock", File = "a/pal.png" },
+                new ComponentImageEntry { BoardLabel = "U8", Region = "NTSC", Name = "Clock", File = "a/ntsc.png" },
+                new ComponentImageEntry { BoardLabel = "U8", Name = "Pinout", File = "a/pinout.png" }
+            ],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U8", Name = "Ref", Url = "https://example.org" }],
+            ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U8", X = "1", Y = "1", Width = "5", Height = "5" }]
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+        BoardTableRow pal = components.Rows.Single(row => components.CellText(row, BoardWorkbookSchema.ColRegion) == "PAL");
+
+        components.DeleteRow(pal, out BoardTableDeletedWith? deletedWith);
+
+        BoardData saved = document.ApplyTo(board);
+
+        Assert.Equal(["a/ntsc.png", "a/pinout.png"], saved.ComponentImages.Select(image => image.File));
+        Assert.Single(saved.ComponentLinks);
+        Assert.Single(saved.ComponentHighlights);
+        Assert.Equal(0, deletedWith!.Highlights);
+    }
+
+    // Deleting a row that is only a duplicate of another with the same label takes nothing else.
+    [Fact]
+    public void Deleting_a_duplicate_row_takes_nothing_else()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardData draft = BoardWithU8AndU9();
+        draft.Components.Add(Component("U8", "second"));
+
+        BoardTableDocument document = BoardTableDocument.Create(board, draft);
+        BoardTableRow duplicate = Components(document).Rows.Last(row => Label(row) == "U8");
+
+        Components(document).DeleteRow(duplicate, out BoardTableDeletedWith? deletedWith);
+
+        Assert.Null(deletedWith);
+        Assert.Equal(["U8", "U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
+        Assert.Equal(3, document.ApplyTo(draft).ComponentHighlights.Count);
+    }
 }

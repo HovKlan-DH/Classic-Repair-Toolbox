@@ -122,16 +122,16 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task An_ordinary_account_is_neither_administrator_nor_reviewer()
+        public async Task An_ordinary_account_is_neither_administrator_nor_in_any_reviewer_pool()
         {
-            // Privilege is never the default. A new account gets nothing.
+            // Privilege is never the default. A new account gets nothing - no flag, no rows.
             (FakeAccountStore store, _, string token) = await EndpointAuthorizationTests.SignedInAsync();
 
             AccountRecord? account = await AccountFlows.AuthenticateAsync(
                 token, store, EndpointAuthorizationTests.Now + TimeSpan.FromMinutes(1));
 
             Assert.False(account!.IsAdministrator);
-            Assert.False(account.IsReviewer);
+            Assert.Empty(await store.GetReviewedSystemIdsAsync(account.Id));
         }
 
         // -----------------------------------------------------------------------------------

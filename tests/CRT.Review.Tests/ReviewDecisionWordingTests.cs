@@ -59,12 +59,24 @@ public sealed class ReviewDecisionWordingTests
     [Fact]
     public void An_approval_with_NO_revision_still_reads_sensibly()
     {
-        // Rather than "Published at revision ." - a server that answered without one is unusual
-        // but must not produce a broken sentence.
+        // Rather than "Published to BETA at revision ." - a server that answered without one is
+        // unusual but must not produce a broken sentence.
         string described = ReviewDecisionWording.Describe(
             ReviewDecisionKind.Approve, new ReviewDecisionResult("merged", ""));
 
-        Assert.Equal("Published.", described);
+        Assert.StartsWith("Published to BETA.", described);
+    }
+
+    [Fact]
+    public void An_approval_says_it_went_to_BETA_and_what_to_do_next()
+    {
+        // Since the two-stage publish (2026-09-25) an approval is not the end: "Published" alone
+        // read as done while every user's data still lacked it.
+        string described = ReviewDecisionWording.Describe(
+            ReviewDecisionKind.Approve, new ReviewDecisionResult("merged", "2026-September-25"));
+
+        Assert.Contains("BETA", described);
+        Assert.Contains("Production", described);
     }
 
     [Fact]

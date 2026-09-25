@@ -2,7 +2,9 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // Runs SubmissionFlows.CollectAbandonedAsync on a timer, for as long as the service runs
-    // (code review, 2026-09-25).
+    // (code review, 2026-09-25) - and, since the security review the same day, the two collectors
+    // nothing ran before: CollectRetiredAsync (the stored rows of submissions that ended without
+    // publishing) and CollectUnreferencedBlobsAsync (completed blobs no live submission needs).
     //
     // *** THE SWEEP EXISTED, BUT NOTHING EVER RAN IT. *** CollectAbandonedAsync was written and
     // tested, and SubmissionEndpoints' own header leans on it: an anonymous POST needs no account
@@ -100,17 +102,17 @@ namespace CRT.Server.Handlers.Submissions
             ILogger logger,
             CancellationToken cancellationToken)
         {
+            int collected;
+
             try
             {
-                int collected = await SubmissionFlows.CollectAbandonedAsync(store, blobs, now, cancellationToken);
+                collected = await SubmissionFlows.CollectAbandonedAsync(store, blobs, now, cancellationToken);
 
                 if (collected > 0)
                 {
                     logger.LogInformation(
                         "Collected {Count} abandoned submission upload(s).", collected);
                 }
-
-                return collected;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -123,7 +125,66 @@ namespace CRT.Server.Handlers.Submissions
                     "The abandoned-upload sweep failed; it will run again in {Interval}.",
                     AbandonedUploadSweeper.Interval);
 
-                return 0;
+                collected = 0;
+            }
+
+            // ###########################################################################################
+            // *** AND THE TWO THINGS NOTHING USED TO COLLECT AT ALL (security review, 2026-09-25). ***
+            //
+            // The stored rows and file lists of submissions that ended without publishing, once
+            // they are a month old; and every completed blob no live submission needs. AFTER the
+            // abandoned sweep, so a submission it has just closed is collected in the same pass.
+            // Each in its own guard: one failing must not stop the others, and none may stop the
+            // host - see the class header.
+            // ###########################################################################################
+            await AbandonedUploadSweeper.RunGuardedAsync(
+                "retired-submission",
+                async () =>
+                {
+                    int cleared = await SubmissionFlows.CollectRetiredAsync(store, now, cancellationToken);
+
+                    if (cleared > 0)
+                        logger.LogInformation("Cleared the stored rows of {Count} ended submission(s).", cleared);
+                },
+                logger,
+                cancellationToken);
+
+            await AbandonedUploadSweeper.RunGuardedAsync(
+                "unreferenced-blob",
+                async () =>
+                {
+                    int deleted = await SubmissionFlows.CollectUnreferencedBlobsAsync(store, blobs, cancellationToken);
+
+                    if (deleted > 0)
+                        logger.LogInformation("Deleted {Count} blob(s) no live submission needs.", deleted);
+                },
+                logger,
+                cancellationToken);
+
+            return collected;
+        }
+
+        private static async Task RunGuardedAsync(
+            string what,
+            Func<Task> work,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await work();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "The {What} sweep failed; it will run again in {Interval}.",
+                    what,
+                    AbandonedUploadSweeper.Interval);
             }
         }
     }

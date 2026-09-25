@@ -179,6 +179,25 @@ namespace Handlers.DataHandling
             Credits = this.Credits,
             KiCadImportantSignals = this.KiCadImportantSignals,
         };
+
+        // The same board with different highlights - used when a save drops the highlights of a
+        // deleted component (BoardTableDocument.ApplyTo). Lists shared, as WithRevisionDate's are.
+        public BoardData WithComponentHighlights(List<ComponentHighlightEntry> highlights) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = this.Schematics,
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = highlights ?? new(),
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+        };
     }
 
     public class OscilloscopeEntry

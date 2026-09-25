@@ -42,6 +42,18 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/review/queue", ReviewApiRoutes.Queue("https://x"));
         Assert.Equal("https://x/api/review/submissions/1", ReviewApiRoutes.Submission("https://x", 1));
         Assert.Equal("https://x/api/accounts/login", ReviewApiRoutes.Login("https://x"));
+
+        // AdminEndpoints.MapAdminEndpoints - its own group, and two POSTs with a body because a
+        // system id carries slashes.
+        Assert.Equal("https://x/api/admin/systems", ReviewApiRoutes.AdminSystems("https://x"));
+        Assert.Equal("https://x/api/admin/accounts", ReviewApiRoutes.AdminAccounts("https://x"));
+        Assert.Equal("https://x/api/admin/reviewers", ReviewApiRoutes.AdminAddReviewer("https://x"));
+        Assert.Equal("https://x/api/admin/reviewers/remove", ReviewApiRoutes.AdminRemoveReviewer("https://x"));
+
+        // ProductionEndpoints.MapProductionEndpoints.
+        Assert.Equal("https://x/api/review/production", ReviewApiRoutes.ProductionList("https://x"));
+        Assert.Equal("https://x/api/review/production/plan", ReviewApiRoutes.ProductionPlan("https://x"));
+        Assert.Equal("https://x/api/review/production/publish", ReviewApiRoutes.ProductionPublish("https://x"));
     }
 
     [Fact]

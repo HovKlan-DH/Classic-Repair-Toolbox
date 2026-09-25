@@ -153,6 +153,14 @@
 									comment belongs with the comment.
 									-->
 
+									<!-- A reviewer changed it in the review application before deciding
+									     (2026-09-25). Collapsed when nobody did. -->
+									<TextBlock Text="{Binding AmendedText}"
+											   IsVisible="{Binding HasAmendedText}"
+											   TextWrapping="Wrap"
+											   FontStyle="Italic"
+											   Margin="0,4,0,0" />
+
 									<!-- What a reviewer said, once Phase 5 gives them somewhere to
 									     say it. Collapsed entirely until then, rather than showing
 									     an empty labelled box on every row. -->

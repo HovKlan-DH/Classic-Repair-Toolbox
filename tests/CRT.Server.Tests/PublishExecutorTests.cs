@@ -137,14 +137,35 @@ namespace CRT.Server.Tests
             ]
         };
 
-        private static SubmissionManifest Manifest(params SubmissionFile[] files) => new()
+        // ###########################################################################################
+        // Every file is CITED by a row (security review, 2026-09-25): the plan now refuses a file no
+        // row uses, since nothing would show it and no reviewer could have seen it.
+        // ###########################################################################################
+        private static SubmissionManifest Manifest(params SubmissionFile[] files)
         {
-            SystemId = "Commodore/C64/250407",
-            Manufacturer = "Commodore",
-            Hardware = "C64",
-            Board = "250407",
-            Files = [.. files]
-        };
+            var manifest = new SubmissionManifest
+            {
+                SystemId = "Commodore/C64/250407",
+                Manufacturer = "Commodore",
+                Hardware = "C64",
+                Board = "250407",
+                Files = [.. files]
+            };
+
+            foreach (SubmissionFile file in files)
+                manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = file.Path });
+
+            return manifest;
+        }
+
+        // ###########################################################################################
+        // Bytes that ARE a PNG as far as their opening goes (security review, 2026-09-25): a publish
+        // now checks every file's bytes against its name before writing anything, so "PNGDATA"
+        // alone - which used to stand in for an image - is correctly refused as not being one.
+        // ###########################################################################################
+        internal static byte[] Png(string marker) =>
+            [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. Encoding.UTF8.GetBytes(marker)];
+
 
         private PublishPlanDetail Plan(SubmissionManifest manifest, IEnumerable<string>? existing = null)
         {
@@ -199,12 +220,12 @@ namespace CRT.Server.Tests
             // *** THE TEST EVERYTHING ELSE RESTS ON. *** A publish that writes files a client
             // cannot read is worse than no publish at all, because it replaces a board that
             // worked.
-            byte[] image = Encoding.UTF8.GetBytes("PNGDATA");
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
-                new SubmissionFile { Path = "Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
 
             PublishOutcome outcome = await this.Executor(store)
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
@@ -378,7 +399,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_submitted_files_land_at_their_planned_paths_with_their_real_bytes()
         {
-            byte[] image = Encoding.UTF8.GetBytes("PNGDATA");
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
@@ -405,22 +426,30 @@ namespace CRT.Server.Tests
             Assert.Equal(image, await File.ReadAllBytesAsync(landed));
         }
 
+        // ###########################################################################################
+        // *** system.json IS RETIRED (maintainer decision, 2026-09-25). *** It was written beside
+        // every published board and so downloaded by every user, who had no use for it. A publish
+        // writes none, and removes one an earlier build left behind. What it recorded - revision
+        // and content hash - still reaches the database, and the outcome still reports it.
+        // ###########################################################################################
         [Fact]
-        public async Task A_system_json_is_written_beside_the_board()
+        public async Task No_system_json_is_written_and_one_left_by_an_earlier_build_is_removed()
         {
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
-            await this.Executor(store)
+            string leftover = Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName);
+            Directory.CreateDirectory(this.thisSystemFolder);
+            await File.WriteAllTextAsync(leftover, "{}");
+
+            PublishOutcome outcome = await this.Executor(store)
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
-            SystemDescriptor? descriptor = SystemDescriptorStore.Read(this.thisSystemFolder);
+            Assert.True(outcome.IsPublished, outcome.Failure);
+            Assert.False(File.Exists(leftover));
 
-            Assert.NotNull(descriptor);
-            Assert.Equal("Commodore/C64/250407", descriptor!.SystemId);
-            Assert.Equal("r2", descriptor.Revision);
-            Assert.Equal(SystemDescriptorRules.SystemOrigin.Contributed, descriptor.Origin);
-            Assert.NotEmpty(descriptor.ContentHash);
+            Assert.Equal("r2", outcome.Descriptor!.Revision);
+            Assert.NotEmpty(outcome.Descriptor.ContentHash);
         }
 
         // -----------------------------------------------------------------------------------
@@ -507,22 +536,6 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task The_recorded_content_hash_is_the_one_system_json_carries()
-        {
-            // If these two disagree, the database and the published tree describe different
-            // states, and nothing would ever notice.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
-            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
-
-            await this.Executor(store)
-                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
-
-            SystemDescriptor onDisk = SystemDescriptorStore.Read(this.thisSystemFolder)!;
-
-            Assert.Equal(onDisk.ContentHash, store.PublishedSystems["Commodore/C64/250407"].ContentHash);
-        }
-
-        [Fact]
         public async Task The_submission_is_marked_merged()
         {
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
@@ -573,7 +586,7 @@ namespace CRT.Server.Tests
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile
                 {
-                    Path = "Images/sheet1.png",
+                    Path = "Commodore/C64/250407/Images/sheet1.png",
                     Sha256 = new string('a', 64),   // never uploaded
                     SizeBytes = 10
                 }));
@@ -582,10 +595,10 @@ namespace CRT.Server.Tests
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
             Assert.False(outcome.IsPublished);
-            Assert.Contains("Images/sheet1.png", outcome.Failure);
+            Assert.Contains("Commodore/C64/250407/Images/sheet1.png", outcome.Failure);
 
             Assert.False(File.Exists(plan.WorkbookPath));
-            Assert.Null(SystemDescriptorStore.Read(this.thisSystemFolder));
+            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName)));
             Assert.Empty(store.PublishedSystems);
         }
 
@@ -610,7 +623,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_destination_that_cannot_be_written_STOPS_the_publish_and_names_the_file()
         {
-            byte[] image = Encoding.UTF8.GetBytes("PNGDATA");
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
@@ -636,7 +649,7 @@ namespace CRT.Server.Tests
 
             // And it stopped BEFORE touching the board, so nothing downstream is half-written.
             Assert.False(File.Exists(plan.WorkbookPath));
-            Assert.Null(SystemDescriptorStore.Read(this.thisSystemFolder));
+            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName)));
             Assert.Empty(store.PublishedSystems);
         }
 
@@ -645,13 +658,13 @@ namespace CRT.Server.Tests
         {
             // The recovery property stated in PublishExecutor's header: a failure leaves files
             // nothing points at - wasted space - rather than a broken board.
-            byte[] image = Encoding.UTF8.GetBytes("PNGDATA");
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
             string good = await this.PutBlobAsync(image);
 
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
 
             PublishPlanDetail first = this.Plan(PublishExecutorTests.Manifest(
-                new SubmissionFile { Path = "Images/sheet1.png", Sha256 = good, SizeBytes = image.LongLength }));
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = good, SizeBytes = image.LongLength }));
 
             await this.Executor(store)
                 .ExecuteAsync(first, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
@@ -659,7 +672,7 @@ namespace CRT.Server.Tests
             // A second publish whose blob is missing.
             PublishPlanDetail broken = this.Plan(
                 PublishExecutorTests.Manifest(
-                    new SubmissionFile { Path = "Images/new.png", Sha256 = new string('b', 64), SizeBytes = 10 }),
+                    new SubmissionFile { Path = "Commodore/C64/250407/Images/new.png", Sha256 = new string('b', 64), SizeBytes = 10 }),
                 existing: [first.WorkbookFileName]);
 
             PublishOutcome outcome = await this.Executor(store)
@@ -695,12 +708,12 @@ namespace CRT.Server.Tests
         {
             // Stated in the header as the recovery for an interrupted publish: every step
             // overwrites, and content-addressed blobs re-copy byte-identically.
-            byte[] image = Encoding.UTF8.GetBytes("PNGDATA");
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
-                new SubmissionFile { Path = "Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
 
             PublishOutcome first = await this.Executor(store)
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
@@ -713,6 +726,103 @@ namespace CRT.Server.Tests
 
             BoardData? published = await BoardDataReader.LoadAsync(plan.WorkbookPath, "rerun-" + Guid.NewGuid().ToString("N"));
             Assert.Equal("U8", Assert.Single(published!.Components).BoardLabel);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Security review, 2026-09-25: everything is checked BEFORE anything is written.
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** A REPLACED IMAGE IS NOT INERT. *** The old workbook already points at it, so a refusal
+        // discovered at file 600 of 1,200 used to leave half a board replaced. Every blob is now
+        // proved intact and of the type its name claims before the FIRST byte lands - so the good
+        // file ahead of the bad one here must NOT have been written.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_file_whose_bytes_are_not_its_type_stops_the_publish_before_ANY_file_is_written()
+        {
+            byte[] good = PublishExecutorTests.Png("GOOD");
+            byte[] notAnImage = Encoding.UTF8.GetBytes("MZ not a picture at all");
+
+            string goodHash = await this.PutBlobAsync(good);
+            string badHash = await this.PutBlobAsync(notAnImage);
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/a.png", Sha256 = goodHash, SizeBytes = good.LongLength },
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/z.png", Sha256 = badHash, SizeBytes = notAnImage.LongLength }));
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("Images/z.png", outcome.Failure);
+
+            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, "Images", "a.png")));
+            Assert.False(File.Exists(plan.WorkbookPath));
+            Assert.Empty(store.PublishedSystems);
+        }
+
+        // A blob that no longer matches its hash - changed on disk after it was accepted - is found
+        // before anything is written, rather than copied into every user's data on trust.
+        [Fact]
+        public async Task A_blob_changed_in_the_store_stops_the_publish_before_anything_is_written()
+        {
+            byte[] image = PublishExecutorTests.Png("ORIGINAL");
+            string hash = await this.PutBlobAsync(image);
+
+            string stored = Path.Combine(this.thisBlobRoot, BlobStorePaths.BlobFolderName, hash[..2], hash[2..4], hash);
+            await File.WriteAllBytesAsync(stored, PublishExecutorTests.Png("TAMPERED"));
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
+                new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, "Images", "sheet1.png")));
+            Assert.False(File.Exists(plan.WorkbookPath));
+        }
+
+        // Another board's file cited UNCHANGED is part of the system's content but is never
+        // written - it is already there, and writing it would only be a chance to get it wrong.
+        [Fact]
+        public async Task Another_boards_file_cited_unchanged_is_never_written()
+        {
+            string beta = Path.Combine(this.thisRoot, "beta");
+            string foreignFull = Path.Combine(beta, "Commodore", "C128", "310378", "notes.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(foreignFull)!);
+            await File.WriteAllTextAsync(foreignFull, "published notes");
+            DateTime written = File.GetLastWriteTimeUtc(foreignFull);
+
+            string hash = PublishExecutorTests.HashOf(Encoding.UTF8.GetBytes("published notes"));
+
+            PublishPlanResult result = PublishPlan.Build(
+                beta,
+                this.thisSystemFolder,
+                [],
+                "Data C64 250407",
+                PublishExecutorTests.Manifest(new SubmissionFile { Path = "Commodore/C128/310378/notes.txt", Sha256 = hash, SizeBytes = 15 }),
+                "r2",
+                PublishExecutorTests.Now,
+                ["Someone"],
+                SystemDescriptorRules.SystemOrigin.Contributed,
+                PublishedTreeProbe.For(beta));
+
+            Assert.True(result.IsPlanned, string.Join(" ", result.Problems.Select(problem => problem.Message)));
+
+            // The blob is deliberately NOT in the store: were the executor to try to write this
+            // file, it would stop on the missing blob.
+            PublishOutcome outcome = await this.Executor(PublishExecutorTests.StoreWithSystem())
+                .ExecuteAsync(result.Plan!, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.True(outcome.IsPublished, outcome.Failure);
+            Assert.Equal("published notes", await File.ReadAllTextAsync(foreignFull));
+            Assert.Equal(written, File.GetLastWriteTimeUtc(foreignFull));
         }
 
         // -----------------------------------------------------------------------------------

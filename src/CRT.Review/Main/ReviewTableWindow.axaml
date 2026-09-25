@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
+        x:Class="CRT.Review.ReviewTableWindow"
+        Width="1280" Height="760"
+        MinWidth="820" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Title="Table">
+
+    <!--
+    THE REVIEWER'S TABLE (maintainer request, 2026-09-25) - the Drafts tab's "Edit in table format"
+    editor from CRT.UI, opened on a SUBMISSION rather than a draft file: coloured against the
+    published board, editable, and "Save changes" sends the table to the server as an amendment.
+    The words are ReviewTableWording's; what may change is the server's (AmendSubmissionFlow).
+    -->
+    <DockPanel Margin="12">
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeadingText"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="LoadMessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <StackPanel DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8"
+                    Margin="0,8,0,0">
+            <Button x:Name="CloseButton" Content="Close" Click="OnCloseClick" />
+        </StackPanel>
+
+        <ui:BoardTableEditor x:Name="Editor" />
+    </DockPanel>
+</Window>

@@ -16,19 +16,24 @@ namespace CRT.Server.Handlers.Submissions
     // no token. Mixing the two in one file is how a route eventually gets mapped into the wrong
     // group and inherits the wrong rule - the kind of mistake that reads as a one-line diff.
     //
-    // *** EVERY ROUTE HERE CHECKS AUTHORITY SERVER-SIDE, ON EVERY REQUEST. *** Phase 6 task 6
-    // states it and the reasoning applies already: the desktop app hiding a button is not
-    // enforcement, because the app is public source and an attacker calls the API directly.
-    // ReviewAuthority answers the question; no route makes its own judgement.
+    // *** EVERY ROUTE HERE CHECKS AUTHORITY SERVER-SIDE, ON EVERY REQUEST, AGAINST THE
+    // SUBMISSION'S OWN SYSTEM. *** Phase 6 task 6 states it: the desktop app hiding a button is
+    // not enforcement, because the app is public source and an attacker calls the API directly.
+    // Since 2026-09-25 a reviewer is somebody in a system's pool, so every route that names a
+    // submission loads it and asks ReviewAuthority about THAT system - threat 3's "check the
+    // object, not just the verb". The queue is filtered by the same rule. No route makes its own
+    // judgement.
     //
     // THE STATUS CODES:
     //   200 OK       - here is the queue, or the submission.
     //   401          - no usable credentials.
-    //   403          - authenticated, but this account may not review. DISTINCT from 401 on
-    //                  purpose: a reviewer whose account lacks the role needs to be told that,
-    //                  not handed a login prompt that will not help.
-    //   404          - no such submission. Unlike the contributor side there is no id-walking
-    //                  concern here, because the caller is already a trusted, named account.
+    //   403          - authenticated, but this account may not review - at all, or not THIS
+    //                  system. DISTINCT from 401 on purpose: a reviewer whose account lacks the
+    //                  role needs to be told that, not handed a login prompt that will not help.
+    //                  Not 404 either: the caller is a named, trusted account, and learning that
+    //                  a submission id exists for a system they do not review tells them nothing
+    //                  worth hiding - while an honest reviewer on a stale link needs the reason.
+    //   404          - no such submission.
     // ###########################################################################################
     public static class ReviewEndpoints
     {
@@ -61,10 +66,16 @@ namespace CRT.Server.Handlers.Submissions
             // is a correction. ApprovePublishFlow refuses early and often, and every refusal
             // before its final step leaves the tree untouched.
             //
-            // Rejecting and returning touch no published data at all, which is why a REVIEWER may
-            // reach those two and only an administrator may approve.
+            // All three need the same authority: a reviewer of the submission's system, or an
+            // administrator (ReviewDecisionRules).
             // ###########################################################################################
-            review.MapPost("/submissions/{submissionId:long}/approve", ReviewEndpoints.ApproveAsync);
+            review.MapPost("/submissions/{submissionId:long}/approve", ReviewEndpoints.ApproveAsync)
+                .WithBodyLimit(RequestBodyLimits.PathListBytes);
+
+            // The reviewer's table (2026-09-25): both boards to open it on, and saving a change.
+            review.MapGet("/submissions/{submissionId:long}/table", ReviewEndpoints.GetTableAsync);
+            review.MapPost("/submissions/{submissionId:long}/amend", ReviewEndpoints.AmendAsync)
+                .WithBodyLimit(RequestBodyLimits.ManifestBytes);
             review.MapPost("/submissions/{submissionId:long}/reject", ReviewEndpoints.RejectAsync);
             review.MapPost("/submissions/{submissionId:long}/request-changes", ReviewEndpoints.RequestChangesAsync);
         }
@@ -81,6 +92,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         private static async Task<IResult> ApproveAsync(
             long submissionId,
+            ReviewDecisionRequest? request,
             HttpContext context,
             IAccountStore accounts,
             ISubmissionStore submissions,
@@ -90,7 +102,7 @@ namespace CRT.Server.Handlers.Submissions
             ILogger<ApprovePublishFlow> logger,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? account, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
@@ -98,9 +110,10 @@ namespace CRT.Server.Handlers.Submissions
 
             ApproveOutcome outcome = await approvals.ApproveAsync(
                 submissionId,
-                account,
+                access,
                 options.DataTreeRoot,
                 DateTimeOffset.UtcNow,
+                request?.ExpectedRemovals,
                 cancellationToken);
 
             if (outcome.IsPublished)
@@ -139,12 +152,44 @@ namespace CRT.Server.Handlers.Submissions
                         submissionId);
                 }
 
-                return Results.Ok(new
+                return Results.Ok(new ReviewDecisionAnswer(
+                    SubmissionState.Merged,
+                    Revision: outcome.Descriptor!.Revision,
+                    ContentHash: outcome.Descriptor.ContentHash,
+                    RemovedFiles: outcome.RemovedFiles));
+            }
+
+            // ###########################################################################################
+            // *** THE FIRST OF TWO APPROVALS (maintainer decision, 2026-09-25). *** A submission
+            // changing a shared file needs a reviewer AND the administrator; this approval was
+            // recorded and nothing was published. The other side is told - after the fact, and
+            // unable to fail the request, like every notification here.
+            // ###########################################################################################
+            if (outcome.IsAwaitingApproval)
+            {
+                try
                 {
-                    state = SubmissionState.Merged,
-                    revision = outcome.Descriptor!.Revision,
-                    contentHash = outcome.Descriptor.ContentHash
-                });
+                    SubmissionRecord? waiting = await submissions.FindAsync(submissionId, cancellationToken);
+
+                    if (waiting is not null)
+                    {
+                        IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForRolesAsync(
+                            outcome.WaitingFor, waiting.SystemId, accounts, cancellationToken);
+
+                        await notifier.NotifyApprovalNeededAsync(
+                            recipients,
+                            waiting.SystemId,
+                            $"submission #{waiting.Id} (\"{waiting.Summary}\") to the BETA source",
+                            ApprovePublishFlow.Label(access!),
+                            cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Submission {SubmissionId} got its first approval but the other approver could not be told.", submissionId);
+                }
+
+                return Results.Ok(new ReviewDecisionAnswer(SubmissionState.Approved, WaitingFor: outcome.WaitingFor));
             }
 
             if (outcome.IsNotFound)
@@ -250,7 +295,8 @@ namespace CRT.Server.Handlers.Submissions
                     published.SystemId,
                     SubmissionState.Merged,
                     published.DecisionComment,
-                    cancellationToken);
+                    amendedByReviewer: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
+                    cancellationToken: cancellationToken);
             }
         }
 
@@ -334,7 +380,7 @@ namespace CRT.Server.Handlers.Submissions
             DecisionRule rule,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? account, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
@@ -345,12 +391,13 @@ namespace CRT.Server.Handlers.Submissions
             if (record is null)
                 return Results.NotFound();
 
-            if (!rule(account, record.State, out string why))
+            if (!rule(access, record, out string why))
             {
-                // 409, not 403: the account may well be allowed to review, and what is wrong is
-                // the SUBMISSION's state - somebody else decided it first. A 403 would send the
-                // reviewer looking at their own permissions for a conflict that is about timing.
-                return ReviewAuthority.CanReview(account)
+                // 409, not 403: the account may well be allowed to review THIS system, and what
+                // is wrong is the SUBMISSION's state - somebody else decided it first. A 403
+                // would send the reviewer looking at their own permissions for a conflict that is
+                // about timing.
+                return ReviewAuthority.CanReview(access, record)
                     ? Results.Conflict(new { error = why })
                     : Results.Json(new { error = why }, statusCode: StatusCodes.Status403Forbidden);
             }
@@ -364,7 +411,7 @@ namespace CRT.Server.Handlers.Submissions
             await submissions.SetDecisionAsync(
                 submissionId,
                 newState,
-                account!.Id,
+                access!.Account.Id,
                 request!.Comment!.Trim(),
                 DateTimeOffset.UtcNow,
                 cancellationToken);
@@ -385,23 +432,107 @@ namespace CRT.Server.Handlers.Submissions
                 record.SystemId,
                 newState,
                 request.Comment!.Trim(),
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
-            return Results.Ok(new { state = newState });
+            return Results.Ok(new ReviewDecisionAnswer(newState));
         }
 
-        // The shape of "may this account do this to a submission in this state".
-        private delegate bool DecisionRule(AccountRecord? account, string? state, out string reason);
+        // The shape of "may this account do this to this submission".
+        private delegate bool DecisionRule(ReviewAccess? access, SubmissionRecord? submission, out string reason);
+
+        // What a reviewer sends with a decision, and with an amendment, are CRT.Data's
+        // ReviewDecisionRequest and AmendRequest (ReviewApiContract) - built by the review
+        // application from the same records, so a renamed field cannot reach one end only.
 
         // ###########################################################################################
-        // What a reviewer sends with a decision.
-        //
-        // A record with one field rather than a bare string, because a decision will grow more to
-        // say - Phase 6's notification work needs to know whether to email, and an approval will
-        // carry the revision. Widening a record is a field; widening a bare string is a breaking
-        // change to every caller.
+        // GET /api/review/submissions/{id}/table - what the review application's table opens on:
+        // the published board and the submission's current rows, as CRT.Data's ReviewTableData.
         // ###########################################################################################
-        public sealed record ReviewDecisionRequest(string? Comment);
+        private static async Task<IResult> GetTableAsync(
+            long submissionId,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore submissions,
+            PublishedBoardReader publishedBoards,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
+
+            if (record is null)
+                return Results.NotFound();
+
+            if (!ReviewAuthority.CanReview(access, record))
+                return ReviewEndpoints.NotReviewerOf(access, record);
+
+            SubmissionManifest? manifest = await submissions.LoadPayloadAsync(submissionId, cancellationToken);
+
+            if (manifest is null)
+                return Results.BadRequest(new { error = "This submission's contents could not be loaded." });
+
+            BoardData? published = await publishedBoards.TryReadAsync(options.DataTreeRoot ?? string.Empty, manifest, cancellationToken);
+            SubmissionAmendment? latest = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken);
+
+            return Results.Ok(new ReviewTableData(
+                latest?.Version ?? 0,
+                published is null ? null : SubmissionRowsBoard.FromBoard(published),
+                manifest.Rows ?? new SubmissionRows()));
+        }
+
+        // ###########################################################################################
+        // POST /api/review/submissions/{id}/amend  { expectedVersion, rows } - a reviewer's change,
+        // saved as the submission's new content. A rim over AmendSubmissionFlow.
+        // ###########################################################################################
+        private static async Task<IResult> AmendAsync(
+            long submissionId,
+            AmendRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore submissions,
+            BlobStore blobs,
+            PublishLock publishLock,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            AmendOutcome outcome = await AmendSubmissionFlow.AmendAsync(
+                access,
+                submissionId,
+                request?.ExpectedVersion ?? -1,
+                request?.Rows,
+                options.DataTreeRoot,
+                submissions,
+                accounts,
+                blobs,
+                publishLock,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            if (outcome.IsAmended)
+                return Results.Ok(new AmendAnswer(outcome.Version, outcome.Findings));
+
+            if (outcome.IsNotFound)
+                return Results.NotFound();
+
+            if (outcome.IsForbidden)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
+
+            if (outcome.IsConflict)
+                return Results.Conflict(new { error = outcome.Error });
+
+            return Results.BadRequest(new { error = outcome.FullError, findings = outcome.Findings });
+        }
 
         // ###########################################################################################
         // GET /api/review/submissions/{id}/submitted/{hash}
@@ -422,11 +553,20 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? _, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
                 return refusal;
+
+            // The bytes of a submission are for its system's reviewers alone - the store is shared
+            // across every submission, so this is where a reviewer of one board would otherwise
+            // read another board's uploads.
+            IResult? notMine = await ReviewEndpoints.RefuseUnlessReviewerOfAsync(
+                access, submissionId, submissions, cancellationToken);
+
+            if (notMine is not null)
+                return notMine;
 
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
@@ -471,11 +611,17 @@ namespace CRT.Server.Handlers.Submissions
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? _, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
                 return refusal;
+
+            IResult? notMine = await ReviewEndpoints.RefuseUnlessReviewerOfAsync(
+                access, submissionId, submissions, cancellationToken);
+
+            if (notMine is not null)
+                return notMine;
 
             // Scoped to the submission being reviewed rather than taking a system id directly:
             // the reviewer is looking at a submission, and deriving the system from it means the
@@ -525,20 +671,30 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore submissions,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? account, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
                 return refusal;
 
+            // *** FILTERED TO WHAT THIS ACCOUNT MAY DECIDE. *** An administrator sees everything; a
+            // reviewer sees their systems' submissions, minus any that change shared files. The
+            // rule is ReviewAuthority's, applied here row by row - the queue is small, and one rule
+            // in one place beats a second copy of it in SQL.
             IReadOnlyList<SubmissionRecord> queue =
-                await submissions.GetQueueAsync(ReviewEndpoints.DefaultQueueLimit, cancellationToken);
+                (await submissions.GetQueueAsync(ReviewEndpoints.DefaultQueueLimit, cancellationToken))
+                .Where(record => ReviewAuthority.CanReview(access, record))
+                .ToList();
 
             return Results.Ok(new
             {
-                // Told plainly rather than inferred from the presence of an action, so the app can
-                // say WHY a publish button is absent instead of silently not drawing one.
-                canPublish = ReviewAuthority.CanPublish(account),
+                // Everything in a filtered queue is publishable by the caller - kept for review
+                // apps built when the answer could be false.
+                canPublish = true,
+
+                // So the review app can show the administrator's "Reviewers" screen to the one
+                // person who may use it. The server refuses everyone else regardless.
+                isAdministrator = access!.Account.IsAdministrator,
                 count = queue.Count,
                 submissions = queue.Select(ReviewEndpoints.ToQueueRow).ToList()
             });
@@ -560,7 +716,7 @@ namespace CRT.Server.Handlers.Submissions
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            (AccountRecord? account, IResult? refusal) =
+            (ReviewAccess? access, IResult? refusal) =
                 await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
 
             if (refusal is not null)
@@ -571,6 +727,9 @@ namespace CRT.Server.Handlers.Submissions
             if (record is null)
                 return Results.NotFound();
 
+            if (!ReviewAuthority.CanReview(access, record))
+                return ReviewEndpoints.NotReviewerOf(access, record);
+
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
@@ -580,10 +739,19 @@ namespace CRT.Server.Handlers.Submissions
                 options,
                 cancellationToken);
 
+            // Judged against the tree as it is NOW - the answer the approval itself will act on, so
+            // the screen cannot promise a one-approval publish the server then turns into the first
+            // of two. Not stored here: this is a read; the approval stores it.
+            bool touchesSharedFiles = ApprovePublishFlow.TouchesSharedFilesNow(record, manifest, options.DataTreeRoot);
+
             return Results.Ok(new
             {
-                canPublish = ReviewAuthority.CanPublish(account),
-                submission = ReviewEndpoints.ToQueueRow(record),
+                canPublish = ReviewAuthority.CanPublish(access, record),
+
+                // Who must approve, who has, and what THIS account's approval would do - CRT.Data's
+                // ApprovalStatus, read by the review application as the same record.
+                approval = await ApprovePublishFlow.ApprovalStatusAsync(access, record, touchesSharedFiles, submissions, accounts, cancellationToken),
+                submission = ReviewEndpoints.ToQueueRow(record with { TouchesSharedFiles = touchesSharedFiles }),
                 manifest,
                 findings = await submissions.GetFindingsAsync(submissionId, cancellationToken),
                 changes = comparison.Changes,
@@ -600,7 +768,24 @@ namespace CRT.Server.Handlers.Submissions
 
                 // Which image each schematic is drawn from, so a moved highlight lands on the
                 // right board. See SchematicImageFiles.
-                schematicImages = comparison.SchematicImages
+                schematicImages = comparison.SchematicImages,
+
+                // One entry per submitted file: its scope, whether a row uses it, and the hash of
+                // what is published at its path now. The review app lists every file that would
+                // change the tree from this - including the ones it cannot draw. The record type is
+                // CRT.Data's SubmittedFileFact, shared with the review app, so the field names on
+                // the wire cannot drift apart. (security review, 2026-09-25)
+                submittedFiles = comparison.SubmittedFiles,
+
+                // The files publishing this would REMOVE from the BETA data, because the board
+                // stops citing them and nothing else uses them - CRT.Data's FileRemovalPreview,
+                // shown before approving and sent back with the approval (2026-09-25).
+                removals = comparison.Removals,
+
+                // Whether a reviewer changed it in the review application, and who last did.
+                amendment = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
+                    ? new { version = latest.Version, by = latest.By, atUtc = latest.AtUtc }
+                    : null
             });
         }
 
@@ -632,7 +817,9 @@ namespace CRT.Server.Handlers.Submissions
                     null,
                     [],
                     new Dictionary<string, string>(),
-                    new Dictionary<string, string>());
+                    new Dictionary<string, string>(),
+                    [],
+                    FileRemovalPreview.Nothing);
             }
 
             BoardData? published = await publishedBoards
@@ -641,12 +828,13 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyList<string> publishedFiles = ReviewEndpoints.PublishedFilePaths(published);
 
-            // Hashed for the files on BOTH sides only - see PublishedFileHashes for why they are
-            // hashed here rather than read from dataChecksums.json.
+            // Hashed for EVERY submitted path that exists on disk, whether or not the old board
+            // cited it - see PublishedFileHashes' header for why "on both lists" was not enough, and
+            // why they are hashed here rather than read from dataChecksums.json.
             IReadOnlyDictionary<string, string> publishedHashes = await PublishedFileHashes
                 .ComputeAsync(
                     dataTreeRoot,
-                    PublishedFileHashes.PathsOnBothSides(publishedFiles, manifest),
+                    manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).ToList(),
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -679,7 +867,9 @@ namespace CRT.Server.Handlers.Submissions
                     submittedCalibrations: PublishMerge.CalibrationsOf(manifest)),
                 publishedFiles,
                 publishedHashes,
-                ReviewEndpoints.SchematicImageFiles(submitted, published));
+                ReviewEndpoints.SchematicImageFiles(submitted, published),
+                SubmittedFileFacts.Build(manifest, publishedHashes),
+                ApprovePublishFlow.PreviewRemovals(dataTreeRoot, manifest, published, DateTimeOffset.UtcNow));
         }
 
         // ###########################################################################################
@@ -844,21 +1034,50 @@ namespace CRT.Server.Handlers.Submissions
 
             // Schematic name to the image file it is drawn from, so a moved highlight can be put
             // back on its own board. See SchematicImageFiles.
-            IReadOnlyDictionary<string, string> SchematicImages);
+            IReadOnlyDictionary<string, string> SchematicImages,
+
+            // Every submitted file with whose it is, whether a row uses it and what is published
+            // at its path now - so the review app can list EVERY file that would change the tree,
+            // not only the images it can draw. See SubmittedFileFacts.
+            IReadOnlyList<SubmittedFileFact> SubmittedFiles,
+
+            // What publishing it would remove. See ApprovePublishFlow.PreviewRemovals.
+            FileRemovalPreview Removals);
 
         // ###########################################################################################
-        // Resolves the caller and refuses when they may not review.
+        // Who is asking, and what they review - or the refusal to answer them with.
         //
-        // Returns the refusal rather than throwing, so each route reads as "authorise, then do the
-        // work" with no exception-handling middleware in between deciding what a 403 looks like.
+        // *** THE POOL IS READ HERE, ON EVERY REQUEST. *** That single lookup is what makes
+        // removing a reviewer bite on their very next call rather than at next login (Phase 6's
+        // definition of done), and what lets every rule downstream be pure.
         //
-        // 401 AND 403 ARE DISTINGUISHED HERE, unlike on the contributor side where 404 covers both
-        // "no such thing" and "not yours". The reasoning differs because the risk differs: there,
-        // telling the truth lets an anonymous caller enumerate submissions; here the caller is an
-        // authenticated named account, and being told "your account cannot do this" is the only
-        // way they learn to ask for the role rather than retrying a login that already worked.
+        // Refuses an account with no role at all - not an administrator and in no pool - so the
+        // review app can say "this account is not allowed to review" rather than show an empty
+        // queue. Whether the account may act on a PARTICULAR submission is asked per route.
         // ###########################################################################################
-        private static async Task<(AccountRecord? Account, IResult? Refusal)> AuthoriseAsync(
+        private static async Task<(ReviewAccess? Access, IResult? Refusal)> AuthoriseAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ReviewEndpoints.AuthenticateAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return (null, refusal);
+
+            if (!ReviewAuthority.CanReviewAnything(access))
+                return (null, ReviewEndpoints.NotAReviewer());
+
+            return (access, null);
+        }
+
+        // ###########################################################################################
+        // The authentication half alone: the account behind the bearer token plus its pool, or a
+        // 401. Shared with AdminEndpoints, which puts the administrator rule on top instead of the
+        // reviewer one.
+        // ###########################################################################################
+        internal static async Task<(ReviewAccess? Access, IResult? Refusal)> AuthenticateAsync(
             HttpContext context,
             IAccountStore accounts,
             CancellationToken cancellationToken)
@@ -885,11 +1104,37 @@ namespace CRT.Server.Handlers.Submissions
             if (account is null)
                 return (null, Results.Unauthorized());
 
-            if (!ReviewAuthority.CanReview(account))
-                return (null, ReviewEndpoints.NotAReviewer());
+            IReadOnlySet<string> reviewerOf = await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
 
-            return (account, null);
+            return (new ReviewAccess(account, reviewerOf), null);
         }
+
+        // ###########################################################################################
+        // The per-submission check the two asset routes make: the submission must exist and be one
+        // this account reviews. Null when it may proceed.
+        // ###########################################################################################
+        private static async Task<IResult?> RefuseUnlessReviewerOfAsync(
+            ReviewAccess? access,
+            long submissionId,
+            ISubmissionStore submissions,
+            CancellationToken cancellationToken)
+        {
+            SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
+
+            if (record is null)
+                return Results.NotFound();
+
+            return ReviewAuthority.CanReview(access, record)
+                ? null
+                : ReviewEndpoints.NotReviewerOf(access, record);
+        }
+
+        // The 403 for a reviewer asking about a submission on a system they do not review, or a
+        // shared-files submission that is the administrator's. The sentence is ReviewAuthority's.
+        internal static IResult NotReviewerOf(ReviewAccess? access, SubmissionRecord? submission) =>
+            Results.Json(
+                new { error = ReviewAuthority.DescribeRefusal(access, submission) },
+                statusCode: StatusCodes.Status403Forbidden);
 
         // ###########################################################################################
         // The 403 for a signed-in account that may not review.
@@ -925,7 +1170,10 @@ namespace CRT.Server.Handlers.Submissions
             contactEmail = record.ContactEmail,
             baseRevision = record.BaseRevision,
             createdUtc = record.CreatedUtc,
-            decidedUtc = record.DecidedUtc
+            decidedUtc = record.DecidedUtc,
+
+            // So the administrator can see WHY a submission is theirs rather than a reviewer's.
+            touchesSharedFiles = record.TouchesSharedFiles
         };
 
         // ###########################################################################################

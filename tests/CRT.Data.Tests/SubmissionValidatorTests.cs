@@ -720,6 +720,98 @@ namespace CRT.Data.Tests
             Assert.False(SubmissionValidator.CanBeQueued(findings));
         }
 
+        // ###########################################################################################
+        // *** THE PARTS MUST ALREADY BE CANONICAL (security review, 2026-09-25). ***
+        //
+        // BuildSystemId trims before joining, so "Commodore" plus a thousand spaces made a VALID,
+        // MATCHING id - and the raw part then went into a VARCHAR(100) column and failed the insert
+        // with a 500. The client builds the parts from folder names, which are canonical already.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("Commodore ", "C64", "250407")]
+        [InlineData("Commodore", "  C64", "250407")]
+        [InlineData("Commodore", "C64", "2504  07")]
+        public void A_name_part_carrying_extra_spaces_is_refused(string manufacturer, string hardware, string board)
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Manufacturer = manufacturer;
+            manifest.Hardware = hardware;
+            manifest.Board = board;
+            manifest.SystemId = SystemDescriptorRules.BuildSystemId(manufacturer, hardware, board);
+
+            Assert.Contains(
+                SubmissionValidatorTests.Validate(manifest),
+                finding => finding.Code == "identity.parts_not_canonical");
+        }
+
+        // A board sitting WHERE a shared folder lives would make its own folder - which a submission
+        // may change freely - the same place as the shared one, turning the scope rules inside out.
+        //
+        // *** EITHER NAME IN EITHER POSITION (code review, 2026-09-25). *** Only "Generic shared
+        // files" as manufacturer and "Shared files" as hardware used to be refused, while
+        // DataTreeUsage and PublishedSystemLister skip BOTH names in BOTH positions. A board
+        // published as "Shared files/<hw>/<board>" was then never listed for reviewers, and its
+        // workbook and every file it cites were reported as unused - and removable.
+        [Theory]
+        [InlineData("Generic shared files", "C64", "250407")]
+        [InlineData("Commodore", "Shared files", "250407")]
+        [InlineData("Commodore", "shared FILES", "250407")]
+        [InlineData("Shared files", "C64", "250407")]
+        [InlineData("Commodore", "Generic shared files", "250407")]
+        public void A_board_named_after_a_shared_folder_is_refused(string manufacturer, string hardware, string board)
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Manufacturer = manufacturer;
+            manifest.Hardware = hardware;
+            manifest.Board = board;
+            manifest.SystemId = $"{manufacturer}/{hardware}/{board}";
+
+            Assert.Contains(
+                SubmissionValidatorTests.Validate(manifest),
+                finding => finding.Code == "identity.reserved_folder");
+        }
+
+        // ###########################################################################################
+        // *** OVER-LONG FIELDS ARE REFUSED HERE, NOT BY THE DATABASE (security review, 2026-09-25). ***
+        //
+        // The summary and the revision each land in a bounded column. The revision date reaches its
+        // column only AFTER a publish has written the tree - so an over-long one used to turn a
+        // successful, irreversible publish into a 500 the reviewer would retry.
+        // ###########################################################################################
+        [Fact]
+        public void An_over_long_summary_is_refused()
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Summary = new string('x', SubmissionFormat.MaximumSummaryLength + 1);
+
+            Assert.Contains(SubmissionValidatorTests.Validate(manifest), finding => finding.Code == "summary.too_long");
+        }
+
+        [Fact]
+        public void An_over_long_revision_or_base_revision_is_refused()
+        {
+            SubmissionManifest revision = SubmissionValidatorTests.Valid();
+            revision.Rows.RevisionDate = new string('x', SubmissionFormat.MaximumRevisionLength + 1);
+
+            SubmissionManifest baseRevision = SubmissionValidatorTests.Valid();
+            baseRevision.BaseRevision = new string('x', SubmissionFormat.MaximumRevisionLength + 1);
+
+            Assert.Contains(SubmissionValidatorTests.Validate(revision), finding => finding.Code == "revision.too_long");
+            Assert.Contains(SubmissionValidatorTests.Validate(baseRevision), finding => finding.Code == "revision.too_long");
+        }
+
+        // Anti-vacuity: exactly at each limit is fine.
+        [Fact]
+        public void Fields_exactly_at_their_limits_are_accepted()
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Summary = new string('x', SubmissionFormat.MaximumSummaryLength);
+            manifest.BaseRevision = new string('x', SubmissionFormat.MaximumRevisionLength);
+            manifest.Rows.RevisionDate = new string('x', SubmissionFormat.MaximumRevisionLength);
+
+            Assert.Empty(SubmissionValidatorTests.Validate(manifest));
+        }
+
         [Fact]
         public void An_id_matching_the_names_it_carries_is_accepted()
         {

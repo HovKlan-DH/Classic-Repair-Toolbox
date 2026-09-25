@@ -55,12 +55,38 @@ namespace CRT.Server.Tests
 
         private string SystemFolder() => Path.Combine(this.thisRoot, "system");
 
+        // The published tree under SystemFolder(), read the way the running service reads it.
+        private PublishedTreeView? Tree() => PublishedTreeProbe.For(this.SystemFolder());
+
+        // Puts a file into the published tree at a data-root-relative path.
+        private void Publish(string relativePath, string content)
+        {
+            string path = Path.Combine(this.SystemFolder(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, SubmissionFlowTests.Bytes(content));
+        }
+
         // Contributing requires no account - the ordinary submitter is anonymous with a contact
         // address. See NewContributeStrategy.md, "CONTRIBUTING NEEDS NO ACCOUNT".
         private static Submitter Contributor(string email = "dennis@example.com") =>
             Submitter.Anonymous(email, "192.0.2.1");
 
-        private static byte[] Bytes(string content) => Encoding.UTF8.GetBytes(content);
+        // ###########################################################################################
+        // Every test file is a REAL PNG as far as its opening bytes go (security review, 2026-09-25).
+        // Finalise now checks a file's bytes against its name, so "PNGDATA" alone - which used to
+        // stand in for an image - is correctly refused as not being one. The content after the
+        // signature is still the readable marker each test chooses.
+        // ###########################################################################################
+        private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+        private static byte[] Bytes(string content) =>
+            [.. SubmissionFlowTests.PngSignature, .. Encoding.UTF8.GetBytes(content)];
+
+        // Where the fixture's schematic image lives - data-root-relative, inside the board's own
+        // folder, the shape every real submitted path has. A bare "main.png" is now refused as
+        // belonging to no board this submission may change.
+        private const string MainPath = "Commodore/C64/250407/main.png";
 
         private static string HashOf(string content) =>
             Convert.ToHexStringLower(SHA256.HashData(SubmissionFlowTests.Bytes(content)));
@@ -83,14 +109,14 @@ namespace CRT.Server.Tests
                 {
                     new SubmissionFile
                     {
-                        Path = "main.png",
+                        Path = SubmissionFlowTests.MainPath,
                         Sha256 = SubmissionFlowTests.HashOf(imageContent),
                         SizeBytes = SubmissionFlowTests.Bytes(imageContent).Length
                     }
                 },
                 Rows = new SubmissionRows
                 {
-                    Schematics = { new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = "main.png" } },
+                    Schematics = { new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = SubmissionFlowTests.MainPath } },
                     Components = { new ComponentEntry { BoardLabel = "R12" } }
                 }
             };
@@ -137,6 +163,163 @@ namespace CRT.Server.Tests
             Assert.Empty(second.Negotiation!.MissingHashes);
             Assert.Equal(1, second.Negotiation.AlreadyHeldCount);
             Assert.Equal(0, second.Negotiation.TotalBytesToUpload);
+        }
+
+        // ###########################################################################################
+        // *** A FILE THE PUBLISHED TREE ALREADY HOLDS UNCHANGED IS NOT UPLOADED (2026-09-25). ***
+        //
+        // The test above only ever proved the second submission of content the BLOB STORE had
+        // seen. The published tree was never in it, so the FIRST submission to any board - the
+        // commonest case there is - uploaded the whole board: changing one component's text on a
+        // shipped board sent 1,212 files and 121 MB (reported). The server holds those bytes on
+        // its own disk, and now takes them from there.
+        //
+        // SystemFolder() is the data-tree root here, exactly as in production, where the endpoint
+        // passes DataTreeRoot as both the containment root and the tree the probe reads.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_file_already_PUBLISHED_unchanged_is_not_uploaded_and_the_submission_still_finalises()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted);
+            Assert.Empty(created.Negotiation!.MissingHashes);
+            Assert.Equal(1, created.Negotiation.AlreadyHeldCount);
+            Assert.Equal(0, created.Negotiation.TotalBytesToUpload);
+
+            // Nothing was uploaded, so nothing counts against the sender's upload budget.
+            Assert.Equal(0, store.Created[created.Negotiation.SubmissionId].BytesToUpload);
+
+            // The bytes ARE in the store - the reviewer reads them from there and the publish copies
+            // them from there, so a submission told "already held" must be able to finish.
+            Assert.True(blobs.Contains(manifest.Files[0].Sha256));
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(
+                result.IsAccepted,
+                "findings: " + string.Join("; ", result.Findings.Select(finding => finding.Code)));
+        }
+
+        // The file the contributor actually changed is still asked for - "unchanged" is decided by
+        // the bytes at that path, never by the path being published at all.
+        [Fact]
+        public async Task A_published_file_the_submission_CHANGED_is_still_asked_for()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            this.Publish(SubmissionFlowTests.MainPath, "THE OLD SCAN");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("THE NEW SCAN");
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.Equal(manifest.Files[0].Sha256, Assert.Single(created.Negotiation!.MissingHashes));
+            Assert.Equal(manifest.Files[0].SizeBytes, created.Negotiation.TotalBytesToUpload);
+            Assert.False(blobs.Contains(manifest.Files[0].Sha256));
+        }
+
+        // ###########################################################################################
+        // *** A STALE ANSWER FROM THE TREE FALLS BACK TO AN UPLOAD, NEVER TO A BAD BLOB. *** The
+        // tree's hashes are cached on length and write time, so the tree can say "unchanged" about
+        // a file that no longer is. The import hashes what it copies; on a mismatch nothing enters
+        // the store and the file is simply asked for - and then it counts as uploaded bytes.
+        // ###########################################################################################
+        [Fact]
+        public async Task When_the_published_copy_does_not_match_what_the_tree_reported_the_file_is_asked_for()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            this.Publish(SubmissionFlowTests.MainPath, "SOMETHING ELSE ENTIRELY");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
+
+            // A view that claims the published file is exactly the submitted one.
+            var staleTree = new PublishedTreeView(
+                path => path == SubmissionFlowTests.MainPath ? manifest.Files[0].Sha256 : null,
+                _ => null);
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, staleTree);
+
+            Assert.True(created.IsAccepted);
+            Assert.Equal(manifest.Files[0].Sha256, Assert.Single(created.Negotiation!.MissingHashes));
+            Assert.Equal(0, created.Negotiation.AlreadyHeldCount);
+            Assert.Equal(manifest.Files[0].SizeBytes, store.Created[created.Negotiation.SubmissionId].BytesToUpload);
+            Assert.False(blobs.Contains(manifest.Files[0].Sha256));
+        }
+
+        // Without a view of the tree nothing is taken from it: "could not be consulted" is not
+        // "unchanged", and an upload is the safe answer.
+        [Fact]
+        public async Task Without_a_view_of_the_published_tree_nothing_is_taken_from_it()
+        {
+            var store = new FakeSubmissionStore();
+
+            this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest("PNGDATA"), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            Assert.Single(created.Negotiation!.MissingHashes);
+        }
+
+        // ###########################################################################################
+        // WHETHER A SUBMISSION CHANGES SHARED FILES IS DECIDED AT CREATE AND STORED ON THE ROW
+        // (Phase 6 roles, 2026-09-25) - it is what routes it to the administrator rather than to
+        // the board's reviewers, and the queue reads it without loading the payload.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_submission_adding_a_SHARED_file_is_recorded_as_touching_shared_files()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/Shared files/74LS08.png",
+                Sha256 = SubmissionFlowTests.HashOf("shared"),
+                SizeBytes = SubmissionFlowTests.Bytes("shared").Length
+            });
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = "Commodore/Shared files/74LS08.png" });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Message)));
+
+            SubmissionRecord? record = await store.FindAsync(created.Negotiation!.SubmissionId);
+            Assert.True(record!.TouchesSharedFiles);
+        }
+
+        [Fact]
+        public async Task An_ordinary_submission_to_a_boards_OWN_folder_does_not_touch_shared_files()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.False((await store.FindAsync(created.Negotiation!.SubmissionId))!.TouchesSharedFiles);
         }
 
         // ###########################################################################################
@@ -647,7 +830,7 @@ namespace CRT.Server.Tests
 
             ValidationFinding finding = Assert.Single(result.Findings);
             Assert.Equal("file.not_uploaded", finding.Code);
-            Assert.Equal("main.png", finding.Subject);
+            Assert.Equal(SubmissionFlowTests.MainPath, finding.Subject);
         }
 
         [Fact]
@@ -735,6 +918,535 @@ namespace CRT.Server.Tests
 
             Assert.Equal(0, await SubmissionFlows.CollectAbandonedAsync(
                 store, blobs, SubmissionFlowTests.Now + TimeSpan.FromHours(1)));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Security review, 2026-09-25: per-address limits.
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** CREATING A SUBMISSION USED TO HAVE NO LIMIT OF ANY KIND. *** No account is needed, so
+        // the address is all there is to count against. These pin that the count and the byte
+        // budget both bite, that the refusal is a sentence the client can show, and that a refused
+        // request leaves nothing behind.
+        // ###########################################################################################
+        [Fact]
+        public async Task Too_many_submissions_from_one_address_are_refused_with_a_reason()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
+            {
+                SubmissionCreationOutcome allowed = await SubmissionFlows.CreateAsync(
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    store, blobs, SubmissionFlowTests.Now);
+
+                Assert.True(allowed.IsAccepted);
+            }
+
+            SubmissionCreationOutcome refused = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(refused.IsRateLimited);
+            Assert.True(refused.RetryAfter > TimeSpan.Zero);
+            Assert.Equal("submission.rate_limited", Assert.Single(refused.Findings).Code);
+            Assert.Equal(SubmissionRateLimitPolicy.MaxSubmissionsPerAddress, store.Submissions.Count);
+        }
+
+        // Another address is another bucket - a limit that caught everybody would be a way to shut
+        // contributions off for all.
+        [Fact]
+        public async Task The_limit_is_per_address()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
+            {
+                await SubmissionFlows.CreateAsync(
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    store, blobs, SubmissionFlowTests.Now);
+            }
+
+            SubmissionCreationOutcome other = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), Submitter.Anonymous("other@example.com", "198.51.100.7"),
+                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(other.IsAccepted);
+        }
+
+        // A reviewer or administrator is trusted by the database row, and checking things often is
+        // their job. An ordinary signed-in account is NOT exempt - anybody may register one.
+        [Fact]
+        public async Task A_trusted_reviewer_is_not_limited_but_an_ordinary_account_is()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
+            {
+                await SubmissionFlows.CreateAsync(
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    store, blobs, SubmissionFlowTests.Now);
+            }
+
+            SubmissionCreationOutcome reviewer = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), Submitter.SignedIn(7, "192.0.2.1", isTrusted: true),
+                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            SubmissionCreationOutcome ordinary = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), Submitter.SignedIn(8, "192.0.2.1"),
+                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(reviewer.IsAccepted);
+            Assert.True(ordinary.IsRateLimited);
+        }
+
+        // The bytes the server was asked to store are what the budget counts, so the create records
+        // them - and a file it already held costs nothing.
+        [Fact]
+        public async Task A_submission_records_the_bytes_it_asked_to_upload()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            Assert.Equal(
+                created.Negotiation!.TotalBytesToUpload,
+                store.Created[created.Negotiation.SubmissionId].BytesToUpload);
+
+            Assert.True(store.Created[created.Negotiation.SubmissionId].BytesToUpload > 0);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Security review, 2026-09-25: storage, closed boards, other boards, content.
+        // -----------------------------------------------------------------------------------
+
+        // Below the disk reserve, nothing new is accepted - "contributions paused" rather than "the
+        // site's disk is full" - and nothing is written.
+        [Fact]
+        public async Task Below_the_disk_reserve_a_submission_is_refused_and_nothing_is_written()
+        {
+            var store = new FakeSubmissionStore();
+            var blobs = new BlobStore(this.thisRoot, NullLogger<BlobStore>.Instance, () => 100, minimumFreeBytes: 1000);
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(outcome.IsNoRoom);
+            Assert.Equal("server.storage_full", Assert.Single(outcome.Findings).Code);
+            Assert.Empty(store.Submissions);
+        }
+
+        [Fact]
+        public async Task Below_the_disk_reserve_an_upload_chunk_is_refused()
+        {
+            var store = new FakeSubmissionStore();
+            var room = new long[] { 10_000 };
+            var blobs = new BlobStore(this.thisRoot, NullLogger<BlobStore>.Instance, () => room[0], minimumFreeBytes: 1000);
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            room[0] = 10;
+
+            using var content = new MemoryStream(SubmissionFlowTests.Bytes("PNGDATA"));
+
+            BlobUploadOutcome outcome = await SubmissionFlows.UploadChunkAsync(
+                created.Negotiation!.SubmissionId, manifest.Files[0].Sha256, 0, content,
+                created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            Assert.Equal(BlobUploadStatus.NoRoom, outcome.Status);
+            Assert.Equal(0, blobs.GetUploadedLength(created.Negotiation.SubmissionId, manifest.Files[0].Sha256));
+        }
+
+        // is_accepting existed from the first migration and nothing read it. Setting it to 0 now
+        // closes a board - the lever for one being flooded.
+        [Fact]
+        public async Task A_board_closed_to_contributions_refuses_new_submissions()
+        {
+            var store = new FakeSubmissionStore();
+
+            await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            store.ClosedSystems.Add("Commodore/C64/250407");
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            Assert.False(outcome.IsAccepted);
+            Assert.Contains(outcome.Findings, finding => finding.Code == "system.closed");
+            Assert.Single(store.Submissions);
+        }
+
+        // THE finding the review opened with: a submission to one board carrying another board's
+        // file. Refused at create, before a single byte is uploaded.
+        [Fact]
+        public async Task A_submission_carrying_ANOTHER_boards_file_is_refused_before_any_upload()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files[0].Path = "Commodore/C64/250425/main.png";
+            manifest.Rows.Schematics[0] = new BoardSchematicEntry
+            {
+                SchematicName = "Main",
+                SchematicImageFile = "Commodore/C64/250425/main.png"
+            };
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, PublishedTreeView.Empty);
+
+            Assert.False(outcome.IsAccepted);
+            Assert.Contains(outcome.Findings, finding => finding.Code == "file.other_board");
+            Assert.Empty(store.Submissions);
+        }
+
+        // A file no row uses would have been shown nowhere on the review screen.
+        [Fact]
+        public async Task A_submission_carrying_a_file_NO_ROW_USES_is_refused()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/C64/250407/hidden.png",
+                Sha256 = SubmissionFlowTests.HashOf("hidden"),
+                SizeBytes = 10
+            });
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+
+            Assert.False(outcome.IsAccepted);
+            Assert.Contains(outcome.Findings, finding => finding.Code == "file.not_used");
+        }
+
+        // The bytes are checked against the name once they are all here. A ".png" that is not an
+        // image is rejected before any reviewer sees it.
+        [Fact]
+        public async Task A_file_whose_BYTES_do_not_match_its_name_is_rejected_at_finalise()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            byte[] notAnImage = Encoding.UTF8.GetBytes("MZ this is not a picture");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files[0].Sha256 = Convert.ToHexStringLower(SHA256.HashData(notAnImage));
+            manifest.Files[0].SizeBytes = notAnImage.Length;
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            using (var content = new MemoryStream(notAnImage))
+            {
+                BlobUploadOutcome uploaded = await SubmissionFlows.UploadChunkAsync(
+                    created.Negotiation!.SubmissionId, manifest.Files[0].Sha256, 0, content,
+                    created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+                Assert.Equal(BlobUploadStatus.Completed, uploaded.Status);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            Assert.False(result.IsAccepted);
+            Assert.Equal(SubmissionState.Rejected, result.State);
+            Assert.Contains(result.Findings, finding => finding.Code == "file.content_mismatch");
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Security review, 2026-09-25: the upload-state question is scoped too.
+        // -----------------------------------------------------------------------------------
+
+        // It used to answer for ANY hash to anyone holding ANY token - an oracle for "has somebody
+        // submitted this exact file". Now only for the hashes this submission listed.
+        [Fact]
+        public async Task The_upload_state_answers_only_for_a_hash_this_submission_listed()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            // Somebody else's completed file sits in the shared store.
+            SubmissionManifest theirs = SubmissionFlowTests.Manifest("THEIRS");
+            SubmissionCreationOutcome theirCreate = await SubmissionFlows.CreateAsync(
+                theirs, Submitter.Anonymous("them@example.com", "198.51.100.1"), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now);
+            await this.UploadAsync(theirCreate.Negotiation!, theirs.Files[0], "THEIRS", store, blobs);
+
+            SubmissionCreationOutcome mine = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now);
+
+            UploadState? probe = await SubmissionFlows.GetUploadStateAsync(
+                mine.Negotiation!.SubmissionId, theirs.Files[0].Sha256, mine.Negotiation.UploadToken, store, blobs);
+
+            UploadState? own = await SubmissionFlows.GetUploadStateAsync(
+                mine.Negotiation.SubmissionId, SubmissionFlowTests.Manifest().Files[0].Sha256,
+                mine.Negotiation.UploadToken, store, blobs);
+
+            Assert.Null(probe);
+            Assert.NotNull(own);
+        }
+
+        [Fact]
+        public async Task The_upload_state_needs_the_token()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            Assert.Null(await SubmissionFlows.GetUploadStateAsync(
+                created.Negotiation!.SubmissionId, manifest.Files[0].Sha256, "wrong-token", store, blobs));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Security review, 2026-09-25: what nothing used to collect.
+        // -----------------------------------------------------------------------------------
+
+        // Every completed blob stayed on disk for good, including every file of every rejected or
+        // abandoned submission from anybody. Now a blob no live submission needs is deleted.
+        [Fact]
+        public async Task A_blob_only_a_REJECTED_submission_needed_is_collected_and_a_PENDING_ones_is_kept()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            SubmissionManifest rejected = SubmissionFlowTests.Manifest("REJECTED");
+            SubmissionCreationOutcome rejectedCreate = await SubmissionFlows.CreateAsync(
+                rejected, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+            await this.UploadAsync(rejectedCreate.Negotiation!, rejected.Files[0], "REJECTED", store, blobs);
+            await store.SetStateAsync(rejectedCreate.Negotiation!.SubmissionId, SubmissionState.Rejected, SubmissionFlowTests.Now);
+
+            SubmissionManifest pending = SubmissionFlowTests.Manifest("PENDING");
+            SubmissionCreationOutcome pendingCreate = await SubmissionFlows.CreateAsync(
+                pending, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+            await this.UploadAsync(pendingCreate.Negotiation!, pending.Files[0], "PENDING", store, blobs);
+            await store.SetStateAsync(pendingCreate.Negotiation!.SubmissionId, SubmissionState.Pending, SubmissionFlowTests.Now);
+
+            int deleted = await SubmissionFlows.CollectUnreferencedBlobsAsync(store, blobs);
+
+            Assert.Equal(1, deleted);
+            Assert.False(blobs.Contains(rejected.Files[0].Sha256));
+            Assert.True(blobs.Contains(pending.Files[0].Sha256));
+        }
+
+        // MERGED blobs are kept: they are what lets the next submission to that board skip
+        // re-uploading every file it did not change.
+        [Fact]
+        public async Task A_blob_a_MERGED_submission_used_is_kept()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+            await store.SetStateAsync(created.Negotiation!.SubmissionId, SubmissionState.Merged, SubmissionFlowTests.Now);
+
+            Assert.Equal(0, await SubmissionFlows.CollectUnreferencedBlobsAsync(store, blobs));
+            Assert.True(blobs.Contains(manifest.Files[0].Sha256));
+        }
+
+        // The collector and "you already have this" share one gate, so a submission told "already
+        // held" can never have that blob deleted in between. Proved by holding the gate: a create
+        // must WAIT for it.
+        [Fact]
+        public async Task A_submission_waits_for_the_collector_rather_than_racing_it()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            Task<SubmissionCreationOutcome> create;
+
+            using (await blobs.EnterReferenceGateAsync())
+            {
+                create = SubmissionFlows.CreateAsync(
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    store, blobs, SubmissionFlowTests.Now);
+
+                await Task.Delay(200);
+
+                Assert.False(create.IsCompleted, "creating a submission must wait for the reference gate");
+            }
+
+            Assert.True((await create).IsAccepted);
+        }
+
+        // ###########################################################################################
+        // *** A FIRST SUBMISSION NO LONGER HOLDS THE GATE WHILE IT IMPORTS (code review,
+        // 2026-09-25). *** The gate is one lock for the whole service. Importing a whole board from
+        // the published tree used to happen inside it, so everybody else's create - and the
+        // collector - waited for up to ~120 MB to be copied and hashed. The import now happens with
+        // the gate held by somebody else; only the last step waits for it.
+        //
+        // And because the collector can now run between the import and the row being created, what
+        // it takes is caught: the blob is confirmed inside the gate, and asked for when it is gone.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_first_submission_imports_outside_the_gate_and_asks_for_a_blob_collected_meanwhile()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
+            string hash = manifest.Files[0].Sha256;
+
+            Task<SubmissionCreationOutcome> create;
+
+            using (await blobs.EnterReferenceGateAsync())
+            {
+                create = SubmissionFlows.CreateAsync(
+                    manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+                for (int i = 0; i < 200 && !blobs.Contains(hash); i++)
+                    await Task.Delay(50);
+
+                Assert.True(blobs.Contains(hash), "the import must not wait for the reference gate");
+                Assert.False(create.IsCompleted, "creating the row must still wait for it");
+
+                // The collector's doing, while the create waits.
+                Assert.True(blobs.TryDeleteBlob(hash));
+            }
+
+            SubmissionCreationOutcome created = await create;
+
+            Assert.True(created.IsAccepted);
+            Assert.Equal(hash, Assert.Single(created.Negotiation!.MissingHashes));
+            Assert.Equal(0, created.Negotiation.AlreadyHeldCount);
+            Assert.Equal(manifest.Files[0].SizeBytes, store.Created[created.Negotiation.SubmissionId].BytesToUpload);
+        }
+
+        // ###########################################################################################
+        // A sender whose budget a failed import tips over is refused - and the blobs THIS create
+        // imported are taken back, rather than left on disk for the hourly collector (code review,
+        // 2026-09-25). Nothing is recorded.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_budget_refusal_after_the_imports_takes_back_what_it_imported()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            // Earlier today, from the same address, all but five bytes of the budget.
+            await store.CreateAsync(new NewSubmission(
+                "Commodore/C64/250407", "Commodore", "C64", "250407", null, "dennis@example.com", "192.0.2.1",
+                "hash", "r0", "Earlier.", 1, [], SubmissionFlowTests.Now.AddHours(-1), SubmissionFlowTests.Now,
+                SubmissionRateLimitPolicy.MaxUploadBytesPerAddress - 5));
+
+            const string second = "Commodore/C64/250407/second.png";
+            this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
+            this.Publish(second, "NOT WHAT THE TREE SAID");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = second,
+                Sha256 = SubmissionFlowTests.HashOf("SECOND"),
+                SizeBytes = SubmissionFlowTests.Bytes("SECOND").Length
+            });
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Service", Name = "Second", File = second });
+
+            // The tree says both are published unchanged; the second's bytes on disk say otherwise,
+            // so its import fails and it must be uploaded - fourteen bytes the budget has no room for.
+            var tree = new PublishedTreeView(
+                path => path == SubmissionFlowTests.MainPath ? manifest.Files[0].Sha256
+                    : path == second ? manifest.Files[1].Sha256
+                    : null,
+                _ => null);
+
+            SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, tree);
+
+            Assert.True(outcome.IsRateLimited);
+            Assert.False(blobs.Contains(manifest.Files[0].Sha256), "the import this create made is taken back");
+            Assert.Single(store.Created);
+        }
+
+        // The bulk of an ended submission - its copy of the board's rows, and its file list - goes
+        // after a month; its row and findings stay as the audit trail and the contributor's record.
+        [Fact]
+        public async Task An_old_ENDED_submissions_rows_are_cleared_but_its_record_is_kept()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            long id = created.Negotiation!.SubmissionId;
+            await store.SetStateAsync(id, SubmissionState.Rejected, SubmissionFlowTests.Now);
+
+            Assert.Equal(0, await SubmissionFlows.CollectRetiredAsync(store, SubmissionFlowTests.Now + TimeSpan.FromDays(1)));
+
+            Assert.Equal(1, await SubmissionFlows.CollectRetiredAsync(
+                store, SubmissionFlowTests.Now + SubmissionFlows.RetiredRetention + TimeSpan.FromDays(1)));
+
+            Assert.False(store.Payloads.ContainsKey(id));
+            Assert.False(store.Files.ContainsKey(id));
+            Assert.True(store.Submissions.ContainsKey(id));
+        }
+
+        [Fact]
+        public async Task A_PENDING_submission_is_never_cleared_however_old()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            await store.SetStateAsync(created.Negotiation!.SubmissionId, SubmissionState.Pending, SubmissionFlowTests.Now);
+
+            Assert.Equal(0, await SubmissionFlows.CollectRetiredAsync(store, SubmissionFlowTests.Now + TimeSpan.FromDays(3650)));
+            Assert.True(store.Payloads.ContainsKey(created.Negotiation.SubmissionId));
+        }
+
+        // A finding's subject is often a label straight from the contributor's rows, and nothing
+        // bounded it - a ten-thousand-character label failed the findings INSERT with a 500 after
+        // the submission row had been written.
+        [Fact]
+        public void Findings_are_cut_to_the_columns_they_are_stored_in()
+        {
+            IReadOnlyList<ValidationFinding> fitted = SubmissionFlows.FitForStorage(
+            [
+                new ValidationFinding
+                {
+                    Severity = ValidationSeverity.Error,
+                    Code = new string('c', 200),
+                    Subject = new string('s', 10_000),
+                    Message = new string('m', 10_000)
+                }
+            ]);
+
+            ValidationFinding finding = Assert.Single(fitted);
+
+            Assert.Equal(SubmissionFlows.MaximumFindingSubjectLength, finding.Subject.Length);
+            Assert.Equal(SubmissionFlows.MaximumFindingCodeLength, finding.Code.Length);
+            Assert.EndsWith("...", finding.Subject, StringComparison.Ordinal);
+
+            // The message is TEXT - never cut, it is what the contributor reads.
+            Assert.Equal(10_000, finding.Message.Length);
         }
 
         // Uploads a file's content in one go, asserting it completed. Takes the negotiation so it

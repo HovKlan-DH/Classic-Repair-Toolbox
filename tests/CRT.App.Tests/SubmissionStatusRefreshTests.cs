@@ -112,6 +112,44 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         Assert.Equal([3], asked);
     }
 
+    // ###########################################################################################
+    // A submission in BETA is asked about until its board reaches production - but not for ever
+    // (code review, 2026-09-25): past SubmissionReceiptPresenter.MergedRecheckWindow the launch
+    // check leaves it alone, so a board that is never promoted does not cost a request per launch
+    // for good.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_submission_in_BETA_is_asked_about_only_within_the_window()
+    {
+        SubmissionReceiptStore.Record(new SubmissionReceipt
+        {
+            SubmissionId = 7,
+            UploadToken = "token",
+            SystemId = "Commodore/C64/250407/Data.xlsx",
+            SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-3),
+            DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-2),
+            LastKnownState = "merged"
+        });
+
+        SubmissionReceiptStore.Record(new SubmissionReceipt
+        {
+            SubmissionId = 8,
+            UploadToken = "token",
+            SystemId = "Commodore/C64/250407/Data.xlsx",
+            SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-90),
+            DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-89),
+            LastKnownState = "merged"
+        });
+
+        var asked = new List<long>();
+
+        await SubmissionStatusRefresh.RefreshAsync(
+            SubmissionStatusRefreshTests.Answering("merged", string.Empty, asked),
+            SubmissionStatusRefreshTests.Now);
+
+        Assert.Equal([7], asked);
+    }
+
     [Fact]
     public async Task NOTHING_CHANGED_reports_zero_so_the_UI_is_not_rebuilt_for_nothing()
     {
@@ -254,20 +292,22 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
     // *** onFinished FIRES EVERY TIME, EVEN WITH NOTHING TO ASK (code review, 2026-09-25). ***
     //
     // Retiring a published draft was hung off onChanged, which fires only when a receipt MOVES.
-    // A receipt already stored as "merged" by an earlier launch is never open again, so it never
+    // A receipt already stored as "published" by an earlier launch is never open again, so it never
     // moves again - and a draft whose synced board arrived one launch late was never retired.
     // onFinished is the trigger for work whose precondition is a state, not a transition.
+    // ("merged" was the example until 2026-09-25; since the two-stage publish it stays open until
+    // the board reaches production.)
     // ###########################################################################################
     [Fact]
     public async Task The_launch_check_FINISHES_even_when_every_receipt_was_already_decided()
     {
-        SubmissionStatusRefreshTests.Record(1, "merged");
+        SubmissionStatusRefreshTests.Record(1, "published");
 
         var finished = new List<int>();
         int changed = 0;
 
         await SubmissionStatusRefresh.RefreshQuietlyAsync(
-            SubmissionStatusRefreshTests.Answering("merged", string.Empty),
+            SubmissionStatusRefreshTests.Answering("published", string.Empty),
             SubmissionStatusRefreshTests.Now,
             onChanged: () => changed++,
             onFinished: finished.Add);

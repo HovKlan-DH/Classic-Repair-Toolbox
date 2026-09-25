@@ -97,6 +97,8 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
+    <!-- The table editor, shared with the review application (2026-09-25). -->
+    <ProjectReference Include="..\CRT.UI\CRT.UI.csproj" />
   </ItemGroup>
 
   <!--

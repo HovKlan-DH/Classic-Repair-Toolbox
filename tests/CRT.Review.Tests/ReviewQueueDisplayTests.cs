@@ -16,8 +16,21 @@ public sealed class ReviewQueueDisplayTests
         long id = 42,
         string systemId = "Commodore/C64/250407",
         string summary = "Corrected R12.",
-        DateTimeOffset? createdUtc = null) =>
-        new(id, systemId, "pending", summary, "someone@example.com", createdUtc);
+        DateTimeOffset? createdUtc = null,
+        bool touchesSharedFiles = false) =>
+        new(id, systemId, "pending", summary, "someone@example.com", createdUtc, touchesSharedFiles);
+
+    [Fact]
+    public void A_submission_changing_SHARED_FILES_says_so_in_its_subtitle()
+    {
+        // It is why the row is in the administrator's queue rather than a reviewer's, and the one
+        // kind of change that reaches every board citing the file.
+        string subtitle = ReviewQueueDisplay.Subtitle(
+            ReviewQueueDisplayTests.Row(touchesSharedFiles: true), ReviewQueueDisplayTests.Now);
+
+        Assert.EndsWith("changes shared files", subtitle);
+        Assert.DoesNotContain("shared files", ReviewQueueDisplay.Subtitle(ReviewQueueDisplayTests.Row(), ReviewQueueDisplayTests.Now));
+    }
 
     // -----------------------------------------------------------------------------------
     // The title

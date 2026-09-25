@@ -528,6 +528,36 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // A deleted component takes its rows on the other sheets with it (2026-09-25), and those sheets
+    // are not the one on screen - so the status line says what else went, and that undo brings it
+    // back.
+    // ###########################################################################################
+    [Fact]
+    public void Deleting_a_component_says_what_went_with_it_on_the_other_sheets()
+    {
+        UiTest.Run(() =>
+        {
+            var board = new BoardData
+            {
+                Components = [Component("U1"), Component("U2")],
+                ComponentImages = [new ComponentImageEntry { BoardLabel = "U1", Name = "Clock", File = "Commodore/C64/250407/u1.png" }]
+            };
+
+            BoardTableEditor editor = this.OpenEditor(board, published: board);
+            Window window = Show(editor);
+
+            editor.SelectCell(Row(editor, "U1"), 0);
+            editor.DeleteRow();
+
+            Assert.Equal(
+                "Also deleted with U1: 1 row on Component images. Undo (Ctrl+Z) brings it all back.",
+                editor.GetControl<TextBlock>("StatusText").Text);
+
+            window.Close();
+        });
+    }
+
     // ------------------------------------------------------------------ Clipboard
 
     [Fact]
@@ -2109,6 +2139,99 @@ public sealed class BoardTableEditorTests : IDisposable
             editor.CheckDraftFile();
             Assert.True(save.IsEnabled);
             Assert.False(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
+        });
+    }
+    // ###########################################################################################
+    // DOCUMENT MODE - the review application's table (2026-09-25). The same editor, opened on a
+    // document with no draft file behind it: Save hands the document to the host, nothing is
+    // written anywhere, and the controls that only make sense for a draft file stay out of sight.
+    // ###########################################################################################
+    private static BoardTableEditor OpenDocument(BoardData submitted, BoardData? published)
+    {
+        var editor = new BoardTableEditor();
+        editor.Open(BoardTableDocument.Create(published, submitted));
+        return editor;
+    }
+
+    [Fact]
+    public void A_document_opens_with_no_file_behind_it_and_no_Reload()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1")), published: Board(Component("U1")));
+            Window window = Show(editor);
+
+            Assert.True(editor.HasTable);
+            Assert.False(editor.IsFileBacked);
+            Assert.False(editor.GetControl<Button>("ReloadButton").IsVisible);
+            Assert.False(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
+            Assert.False(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // Save in document mode hands the edited document to the host - the review application
+    // sends it to the server - and writes nothing itself.
+    [Fact]
+    public void Save_in_a_document_asks_the_host_and_hands_it_the_edited_document()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1")), published: Board(Component("U1")));
+            Window window = Show(editor);
+            BoardTableSheet components = editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            editor.SelectSheet(components);
+
+            int requests = 0;
+            editor.SaveRequested += (_, _) => requests++;
+
+            components.Rows.Single().Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+            editor.RefreshPendingForTests();
+
+            Button save = editor.GetControl<Button>("SaveButton");
+            Assert.True(save.IsEnabled);
+
+            save.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(1, requests);
+
+            BoardData edited = editor.CommitAndGetDocument()!.ApplyTo(Board(Component("U1")));
+            Assert.Equal("CPU 6510", Assert.Single(edited.Components).FriendlyName);
+
+            window.Close();
+        });
+    }
+
+    // After the host saved, it opens the saved state again - on the same sheet, with nothing
+    // unsaved - and says so.
+    [Fact]
+    public void Opening_the_saved_state_again_keeps_the_sheet_and_clears_unsaved()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1")), published: Board(Component("U1")));
+            Window window = Show(editor);
+            editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!);
+
+            editor.Open(BoardTableDocument.Create(Board(Component("U1")), Board(Component("U1", "CPU 6510"))), "Saved.");
+
+            Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
+            Assert.False(editor.HasUnsavedChanges);
+            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
+
+            window.Close();
+        });
+    }
+    // A reviewer opening a submission lands on what changed, not on the first sheet every time.
+    [Fact]
+    public void A_document_opens_on_the_first_sheet_with_a_change()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU 6510")), published: Board(Component("U1")));
+
+            Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
         });
     }
 }

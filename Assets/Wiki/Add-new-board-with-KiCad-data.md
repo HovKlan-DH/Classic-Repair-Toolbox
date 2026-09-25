@@ -115,9 +115,9 @@ Fill in three names:
 There is a **Notes** box as well, which is optional and shows up on the Overview tab.
 
 The box at the bottom previews exactly what will be created. Click **Create system** and you are asked
-to accept the role of **system maintainer**: if you later submit this system for the community to use,
-you will be registered as its maintainer, and you will review the changes others submit for it. A new
-system can only be created if you accept. **Decline** takes you back to the form with nothing created.
+to accept the role of **reviewer**: if you later submit this system for the community to use, you will
+be registered as its reviewer, and you will review the changes others submit for it and publish the
+ones that are right. A new system can only be created if you accept. **Decline** takes you back to the form with nothing created.
 
 Click **Accept and create** and the board is created, appears in the hardware and board lists straight
 away, and is selected for you.

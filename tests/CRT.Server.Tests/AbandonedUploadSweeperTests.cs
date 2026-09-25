@@ -76,6 +76,28 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** THE PASS ALSO RUNS THE TWO COLLECTORS NOTHING USED TO RUN (security review,
+        // 2026-09-25). *** A collector that exists but is never called is the exact defect this
+        // class's own header records for the abandoned-upload sweep; this pins that the new ones
+        // are called too. A blob no submission references at all must be gone after one pass.
+        // ###########################################################################################
+        [Fact]
+        public async Task One_pass_also_deletes_a_blob_no_live_submission_needs()
+        {
+            BlobStore blobs = this.Blobs();
+            byte[] bytes = [1, 2, 3, 4];
+            string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+
+            await blobs.AppendChunkAsync(99, hash, 0, new MemoryStream(bytes));
+            Assert.True(await blobs.TryCompleteAsync(99, hash));
+
+            await AbandonedUploadSweeper.SweepOnceAsync(
+                new FakeSubmissionStore(), blobs, AbandonedUploadSweeperTests.Now, NullLogger.Instance, CancellationToken.None);
+
+            Assert.False(blobs.Contains(hash));
+        }
+
+        // ###########################################################################################
         // *** A FAILING PASS MUST NOT THROW. *** From .NET 8 an exception escaping a
         // BackgroundService stops the host, so one database error during a sweep would take the
         // whole contribution service down. The pass logs and answers 0; the next one retries.

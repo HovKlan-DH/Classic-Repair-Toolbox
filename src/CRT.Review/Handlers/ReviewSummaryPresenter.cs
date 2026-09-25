@@ -116,7 +116,10 @@ namespace CRT.Review.Handlers
             {
                 ReviewImageChange.Added => "Added",
                 ReviewImageChange.Replaced => "Replaced",
-                ReviewImageChange.Removed => "REMOVED",
+                // *** SHOUTED, and truthful. *** The board stops citing the file. Whether the
+                // publish then REMOVES it from the server (nothing else uses it) or it stays is
+                // said in the file list above, from the server's own list (2026-09-25).
+                ReviewImageChange.Removed => "NO LONGER USED",
                 _ => "Changed"
             };
 
@@ -135,7 +138,9 @@ namespace CRT.Review.Handlers
             if (isBeforeSide)
                 return change == ReviewImageChange.Added ? "Not in the published board" : string.Empty;
 
-            return change == ReviewImageChange.Removed ? "Deleted by this submission" : string.Empty;
+            return change == ReviewImageChange.Removed
+                ? "No longer used by the board"
+                : string.Empty;
         }
 
         // The longest a single value is shown at. Beyond this the middle is elided.

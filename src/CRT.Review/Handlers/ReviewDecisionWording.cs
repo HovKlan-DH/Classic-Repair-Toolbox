@@ -66,11 +66,23 @@ namespace CRT.Review.Handlers
         {
             ArgumentNullException.ThrowIfNull(result);
 
+            if (kind == ReviewDecisionKind.Approve && string.Equals(result.State, "approved", StringComparison.Ordinal))
+            {
+                // The first of the two approvals a shared-file change needs: nothing published.
+                return ApprovalWording.Recorded(result.WaitingFor, "BETA");
+            }
+
             if (kind == ReviewDecisionKind.Approve)
             {
-                return string.IsNullOrWhiteSpace(result.Revision)
-                    ? "Published."
-                    : $"Published at revision {result.Revision}.";
+                // *** BETA, AND WHAT COMES NEXT (2026-09-25). *** An approval writes the BETA data
+                // only; everyone gets it from "Production" once somebody has checked it there.
+                // Saying just "Published" read as done.
+                string published = string.IsNullOrWhiteSpace(result.Revision)
+                    ? "Published to BETA."
+                    : $"Published to BETA at revision {result.Revision}.";
+
+                return published + FileRemovalWording.Done(result.RemovedFiles) +
+                    " Check it in CRT with the BETA data, then publish it from Production.";
             }
 
             return kind == ReviewDecisionKind.Reject

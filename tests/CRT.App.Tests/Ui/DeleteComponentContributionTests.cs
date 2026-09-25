@@ -269,6 +269,9 @@ public class DeleteComponentContributionTests
         Assert.Empty(result.ComponentLocalFiles);
         Assert.Empty(result.ComponentLinks);
 
+        // Its highlights too, since 2026-09-25 - the window's own notice already said they go.
+        Assert.DoesNotContain(result.ComponentHighlights, highlight => string.Equals(highlight.BoardLabel, "U1", StringComparison.OrdinalIgnoreCase));
+
         // The other component, and both board-wide sections, survive untouched.
         Assert.Contains(result.Components, c => string.Equals(c.BoardLabel, "C1", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(2, result.BoardLocalFiles.Count);

@@ -193,13 +193,17 @@ namespace Handlers.DataHandling
         // "Delete this component" - the window's own toggle.
         //
         // Every row belonging to this board label goes, across all four component-scoped sections
-        // INCLUDING the Components row itself.
+        // INCLUDING the Components row itself - AND its highlights on every schematic.
         //
-        // *** BOARD-SCOPED SECTIONS AND HIGHLIGHTS ARE UNTOUCHED, carried over verbatim from
-        // ComponentDraftWriter's own rule. *** Deleting a component does not imply its board-level
-        // files vanish, and its highlights are the label editor's concern - a contributor who
-        // removes a component from the parts list has not asked for every rectangle naming it to be
-        // erased from every schematic.
+        // *** THE HIGHLIGHTS GO TOO (maintainer decision, 2026-09-25): "if a component really is
+        // deleted, then it should remove EVERYTHING related to this component." *** They used to be
+        // kept, on the reasoning that highlights are the label editor's concern - which left
+        // rectangles naming a component the board no longer has, and contradicted this window's
+        // own notice ("will be removed ... together with its N schematic highlights"). The board
+        // table's delete does the same (BoardTableDocument).
+        //
+        // BOARD-SCOPED SECTIONS ARE UNTOUCHED: the board's own files and links are not the
+        // component's.
         // ###########################################################################################
         public static BoardData ApplyComponentDelete(BoardData current, string boardLabel)
         {
@@ -218,7 +222,8 @@ namespace Handlers.DataHandling
                 ComponentImages = ComponentBoardWriter.WithoutComponent(
                     current.ComponentImages, label, existing => existing.BoardLabel),
 
-                ComponentHighlights = current.ComponentHighlights,
+                ComponentHighlights = ComponentBoardWriter.WithoutComponent(
+                    current.ComponentHighlights, label, existing => existing.BoardLabel),
 
                 ComponentLocalFiles = ComponentBoardWriter.WithoutComponent(
                     current.ComponentLocalFiles, label, existing => existing.BoardLabel),

@@ -212,38 +212,67 @@ namespace CRT.Server.Tests
             Assert.Equal(first[Path1], second[Path1]);
         }
 
-        // ---------------------------------------------------------------- which paths are hashed
+        // -------------------------------------------------------- one file, for the tree view
 
+        // ###########################################################################################
+        // *** "WHICH PATHS ARE HASHED" IS NO LONGER A SELECTION (security review, 2026-09-25). ***
+        // Only paths on BOTH the old board's list and the submission's used to be hashed, so a
+        // submitted file OVERWRITING something the old board never cited was reported as "added".
+        // The review endpoint now hashes every submitted path; what is left to pin is the
+        // single-file hash PublishedTreeProbe answers "is this published unchanged?" with.
+        // ###########################################################################################
         [Fact]
-        public void Only_paths_on_BOTH_sides_are_selected()
+        public void A_single_published_file_hashes_to_the_same_value_as_the_batch()
         {
-            // A file only the published board names is a removal and a file only the submission
-            // names is an addition; neither needs a hash to say so, and hashing a 20 MB scan the
-            // submission deleted would be pure waste.
-            IReadOnlyList<string> selected = PublishedFileHashes.PathsOnBothSides(
-                ["shared.png", "published-only.png"],
-                PublishedFileHashesTests.ManifestNaming("shared.png", "submitted-only.png"));
+            const string Path1 = "Commodore/C128/310378/Scope baseline/notes.txt";
+            this.Write(Path1, "published text");
 
-            Assert.Equal(["shared.png"], selected);
+            Assert.Equal(PublishedFileHashesTests.Sha256Of("published text"), PublishedFileHashes.TryHash(this.thisDataTree, Path1));
+        }
+
+        // ###########################################################################################
+        // The single-file hash is taken on the calling thread now, not by blocking on the async one
+        // (code review, 2026-09-25) - and it must see a rewrite exactly as the batch does, or the
+        // tree would answer "unchanged" about a replaced file.
+        // ###########################################################################################
+        [Fact]
+        public void A_single_file_rewritten_with_new_bytes_gets_a_NEW_hash()
+        {
+            const string Path1 = "Commodore/Shared files/74LS08.png";
+            string full = this.Write(Path1, "first");
+            File.SetLastWriteTimeUtc(full, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+            Assert.Equal(PublishedFileHashesTests.Sha256Of("first"), PublishedFileHashes.TryHash(this.thisDataTree, Path1));
+
+            File.WriteAllText(full, "second, and longer");
+            File.SetLastWriteTimeUtc(full, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+
+            Assert.Equal(PublishedFileHashesTests.Sha256Of("second, and longer"), PublishedFileHashes.TryHash(this.thisDataTree, Path1));
         }
 
         [Fact]
-        public void Paths_differing_only_in_CASE_are_NOT_treated_as_the_same_file()
+        public void A_path_with_nothing_published_at_it_hashes_to_null()
         {
-            // Case-sensitive tree, ordinal everywhere else in this pipeline. Folding here would
-            // hash one file and hand its hash to the other.
-            IReadOnlyList<string> selected = PublishedFileHashes.PathsOnBothSides(
-                ["Images/U8.png"],
-                PublishedFileHashesTests.ManifestNaming("Images/u8.png"));
+            Assert.Null(PublishedFileHashes.TryHash(this.thisDataTree, "Commodore/C64/250407/absent.png"));
+        }
 
-            Assert.Empty(selected);
+        // The containment rule applies to a question as much as to a write: a hostile path must not
+        // be able to make the probe read - and so fingerprint - a file outside the tree.
+        [Theory]
+        [InlineData("../outside.txt")]
+        [InlineData("/etc/passwd")]
+        [InlineData("")]
+        public void A_path_that_leaves_the_tree_is_never_hashed(string path)
+        {
+            File.WriteAllText(Path.Combine(this.thisRoot, "outside.txt"), "secret");
+
+            Assert.Null(PublishedFileHashes.TryHash(this.thisDataTree, path));
         }
 
         [Fact]
-        public void A_missing_manifest_or_list_selects_nothing()
+        public void No_data_tree_means_no_hash()
         {
-            Assert.Empty(PublishedFileHashes.PathsOnBothSides(["a.png"], null));
-            Assert.Empty(PublishedFileHashes.PathsOnBothSides(null, PublishedFileHashesTests.ManifestNaming("a.png")));
+            Assert.Null(PublishedFileHashes.TryHash(null, "Commodore/C64/250407/a.png"));
         }
     }
 }

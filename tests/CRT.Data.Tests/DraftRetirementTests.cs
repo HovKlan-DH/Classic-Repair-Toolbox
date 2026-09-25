@@ -33,6 +33,11 @@ public sealed class DraftRetirementTests : IDisposable
 
     private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
+    // What a real SubmissionReceipt carries: the system's id, built from the workbook path when it
+    // was submitted - never the workbook path itself. Receipts here used to carry SystemKey, which
+    // no real receipt ever does, and that is how the app's lookup by id finding nothing went unseen.
+    private static readonly string SystemId = SystemDescriptorRules.SystemIdFromExcelDataFile(DraftRetirementTests.SystemKey);
+
     public void Dispose() => this.thisWorkspace.Dispose();
 
     // ------------------------------------------------------------------ IsPublishedState
@@ -114,15 +119,15 @@ public sealed class DraftRetirementTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A SYSTEM THAT EXISTS ONLY AS A DRAFT IS NEVER RETIRED. ***
+    // *** A SYSTEM THAT EXISTS ONLY AS A DRAFT IS NOT RETIRED WHILE NOTHING IS PUBLISHED. ***
     //
     // There is no published board to compare against, so "no differences" would be vacuously true
     // against nothing at all - and the folder being deleted would be the only copy of a brand-new
-    // system the contributor built from scratch. IsRetirable refuses one outright rather than
-    // trusting the comparison to save it.
+    // system the contributor built from scratch. Since 2026-09-25 a new system's draft IS retired
+    // once its published board is here (below); this is the half that must still hold.
     // ###########################################################################################
     [Fact]
-    public void A_DRAFT_ONLY_system_is_never_retirable()
+    public void A_DRAFT_ONLY_system_is_not_retirable_while_nothing_is_published()
     {
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
@@ -255,6 +260,37 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
+    // ###########################################################################################
+    // *** A SHARED FILE THE CONTRIBUTOR ATTACHED is compared with where it is PUBLISHED - the
+    // shared folder - not with a copy inside the board's folder (2026-09-25). *** Such a file sits
+    // in the draft under its whole path ("Commodore/Shared files/Component images/HotCPU.png").
+    // Compared against the board's published folder it could never match, so a draft holding one
+    // would never be retired after its work was published.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafted_SHARED_file_that_is_now_published_is_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        string shared = Path.Combine("Commodore", "Shared files", "Component images", "HotCPU.png");
+        this.WriteFile(this.DataRoot, shared, "the new image");
+        this.WriteFile(this.DraftFolder, shared, "the new image");
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    [Fact]
+    public void A_drafted_SHARED_file_that_is_not_published_yet_is_NOT_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        this.WriteFile(this.DraftFolder, Path.Combine("Generic shared files", "Component images", "7408.jpg"), "new");
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
     [Fact]
     public void A_draft_whose_files_are_BYTE_IDENTICAL_to_the_published_ones_is_retirable()
     {
@@ -283,7 +319,7 @@ public sealed class DraftRetirementTests : IDisposable
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
         RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
-            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemKey, "published")],
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published")],
             this.ResolveStatus));
 
         Assert.True(DraftRetirement.IsUnchangedSince(found));
@@ -301,11 +337,135 @@ public sealed class DraftRetirementTests : IDisposable
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
         RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
-            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemKey, "merged")],
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "merged")],
             this.ResolveStatus));
 
-        Assert.Equal(DraftRetirementTests.SystemKey, found.SystemId);
+        // The WORKBOOK key, which everything after the check is keyed by - not the receipt's id.
+        Assert.Equal(DraftRetirementTests.SystemKey, found.ExcelDataFile);
         Assert.Equal(this.DraftFolder, found.Folder);
+    }
+
+    // ###########################################################################################
+    // *** THE REPORTED BUG (maintainer, 2026-09-25): published to BETA, the synced board matched
+    // the draft, and the draft stayed in the list. *** The application looked a receipt's system
+    // id up as though it were a workbook path, found no draft, and so never retired one. This is
+    // the search the application runs, with a receipt shaped as a real one is.
+    // ###########################################################################################
+    [Fact]
+    public void A_published_receipt_naming_its_SYSTEM_finds_its_matching_draft()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "merged")],
+            this.DataRoot,
+            this.DraftsRoot,
+            ["Commodore/C64/250425/Data C64 250425.xlsx", DraftRetirementTests.SystemKey]));
+
+        Assert.Equal(DraftRetirementTests.SystemKey, found.ExcelDataFile);
+    }
+
+    // ###########################################################################################
+    // *** A NEW SYSTEM'S DRAFT IS RETIRED ONCE ITS PUBLISHED BOARD IS HERE (maintainer request,
+    // 2026-09-25): "People will either not know they can/should remove this or they forget, so
+    // better clean-up when we can." ***
+    //
+    // Its draft is keyed by the name it was created with, and its publish writes the tree's
+    // generation - so the two workbooks have DIFFERENT names, and the draft is found by its folder.
+    // CRT downloads the published workbook only once the master lists the system, so it being here
+    // means the contributor can open the published board instead.
+    // ###########################################################################################
+    private const string NewDraftKey = "Retro/Home Computer/Rev A/Data Home Computer Rev A.xlsx";
+    private const string NewPublishedKey = "Retro/Home Computer/Rev A/Data Home Computer Rev A v2.0.0.xlsx";
+
+    private void WriteNewSystem(BoardData draft, BoardData? published)
+    {
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftRetirementTests.NewDraftKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(draftPath)!);
+        BoardWorkbookWriter.Write(draftPath, draft);
+        BoardDataReader.ClearCache(draftPath);
+
+        DraftMarkerStore.Save(
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftRetirementTests.NewDraftKey),
+            new DraftMarker
+            {
+                SystemKey = DraftRetirementTests.NewDraftKey,
+                BaseRevision = string.Empty,
+                NewSystem = new NewSystemRegistration
+                {
+                    HardwareName = "Home Computer",
+                    BoardName = "Rev A",
+                    ExcelDataFile = DraftRetirementTests.NewDraftKey,
+                },
+                CreatedUtc = "2026-09-25T00:00:00Z",
+            });
+
+        if (published is not null)
+        {
+            string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftRetirementTests.NewPublishedKey);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            BoardWorkbookWriter.Write(path, published);
+            BoardDataReader.ClearCache(path);
+        }
+    }
+
+    [Fact]
+    public void A_NEW_systems_draft_is_retired_once_its_published_board_is_listed_and_matches()
+    {
+        this.WriteNewSystem(DraftRetirementTests.BoardWith("CPU"), published: DraftRetirementTests.BoardWith("CPU"));
+
+        RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Retro/Home Computer/Rev A", "published")],
+            this.DataRoot,
+            this.DraftsRoot,
+            [DraftRetirementTests.NewPublishedKey]));
+
+        // Named by the DRAFT's own key - what the discard, the table guard and the lists use.
+        Assert.Equal(DraftRetirementTests.NewDraftKey, found.ExcelDataFile);
+    }
+
+    // Changed after it was sent, or changed by a reviewer before publishing: the draft still holds
+    // something the published board does not say.
+    [Fact]
+    public void A_NEW_systems_draft_that_differs_from_the_published_board_is_kept()
+    {
+        this.WriteNewSystem(DraftRetirementTests.BoardWith("CPU"), published: DraftRetirementTests.BoardWith("MPU"));
+
+        Assert.Empty(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Retro/Home Computer/Rev A", "published")],
+            this.DataRoot,
+            this.DraftsRoot,
+            [DraftRetirementTests.NewPublishedKey]));
+    }
+
+    // Published, but the master does not list it yet: CRT has not downloaded the published
+    // workbook and cannot show the board, so the draft is the only way to see it. Kept.
+    [Fact]
+    public void A_NEW_system_the_master_does_not_list_yet_keeps_its_draft()
+    {
+        this.WriteNewSystem(DraftRetirementTests.BoardWith("CPU"), published: null);
+
+        Assert.Empty(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Retro/Home Computer/Rev A", "published")],
+            this.DataRoot,
+            this.DraftsRoot,
+            []));
+    }
+
+    // A receipt for a board the application does not know is left alone - there is no way to tell
+    // which draft it means, and keeping a draft is always the safe mistake.
+    [Fact]
+    public void A_receipt_for_a_board_the_app_does_not_know_retires_nothing()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        Assert.Empty(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "merged")],
+            this.DataRoot,
+            this.DraftsRoot,
+            ["Commodore/C64/250425/Data C64 250425.xlsx"]));
     }
 
     // ------------------------------------------------------------------ FindRetirableSystems
@@ -318,7 +478,7 @@ public sealed class DraftRetirementTests : IDisposable
 
         IReadOnlyList<string> retirable = DraftRetirement.FindRetirableSystems(
             [
-                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemKey, "published"),
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published"),
             ],
             this.ResolveStatus);
 
@@ -335,7 +495,7 @@ public sealed class DraftRetirementTests : IDisposable
 
         IReadOnlyList<string> retirable = DraftRetirement.FindRetirableSystems(
             [
-                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemKey, "approved"),
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "approved"),
             ],
             this.ResolveStatus);
 
@@ -352,8 +512,8 @@ public sealed class DraftRetirementTests : IDisposable
 
         IReadOnlyList<string> retirable = DraftRetirement.FindRetirableSystems(
             [
-                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemKey, "published"),
-                DraftRetirementTests.Receipt(2, DraftRetirementTests.SystemKey, "merged"),
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published"),
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.SystemId, "merged"),
             ],
             this.ResolveStatus);
 
@@ -373,8 +533,9 @@ public sealed class DraftRetirementTests : IDisposable
     private DraftStatus? Status() =>
         DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftRetirementTests.SystemKey);
 
+    // The lookup the application makes: a receipt's system id, among the boards it knows.
     private DraftStatus? ResolveStatus(string systemId) =>
-        DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, systemId);
+        DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, systemId, [DraftRetirementTests.SystemKey]);
 
     private static SubmissionReceipt Receipt(long id, string systemId, string state) => new()
     {

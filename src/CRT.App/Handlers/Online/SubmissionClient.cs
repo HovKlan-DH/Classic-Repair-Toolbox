@@ -40,9 +40,9 @@ namespace Handlers.Online
         private const string TokenHeader = "X-Submission-Token";
 
         // Chunked so a dropped connection loses at most this much, and so progress moves visibly
-        // rather than jumping per file. 4 MB is large enough that per-request overhead is
-        // irrelevant and small enough that a failure costs seconds, not minutes.
-        private const int ChunkBytes = 4 * 1024 * 1024;
+        // rather than jumping per file. The size lives in the shared contract because the server
+        // caps each chunk request's body from it - see SubmissionFormat.UploadChunkBytes.
+        private const int ChunkBytes = SubmissionFormat.UploadChunkBytes;
 
         private readonly string thisBaseUrl;
 
@@ -130,7 +130,7 @@ namespace Handlers.Online
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
-            using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.ApiTimeout);
+            using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.SubmissionRequestTimeout);
 
             using HttpResponseMessage response = await http.PostAsJsonAsync(
                 $"{this.thisBaseUrl}/submissions", manifest, cancellationToken);
@@ -264,7 +264,7 @@ namespace Handlers.Online
             string uploadToken,
             CancellationToken cancellationToken = default)
         {
-            using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.ApiTimeout);
+            using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.SubmissionRequestTimeout);
 
             using var request = new HttpRequestMessage(
                 HttpMethod.Post, $"{this.thisBaseUrl}/submissions/{submissionId}/finalise");

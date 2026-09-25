@@ -18,8 +18,9 @@ namespace Handlers.DataHandling
     //
     // WHAT IS NOT HERE: the component highlights and KiCad calibrations. They live in the JSON
     // beside the workbook rather than in any sheet, are edited by the label editor, and ApplyTo
-    // carries them across untouched. The revision date and the preamble names ride along the same
-    // way.
+    // carries them across untouched - EXCEPT the highlights of a component deleted in the table,
+    // which go with it (maintainer request, 2026-09-25; see ApplyTo). The revision date and the
+    // preamble names ride along untouched.
     // ###########################################################################################
     public sealed class BoardTableDocument
     {
@@ -46,6 +47,15 @@ namespace Handlers.DataHandling
 
         public int TotalChangeCount => this.Sheets.Sum(sheet => sheet.ChangeCount);
 
+        // Every component row the table opened with, and its label then - so a save can tell a
+        // component DELETED here (its row object gone) from one RENAMED here (the same row object,
+        // a new label), which the rows alone cannot. See ApplyTo.
+        private IReadOnlyList<(BoardTableRow Row, string Label)> thisOpenedComponents = [];
+
+        // How many highlights each label had when the table opened, for the message a component
+        // delete shows. Case-insensitive, as labels are.
+        private Dictionary<string, int> thisHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
+
         // ###########################################################################################
         // Builds the table for one draft. `published` is null when there is nothing published to
         // compare against.
@@ -71,6 +81,20 @@ namespace Handlers.DataHandling
                 sheet.Refresh();
             }
 
+            if (document.FindSheet(BoardWorkbookSchema.SheetComponents) is BoardTableSheet components)
+            {
+                document.thisOpenedComponents = components.Rows
+                    .Where(row => !row.IsDeleted)
+                    .Select(row => (row, components.CellText(row, BoardWorkbookSchema.ColBoardLabel)))
+                    .Where(opened => opened.Item2.Length > 0)
+                    .ToList();
+            }
+
+            document.thisHighlightCounts = draft.ComponentHighlights
+                .Where(highlight => !string.IsNullOrWhiteSpace(highlight.BoardLabel))
+                .GroupBy(highlight => highlight.BoardLabel.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
             return document;
         }
 
@@ -85,6 +109,11 @@ namespace Handlers.DataHandling
         // path refuses when the workbook has changed since this table was read (see
         // DraftTableSession) - otherwise a sheet the contributor never touched here would silently
         // overwrite an edit made to it in Excel meanwhile.
+        //
+        // *** AND THE HIGHLIGHTS OF A COMPONENT DELETED HERE GO WITH IT (2026-09-25). *** A component
+        // whose row was deleted in the table, and whose label no row still carries, is gone from the
+        // board, and so are the rectangles naming it. A component RENAMED here keeps its highlights
+        // (its row object is still live) - telling the two apart is why the opened rows are kept.
         // ###########################################################################################
         public BoardData ApplyTo(BoardData current)
         {
@@ -96,7 +125,106 @@ namespace Handlers.DataHandling
                 result = BoardWorkbookSchema.WithRows(result, sheet.Definition, sheet.BuildRows());
             }
 
-            return result;
+            IReadOnlySet<string> deleted = this.LabelsOfDeletedComponents(result);
+
+            if (deleted.Count == 0)
+            {
+                return result;
+            }
+
+            return result.WithComponentHighlights(result.ComponentHighlights
+                .Where(highlight => !deleted.Contains((highlight.BoardLabel ?? string.Empty).Trim()))
+                .ToList());
+        }
+
+        // The labels of components deleted in this table: opened with a row that is no longer
+        // live, and carried by no row the save writes.
+        private IReadOnlySet<string> LabelsOfDeletedComponents(BoardData saved)
+        {
+            var remaining = new HashSet<string>(
+                saved.Components.Select(component => (component.BoardLabel ?? string.Empty).Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            BoardTableSheet? components = this.FindSheet(BoardWorkbookSchema.SheetComponents);
+            var live = new HashSet<BoardTableRow>(components?.Rows.Where(row => !row.IsDeleted) ?? []);
+
+            return this.thisOpenedComponents
+                .Where(opened => !live.Contains(opened.Row) && !remaining.Contains(opened.Label))
+                .Select(opened => opened.Label)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // The rows a deleted component leaves on the other component sheets - deleted with it (see
+        // BoardTableSheet.DeleteRow). `label` and `region` are the deleted Components row's.
+        //
+        //   - No row still has the label: every image, local file and link row for it goes.
+        //   - Another row has the label but none has this REGION (a regional variant deleted, its
+        //     twin kept): only the image rows for that label AND region go. Files and links are not
+        //     per region, and still belong to the twin; so do images with a blank region.
+        //   - Otherwise (a duplicate row deleted): nothing else goes.
+        //
+        // Labels and regions compare ignoring case, as everywhere else. Null when nothing went.
+        // ###########################################################################################
+        internal BoardTableDeletedWith? DeleteRowsOfComponent(string label, string region)
+        {
+            if (string.IsNullOrWhiteSpace(label) || this.FindSheet(BoardWorkbookSchema.SheetComponents) is not BoardTableSheet components)
+            {
+                return null;
+            }
+
+            var others = components.Rows
+                .Where(row => !row.IsDeleted)
+                .Select(row => (Label: components.CellText(row, BoardWorkbookSchema.ColBoardLabel), Region: components.CellText(row, BoardWorkbookSchema.ColRegion)))
+                .Where(other => string.Equals(other.Label, label, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            bool labelRemains = others.Count > 0;
+            bool regionGone = region.Length > 0 && !others.Any(other => string.Equals(other.Region, region, StringComparison.OrdinalIgnoreCase));
+
+            if (labelRemains && !regionGone)
+            {
+                return null;
+            }
+
+            var counts = new List<BoardTableSheetCount>();
+
+            foreach (string sheetName in new[]
+            {
+                BoardWorkbookSchema.SheetComponentImages,
+                BoardWorkbookSchema.SheetComponentLocalFiles,
+                BoardWorkbookSchema.SheetComponentLinks
+            })
+            {
+                if (labelRemains && sheetName != BoardWorkbookSchema.SheetComponentImages)
+                {
+                    continue;
+                }
+
+                if (this.FindSheet(sheetName) is not BoardTableSheet sheet)
+                {
+                    continue;
+                }
+
+                List<BoardTableRow> rows = sheet.Rows
+                    .Where(row => !row.IsDeleted)
+                    .Where(row => string.Equals(sheet.CellText(row, BoardWorkbookSchema.ColBoardLabel), label, StringComparison.OrdinalIgnoreCase))
+                    .Where(row => !labelRemains || string.Equals(sheet.CellText(row, BoardWorkbookSchema.ColRegion), region, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                sheet.RemoveLiveRows(rows);
+
+                if (rows.Count > 0)
+                {
+                    counts.Add(new BoardTableSheetCount(sheetName, rows.Count));
+                }
+            }
+
+            int highlights = labelRemains ? 0 : this.thisHighlightCounts.GetValueOrDefault(label.Trim());
+
+            return counts.Count == 0 && highlights == 0
+                ? null
+                : new BoardTableDeletedWith(label.Trim(), counts, highlights);
         }
 
         public void MarkSaved()

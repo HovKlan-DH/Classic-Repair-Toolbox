@@ -61,6 +61,31 @@ namespace Handlers.DataHandling
 
         // SHA-256 as lowercase hex, which is what dataChecksums.json already uses.
         public const int HashLength = 64;
+
+        // ###########################################################################################
+        // How many bytes CRT sends per upload request. 4 MB is large enough that per-request
+        // overhead is irrelevant and small enough that a dropped connection costs seconds.
+        //
+        // *** IN THE CONTRACT, NOT IN THE CLIENT (security review, 2026-09-25). *** The server now
+        // caps each chunk request's body (RequestBodyLimits), and derives that cap from THIS value.
+        // Kept as a private constant in the client, a larger chunk there would compile, ship, and
+        // have every upload refused with 413 by a server that never heard of the change.
+        // ###########################################################################################
+        public const int UploadChunkBytes = 4 * 1024 * 1024;
+
+        // ###########################################################################################
+        // The longest a few free-text fields may be. Each equals the database column it lands in
+        // (submissions.summary VARCHAR(500), submissions.base_revision and
+        // systems.current_revision VARCHAR(64)).
+        //
+        // *** REFUSED, NOT TRUNCATED, AND REFUSED EARLY. *** An over-long value used to reach the
+        // INSERT and fail there under strict mode, answering a 500 - and the revision date only
+        // reaches its column AFTER a publish has already written the tree, so an over-long one
+        // turned a successful, irreversible publish into an error the reviewer would retry.
+        // ###########################################################################################
+        public const int MaximumSummaryLength = 500;
+
+        public const int MaximumRevisionLength = 64;
     }
 
     // ###########################################################################################
@@ -327,6 +352,11 @@ namespace Handlers.DataHandling
         public DateTimeOffset? DecidedUtc { get; set; }
 
         public string ReviewerComment { get; set; } = string.Empty;
+
+        // A reviewer changed some of the submission's rows in the review application before
+        // deciding it (2026-09-25) - what is published is then not exactly what was sent, and the
+        // contributor is told so in "My submissions".
+        public bool AmendedByReviewer { get; set; }
 
         public List<ValidationFinding> Findings { get; set; } = new();
     }

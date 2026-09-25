@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.Json;
+using Handlers.DataHandling;
 
 namespace CRT.Review.Handlers
 {
@@ -98,7 +99,278 @@ namespace CRT.Review.Handlers
 
             return new ReviewQueueResponse(
                 ReviewApiParser.Bool(root, "canPublish") ?? false,
-                rows);
+                rows,
+                ReviewApiParser.Bool(root, "isAdministrator") ?? false);
+        }
+
+        // ###########################################################################################
+        // The administrator's two lists (Phase 6 roles): every system with its reviewers, and
+        // every account. Each is a plain array under one property; a row that cannot be read is
+        // skipped rather than failing the list, for the same reason a bad queue row is.
+        // ###########################################################################################
+        public static ReviewSystemsResponse? ParseSystems(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("systems", out JsonElement systems) ||
+                systems.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var rows = new List<ReviewSystemRow>();
+
+            foreach (JsonElement element in systems.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string? systemId = ReviewApiParser.String(element, "systemId");
+
+                if (string.IsNullOrWhiteSpace(systemId))
+                    continue;
+
+                var reviewers = new List<ReviewerRow>();
+
+                if (element.TryGetProperty("reviewers", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement reviewer in list.EnumerateArray())
+                    {
+                        long? accountId = reviewer.ValueKind == JsonValueKind.Object
+                            ? ReviewApiParser.Long(reviewer, "accountId")
+                            : null;
+
+                        if (accountId is null)
+                            continue;
+
+                        reviewers.Add(new ReviewerRow(
+                            accountId.Value,
+                            ReviewApiParser.String(reviewer, "displayName") ?? string.Empty,
+                            ReviewApiParser.String(reviewer, "email") ?? string.Empty));
+                    }
+                }
+
+                rows.Add(new ReviewSystemRow(
+                    systemId,
+                    ReviewApiParser.String(element, "manufacturer") ?? string.Empty,
+                    ReviewApiParser.String(element, "hardware") ?? string.Empty,
+                    ReviewApiParser.String(element, "board") ?? string.Empty,
+                    ReviewApiParser.String(element, "currentRevision"),
+                    ReviewApiParser.Bool(element, "isAccepting") ?? true,
+                    reviewers));
+            }
+
+            return new ReviewSystemsResponse(rows);
+        }
+
+        // ###########################################################################################
+        // BETA to production (2026-09-25).
+        //
+        // The list says whether the server can do it at all ("configured"), so "nothing waiting"
+        // and "this server cannot publish to production" read differently. The plan's files are
+        // CRT.Data's PromotionFile, deserialised as the same record the server wrote.
+        // ###########################################################################################
+        public static ProductionListResponse? ParseProductionList(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("systems", out JsonElement systems) ||
+                systems.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var rows = new List<ProductionSystemRow>();
+
+            foreach (JsonElement element in systems.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string? systemId = ReviewApiParser.String(element, "systemId");
+
+                if (string.IsNullOrWhiteSpace(systemId))
+                    continue;
+
+                rows.Add(new ProductionSystemRow(
+                    systemId,
+                    ReviewApiParser.String(element, "manufacturer") ?? string.Empty,
+                    ReviewApiParser.String(element, "hardware") ?? string.Empty,
+                    ReviewApiParser.String(element, "board") ?? string.Empty,
+                    ReviewApiParser.String(element, "betaRevision"),
+                    ReviewApiParser.String(element, "betaContentHash") ?? string.Empty,
+                    ReviewApiParser.String(element, "productionRevision"),
+                    ReviewApiParser.Time(element, "productionPublishedUtc")));
+            }
+
+            return new ProductionListResponse(ReviewApiParser.Bool(root, "configured") ?? false, rows);
+        }
+
+        public static ProductionPlanView? ParseProductionPlan(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            string? systemId = ReviewApiParser.String(root, "systemId");
+
+            if (string.IsNullOrWhiteSpace(systemId))
+                return null;
+
+            var files = new List<PromotionFile>();
+
+            if (root.TryGetProperty("files", out JsonElement raw) && raw.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement element in raw.EnumerateArray())
+                {
+                    try
+                    {
+                        PromotionFile? file = element.Deserialize<PromotionFile>(ReviewApiParser.FactOptions);
+
+                        if (file is not null && !string.IsNullOrWhiteSpace(file.Path))
+                            files.Add(file);
+                    }
+                    catch (JsonException)
+                    {
+                        // One unreadable entry is dropped; the count the reviewer sees is then
+                        // short, which is visible, rather than the whole plan being lost.
+                    }
+                }
+            }
+
+            var problems = new List<ReviewFindingView>();
+
+            if (root.TryGetProperty("problems", out JsonElement list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement item in list.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    problems.Add(new ReviewFindingView(
+                        ReviewApiParser.String(item, "code") ?? string.Empty,
+                        ReviewApiParser.String(item, "subject") ?? string.Empty,
+                        ReviewApiParser.String(item, "message") ?? string.Empty,
+                        ReviewApiParser.IsError(item)));
+                }
+            }
+
+            return new ProductionPlanView(
+                systemId,
+                ReviewApiParser.String(root, "betaRevision"),
+                ReviewApiParser.String(root, "betaContentHash") ?? string.Empty,
+                ReviewApiParser.Bool(root, "touchesSharedFiles") ?? false,
+
+                // Defaults FALSE: a button enabled on a missing answer would offer a publish the
+                // server never agreed to.
+                ReviewApiParser.Bool(root, "canPublish") ?? false,
+                ReviewApiParser.String(root, "refusal"),
+                (int)(ReviewApiParser.Long(root, "unchangedCount") ?? 0),
+                files,
+                problems,
+                ReviewApiParser.ParseApproval(root),
+                ReviewApiParser.ParseRemovals(root));
+        }
+
+        public static ProductionPublishResult? ParseProductionPublish(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            string? systemId = ReviewApiParser.String(root, "systemId");
+
+            return string.IsNullOrWhiteSpace(systemId)
+                ? null
+                : new ProductionPublishResult(
+                    systemId,
+                    ReviewApiParser.String(root, "revision"),
+                    (int)(ReviewApiParser.Long(root, "filesCopied") ?? 0),
+                    ReviewApiParser.String(root, "state") ?? "published",
+                    ReviewApiParser.ParseRoles(root, "waitingFor"),
+                    ReviewApiParser.ParseStrings(root, "removedFiles"));
+        }
+
+        // ###########################################################################################
+        // The administrator's "Unused files" list - CRT.Data's UnusedFileListing, as the server
+        // wrote it. Null when the answer has no tree name, which is not a usable answer.
+        // ###########################################################################################
+        public static UnusedFileListing? ParseUnusedFiles(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                UnusedFileListing? listing = root.Deserialize<UnusedFileListing>(ReviewApiParser.FactOptions);
+
+                return listing is null || string.IsNullOrWhiteSpace(listing.Tree)
+                    ? null
+                    : listing with { Problems = listing.Problems ?? [], Files = listing.Files ?? [] };
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        public static UnusedFileRemovalResult? ParseUnusedFileRemoval(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            string? tree = ReviewApiParser.String(root, "tree");
+
+            return string.IsNullOrWhiteSpace(tree)
+                ? null
+                : new UnusedFileRemovalResult(
+                    tree,
+                    ReviewApiParser.ParseStrings(root, "removed"),
+                    ReviewApiParser.ParseStrings(root, "kept"),
+                    ReviewApiParser.String(root, "notDoneBecause"));
+        }
+
+        public static ReviewAccountsResponse? ParseAccounts(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("accounts", out JsonElement accounts) ||
+                accounts.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var rows = new List<ReviewAccountRow>();
+
+            foreach (JsonElement element in accounts.EnumerateArray())
+            {
+                if (element.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                long? id = ReviewApiParser.Long(element, "id");
+
+                if (id is null)
+                    continue;
+
+                rows.Add(new ReviewAccountRow(
+                    id.Value,
+                    ReviewApiParser.String(element, "email") ?? string.Empty,
+                    ReviewApiParser.String(element, "displayName") ?? string.Empty,
+                    ReviewApiParser.Bool(element, "isAdministrator") ?? false,
+                    ReviewApiParser.Bool(element, "isVerified") ?? false,
+                    ReviewApiParser.Bool(element, "isLocked") ?? false));
+            }
+
+            return new ReviewAccountsResponse(rows);
         }
 
         // ###########################################################################################
@@ -140,8 +412,116 @@ namespace CRT.Review.Handlers
                 ReviewApiParser.ParseAssets(root),
                 ReviewApiParser.ParsePublishedFiles(root),
                 ReviewApiParser.ParsePublishedHashes(root),
-                ReviewApiParser.ParseSchematicImages(root));
+                ReviewApiParser.ParseSchematicImages(root),
+                ReviewApiParser.ParseSubmittedFiles(root),
+                ReviewApiParser.ParseApproval(root),
+                ReviewApiParser.ParseRemovals(root),
+                ReviewApiParser.ParseAmendment(root));
         }
+
+        // ###########################################################################################
+        // The reviewer's table (2026-09-25): CRT.Data's ReviewTableData, as the server wrote it.
+        // Null when the answer carries no submitted rows - nothing to open.
+        // ###########################################################################################
+        public static ReviewTableData? ParseTable(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                ReviewTableData? table = root.Deserialize<ReviewTableData>(ReviewApiParser.FactOptions);
+
+                return table?.Submitted is null ? null : table;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // What saving an amendment answered: the new version, and any warnings it raised.
+        public static ReviewAmendResult? ParseAmend(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            long? version = ReviewApiParser.Long(root, "version");
+
+            return version is null or < 1
+                ? null
+                : new ReviewAmendResult((int)version.Value, ReviewApiParser.ParseFindings(root));
+        }
+
+        // Who last changed the submission in the review application, or null.
+        private static ReviewAmendmentView? ParseAmendment(JsonElement root)
+        {
+            if (!root.TryGetProperty("amendment", out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            long? version = ReviewApiParser.Long(raw, "version");
+
+            return version is null
+                ? null
+                : new ReviewAmendmentView(
+                    (int)version.Value,
+                    ReviewApiParser.String(raw, "by") ?? string.Empty,
+                    ReviewApiParser.Time(raw, "atUtc"));
+        }
+
+        // ###########################################################################################
+        // One fact per submitted file: whose it is, whether a row uses it, and what is published
+        // at its path now (security review, 2026-09-25).
+        //
+        // *** DESERIALISED INTO THE SERVER'S OWN TYPE. *** SubmittedFileFact lives in CRT.Data and
+        // the server serialises exactly that record, so a renamed property fails to compile rather
+        // than silently arriving blank. The scope travels as its NAME (the enum carries its own
+        // converter), so a member added later cannot shift every value by one.
+        //
+        // A missing or malformed field yields an EMPTY list, never a failure - an older server that
+        // does not send it degrades to the image-only comparison it had before, and one bad entry is
+        // dropped rather than costing the reviewer the whole screen.
+        // ###########################################################################################
+        private static IReadOnlyList<SubmittedFileFact> ParseSubmittedFiles(JsonElement root)
+        {
+            if (!root.TryGetProperty("submittedFiles", out JsonElement raw) ||
+                raw.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            var facts = new List<SubmittedFileFact>();
+
+            foreach (JsonElement element in raw.EnumerateArray())
+            {
+                try
+                {
+                    SubmittedFileFact? fact = element.Deserialize<SubmittedFileFact>(ReviewApiParser.FactOptions);
+
+                    if (fact is not null &&
+                        !string.IsNullOrWhiteSpace(fact.Path) &&
+                        !string.IsNullOrWhiteSpace(fact.Sha256))
+                    {
+                        facts.Add(fact);
+                    }
+                }
+                catch (JsonException)
+                {
+                    // One unreadable entry is dropped; the rest still describe the submission.
+                }
+            }
+
+            return facts;
+        }
+
+        private static readonly JsonSerializerOptions FactOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         // ###########################################################################################
         // Path -> SHA-256 for the published files the submission also carries (added 2026-09-23).
@@ -274,7 +654,83 @@ namespace CRT.Review.Handlers
 
             return new ReviewDecisionResult(
                 state,
-                ReviewApiParser.String(root, "revision") ?? string.Empty);
+                ReviewApiParser.String(root, "revision") ?? string.Empty,
+                ReviewApiParser.ParseRoles(root, "waitingFor"),
+                ReviewApiParser.ParseStrings(root, "removedFiles"));
+        }
+
+        // ###########################################################################################
+        // The files a publish would remove (2026-09-25) - CRT.Data's FileRemovalPreview, the same
+        // record the server wrote. Null from an older server, which removed nothing.
+        // ###########################################################################################
+        private static FileRemovalPreview? ParseRemovals(JsonElement root)
+        {
+            if (!root.TryGetProperty("removals", out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                FileRemovalPreview? preview = raw.Deserialize<FileRemovalPreview>(ReviewApiParser.FactOptions);
+
+                return preview is null ? null : preview with { Files = preview.Files ?? [] };
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // An array of strings; anything else in it is skipped.
+        private static IReadOnlyList<string> ParseStrings(JsonElement root, string name)
+        {
+            if (!root.TryGetProperty(name, out JsonElement raw) || raw.ValueKind != JsonValueKind.Array)
+                return [];
+
+            return raw.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // The two-person approval (2026-09-25). CRT.Data's ApprovalStatus, deserialised as the same
+        // record the server wrote; null when absent or unreadable, never a failure of the answer
+        // around it.
+        // ###########################################################################################
+        private static ApprovalStatus? ParseApproval(JsonElement root)
+        {
+            if (!root.TryGetProperty("approval", out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                return raw.Deserialize<ApprovalStatus>(ReviewApiParser.FactOptions);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // An array of role NAMES ("Reviewer", "Administrator"); unknown names are skipped.
+        private static IReadOnlyList<ApproverRole> ParseRoles(JsonElement root, string name)
+        {
+            if (!root.TryGetProperty(name, out JsonElement raw) || raw.ValueKind != JsonValueKind.Array)
+                return [];
+
+            var roles = new List<ApproverRole>();
+
+            foreach (JsonElement item in raw.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String &&
+                    Enum.TryParse(item.GetString(), ignoreCase: true, out ApproverRole role))
+                {
+                    roles.Add(role);
+                }
+            }
+
+            return roles;
         }
 
         // ###########################################################################################
@@ -610,7 +1066,8 @@ namespace CRT.Review.Handlers
                 ReviewApiParser.String(element, "state") ?? string.Empty,
                 ReviewApiParser.String(element, "summary") ?? string.Empty,
                 ReviewApiParser.String(element, "contactEmail") ?? string.Empty,
-                ReviewApiParser.Time(element, "createdUtc"));
+                ReviewApiParser.Time(element, "createdUtc"),
+                ReviewApiParser.Bool(element, "touchesSharedFiles") ?? false);
         }
 
         // -----------------------------------------------------------------------------------
@@ -666,7 +1123,84 @@ namespace CRT.Review.Handlers
                 : null;
     }
 
-    public sealed record ReviewQueueResponse(bool CanPublish, IReadOnlyList<ReviewQueueRow> Submissions);
+    // IsAdministrator is what shows the "Reviewers" button; the server refuses the screen's
+    // requests from anyone else regardless. Trailing with a default so an older server that does
+    // not send it reads as "not an administrator", which hides a button rather than a queue.
+    public sealed record ReviewQueueResponse(
+        bool CanPublish,
+        IReadOnlyList<ReviewQueueRow> Submissions,
+        bool IsAdministrator = false);
+
+    // ###########################################################################################
+    // The administrator's lists (Phase 6 roles). View types, like everything else in this file.
+    // ###########################################################################################
+    public sealed record ReviewSystemsResponse(IReadOnlyList<ReviewSystemRow> Systems);
+
+    public sealed record ReviewSystemRow(
+        string SystemId,
+        string Manufacturer,
+        string Hardware,
+        string Board,
+        string? CurrentRevision,
+        bool IsAccepting,
+        IReadOnlyList<ReviewerRow> Reviewers);
+
+    public sealed record ReviewerRow(long AccountId, string DisplayName, string Email);
+
+    public sealed record ReviewAccountsResponse(IReadOnlyList<ReviewAccountRow> Accounts);
+
+    // ###########################################################################################
+    // BETA to production (2026-09-25). View types, apart from the files, which are CRT.Data's own.
+    // ###########################################################################################
+    public sealed record ProductionListResponse(bool Configured, IReadOnlyList<ProductionSystemRow> Systems);
+
+    public sealed record ProductionSystemRow(
+        string SystemId,
+        string Manufacturer,
+        string Hardware,
+        string Board,
+        string? BetaRevision,
+        string BetaContentHash,
+        string? ProductionRevision,
+        DateTimeOffset? ProductionPublishedUtc);
+
+    public sealed record ProductionPlanView(
+        string SystemId,
+        string? BetaRevision,
+
+        // Sent back with the publish request: the server refuses if BETA moved since.
+        string BetaContentHash,
+        bool TouchesSharedFiles,
+        bool CanPublish,
+        string? Refusal,
+        int UnchangedCount,
+        IReadOnlyList<PromotionFile> Files,
+        IReadOnlyList<ReviewFindingView> Problems,
+        ApprovalStatus? Approval = null,
+
+        // What promoting would remove from production - shown before anyone approves, and sent
+        // back with the publish request.
+        FileRemovalPreview? Removals = null);
+
+    // State "awaiting" is a recorded approval that published nothing - the first of two.
+    public sealed record ProductionPublishResult(
+        string SystemId,
+        string? Revision,
+        int FilesCopied,
+        string State = "published",
+        IReadOnlyList<ApproverRole>? WaitingFor = null,
+        IReadOnlyList<string>? RemovedFiles = null)
+    {
+        public bool IsAwaitingApproval => string.Equals(this.State, "awaiting", StringComparison.Ordinal);
+    }
+
+    public sealed record ReviewAccountRow(
+        long Id,
+        string Email,
+        string DisplayName,
+        bool IsAdministrator,
+        bool IsVerified,
+        bool IsLocked);
 
     // ###########################################################################################
     // One submission as the review window holds it.
@@ -703,7 +1237,37 @@ namespace CRT.Review.Handlers
 
         // Schematic name to the image file it is drawn from, so a moved highlight can be put back
         // on its own board. See ParseSchematicImages.
-        IReadOnlyDictionary<string, string> SchematicImages);
+        IReadOnlyDictionary<string, string> SchematicImages,
+
+        // Every submitted file with whose it is, whether a row uses it and what is published at
+        // its path now - what ReviewFileComparison lists. Empty when the server did not send it.
+        // See ParseSubmittedFiles.
+        IReadOnlyList<SubmittedFileFact> SubmittedFiles,
+
+        // Who must approve, who has, and what this account's approval would do - CRT.Data's
+        // ApprovalStatus, as the server wrote it. Null from an older server; the window then
+        // treats one approval as publishing, which is what that server did.
+        ApprovalStatus? Approval = null,
+
+        // The files publishing this would REMOVE from the BETA data (2026-09-25) - shown before
+        // approving and sent back with the approval. Null from an older server.
+        FileRemovalPreview? Removals = null,
+
+        // Who last changed it in the review application's table (2026-09-25), or null.
+        ReviewAmendmentView? Amendment = null);
+
+    // A reviewer's change to a submission, as the submission view names it.
+    public sealed record ReviewAmendmentView(int Version, string By, DateTimeOffset? AtUtc);
+
+    // What saving a change in the table answered.
+    public sealed record ReviewAmendResult(int Version, IReadOnlyList<ReviewFindingView> Warnings);
+
+    // What removing unused files did, from the administrator's "Unused files" window.
+    public sealed record UnusedFileRemovalResult(
+        string Tree,
+        IReadOnlyList<string> Removed,
+        IReadOnlyList<string> Kept,
+        string? NotDoneBecause);
 
     public sealed record ReviewChangeSummaryView(
         bool IsNewSystem,
@@ -732,7 +1296,14 @@ namespace CRT.Review.Handlers
     // What a decision produced. Revision is empty for anything but an approval - only publishing
     // moves a system's revision.
     // ###########################################################################################
-    public sealed record ReviewDecisionResult(string State, string Revision);
+    // WaitingFor is filled when an approval was recorded but did not publish - the first of the
+    // two a shared-file change needs (2026-09-25).
+    // RemovedFiles: what a publishing approval removed from the BETA data because nothing used it.
+    public sealed record ReviewDecisionResult(
+        string State,
+        string Revision,
+        IReadOnlyList<ApproverRole>? WaitingFor = null,
+        IReadOnlyList<string>? RemovedFiles = null);
 
     // ###########################################################################################
     // One field that moved, as the reviewer reads it.
@@ -765,5 +1336,9 @@ namespace CRT.Review.Handlers
         string State,
         string Summary,
         string ContactEmail,
-        DateTimeOffset? CreatedUtc);
+        DateTimeOffset? CreatedUtc,
+
+        // Whether it adds or changes a shared file - which is why it is in an administrator's
+        // queue rather than a reviewer's. Trailing with a default for an older server.
+        bool TouchesSharedFiles = false);
 }

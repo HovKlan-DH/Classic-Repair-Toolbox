@@ -177,10 +177,13 @@ namespace Handlers.DataHandling
         //
         // A file OUTSIDE this system's own folder - a manufacturer "Shared files" image, say, which
         // is referenced as "Commodore/Shared files/7805.jpg" - is deliberately NOT given a draft
-        // location, and this returns empty for it. Such a file is shared with other boards and is
-        // not the draft's to own; it keeps resolving against Data/ the way it always did. Copying
-        // one in would fork it, and a later edit to the draft's copy would silently not reach the
-        // boards that actually share it.
+        // location, and this returns empty for it: SEEDING never copies a published shared file
+        // into a draft. Such a file is shared with other boards and is not the draft's to own; it
+        // keeps resolving against Data/ the way it always did. Copying one in would fork it, and a
+        // later edit to the draft's copy would silently not reach the boards that actually share it.
+        //
+        // A NEW shared file the contributor ATTACHES is different - it exists nowhere else yet - and
+        // lives in the draft under its whole path (DraftFileResolver.BuildDraftFileDestination).
         // ###########################################################################################
         public static string GetReferencedFilePath(string draftsRoot, string excelDataFile, string? relativeFile)
         {

@@ -103,8 +103,9 @@ board name, and it appears in the lists immediately as your own local draft. Fro
 ordinary board in every respect — you add board images, label the components and attach files with
 exactly the same tools described above.
 
-Before it is created you are asked to accept the role of **system maintainer** for it. If you later
-submit the system for the community to use, you will review the changes others submit for it.
+Before it is created you are asked to accept the role of **reviewer** for it. If you later submit
+the system for the community to use, you will review the changes others submit for it and publish
+the ones that are right.
 
 The full walkthrough, including importing a KiCad project so that clicking a component lights up its
 real copper traces, is on [Add new board with KiCad data](Add-new-board-with-KiCad-data).
@@ -191,6 +192,13 @@ frame - then just start typing, double-click it, or press F2. **Tab** moves to t
 at the end of one), **Shift+Tab** to the left, and **Enter** down. **Insert row above** and
 **Insert row below** add an empty row next to the selected one, and **Delete row** removes the
 selected row. Changed your mind? Ctrl+Z, below.
+
+**Deleting a component deletes everything that belongs to it.** Its rows on the *Component
+images*, *Component local files* and *Component links* sheets go with it - you will see them in red
+on those sheets - and its highlights on the schematics go when you save. A line under the table
+says what else went. If the component has another row with the same board label for a different
+region, only the images for the region you deleted go, since the rest still belong to the other
+one. One Ctrl+Z brings all of it back.
 
 **Ctrl+Z undoes, Ctrl+Y redoes** (Ctrl+Shift+Z works too, and Cmd on a Mac). That covers every
 change in the table - typing into a cell, pasting, and inserting, deleting, restoring or moving
@@ -283,16 +291,47 @@ downloaded the updated data and your draft holds nothing the published board doe
 rows, no other KiCad calibration and no other files - the draft is removed on its own, the next time
 the application starts or when you close "My submissions". If you kept working in the draft after
 submitting, or it is open in the table editor with unsaved edits, it stays, and nothing of yours is
-lost.
+lost. **A whole new system is tidied away the same way**, once CRT lists the published system in
+its hardware and board lists. Until then your draft is the only place you can see it, so it stays.
 
 If the submission cannot be sent - no internet connection, or a file the data refers to has been
 moved or deleted since you added it - you are told which file and what went wrong. Nothing is lost
 and your draft is unchanged.
 
+**A few things are refused before anything is uploaded**, each with a message saying which file
+and why:
+
+* **Only the kinds of file boards actually use can be sent** - pictures (PNG, JPG, GIF, BMP,
+  WebP), PDF documents, plain text and web pages (HTML). A file of any other kind, or a hidden file
+  whose name starts with a dot, is refused.
+* **A file must really be what its name says.** A ".png" has to contain a picture and a ".pdf" a
+  PDF document; a text file has to be plain text, saved as UTF-8.
+* **A board can only change its own files and the shared folders.** You can use a file that belongs
+  to another board, exactly as it is, but you cannot change it from here - change it through that
+  board's own draft instead.
+* **Every file sent must be used by the board.** CRT only ever sends the files your board refers
+  to, so this only matters if a file was added by hand.
+* **There is a daily limit per internet connection**, generous enough that it only stops something
+  going badly wrong. If you reach it, the message says when you can try again, and your draft is
+  kept.
+
 ## Checking how a contribution is getting on
 
 The **"My submissions"** button on the Drafts tab lists what you have sent, with the state of each
 one and anything the reviewer has said. **"Check for updates"** asks the server for the latest.
+
+**An accepted contribution is published in two steps.** First it is published to the **BETA
+source**, where a reviewer gives the board a final check; "My submissions" then says *Published to
+BETA source*. After that it is published to the ordinary **source** that everyone downloads from, and
+the row says *Published to source*. You get an email at each step. CRT looks for the second step
+each time it starts, for a month after the first; after that, "Check for updates" still asks.
+
+**A reviewer may correct small things before publishing** - a typo, a wrong part number - rather
+than sending the whole contribution back to you. When that happens, "My submissions" and the email
+both say that a reviewer changed some of the details, so what is published is not exactly what you
+sent. Your own draft is not changed, so it still holds what you sent and is not removed
+automatically - once your data has updated, look at the board, then discard the draft on the
+Drafts tab (or keep working from it).
 
 A few things worth knowing about that list:
 
@@ -310,9 +349,10 @@ A few things worth knowing about that list:
 
 ### If you contributed a whole new system
 
-For a brand new hardware and board, the maintainer may set you up with a **maintainer account**
-for that system once it is published, so you can look after it from then on. That happens after
-the fact and only for new systems; it is never something you need before contributing.
+For a brand new hardware and board, the maintainer may set you up as a **reviewer** of that
+system once it is published, so you can look after it from then on - reviewing what others send in
+for it, and publishing what is right. That happens after the fact and only for new systems; it is
+never something you need before contributing.
 
 ## That's it
 

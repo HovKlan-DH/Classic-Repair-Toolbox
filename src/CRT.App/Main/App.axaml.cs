@@ -137,8 +137,19 @@ namespace CRT
         // Used by: SubmissionClient.UploadBlobAsync
         public static readonly TimeSpan SubmissionUploadTimeout = TimeSpan.FromMinutes(10);
 
+        // Timeout for creating and finalising a submission. NOT ApiTimeout, which they shared until
+        // 2026-09-25: both do real work. Create sends the whole manifest - every file and every
+        // board row, hundreds of kilobytes for a large board, over the contributor's UPLOAD
+        // bandwidth - and the server then copies every file it already has published into its
+        // store; finalise re-hashes every file the submission names. For a 1,200-file board that
+        // is seconds each, and a create that times out after the server has done its work loses
+        // the capability token for good - the submission can never be finished or looked up.
+        //
+        // Used by: SubmissionClient.CreateAsync, SubmissionClient.FinaliseAsync
+        public static readonly TimeSpan SubmissionRequestTimeout = TimeSpan.FromMinutes(2);
+
         // Timeout for genuinely small API calls - a short form POST and its short reply.
-        // Used by: OnlineServices.CheckInVersionAsync
+        // Used by: OnlineServices.CheckInVersionAsync, SubmissionClient.GetStatusAsync
         public static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(5);
 
         // Timeout for the checksum manifest fetch. This is NOT a lightweight call and must not go

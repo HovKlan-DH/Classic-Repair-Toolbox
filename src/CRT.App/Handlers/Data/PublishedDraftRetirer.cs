@@ -42,6 +42,20 @@ namespace Handlers.DataHandling
             return Task.Run(() => DraftRetirement.FindRetirableDrafts(receipts, resolveStatus));
         }
 
+        // The search the application runs - receipts matched to the boards it knows by system id.
+        // See DraftRetirement.FindRetirableDrafts.
+        public static Task<IReadOnlyList<RetirableDraft>> FindAsync(
+            IReadOnlyList<SubmissionReceipt> receipts,
+            string dataRoot,
+            string draftsRoot,
+            IReadOnlyList<string> excelDataFiles)
+        {
+            ArgumentNullException.ThrowIfNull(receipts);
+            ArgumentNullException.ThrowIfNull(excelDataFiles);
+
+            return Task.Run(() => DraftRetirement.FindRetirableDrafts(receipts, dataRoot, draftsRoot, excelDataFiles));
+        }
+
         // ###########################################################################################
         // Deletes each candidate that is still safe to delete, on the caller's (UI) thread.
         //
@@ -67,36 +81,36 @@ namespace Handlers.DataHandling
 
             foreach (RetirableDraft draft in candidates ?? [])
             {
-                if (isInUse(draft.SystemId))
+                if (isInUse(draft.ExcelDataFile))
                 {
-                    Logger.Info($"Draft for [{draft.SystemId}] is published but has unsaved edits open - kept.");
+                    Logger.Info($"Draft for [{draft.ExcelDataFile}] is published but has unsaved edits open - kept.");
                     continue;
                 }
 
                 if (!DraftRetirement.IsUnchangedSince(draft))
                 {
-                    Logger.Info($"Draft for [{draft.SystemId}] changed while it was being checked - kept.");
+                    Logger.Info($"Draft for [{draft.ExcelDataFile}] changed while it was being checked - kept.");
                     continue;
                 }
 
-                bool removed = discard(draft.SystemId);
+                bool removed = discard(draft.ExcelDataFile);
 
-                afterDiscard(draft.SystemId);
+                afterDiscard(draft.ExcelDataFile);
 
                 if (removed)
                 {
                     // Logged at Info rather than silently: a folder disappearing on its own is the
                     // kind of thing somebody will eventually want to find an explanation for.
                     Logger.Info(
-                        $"Draft for [{draft.SystemId}] removed automatically - its changes are now in the " +
+                        $"Draft for [{draft.ExcelDataFile}] removed automatically - its changes are now in the " +
                         "published data.");
 
-                    retired.Add(draft.SystemId);
+                    retired.Add(draft.ExcelDataFile);
                 }
                 else
                 {
-                    Logger.Warning($"Draft for [{draft.SystemId}] is published but could not be removed.");
-                    failed.Add(draft.SystemId);
+                    Logger.Warning($"Draft for [{draft.ExcelDataFile}] is published but could not be removed.");
+                    failed.Add(draft.ExcelDataFile);
                 }
             }
 

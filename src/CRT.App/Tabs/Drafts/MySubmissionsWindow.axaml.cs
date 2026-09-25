@@ -140,12 +140,17 @@ namespace CRT
             {
                 var client = new SubmissionClient();
 
-                // *** THE SAME "which rows are worth asking about" RULE THE LAUNCH CHECK USES ***
-                // (SubmissionStatusRefresh.RefreshAsync). This loop is kept rather than delegated
-                // because this screen reports "checked N, updated M, could not reach K" and the
-                // shared method deliberately returns only how many CHANGED - a count that is right
-                // for "should anything be redrawn" and wrong for a status line somebody is reading.
-                // If the SKIP rule changes, change it in both places.
+                // *** THE LAUNCH CHECK'S "which rows are worth asking about" RULE, WITHOUT ITS TIME
+                // LIMIT *** (SubmissionStatusRefresh.RefreshAsync). This loop is kept rather than
+                // delegated because this screen reports "checked N, updated M, could not reach K"
+                // and the shared method deliberately returns only how many CHANGED - a count that is
+                // right for "should anything be redrawn" and wrong for a status line somebody is
+                // reading.
+                //
+                // The launch check stops asking about a submission in BETA after
+                // SubmissionReceiptPresenter.MergedRecheckWindow, so it costs nothing for ever
+                // (code review, 2026-09-25). This button does not: the contributor pressed it to
+                // ask, and one request per such row, once, is what they asked for.
                 List<SubmissionReceipt> toCheck = SubmissionReceiptStore.All
                     .Where(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
                     .ToList();
@@ -172,7 +177,8 @@ namespace CRT
                         status.State,
                         status.ReviewerComment,
                         DateTimeOffset.UtcNow,
-                        status.DecidedUtc);
+                        status.DecidedUtc,
+                        status.AmendedByReviewer);
 
                     updated++;
                 }
@@ -300,6 +306,11 @@ namespace CRT
         // from CheckedText, which is this computer's own bookkeeping and says nothing about the
         // submission.
         public string DecidedText { get; }
+
+        // "A reviewer changed some of the details ..." - empty when nobody did (2026-09-25).
+        public string AmendedText { get; }
+
+        public bool HasAmendedText => !string.IsNullOrWhiteSpace(this.AmendedText);
 
         public bool HasSummary => !string.IsNullOrWhiteSpace(this.Summary);
         public bool HasCheckedText => !string.IsNullOrWhiteSpace(this.CheckedText);
@@ -434,6 +445,7 @@ namespace CRT
             // Through the shared presenter, like every other displayed string on this row, so the
             // wording is pinned by unit tests rather than living in a data template.
             this.DecidedText = SubmissionReceiptPresenter.DescribeDecided(receipt.DecidedUtc);
+            this.AmendedText = SubmissionReceiptPresenter.DescribeAmended(receipt.AmendedByReviewer);
 
             this.ReviewerComment = receipt.ReviewerComment ?? string.Empty;
             this.HasUnreadComment = SubmissionReceiptPresenter.HasUnreadComment(receipt);

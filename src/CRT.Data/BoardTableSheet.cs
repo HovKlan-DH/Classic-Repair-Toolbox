@@ -287,10 +287,20 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Removes a live row. A row that was published comes straight back as a red ghost in its
         // place; one that was added simply goes. Returns false for a ghost, which is already gone.
+        //
+        // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (maintainer request,
+        // 2026-09-25): "if a component really is deleted, then it should remove EVERYTHING related
+        // to this component." *** On the Components sheet, the component's rows on the image, local
+        // file and link sheets are deleted too - shown red on their own sheets, and all of it ONE
+        // undo step - and its highlights go when the table is saved (BoardTableDocument.ApplyTo).
+        // `deletedWith` says what else went, for the editor to tell the user; null when nothing did.
         // ###########################################################################################
-        public bool DeleteRow(BoardTableRow row)
+        public bool DeleteRow(BoardTableRow row) => this.DeleteRow(row, out _);
+
+        public bool DeleteRow(BoardTableRow row, out BoardTableDeletedWith? deletedWith)
         {
             ArgumentNullException.ThrowIfNull(row);
+            deletedWith = null;
 
             int index = this.Rows.IndexOf(row);
             if (row.IsDeleted || index < 0)
@@ -298,13 +308,70 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            this.thisDocument.History.Record(this, row, index, -1);
-            this.Rows.RemoveAt(index);
+            if (!string.Equals(this.Name, BoardWorkbookSchema.SheetComponents, StringComparison.Ordinal))
+            {
+                this.RemoveLiveRows([row]);
+                return true;
+            }
+
+            string label = this.CellText(row, BoardWorkbookSchema.ColBoardLabel);
+            string region = this.CellText(row, BoardWorkbookSchema.ColRegion);
+
+            BoardTableHistory history = this.thisDocument.History;
+            history.BeginGroup();
+
+            try
+            {
+                this.RemoveLiveRows([row]);
+                deletedWith = this.thisDocument.DeleteRowsOfComponent(label, region);
+            }
+            finally
+            {
+                history.EndGroup(this);
+            }
+
+            return true;
+        }
+
+        // ###########################################################################################
+        // Removes these live rows as ONE change - recorded once, refreshed once. The rows must be
+        // live rows of this sheet; the first one is where an undo puts the cursor.
+        // ###########################################################################################
+        internal void RemoveLiveRows(IReadOnlyList<BoardTableRow> rows)
+        {
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            this.thisDocument.History.Record(this, rows[0], this.Rows.IndexOf(rows[0]), -1);
+
+            foreach (BoardTableRow row in rows)
+            {
+                this.Rows.Remove(row);
+            }
 
             this.thisDocument.MarkDirty();
             this.Refresh();
+        }
 
-            return true;
+        // A cell's text by COLUMN NAME, trimmed - "" when the sheet has no such column.
+        internal string CellText(BoardTableRow row, string column)
+        {
+            int index = -1;
+
+            for (int i = 0; i < this.Columns.Count; i++)
+            {
+                if (string.Equals(this.Columns[i], column, StringComparison.OrdinalIgnoreCase))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            return index < 0 || index >= row.Cells.Count
+                ? string.Empty
+                : BoardTableCell.NormaliseText(row.Cells[index].Text);
         }
 
         // ###########################################################################################

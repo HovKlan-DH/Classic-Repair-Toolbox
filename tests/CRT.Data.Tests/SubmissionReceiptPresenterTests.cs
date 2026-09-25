@@ -96,7 +96,9 @@ public sealed class SubmissionReceiptPresenterTests
     [Theory]
     [InlineData("changes_requested", "Changes requested")]
     [InlineData("approved", "Approved, waiting to be published")]
-    [InlineData("merged", "Published")]
+    // "merged" is the BETA data since the two-stage publish (2026-09-25); "published" is everyone's.
+    [InlineData("merged", "Published to BETA source")]
+    [InlineData("published", "Published to source")]
     [InlineData("withdrawn", "Withdrawn")]
     public void Each_REVIEW_state_is_described_in_the_contributors_own_terms(string state, string expected)
     {
@@ -208,10 +210,8 @@ public sealed class SubmissionReceiptPresenterTests
     [InlineData("abandoned")]
     [InlineData("accepted")]
     [InlineData("published")]
-    // *** "merged" AND "withdrawn" WERE MISSING UNTIL 2026-09-22, and that was not cosmetic. ***
-    // Both are final, so omitting them meant every merged submission was re-checked on every
-    // refresh - and, once the launch check landed, on every single launch - forever.
-    [InlineData("merged")]
+    // *** "withdrawn" WAS MISSING UNTIL 2026-09-22, and that was not cosmetic. *** Final, so
+    // omitting it meant every such row was re-checked on every launch forever.
     [InlineData("withdrawn")]
     public void A_decided_submission_is_not_asked_about_again(string state)
     {
@@ -227,6 +227,10 @@ public sealed class SubmissionReceiptPresenterTests
     // never see it move again.
     [InlineData("changes_requested")]
     [InlineData("approved")]
+    // *** "merged" IS ASKED ABOUT AGAIN SINCE 2026-09-25. *** It was final until the two-stage
+    // publish; now it means "in the BETA data" and moves on to "published" when the board reaches
+    // production. Closing it would freeze the row at "in the BETA data" for ever.
+    [InlineData("merged")]
     public void A_submission_that_can_still_move_is_asked_about(string state)
     {
         Assert.True(SubmissionReceiptPresenter.IsStillOpen(state));
@@ -246,6 +250,64 @@ public sealed class SubmissionReceiptPresenterTests
     {
         Assert.True(SubmissionReceiptPresenter.IsStillOpen(null));
         Assert.True(SubmissionReceiptPresenter.IsStillOpen(string.Empty));
+    }
+
+    // ###########################################################################################
+    // *** A "MERGED" RECEIPT IS ASKED ABOUT FOR A WHILE, NOT FOR EVER (code review, 2026-09-25). ***
+    // Publishing to production is off until the server is set up for it, and a board may never be
+    // promoted; without a bound every merged receipt was asked about on every launch for ever.
+    // ###########################################################################################
+    private static readonly DateTimeOffset Launch = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static SubmissionReceipt Receipt(string state, DateTimeOffset sent, DateTimeOffset? decided = null) => new()
+    {
+        SubmissionId = 1,
+        LastKnownState = state,
+        SentUtc = sent,
+        DecidedUtc = decided
+    };
+
+    [Fact]
+    public void A_merged_receipt_is_asked_about_until_the_window_after_its_decision_closes()
+    {
+        TimeSpan window = SubmissionReceiptPresenter.MergedRecheckWindow;
+        DateTimeOffset sent = SubmissionReceiptPresenterTests.Launch - window - TimeSpan.FromDays(10);
+
+        SubmissionReceipt recent = SubmissionReceiptPresenterTests.Receipt(
+            "merged", sent, SubmissionReceiptPresenterTests.Launch - window + TimeSpan.FromDays(1));
+        SubmissionReceipt old = SubmissionReceiptPresenterTests.Receipt(
+            "merged", sent, SubmissionReceiptPresenterTests.Launch - window - TimeSpan.FromDays(1));
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(recent, SubmissionReceiptPresenterTests.Launch));
+        Assert.False(SubmissionReceiptPresenter.IsStillOpen(old, SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // A receipt from before decision dates were kept falls back to when it was sent.
+    [Fact]
+    public void A_merged_receipt_with_no_decision_date_is_timed_from_when_it_was_sent()
+    {
+        TimeSpan window = SubmissionReceiptPresenter.MergedRecheckWindow;
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("merged", SubmissionReceiptPresenterTests.Launch.AddDays(-2)),
+            SubmissionReceiptPresenterTests.Launch));
+
+        Assert.False(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("merged", SubmissionReceiptPresenterTests.Launch - window - TimeSpan.FromDays(1)),
+            SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // Only "merged" is bounded: a submission still waiting for its review is asked about however
+    // old it is, and a decided one never is.
+    [Fact]
+    public void The_window_bounds_merged_alone()
+    {
+        DateTimeOffset longAgo = SubmissionReceiptPresenterTests.Launch.AddYears(-1);
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("pending", longAgo), SubmissionReceiptPresenterTests.Launch));
+        Assert.False(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("published", SubmissionReceiptPresenterTests.Launch), SubmissionReceiptPresenterTests.Launch));
     }
 
     // ------------------------------------------------------------------ DescribeDecided
@@ -508,6 +570,15 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     [Fact]
+    public void Reaching_PRODUCTION_after_BETA_is_unread_a_second_time()
+    {
+        // merged -> published is the two-stage publish's second step: the contributor's own data
+        // has it now. That is news worth the badge.
+        Assert.True(SubmissionReceiptPresenter.HasUnreadDecision(
+            SubmissionReceiptPresenterTests.Decided("published", "merged")));
+    }
+
+    [Fact]
     public void A_decision_that_MOVES_AGAIN_is_unread_a_second_time()
     {
         // approved -> merged is two different facts, and the second one ("it is actually live
@@ -749,5 +820,13 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.NotEqual(
             SubmissionReceiptPresenter.ClassifyState("changes_requested"),
             SubmissionReceiptPresenter.ClassifyState("rejected"));
+    }
+    // A reviewer changed the submission in the review application before deciding (2026-09-25):
+    // said, so a contributor comparing what was published with what they sent knows why.
+    [Fact]
+    public void A_submission_a_reviewer_changed_says_so_and_one_nobody_changed_says_nothing()
+    {
+        Assert.StartsWith("A reviewer changed some of the details", SubmissionReceiptPresenter.DescribeAmended(true));
+        Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeAmended(false));
     }
 }

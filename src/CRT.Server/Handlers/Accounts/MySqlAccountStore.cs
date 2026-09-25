@@ -42,7 +42,7 @@ namespace CRT.Server.Handlers.Accounts
 
         private const string AccountColumns =
             "id, email, email_normalised, password_hash, display_name, is_verified, " +
-            "is_administrator, is_reviewer, is_locked, created_utc, last_login_utc";
+            "is_administrator, is_locked, created_utc, last_login_utc";
 
         public async Task<AccountRecord?> FindByNormalisedEmailAsync(string normalisedEmail, CancellationToken cancellationToken = default)
         {
@@ -502,6 +502,145 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // -----------------------------------------------------------------------------------
+        // Reviewer pools (Phase 6 roles). The `reviewers` table - `maintainers` until 0006.
+        // -----------------------------------------------------------------------------------
+
+        public async Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = "SELECT system_id FROM reviewers WHERE account_id = @accountId;";
+            command.Parameters.AddWithValue("@accountId", accountId);
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                ids.Add(reader.GetString(0));
+
+            return ids;
+        }
+
+        private const string ReviewerColumns =
+            "r.system_id, r.account_id, a.display_name, a.email, a.is_administrator, a.is_verified, a.is_locked";
+
+        public async Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.ReviewerColumns} FROM reviewers r " +
+                "JOIN accounts a ON a.id = r.account_id " +
+                "WHERE r.system_id = @systemId ORDER BY a.display_name, a.id;";
+            command.Parameters.AddWithValue("@systemId", systemId);
+
+            return await MySqlAccountStore.ReadReviewersAsync(command, cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.ReviewerColumns} FROM reviewers r " +
+                "JOIN accounts a ON a.id = r.account_id " +
+                "ORDER BY r.system_id, a.display_name, a.id;";
+
+            return await MySqlAccountStore.ReadReviewersAsync(command, cancellationToken);
+        }
+
+        public Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            // INSERT IGNORE: a second grant of the same pair keeps the FIRST grant's attribution
+            // and date, which is the honest record of when this person became a reviewer.
+            return this.ExecuteAsync(
+                """
+                INSERT IGNORE INTO reviewers (system_id, account_id, granted_by, granted_utc)
+                VALUES (@systemId, @accountId, @grantedBy, @when);
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@accountId", accountId);
+                    command.Parameters.AddWithValue("@grantedBy", grantedByAccountId);
+                    command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
+                },
+                cancellationToken);
+        }
+
+        public Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        {
+            return this.ExecuteAsync(
+                "DELETE FROM reviewers WHERE system_id = @systemId AND account_id = @accountId;",
+                command =>
+                {
+                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@accountId", accountId);
+                },
+                cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<AccountRecord>> ListAccountsAsync(int limit, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts ORDER BY display_name, id LIMIT @limit;";
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
+
+            return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts WHERE is_administrator = 1 ORDER BY id;";
+
+            return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
+        }
+
+        private static async Task<IReadOnlyList<AccountRecord>> ReadAccountsAsync(MySqlCommand command, CancellationToken cancellationToken)
+        {
+            var accounts = new List<AccountRecord>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                accounts.Add(MySqlAccountStore.ReadAccount(reader));
+
+            return accounts;
+        }
+
+        private static async Task<IReadOnlyList<ReviewerRecord>> ReadReviewersAsync(MySqlCommand command, CancellationToken cancellationToken)
+        {
+            var reviewers = new List<ReviewerRecord>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                reviewers.Add(new ReviewerRecord(
+                    reader.GetString(0),
+                    reader.GetInt64(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetBoolean(4),
+                    reader.GetBoolean(5),
+                    reader.GetBoolean(6)));
+            }
+
+            return reviewers;
+        }
+
+        // -----------------------------------------------------------------------------------
         // Plumbing.
         // -----------------------------------------------------------------------------------
 
@@ -534,6 +673,13 @@ namespace CRT.Server.Handlers.Accounts
             if (!await reader.ReadAsync(cancellationToken))
                 return null;
 
+            return MySqlAccountStore.ReadAccount(reader);
+        }
+
+        // One row of AccountColumns, by ordinal. is_reviewer sat at index 7 until migration 0006
+        // dropped it; everything after it moved up one.
+        private static AccountRecord ReadAccount(MySqlDataReader reader)
+        {
             return new AccountRecord(
                 reader.GetInt64(0),
                 reader.GetString(1),
@@ -543,9 +689,8 @@ namespace CRT.Server.Handlers.Accounts
                 reader.GetBoolean(5),
                 reader.GetBoolean(6),
                 reader.GetBoolean(7),
-                reader.GetBoolean(8),
-                MySqlAccountStore.ReadUtc(reader, 9)!.Value,
-                MySqlAccountStore.ReadUtc(reader, 10));
+                MySqlAccountStore.ReadUtc(reader, 8)!.Value,
+                MySqlAccountStore.ReadUtc(reader, 9));
         }
 
         // DATETIME has no timezone of its own, so a value read back is Unspecified. Tagging it Utc

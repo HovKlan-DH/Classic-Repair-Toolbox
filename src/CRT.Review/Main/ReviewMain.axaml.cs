@@ -360,7 +360,7 @@ namespace CRT.Review
 
             if (signedInAs is not null && this.thisSession is not null)
             {
-                // Named, because a reviewer with both an ordinary and an administrator account
+                // Named, because somebody with both a reviewer and an administrator account
                 // needs to know which one they are acting as before they publish anything.
                 signedInAs.Text = $"Signed in as {this.thisSession.DisplayName} ({this.thisSession.Email})";
             }
@@ -408,7 +408,62 @@ namespace CRT.Review
             this.thisQueue.Clear();
             this.thisQueue.AddRange(result.Value!.Submissions);
 
+            // The administrator's screen is offered only when the SERVER says this account is one.
+            var reviewers = this.FindControl<Button>("ReviewersButton");
+
+            if (reviewers is not null)
+                reviewers.IsVisible = result.Value.IsAdministrator;
+
+            if (this.FindControl<Button>("UnusedFilesButton") is Button unused)
+                unused.IsVisible = result.Value.IsAdministrator;
+
             this.ApplyQueue();
+        }
+
+        // ###########################################################################################
+        // Opens the "Production" window - BETA to production (2026-09-25). Modal, like Reviewers.
+        // ###########################################################################################
+        private async void OnProductionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (this.thisClient is null || this.thisSession is null)
+                return;
+
+            var window = new ProductionWindow();
+            window.Initialize(this.thisClient, this.thisSession);
+
+            await window.ShowDialog(this);
+        }
+
+        // ###########################################################################################
+        // Opens the administrator's "Unused files" window (2026-09-25). Modal, like Reviewers.
+        // ###########################################################################################
+        private async void OnUnusedFilesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (this.thisClient is null || this.thisSession is null)
+                return;
+
+            var window = new UnusedFilesWindow();
+            window.Initialize(this.thisClient, this.thisSession);
+
+            await window.ShowDialog(this);
+        }
+
+        // ###########################################################################################
+        // Opens the administrator's "Reviewers" window over this one. Modal, so the queue cannot be
+        // acted on while pools are being changed under it; the queue is refreshed afterwards,
+        // because assigning a reviewer to the administrator's own account changes nothing but
+        // assigning somebody ELSE may have been prompted by a submission still on screen.
+        // ###########################################################################################
+        private async void OnReviewersClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (this.thisClient is null || this.thisSession is null)
+                return;
+
+            var window = new ReviewersWindow();
+            window.Initialize(this.thisClient, this.thisSession);
+
+            await window.ShowDialog(this);
+            await this.RefreshQueueAsync();
         }
 
         // ###########################################################################################
@@ -593,7 +648,8 @@ namespace CRT.Review
                 headline.Text = string.Empty;
 
                 this.thisSelectedId = null;
-                this.ShowDecisionPanel(visible: false, canPublish: false);
+                this.ShowDecisionPanel(visible: false, canPublish: false, approval: null);
+                this.ShowRemovalNote(null);
                 return;
             }
 
@@ -626,8 +682,16 @@ namespace CRT.Review
             // *** canPublish COMES FROM THE SERVER, never from anything this app worked out. ***
             // It is the same answer the server will enforce when the button is pressed, so the
             // screen cannot promise something the API then refuses.
-            this.ShowDecisionPanel(visible: true, canPublish: detail.CanPublish);
+            this.ShowDecisionPanel(visible: true, canPublish: detail.CanPublish, approval: detail.Approval);
             this.ShowDecisionMessage(null, isError: false);
+            this.ShowRemovalNote(detail.Removals);
+
+            if (this.FindControl<TextBlock>("AmendmentText") is TextBlock amended)
+            {
+                string? line = Handlers.ReviewTableWording.AmendedLine(detail.Amendment);
+                amended.Text = line ?? string.Empty;
+                amended.IsVisible = line is not null;
+            }
 
             if (detail.Changes is null)
             {
@@ -665,9 +729,93 @@ namespace CRT.Review
             // The pictures go LAST because they are the tallest thing on the panel; a reviewer
             // scrolling past a screen of images to reach a one-line finding would miss it. They
             // arrive asynchronously - see LoadImageAsync.
+            // EVERY file that would change on the server, written out, BEFORE any picture - the
+            // pictures cover images only, and a file that cannot be drawn must still be seen.
+            // (security review, 2026-09-25)
+            this.ShowFileChanges(detail);
             this.ShowScopeSettingChanges(detail);
             this.ShowMovedHighlights(detail);
             this.ShowImagePairs(detail);
+        }
+
+        // ###########################################################################################
+        // The complete written list of files this submission changes on the server.
+        //
+        // *** NOT ONLY IMAGES. *** The picture panel below draws what it can decode; a PDF, a text
+        // file or anything else used to appear nowhere at all, so it was approved unseen. What each
+        // line says, and which warnings it carries, is ReviewFileComparison's decision - tested
+        // there. This only lays the lines out.
+        // ###########################################################################################
+        private void ShowFileChanges(ReviewSubmissionDetail detail)
+        {
+            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
+
+            if (sections is null)
+                return;
+
+            IReadOnlyList<ReviewFileLine> lines = ReviewFileComparison.Plan(detail.SubmittedFiles, detail.PublishedFiles, detail.Removals);
+
+            if (lines.Count == 0)
+                return;
+
+            sections.Children.Add(new TextBlock
+            {
+                Text = lines.Count == 1 ? "1 file changes on the server" : $"{lines.Count} files change on the server",
+                FontWeight = FontWeight.SemiBold,
+                Margin = new Avalonia.Thickness(0, 16, 0, 0)
+            });
+
+            // What publishing removes - or that it removes nothing, or why it cannot tell. From the
+            // server's own list, the one the approval sends back. (2026-09-25)
+            string? removals = Handlers.FileRemovalWording.Headline(detail.Removals, "the BETA data");
+
+            if (removals is not null)
+            {
+                bool any = detail.Removals!.Files.Count > 0;
+
+                var headline = new TextBlock
+                {
+                    Text = removals,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Avalonia.Thickness(12, 4, 0, 0),
+                    FontWeight = any ? FontWeight.SemiBold : FontWeight.Normal
+                };
+
+                if (any)
+                    headline.Foreground = Brushes.IndianRed;
+
+                sections.Children.Add(headline);
+            }
+
+            foreach (ReviewFileLine line in lines)
+            {
+                sections.Children.Add(new TextBlock
+                {
+                    Text = ReviewFileComparison.Describe(line),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Avalonia.Thickness(12, 4, 0, 0),
+                    FontWeight = line.Change == ReviewFileChange.Removed ? FontWeight.SemiBold : FontWeight.Normal,
+                    Foreground = line.Change switch
+                    {
+                        ReviewFileChange.Removed => Brushes.IndianRed,
+                        ReviewFileChange.NoLongerUsed => Brushes.Gray,
+                        ReviewFileChange.Added => Brushes.SeaGreen,
+                        _ => Brushes.SteelBlue
+                    }
+                });
+
+                foreach (string warning in ReviewFileComparison.Warnings(line))
+                {
+                    sections.Children.Add(new TextBlock
+                    {
+                        Text = warning,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness(28, 0, 0, 0),
+                        Foreground = Brushes.DarkOrange,
+                        FontWeight = FontWeight.SemiBold
+                    });
+                }
+            }
         }
 
         // ###########################################################################################
@@ -1163,6 +1311,34 @@ namespace CRT.Review
         private async void OnApproveClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
             await this.DecideAsync(ReviewDecisionKind.Approve);
 
+        // ###########################################################################################
+        // "View in table format" (2026-09-25): the submission's rows in the shared table editor.
+        // Modal, so the decision buttons cannot act on a submission while it is being changed; when
+        // a change was saved the submission is loaded again - its summary, the files it removes and
+        // who must still approve all follow the changed content.
+        // ###########################################################################################
+        private async void OnViewTableClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (this.thisClient is null || this.thisSession is null || this.thisSelectedId is null)
+                return;
+
+            ReviewQueueRow? row = this.thisQueue.FirstOrDefault(candidate => candidate.Id == this.thisSelectedId.Value);
+
+            if (row is null)
+                return;
+
+            var window = new ReviewTableWindow();
+            window.Initialize(this.thisClient, this.thisSession, row);
+
+            await window.ShowDialog(this);
+
+            if (window.WasAmended)
+            {
+                await this.RefreshQueueAsync();
+                await this.LoadSubmissionAsync(row);
+            }
+        }
+
         private async void OnRejectClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
             await this.DecideAsync(ReviewDecisionKind.Reject);
 
@@ -1208,7 +1384,7 @@ namespace CRT.Review
                 ReviewApiResult<ReviewDecisionResult> result = kind switch
                 {
                     ReviewDecisionKind.Approve =>
-                        await this.thisClient.ApproveAsync(this.thisSession, id),
+                        await this.thisClient.ApproveAsync(this.thisSession, id, this.thisShownRemovals),
                     ReviewDecisionKind.Reject =>
                         await this.thisClient.RejectAsync(this.thisSession, id, comment),
                     _ =>
@@ -1247,8 +1423,10 @@ namespace CRT.Review
             {
                 var button = this.FindControl<Button>(name);
 
+                // Approve comes back on only if this account may still approve - see
+                // thisApproveAllowed.
                 if (button is not null)
-                    button.IsEnabled = enabled;
+                    button.IsEnabled = enabled && (name != "ApproveButton" || this.thisApproveAllowed);
             }
         }
 
@@ -1267,31 +1445,71 @@ namespace CRT.Review
         // ###########################################################################################
         // Shows or hides the decision bar, and says whether this account may publish.
         //
-        // *** THE APPROVE BUTTON IS DISABLED RATHER THAN HIDDEN for a reviewer who may not
-        // publish. *** A missing button reads as a broken screen; a disabled one beside a sentence
-        // saying why tells them to ask for the role. The server enforces it regardless - this is
-        // explanation, never enforcement.
+        // *** THE APPROVE BUTTON IS DISABLED RATHER THAN HIDDEN for an account that may not
+        // publish this submission. *** Since Phase 6 that should not happen - the queue is already
+        // filtered to what the account may decide - but an older server, or a pool changed while
+        // the queue was open, can still answer no. A missing button reads as a broken screen; a
+        // disabled one beside a sentence saying why does not. The server enforces it regardless -
+        // this is explanation, never enforcement.
         // ###########################################################################################
-        private void ShowDecisionPanel(bool visible, bool canPublish)
+        private void ShowDecisionPanel(bool visible, bool canPublish, ApprovalStatus? approval)
         {
             var panel = this.FindControl<StackPanel>("DecisionPanel");
 
             if (panel is not null)
                 panel.IsVisible = visible;
 
+            // The Approve button says what pressing it does - publish, or record one of the two
+            // approvals a shared-file change needs - and is off when this account's part is done.
+            // All from the server's ApprovalStatus; the server enforces it regardless.
+            this.thisApproveAllowed = canPublish && Handlers.ApprovalWording.CanApprove(approval);
+
             var approve = this.FindControl<Button>("ApproveButton");
 
             if (approve is not null)
             {
-                approve.IsEnabled = canPublish;
+                approve.IsEnabled = this.thisApproveAllowed;
+                approve.Content = Handlers.ApprovalWording.ApproveButton(approval, "BETA");
 
                 ToolTip.SetTip(
                     approve,
                     canPublish
-                        ? "Publishes this submission into the data tree. This cannot be undone."
-                        : "Only an administrator can publish. Ask one to approve this.");
+                        ? "Publishes this submission into the BETA data - once every approval it needs is given. Everyone gets it once it is published from Production. This cannot be undone."
+                        : "This account is not a reviewer of this system. Ask the administrator.");
+            }
+
+            var status = this.FindControl<TextBlock>("ApprovalStatusText");
+
+            if (status is not null)
+            {
+                string? line = Handlers.ApprovalWording.StatusLine(approval);
+                status.Text = line ?? string.Empty;
+                status.IsVisible = visible && line is not null;
             }
         }
+
+        // ###########################################################################################
+        // The files approving the submission on screen would remove, as the server listed them -
+        // said beside the button and sent back with the approval, so what goes is what was shown.
+        // ###########################################################################################
+        private void ShowRemovalNote(FileRemovalPreview? removals)
+        {
+            this.thisShownRemovals = removals?.Files ?? [];
+
+            if (this.FindControl<TextBlock>("RemovalStatusText") is TextBlock note)
+            {
+                string? text = Handlers.FileRemovalWording.ApproveNote(removals);
+                note.Text = text ?? string.Empty;
+                note.IsVisible = text is not null;
+            }
+        }
+
+        private IReadOnlyList<string> thisShownRemovals = [];
+
+        // Whether the Approve button may be on for the submission on screen - re-applied after a
+        // decision re-enables the buttons, so it never comes back on for an account whose part of
+        // a two-person approval is already done.
+        private bool thisApproveAllowed;
 
         private void ShowHeadline(string text)
         {

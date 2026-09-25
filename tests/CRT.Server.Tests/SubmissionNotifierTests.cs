@@ -47,32 +47,77 @@ namespace CRT.Server.Tests
 
             return (EmailMessage?)method!.Invoke(
                 null,
-                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment]);
+                // The last argument is amendedByReviewer (2026-09-25) - false, a submission nobody changed.
+                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment, false]);
         }
 
         // ---------------------------------------------------------------- which mail, if any
 
-        [Theory]
-        [InlineData("published")]
-        [InlineData("merged")]
-        public async Task A_published_submission_is_told_it_is_in(string state)
+        // ###########################################################################################
+        // *** TWO STAGES, TWO MAILS (2026-09-25). *** "merged" is the approval, which writes the
+        // BETA data - "published to the BETA source". "published" is its board reaching production
+        // - "published to the source". The first must say BETA: their own data (on the ordinary
+        // source) will not have it for days.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_approved_submission_is_told_it_was_published_to_the_BETA_SOURCE()
         {
             var mailer = new FakeEmailSender();
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
                 SubmissionNotifierTests.SystemName,
-                state,
+                "merged",
                 reviewerComment: null);
 
             EmailMessage message = Assert.Single(mailer.Sent);
 
             Assert.Equal(SubmissionNotifierTests.Contributor, message.ToAddress);
-            Assert.Contains("published", message.Subject, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("BETA source", message.Subject, StringComparison.Ordinal);
+            Assert.Contains("BETA source", message.Body, StringComparison.Ordinal);
 
             // The board has to be named: a contributor who sent something three weeks ago cannot
             // act on "your contribution was accepted".
             Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_submission_whose_board_reached_PRODUCTION_is_told_it_is_live()
+        {
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
+                SubmissionNotifierTests.Contributor,
+                SubmissionNotifierTests.SystemName,
+                "published",
+                reviewerComment: null);
+
+            EmailMessage message = Assert.Single(mailer.Sent);
+
+            Assert.Contains("published to the source", message.Subject, StringComparison.Ordinal);
+            Assert.DoesNotContain("BETA", message.Subject, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_administrators_are_told_when_a_reviewer_publishes_to_production()
+        {
+            // The stand-in for the administrator feed: with no second factor on a reviewer's
+            // account, an unexpected production publish must be noticed.
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyProductionPublishAsync(
+                ["admin@example.com", "Admin@example.com", null],
+                SubmissionNotifierTests.SystemName,
+                "Anna (anna@example.com)",
+                "2026-September-25",
+                3);
+
+            EmailMessage message = Assert.Single(mailer.Sent);
+            Assert.Equal("admin@example.com", message.ToAddress);
+            Assert.Contains("Anna (anna@example.com)", message.Body, StringComparison.Ordinal);
+            Assert.Contains("production", message.Subject, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("3 file(s)", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -118,6 +163,59 @@ namespace CRT.Server.Tests
             // This is the one outcome where the contributor has to act, so the mail has to point
             // them at where they act.
             Assert.Contains("Drafts tab", message.Body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ---------------------------------------------------------------- telling the reviewers
+
+        [Fact]
+        public async Task Every_reviewer_is_told_once_and_a_blank_or_repeated_address_is_dropped()
+        {
+            // A reviewer who is also listed twice - or an administrator who is both - hears once.
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyReviewersAsync(
+                ["anna@example.com", " ", null, "Anna@Example.com", "bob@example.com"],
+                SubmissionNotifierTests.SystemName,
+                42,
+                "Corrected R12.");
+
+            Assert.Equal(["anna@example.com", "bob@example.com"], mailer.Sent.Select(message => message.ToAddress));
+
+            EmailMessage first = mailer.Sent[0];
+            Assert.Contains("#42", first.Body, StringComparison.Ordinal);
+            Assert.Contains("Corrected R12.", first.Body, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.SystemName, first.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_mailer_that_throws_does_not_stop_the_other_reviewers_being_told()
+        {
+            // The submission is already queued; one dead address must not silence the rest, and
+            // nothing may escape to the contributor's finalise request.
+            var mailer = new ThrowingOnceEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyReviewersAsync(
+                ["first@example.com", "second@example.com"],
+                SubmissionNotifierTests.SystemName,
+                7,
+                null);
+
+            Assert.Equal(["first@example.com", "second@example.com"], mailer.Attempted);
+        }
+
+        private sealed class ThrowingOnceEmailSender : IEmailSender
+        {
+            public List<string> Attempted { get; } = [];
+
+            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+            {
+                this.Attempted.Add(message.ToAddress);
+
+                if (this.Attempted.Count == 1)
+                    throw new InvalidOperationException("SMTP is down.");
+
+                return Task.CompletedTask;
+            }
         }
 
         // ###########################################################################################

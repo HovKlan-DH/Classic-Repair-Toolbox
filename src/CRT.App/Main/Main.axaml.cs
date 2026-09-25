@@ -471,10 +471,11 @@ namespace CRT
                 // sits after the awaited StartBackgroundSyncAsync.
                 //
                 // *** onFinished, NOT onChanged (code review, 2026-09-25). *** It used to run only when
-                // a receipt MOVED during this launch. A receipt stored as "merged" by an earlier launch
-                // never moves again, so a draft whose synced board arrived one launch late was never
-                // retired. Retirement depends on a state, so it runs after every check, whatever it
-                // found - it costs nothing when no receipt is published.
+                // a receipt MOVED during this launch, and a receipt that had already reached its last
+                // state by an earlier launch never moves again - so a draft whose synced board
+                // arrived one launch late was never retired. Retirement depends on a state, so it
+                // runs after every check, whatever it found - it costs nothing when no receipt is
+                // published.
                 // ###########################################################################################
                 _ = SubmissionStatusRefresh.RefreshQuietlyAsync(
                     new SubmissionClient().GetStatusAsync,
@@ -772,24 +773,51 @@ namespace CRT
                 string dataRoot = DataManager.DataRoot;
                 string draftsRoot = DraftManager.DraftsRoot;
 
+                // Copied here, on the UI thread: the search runs on the pool. A receipt names its
+                // system by id, and these are what that id is matched against - the PUBLISHED boards
+                // CRT lists, not draft-only systems: a draft is only retired against a published
+                // board the contributor can open instead (see DraftRetirement's header).
+                List<string> excelDataFiles = DataManager.HardwareBoards
+                    .Where(entry => !entry.IsDraftOnly)
+                    .Select(entry => entry.ExcelDataFile)
+                    .Where(file => !string.IsNullOrWhiteSpace(file))
+                    .ToList();
+
+                // Which drafts are draft-only systems: retiring one removes a whole entry from the
+                // hardware and board lists, not just a draft.
+                var draftOnly = new HashSet<string>(
+                    DataManager.HardwareBoards.Where(entry => entry.IsDraftOnly).Select(entry => entry.ExcelDataFile),
+                    StringComparer.OrdinalIgnoreCase);
+
                 IReadOnlyList<RetirableDraft> candidates = await PublishedDraftRetirer.FindAsync(
-                    receipts,
-                    systemId => DraftStatusReader.Resolve(dataRoot, draftsRoot, systemId));
+                    receipts, dataRoot, draftsRoot, excelDataFiles);
 
                 if (candidates.Count > 0)
                 {
                     DraftRetirementOutcome outcome = PublishedDraftRetirer.Retire(
                         candidates,
-                        isInUse: systemId => this.TabDrafts.HasUnsavedTableEditsFor(systemId),
-                        discard: systemId =>
+                        // Each draft is named by its WORKBOOK path (RetirableDraft.ExcelDataFile),
+                        // never by the receipt's system id - passing the id here is the mix-up that
+                        // kept every published draft on screen until 2026-09-25.
+                        isInUse: excelDataFile => this.TabDrafts.HasUnsavedTableEditsFor(excelDataFile),
+                        discard: excelDataFile =>
                         {
                             // A table open on this draft with nothing unsaved just closes - it would
                             // otherwise sit on a folder that no longer exists.
-                            this.TabDrafts.CloseTableIfOpenFor(systemId);
+                            this.TabDrafts.CloseTableIfOpenFor(excelDataFile);
 
-                            return DraftManager.DiscardDraft(systemId);
+                            return DraftManager.DiscardDraft(excelDataFile);
                         },
                         afterDiscard: DataManager.ClearBoardCache);
+
+                    // A NEW system's draft retired (2026-09-25): its draft-only entry is gone, and the
+                    // published board the master lists takes its place in the lists - the same
+                    // refresh a manual discard does (TabDrafts.DiscardConfirmed).
+                    if (outcome.Touched.Any(draftOnly.Contains))
+                    {
+                        DataManager.RefreshDraftOnlySystems();
+                        this.RefreshHardwareAndBoardSelectionsAfterDraftChange();
+                    }
 
                     HardwareBoardEntry? current = this.GetCurrentBoardEntry();
 
