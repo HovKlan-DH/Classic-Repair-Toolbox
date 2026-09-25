@@ -343,6 +343,9 @@ namespace CRT
                     negotiation.SubmissionId, negotiation.UploadToken, hash, absolute,
                     progress, overall, token);
 
+                // The bytes as well as the count - without them every file began again from
+                // "0 bytes" and the bar never moved past the file in hand.
+                overall = overall.AfterFileSent(file.SizeBytes);
                 done++;
             }
 

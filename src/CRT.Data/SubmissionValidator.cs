@@ -146,6 +146,62 @@ namespace Handlers.DataHandling
                     "and board it names. This is a fault in the submitting application."));
             }
 
+            // ###########################################################################################
+            // *** THE PARTS MUST ALREADY BE IN THEIR CANONICAL FORM (security review, 2026-09-25). ***
+            //
+            // BuildSystemId trims and collapses whitespace before joining, so "Commodore" followed
+            // by a thousand spaces produced a VALID, MATCHING id - and the raw thousand-character
+            // part then went into systems.manufacturer, a VARCHAR(100), failing the insert with a
+            // 500. The client builds these from folder names, which are already canonical, so
+            // requiring equality refuses nothing real.
+            // ###########################################################################################
+            if (!SubmissionValidator.IsCanonical(manifest.Manufacturer) ||
+                !SubmissionValidator.IsCanonical(manifest.Hardware) ||
+                !SubmissionValidator.IsCanonical(manifest.Board))
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "identity.parts_not_canonical",
+                    string.Empty,
+                    "The manufacturer, hardware or board name carries extra spaces. " +
+                    "This is a fault in the submitting application rather than in your data."));
+            }
+
+            // ###########################################################################################
+            // *** A BOARD MAY NOT SIT WHERE THE SHARED FOLDERS DO. *** A manufacturer called
+            // "Generic shared files", or hardware called "Shared files", would make this system's
+            // own folder the same place as a shared one - and a submission may change its own folder
+            // freely, so that would turn the shared-folder rules in SubmissionFileScope inside out.
+            //
+            // EITHER name in EITHER position, by the one rule DataTreeUsage and the reviewer list
+            // also skip by: a board they skip must never be publishable (code review, 2026-09-25).
+            // ###########################################################################################
+            if (SubmissionFileScopes.IsSharedFolderName(manifest.Manufacturer) ||
+                SubmissionFileScopes.IsSharedFolderName(manifest.Hardware))
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "identity.reserved_folder",
+                    manifest.SystemId,
+                    $"A board cannot be named [{manifest.SystemId}]: that is where the shared files live."));
+            }
+
+            if ((manifest.BaseRevision?.Length ?? 0) > SubmissionFormat.MaximumRevisionLength ||
+                (manifest.Rows?.RevisionDate?.Length ?? 0) > SubmissionFormat.MaximumRevisionLength)
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "revision.too_long",
+                    string.Empty,
+                    $"The board's revision date is longer than {SubmissionFormat.MaximumRevisionLength} characters."));
+            }
+
+            if ((manifest.Summary?.Length ?? 0) > SubmissionFormat.MaximumSummaryLength)
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "summary.too_long",
+                    string.Empty,
+                    $"The description of what changed is longer than {SubmissionFormat.MaximumSummaryLength} " +
+                    "characters. Shorten it - the reviewer sees the full list of changes anyway."));
+            }
+
             if (string.IsNullOrWhiteSpace(manifest.Hardware))
             {
                 findings.Add(SubmissionValidator.Error(
@@ -570,6 +626,12 @@ namespace Handlers.DataHandling
             return double.TryParse(
                 value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
         }
+
+        // An empty part is canonical here - "missing" is its own finding, and reporting it twice
+        // under two codes helps nobody.
+        private static bool IsCanonical(string? part) =>
+            string.IsNullOrEmpty(part) ||
+            string.Equals(part, NewSystemIdentity.SanitizePathSegment(part), StringComparison.Ordinal);
 
         private static ValidationFinding Error(string code, string subject, string message) =>
             new() { Severity = ValidationSeverity.Error, Code = code, Subject = subject, Message = message };

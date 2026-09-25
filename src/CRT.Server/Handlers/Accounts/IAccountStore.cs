@@ -82,6 +82,40 @@ namespace CRT.Server.Handlers.Accounts
         Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // -----------------------------------------------------------------------------------
+        // Reviewer pools (Phase 6 roles, 2026-09-25). One row per (system, account) in the
+        // `reviewers` table; being in a pool is the whole of what makes an account a reviewer.
+        // Read on EVERY review request (ReviewEndpoints.AuthoriseAsync), which is what makes
+        // removal take effect on the next call rather than at next login.
+        // -----------------------------------------------------------------------------------
+
+        // The system ids this account reviews. Empty for an ordinary account, and for an
+        // administrator too - the administrator is in every pool by definition and never needs
+        // rows.
+        Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default);
+
+        // Who reviews this system, with the display names system.json mirrors and the addresses a
+        // new-submission mail goes to.
+        Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // Every pool row there is, for the administrator's overview. Small by nature - a handful
+        // of people across a few dozen systems.
+        Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default);
+
+        // Idempotent: adding somebody already in the pool changes nothing.
+        Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // Idempotent: removing somebody not in the pool changes nothing.
+        Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default);
+
+        // Every account, for the administrator to pick a reviewer from. Bounded, because a table
+        // that has somehow grown large is a sign of abuse to look into, not a list to page.
+        Task<IReadOnlyList<AccountRecord>> ListAccountsAsync(int limit, CancellationToken cancellationToken = default);
+
+        // Where a submission goes when no reviewer is assigned to its system, or it changes
+        // shared files.
+        Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default);
+
+        // -----------------------------------------------------------------------------------
         // Rate limiting and audit.
         // -----------------------------------------------------------------------------------
 
@@ -132,10 +166,27 @@ namespace CRT.Server.Handlers.Accounts
         string DisplayName,
         bool IsVerified,
         bool IsAdministrator,
-        bool IsReviewer,
         bool IsLocked,
         DateTimeOffset CreatedUtc,
         DateTimeOffset? LastLoginUtc);
+
+    // ###########################################################################################
+    // One pool row, joined to the account it names. SystemId is present so a whole-table listing
+    // can be grouped by system without a second lookup.
+    //
+    // The account's three flags travel with it (code review, 2026-09-25): a pool row can outlive
+    // the account's fitness to review - the account made administrator by hand, locked, or never
+    // verified - and "does this board have a reviewer who can approve?" has to see that
+    // (ReviewAuthority.CanGiveReviewerApproval).
+    // ###########################################################################################
+    public sealed record ReviewerRecord(
+        string SystemId,
+        long AccountId,
+        string DisplayName,
+        string Email,
+        bool IsAdministrator = false,
+        bool IsVerified = true,
+        bool IsLocked = false);
 
     public sealed record NewAccount(
         string Email,

@@ -155,6 +155,30 @@ public sealed class ReviewApiParserTests
     }
 
     [Fact]
+    public void The_queue_says_whether_the_account_is_an_ADMINISTRATOR_and_defaults_to_not()
+    {
+        // What shows the "Reviewers" button. Defaulting the other way would offer an
+        // administrator's screen to a reviewer - the server refuses it, but a button that fails
+        // is its own kind of wrong. An older server that never sends the field reads as "not".
+        Assert.True(ReviewApiParser.ParseQueue("""{"isAdministrator":true,"submissions":[]}""")!.IsAdministrator);
+        Assert.False(ReviewApiParser.ParseQueue("""{"isAdministrator":false,"submissions":[]}""")!.IsAdministrator);
+        Assert.False(ReviewApiParser.ParseQueue("""{"submissions":[]}""")!.IsAdministrator);
+    }
+
+    [Fact]
+    public void A_row_says_whether_it_changes_shared_files_and_defaults_to_not()
+    {
+        ReviewQueueResponse? queue = ReviewApiParser.ParseQueue("""
+            {"submissions":[
+                {"id":1,"systemId":"A/B/C","state":"pending","touchesSharedFiles":true},
+                {"id":2,"systemId":"A/B/C","state":"pending"}]}
+            """);
+
+        Assert.True(queue!.Submissions[0].TouchesSharedFiles);
+        Assert.False(queue.Submissions[1].TouchesSharedFiles);
+    }
+
+    [Fact]
     public void A_missing_canPublish_defaults_to_FALSE()
     {
         // Defaulting the other way would have the app offer a publish action to somebody the

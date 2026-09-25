@@ -103,7 +103,7 @@ public sealed class NewSystemMaintainerWindowTests
                 "\n",
                 window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty));
 
-            Assert.Contains("registered as its system maintainer", all, StringComparison.Ordinal);
+            Assert.Contains("registered as its reviewer", all, StringComparison.Ordinal);
             Assert.Contains("reviewing the changes other members of the community submit", all, StringComparison.Ordinal);
             Assert.Contains("can only be created if you accept this", all, StringComparison.Ordinal);
         });

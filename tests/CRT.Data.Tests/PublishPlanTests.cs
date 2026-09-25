@@ -18,14 +18,32 @@ public sealed class PublishPlanTests
     private const string SystemFolder = "/srv/beta/Commodore/C64/250407";
     private const string Stem = "Data C64 250407";
 
-    private static SubmissionManifest Manifest(params SubmissionFile[] files) => new()
+    // The board's own folder, relative to the data root - the shape every real submitted path has.
+    private const string Own = "Commodore/C64/250407/";
+
+    // ###########################################################################################
+    // A manifest whose ROWS cite every file it carries (security review, 2026-09-25).
+    //
+    // A publish now refuses a file no row uses - such a file is shown nowhere and was approved
+    // unseen - so a fixture carrying files and no rows no longer describes a real submission. Each
+    // file is cited as a board-level file, the simplest row that can name any file type.
+    // ###########################################################################################
+    private static SubmissionManifest Manifest(params SubmissionFile[] files)
     {
-        SystemId = "Commodore/C64/250407",
-        Manufacturer = "Commodore",
-        Hardware = "C64",
-        Board = "250407",
-        Files = [.. files]
-    };
+        var manifest = new SubmissionManifest
+        {
+            SystemId = "Commodore/C64/250407",
+            Manufacturer = "Commodore",
+            Hardware = "C64",
+            Board = "250407",
+            Files = [.. files]
+        };
+
+        foreach (SubmissionFile file in files)
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = file.Path });
+
+        return manifest;
+    }
 
     private static SubmissionFile File(string path, string? hash = null, long size = 1024) => new()
     {
@@ -38,7 +56,8 @@ public sealed class PublishPlanTests
         SubmissionManifest manifest,
         IEnumerable<string>? existing = null,
         string stem = PublishPlanTests.Stem,
-        string revision = "r2") =>
+        string revision = "r2",
+        PublishedTreeView? tree = null) =>
         PublishPlan.Build(
             PublishPlanTests.Root,
             PublishPlanTests.SystemFolder,
@@ -48,7 +67,8 @@ public sealed class PublishPlanTests
             revision,
             new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero),
             ["Someone"],
-            SystemDescriptorRules.SystemOrigin.Contributed);
+            SystemDescriptorRules.SystemOrigin.Contributed,
+            tree);
 
     private static bool HasCode(PublishPlanResult result, string code) =>
         result.Problems.Any(problem => problem.Code == code);
@@ -152,7 +172,7 @@ public sealed class PublishPlanTests
         // the unversioned original that serves every pre-2.0.0 build, and the write would succeed
         // silently.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Data C64 250407.xlsx")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Data C64 250407.xlsx")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.workbook-upload"));
@@ -164,7 +184,7 @@ public sealed class PublishPlanTests
         // The rule is about the extension anywhere in the submission, not about a name matching a
         // generation - see PublishPlan.LooksLikeWorkbook for why the broad rule was chosen.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Files/notes.xlsx")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Files/notes.xlsx")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.workbook-upload"));
@@ -196,7 +216,7 @@ public sealed class PublishPlanTests
         // The hash is how the blob is found. Without a usable one there is nothing to copy, and
         // "content-addressed" stops meaning anything.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/a.png", hash: "not-a-hash")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", hash: "not-a-hash")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.hash-invalid"));
@@ -206,8 +226,8 @@ public sealed class PublishPlanTests
     public void The_same_path_twice_is_refused()
     {
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Images/a.png"),
-            PublishPlanTests.File("Images/a.png")));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png"),
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.duplicate"));
@@ -220,8 +240,8 @@ public sealed class PublishPlanTests
         // tree would be un-syncable for much of the audience. The message must name both
         // spellings - "already exists" about a file you can plainly see is baffling.
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Images/U8.png"),
-            PublishPlanTests.File("Images/u8.PNG")));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/U8.png"),
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.PNG")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.case-collision"));
@@ -379,17 +399,17 @@ public sealed class PublishPlanTests
         // directory layout into a hash every client compares against would make every client
         // permanently out of date.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
         PlannedFile file = Assert.Single(result.Plan!.Files);
-        Assert.Equal("Images/u8.png", file.RelativePath);
+        Assert.Equal(PublishPlanTests.Own + "Images/u8.png", file.RelativePath);
     }
 
     [Fact]
     public void The_descriptor_carries_the_systems_identity_and_the_revision()
     {
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
         SystemDescriptor descriptor = result.Plan!.Descriptor;
 
@@ -409,12 +429,12 @@ public sealed class PublishPlanTests
         // A directory walk or a database query returns whatever order it likes; two machines
         // hashing the same system must agree, or every client reads as permanently stale.
         PublishPlanResult forwards = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Images/a.png", new string('1', 64)),
-            PublishPlanTests.File("Images/b.png", new string('2', 64))));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64)),
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64))));
 
         PublishPlanResult backwards = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Images/b.png", new string('2', 64)),
-            PublishPlanTests.File("Images/a.png", new string('1', 64))));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64)),
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64))));
 
         Assert.Equal(forwards.Plan!.Descriptor.ContentHash, backwards.Plan!.Descriptor.ContentHash);
     }
@@ -425,10 +445,10 @@ public sealed class PublishPlanTests
         // Anti-vacuity for the test above: if the hash ignored its inputs, the ordering test
         // would pass while proving nothing.
         PublishPlanResult before = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/a.png", new string('1', 64))));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64))));
 
         PublishPlanResult after = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/a.png", new string('2', 64))));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('2', 64))));
 
         Assert.NotEqual(before.Plan!.Descriptor.ContentHash, after.Plan!.Descriptor.ContentHash);
     }
@@ -438,11 +458,11 @@ public sealed class PublishPlanTests
     {
         // A metadata-only republish still has to be picked up by clients.
         PublishPlanResult r2 = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/a.png")),
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")),
             revision: "r2");
 
         PublishPlanResult r3 = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/a.png")),
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")),
             revision: "r3");
 
         Assert.NotEqual(r2.Plan!.Descriptor.ContentHash, r3.Plan!.Descriptor.ContentHash);
@@ -464,8 +484,8 @@ public sealed class PublishPlanTests
     public void The_total_bytes_are_summed_across_the_planned_files()
     {
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Images/a.png", new string('1', 64), size: 100),
-            PublishPlanTests.File("Images/b.png", new string('2', 64), size: 250)));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64), size: 100),
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64), size: 250)));
 
         Assert.Equal(350, result.Plan!.TotalFileBytes);
     }
@@ -477,7 +497,7 @@ public sealed class PublishPlanTests
         // contribution stops happening.
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
             PublishPlanTests.File("../escape.png"),
-            PublishPlanTests.File("Images/b.png", hash: "nope")));
+            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", hash: "nope")));
 
         Assert.False(result.IsPlanned);
         Assert.Equal(2, result.Problems.Count);
@@ -542,7 +562,7 @@ public sealed class PublishPlanTests
     public void Folding_the_workbook_in_leaves_every_other_descriptor_field_alone()
     {
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
         SystemDescriptor planned = result.Plan!.Descriptor;
         SystemDescriptor final = result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
@@ -563,7 +583,7 @@ public sealed class PublishPlanTests
         // SystemDescriptor is a mutable class, so a plan that quietly changed under a caller
         // holding it would defeat the whole "decide it all up front" design.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png")));
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
         string before = result.Plan!.Descriptor.ContentHash;
         result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
@@ -604,5 +624,230 @@ public sealed class PublishPlanTests
             Assert.NotEmpty(problem.Message);
             Assert.Equal(ValidationSeverity.Error, problem.Severity);
         }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // WHICH files, and WHOSE (security review, 2026-09-25)
+    //
+    // The same rules SubmissionFileRules applies at create, applied again at the last gate before
+    // an irreversible write - a submission queued weeks ago, or by an older build, must not reach
+    // the tree on the strength of a check that ran then.
+    // -----------------------------------------------------------------------------------
+
+    // A tree holding the given files (relative path -> hash). Folders are derived from the paths.
+    private static PublishedTreeView Tree(params (string Path, string Hash)[] files)
+    {
+        var hashes = files.ToDictionary(file => file.Path, file => file.Hash, StringComparer.Ordinal);
+
+        return new PublishedTreeView(
+            path => hashes.TryGetValue(path, out string? hash) ? hash : null,
+            folder =>
+            {
+                string prefix = folder.Length == 0 ? string.Empty : folder + "/";
+
+                List<string> entries = hashes.Keys
+                    .Where(path => path.StartsWith(prefix, StringComparison.Ordinal))
+                    .Select(path => path[prefix.Length..].Split('/')[0])
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                return entries.Count == 0 && folder.Length > 0 ? null : entries;
+            });
+    }
+
+    [Fact]
+    public void A_file_NO_ROW_USES_is_refused()
+    {
+        // Nothing would show it, so no reviewer could have seen it - which is exactly how a file
+        // that should never be published gets published.
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "a.png"));
+        manifest.Rows.BoardLocalFiles.Clear();
+
+        PublishPlanResult result = PublishPlanTests.Build(manifest);
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "file.not-used"));
+    }
+
+    [Theory]
+    [InlineData("Commodore/C64/250407/.htaccess")]
+    [InlineData("Commodore/C64/250407/run.exe")]
+    [InlineData("Commodore/C64/250407/drawing.svg")]
+    [InlineData("Commodore/C64/250407/system.json")]
+    [InlineData("Commodore/C64/250407/README")]
+    public void A_file_of_a_type_board_data_never_uses_is_refused(string path)
+    {
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File(path)));
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "file.type-refused"));
+    }
+
+    [Fact]
+    public void ANOTHER_boards_file_is_refused_when_the_tree_cannot_be_consulted()
+    {
+        // Fails CLOSED: without the tree there is no way to know the file is left unchanged.
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File("Commodore/C64/250425/Sheet1.png")));
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "file.other-board"));
+    }
+
+    [Fact]
+    public void ANOTHER_boards_file_that_would_CHANGE_is_refused()
+    {
+        // The attack this whole section exists for: a submission to one board carrying new bytes
+        // for another board's file, which the publish then copied over the real one.
+        string foreign = "Commodore/C64/250425/Sheet1.png";
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, new string('1', 64))),
+            tree: PublishPlanTests.Tree((foreign, new string('2', 64))));
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "file.other-board"));
+    }
+
+    [Fact]
+    public void ANOTHER_boards_file_cited_UNCHANGED_is_planned_but_never_written()
+    {
+        // Real data does this: the C128DCR 250477 board cites scope-baseline texts that live in
+        // the C128 310378 folder. Refusing it would make a published board unsubmittable; writing
+        // it would be pointless at best. So it is neither - but it stays part of the content.
+        string foreign = "Commodore/C128/310378/Scope baseline/notes.txt";
+        string hash = new('3', 64);
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, hash)),
+            tree: PublishPlanTests.Tree((foreign, hash)));
+
+        Assert.True(result.IsPlanned);
+        Assert.Empty(result.Plan!.Files);
+        Assert.Equal(foreign, Assert.Single(result.Plan.UnchangedFiles).RelativePath);
+    }
+
+    [Fact]
+    public void An_unchanged_foreign_file_still_counts_toward_the_content_hash()
+    {
+        // Leaving it out would make two different systems - one citing it, one not - hash alike.
+        string foreign = "Commodore/C128/310378/Scope baseline/notes.txt";
+        string hash = new('3', 64);
+        PublishedTreeView tree = PublishPlanTests.Tree((foreign, hash));
+
+        PublishPlanResult with = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, hash)), tree: tree);
+
+        PublishPlanResult without = PublishPlanTests.Build(PublishPlanTests.Manifest(), tree: tree);
+
+        Assert.NotEqual(without.Plan!.Descriptor.ContentHash, with.Plan!.Descriptor.ContentHash);
+        Assert.NotEqual(
+            without.Plan.DescriptorWithWorkbook(new string('1', 64), new string('2', 64)).ContentHash,
+            with.Plan.DescriptorWithWorkbook(new string('1', 64), new string('2', 64)).ContentHash);
+    }
+
+    // ###########################################################################################
+    // *** THE BOARD'S OWN AND SHARED FILES ARE NOT REWRITTEN WHEN NOTHING CHANGED (code review,
+    // 2026-09-25). *** A manifest lists every file the board cites - about 1,200 for the C64
+    // 250407 board - so a one-cell typo fix used to re-verify and rewrite every one of them,
+    // touching each file's modified time and making the hash caches and the checksum manifest
+    // re-hash the lot. A file already published byte-identical at the same path is left alone,
+    // exactly as another board's file already was - and stays in the content hash.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(PublishPlanTests.Own + "Images/u8.png")]
+    [InlineData("Commodore/Shared files/Component images/6526.jpg")]
+    [InlineData("Generic shared files/Component images/7805.jpg")]
+    public void A_file_already_published_byte_identical_is_planned_but_never_written(string path)
+    {
+        string hash = new('5', 64);
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(path, hash)),
+            tree: PublishPlanTests.Tree((path, hash)));
+
+        Assert.True(result.IsPlanned, string.Join(" ", result.Problems.Select(problem => problem.Message)));
+        Assert.Empty(result.Plan!.Files);
+        Assert.Equal(path, Assert.Single(result.Plan.UnchangedFiles).RelativePath);
+    }
+
+    [Fact]
+    public void A_file_whose_published_bytes_DIFFER_is_written()
+    {
+        string path = PublishPlanTests.Own + "Images/u8.png";
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(path, new string('5', 64))),
+            tree: PublishPlanTests.Tree((path, new string('6', 64))));
+
+        Assert.Equal(path, Assert.Single(result.Plan!.Files).RelativePath);
+        Assert.Empty(result.Plan.UnchangedFiles);
+    }
+
+    // Written or left alone, the file is part of what the system holds, so the content hash - what
+    // every client compares to decide whether to sync - must not depend on which it was.
+    [Fact]
+    public void Leaving_an_unchanged_file_alone_does_not_change_the_content_hash()
+    {
+        string path = PublishPlanTests.Own + "Images/u8.png";
+        string hash = new('5', 64);
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File(path, hash));
+
+        PublishPlanResult unchanged = PublishPlanTests.Build(manifest, tree: PublishPlanTests.Tree((path, hash)));
+        PublishPlanResult written = PublishPlanTests.Build(manifest, tree: PublishPlanTests.Tree());
+
+        Assert.Empty(unchanged.Plan!.Files);
+        Assert.Single(written.Plan!.Files);
+        Assert.Equal(written.Plan.Descriptor.ContentHash, unchanged.Plan.Descriptor.ContentHash);
+    }
+
+    [Fact]
+    public void A_path_differing_from_a_PUBLISHED_one_only_by_case_is_refused()
+    {
+        // Two files on the Linux server, one on every Windows and macOS client - whichever syncs
+        // last wins, so this would overwrite the published file for most users.
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "images/u8.png")),
+            tree: PublishPlanTests.Tree((PublishPlanTests.Own + "Images/u8.png", new string('4', 64))));
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "path.case-collision"));
+    }
+
+    [Fact]
+    public void A_NEW_SYSTEM_whose_folder_differs_from_a_published_one_only_by_case_is_refused()
+    {
+        // "commodore/C64/250407" beside the real "Commodore/C64/250407": on a client the two are
+        // one folder, so the "new" system would replace the real board's files there.
+        SubmissionManifest manifest = PublishPlanTests.Manifest();
+        manifest.SystemId = "commodore/C64/250407";
+        manifest.Manufacturer = "commodore";
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            manifest,
+            tree: PublishPlanTests.Tree(("Commodore/C64/250407/Sheet1.png", new string('5', 64))));
+
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "system.case-collision"));
+    }
+
+    [Fact]
+    public void An_EXACT_published_path_is_not_a_case_collision()
+    {
+        // Anti-vacuity: replacing a published file under its own spelling is the ordinary case.
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")),
+            tree: PublishPlanTests.Tree((PublishPlanTests.Own + "Images/u8.png", new string('6', 64))));
+
+        Assert.True(result.IsPlanned);
+        Assert.Single(result.Plan!.Files);
+    }
+
+    [Fact]
+    public void The_plan_carries_the_data_root_so_the_writer_can_check_for_links()
+    {
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
+
+        Assert.Equal(PublishPlanTests.Root, result.Plan!.DataRoot);
     }
 }

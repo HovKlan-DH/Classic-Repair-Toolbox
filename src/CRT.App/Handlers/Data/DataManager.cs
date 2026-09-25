@@ -81,19 +81,6 @@ namespace Handlers.DataHandling
 
         public static bool LastLoadedDraftIsNewSystem { get; private set; }
 
-        // ###########################################################################################
-        // The system.json the most recent LoadBoardDataAsync found beside the board's Excel file
-        // (Phase 4, task 7), or null when the published tree carries none.
-        //
-        // NULL IS THE NORMAL ANSWER for now: every board that shipped before descriptors existed
-        // has none, and a draft-only system has no published folder at all. Read it as "nothing
-        // extra is known about where this board came from", never as a failure.
-        //
-        // *** ITS Maintainers LIST GRANTS NOTHING. *** This file sits in the synced tree on the
-        // user's own disk, where anyone can edit it. The names are for display; authority lives in
-        // the server's maintainers table alone. See SystemDescriptorStore's header.
-        public static SystemDescriptor? LastLoadedSystemDescriptor { get; private set; }
-
         // Raised with a general status message (e.g. "Checking files...", "Sync complete")
         public static event Action<string>? StatusChanged;
 
@@ -1176,27 +1163,6 @@ namespace Handlers.DataHandling
             // the toggle on a draft-only system correctly renders as a blank board (officially, it
             // does not exist yet) rather than failing to open at all.
             bool allowMissingOfficialFile = source.IsNewSystem;
-
-            // ###########################################################################################
-            // The system's own descriptor, if the published tree carries one (Phase 4, task 7).
-            //
-            // Reported the same way LastLoadedDraftSummary above is, and for the same reason: it is
-            // information ABOUT the load that a caller may want and most callers do not, so it does
-            // not belong in BoardData's schema (which is the Excel file's shape, shared with the
-            // server) and it does not justify changing this method's return type.
-            //
-            // NULL IS THE ORDINARY CASE and always will be for a while: every board that shipped
-            // before system.json existed has no descriptor, and a draft-only system has no
-            // published folder at all. Anything reading this must treat absence as "nothing extra
-            // known", never as an error.
-            //
-            // *** READ FROM THE PUBLISHED FOLDER, NOT FROM excelPath. *** Since Phase 6 excelPath
-            // can be inside the DRAFT tree, and a draft folder carries no system.json - so reading
-            // beside the loaded workbook would report "no descriptor" for every drafted system and
-            // silently lose the published one. The descriptor describes the PUBLISHED system either
-            // way, which is exactly what a drift or submission check needs.
-            LastLoadedSystemDescriptor = SystemDescriptorStore.Read(
-                Path.GetDirectoryName(source.PublishedWorkbookPath) ?? string.Empty);
 
             // ###########################################################################################
             // No draft is passed: there is no overlay any more. The workbook chosen above IS the

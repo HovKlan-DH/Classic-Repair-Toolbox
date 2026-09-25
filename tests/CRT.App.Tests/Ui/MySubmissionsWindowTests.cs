@@ -300,6 +300,44 @@ public sealed class MySubmissionsWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // The launch check stops asking about a submission in BETA a month after its decision (code
+    // review, 2026-09-25). "Check for updates" does not - the contributor pressed it to ask, and
+    // this is how they find out a board they sent long ago has since reached the source.
+    // ###########################################################################################
+    [Fact]
+    public void Check_for_updates_still_asks_about_a_submission_long_in_BETA()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceipt old = Receipt(5, "merged");
+            SubmissionReceiptStore.Record(new SubmissionReceipt
+            {
+                SubmissionId = old.SubmissionId,
+                UploadToken = old.UploadToken,
+                SystemId = old.SystemId,
+                Summary = old.Summary,
+                SentUtc = DateTimeOffset.UtcNow.AddYears(-1),
+                DecidedUtc = DateTimeOffset.UtcNow.AddYears(-1),
+                LastKnownState = "merged"
+            });
+
+            var asked = new List<long>();
+
+            var window = new MySubmissionsWindow();
+            window.StatusLookupForTests = (id, _, _) =>
+            {
+                asked.Add(id);
+                return Task.FromResult<SubmissionStatus?>(new SubmissionStatus { Id = id, State = "published" });
+            };
+
+            window.Initialize();
+            window.RefreshForTests();
+
+            Assert.Equal(new long[] { 5 }, asked);
+        });
+    }
+
     [Fact]
     public void A_refresh_writes_the_new_state_back_and_the_row_shows_it()
     {

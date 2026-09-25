@@ -22,11 +22,16 @@ namespace CRT.Server.Handlers.Submissions
     // change, and hiding a change is the one direction this screen must never be wrong in.
     // Hashing the bytes on disk is always true.
     //
-    // THE COST IS SMALL AND MOSTLY PAID ONCE. Only files present on BOTH sides are hashed
-    // (PathsOnBothSides) - a file only the published board names is a removal and a file only the
-    // submission names is an addition, and neither needs a hash to say so. The whole C64 250407
-    // folder is 76 MB across ~1,100 files, well under a second, and the cache below keys on
-    // length plus last-write time so a reviewer refreshing the same submission pays nothing.
+    // *** EVERY SUBMITTED PATH THAT EXISTS IS HASHED, not only the ones the published board cites
+    // (security review, 2026-09-25). *** This used to hash just the paths on BOTH lists, so a file
+    // the submission would OVERWRITE but the old board never cited was reported to the reviewer as
+    // "added" - exactly backwards for the one case that matters, a submission writing over a file
+    // it has no business touching. What is on disk is the truth; the published board's list is not.
+    //
+    // THE COST IS SMALL AND MOSTLY PAID ONCE. The whole C64 250407 folder is 76 MB across ~1,100
+    // files, well under a second, and the cache below keys on length plus last-write time so a
+    // reviewer refreshing the same submission pays nothing. The same hash, taken synchronously, is
+    // what PublishedTreeProbe answers "is this file published unchanged?" with.
     //
     // CONTAINMENT IS THE SAME RULE AS EVERY OTHER PATH INTO THE TREE. The paths come from the
     // published workbook, which this service wrote, but they are still resolved through
@@ -41,28 +46,6 @@ namespace CRT.Server.Handlers.Submissions
         // cannot hand each other a hash.
         private static readonly ConcurrentDictionary<string, CachedHash> Cache =
             new(StringComparer.Ordinal);
-
-        // ###########################################################################################
-        // The published paths the submission ALSO names - the only ones whose hash decides anything.
-        //
-        // Ordinal, like every path comparison against this tree: the server's filesystem is
-        // case-sensitive, and folding case would pair two different files.
-        //
-        // PURE, so the selection is tested on its own rather than through the filesystem.
-        // ###########################################################################################
-        public static IReadOnlyList<string> PathsOnBothSides(
-            IReadOnlyList<string>? publishedPaths,
-            SubmissionManifest? manifest)
-        {
-            if (publishedPaths is null || manifest is null)
-                return [];
-
-            var submitted = new HashSet<string>(
-                manifest.Files.Select(file => file.Path),
-                StringComparer.Ordinal);
-
-            return publishedPaths.Where(submitted.Contains).ToList();
-        }
 
         // ###########################################################################################
         // Path -> lowercase hex SHA-256, for every path that resolves safely and exists.
@@ -103,6 +86,43 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
+        // The hash of ONE published file, synchronously, or null when the path does not resolve
+        // inside the tree or nothing is there. For PublishedTreeView, whose questions are asked
+        // from pure rules that cannot await.
+        //
+        // *** A SYNCHRONOUS READ, NOT AN ASYNC ONE WAITED ON (code review, 2026-09-25). *** This
+        // used to call HashAsync(...).GetAwaiter().GetResult(), parking a request thread while the
+        // async read completed on another - per shared or foreign file, during create, review,
+        // amend and both plans. Under load that starves the thread pool and every other request
+        // (sign-in, CRT's status checks at launch) queues behind it. Hashing with a plain blocking
+        // stream uses the one thread it already has. Same cache, same answer.
+        // ###########################################################################################
+        public static string? TryHash(string? dataTreeRoot, string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(dataTreeRoot))
+                return null;
+
+            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relativePath, out string resolved, out _))
+                return null;
+
+            var info = new FileInfo(resolved);
+
+            if (!info.Exists)
+                return null;
+
+            try
+            {
+                return PublishedFileHashes.Hash(info);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable is not "absent unchanged" - the caller's rule then refuses, which is
+                // the safe direction.
+                return null;
+            }
+        }
+
+        // ###########################################################################################
         // The cache check and the hash itself.
         //
         // Length AND last-write time, because either alone is fooled by an ordinary publish: a
@@ -114,12 +134,8 @@ namespace CRT.Server.Handlers.Submissions
         {
             long writeTicks = info.LastWriteTimeUtc.Ticks;
 
-            if (PublishedFileHashes.Cache.TryGetValue(info.FullName, out CachedHash? cached)
-                && cached.Length == info.Length
-                && cached.WriteTimeUtcTicks == writeTicks)
-            {
-                return cached.Sha256;
-            }
+            if (PublishedFileHashes.TryCached(info, writeTicks, out string known))
+                return known;
 
             await using var stream = new FileStream(
                 info.FullName,
@@ -131,6 +147,44 @@ namespace CRT.Server.Handlers.Submissions
 
             byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
 
+            return PublishedFileHashes.Remember(info, writeTicks, hash);
+        }
+
+        // The same, on the calling thread - for TryHash.
+        private static string Hash(FileInfo info)
+        {
+            long writeTicks = info.LastWriteTimeUtc.Ticks;
+
+            if (PublishedFileHashes.TryCached(info, writeTicks, out string known))
+                return known;
+
+            using var stream = new FileStream(
+                info.FullName,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 1 << 16,
+                useAsync: false);
+
+            return PublishedFileHashes.Remember(info, writeTicks, SHA256.HashData(stream));
+        }
+
+        private static bool TryCached(FileInfo info, long writeTicks, out string hash)
+        {
+            if (PublishedFileHashes.Cache.TryGetValue(info.FullName, out CachedHash? cached)
+                && cached.Length == info.Length
+                && cached.WriteTimeUtcTicks == writeTicks)
+            {
+                hash = cached.Sha256;
+                return true;
+            }
+
+            hash = string.Empty;
+            return false;
+        }
+
+        private static string Remember(FileInfo info, long writeTicks, byte[] hash)
+        {
             string hex = Convert.ToHexStringLower(hash);
 
             PublishedFileHashes.Cache[info.FullName] = new CachedHash(info.Length, writeTicks, hex);

@@ -227,31 +227,138 @@ namespace CRT.Server.Handlers.Email
         // a correction. Not "your contribution has been processed"; they fixed something and want
         // to know if it is in.
         // ###########################################################################################
-        public static EmailMessage SubmissionPublished(
+        public static EmailMessage SubmissionPublishedToBeta(
             string toAddress,
             string systemName,
-            string? reviewerComment)
+            string? reviewerComment,
+            bool amendedByReviewer = false)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
 
             string comment = EmailTemplates.QuotedComment(reviewerComment);
 
+            // A reviewer corrected some rows in the review application before publishing
+            // (2026-09-25). Said, so a contributor comparing the result with what they sent is not
+            // left wondering where the difference came from.
+            string amended = amendedByReviewer
+                ? "\n\nA reviewer changed some of the details before publishing them, so what is published is not\n" +
+                  $"exactly what you sent - have a look in {EmailTemplates.ProductName} once your data has updated."
+                : string.Empty;
+
+            // *** "BETA source", NOT JUST "published" (maintainer wording, 2026-09-25). *** Since
+            // the two-stage publish, an approval writes the BETA data; everyone else gets it once a
+            // reviewer has checked it there and published it to the source. Saying only
+            // "published" told somebody whose own copy of the data would not change for days that
+            // it had. "BETA source" and "source" are the words CRT's Configuration tab uses.
             string body =
                 $"""
                 Hello,
 
                 Your contribution to {EmailTemplates.DescribeSystem(systemName)} has been accepted
-                and is now published. It will reach everyone else the next time their copy of the
-                data updates.
+                and published to the BETA source. Once it has had a final check there, it is
+                published to the source that everyone downloads from. You will get one more email
+                when it is.
 
-                Thank you - this data only exists because people send corrections in.{comment}
+                Thank you - this data only exists because people send corrections in.{amended}{comment}
 
                 You can see this in "My submissions" on the Drafts tab in {EmailTemplates.ProductName}.
                 """;
 
             return new EmailMessage(
                 toAddress,
-                $"Your {EmailTemplates.ProductName} contribution was published",
+                $"Your {EmailTemplates.ProductName} contribution was published to the BETA source",
+                EmailTemplates.Normalise(body));
+        }
+
+        // ###########################################################################################
+        // Sent when the contribution's board is published to PRODUCTION - the second of the two
+        // stages, and the one that reaches everyone (2026-09-25).
+        // ###########################################################################################
+        public static EmailMessage SubmissionPublishedToSource(
+            string toAddress,
+            string systemName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string body =
+                $"""
+                Hello,
+
+                Your contribution to {EmailTemplates.DescribeSystem(systemName)} has been published
+                to the source. It reaches everyone the next time their copy of the data updates, and
+                that includes your own.
+
+                Thank you again for sending it in.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"Your {EmailTemplates.ProductName} contribution was published to the source",
+                EmailTemplates.Normalise(body));
+        }
+
+        // ###########################################################################################
+        // Sent to the OTHER HALF of a two-person approval (2026-09-25): a change to a shared file
+        // needs a reviewer of the board AND the administrator, one of them has approved, and it
+        // waits for the other. `what` names the item - a submission, or publishing a board to
+        // production.
+        // ###########################################################################################
+        public static EmailMessage ApprovalNeeded(
+            string toAddress,
+            string systemName,
+            string what,
+            string approvedBy)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string body =
+                $"""
+                Hello,
+
+                {approvedBy} has approved {what} for {EmailTemplates.DescribeSystem(systemName)}.
+                It changes shared files, so it needs your approval too before it is published.
+
+                Open the {EmailTemplates.ProductName} Review application to look at it.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"{EmailTemplates.ProductName}: your approval is needed for {systemName}",
+                EmailTemplates.Normalise(body));
+        }
+
+        // ###########################################################################################
+        // Sent to the ADMINISTRATORS when a reviewer publishes a system to production (2026-09-25).
+        //
+        // The stand-in for Phase 6's administrator feed until that exists: publishing to production
+        // is what every user downloads, and with no second factor on a reviewer's account, an
+        // unexpected one must be noticed. Not sent when an administrator did it themselves.
+        // ###########################################################################################
+        public static EmailMessage PublishedToProduction(
+            string toAddress,
+            string systemName,
+            string actor,
+            string? revision,
+            int filesCopied)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string revisionText = string.IsNullOrWhiteSpace(revision) ? "its current BETA state" : $"revision {revision}";
+
+            string body =
+                $"""
+                Hello,
+
+                {actor} has published {EmailTemplates.DescribeSystem(systemName)} to production, at
+                {revisionText}. {filesCopied} file(s) were copied from BETA.
+
+                If you did not expect this, look at the board in the production data and, if it is
+                wrong, publish a correction. The audit trail on the server records the details.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"{EmailTemplates.ProductName}: {systemName} was published to production",
                 EmailTemplates.Normalise(body));
         }
 
@@ -326,6 +433,49 @@ namespace CRT.Server.Handlers.Email
             return new EmailMessage(
                 toAddress,
                 $"Your {EmailTemplates.ProductName} contribution was not accepted",
+                EmailTemplates.Normalise(body));
+        }
+
+        // ###########################################################################################
+        // Sent to each REVIEWER of a system when a submission to it is queued (Phase 6 task 11,
+        // 2026-09-25) - or to the administrators, when the system has no reviewers or the
+        // submission changes shared files.
+        //
+        // This one goes to an account holder, unlike the three above: somebody who agreed to look
+        // after a board and would otherwise have to open the review application on the off-chance.
+        // It names the board and quotes the contributor's own summary, which is what tells a
+        // reviewer whether it is a two-minute typo or an evening's work.
+        //
+        // No link, like every other mail here; the review application is named.
+        // ###########################################################################################
+        public static EmailMessage SubmissionWaiting(
+            string toAddress,
+            string systemName,
+            long submissionId,
+            string? contributorSummary)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string summary = string.IsNullOrWhiteSpace(contributorSummary)
+                ? "(no description given)"
+                : contributorSummary.Trim();
+
+            string body =
+                $"""
+                Hello,
+
+                A contribution to {EmailTemplates.DescribeSystem(systemName)} is waiting for review
+                (submission #{submissionId}). The contributor described it as:
+
+                {EmailTemplates.Indent(summary)}
+
+                Open the {EmailTemplates.ProductName} Review application to look at it. If somebody
+                else reviews it first, it will simply be gone from the queue.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"A {EmailTemplates.ProductName} contribution is waiting for review",
                 EmailTemplates.Normalise(body));
         }
 

@@ -15,22 +15,28 @@ namespace CRT.Server.Tests
     //
     // Three outcomes, and they are NOT equally dangerous:
     //
-    //   APPROVE          - writes the published tree. Administrator only, irreversible.
+    //   APPROVE          - writes the published tree. Irreversible.
     //   REJECT           - ends the submission with a reason. Recoverable: the contributor still
     //                      has their draft locally, which is the whole point of the local-first
     //                      design.
     //   REQUEST CHANGES  - returns it to the contributor as an editable draft with a comment.
     //                      The cheapest outcome and the one the strategy says not to skip.
     //
+    // Since Phase 6 (2026-09-25) all three need the same authority - a reviewer of the
+    // submission's own system, or an administrator - and the per-system half of that is
+    // ReviewAuthorityTests' subject. What is pinned here is that each outcome asks it, and the
+    // state interlock on top.
+    //
     // The rules are expressed as one method per question rather than a single "is this allowed",
-    // because the ANSWER differs per outcome and a caller that has to remember which arguments
-    // matter for which outcome is a caller that will eventually get it wrong.
+    // so a caller cannot reach the wrong rule for the outcome it named.
     // ###########################################################################################
     public sealed class ReviewDecisionRulesTests
     {
+        private const string C64 = "Commodore/C64/250407";
+        private const string C128 = "Commodore/C128/310378";
+
         private static AccountRecord Account(
             bool administrator = false,
-            bool reviewer = false,
             bool verified = true,
             bool locked = false) =>
             new(
@@ -41,10 +47,28 @@ namespace CRT.Server.Tests
                 DisplayName: "Someone",
                 IsVerified: verified,
                 IsAdministrator: administrator,
-                IsReviewer: reviewer,
                 IsLocked: locked,
                 CreatedUtc: DateTimeOffset.UnixEpoch,
                 LastLoginUtc: null);
+
+        private static ReviewAccess Admin(bool verified = true, bool locked = false) =>
+            ReviewAccess.For(ReviewDecisionRulesTests.Account(administrator: true, verified: verified, locked: locked));
+
+        // A reviewer of the C64 board the fixture submission names.
+        private static ReviewAccess Reviewer() =>
+            ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C64]);
+
+        private static ReviewAccess ReviewerOfAnotherSystem() =>
+            ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C128]);
+
+        private static ReviewAccess Ordinary() => ReviewAccess.For(ReviewDecisionRulesTests.Account());
+
+        private static SubmissionRecord Submission(string state, bool touchesShared = false) =>
+            new(
+                Id: 1, SystemId: ReviewDecisionRulesTests.C64, AccountId: null, ContactEmail: "c@example.com",
+                UploadTokenHash: "h", BaseRevision: "r1", State: state, Summary: "x",
+                FormatVersion: 1, CreatedUtc: DateTimeOffset.UnixEpoch, ExpiresUtc: null, DecidedUtc: null,
+                DecisionComment: null, TouchesSharedFiles: touchesShared);
 
         // -----------------------------------------------------------------------------------
         // APPROVE - the irreversible one.
@@ -54,25 +78,62 @@ namespace CRT.Server.Tests
         public void An_ADMINISTRATOR_may_approve_a_pending_submission()
         {
             Assert.True(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true),
-                SubmissionState.Pending,
+                ReviewDecisionRulesTests.Admin(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out _));
         }
 
         [Fact]
-        public void A_REVIEWER_may_NOT_approve()
+        public void A_REVIEWER_of_the_system_may_approve_a_pending_submission()
         {
-            // *** THE STRUCTURAL GUARANTEE PHASE 6's ROLE TABLE RESTS ON. *** Reviewer's blast
-            // radius is documented as "none - no published data can change", which holds only
-            // while approving is refused to the role. A Reviewer can examine everything and
-            // change nothing.
+            // The maintainer's model: a reviewer assigned to a system publishes to it.
+            Assert.True(ReviewDecisionRules.CanApprove(
+                ReviewDecisionRulesTests.Reviewer(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
+                out _));
+        }
+
+        [Fact]
+        public void A_reviewer_of_ANOTHER_system_may_NOT_approve()
+        {
+            // *** THE STRUCTURAL GUARANTEE. *** A reviewer's authority is bounded to their own
+            // systems; on any other it is exactly an ordinary account.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(reviewer: true),
-                SubmissionState.Pending,
+                ReviewDecisionRulesTests.ReviewerOfAnotherSystem(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out string reason));
 
             // And the refusal says WHY, so the app can explain rather than silently not drawing
-            // a button - the reviewer needs to know to ask for the role.
+            // a button - it names the system the reviewer is not assigned to.
+            Assert.Contains(ReviewDecisionRulesTests.C64, reason, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_shared_files_submission_may_be_approved_by_BOTH_its_reviewer_and_the_administrator()
+        {
+            // Since 2026-09-25 both take part; ApprovalRules decides whether an approval publishes
+            // or waits for the other - these rules only say either may act.
+            SubmissionRecord shared = ReviewDecisionRulesTests.Submission(SubmissionState.Pending, touchesShared: true);
+
+            Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Reviewer(), shared, out _));
+            Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Admin(), shared, out _));
+        }
+
+        [Fact]
+        public void A_half_approved_submission_can_still_be_decided()
+        {
+            // 'approved' is where the first of two approvals leaves it; the second approval, or a
+            // rejection by either, must still be possible.
+            SubmissionRecord half = ReviewDecisionRulesTests.Submission(SubmissionState.Approved, touchesShared: true);
+
+            Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Admin(), half, out _));
+            Assert.True(ReviewDecisionRules.CanReject(ReviewDecisionRulesTests.Reviewer(), half, out _));
+        }
+
+        [Fact]
+        public void A_missing_submission_cannot_be_approved()
+        {
+            Assert.False(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Admin(), null, out string reason));
             Assert.NotEmpty(reason);
         }
 
@@ -89,7 +150,7 @@ namespace CRT.Server.Tests
             // revision history, re-running a publish whose blobs have since been garbage-collected
             // is not a no-op. The state is the interlock.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true), state, out string reason));
+                ReviewDecisionRulesTests.Admin(), ReviewDecisionRulesTests.Submission(state), out string reason));
 
             Assert.NotEmpty(reason);
         }
@@ -100,8 +161,8 @@ namespace CRT.Server.Tests
             // It is not finished arriving. Publishing a half-uploaded submission would write a
             // board referencing blobs that were never sent.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true),
-                SubmissionState.Uploading,
+                ReviewDecisionRulesTests.Admin(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Uploading),
                 out _));
         }
 
@@ -109,8 +170,8 @@ namespace CRT.Server.Tests
         public void An_ABANDONED_submission_cannot_be_approved()
         {
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true),
-                SubmissionState.Abandoned,
+                ReviewDecisionRulesTests.Admin(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Abandoned),
                 out _));
         }
 
@@ -121,8 +182,8 @@ namespace CRT.Server.Tests
             // finish. That is precisely the state a retry must be allowed from - refusing it would
             // strand a submission that has been agreed to, with no way forward.
             Assert.True(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true),
-                SubmissionState.Approved,
+                ReviewDecisionRulesTests.Admin(),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Approved),
                 out _));
         }
 
@@ -132,8 +193,8 @@ namespace CRT.Server.Tests
             // Locking is how access is withdrawn, and it must bite on the very next request rather
             // than at next login - Phase 6's definition of done requires exactly that.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true, locked: true),
-                SubmissionState.Pending,
+                ReviewDecisionRulesTests.Admin(locked: true),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out _));
         }
 
@@ -143,30 +204,27 @@ namespace CRT.Server.Tests
             // An unverified address is an unproven one - the account may belong to somebody who
             // never asked for it.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Account(administrator: true, verified: false),
-                SubmissionState.Pending,
+                ReviewDecisionRulesTests.Admin(verified: false),
+                ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out _));
         }
 
         [Fact]
         public void A_NULL_account_may_not_approve()
         {
-            Assert.False(ReviewDecisionRules.CanApprove(null, SubmissionState.Pending, out _));
+            Assert.False(ReviewDecisionRules.CanApprove(null, ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         // -----------------------------------------------------------------------------------
-        // REJECT and REQUEST CHANGES - a REVIEWER may do both.
+        // REJECT and REQUEST CHANGES - the same per-system authority as approving.
         // -----------------------------------------------------------------------------------
 
         [Fact]
         public void A_REVIEWER_may_REJECT()
         {
-            // *** THIS IS WHAT THE REVIEWER ROLE IS FOR. *** Rejecting changes no published data -
-            // the contributor keeps their draft locally - so it is safe for the role whose blast
-            // radius is "no published data can change". A Reviewer who could only look would not
-            // reduce the administrator's workload at all, which is the point of the role.
+            // Rejecting changes no published data - the contributor keeps their draft locally.
             Assert.True(ReviewDecisionRules.CanReject(
-                ReviewDecisionRulesTests.Account(reviewer: true), SubmissionState.Pending, out _));
+                ReviewDecisionRulesTests.Reviewer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         [Fact]
@@ -176,27 +234,41 @@ namespace CRT.Server.Tests
             // are fixable by their author in a minute, and a reject that could have been a
             // conversation costs a contributor.
             Assert.True(ReviewDecisionRules.CanRequestChanges(
-                ReviewDecisionRulesTests.Account(reviewer: true), SubmissionState.Pending, out _));
+                ReviewDecisionRulesTests.Reviewer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         [Fact]
         public void An_ADMINISTRATOR_may_do_both_as_well()
         {
-            AccountRecord admin = ReviewDecisionRulesTests.Account(administrator: true);
+            ReviewAccess admin = ReviewDecisionRulesTests.Admin();
 
-            Assert.True(ReviewDecisionRules.CanReject(admin, SubmissionState.Pending, out _));
-            Assert.True(ReviewDecisionRules.CanRequestChanges(admin, SubmissionState.Pending, out _));
+            Assert.True(ReviewDecisionRules.CanReject(admin, ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
+            Assert.True(ReviewDecisionRules.CanRequestChanges(admin, ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         [Fact]
         public void An_ORDINARY_account_may_do_NONE_of_the_three()
         {
             // Somebody with an account but no review role. They can contribute; they cannot judge.
-            AccountRecord ordinary = ReviewDecisionRulesTests.Account();
+            ReviewAccess ordinary = ReviewDecisionRulesTests.Ordinary();
+            SubmissionRecord pending = ReviewDecisionRulesTests.Submission(SubmissionState.Pending);
 
-            Assert.False(ReviewDecisionRules.CanApprove(ordinary, SubmissionState.Pending, out _));
-            Assert.False(ReviewDecisionRules.CanReject(ordinary, SubmissionState.Pending, out _));
-            Assert.False(ReviewDecisionRules.CanRequestChanges(ordinary, SubmissionState.Pending, out _));
+            Assert.False(ReviewDecisionRules.CanApprove(ordinary, pending, out _));
+            Assert.False(ReviewDecisionRules.CanReject(ordinary, pending, out _));
+            Assert.False(ReviewDecisionRules.CanRequestChanges(ordinary, pending, out _));
+        }
+
+        [Fact]
+        public void A_reviewer_of_ANOTHER_system_may_do_NONE_of_the_three_either()
+        {
+            // Rejecting a submission on a board you do not review is as out of bounds as
+            // publishing to it - the cheap outcomes are scoped exactly like the expensive one.
+            ReviewAccess other = ReviewDecisionRulesTests.ReviewerOfAnotherSystem();
+            SubmissionRecord pending = ReviewDecisionRulesTests.Submission(SubmissionState.Pending);
+
+            Assert.False(ReviewDecisionRules.CanApprove(other, pending, out _));
+            Assert.False(ReviewDecisionRules.CanReject(other, pending, out _));
+            Assert.False(ReviewDecisionRules.CanRequestChanges(other, pending, out _));
         }
 
         [Theory]
@@ -208,10 +280,10 @@ namespace CRT.Server.Tests
         {
             // A decided submission is done. Rejecting an already-merged one would tell the
             // contributor their published work was refused.
-            AccountRecord admin = ReviewDecisionRulesTests.Account(administrator: true);
+            ReviewAccess admin = ReviewDecisionRulesTests.Admin();
 
-            Assert.False(ReviewDecisionRules.CanReject(admin, state, out _));
-            Assert.False(ReviewDecisionRules.CanRequestChanges(admin, state, out _));
+            Assert.False(ReviewDecisionRules.CanReject(admin, ReviewDecisionRulesTests.Submission(state), out _));
+            Assert.False(ReviewDecisionRules.CanRequestChanges(admin, ReviewDecisionRulesTests.Submission(state), out _));
         }
 
         // -----------------------------------------------------------------------------------

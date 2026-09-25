@@ -1,0 +1,45 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+    THE TABLE EDITOR'S OWN COLOURS, merged by both applications (CRT.App's App.axaml and
+    CRT.Review's ReviewApp.axaml), so the Drafts tab's table and the reviewer's table cannot drift
+    apart. Moved here from CRT.App's App.axaml (2026-09-25); a user's own theme colours still
+    override them, because the app writes those into its top-level resources, which win over a
+    merged dictionary.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+            <!-- What a cell is compared with the published data. The maintainer's colours - green
+                 added, orange modified, red deleted - as pale washes, so black text stays readable
+                 on all three. Not Draft_Chip_Bg's amber: that marks "a draft exists", which every
+                 row in this table already is. -->
+            <SolidColorBrush x:Key="BoardTable_Added_Bg">#CDEFCF</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Modified_Bg">#FFD9A8</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Deleted_Bg">#F6C4C4</SolidColorBrush>
+            <!-- A row marked "!" (a duplicate, or incomplete). Violet because it is the one hue
+                 nowhere near the other three - yellow would sit beside the orange. -->
+            <SolidColorBrush x:Key="BoardTable_Flagged_Bg">#E3D5F6</SolidColorBrush>
+            <!-- The current cell's dashed frame. A strong red, so it still stands out on the pale
+                 red of a deleted row. -->
+            <SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#D32F2F</SolidColorBrush>
+            <!-- The table's notices about its draft FILE (changed in Excel, open in Excel): a pale
+                 amber, the colour of "take note" rather than of any row state. -->
+            <SolidColorBrush x:Key="BoardTable_Notice_Bg">#FFF4D6</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Notice_Border">#E0B040</SolidColorBrush>
+        </ResourceDictionary>
+
+        <!-- The same meanings as deep tints the light foreground stays readable on. -->
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="BoardTable_Added_Bg">#1F4A26</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Modified_Bg">#5A3A10</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Deleted_Bg">#5A2222</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Flagged_Bg">#44305F</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#FF6B6B</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Notice_Bg">#3D3214</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Notice_Border">#8A6D1F</SolidColorBrush>
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

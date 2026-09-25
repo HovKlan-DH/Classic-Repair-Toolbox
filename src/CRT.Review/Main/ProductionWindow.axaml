@@ -1,0 +1,107 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.Review.ProductionWindow"
+        Width="980" Height="600"
+        MinWidth="760" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Title="Publish to production">
+
+    <!--
+    BETA TO PRODUCTION (maintainer request, 2026-09-25): "first published to BETA and then it is
+    published to the real production. The reviewer is still allowed to do this, but only after he
+    has checked that the data looks correct in BETA."
+
+    Left: the systems whose BETA data is ahead of production that this account may publish (the
+    server decides the list). Right: exactly what publishing the selected one would copy - from the
+    same code on the server that then copies it - a box the reviewer ticks to say they checked it in
+    CRT with the BETA data, and the button. The button follows the server's answer AND the tick
+    (ProductionDisplay.CanPress).
+    -->
+    <Grid Margin="12" ColumnDefinitions="*,4,1.3*" RowDefinitions="Auto,*,Auto">
+
+        <TextBlock Grid.Row="0" Grid.Column="0"
+                   Text="Waiting for production"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8" />
+
+        <DockPanel Grid.Row="1" Grid.Column="0">
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="ListMessageText"
+                       TextWrapping="Wrap"
+                       IsVisible="False"
+                       Margin="0,0,0,8" />
+
+            <ListBox x:Name="SystemsList"
+                     SelectionChanged="OnSystemSelectionChanged" />
+        </DockPanel>
+
+        <GridSplitter Grid.Row="1" Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+        <DockPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Margin="12,0,0,0">
+
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="SelectedSystemText"
+                       Text="Select a system."
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4" />
+
+            <!--
+            WHO MUST APPROVE (2026-09-25): a board whose copy list changes a shared file needs
+            its reviewer AND the administrator before it goes to production. Hidden otherwise.
+            -->
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="ApprovalStatusText"
+                       TextWrapping="Wrap"
+                       FontWeight="SemiBold"
+                       IsVisible="False"
+                       Margin="0,0,0,8" />
+
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="PlanSummaryText"
+                       TextWrapping="Wrap"
+                       Opacity="0.85"
+                       Margin="0,0,0,8" />
+
+            <!--
+            THE CHECK AND THE BUTTON, docked to the bottom so they stay put however long the file
+            list gets. The box is deliberately unticked every time a system is selected: a tick is
+            about ONE board as it stands, never carried over to the next.
+            -->
+            <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,8,0,0">
+
+                <TextBlock x:Name="MessageText"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+
+                <CheckBox x:Name="CheckedInBetaCheckBox"
+                          IsEnabled="False"
+                          IsCheckedChanged="OnCheckedInBetaChanged">
+                    <TextBlock TextWrapping="Wrap"
+                               Text="I have checked this board in CRT with the BETA data (Configuration: &quot;Download data from BETA source&quot;), and it is right." />
+                </CheckBox>
+
+                <Button x:Name="PublishButton"
+                        Content="Publish to production"
+                        HorizontalAlignment="Right"
+                        IsEnabled="False"
+                        Click="OnPublishClick" />
+            </StackPanel>
+
+            <ScrollViewer>
+                <StackPanel x:Name="FilesPanel" Spacing="2" />
+            </ScrollViewer>
+        </DockPanel>
+
+        <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8"
+                    Margin="0,12,0,0">
+            <Button x:Name="RefreshButton" Content="Refresh" Click="OnRefreshClick" />
+            <Button x:Name="CloseButton" Content="Close" Click="OnCloseClick" />
+        </StackPanel>
+    </Grid>
+</Window>

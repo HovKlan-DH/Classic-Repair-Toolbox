@@ -1,4 +1,5 @@
 using CRT.Review.Handlers;
+using Handlers.DataHandling;
 
 namespace CRT.Review.Tests;
 
@@ -134,6 +135,61 @@ public sealed class ReviewSubmissionDetailTests
 
         Assert.Equal("scale.components", finding.Code);
         Assert.Equal(string.Empty, finding.Message);
+    }
+
+    // ###########################################################################################
+    // *** THE PER-FILE FACTS SURVIVE THE WIRE, UNDER THE SERVER'S OWN JSON SETTINGS (security
+    // review, 2026-09-25). *** CRT.Server serialises CRT.Data's SubmittedFileFact with camelCase
+    // names and nulls omitted (Program.cs, ConfigureHttpJsonOptions); this app reads the same type
+    // back. Serialising it here with those settings and parsing the result is the closest a test
+    // in this project can come to both ends at once: a renamed property, or a scope that travelled
+    // as a number, fails here rather than as a blank list on a reviewer's screen.
+    // ###########################################################################################
+    [Fact]
+    public void Submitted_file_facts_round_trip_under_the_servers_json_settings()
+    {
+        var serverOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
+
+        SubmittedFileFact[] sent =
+        [
+            new("Commodore/C64/250407/manual.pdf", new string('1', 64), 12, SubmissionFileScope.Own, true, null),
+            new("Commodore/Shared files/x.png", new string('2', 64), 34, SubmissionFileScope.ManufacturerShared, false, new string('3', 64))
+        ];
+
+        string json = System.Text.Json.JsonSerializer.Serialize(
+            new { submission = new { id = 1, systemId = "Commodore/C64/250407", state = "pending" }, submittedFiles = sent },
+            serverOptions);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(json);
+
+        Assert.NotNull(detail);
+        Assert.Equal(sent, detail!.SubmittedFiles);
+    }
+
+    // An older server that does not send the field, and a malformed entry, both degrade quietly:
+    // no list, or the list without that one entry - never a failure to open the submission.
+    [Fact]
+    public void Missing_or_malformed_file_facts_never_stop_the_submission_opening()
+    {
+        ReviewSubmissionDetail? absent = ReviewApiParser.ParseSubmission("""
+            {"submission":{"id":1},"findings":[]}
+            """);
+
+        ReviewSubmissionDetail? partly = ReviewApiParser.ParseSubmission("""
+            {"submission":{"id":1},"findings":[],
+             "submittedFiles":[
+               {"path":"A/B/C/a.png","sha256":"aa","sizeBytes":1,"scope":"Own","isReferenced":true},
+               {"path":"A/B/C/b.png","sha256":"bb","sizeBytes":1,"scope":"NoSuchScope","isReferenced":true},
+               {"path":"","sha256":"cc","sizeBytes":1,"scope":"Own","isReferenced":true}
+             ]}
+            """);
+
+        Assert.Empty(absent!.SubmittedFiles);
+        Assert.Equal("A/B/C/a.png", Assert.Single(partly!.SubmittedFiles).Path);
     }
 
     [Fact]

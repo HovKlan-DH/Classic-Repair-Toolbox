@@ -94,7 +94,13 @@ namespace CRT.Review.Handlers
                 if (!seen.Add(file.Path))
                     continue;
 
-                bool existsBefore = published.Contains(file.Path);
+                // *** SOMETHING ALREADY PUBLISHED AT THIS PATH IS A REPLACEMENT, whether or not the
+                // old board cited it (security review, 2026-09-25). *** The server now hashes every
+                // submitted path that exists on disk. Judging by the old board's list alone called
+                // a file that OVERWRITES an existing one "Added" - backwards for exactly the case a
+                // reviewer most needs to see.
+                bool existsBefore = published.Contains(file.Path) ||
+                    (publishedHashesByPath?.ContainsKey(file.Path) ?? false);
 
                 if (existsBefore
                     && publishedHashesByPath is not null

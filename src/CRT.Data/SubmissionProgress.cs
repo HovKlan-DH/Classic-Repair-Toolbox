@@ -50,6 +50,20 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // The progress once one more file has been sent in full: the file counted AND its bytes.
+        //
+        // One step rather than two `with` fields at the call site, because the upload loop used to
+        // carry the file count forward and not the bytes - every file then began again from
+        // "0 bytes", and the bar measured one small file against the whole upload.
+        // ###########################################################################################
+        public SubmissionProgress AfterFileSent(long sizeBytes) =>
+            this with
+            {
+                FilesDone = this.FilesDone + 1,
+                BytesDone = this.BytesDone + Math.Max(0, sizeBytes)
+            };
+
+        // ###########################################################################################
         // One line for the UI. Written for a person watching a slow upload, so it says what is
         // happening rather than reporting internal state.
         // ###########################################################################################

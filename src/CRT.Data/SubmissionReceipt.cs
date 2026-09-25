@@ -81,6 +81,10 @@ namespace Handlers.DataHandling
         // so that adding it server-side does not need a format change on every contributor's disk.
         public string ReviewerComment { get; init; } = string.Empty;
 
+        // A reviewer changed some of the rows in the review application before deciding
+        // (2026-09-25) - SubmissionStatus.AmendedByReviewer, cached like the state.
+        public bool AmendedByReviewer { get; init; }
+
         // ###########################################################################################
         // The reviewer comment this contributor has SEEN, verbatim.
         //
@@ -196,7 +200,10 @@ namespace Handlers.DataHandling
                 "uploading" => "Never finished sending",
                 "pending" => "Waiting for review",
                 "accepted" => "Accepted",
-                "published" => "Published",
+                // *** "BETA source" AND "source" (maintainer wording, 2026-09-25). *** The two
+                // stages are named for where the data went, in the words CRT's own Configuration
+                // tab uses for the two places it downloads from ("online source", "BETA source").
+                "published" => "Published to source",
                 "rejected" => "Not accepted",
                 "abandoned" => "Expired before it was finished",
 
@@ -210,7 +217,13 @@ namespace Handlers.DataHandling
                 // being ASKED TO DO SOMETHING, and it read as a fault in the application.
                 "changes_requested" => "Changes requested",
                 "approved" => "Approved, waiting to be published",
-                "merged" => "Published",
+
+                // *** "merged" IS THE BETA SOURCE, NOT EVERYONE'S (2026-09-25). *** Since the
+                // two-stage publish, a reviewer's approval writes the BETA data; the board goes out
+                // to everyone when it is published to production, and the server then reports this
+                // same submission as "published" (ProductionPromotionRules.ContributorFacingState)
+                // - which is the row that says "Published to source".
+                "merged" => "Published to BETA source",
                 "withdrawn" => "Withdrawn",
 
                 // A state this build has never heard of. Reported honestly rather than guessed at -
@@ -275,12 +288,16 @@ namespace Handlers.DataHandling
 
             return state.Trim().ToLowerInvariant() switch
             {
-                // *** "merged" AND "withdrawn" WERE MISSING, and that is not cosmetic. *** Both are
-                // final, so omitting them meant every merged submission was re-checked on every
-                // refresh - and now on every LAUNCH - forever, a request per row that can only
-                // return what is already stored.
-                "rejected" or "abandoned" or "accepted" or "published"
-                    or "merged" or "withdrawn" => false,
+                // "withdrawn" was once missing from this list, which meant every such row was
+                // re-checked on every launch forever. Final states are asked about no more.
+                "rejected" or "abandoned" or "accepted" or "published" or "withdrawn" => false,
+
+                // *** "merged" IS OPEN AGAIN (2026-09-25), deliberately. *** It used to be final.
+                // Since the two-stage publish it means "in the BETA data", and the server moves it
+                // on to "published" once the board reaches production - so it has to be asked about
+                // until then, or the row would say "in the BETA data" for ever. One request per
+                // merged row per launch, for the few days between the two publishes - and no
+                // longer than MergedRecheckWindow: see the receipt overload below.
 
                 // *** "changes_requested" AND "approved" ARE DELIBERATELY STILL OPEN. *** Neither
                 // is the end: a submission with changes requested can be re-reviewed after the
@@ -289,6 +306,38 @@ namespace Handlers.DataHandling
                 // never see it move.
                 _ => true
             };
+        }
+
+        // ###########################################################################################
+        // How long after its decision a "merged" (in BETA) submission is still asked about.
+        //
+        // *** A BOUND, BECAUSE THE SECOND PUBLISH MAY NEVER COME (code review, 2026-09-25). ***
+        // Publishing to production is off until the server is set up for it, and a reviewer may
+        // never promote a board. Without a bound, every merged receipt was asked about on every
+        // launch for ever - the very re-check "withdrawn" once caused. Thirty days is far longer
+        // than BETA to production is meant to take; after it the row keeps its last answer.
+        // ###########################################################################################
+        public static readonly TimeSpan MergedRecheckWindow = TimeSpan.FromDays(30);
+
+        // ###########################################################################################
+        // Whether this RECEIPT is worth asking the server about AT LAUNCH: its state is still open,
+        // and a "merged" one was decided less than MergedRecheckWindow ago (or sent, for a receipt
+        // that never recorded its decision date). "Check for updates" in My submissions uses the
+        // state alone - somebody pressed it to ask.
+        // ###########################################################################################
+        public static bool IsStillOpen(SubmissionReceipt receipt, DateTimeOffset nowUtc)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            if (!SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
+                return false;
+
+            if (!string.Equals(receipt.LastKnownState?.Trim(), "merged", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            DateTimeOffset since = receipt.DecidedUtc ?? receipt.SentUtc;
+
+            return nowUtc - since < SubmissionReceiptPresenter.MergedRecheckWindow;
         }
 
         // ###########################################################################################
@@ -337,6 +386,16 @@ namespace Handlers.DataHandling
         // different people in different time zones, so a time would imply a precision that is not
         // there. See that method's header.
         // ###########################################################################################
+        // ###########################################################################################
+        // The line "My submissions" shows when a reviewer changed the submission before deciding it
+        // (2026-09-25), so a contributor comparing what was published with what they sent knows
+        // where a difference came from. Empty when nobody changed it.
+        // ###########################################################################################
+        public static string DescribeAmended(bool amendedByReviewer) =>
+            amendedByReviewer
+                ? "A reviewer changed some of the details before deciding, so what is published is not exactly what you sent."
+                : string.Empty;
+
         public static string DescribeDecided(DateTimeOffset? decidedUtc)
         {
             if (decidedUtc is null)

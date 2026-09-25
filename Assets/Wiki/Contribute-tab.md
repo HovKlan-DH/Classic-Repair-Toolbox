@@ -37,9 +37,9 @@ manufacturer, hardware and board name, and it appears in the lists straight away
 empty, and ready for you to add board images, label components and attach files exactly as you would
 edit any other board.
 
-Creating one asks you to accept the role of **system maintainer**: if you submit the system for the
-community to use, you will review the changes others submit for it. The system is only created if you
-accept.
+Creating one asks you to accept the role of **reviewer** for it: if you submit the system for the
+community to use, you will review the changes others submit for it and publish the ones that are
+right. The system is only created if you accept.
 
 Unlike "Add new component", this button does not need a board loaded first. That is the point: it is
 for the board that is not there.

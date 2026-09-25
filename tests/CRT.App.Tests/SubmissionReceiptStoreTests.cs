@@ -344,4 +344,26 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
 
         Assert.Equal(decided, SubmissionReceiptStore.All.Single().DecidedUtc);
     }
+    // ###########################################################################################
+    // "A reviewer changed it" (2026-09-25) is cached like the state: set when the server says so,
+    // and never lost by a refresh that does not say, or by marking a comment read.
+    // ###########################################################################################
+    [Fact]
+    public void The_reviewer_changed_flag_is_stored_and_kept_by_a_refresh_that_does_not_say()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.UpdateState(42, "merged", "Thanks.", DateTimeOffset.UtcNow, amendedByReviewer: true);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+
+        SubmissionReceiptStore.UpdateState(42, "merged", "Thanks.", DateTimeOffset.UtcNow);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+
+        SubmissionReceiptStore.AcknowledgeComment(42);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+
+        // And it survives the file.
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+    }
 }

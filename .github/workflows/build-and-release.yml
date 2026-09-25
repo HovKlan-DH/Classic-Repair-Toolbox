@@ -147,18 +147,6 @@ jobs:
             -p:Version=${{ needs.determine-version.outputs.version }} `
             -o publish/windows-x64
 
-      - name: Sign executable
-        shell: powershell
-        env:
-          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
-        run: |
-          java -jar C:\tools\jsign-6.0.jar `
-            --storetype YUBIKEY `
-            --storepass "$env:YUBIKEY_PIN" `
-            --tsaurl http://timestamp.digicert.com `
-            --alg SHA-256 `
-            publish/windows-x64/${{ env.EXE_WINDOWS }}
-
       - name: Copy data pack
         shell: powershell
         run: |
@@ -168,31 +156,92 @@ jobs:
         shell: powershell
         run: dotnet tool install -g vpk
 
-      - name: Pack with Velopack
+      # ###########################################################################################
+      # *** VELOPACK DOES ALL THE SIGNING, not separate jsign steps. ***
+      #
+      # This used to sign exactly two files by hand - the main .exe before packing and Setup.exe
+      # after - and shipped every other binary unsigned: our own DLLs, the Avalonia/QuestPDF/
+      # ProDataGrid DLLs, minipro.exe, and the two executables Velopack ADDS inside the package
+      # (Squirrel.exe, which becomes the installed Update.exe, and the launcher stub in the install
+      # folder). Signing after "vpk pack" cannot reach those two at all - they are already inside
+      # the .nupkg by then - so the signing has to happen inside the pack.
+      #
+      # With VPK_SIGN_TEMPLATE set, vpk signs every .exe/.dll in the package that does NOT already
+      # carry a trusted signature, then Setup.exe. Files already signed by their publisher (the .NET
+      # runtime, SkiaSharp, HarfBuzz, av_libglesv2) keep that signature rather than having ours put
+      # over it. Note ReadyToRun (see CRT.App.csproj) recompiles NuGet DLLs and STRIPS their
+      # publisher's signature - EPPlus and the Microsoft.Extensions.* DLLs arrive here unsigned for
+      # that reason, and are signed with ours.
+      #
+      # Details that were each verified with a dry run, and are easy to undo by accident:
+      #   - The template goes in as an ENVIRONMENT VARIABLE, not --signTemplate. Windows
+      #     PowerShell 5.1 mangles the quotes of a native argument that itself contains spaces,
+      #     and vpk then rejects the rest of the line as an unknown argument.
+      #   - "--storepass env:YUBIKEY_PIN" makes jsign read the PIN from the environment, so the
+      #     PIN is never part of a command line vpk could print.
+      #   - {{file...}} (not {{file}}) passes up to 10 files per jsign call: 7 calls instead of
+      #     59, one JVM start and one YubiKey login each. vpk runs the calls ONE AT A TIME and
+      #     stops at the first failure, so a wrong PIN costs one of the YubiKey's three PIN
+      #     attempts per run, exactly as the old two-step signing did. Anything that makes these
+      #     calls run in parallel could lock the YubiKey in a single run.
+      #
+      # "--runtime win-x64": without it vpk warns "No architecture specified" and puts the 32-bit
+      # builds of Update.exe (Squirrel.exe in the package) and the launcher stub into a 64-bit app;
+      # with it both are 64-bit (checked in the PE headers of a dry run). Nothing else changed in
+      # that dry run: Setup.exe was already 64-bit, the package already recorded x64, and the
+      # channel stays "win" - vpk takes the default channel from the operating system alone - so
+      # every file name, and the releases.win.json that installed copies read, is exactly as before.
+      # ###########################################################################################
+      - name: Pack and sign with Velopack
         shell: powershell
+        env:
+          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
+          VPK_SIGN_TEMPLATE: 'java -jar C:\tools\jsign-6.0.jar --storetype YUBIKEY --storepass env:YUBIKEY_PIN --tsaurl http://timestamp.digicert.com --alg SHA-256 {{file...}}'
         run: |
           vpk pack `
             --packId ${{ env.PACK_ID }} `
             --packVersion ${{ needs.determine-version.outputs.version }} `
             --packDir publish/windows-x64 `
             --mainExe ${{ env.EXE_WINDOWS }} `
+            --runtime win-x64 `
             --noPortable `
             --icon "Assets/CRT_icon.ico" `
             --packTitle "Classic Repair Toolbox" `
             --outputDir velopack-output
 
-      - name: Sign Velopack installer
+      # The guard that stops "not every file is signed" from coming back silently. Opens the full
+      # .nupkg (what Setup.exe installs and what an update downloads) and requires a VALID
+      # Authenticode signature on every .exe and .dll in it, and on Setup.exe - ours or the original
+      # publisher's. A new unsigned dependency, or signing quietly switched off, fails the release
+      # here instead of reaching users.
+      - name: Verify every shipped binary is signed
         shell: powershell
-        env:
-          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
         run: |
-          $installer = Get-ChildItem velopack-output\*-Setup.exe | Select-Object -First 1
-          java -jar C:\tools\jsign-6.0.jar `
-            --storetype YUBIKEY `
-            --storepass "$env:YUBIKEY_PIN" `
-            --tsaurl http://timestamp.digicert.com `
-            --alg SHA-256 `
-            $installer.FullName
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $nupkg = Get-ChildItem velopack-output\*-full.nupkg | Select-Object -First 1
+          $unpacked = Join-Path $env:RUNNER_TEMP 'signature-check'
+          Remove-Item -LiteralPath $unpacked -Recurse -Force -ErrorAction SilentlyContinue
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($nupkg.FullName, $unpacked)
+
+          $binaries = @(Get-ChildItem -Recurse -File $unpacked | Where-Object { $_.Extension -in '.exe', '.dll' }) +
+                      @(Get-ChildItem velopack-output\*-Setup.exe)
+          $results = foreach ($file in $binaries) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            [pscustomobject]@{
+              Name   = $file.Name
+              Status = $sig.Status
+              Signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo('SimpleName', $false) } else { '' }
+            }
+          }
+
+          Write-Host "Checked $($results.Count) binaries. Signed by:"
+          $results | Group-Object Signer | Sort-Object Count -Descending | ForEach-Object { Write-Host "  $($_.Count) x $($_.Name)" }
+
+          $bad = @($results | Where-Object { $_.Status -ne 'Valid' })
+          if ($bad.Count -gt 0) {
+            $bad | ForEach-Object { Write-Host "::error::Not validly signed ($($_.Status)): $($_.Name)" }
+            exit 1
+          }
 
       - name: Upload Velopack artifacts
         uses: actions/upload-artifact@v7
@@ -233,6 +282,9 @@ jobs:
       - name: Install vpk
         run: dotnet tool install -g vpk
 
+      # "--runtime linux-x64" only silences vpk's "No architecture specified" warning: on Linux it
+      # already defaulted to the x64 updater, and the channel stays "linux" either way. macOS is
+      # left without one on purpose - vpk raises no warning there and ships one universal updater.
       - name: Pack with Velopack
         run: |
           vpk pack \
@@ -241,6 +293,7 @@ jobs:
             --packVersion ${{ needs.determine-version.outputs.version }} \
             --packDir publish/linux-x64 \
             --mainExe ${{ env.EXE_UNIX }} \
+            --runtime linux-x64 \
             --icon "Assets/CRT_icon.png" \
             --outputDir velopack-output
 

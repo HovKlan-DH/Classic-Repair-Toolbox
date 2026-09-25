@@ -78,6 +78,59 @@ namespace Handlers.DataHandling
                 return false;
             }
 
+            if (!SubmissionPathRules.IsSafelyShaped(relativePath, out failureReason))
+                return false;
+
+            // Now resolve and check containment. Everything above is a fast refusal of input that
+            // is obviously wrong; THIS is the check that actually guarantees the result lands
+            // inside the folder.
+            try
+            {
+                string root = Path.GetFullPath(systemFolder);
+                string candidate = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+                string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
+                    ? root
+                    : root + Path.DirectorySeparatorChar;
+
+                // Resolving to the folder itself is not a file path.
+                if (string.Equals(candidate, root, StringComparison.Ordinal))
+                {
+                    failureReason = $"The path resolves to the system folder itself: [{Trim(relativePath)}]";
+                    return false;
+                }
+
+                // Ordinal, not OrdinalIgnoreCase - see the header. The server's filesystem is the
+                // one that matters, and it is case-sensitive.
+                if (!candidate.StartsWith(rootWithSeparator, StringComparison.Ordinal))
+                {
+                    failureReason = $"The path escapes the system folder: [{Trim(relativePath)}]";
+                    return false;
+                }
+
+                resolvedPath = candidate;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                failureReason = $"The path cannot be resolved: [{Trim(relativePath)}]";
+                return false;
+            }
+        }
+
+        // ###########################################################################################
+        // Is this submitted path SHAPED safely - relative, forward slashes, no empty, "." or ".."
+        // segment, no control character, no reserved device name, not too long? Everything
+        // TryResolve checks before it resolves, with no folder needed (code review, 2026-09-25).
+        //
+        // SubmissionFileRules.ValidateManifestFiles skips a path this refuses: ValidateManifestPaths
+        // reports it, and a second finding about the same bad path under another code ("hidden
+        // name" for a ".." segment) only contradicted the first.
+        // ###########################################################################################
+        public static bool IsSafelyShaped(string? relativePath, out string failureReason)
+        {
+            failureReason = string.Empty;
+
             if (string.IsNullOrWhiteSpace(relativePath))
             {
                 failureReason = "A file path in the submission is empty.";
@@ -167,41 +220,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            // Now resolve and check containment. Everything above is a fast refusal of input that
-            // is obviously wrong; THIS is the check that actually guarantees the result lands
-            // inside the folder.
-            try
-            {
-                string root = Path.GetFullPath(systemFolder);
-                string candidate = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-
-                string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-                    ? root
-                    : root + Path.DirectorySeparatorChar;
-
-                // Resolving to the folder itself is not a file path.
-                if (string.Equals(candidate, root, StringComparison.Ordinal))
-                {
-                    failureReason = $"The path resolves to the system folder itself: [{Trim(relativePath)}]";
-                    return false;
-                }
-
-                // Ordinal, not OrdinalIgnoreCase - see the header. The server's filesystem is the
-                // one that matters, and it is case-sensitive.
-                if (!candidate.StartsWith(rootWithSeparator, StringComparison.Ordinal))
-                {
-                    failureReason = $"The path escapes the system folder: [{Trim(relativePath)}]";
-                    return false;
-                }
-
-                resolvedPath = candidate;
-                return true;
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                failureReason = $"The path cannot be resolved: [{Trim(relativePath)}]";
-                return false;
-            }
+            return true;
         }
 
         // ###########################################################################################

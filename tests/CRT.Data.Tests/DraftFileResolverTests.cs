@@ -239,6 +239,43 @@ public sealed class DraftFileResolverTests : IDisposable
         Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
     }
 
+    // ###########################################################################################
+    // *** A SHARED FILE THE CONTRIBUTOR ATTACHED is found where it was written (maintainer report,
+    // 2026-09-25). *** The component editor lets a new image be filed in a shared folder
+    // ("Commodore/Shared files/Component images"), and BuildDraftFileDestination writes it inside
+    // the draft under that whole path. Resolve only ever looked in the draft for the board's OWN
+    // files, so the new image was on disk and nothing could find it - the submission then refused
+    // it as missing. A published shared file with no drafted copy still comes from Data/ (above).
+    // ###########################################################################################
+    [Fact]
+    public void A_SHARED_file_the_contributor_attached_is_found_where_it_was_written()
+    {
+        const string stored = "Commodore/Shared files/Component images/HotCPU.png";
+
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, stored);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.WriteAllText(destination, "drafted");
+
+        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
+    }
+
+    // Attaching a file under the name of a published shared file REPLACES it - the contributor's
+    // bytes are the ones shown and submitted, exactly as for the board's own files.
+    [Fact]
+    public void A_SHARED_file_the_contributor_attached_wins_over_the_published_copy()
+    {
+        const string stored = "Commodore/Shared files/7805.jpg";
+        string published = Path.Combine(this.DataRoot, "Commodore", "Shared files", "7805.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(published)!);
+        File.WriteAllText(published, "published");
+
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, stored);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.WriteAllText(destination, "drafted");
+
+        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
+    }
+
     [Fact]
     public void BuildDraftFileDestination_does_not_create_anything_on_disk()
     {

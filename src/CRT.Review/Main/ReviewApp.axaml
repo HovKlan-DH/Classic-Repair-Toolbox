@@ -3,8 +3,55 @@
              x:Class="CRT.Review.ReviewApp"
              RequestedThemeVariant="Default">
 
+    <Application.Resources>
+        <ResourceDictionary>
+
+            <!--
+            THE TABLE EDITOR'S OWN COLOURS (2026-09-25) - the very dictionary CRT.App merges, from
+            CRT.UI, so the reviewer's table and the Drafts tab's cannot drift apart.
+            -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://CRT.UI/BoardTable/BoardTableColors.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--
+            The few general colours the shared table editor and its unsaved-edits prompt borrow from
+            whichever application hosts them. CRT.App defines the same keys in its own theme; the
+            values here are this application's plain Fluent look, with the table's "Save changes"
+            and "Discard edits" in the same red as CRT's.
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="Bg">White</SolidColorBrush>
+                    <SolidColorBrush x:Key="Fg">Black</SolidColorBrush>
+                    <SolidColorBrush x:Key="Table_Bg">White</SolidColorBrush>
+                    <SolidColorBrush x:Key="Table_BorderRowLine">#EEEEEE</SolidColorBrush>
+                    <SolidColorBrush x:Key="Text_Fail_Fg">IndianRed</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="Bg">#1F1F1F</SolidColorBrush>
+                    <SolidColorBrush x:Key="Fg">White</SolidColorBrush>
+                    <SolidColorBrush x:Key="Table_Bg">#2A2A2A</SolidColorBrush>
+                    <SolidColorBrush x:Key="Table_BorderRowLine">#3A3A3A</SolidColorBrush>
+                    <SolidColorBrush x:Key="Text_Fail_Fg">#EF4444</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
+                    <SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+
+        <!-- The table editor's grid (ProDataGrid, an MIT fork of Avalonia's DataGrid whose
+             assembly keeps the original name) - the same include CRT.App uses. -->
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml" />
     </Application.Styles>
 
 </Application>

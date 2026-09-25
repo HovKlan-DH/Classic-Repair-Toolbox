@@ -48,6 +48,7 @@ namespace CRT.Server.Configuration
                 options, directoryExists, directoryWritable, failures);
 
             ServerOptionsValidator.ValidateProductionSeparation(options, dataTreeRoot, failures);
+            ServerOptionsValidator.ValidateProductionPublishing(options, dataTreeRoot, directoryExists, directoryWritable, failures);
             ServerOptionsValidator.ValidateManifestSettings(options, failures);
             ServerOptionsValidator.ValidateRequiredValues(options, failures);
             ServerOptionsValidator.ValidateHashingParameters(options, failures);
@@ -137,9 +138,13 @@ namespace CRT.Server.Configuration
             if (string.IsNullOrWhiteSpace(options.ProductionTreeRoot))
             {
                 failures.Add(
-                    $"{ServerOptions.SectionName}:ProductionTreeRoot is not set. It has no default " +
-                    "on purpose: it exists solely so the service can refuse to write there, so " +
-                    "leaving it blank removes a safety check rather than disabling a feature.");
+                    $"{ServerOptions.SectionName}:ProductionTreeRoot is not set. It names the " +
+                    "Production tree (the folder holding Production's Data folder and its " +
+                    "dataChecksums.json) so BETA publishing can be kept out of it, and it is " +
+                    "required even while publishing to production is off. It is NOT one of the " +
+                    "three settings that switch that on - ProductionDataTreeRoot, " +
+                    "ProductionManifestPath and ProductionPublicDataBaseUrl may stay empty; this " +
+                    "one may not.");
                 return;
             }
 
@@ -173,6 +178,166 @@ namespace CRT.Server.Configuration
                     $"{ServerOptions.SectionName}:ProductionTreeRoot [{production}] is inside " +
                     $"DataTreeRoot [{dataTreeRoot}]. Writing anywhere under the data root could " +
                     "then reach production.");
+            }
+        }
+
+        // ###########################################################################################
+        // Publishing to PRODUCTION (maintainer request, 2026-09-25): all three settings or none.
+        //
+        // None is the feature switched off, and valid. Some-but-not-all is refused, because a
+        // half-configured promotion either cannot run or - worse - writes one tree and advertises
+        // it in another's manifest.
+        //
+        // When configured, each Production value must be the PRODUCTION twin: no BETA marker in
+        // it, not equal to its BETA counterpart, and the data root inside ProductionTreeRoot and
+        // clear of DataTreeRoot in both directions. The data root must also be writable, checked
+        // here so a missing permission is a refusal to start rather than a promotion that stops
+        // half way through a board.
+        // ###########################################################################################
+        private static void ValidateProductionPublishing(
+            ServerOptions options,
+            string? dataTreeRoot,
+            Func<string, bool> directoryExists,
+            Func<string, bool> directoryWritable,
+            List<string> failures)
+        {
+            string prefix = ServerOptions.SectionName;
+
+            var set = new (string Name, string? Value)[]
+            {
+                ("ProductionDataTreeRoot", options.ProductionDataTreeRoot),
+                ("ProductionManifestPath", options.ProductionManifestPath),
+                ("ProductionPublicDataBaseUrl", options.ProductionPublicDataBaseUrl)
+            };
+
+            int configured = set.Count(setting => !string.IsNullOrWhiteSpace(setting.Value));
+
+            if (configured == 0)
+                return;
+
+            if (configured < set.Length)
+            {
+                string missing = string.Join(", ", set
+                    .Where(setting => string.IsNullOrWhiteSpace(setting.Value))
+                    .Select(setting => $"{prefix}:{setting.Name}"));
+
+                failures.Add(
+                    $"Publishing to production needs all three Production settings, and {missing} " +
+                    "is not set. Set all three to switch it on, or none to leave it off.");
+                return;
+            }
+
+            string marker = options.RequiredTreeMarker;
+            bool hasMarker = !string.IsNullOrEmpty(marker);
+
+            // ---- The data root ---------------------------------------------------------------
+            string rawRoot = options.ProductionDataTreeRoot!.Trim();
+
+            if (!Path.IsPathRooted(rawRoot))
+            {
+                failures.Add($"{prefix}:ProductionDataTreeRoot must be an absolute path, but is [{options.ProductionDataTreeRoot}]");
+            }
+            else if (!ServerOptionsValidator.TryNormalisePath(rawRoot, out string productionData))
+            {
+                failures.Add($"{prefix}:ProductionDataTreeRoot is not a usable path: [{options.ProductionDataTreeRoot}]");
+            }
+            else
+            {
+                if (hasMarker && ServerOptionsValidator.HasRequiredMarker(productionData, marker))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionDataTreeRoot contains the BETA marker [{marker}]: " +
+                        $"[{options.ProductionDataTreeRoot}]. It must name the PRODUCTION data tree.");
+                }
+
+                if (dataTreeRoot is not null &&
+                    (ServerOptionsValidator.PathsAreEqual(dataTreeRoot, productionData) ||
+                     ServerOptionsValidator.PathContains(dataTreeRoot, productionData) ||
+                     ServerOptionsValidator.PathContains(productionData, dataTreeRoot)))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionDataTreeRoot [{productionData}] overlaps DataTreeRoot " +
+                        $"[{dataTreeRoot}]. BETA and production must be two separate trees.");
+                }
+
+                if (ServerOptionsValidator.TryNormalisePath(options.ProductionTreeRoot ?? string.Empty, out string productionTree) &&
+                    !ServerOptionsValidator.PathsAreEqual(productionTree, productionData) &&
+                    !ServerOptionsValidator.PathContains(productionTree, productionData))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionDataTreeRoot [{productionData}] is not inside " +
+                        $"ProductionTreeRoot [{productionTree}]. The two must name the same tree.");
+                }
+
+                if (!directoryExists(productionData))
+                {
+                    failures.Add($"{prefix}:ProductionDataTreeRoot does not exist or is not a directory: [{productionData}]");
+                }
+                else if (!directoryWritable(productionData))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionDataTreeRoot is not writable by the service user: " +
+                        $"[{productionData}]. Publishing to production needs the permissions in " +
+                        "DEPLOYMENT.md step 3 and the tree in the unit's ReadWritePaths.");
+                }
+            }
+
+            // ---- The manifest ----------------------------------------------------------------
+            string rawManifest = options.ProductionManifestPath!.Trim();
+
+            if (!Path.IsPathRooted(rawManifest))
+            {
+                failures.Add($"{prefix}:ProductionManifestPath must be an absolute path, but is [{options.ProductionManifestPath}]");
+            }
+            else if (ServerOptionsValidator.TryNormalisePath(rawManifest, out string productionManifest))
+            {
+                if (hasMarker && ServerOptionsValidator.HasRequiredMarker(productionManifest, marker))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionManifestPath contains the BETA marker [{marker}]: " +
+                        $"[{options.ProductionManifestPath}]");
+                }
+
+                if (ServerOptionsValidator.TryNormalisePath(options.ManifestPath ?? string.Empty, out string betaManifest) &&
+                    ServerOptionsValidator.PathsAreEqual(betaManifest, productionManifest))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionManifestPath is the same file as ManifestPath: " +
+                        $"[{productionManifest}]. Each tree has its own dataChecksums.json.");
+                }
+            }
+            else
+            {
+                failures.Add($"{prefix}:ProductionManifestPath is not a usable path: [{options.ProductionManifestPath}]");
+            }
+
+            // ---- The public URL --------------------------------------------------------------
+            string url = options.ProductionPublicDataBaseUrl!.Trim();
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? productionUri) ||
+                !string.Equals(productionUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                failures.Add(
+                    $"{prefix}:ProductionPublicDataBaseUrl must be an absolute https:// URL, but is " +
+                    $"[{options.ProductionPublicDataBaseUrl}].");
+            }
+            else
+            {
+                if (hasMarker && ServerOptionsValidator.HasRequiredMarker(url, marker))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionPublicDataBaseUrl contains the BETA marker [{marker}]: " +
+                        $"[{options.ProductionPublicDataBaseUrl}]. That would advertise BETA data to every user.");
+                }
+
+                if (string.Equals(
+                        url.TrimEnd('/'),
+                        (options.PublicDataBaseUrl ?? string.Empty).Trim().TrimEnd('/'),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    failures.Add(
+                        $"{prefix}:ProductionPublicDataBaseUrl is the same as PublicDataBaseUrl: [{url}].");
+                }
             }
         }
 
@@ -340,18 +505,20 @@ namespace CRT.Server.Configuration
 
         private static void ValidateTokenLifetimes(ServerOptions options, List<string> failures)
         {
-            if (options.AccessTokenMinutes < 1)
-            {
-                failures.Add(
-                    $"{ServerOptions.SectionName}:AccessTokenMinutes must be at least 1, but is " +
-                    $"{options.AccessTokenMinutes.ToString(CultureInfo.InvariantCulture)}");
-            }
-
             if (options.RefreshTokenDays < 1)
             {
                 failures.Add(
                     $"{ServerOptions.SectionName}:RefreshTokenDays must be at least 1, but is " +
                     $"{options.RefreshTokenDays.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            // A negative reserve would read as "always room", silently switching the disk guard off
+            // while the setting looked configured. Zero is the deliberate way to turn it off.
+            if (options.MinimumFreeDiskBytes < 0)
+            {
+                failures.Add(
+                    $"{ServerOptions.SectionName}:MinimumFreeDiskBytes must be 0 or more, but is " +
+                    $"{options.MinimumFreeDiskBytes.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 

@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Handlers.DataHandling;
 
 namespace CRT.Review.Handlers
 {
@@ -296,13 +298,50 @@ namespace CRT.Review.Handlers
         // completely different message from "that failed": the reviewer should refresh and look at
         // what was decided, not retry.
         // ###########################################################################################
+        //
+        // `shownRemovals` is the list of files the reviewer was shown the publish would remove
+        // (the detail's FileRemovalPreview). The server refuses the approval when that is no longer
+        // the list it would remove, so nothing goes that was not on screen.
         public Task<ReviewApiResult<ReviewDecisionResult>> ApproveAsync(
             ReviewSession session,
             long submissionId,
+            IReadOnlyList<string>? shownRemovals = null,
             CancellationToken cancellationToken = default) =>
             this.DecideAsync(
                 ReviewApiRoutes.Approve(this.thisBaseAddress, submissionId),
                 comment: null,
+                session,
+                cancellationToken,
+                shownRemovals ?? []);
+
+        // ###########################################################################################
+        // The reviewer's table (2026-09-25). A change is sent with the amendment version the table
+        // was opened at, and refused as a conflict if somebody else changed the submission since.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<ReviewTableData>> GetTableAsync(
+            ReviewSession session,
+            long submissionId,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.SubmissionTable(this.thisBaseAddress, submissionId)),
+                    ReviewApiParser.ParseTable,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<ReviewAmendResult>> AmendAsync(
+            ReviewSession session,
+            long submissionId,
+            int expectedVersion,
+            SubmissionRows rows,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.SubmissionAmend(this.thisBaseAddress, submissionId),
+                new AmendRequest(expectedVersion, rows),
+                ReviewApiParser.ParseAmend,
                 session,
                 cancellationToken);
 
@@ -335,9 +374,10 @@ namespace CRT.Review.Handlers
             string route,
             string? comment,
             ReviewSession? session,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyList<string>? expectedRemovals = null)
         {
-            string body = JsonSerializer.Serialize(new { comment });
+            string body = ReviewApiClient.Body(new ReviewDecisionRequest(comment, expectedRemovals));
 
             try
             {
@@ -426,6 +466,254 @@ namespace CRT.Review.Handlers
             catch (Exception exception) when (exception is HttpRequestException or JsonException)
             {
                 return null;
+            }
+        }
+
+        // ###########################################################################################
+        // The administrator's lists and changes (Phase 6 roles). GETs through the shared send path;
+        // the two changes POST a body and read the server's own sentence back on a refusal, the
+        // way a decision does.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<ReviewSystemsResponse>> GetSystemsAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminSystems(this.thisBaseAddress)),
+                    ReviewApiParser.ParseSystems,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<ReviewApiResult<ReviewAccountsResponse>> GetAccountsAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminAccounts(this.thisBaseAddress)),
+                    ReviewApiParser.ParseAccounts,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<string>> AddReviewerAsync(
+            ReviewSession session,
+            string systemId,
+            long accountId,
+            CancellationToken cancellationToken = default) =>
+            this.PostReviewerChangeAsync(
+                ReviewApiRoutes.AdminAddReviewer(this.thisBaseAddress), systemId, accountId, session, cancellationToken);
+
+        public Task<ReviewApiResult<string>> RemoveReviewerAsync(
+            ReviewSession session,
+            string systemId,
+            long accountId,
+            CancellationToken cancellationToken = default) =>
+            this.PostReviewerChangeAsync(
+                ReviewApiRoutes.AdminRemoveReviewer(this.thisBaseAddress), systemId, accountId, session, cancellationToken);
+
+        private async Task<ReviewApiResult<string>> PostReviewerChangeAsync(
+            string route,
+            string systemId,
+            long accountId,
+            ReviewSession session,
+            CancellationToken cancellationToken)
+        {
+            string body = ReviewApiClient.Body(new ReviewerChangeRequest(systemId, accountId));
+
+            try
+            {
+                using var content = new StringContent(body, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
+
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
+
+                using HttpResponseMessage response =
+                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+                // The server's refusals here are SENTENCES written for the administrator - "has
+                // not verified their address", "no such system" - so they are read back rather
+                // than replaced by a status code's generic wording.
+                if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
+                {
+                    return ReviewApiResult<string>.Failed(
+                        response.StatusCode == HttpStatusCode.Forbidden ? ReviewApiFailure.NotPermitted : ReviewApiFailure.Refused,
+                        await ReviewApiClient.ReadErrorAsync(response, cancellationToken)
+                            ?? "The server refused this change.");
+                }
+
+                ReviewApiResult<string>? failure = ReviewApiClient.StatusFailure<string>(response.StatusCode);
+
+                if (failure is not null)
+                    return failure;
+
+                return ReviewApiResult<string>.Ok("Done.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (TaskCanceledException)
+            {
+                return ReviewApiResult<string>.Failed(
+                    ReviewApiFailure.Unreachable, "The server did not answer in time. Refresh to see what it holds.");
+            }
+            catch (HttpRequestException exception)
+            {
+                return ReviewApiResult<string>.Failed(
+                    ReviewApiFailure.Unreachable, $"Could not reach the server: {exception.Message}");
+            }
+        }
+
+        // ###########################################################################################
+        // BETA to production (2026-09-25). The list through the shared GET path; the plan and the
+        // publish POST a body and read the server's own sentence back on a refusal - a 409 here
+        // says BETA changed since it was checked, which the reviewer must read rather than retry.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<ProductionListResponse>> GetProductionListAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.ProductionList(this.thisBaseAddress)),
+                    ReviewApiParser.ParseProductionList,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<ProductionPlanView>> GetProductionPlanAsync(
+            ReviewSession session,
+            string systemId,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.ProductionPlan(this.thisBaseAddress),
+                new ProductionPlanRequest(systemId),
+                ReviewApiParser.ParseProductionPlan,
+                session,
+                cancellationToken);
+
+        // `shownRemovals`: the files the plan said this would remove from production - see
+        // ApproveAsync.
+        public Task<ReviewApiResult<ProductionPublishResult>> PublishToProductionAsync(
+            ReviewSession session,
+            string systemId,
+            string expectedBetaContentHash,
+            IReadOnlyList<string>? shownRemovals = null,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.ProductionPublish(this.thisBaseAddress),
+                new ProductionPublishRequest(systemId, expectedBetaContentHash, shownRemovals ?? []),
+                ReviewApiParser.ParseProductionPublish,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
+        // The administrator's "Unused files" screen (2026-09-25). The list reads every workbook in
+        // the tree on the server, so it takes a few seconds.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<UnusedFileListing>> GetUnusedFilesAsync(
+            ReviewSession session,
+            string tree,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminUnusedFiles(this.thisBaseAddress, tree)),
+                    ReviewApiParser.ParseUnusedFiles,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<UnusedFileRemovalResult>> RemoveUnusedFilesAsync(
+            ReviewSession session,
+            string tree,
+            IReadOnlyList<string> files,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminRemoveUnusedFiles(this.thisBaseAddress),
+                new UnusedFilesRemoveRequest(tree, files),
+                ReviewApiParser.ParseUnusedFileRemoval,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
+        // A request body: one of CRT.Data's ReviewApiContract records, in the JSON the server reads
+        // (ReviewApiContract.WireSettings, which the server applies too). Serialised by its RUNTIME
+        // type, since callers pass it as `object`. Internal so ReviewWireContractTests can send
+        // exactly what this client sends.
+        // ###########################################################################################
+        internal static string Body(object body) =>
+            JsonSerializer.Serialize(body, body.GetType(), ReviewApiContract.WireSettings);
+
+        private async Task<ReviewApiResult<T>> PostProductionAsync<T>(
+            string route,
+            object body,
+            Func<string, T?> parse,
+            ReviewSession session,
+            CancellationToken cancellationToken)
+            where T : class
+        {
+            try
+            {
+                using var content = new StringContent(ReviewApiClient.Body(body), Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
+
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
+
+                using HttpResponseMessage response =
+                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+                // Every refusal here carries a sentence written for the reviewer.
+                if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
+                    or HttpStatusCode.Forbidden or HttpStatusCode.Conflict or HttpStatusCode.ServiceUnavailable)
+                {
+                    ReviewApiFailure failure = response.StatusCode switch
+                    {
+                        HttpStatusCode.Forbidden => ReviewApiFailure.NotPermitted,
+                        HttpStatusCode.Conflict => ReviewApiFailure.Conflict,
+                        HttpStatusCode.NotFound => ReviewApiFailure.NotFound,
+                        _ => ReviewApiFailure.Refused
+                    };
+
+                    return ReviewApiResult<T>.Failed(
+                        failure,
+                        await ReviewApiClient.ReadErrorAsync(response, cancellationToken) ?? "The server refused this.");
+                }
+
+                ReviewApiResult<T>? statusFailure = ReviewApiClient.StatusFailure<T>(response.StatusCode);
+
+                if (statusFailure is not null)
+                    return statusFailure;
+
+                T? parsed = parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+
+                return parsed is null
+                    ? ReviewApiResult<T>.Failed(ReviewApiFailure.UnreadableAnswer, "The server sent an answer this version does not understand.")
+                    : ReviewApiResult<T>.Ok(parsed);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (TaskCanceledException)
+            {
+                // As for a decision: a publish that timed out may well have happened.
+                return ReviewApiResult<T>.Failed(
+                    ReviewApiFailure.Unreachable,
+                    "The server did not answer in time. Refresh before trying again - it may already have been done.");
+            }
+            catch (HttpRequestException exception)
+            {
+                return ReviewApiResult<T>.Failed(ReviewApiFailure.Unreachable, $"Could not reach the server: {exception.Message}");
             }
         }
 

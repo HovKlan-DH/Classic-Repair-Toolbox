@@ -35,7 +35,7 @@ You need:
 | Thing | Value |
 | --- | --- |
 | BETA data tree (server-local path) | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA/Data` |
-| Production data tree | the matching `app-data` path - **the service must never write here** |
+| Production data tree | the matching `app-data` path - **the service must never write here**, unless you switch on publishing to production (step 13) |
 | Web server | Apache, the existing `classic-repair-toolbox.dk` vhost |
 | Mail | local postfix on `localhost:25` |
 | Port for the service | `5199` on loopback (change it everywhere below if it is taken) |
@@ -106,6 +106,11 @@ The service must be able to write the BETA tree (from Phase 4 onward) and must b
 write the Production tree. Not "configured not to" - *unable*, refused by the kernel. Because you
 promote BETA to Production by hand, the service never has any legitimate reason to write
 Production, so denying it costs nothing and removes a whole class of accident.
+
+> **Since 2026-09-25 this is the DEFAULT, not the only way.** Reviewers can publish a board from
+> BETA to Production from the review application, once you switch that on - step 13, which
+> deliberately undoes part of this step for the Production data folder only. Until you do, this
+> step stands exactly as written, and nothing can write Production.
 
 ```bash
 # A group that owns the BETA content, with the service user in it.
@@ -273,6 +278,11 @@ WorkingDirectory=/mydir/http/classic-repair-toolbox.dk/crt-server/app
 ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server/app/CRT.Server.dll
 Restart=always
 RestartSec=5
+# A refused setting exits with 78 (EX_CONFIG) and is NOT retried: a restart
+# cannot fix a wrong setting, and each retry used to add a core dump to the
+# journal every five seconds. Anything else - the database not up yet at boot,
+# a crash - still restarts.
+RestartPreventExitStatus=78
 
 Environment=ASPNETCORE_ENVIRONMENT=Production
 # Loopback ONLY. The service must never be reachable except through Apache.
@@ -282,7 +292,8 @@ Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 # Hardening. ProtectSystem=strict makes the whole filesystem read-only to this
 # process except the paths named in ReadWritePaths - which is a SECOND, independent
 # interlock against writing Production, on top of the file permissions in step 3.
-# Do not remove it, and do not add the Production tree to ReadWritePaths.
+# Do not remove it. Add the Production data tree to ReadWritePaths ONLY when you
+# switch on publishing to production (step 13), and then only that folder.
 #
 # Note what ReadWritePaths does NOT include: the service's own directory. The
 # binaries and appsettings.Production.json stay read-only to the process even
@@ -449,9 +460,15 @@ systemctl is-active crt-server && curl -s http://127.0.0.1:5199/api/health
 
 ### Reading the log WITHOUT the core dump
 
-**A failed start on .NET/Linux writes a ~200-line core dump into the journal**, and the one line
-that says what actually went wrong is buried in it. Every command here filters that out. Use these
+**A crash on .NET/Linux writes a ~200-line core dump into the journal**, and the one line that
+says what actually went wrong is buried in it. Every command here filters that out. Use these
 rather than a bare `journalctl -u crt-server`.
+
+**A refused setting no longer does that.** The service logs each reason at `crit` and exits with
+code 78, and `RestartPreventExitStatus=78` in the unit (step 5) stops systemd retrying, so
+`systemctl status crt-server` shows `status=78` and the journal ends with the reasons. A unit
+written before 2026-09-25 lacks that line: add it with `sudo systemctl edit --full crt-server`,
+then `sudo systemctl daemon-reload`.
 
 ```bash
 # What went wrong - ONLY warnings and errors, so a healthy service prints nothing at all:
@@ -532,13 +549,15 @@ sudo systemctl reload httpd
 | `status=200/CHDIR` in `systemctl status` | The service cannot enter `WorkingDirectory`. Its group (`crt-data`, from the unit's `Group=`) does not match the group owning the service directory, so `0750` gives it nothing | `ls -ld <root>/crt-server/app` - the group must be `crt-data`; fix with `chown -R root:crt-data <root>/crt-server` |
 | `status=150/EXEC` or "file not found" on start | The publish output was never copied, or only partly | `ls -l <root>/crt-server/app/` - expect ~11 files including `CRT.Data.dll` and `CRT.Server.runtimeconfig.json` |
 | `IOException: Permission denied` in `FileConfigurationProvider.Load`, inside `WebApplication.CreateBuilder` | The host cannot open `appsettings.Production.json`. Almost always the group: the file is `root:crt-server` while the process runs `crt-server:crt-data`, because **systemd does not apply supplementary groups when `Group=` is set** | `ls -ln <root>/crt-server/app/appsettings.Production.json` - group must be `crt-data` (not `crt-server`); fix with `chown root:crt-data` on it. Do NOT test with `sudo -u crt-server cat`, which passes regardless - use the `systemd-run` check in step 9 |
-| `Result: core-dump`, `signal=ABRT`, and a long stack trace | Normal. An unhandled exception on .NET/Linux exits via `abort()`, so a deliberate configuration refusal looks like a crash | Read the `crit:` line ABOVE the trace - it names the real reason. Use `journalctl -u crt-server -n 20 --no-pager -p warning`, which shows the reason and none of the dump |
+| `Result: core-dump`, `signal=ABRT`, and a long stack trace | An unhandled exception on .NET/Linux exits via `abort()`: the database was unreachable, a migration failed, or the service crashed. (A refused SETTING no longer looks like this - it exits with `status=78`, see the next row.) | Read the `crit:` line ABOVE the trace - it names the real reason. Use `journalctl -u crt-server -n 20 --no-pager -p warning`, which shows the reason and none of the dump |
+| `status=78` and the unit stays stopped | A setting in `appsettings.Production.json` was refused. The service logs every reason and does not retry, since a restart cannot fix a setting (`RestartPreventExitStatus=78`, step 5) | `journalctl -u crt-server -n 20 --no-pager -p warning` lists each `Configuration error:` naming its setting. Fix them all, then `sudo systemctl restart crt-server` |
 | `The migrations directory [...] does not exist` | The `Migrations/` subfolder did not reach the server. A publish from before the folder existed, or a copy that only took the loose files | `ls $APP/Migrations/*.sql`; fix with `cp -r ~/publish-server/Migrations $APP/` then `chown -R root:crt-data $APP/Migrations` |
 | `appsettings.Production.json` downloads over HTTPS | `crt-server/` ended up INSIDE the document root | `grep -i DocumentRoot` the vhost; the service directory must be a sibling of `public_html`, not under it. Move it, then rotate the database password - it has been published |
 | Service is `activating` then fails | Usually a configuration error - read the message, it names the setting | `journalctl -u crt-server -n 20 --no-pager -p warning` |
 | Service runs but Apache 502s | Wrong port in the vhost or the unit | `ss -ltnp \| grep 5199` |
 | Writes fail once later phases write data | Group/setgid not applied, or a parent is not traversable | `namei -l <BETA path>` |
-| **Approve and publish** answers an error naming a board file and `Permission denied` | The BETA tree's group ownership was lost - **most often by replacing files over a NETWORK SHARE**, which writes them as the share's user and drops both `crt-data` and the setgid bit. The service can create NEW files (the folder is still writable) but cannot OVERWRITE the ones the share replaced, so a publish fails on the first existing image | `ls -l` the named file: the group must be `crt-data` and the mode `-rw-rw-r--`. Re-apply the three commands from step 4 - `chgrp -R`, `chmod -R g+rwX`, and the setgid `find` - **after every bulk copy over the share**, then re-run the publish (re-running is safe and is the documented recovery) |
+| **Approve and publish** answers an error naming a board file and `Permission denied` | The BETA tree's group ownership was lost - **most often by replacing files over a NETWORK SHARE**, which writes them as the share's user and drops both `crt-data` and the setgid bit. Since 2026-09-25 a publish writes each file beside its target and RENAMES it into place, which needs write permission on the FOLDER rather than on the old file - so a file that lost its group no longer stops a publish, but a FOLDER that lost it still does | `ls -ld` the named file's folder: the group must be `crt-data` and the mode `drwxrwsr-x`. Re-apply the three commands from step 4 - `chgrp -R`, `chmod -R g+rwX`, and the setgid `find` - **after every bulk copy over the share**, then re-run the publish (re-running is safe and is the documented recovery) |
+| **Approve and publish** refuses with "the published tree contains a symbolic link" | A symbolic link sits somewhere between the data root and a file the publish would write. Publishing through it could write outside the data tree, so it is refused and nothing is changed | `find <BETA path> -type l` lists every link. Replace each with the real folder or file |
 | Port reachable from outside | `ASPNETCORE_URLS` not loopback | `ss -ltnp \| grep 5199` shows `0.0.0.0` |
 
 ---
@@ -943,6 +962,211 @@ retry.
 
 ---
 
+## Step 12 - After the security review (2026-09-25)
+
+The review found that a contribution could reach further than intended once approved, and that
+nothing bounded what an anonymous sender could store. The code half is in the build; **three
+things here need doing by hand on the server**, and the rest is worth knowing.
+
+### 12a - Stop anything in the data trees from ever running (do this first)
+
+The data trees sit inside `public_html`, the site runs PHP, and the vhost has `AllowOverride All`.
+The service now refuses dot-files and every file type boards do not use, but a web server that will
+execute a `.php` - or obey an `.htaccess` - placed in a data folder is one mistake away from running
+contributed code. Close it at the web server, independently of the service.
+
+Add to the `classic-repair-toolbox.dk` vhost, once per tree (BETA and Production):
+
+```apache
+<Directory "/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA">
+    # No .htaccess in a data tree is ever read, whoever put it there.
+    AllowOverride None
+    Options -Indexes -ExecCGI -Includes
+
+    # Nothing that could be a script is served at all - refused, not run.
+    <FilesMatch "\.(php|phtml|phar|cgi|pl|py|sh)$">
+        Require all denied
+    </FilesMatch>
+
+    # Browsers must not guess a file's type, and a page served from here may not run script or
+    # reach the rest of the site. CRT downloads with its own client and ignores both headers.
+    Header set X-Content-Type-Options "nosniff"
+    Header set Content-Security-Policy "sandbox"
+</Directory>
+
+<Directory "/mydir/http/classic-repair-toolbox.dk/public_html/app-data">
+    AllowOverride None
+    Options -Indexes -ExecCGI -Includes
+    <FilesMatch "\.(php|phtml|phar|cgi|pl|py|sh)$">
+        Require all denied
+    </FilesMatch>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Content-Security-Policy "sandbox"
+</Directory>
+```
+
+`Header` needs `mod_headers` - `httpd -M | grep headers` shows it; AlmaLinux loads it by default.
+The site's own PHP pages outside these two folders are not affected.
+
+**Verify - a PHP file in the tree must be refused, not run:**
+
+```bash
+BETA=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA
+echo '<?php echo "RAN"; ?>' | sudo tee $BETA/Data/zz-probe.php > /dev/null
+curl -s -o /dev/null -w '%{http_code}\n' --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  https://classic-repair-toolbox.dk/app-data-BETA/Data/zz-probe.php      # expect 403
+sudo rm -f $BETA/Data/zz-probe.php
+
+curl -sI --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  https://classic-repair-toolbox.dk/app-data-BETA/dataChecksums.json \
+  | grep -i -E 'content-security-policy|x-content-type-options'            # expect both
+```
+
+Then run a data sync from CRT against BETA and confirm it still completes.
+
+### 12b - Migration 0005 (applies itself; verify it landed)
+
+`0005_binary_system_id_and_upload_budget.sql` makes the system id compare byte for byte in
+`systems`, `submissions` and `maintainers`, and adds `submissions.bytes_to_upload`. Before it, the
+id ignored case, so an anonymous submission for `commodore/c64/250425` created the row that every
+later real submission for that board then attached to - and was rejected.
+
+```bash
+mysql -u crt_review -p -h 127.0.0.1 crt_review -e "
+  SELECT TABLE_NAME, COLLATION_NAME FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA = 'crt_review' AND COLUMN_NAME = 'system_id';
+  SHOW COLUMNS FROM submissions LIKE 'bytes_to_upload';"
+```
+
+Expect `utf8mb4_bin` three times and the new column. **It drops and re-creates two foreign keys**,
+and MariaDB commits DDL as it goes: if it fails part way, check
+`SHOW CREATE TABLE submissions` and `SHOW CREATE TABLE maintainers` for `fk_submissions_system` and
+`fk_maintainers_system` before retrying, and re-add whichever is missing with the statements at the
+end of the migration file.
+
+**Check for a squatted row** made before the fix - a system id that is a case variant of a real
+board folder:
+
+```bash
+mysql -u crt_review -p -h 127.0.0.1 crt_review -e "SELECT system_id, current_revision, created_utc FROM systems ORDER BY system_id;"
+```
+
+Anything whose spelling differs from the published folder names and has no `current_revision` was
+never published; reject its submissions in the review app.
+
+### 12c - Settings
+
+| Setting | What to do |
+| --- | --- |
+| `MinimumFreeDiskBytes` | New, defaults to 5 GiB. Submissions and upload chunks are refused (HTTP 507) while the disk holding `BlobStoreRoot` has less than this free, so contributions pause before the site's disk fills. `0` turns it off. |
+| `AccessTokenMinutes` | **Removed.** It was validated and read by nothing - the login's `refreshToken` is the one bearer token, with a sliding `RefreshTokenDays` expiry. Delete the line; if it stays, it is ignored. |
+
+### What now happens on its own
+
+* **A submission may only change its own board's folder, `<Manufacturer>/Shared files/` and
+  `Generic shared files/`.** Another board's file may be cited only when it is byte-identical to the
+  published copy, and is then not written at all. Checked when the submission arrives and again at
+  approval.
+* **Only file types boards use are accepted** - `.png .jpg .jpeg .gif .bmp .webp .pdf .txt .html
+  .htm` - with no dot-files, every file used by a row, and each file's opening bytes matching its
+  type. A path that differs from a published one only by capitalisation is refused.
+* **Every file is re-verified before a publish writes anything**, and each copy is hashed as it is
+  written and renamed into place only on a match. A symbolic link on the way refuses the publish.
+* **Per address: at most 20 submissions and 4 GiB of uploads a day.** Reviewers and administrators
+  are exempt. Request bodies are capped per route (8 MB for a manifest, an upload chunk or a
+  reviewer's saved table, 2 MB for a list of files to remove, 64 KB for everything else).
+* **The hourly sweep now also deletes completed blobs no live submission needs**, and clears the
+  stored rows of submissions that ended without publishing once they are 30 days old. Blobs of
+  merged submissions are kept, so the next edit to that board uploads only what changed.
+* **The review app lists every file that changes on the server**, not only images, and flags
+  shared folders, other boards' files and files no row uses.
+
+**Closing a board to contributions** - the lever for one being flooded - no longer needs a code
+change:
+
+```sql
+UPDATE systems SET is_accepting = 0 WHERE system_id = 'Commodore/C64/250407';
+```
+
+Set it back to `1` to reopen. A board with no `systems` row yet has never been submitted to and is
+open.
+
+---
+
+## Step 13 - Publishing to production from the review application (optional, 2026-09-25)
+
+**Publishing is two steps now.** Approving a submission publishes it to **BETA**, as before.
+Then, once a reviewer has looked at the board in CRT with the BETA data, they press **Production**
+in the review application and publish that board to **Production** - the data every user downloads.
+Reviewers can do this for the systems they review; you can do it for all of them. **You are e-mailed
+every time a reviewer does it.**
+
+What is copied: every file in the board's BETA folder that Production lacks or has different bytes
+for, plus the shared files the board uses that differ. Files the board no longer uses, and that
+nothing else in Production uses either, are removed - the plan lists them in red before anyone
+approves, and the publish is refused if that list has changed since. If that list holds
+a shared file, the board's reviewer AND you must both approve before anything is copied (either of
+you first; the other is e-mailed). Each file is hashed as it is copied and only replaces the real
+one if it matches BETA. If BETA has changed since the reviewer opened the board, the publish is
+refused and they are told to look again.
+
+**It is OFF until you do all of the following.** Until then the review application says so, and the
+interlock from step 3 holds exactly as before.
+
+**1. Let the service write the Production DATA folder - and only that folder.** This is the one
+place this document deliberately undoes step 3. Give the Production `Data` folder the same group
+treatment the BETA tree got. The folder above it, with `dataChecksums.json`, needs it too, because
+the service rewrites that manifest after every production publish:
+
+```bash
+P=/mydir/http/classic-repair-toolbox.dk/public_html/app-data
+sudo chgrp -R crt-data $P
+sudo chmod -R g+rwX    $P
+sudo find $P -type d -exec chmod g+s {} \;
+
+sudo -u crt-server touch $P/Data/.probe && echo "PRODUCTION WRITABLE (now intended)" && sudo rm -f $P/Data/.probe
+```
+
+**2. Add it to the unit's `ReadWritePaths`,** or `ProtectSystem=strict` refuses the write:
+
+```bash
+systemctl edit --full crt-server
+# ReadWritePaths=.../app-data-BETA .../crt-server/blobs .../app-data
+systemctl daemon-reload
+```
+
+**3. Set all three settings** in `appsettings.Production.json`. All three or none: the service
+refuses to start with only some of them, and it refuses any that carries `-BETA` or equals its
+BETA twin.
+
+| Setting | Value |
+| --- | --- |
+| `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data/Data` |
+| `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data/dataChecksums.json` |
+| `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data/Data` |
+
+`ProductionTreeRoot` stays as it is; the data folder must sit inside it.
+
+**4. Restart.** Migration 0007 applies itself (three columns on `systems`). The startup check now
+also refuses to start if the Production data folder is not writable, which is the point: a missing
+permission then shows up as the service not starting, instead of a publish that stops halfway
+through a board.
+
+```bash
+sudo systemctl restart crt-server
+journalctl -u crt-server -n 30 --no-pager
+```
+
+**To switch it off again,** empty the three settings and restart, then undo steps 1 and 2 to put
+back the kernel-level guarantee.
+
+**The risk you are accepting,** stated plainly: a reviewer's account, with a password as its only
+factor (two-factor sign-in is not built), can now publish its own boards to every user. What still
+stands in the way: the reviewer only has their own systems, and a shared file also needs your own
+approval; only bytes already in BETA can be published; you are e-mailed each time; and the audit trail records who did it.
+
+---
+
 ## What is deliberately not here yet
 
 **The submission and review endpoints now EXIST but have no step in this runbook**, and that is on
@@ -958,11 +1182,17 @@ What they will need when you do:
 - **Migrations 0002, 0003 and 0004** apply automatically on the next start. **0004 is required
   before the server can take a single real submission**; it fixes three schema-versus-code
   disagreements that would otherwise fail every submission against MariaDB.
-- **The review endpoints need an administrator account.** `GET /api/review/queue` answers 401
-  without credentials and 403 for an account lacking the administrator or reviewer flag, so the
-  first useful check is a login followed by a queue request with the bearer token.
+- **The review endpoints need an administrator account, or a reviewer assigned to at least one
+  system.** `GET /api/review/queue` answers 401 without credentials and 403 for an account with
+  neither, so the first useful check is a login followed by a queue request with the bearer token.
+- **Migration 0006** (Phase 6 roles, 2026-09-25) applies itself on the next start: it renames the
+  pool table to `reviewers`, drops `accounts.is_reviewer`, and adds
+  `submissions.touches_shared_files`. Nothing to do by hand; verify with
+  `SHOW TABLES LIKE 'reviewers'` if in doubt.
 - **Publishing writes the BETA tree only.** The service has no write permission on Production (step
-  0), which is the interlock working as designed rather than a misconfiguration to fix.
+  0), which is the interlock working as designed rather than a misconfiguration to fix. Publishing
+  to production from the review application is a separate, switched-off-by-default feature - step
+  13.
 
 ---
 
@@ -996,7 +1226,7 @@ UPDATE accounts
 
 -- Confirm exactly one row, and that it is verified and unlocked - ReviewAuthority refuses an
 -- account that is either, whatever its role.
-SELECT id, email, is_verified, is_administrator, is_reviewer, is_locked
+SELECT id, email, is_verified, is_administrator, is_locked
   FROM accounts
  WHERE email_normalised = 'you@example.com';
 ```
@@ -1004,10 +1234,59 @@ SELECT id, email, is_verified, is_administrator, is_reviewer, is_locked
 **No restart is needed.** Authority is resolved per request from the account row, which is the
 same property that makes locking an account bite immediately rather than at next login.
 
-**A REVIEWER is granted the same way** with `is_reviewer = 1`. The difference matters: a reviewer
-may reject and request changes but **can never approve**, because approving publishes and
-publishing is irreversible (no revision history is retained). Give somebody `is_reviewer` when you
-want them triaging the queue, and `is_administrator` only when you want them publishing.
+## Granting REVIEWERS - from the review application, not SQL
+
+**A reviewer is somebody you assign to a system, and that person reviews AND publishes changes
+to exactly the systems you assign** (the maintainer's two-role model, 2026-09-25). There is no
+flag to set: sign in to the review application as the administrator, press **Reviewers** above
+the queue, pick a system on the left and add an account from the list underneath. The list shows
+every registered account and says, in the line itself, why one cannot be granted - address not
+verified, locked, or already an administrator.
+
+Every board in the BETA tree is listed, whether or not anything has ever been submitted to it,
+so a reviewer can be assigned before the first contribution arrives. **Removal takes effect on
+the person's very next request** - authority is read from the `reviewers` table on every call,
+never cached in a session.
+
+What a reviewer gets: the queue filtered to their systems, and Approve on each. A submission that
+adds or changes a file under `Shared files` or `Generic shared files` needs TWO approvals, the
+reviewer's AND yours, for BETA and again for Production (it says "changes shared files" in the row).
+Either of you may approve first; that publishes nothing, the row then says "one of two approvals
+given", and the other is e-mailed. The second approval publishes. On a board with no reviewer, your
+approval alone does it. When a submission is queued, whoever must approve is e-mailed: its system's
+reviewers, plus you on a shared-files change; with nobody assigned, you alone.
+
+Migration 0008 (the two approval tables) applies itself on the next start, like 0006 and 0007.
+
+Only an administrator can open the Reviewers screen or call `/api/admin/*`; the server refuses
+everyone else regardless of what the app shows.
+
+### Changing a submission before publishing it
+
+**View in table format** in the review application shows a submission as the Drafts tab's table,
+coloured against the published board, and a reviewer of that board (or you) can correct rows there
+and press Save changes. That saves a new version of the submission: the contributor's original is
+kept in the database, any approval already given is cleared (it was given to other content), the
+contributor is told in their mail and in CRT, and the audit trail records who changed it. A row may
+only point at a file the submission carries or one already published - new files still come from
+contributors. Migration 0009 (`submission_amendments`) applies itself on the next start.
+
+### Unused files
+
+A publish now removes the files a board stops using, when nothing else uses them either - the
+reviewer sees that list before approving. Files that were ALREADY unused are yours: **Unused files**
+in the review application (beside Reviewers, administrator only) lists them per data tree, BETA or
+Production, with sizes. Look through the list, tick the box, and press Remove. The server removes
+only the files on the list that it still finds unused, rewrites that tree's `dataChecksums.json`,
+and records every file in the audit trail (`data.unused_removed`).
+
+The first time, BETA should show the files the repository copy of the data no longer has (the 50
+removed on 2026-09-25) plus anything else that has gathered on the server. If the list says it
+cannot be made - a master workbook listing a board file that is not there, or a workbook that cannot
+be read - nothing can be removed until that is fixed, and no publish removes anything either.
+
+A user's CRT keeps its downloaded copy of a removed file unless "Delete orphan and non-used files"
+is switched on in its Configuration tab (off by default).
 
 ## Staying signed in, and how to end a session
 

@@ -54,7 +54,18 @@ namespace CRT.Review.Handlers
 
             string waiting = ReviewQueueDisplay.Waiting(row.CreatedUtc, now);
 
-            return string.IsNullOrEmpty(waiting) ? summary : $"{summary}  -  {waiting}";
+            string line = string.IsNullOrEmpty(waiting) ? summary : $"{summary}  -  {waiting}";
+
+            // Said in the row, because a shared-file change reaches every board citing the file and
+            // needs TWO approvals - the board's reviewer and the administrator (2026-09-25).
+            if (row.TouchesSharedFiles)
+                line += "  -  changes shared files";
+
+            // 'approved' in the queue is the first of those two, given and waiting for the other.
+            if (string.Equals(row.State, "approved", StringComparison.Ordinal))
+                line += "  -  one of two approvals given";
+
+            return line;
         }
 
         // ###########################################################################################

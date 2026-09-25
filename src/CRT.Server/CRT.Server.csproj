@@ -45,7 +45,12 @@
     is not shipped to users and has no Velopack update identity. The health endpoint reports the
     informational version so a deployment can be identified.
     -->
-    <InformationalVersion>0.1.0-phase3</InformationalVersion>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+		<!--
+		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
+		-->
+    <InformationalVersion>1.0.0-alpha.2</InformationalVersion>
+
   </PropertyGroup>
 
   <ItemGroup>

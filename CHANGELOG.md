@@ -1,12 +1,26 @@
-# 2.6.0, 2026-October-?
+# 3.0.0, 2026-October-?
 -----------------------
 - **Application**
   - Added ability to detach thumbnails into its own window
   - Added ability to hide hardware, board or schematic images from "Configuration" tab
   - Added update notification to `ALPHA` development versions from "Configuration" tab
+  - Added completely new backend for system review
+  - Added mandatory data gathering of "system" usage (when selecting a board in drop-down)
+    - Required for the option to remove non-used systems
+    - Fun-fact for system maintainers, to see usage level of their system
   - Fixed traces will react correctly after KiCad calibration applied
+  - Fixed all traces for a selected component will highlight (depends on checkbox selection)
   - Fixed KiCad calibration now feels more responsive when dragging traces
+  - Fixed all files are now digitally signed (where possible)
   - Refactored parts of code base
+- **Data**
+  - **New**
+    - Added **Commodore 128** / **388??? (Open128)**
+
+> [!CAUTION]
+> Due to breaking data format changes, the major version has been increased to reflect this is important.
+> No more data updates will be given for versions **below 3.0.0**, and as future versions may break current
+> data, then you are recommended to update.
 
 
 # 2.5.0, 2026-September-9

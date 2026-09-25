@@ -1,9 +1,8 @@
-using CRT.Server.Handlers.Accounts;
-
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // WHETHER a review decision may be made at all (NewContributeStrategy.md Phase 5, task 5).
+    // WHETHER a review decision may be made at all (NewContributeStrategy.md Phase 5, task 5;
+    // per-system authority from Phase 6, 2026-09-25).
     //
     // *** APPROVE PUBLISHES, AND PUBLISHING CANNOT BE UNDONE. *** Task 7 was struck by the
     // maintainer, so no publish history is retained: a published file is overwritten in place and
@@ -11,28 +10,22 @@ namespace CRT.Server.Handlers.Submissions
     // live in their own unit-tested class rather than as a few `if`s inside an endpoint - each one
     // is the last thing between a wrong request and a data tree that cannot be restored.
     //
-    // *** THE THREE OUTCOMES ARE NOT EQUALLY DANGEROUS, and the rules say so. ***
+    // *** ALL THREE OUTCOMES NEED THE SAME AUTHORITY NOW: a reviewer OF THIS SYSTEM, or an
+    // administrator. *** ReviewAuthority answers that, against the submission's own system and
+    // whether it touches shared files. The four-role plan gave a recommend-only Reviewer the two
+    // cheap outcomes and withheld Approve; the maintainer collapsed the roles, so a reviewer
+    // assigned to a system decides everything about it. What stays true is that rejecting and
+    // returning never need MORE authority than approving - if they did, the cheap outcome would be
+    // the harder one to reach and reviewers would reject things that could have been a
+    // conversation.
     //
-    //   APPROVE          - writes the published tree. ADMINISTRATOR ONLY. Irreversible.
-    //   REJECT           - ends the submission with a reason. A reviewer may. Recoverable: the
-    //                      contributor still holds their draft locally, which is the entire point
-    //                      of the local-first design.
-    //   REQUEST CHANGES  - returns it as an editable draft with a comment. A reviewer may. The
-    //                      cheapest outcome and the one the strategy says explicitly not to skip.
-    //
-    // A REVIEWER MAY REJECT AND RETURN BUT NEVER APPROVE. That is what makes Phase 6's role table
-    // honest when it gives Reviewer a blast radius of "none - no published data can change": both
-    // of the outcomes a reviewer can reach leave the published tree untouched. A role that could
-    // only look would not reduce the administrator's workload at all, which is why the role exists.
-    //
-    // *** ONE METHOD PER QUESTION, rather than one "is this allowed" taking an outcome. *** The
-    // answer genuinely differs per outcome, and a single method would force every caller to pass
-    // an outcome enum and remember which arguments matter for which value. Three named methods
-    // cannot be called for the wrong outcome by accident.
+    // *** ONE METHOD PER QUESTION, rather than one "is this allowed" taking an outcome. *** Three
+    // named methods cannot be called for the wrong outcome by accident, and a later role that
+    // splits the outcomes again changes one method rather than an enum switch.
     //
     // Every refusal hands back a REASON. The review app shows it rather than silently not drawing
-    // a button: a reviewer whose account lacks the role needs telling that, and a submission
-    // somebody else already decided needs saying so rather than appearing broken.
+    // a button: a reviewer whose account is not in this system's pool needs telling that, and a
+    // submission somebody else already decided needs saying so rather than appearing broken.
     // ###########################################################################################
     public static class ReviewDecisionRules
     {
@@ -55,53 +48,42 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // May this account APPROVE - and therefore publish - this submission?
-        //
-        // Administrator only. See the class header for why a Reviewer is refused here and nowhere
-        // else.
         // ###########################################################################################
-        public static bool CanApprove(AccountRecord? account, string? state, out string reason)
-        {
-            if (!ReviewAuthority.CanPublish(account))
-            {
-                reason = "This account is not allowed to publish. Ask an administrator to approve it.";
-                return false;
-            }
-
-            return ReviewDecisionRules.IsUndecided(state, out reason);
-        }
+        public static bool CanApprove(ReviewAccess? access, SubmissionRecord? submission, out string reason) =>
+            ReviewDecisionRules.CanDecide(access, submission, out reason);
 
         // ###########################################################################################
         // May this account REJECT this submission, with a reason?
-        //
-        // A reviewer may: nothing published changes, and the contributor keeps their local draft.
         // ###########################################################################################
-        public static bool CanReject(AccountRecord? account, string? state, out string reason)
-        {
-            if (!ReviewAuthority.CanReview(account))
-            {
-                reason = "This account is not allowed to review submissions.";
-                return false;
-            }
-
-            return ReviewDecisionRules.IsUndecided(state, out reason);
-        }
+        public static bool CanReject(ReviewAccess? access, SubmissionRecord? submission, out string reason) =>
+            ReviewDecisionRules.CanDecide(access, submission, out reason);
 
         // ###########################################################################################
         // May this account RETURN this submission to its contributor for changes?
-        //
-        // The same authority as rejecting, deliberately. If returning needed a higher role than
-        // rejecting, the cheap outcome would be the harder one to reach and reviewers would reject
-        // things that could have been a conversation - the exact failure the strategy warns about.
         // ###########################################################################################
-        public static bool CanRequestChanges(AccountRecord? account, string? state, out string reason)
+        public static bool CanRequestChanges(ReviewAccess? access, SubmissionRecord? submission, out string reason) =>
+            ReviewDecisionRules.CanDecide(access, submission, out reason);
+
+        // ###########################################################################################
+        // The one rule the three share: authority over THIS submission's system, then the state
+        // interlock. Authority first, so an account that may not act is never told anything about
+        // the submission's state.
+        // ###########################################################################################
+        private static bool CanDecide(ReviewAccess? access, SubmissionRecord? submission, out string reason)
         {
-            if (!ReviewAuthority.CanReview(account))
+            if (submission is null)
             {
-                reason = "This account is not allowed to review submissions.";
+                reason = "No such submission.";
                 return false;
             }
 
-            return ReviewDecisionRules.IsUndecided(state, out reason);
+            if (!ReviewAuthority.CanPublish(access, submission))
+            {
+                reason = ReviewAuthority.DescribeRefusal(access, submission);
+                return false;
+            }
+
+            return ReviewDecisionRules.IsUndecided(submission.State, out reason);
         }
 
         // ###########################################################################################

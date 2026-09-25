@@ -178,4 +178,51 @@ public sealed class DraftStatusReaderTests : IDisposable
                 CreatedUtc = "2026-09-25T00:00:00Z",
             });
     }
+    // ###########################################################################################
+    // ResolveForSystem - a submission receipt's system id back to its draft (2026-09-25).
+    // ###########################################################################################
+
+    // Resolve takes a WORKBOOK path. Handed a system id it looks one folder too high and finds
+    // nothing - which is exactly what the application did, so no published draft was ever retired.
+    [Fact]
+    public void Resolve_handed_a_system_id_instead_of_a_workbook_finds_nothing()
+    {
+        this.WriteDraftMarker();
+
+        Assert.NotNull(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftStatusReaderTests.SystemKey));
+        Assert.Null(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407"));
+    }
+
+    // The id is built from the workbook path when a draft is submitted; the lookup goes back the
+    // same way, so the two cannot disagree about what a system is called.
+    [Fact]
+    public void A_receipts_system_id_finds_the_draft_of_the_board_it_was_built_from()
+    {
+        this.WriteDraftMarker();
+        string systemId = SystemDescriptorRules.SystemIdFromExcelDataFile(DraftStatusReaderTests.SystemKey);
+
+        DraftStatus? status = DraftStatusReader.ResolveForSystem(
+            this.DataRoot, this.DraftsRoot, systemId,
+            ["Amstrad/CPC 664/MC0005A/Data CPC 664 MC0005A.xlsx", DraftStatusReaderTests.SystemKey]);
+
+        Assert.NotNull(status);
+        Assert.Equal(DraftStatusReaderTests.SystemKey, status!.SystemKey);
+    }
+
+    [Fact]
+    public void A_system_id_no_known_board_has_resolves_to_nothing()
+    {
+        this.WriteDraftMarker();
+
+        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", []));
+        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", null));
+        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "  ", [DraftStatusReaderTests.SystemKey]));
+    }
+
+    private void WriteDraftMarker()
+    {
+        string marker = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
+        DraftMarkerStore.Save(marker, new DraftMarker { BaseRevision = "2026-September-25" });
+    }
 }

@@ -209,26 +209,28 @@ namespace CRT.Server.Tests
             SubmissionRecord? record = await store.FindAsync(id, CancellationToken.None);
 
             Assert.False(ReviewDecisionRules.CanReject(
-                ReviewDecisionRecordingTests.Reviewer(), record!.State, out string why));
+                ReviewDecisionRecordingTests.Reviewer(), record, out string why));
 
             Assert.False(ReviewDecisionRules.CanRequestChanges(
-                ReviewDecisionRecordingTests.Reviewer(), record.State, out _));
+                ReviewDecisionRecordingTests.Reviewer(), record, out _));
 
             Assert.NotEmpty(why);
         }
 
-        private static Handlers.Accounts.AccountRecord Reviewer() =>
-            new(
-                Id: ReviewDecisionRecordingTests.ReviewerAccountId,
-                Email: "reviewer@example.com",
-                NormalisedEmail: "reviewer@example.com",
-                PasswordHash: "hash",
-                DisplayName: "Reviewer",
-                IsVerified: true,
-                IsAdministrator: false,
-                IsReviewer: true,
-                IsLocked: false,
-                CreatedUtc: ReviewDecisionRecordingTests.Now,
-                LastLoginUtc: null);
+        // A reviewer OF THE FIXTURE'S SYSTEM - authority is per system since Phase 6.
+        private static ReviewAccess Reviewer() =>
+            ReviewAccess.For(
+                new Handlers.Accounts.AccountRecord(
+                    Id: ReviewDecisionRecordingTests.ReviewerAccountId,
+                    Email: "reviewer@example.com",
+                    NormalisedEmail: "reviewer@example.com",
+                    PasswordHash: "hash",
+                    DisplayName: "Reviewer",
+                    IsVerified: true,
+                    IsAdministrator: false,
+                    IsLocked: false,
+                    CreatedUtc: ReviewDecisionRecordingTests.Now,
+                    LastLoginUtc: null),
+                ["Commodore/C64/250407"]);
     }
 }

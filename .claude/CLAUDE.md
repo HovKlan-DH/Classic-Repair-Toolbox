@@ -35,7 +35,11 @@ exactly why the dangerous surfaces are the ones it CANNOT see:
   endpoint or a renamed JSON property compiles perfectly on both sides and fails at runtime, in
   the user's hands. The Phase 5 password-reset link was a live example: the email named a path
   the server mapped nothing at, and the tests asserted the dead URL, so nothing caught it until
-  a real reset was attempted.
+  a real reset was attempted. **The review API's bodies are CRT.Data's `ReviewApiContract`
+  records** (2026-09-25): a request is one record both ends use, an answer is a record the server
+  returns and the review app parses, and CRT.Review.Tests' `ReviewWireContractTests` puts each
+  answer through the server's JSON settings and the real parser. A new route gets its records
+  there and a case in that test.
 - **The workbook schema.** `BoardWorkbookSchema` names the columns the reader reads and the
   writer writes. A column added on one side only is silently blank on the other.
 - **On-disk formats.** The data tree's layout, the JSON sidecar, the draft folder, the sync
@@ -645,7 +649,10 @@ the refusal, Reload and the `DraftChangedOnDisk` prompt remain.
 
 **"Edit in table format" (2026-09-24) opens a draft's workbook as editable sheets** directly below
 its row, hiding the other drafts (`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` is the
-control; `UnsavedTableEditsWindow` the prompt). Colours are the maintainer's: green added, orange
+control; `UnsavedTableEditsWindow` the prompt). **Both live in `src/CRT.UI/BoardTable/` since
+2026-09-25**, a library shared with the review application's table (see "Review application"), with
+their colours in `BoardTableColors.axaml` - so the editor's files named below are under `src/CRT.UI/`,
+and a change to it reaches the reviewer's table too. Colours are the maintainer's: green added, orange
 modified (the changed CELL only, published value in its tooltip), red + strikethrough deleted,
 shown WHERE THE ROW USED TO BE. Things to know before touching it:
 
@@ -721,6 +728,12 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
 - **"Insert row above" / "Insert row below"** (`BoardTableSheet.InsertRowAbove` / `InsertRow`), and
   a legend pill counting nothing fades to 0.4 opacity (the `Empty` class) so the kinds present stand
   out.
+- **Deleting a component deletes everything that is its own** (maintainer, 2026-09-25): its rows on
+  the image, local file and link sheets at once (`BoardTableDocument.DeleteRowsOfComponent`, shown
+  red there), its highlights at save (`ApplyTo`), all ONE undo step - `BoardTableHistory` steps span
+  sheets for this. A RENAME keeps them: the document remembers the component rows it opened with,
+  and a row object still live under a new label is a rename. The status line says what else went
+  (`BoardTableDeletedWith`). The Contribute window's "Delete this component" drops highlights too.
 - **Row order is what the user sees, and new components are PLACED (2026-09-24).** The main
   window's component list, category list and Overview all show the Components sheet in its own
   order. `ComponentPlacement` is the one rule: a NEW component goes into its category in natural
@@ -1563,6 +1576,16 @@ not something to do in passing). A class with a hidden dependency like this is n
   every folder touched. `Main.RetirePublishedDraftsAsync` runs it after EVERY launch status check
   (`SubmissionStatusRefresh`'s `onFinished`, not `onChanged` - retirement depends on a state, and a
   receipt already stored as merged never changes again) and when "My submissions" closes.
+  **A receipt names its system by ID ("Commodore/C64/250407"); everything in the drafts flow is
+  keyed by the board's WORKBOOK path.** `DraftStatusReader.ResolveForSystem` maps one to the other
+  (through `SystemDescriptorRules.SystemIdFromExcelDataFile`, the function that built the id), and
+  `RetirableDraft.ExcelDataFile` carries the workbook key onward. Calling `Resolve` with the id
+  looks one folder too high and finds nothing - which is why no draft was ever retired until
+  2026-09-25. **A NEW system's draft is retired too** (2026-09-25), once its published board is on
+  the machine - which needs the master to list it, so the contributor can then open it instead.
+  Its draft and published workbooks have different names (the published one carries the
+  generation), so the draft is found by its folder and keeps the marker's key; Main passes only
+  the boards the master lists, and refreshes the draft-only entries after retiring one.
 - `UserSettings` — JSON-persisted user preferences (theme, window placement, MiniPro path override, etc.).
 - `KiCadProjectData` / `KiCadProjectLoader` / `KiCadRawProjectLoader` — parse raw KiCad PCB/schematic
   files into a normalized bundle so the Schematics tab can highlight matching copper and wire geometry.
@@ -1663,6 +1686,10 @@ Things that are load-bearing and easy to undo by accident:
   every failure. A 409 for a taken address is an account-enumeration oracle.
 - **The rate limiter runs BEFORE the Argon2 hasher**, which allocates ~128 MiB per verification.
   Checking the password first makes the limiter decoration and leaves a memory-exhaustion vector.
+- **A request body's size limit is written on its ROUTE** (`.WithBodyLimit(...)` where it is mapped),
+  and everything else gets 64 KB. A new route that posts rows or a file list needs one, or it
+  answers 413 to the first real board; `RequestBodyLimitsTests` builds the real route table and
+  fails on any body-reading route missing from its list.
 - **Only token HASHES are stored**, for sessions, verification links, reset links and the
   submission capability token alike.
 - **`SubmissionPathRules` is the single path-containment rule** and it RESOLVES then checks
@@ -1671,8 +1698,75 @@ Things that are load-bearing and easy to undo by accident:
 - **`ApprovePublishFlow` is the only irreversible operation in the system** — no revision history is
   retained, so a publish overwrites in place. Its header explains why the order of its checks is
   the design.
-- **A reviewer may reject and return, but never publish.** `ReviewAuthority` answers that question
-  in one place, deliberately, so Phase 6 changes one file rather than hunting call sites.
+- **Two roles, and authority is PER SYSTEM (maintainer decision, 2026-09-25).** An
+  ADMINISTRATOR (`accounts.is_administrator`, granted by hand - see DEPLOYMENT.md) reviews and
+  publishes everything and assigns reviewers; a REVIEWER is an account in one or more systems'
+  pools (the `reviewers` table, the admin screen in CRT.Review) and reviews AND publishes exactly
+  those systems. There is no recommend-only role and no `is_reviewer` flag any more. The question
+  is always "administrator, or in THIS system's pool" - `ReviewAuthority`, given a `ReviewAccess`
+  (the account plus its pool, loaded once per request in `ReviewEndpoints.AuthenticateAsync`).
+  Every route naming a submission checks it against that submission; the queue is filtered by it.
+  A submission that adds or changes a SHARED file (`SubmissionRecord.TouchesSharedFiles`, decided
+  at create by `SubmissionSharedFiles`) needs TWO approvals - a reviewer of the board AND the
+  administrator - for the BETA publish and again for production (maintainer decision, 2026-09-25).
+  **The create-time flag is only a floor**: the approval and the detail screen re-check against the
+  tree as it is NOW (`ApprovePublishFlow.TouchesSharedFilesNow`), because a shared file cited
+  unchanged at create can be changed by another publish before this one is approved.
+  **`ApprovalRules` (CRT.Data) is that rule, and the server sends its `ApprovalStatus` to the review
+  app as the same record**, so the Approve button's wording (`ApprovalWording`) cannot promise a
+  publish the server would not perform. The first approval publishes nothing (state `approved`,
+  migration 0008's approval tables); a production approval is tied to the BETA content hash it
+  was given for. Whoever must approve is mailed (`SubmissionRouting`). A pool row counts as the
+  board's reviewer only when its account can approve as one
+  (`ReviewAuthority.CanGiveReviewerApproval`: verified, not locked, not an administrator) - a row
+  left for an account later made administrator by hand made a shared-file change wait for ever.
+  **TOTP is deliberately NOT built** - the accepted risk is recorded in NewContributeStrategy.md's
+  security review.
+- **WHICH files a submission may carry is `SubmissionFileRules` (CRT.Data), run at create AND again
+  in `PublishPlan`** (security review, 2026-09-25): allowed types only, no dot-segments, every file
+  cited by a row, and nothing outside the board's own folder and the two shared folders unless it is
+  byte-identical to the published copy. **`SubmissionRulesShippedDataTests` runs every such rule over
+  every board in `Assets/Data`** - it is what found the cross-board citations and the misnamed images
+  a stricter rule would have refused. Any new submission rule must pass it; do not loosen it to pass.
+- **A blob is re-verified before a publish writes anything**, and every copy is hashed and renamed
+  into place only on a match (`VerifiedFileCopy`, which `BlobStore.TryCopyToAsync` and the
+  production promotion both use). Never copy a blob into the tree directly.
+- **Publishing is TWO stages (maintainer decision, 2026-09-25): Approve writes BETA, and
+  "Publish to production" in the review app copies a SYSTEM from BETA to Production.** Only bytes
+  already in BETA; per system, not per submission; a shared-file change needs the reviewer AND the
+  administrator. `ProductionPromotionPlan` (CRT.Data, pure, shown to the reviewer and then
+  performed) decides the copies; `ProductionPromoter` copies; `ProductionPromotionFlow` sequences.
+  The publish request carries the BETA content hash the reviewer was shown and is refused if BETA
+  moved - that is what "only after he has checked it in BETA" means in code. Both stages take the
+  one `PublishLock`. **Off until the three `Production*` settings are set** (DEPLOYMENT.md step
+  13), which also reverses step 3's kernel-level interlock for the production data folder. A
+  contributor's "merged" reads as "Published to BETA source" and becomes "published" ("Published
+  to source") once its system is
+  promoted (`ProductionPromotionRules.ContributorFacingState`); CRT keeps asking about "merged"
+  receipts at launch until then, for at most 30 days after the decision
+  (`SubmissionReceiptPresenter.MergedRecheckWindow`). A new system published by the server is NOT added to the master workbook,
+  so CRT does not list it until that is done by hand - a known gap, not yet decided.
+- **No orphan files (maintainer decision, 2026-09-25): `DataTreeUsage` (CRT.Data) is the one rule
+  for what a data tree uses**, and a publish or promotion REMOVES what the board stops citing that
+  nothing else uses. **Always from a list the approver was shown:** the submission detail and the
+  production plan carry `removals` (CRT.Data's `FileRemovalPreview`), the approval sends it back,
+  and the server refuses (409) if the list it would now remove differs. `UnusedFileRemover` does
+  every removal, re-reading the tree first and failing closed. Files that were ALREADY orphans are
+  the administrator's "Unused files" window (`UnusedFileFlows`). `DataTreeUsageShippedDataTests`
+  fails on any file in `Assets/Data` that nothing uses. **A folder CRT reads by NAME** (the MiniPro
+  IC tests) must be in `DataTreeUsage.FoldersReadByName`, or the server calls its files unused -
+  `DataFoldersReadByNameTests` guards it. The PREVIEWS read workbooks through `WorkbookReadCache`
+  (once per file version, 2026-09-25); the removal never does. Details: NewContributeStrategy.md,
+  "Orphan files".
+- **"Already held" is the blob store OR the published tree at the same path** (2026-09-25). A file
+  published unchanged is IMPORTED into the store at create (`BlobStore.TryImportAsync`, hashed as
+  it copies) instead of being asked for. Without it, the first submission to every board
+  re-uploaded the whole board. Do not change it to "read such files from the tree later": review,
+  finalise and publish all read the store, and a shared file in the tree can change while a
+  submission waits for review.
+- **The review app's `submittedFiles` field is CRT.Data's `SubmittedFileFact`**, serialised by the
+  server and read by the review app as the same type, so the two cannot drift. The full list of
+  what the review closed and what it left open is in NewContributeStrategy.md's security model.
 
 ### Review application (`src/CRT.Review/`)
 
@@ -1680,6 +1774,19 @@ A separate Avalonia desktop app for working the submission queue (Phase 5). It t
 over HTTP and holds its session token **in memory only** — see `ReviewSession`, whose header also
 explains the API's `refreshToken` naming trap: that field IS the bearer token, and there is no
 access-token exchange to go looking for.
+
+**"View in table format" (2026-09-25) is the Drafts tab's table editor**, from the shared
+`src/CRT.UI/` library, in DOCUMENT mode (`BoardTableEditor.Open(BoardTableDocument)`: no draft file,
+Save raises `SaveRequested`, the host saves). `ReviewTableWindow` sends the table as an AMENDMENT,
+which the server decides (`AmendSubmissionFlow`): authority over the board, still undecided, still
+at the version the reviewer opened, only the table's nine sheets
+(`SubmissionRowsBoard.WithTableSections`), files rebuilt from the rows (kept, or taken from the
+published tree, else refused), the same validation as a new submission, and approvals already given
+cleared. It runs under the `PublishLock`, and the store re-checks the version and the state inside
+its own transaction - the flow's checks are only the early answer. Migration 0009 keeps what each amendment replaced - the contributor's original first. The
+contributor is told (`SubmissionStatus.AmendedByReviewer`, the BETA mail). **Anything the table
+covers is `CRT.UI`'s and `CRT.Data`'s, not either application's** - the same rule as "the control only
+paints" above, now across two apps.
 
 ### Contribution webserver (`Assets/Webserver/`) — the LEGACY path
 
@@ -1726,3 +1833,26 @@ GitHub Release using [CHANGELOG.md](../CHANGELOG.md) as the release body. The ta
 last step, so a failed run leaves nothing behind to clean up and the same version number can simply be
 re-run once the fix is pushed. That release body is written by hand and is off-limits to Claude —
 see [Hands off CHANGELOG.md](#hands-off-changelogmd).
+
+**Windows signing is done INSIDE `vpk pack`** (`VPK_SIGN_TEMPLATE` running jsign against the
+YubiKey), in both release workflows, followed by a step that fails the release unless every
+`.exe`/`.dll` in the full `.nupkg`, and `Setup.exe`, carries a valid signature. Do not go back to
+separate jsign steps around the pack: that signed only the main exe and `Setup.exe`, and a step
+after the pack cannot reach the `Squirrel.exe` (installed `Update.exe`) and launcher stub Velopack
+adds inside the package. The step's comment in `build-and-release.yml` records the details that
+were verified by dry run, including why the template must stay sequential (a YubiKey locks after
+three wrong PINs). The macOS and Linux builds are not signed: macOS needs an Apple Developer ID
+certificate (the YubiKey's Authenticode certificate cannot sign for it), and Linux has no
+operating-system check of an AppImage's signature to satisfy.
+
+**The review app's releases are published to their OWN repository,
+[HovKlan-DH/Classic-Repair-Toolbox-Review](https://github.com/HovKlan-DH/Classic-Repair-Toolbox-Review)**
+(maintainer decision, 2026-09-25; the source stays here). CRT's Releases page is where the README
+sends every hobbyist, and Velopack's GithubSource reads the 10 newest releases of CRT's repository
+and merges their feeds WITHOUT checking the package id - so review releases here would clutter
+that page, take CRT's update-check slots, and on CRT's `win`/`linux` channels be offered to
+installed CRTs as updates. As a second guard the review app also packs on its own channels
+(`review-win`, `review-linux`). The workflow publishes with the `REVIEW_RELEASES_TOKEN` secret, a
+fine-grained token with Contents read/write on the release repository only.
+`ReviewReleaseSeparationTests` (CRT.App.Tests) reads both workflows and `AppConfig` and fails if
+either guard goes.

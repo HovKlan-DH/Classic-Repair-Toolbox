@@ -35,7 +35,7 @@
 		<StackPanel x:Name="ConfirmPanel" Spacing="4">
 
 			<TextBlock TextWrapping="Wrap"
-					   Text="Your changes will be sent for review. Nothing is published until a maintainer approves it, and your local draft stays exactly as it is." />
+					   Text="Your changes will be sent for review. Nothing is published until a reviewer approves it, and your local draft stays exactly as it is." />
 
 			<TextBlock x:Name="SystemNameText"
 					   TextWrapping="Wrap"
@@ -109,7 +109,7 @@
 			<TextBlock TextWrapping="Wrap"
 					   Opacity="0.75"
 					   FontSize="12"
-					   Text="You can keep using CRT while this runs. Cancelling is safe - nothing is published until a maintainer approves it." />
+					   Text="You can keep using CRT while this runs. Cancelling is safe - nothing is published until a reviewer approves it." />
 		</StackPanel>
 
 		<!-- ============================ OUTCOME ============================ -->

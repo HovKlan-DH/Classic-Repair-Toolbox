@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Submissions;
 using CRT.Server.Handlers.Email;
 
 namespace CRT.Server.Tests
@@ -23,6 +24,86 @@ namespace CRT.Server.Tests
         // until the maintainer clicked one on 2026-09-22. These tests asserted the dead URL was
         // present, which is why they never caught it.
         private const string ResetCode = "iAXr2z0PPffPwpmzHR-bOFo5ZPCPfHEK1hZbFAKAoYQ";
+
+        // -----------------------------------------------------------------------------------
+        // The reviewer's "something is waiting" mail (Phase 6 task 11).
+        // -----------------------------------------------------------------------------------
+
+        [Fact]
+        public void The_waiting_mail_names_the_board_the_submission_and_what_the_contributor_said()
+        {
+            EmailMessage message = EmailTemplates.SubmissionWaiting(
+                "anna@example.com", "Commodore/C64/250407", 42, "Corrected R12.");
+
+            Assert.Equal("anna@example.com", message.ToAddress);
+            Assert.Contains("Commodore/C64/250407", message.Body, StringComparison.Ordinal);
+            Assert.Contains("#42", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Corrected R12.", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Review", message.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_waiting_mail_says_so_when_the_contributor_gave_no_description()
+        {
+            // A blank quote reads as a rendering fault; the ordinary "(no description given)"
+            // the review app's queue also shows is used instead.
+            EmailMessage message = EmailTemplates.SubmissionWaiting("anna@example.com", "X/Y/Z", 1, "  ");
+
+            Assert.Contains("(no description given)", message.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_waiting_mail_carries_no_link()
+        {
+            // Like every other mail here - there is nothing to click, the application is named.
+            EmailMessage message = EmailTemplates.SubmissionWaiting("anna@example.com", "X/Y/Z", 1, "x");
+
+            Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // The two-stage publish's contributor mails (2026-09-25).
+        // -----------------------------------------------------------------------------------
+
+        [Fact]
+        public void The_first_mail_says_published_to_the_BETA_SOURCE_and_promises_the_second()
+        {
+            // The maintainer's words for the two stages: "published to BETA source" and
+            // "published to source" - the same two names CRT's Configuration tab uses.
+            EmailMessage message = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "Commodore/C64/250407", null);
+
+            Assert.Contains("published to the BETA source", message.Subject, StringComparison.Ordinal);
+            Assert.Contains("published to the BETA source", message.Body, StringComparison.Ordinal);
+            Assert.Contains("one more email", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // A reviewer changed rows in the review application before publishing (2026-09-25): the
+        // contributor is told, and only then - and through the notifier's mapping too.
+        [Fact]
+        public void The_first_mail_says_when_a_reviewer_changed_the_submission()
+        {
+            EmailMessage changed = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null, amendedByReviewer: true);
+            EmailMessage unchanged = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
+
+            Assert.Contains("A reviewer changed some of the details", changed.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("A reviewer changed", unchanged.Body, StringComparison.Ordinal);
+
+            EmailMessage? mapped = SubmissionNotifier.BuildMessage("c@example.com", "X/Y/Z", "merged", null, amendedByReviewer: true);
+            Assert.Contains("A reviewer changed some of the details", mapped!.Body, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_second_mail_says_published_to_the_SOURCE_and_is_a_different_mail()
+        {
+            EmailMessage beta = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
+            EmailMessage source = EmailTemplates.SubmissionPublishedToSource("c@example.com", "X/Y/Z");
+
+            Assert.Contains("published to the source", source.Subject, StringComparison.Ordinal);
+            Assert.DoesNotContain("BETA", source.Subject, StringComparison.Ordinal);
+            Assert.NotEqual(beta.Subject, source.Subject);
+            Assert.NotEqual(beta.Body, source.Body);
+        }
 
         // -----------------------------------------------------------------------------------
         // Verification.

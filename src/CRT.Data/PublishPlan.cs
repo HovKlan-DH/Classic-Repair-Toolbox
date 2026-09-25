@@ -41,6 +41,11 @@ namespace Handlers.DataHandling
         //                    system the caller derives it; for an existing one it comes off the
         //                    file already there, because board file names do not follow the folder
         //                    names mechanically ("Data C128DCR 250477" lives under C128/250477).
+        // tree             - what is published NOW (security review, 2026-09-25). Lets a file
+        //                    that belongs to another board be cited unchanged, and catches a path
+        //                    that differs from a published one only by capitalisation. Null means
+        //                    it could not be consulted: every foreign file is then refused, and
+        //                    case variants go unchecked. The server always passes the real tree.
         // ###########################################################################################
         public static PublishPlanResult Build(
             string dataRoot,
@@ -51,7 +56,8 @@ namespace Handlers.DataHandling
             string revision,
             DateTimeOffset publishedUtc,
             IEnumerable<string>? maintainers,
-            string origin)
+            string origin,
+            PublishedTreeView? tree = null)
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
@@ -161,10 +167,35 @@ namespace Handlers.DataHandling
                     [PublishPlan.Error("publish.workbook-path", workbookFileName, $"The board workbook path is refused: {workbookFailure}")]);
             }
 
+            // ---- The system folder's own spelling ----------------------------------------------
+            //
+            // A "new system" whose folder differs from a published one only by capitalisation is
+            // two folders on this server and ONE on every Windows and macOS client, so its files
+            // would replace the real board's on their disks. See PublishedTreeView's header.
+            string systemRelative = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
+            string? systemVariant = tree?.FindCaseVariant(systemRelative);
+
+            if (systemVariant is not null)
+            {
+                return PublishPlanResult.Refused(
+                [
+                    PublishPlan.Error(
+                        "system.case-collision",
+                        systemRelative,
+                        $"[{systemRelative}] differs only in capitalisation from the published [{systemVariant}], " +
+                        "which would be the same folder on Windows and macOS.")
+                ]);
+            }
+
             // ---- The files ---------------------------------------------------------------------
             var files = new List<PlannedFile>();
+            var unchanged = new List<PlannedFile>();
             var seenPaths = new HashSet<string>(StringComparer.Ordinal);
             var seenPathsIgnoringCase = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // The files the rows actually name - the only ones this publish may carry. Computed
+            // once, through the same collector the client and the create-time check use.
+            IReadOnlySet<string> referenced = SubmissionFileRules.ReferencedFiles(manifest);
 
             foreach (SubmissionFile file in manifest.Files ?? [])
             {
@@ -247,7 +278,84 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                files.Add(new PlannedFile(file.Path, resolved, file.Sha256, file.SizeBytes));
+                // ###########################################################################################
+                // *** THE SAME FILE RULES AS AT CREATE, AGAIN, HERE (security review, 2026-09-25). ***
+                //
+                // SubmissionFileRules already refused all of these before anything was uploaded. They
+                // are repeated because this is the last gate before an irreversible write, and a
+                // submission queued by an older build - or a rule changed since - must not reach the
+                // tree on the strength of a check that ran weeks ago.
+                // ###########################################################################################
+                if (!SubmissionFileRules.TryCheckName(file.Path, out _, out string nameReason))
+                {
+                    problems.Add(PublishPlan.Error("file.type-refused", file.Path, nameReason));
+                    continue;
+                }
+
+                if (!referenced.Contains(file.Path))
+                {
+                    problems.Add(PublishPlan.Error(
+                        "file.not-used",
+                        file.Path,
+                        $"[{file.Path}] is not used by any row of the board, so it cannot be published."));
+                    continue;
+                }
+
+                var planned = new PlannedFile(file.Path, resolved, file.Sha256, file.SizeBytes);
+
+                // Another board's file may be CITED, never CHANGED - see SubmissionFileScope. One
+                // that is byte-identical to what is published is not written at all: it is already
+                // there, and writing it would only be a chance to get it wrong.
+                if (SubmissionFileScopes.Classify(manifest, file.Path) == SubmissionFileScope.Foreign)
+                {
+                    string? published = tree?.HashOf(file.Path);
+
+                    if (published is null || !string.Equals(published, file.Sha256, StringComparison.Ordinal))
+                    {
+                        problems.Add(PublishPlan.Error(
+                            "file.other-board",
+                            file.Path,
+                            $"[{file.Path}] belongs to another board, and this submission would change it."));
+                        continue;
+                    }
+
+                    unchanged.Add(planned);
+                    continue;
+                }
+
+                string? variant = tree?.FindCaseVariant(file.Path);
+
+                if (variant is not null)
+                {
+                    problems.Add(PublishPlan.Error(
+                        "path.case-collision",
+                        file.Path,
+                        $"[{file.Path}] differs only in capitalisation from the published [{variant}], " +
+                        "which is the same file on Windows and macOS."));
+                    continue;
+                }
+
+                // ###########################################################################################
+                // *** THE BOARD'S OWN AND SHARED FILES ARE LEFT ALONE WHEN THEY ARE ALREADY THERE, BYTE
+                // FOR BYTE (code review, 2026-09-25). *** A manifest lists every file the board cites -
+                // about 1,200 for the C64 250407 board - so a one-cell typo fix re-verified and
+                // rewrote every one of them, touching each file's modified time, which made
+                // PublishedFileHashes, WorkbookReadCache and the checksum manifest re-hash the lot.
+                // The rule another board's file already followed now covers all of them: identical
+                // bytes at the same path are not written, and stay in the content hash.
+                //
+                // Safe to decide here because the plan is built under the PublishLock the write
+                // happens under, so nothing can change the file between this look and the write.
+                // ###########################################################################################
+                string? publishedHash = tree?.HashOf(file.Path);
+
+                if (publishedHash is not null && string.Equals(publishedHash, file.Sha256, StringComparison.Ordinal))
+                {
+                    unchanged.Add(planned);
+                    continue;
+                }
+
+                files.Add(planned);
             }
 
             if (problems.Count > 0)
@@ -269,7 +377,7 @@ namespace Handlers.DataHandling
                 publishedUtc,
                 maintainers,
                 origin,
-                [.. files.Select(file => new SystemContentEntry(file.RelativePath, file.Sha256))]);
+                [.. files.Concat(unchanged).Select(file => new SystemContentEntry(file.RelativePath, file.Sha256))]);
 
             return PublishPlanResult.Planned(
                 new PublishPlanDetail(
@@ -279,7 +387,9 @@ namespace Handlers.DataHandling
                     workbookFileName,
                     workbookPath,
                     files,
-                    descriptor));
+                    descriptor,
+                    dataRoot,
+                    unchanged));
         }
 
         // ###########################################################################################
@@ -327,7 +437,17 @@ namespace Handlers.DataHandling
         string WorkbookFileName,
         string WorkbookPath,
         IReadOnlyList<PlannedFile> Files,
-        SystemDescriptor Descriptor)
+        SystemDescriptor Descriptor,
+
+        // The tree being published into. Carried so the writer can check the path from here down
+        // to each file for a symbolic link before writing through it.
+        string DataRoot,
+
+        // Files the submission carries byte-identical to what is already published at the same
+        // path: another board's file it cites (see SubmissionFileScope), or one of its own or a
+        // shared file it did not change. Never written - they are already there - but part of the
+        // system's content, so they stay in its content hash.
+        IReadOnlyList<PlannedFile> UnchangedFiles)
     {
         // The total bytes this publish will write, excluding the generated workbook. Reported
         // rather than enforced - a size limit belongs at submission time, where the contributor
@@ -391,7 +511,7 @@ namespace Handlers.DataHandling
 
             List<SystemContentEntry> entries =
             [
-                .. this.Files.Select(file => new SystemContentEntry(file.RelativePath, file.Sha256)),
+                .. this.Files.Concat(this.UnchangedFiles).Select(file => new SystemContentEntry(file.RelativePath, file.Sha256)),
                 new SystemContentEntry(this.WorkbookFileName, workbookSha256),
                 new SystemContentEntry(this.SidecarFileName, sidecarSha256)
             ];

@@ -220,6 +220,35 @@ public sealed class MainWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // The Drafts tab's title is IndianRed in both themes (maintainer request, 2026-09-25): a draft
+    // is temporary, and the tab says so. Asserted on the header the window really builds, through
+    // its theme key, so a header turned back into plain text - which the tab's selected and hover
+    // states would recolour - or a key missing from one theme fails here.
+    // ###########################################################################################
+    [Fact]
+    public void The_Drafts_tab_title_is_IndianRed_in_both_themes()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+
+            TextBlock header = Assert.IsType<TextBlock>(main.DraftsTabItem.Header);
+            Assert.Equal("Drafts", header.Text);
+
+            foreach (Avalonia.Styling.ThemeVariant variant in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
+            {
+                Assert.True(Avalonia.Application.Current!.TryGetResource("Main_TabHeader_Drafts_Fg", variant, out object? brush));
+                Assert.Equal(Avalonia.Media.Colors.IndianRed, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(brush).Color);
+            }
+
+            Assert.Equal(Avalonia.Media.Colors.IndianRed, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(header.Foreground).Color);
+        });
+    }
+
     // The constructor wires the tabs up and hands each its MainWindow. A tab left unwired shows
     // as a null reference the moment anything asks it for board state.
     [Fact]

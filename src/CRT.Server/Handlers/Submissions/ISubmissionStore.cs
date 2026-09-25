@@ -119,12 +119,206 @@ namespace CRT.Server.Handlers.Submissions
             string? comment,
             DateTimeOffset decidedUtc,
             CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // What one address has submitted since a moment - when, and how many bytes each asked to
+        // upload - for SubmissionRateLimitPolicy (security review, 2026-09-25).
+        // ###########################################################################################
+        Task<IReadOnlyList<RecentSubmission>> GetRecentSubmissionsFromAddressAsync(
+            string ipAddress,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Whether a system is open to contributions: true or false from its `systems` row, or null
+        // when it has no row yet (a new system, or a shipped one nobody has submitted to).
+        //
+        // `is_accepting` existed from the first migration and nothing read it, so there was no way
+        // to close a board that was being flooded. Setting it to 0 by hand now does.
+        // ###########################################################################################
+        Task<bool?> IsSystemAcceptingAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Every blob hash a submission that still NEEDS its bytes refers to: uploading, pending,
+        // approved (not yet published) and merged. What the blob collector must keep.
+        //
+        // MERGED is kept on purpose. Its blobs are already copied into the tree, but they are also
+        // what lets the NEXT submission to that board skip re-uploading every file it did not
+        // change - dropping them would turn every later typo fix into a full re-upload.
+        // ###########################################################################################
+        Task<IReadOnlySet<string>> GetLiveBlobHashesAsync(CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Deletes the file list and stored rows of submissions that ENDED without publishing -
+        // rejected, abandoned, withdrawn, returned for changes - and were decided before a moment.
+        // Returns how many submissions were cleared.
+        //
+        // The submissions row and its findings are KEPT: they are the audit trail, and what the
+        // contributor's "My submissions" shows. Only the bulk - a copy of the whole board's rows,
+        // and one row per file - goes, which is what an anonymous sender could otherwise pile up.
+        // ###########################################################################################
+        Task<int> DeleteRetiredPayloadsAsync(DateTimeOffset decidedBefore, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Every `systems` row, for the administrator's reviewer overview (Phase 6 roles).
+        //
+        // Only systems that have received a submission or been published have a row; a shipped
+        // board nobody has touched has none. ReviewerAssignmentFlows unions this with the boards
+        // found in the data tree, so a reviewer can be assigned to a board BEFORE its first
+        // submission arrives - which is the ordinary order of events.
+        // ###########################################################################################
+        Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Makes sure a `systems` row exists, leaving an existing one completely alone - the same
+        // INSERT IGNORE CreateAsync performs for a submission. Needed before a reviewer can be
+        // assigned to a shipped board that has never been submitted to: the pool table's foreign
+        // key requires the row.
+        // ###########################################################################################
+        Task EnsureSystemAsync(
+            string systemId,
+            string manufacturer,
+            string hardware,
+            string board,
+            string origin,
+            DateTimeOffset createdUtc,
+            CancellationToken cancellationToken = default);
+
+        // One `systems` row, or null.
+        Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Records that a system's BETA state has been copied to Production (2026-09-25): the BETA
+        // revision and content hash it had, and when. A separate call from SetSystemPublishedAsync
+        // because it is a separate fact about a separate tree - and the comparison between the two
+        // is exactly what "waiting for production" means.
+        // ###########################################################################################
+        Task SetSystemInProductionAsync(
+            string systemId,
+            string? revision,
+            string? contentHash,
+            DateTimeOffset publishedUtc,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // The MERGED submissions to a system decided in (after, upTo] - the ones a production
+        // promotion has just carried out to everyone, whose contributors are told so. `after` null
+        // means "since the beginning": the first promotion of a system carries everything merged.
+        // ###########################################################################################
+        Task<IReadOnlyList<SubmissionRecord>> GetMergedSubmissionsAsync(
+            string systemId,
+            DateTimeOffset? decidedAfter,
+            DateTimeOffset decidedUpTo,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Approvals already given (migration 0008) - the first of the two a shared-file change
+        // needs, remembered until the second arrives. See ApprovalRules. Adding a role that is
+        // already there changes nothing: the first approval in a role is the one kept.
+        // ###########################################################################################
+        Task<IReadOnlyList<GivenApproval>> GetApprovalsAsync(long submissionId, CancellationToken cancellationToken = default);
+
+        Task AddApprovalAsync(
+            long submissionId,
+            ApproverRole role,
+            long accountId,
+            string accountLabel,
+            DateTimeOffset approvedUtc,
+            CancellationToken cancellationToken = default);
+
+        // The same for publishing a system to production, per BETA content hash: an approval of
+        // one BETA state never carries over to the next.
+        Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
+            string systemId,
+            string betaContentHash,
+            CancellationToken cancellationToken = default);
+
+        Task AddProductionApprovalAsync(
+            string systemId,
+            string betaContentHash,
+            ApproverRole role,
+            long accountId,
+            string accountLabel,
+            DateTimeOffset approvedUtc,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // A REVIEWER'S AMENDMENT (migration 0009), in ONE transaction: the submission's current rows
+        // and files become `amended`'s; what they replace is kept in submission_amendments (the
+        // first row holds the contributor's original); the approvals already given are cleared -
+        // they were given to other content - and an 'approved' submission goes back to 'pending';
+        // and whether it changes shared files is stored afresh. Every file in `amended` must
+        // already be in the blob store: the caller imports first. The new version is 1 for the
+        // first amendment.
+        //
+        // *** THE VERSION AND THE STATE ARE CHECKED INSIDE THE TRANSACTION (code review,
+        // 2026-09-25). *** Nothing is changed unless the submission is still amendable
+        // (SubmissionState.CanBeAmended) and its latest amendment is still `expectedVersion` - the
+        // one the reviewer opened - both read under the row locks the write holds. The caller's
+        // own checks run earlier and outside it, so two amendments at once both passed them and
+        // the second silently overwrote the first.
+        // ###########################################################################################
+        Task<AmendStoreResult> AmendAsync(
+            long submissionId,
+            int expectedVersion,
+            SubmissionManifest amended,
+            bool touchesSharedFiles,
+            long? accountId,
+            string accountLabel,
+            DateTimeOffset amendedUtc,
+            CancellationToken cancellationToken = default);
+
+        // The latest amendment, or null for a submission nobody has amended.
+        Task<SubmissionAmendment?> GetLatestAmendmentAsync(long submissionId, CancellationToken cancellationToken = default);
+
+        // The submission turns out to change a shared file after all: the published copy it cites
+        // unchanged has moved since it arrived. Only ever RAISES the flag - see
+        // ApprovePublishFlow.TouchesSharedFilesNow.
+        Task MarkTouchesSharedFilesAsync(long submissionId, CancellationToken cancellationToken = default);
     }
+
+    // ###########################################################################################
+    // A `systems` row.
+    //
+    // CurrentRevision and ContentHash describe what is in BETA - every publish writes them. The
+    // three Production* fields (migration 0007) describe what was last copied to Production, so
+    // "BETA is ahead" is a comparison of two columns rather than of two trees on disk. See
+    // ProductionPromotionRules.
+    // ###########################################################################################
+    public sealed record SystemRecord(
+        string SystemId,
+        string Manufacturer,
+        string Hardware,
+        string Board,
+        string? CurrentRevision,
+        bool IsAccepting,
+        string? ContentHash = null,
+        string? ProductionRevision = null,
+        string? ProductionContentHash = null,
+        DateTimeOffset? ProductionPublishedUtc = null);
 
     // ###########################################################################################
     // The states a submission passes through. Strings rather than an enum because they are stored
     // as text and read in a log line; the constants stop them being mistyped.
     // ###########################################################################################
+    // What ISubmissionStore.AmendAsync did. Version is the new amendment's when Amended, and the
+    // latest one found when VersionChanged.
+    public sealed record AmendStoreResult(AmendStoreOutcome Outcome, int Version)
+    {
+        public bool IsAmended => this.Outcome == AmendStoreOutcome.Amended;
+    }
+
+    public enum AmendStoreOutcome
+    {
+        Amended,
+
+        // Another amendment was stored after the reviewer opened this one.
+        VersionChanged,
+
+        // Decided (or never finished uploading) - SubmissionState.CanBeAmended is false.
+        NotAmendable
+    }
+
     public static class SubmissionState
     {
         // Created, files being uploaded. Not yet visible to a reviewer.
@@ -153,11 +347,48 @@ namespace CRT.Server.Handlers.Submissions
         // Returned to the contributor with a comment, as an editable draft.
         public const string ChangesRequested = "changes_requested";
 
-        // Accepted by a reviewer but not yet published.
+        // Accepted by a reviewer but not yet published. Since 2026-09-25 this is what the FIRST of
+        // the two approvals a shared-file change needs leaves behind - it stays in the review
+        // queue until the second approval publishes it. See ApprovalRules.
         public const string Approved = "approved";
 
         // Taken back by the contributor.
         public const string Withdrawn = "withdrawn";
+
+        // Still undecided, so a reviewer may change it: waiting for review, or for the second of
+        // two approvals. The one rule AmendSubmissionFlow and both stores check it by.
+        public static bool CanBeAmended(string? state) => state is Pending or Approved;
+
+        // Every state the database's CHECK constraint allows. SubmissionCollectionStatesTests reads
+        // the constraint out of the migrations and holds this list to it.
+        public static readonly IReadOnlyList<string> All =
+        [
+            Uploading, Abandoned, Pending, ChangesRequested, Approved, Rejected, Withdrawn, Merged
+        ];
+    }
+
+    // ###########################################################################################
+    // Which submissions still NEED their stored bytes, and which have ended without publishing
+    // (security review, 2026-09-25) - the two halves the collectors work from.
+    //
+    // *** COMPLEMENTS, AND IT MATTERS WHICH SIDE A NEW STATE LANDS ON. *** A state in neither list
+    // keeps its blobs for ever; a state in both has them swept while a reviewer may still need
+    // them. SubmissionCollectionStatesTests fails if the two stop covering SubmissionState.All
+    // exactly once between them - which is the prompt, when a state is added, to decide here.
+    //
+    // FOUR EACH, because MySqlSubmissionStore binds them as four parameters.
+    // ###########################################################################################
+    public static class SubmissionCollectionStates
+    {
+        public static readonly IReadOnlyList<string> Live =
+        [
+            SubmissionState.Uploading, SubmissionState.Pending, SubmissionState.Approved, SubmissionState.Merged
+        ];
+
+        public static readonly IReadOnlyList<string> Retired =
+        [
+            SubmissionState.Rejected, SubmissionState.Abandoned, SubmissionState.Withdrawn, SubmissionState.ChangesRequested
+        ];
     }
 
     // ###########################################################################################
@@ -182,7 +413,16 @@ namespace CRT.Server.Handlers.Submissions
         int FormatVersion,
         IReadOnlyList<SubmissionFile> Files,
         DateTimeOffset CreatedUtc,
-        DateTimeOffset ExpiresUtc);
+        DateTimeOffset ExpiresUtc,
+
+        // How many bytes the server asked this submission to upload - the files it did not
+        // already hold - so the per-address budget can count what was really requested.
+        long BytesToUpload = 0,
+
+        // Whether it adds or changes a file under "Shared files" / "Generic shared files" -
+        // decided at creation by SubmissionSharedFiles, and what routes it to the administrator
+        // rather than to the system's reviewers. See ReviewAuthority.
+        bool TouchesSharedFiles = false);
 
     public sealed record SubmissionRecord(
         long Id,
@@ -209,7 +449,15 @@ namespace CRT.Server.Handlers.Submissions
         // TRAILING and OPTIONAL so every existing construction keeps working; a record built
         // without it simply has none, which is correct for anything not yet decided.
         // ###########################################################################################
-        string? DecisionComment = null);
+        string? DecisionComment = null,
+
+        // Shared files belong to no system, so a submission changing one is the administrator's
+        // to decide whichever board it names - see ReviewAuthority. Stored on the row so the
+        // queue filters without loading the payload.
+        bool TouchesSharedFiles = false);
+
+    // One reviewer's amendment: its version (1, 2, ...), who made it, and when.
+    public sealed record SubmissionAmendment(int Version, string By, DateTimeOffset AtUtc);
 
     public sealed record SubmissionFileRecord(
         long Id,

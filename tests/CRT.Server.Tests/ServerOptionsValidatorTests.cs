@@ -508,18 +508,8 @@ namespace CRT.Server.Tests
         // Token lifetimes.
         // -----------------------------------------------------------------------------------
 
-        [Fact]
-        public void A_zero_access_token_lifetime_refuses_to_start()
-        {
-            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
-                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
-            options.AccessTokenMinutes = 0;
-
-            Assert.Contains(
-                ServerOptionsValidatorTests.Validate(options),
-                f => f.Contains("AccessTokenMinutes", StringComparison.Ordinal));
-        }
-
+        // There is no AccessTokenMinutes any more - it was validated and read by nothing (security
+        // review, 2026-09-25). The one token is the session token, and this is its lifetime.
         [Fact]
         public void A_zero_refresh_token_lifetime_refuses_to_start()
         {
@@ -533,12 +523,167 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
+        // The disk reserve (security review, 2026-09-25).
+        // -----------------------------------------------------------------------------------
+
+        // A negative reserve reads as "always room" - the guard silently off while the setting looks
+        // configured. Refused rather than treated as zero.
+        [Fact]
+        public void A_negative_disk_reserve_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.MinimumFreeDiskBytes = -1;
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                f => f.Contains("MinimumFreeDiskBytes", StringComparison.Ordinal));
+        }
+
+        // Zero is the deliberate way to switch the reserve off, and must not be mistaken for a fault.
+        [Fact]
+        public void A_zero_disk_reserve_is_allowed()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.MinimumFreeDiskBytes = 0;
+
+            Assert.DoesNotContain(
+                ServerOptionsValidatorTests.Validate(options),
+                f => f.Contains("MinimumFreeDiskBytes", StringComparison.Ordinal));
+        }
+
+        // The reserve has a DEFAULT, unlike the data paths: forgetting it must leave the protection
+        // on, not off.
+        [Fact]
+        public void The_disk_reserve_is_on_by_default()
+        {
+            Assert.True(new ServerOptions().MinimumFreeDiskBytes > 0);
+        }
+
+        // -----------------------------------------------------------------------------------
         // Reporting behaviour.
         // -----------------------------------------------------------------------------------
 
         // A maintainer editing a config file over SSH should see every problem at once. Fixing one,
         // restarting, and discovering the next is a slow loop, so validation must not stop at the
         // first failure.
+        // -----------------------------------------------------------------------------------
+        // Publishing to production (2026-09-25): all three settings or none.
+        // -----------------------------------------------------------------------------------
+
+        private static ServerOptions WithProduction(ServerOptions options)
+        {
+            string production = ServerOptionsValidatorTests.ProductionPath();
+
+            options.ProductionDataTreeRoot = production;
+            options.ProductionManifestPath = Path.Combine(Path.GetDirectoryName(production)!, "dataChecksums.json");
+            options.ProductionPublicDataBaseUrl = "https://classic-repair-toolbox.dk/app-data/Data";
+
+            return options;
+        }
+
+        private static ServerOptions ValidWithProduction()
+        {
+            string production = ServerOptionsValidatorTests.ProductionPath();
+
+            // ProductionTreeRoot is the tree ("app-data"); the data root sits inside it.
+            return ServerOptionsValidatorTests.WithProduction(ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), Path.GetDirectoryName(production)!));
+        }
+
+        [Fact]
+        public void With_NO_production_settings_the_service_starts_and_production_publishing_is_off()
+        {
+            // A server configured before this existed keeps starting, and stays unable to write
+            // production.
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+
+            Assert.Empty(ServerOptionsValidatorTests.Validate(options));
+            Assert.False(options.IsProductionPublishingConfigured);
+        }
+
+        [Fact]
+        public void With_ALL_THREE_production_settings_the_service_starts_and_production_publishing_is_on()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+
+            Assert.Empty(ServerOptionsValidatorTests.Validate(options));
+            Assert.True(options.IsProductionPublishingConfigured);
+        }
+
+        [Fact]
+        public void Only_SOME_of_the_production_settings_refuses_to_start_and_names_the_missing_ones()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            options.ProductionManifestPath = null;
+
+            string failure = Assert.Single(ServerOptionsValidatorTests.Validate(options));
+            Assert.Contains("ProductionManifestPath", failure, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_production_setting_carrying_the_BETA_marker_refuses_to_start()
+        {
+            // The mistake this catches: pasting the BETA manifest path or URL into the production
+            // setting, which would advertise BETA data to every user.
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            options.ProductionPublicDataBaseUrl = "https://classic-repair-toolbox.dk/app-data-BETA/Data";
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                failure => failure.Contains("ProductionPublicDataBaseUrl", StringComparison.Ordinal) &&
+                           failure.Contains("-BETA", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_production_data_root_that_OVERLAPS_the_BETA_tree_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            options.RequiredTreeMarker = string.Empty;
+            options.ProductionDataTreeRoot = options.DataTreeRoot;
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                failure => failure.Contains("overlaps DataTreeRoot", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_production_data_root_OUTSIDE_ProductionTreeRoot_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            options.ProductionDataTreeRoot = Path.Combine(Path.GetTempPath(), "crt-test", "elsewhere", "Data");
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                failure => failure.Contains("is not inside", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_production_data_root_the_service_cannot_WRITE_refuses_to_start_rather_than_failing_half_way()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            string production = ServerOptionsValidatorTests.ProductionPath();
+
+            IReadOnlyList<string> failures = ServerOptionsValidator.Validate(
+                options, _ => true, path => !path.StartsWith(production, StringComparison.Ordinal));
+
+            Assert.Contains(failures, failure => failure.Contains("ProductionDataTreeRoot is not writable", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void The_same_manifest_file_for_both_trees_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidWithProduction();
+            options.RequiredTreeMarker = string.Empty;
+            options.ProductionManifestPath = options.ManifestPath;
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                failure => failure.Contains("same file as ManifestPath", StringComparison.Ordinal));
+        }
+
         [Fact]
         public void Every_problem_is_reported_at_once_rather_than_only_the_first()
         {

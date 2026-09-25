@@ -145,7 +145,11 @@ namespace Handlers.DataHandling
             // existing caller and test is unaffected; a caller that omits it leaves whatever was
             // already recorded, which is correct - "the server did not tell us" must never erase a
             // date it told us last time.
-            DateTimeOffset? decidedUtc = null)
+            DateTimeOffset? decidedUtc = null,
+
+            // Whether a reviewer changed it (2026-09-25). Optional and trailing for the same reason
+            // as decidedUtc, and kept when omitted for the same reason too.
+            bool? amendedByReviewer = null)
         {
             int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
             if (index < 0)
@@ -183,7 +187,9 @@ namespace Handlers.DataHandling
 
                 // Kept when the caller passes nothing, so a refresh that cannot read a decision
                 // date does not wipe one recorded earlier.
-                DecidedUtc = decidedUtc ?? existing.DecidedUtc
+                DecidedUtc = decidedUtc ?? existing.DecidedUtc,
+
+                AmendedByReviewer = amendedByReviewer ?? existing.AmendedByReviewer
             };
 
             Save();
@@ -245,7 +251,8 @@ namespace Handlers.DataHandling
                 // record, so a field left out is a field ERASED - marking a comment as read would
                 // silently drop the date it was written, and the row would lose its "Replied ..."
                 // line the moment the contributor acknowledged it.
-                DecidedUtc = existing.DecidedUtc
+                DecidedUtc = existing.DecidedUtc,
+                AmendedByReviewer = existing.AmendedByReviewer
             };
 
             Save();

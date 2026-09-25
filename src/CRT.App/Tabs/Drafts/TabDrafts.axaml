@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:CRT"
+             xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
              x:Class="CRT.TabDrafts">
 
 	<!-- One draft row. A resource rather than inline in the list because TABLE MODE shows the open
@@ -245,7 +246,7 @@
 						Margin="16,0,16,8"
 						IsVisible="False" />
 
-		<local:BoardTableEditor Grid.Row="1"
+		<ui:BoardTableEditor Grid.Row="1"
 								x:Name="TableEditor"
 								Margin="16,0,16,16"
 								IsVisible="False" />

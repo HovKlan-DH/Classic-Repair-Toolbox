@@ -19,11 +19,14 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
 
-        private static async Task<long> AddAsync(FakeSubmissionStore store, string state, string summary = "A change.")
+        private static async Task<long> AddAsync(
+            FakeSubmissionStore store, string state, string summary = "A change.", string systemId = "Commodore/C64/250407")
         {
+            string[] parts = systemId.Split('/');
+
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    "Commodore/C64/250407", "Commodore", "C64", "250407",
+                    systemId, parts[0], parts[1], parts[2],
                     null, "someone@example.com", "192.0.2.1", "hash", "r1", summary,
                     1, [], ReviewQueueTests.Now, ReviewQueueTests.Now.AddHours(24)),
                 CancellationToken.None);
@@ -34,12 +37,15 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task Only_PENDING_submissions_are_queued()
+        public async Task Only_PENDING_and_HALF_APPROVED_submissions_are_queued()
         {
             // *** THE FILTER IS A DECISION. *** 'uploading' is a contribution still arriving - a
-            // reviewer acting on one would be deciding about a half-delivered submission. Every
-            // other state has already been decided. 'pending' is the only state meaning "arrived
-            // intact and is somebody's to decide", which is what a queue is.
+            // reviewer acting on one would be deciding about a half-delivered submission. 'pending'
+            // means "arrived intact and is somebody's to decide", which is what a queue is.
+            //
+            // 'approved' joined it on 2026-09-25: it is where the FIRST of the two approvals a
+            // shared-file change needs leaves a submission. Leaving it out would hide it from the
+            // very person whose approval it now waits for.
             var store = new FakeSubmissionStore();
 
             long pending = await ReviewQueueTests.AddAsync(store, SubmissionState.Pending);
@@ -47,13 +53,51 @@ namespace CRT.Server.Tests
             await ReviewQueueTests.AddAsync(store, SubmissionState.Abandoned);
             await ReviewQueueTests.AddAsync(store, SubmissionState.Rejected);
             await ReviewQueueTests.AddAsync(store, SubmissionState.Merged);
-            await ReviewQueueTests.AddAsync(store, SubmissionState.Approved);
+            long half = await ReviewQueueTests.AddAsync(store, SubmissionState.Approved);
             await ReviewQueueTests.AddAsync(store, SubmissionState.Withdrawn);
             await ReviewQueueTests.AddAsync(store, SubmissionState.ChangesRequested);
 
             IReadOnlyList<SubmissionRecord> queue = await store.GetQueueAsync(100, CancellationToken.None);
 
-            Assert.Equal(pending, Assert.Single(queue).Id);
+            Assert.Equal([pending, half], queue.Select(record => record.Id));
+        }
+
+        // ###########################################################################################
+        // THE QUEUE A REVIEWER SEES IS FILTERED BY ReviewAuthority (Phase 6 roles). The endpoint
+        // applies CanReview row by row; this pins the rule over the rows the store returns, so the
+        // two halves are tested against the same records.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_reviewer_sees_only_their_own_systems_INCLUDING_a_shared_files_one()
+        {
+            var store = new FakeSubmissionStore();
+
+            long mine = await ReviewQueueTests.AddAsync(store, SubmissionState.Pending, "Mine.");
+            long theirs = await ReviewQueueTests.AddAsync(store, SubmissionState.Pending, "Theirs.", "Commodore/C128/310378");
+            long shared = await ReviewQueueTests.AddAsync(store, SubmissionState.Pending, "Shared.");
+            store.Submissions[shared] = store.Submissions[shared] with { TouchesSharedFiles = true };
+
+            var reviewer = ReviewAccess.For(
+                new Handlers.Accounts.AccountRecord(
+                    5, "r@example.com", "r@example.com", "hash", "R", true, false, false, ReviewQueueTests.Now, null),
+                ["Commodore/C64/250407"]);
+
+            IReadOnlyList<SubmissionRecord> queue = await store.GetQueueAsync(100, CancellationToken.None);
+
+            // The shared-files one too, since 2026-09-25: the reviewer's approval is one of the two
+            // it needs.
+            Assert.Equal(
+                [mine, shared],
+                queue.Where(record => ReviewAuthority.CanReview(reviewer, record)).Select(record => record.Id));
+
+            // The administrator sees all three.
+            var admin = ReviewAccess.For(
+                new Handlers.Accounts.AccountRecord(
+                    6, "a@example.com", "a@example.com", "hash", "A", true, true, false, ReviewQueueTests.Now, null));
+
+            Assert.Equal(
+                [mine, theirs, shared],
+                queue.Where(record => ReviewAuthority.CanReview(admin, record)).Select(record => record.Id));
         }
 
         [Fact]

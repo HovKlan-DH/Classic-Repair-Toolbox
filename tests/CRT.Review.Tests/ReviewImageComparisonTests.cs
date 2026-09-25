@@ -229,10 +229,32 @@ public sealed class ReviewImageComparisonTests
         Assert.Equal("Replaced: a.png", ReviewSummaryPresenter.DescribeImagePair(
             new ReviewImagePair("a.png", ReviewImageChange.Replaced, "x")));
 
-        // *** SHOUTED, and deliberately not softened to "Changed". *** A deletion is the least
-        // recoverable thing a submission can do and the easiest to approve without noticing.
-        Assert.Equal("REMOVED: a.png", ReviewSummaryPresenter.DescribeImagePair(
+        // *** SHOUTED, and deliberately not softened to "Changed" - but TRUTHFUL. *** The board
+        // stops citing the file; whether the publish then REMOVES it (nothing else uses it) or it
+        // stays is the file list's to say, from the server's own list (2026-09-25). The caption
+        // claims neither, because it cannot know.
+        Assert.Equal("NO LONGER USED: a.png", ReviewSummaryPresenter.DescribeImagePair(
             new ReviewImagePair("a.png", ReviewImageChange.Removed, "")));
+    }
+
+    // ###########################################################################################
+    // *** SOMETHING ALREADY PUBLISHED AT THE PATH MAKES IT A REPLACEMENT, whether or not the old
+    // board cited it (security review, 2026-09-25). *** Judging only by the old board's file list
+    // called a file that OVERWRITES an existing one "Added" - backwards for exactly the case a
+    // reviewer most needs to see. The server now sends a published hash for every submitted path
+    // that exists on disk.
+    // ###########################################################################################
+    [Fact]
+    public void A_path_the_old_board_never_cited_but_that_EXISTS_on_the_server_is_a_replacement()
+    {
+        var submitted = new ReviewSubmissionAssets([new ReviewSubmittedFile("Commodore/C64/250425/x.png", "new")]);
+
+        IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
+            submitted,
+            publishedImagePaths: [],
+            publishedHashesByPath: new Dictionary<string, string> { ["Commodore/C64/250425/x.png"] = "old" });
+
+        Assert.Equal(ReviewImageChange.Replaced, Assert.Single(pairs).Change);
     }
 
     [Fact]
@@ -244,8 +266,10 @@ public sealed class ReviewImageComparisonTests
             "Not in the published board",
             ReviewSummaryPresenter.DescribeMissingSide(ReviewImageChange.Added, isBeforeSide: true));
 
+        // Neither "deleted" nor "stays": since 2026-09-25 a file nothing else uses IS removed, and
+        // the file list above says which. The caption says only what is true of both.
         Assert.Equal(
-            "Deleted by this submission",
+            "No longer used by the board",
             ReviewSummaryPresenter.DescribeMissingSide(ReviewImageChange.Removed, isBeforeSide: false));
     }
 

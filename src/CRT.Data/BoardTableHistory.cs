@@ -26,6 +26,12 @@ namespace Handlers.DataHandling
     // *** IT REACHES BACK TO THE LAST SAVE, NOT FURTHER. *** A save reloads the table from the file
     // (DraftTableSession, BoardTableEditor.Save), which makes a new document with a new history.
     //
+    // *** A STEP CAN SPAN SHEETS (2026-09-25). *** Deleting a component also deletes its rows on the
+    // other component sheets (BoardTableDocument.DeleteRowsOfComponent), and one Ctrl+Z must bring
+    // all of it back. Within a group, the first change on EACH sheet adds that sheet's snapshot to
+    // the group's one step; undo and redo restore every sheet in it. The step's FIRST sheet is the
+    // one the gesture was made on, and is where the cursor goes.
+    //
     // Avalonia-free, like the rest of the model, so the review application gets it too.
     // ###########################################################################################
     public sealed class BoardTableHistory
@@ -77,8 +83,22 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         internal void Record(BoardTableSheet sheet, BoardTableRow? focusRow, int focusIndex, int focusColumn)
         {
-            if (this.thisApplying || (this.thisGrouping && this.thisGroupRecorded))
+            if (this.thisApplying)
             {
+                return;
+            }
+
+            // A group already has its step: this sheet's state from before the group joins it, the
+            // first time the group touches this sheet.
+            if (this.thisGrouping && this.thisGroupRecorded)
+            {
+                Step current = this.thisUndo[^1];
+
+                if (!current.Sheets.Any(state => ReferenceEquals(state.Sheet, sheet)))
+                {
+                    this.thisUndo[^1] = current with { Sheets = [.. current.Sheets, new SheetState(sheet, sheet.TakeSnapshot())] };
+                }
+
                 return;
             }
 
@@ -91,7 +111,7 @@ namespace Handlers.DataHandling
             }
 
             this.thisRedo.Clear();
-            this.thisUndo.Add(new Step(sheet, sheet.TakeSnapshot(), focusRow, focusIndex, focusColumn));
+            this.thisUndo.Add(new Step([new SheetState(sheet, sheet.TakeSnapshot())], focusRow, focusIndex, focusColumn));
 
             if (this.thisUndo.Count > BoardTableHistory.MaxSteps)
             {
@@ -139,7 +159,7 @@ namespace Handlers.DataHandling
             }
 
             Step step = this.thisUndo[^1];
-            if (!step.Snapshot.HasSameRowsAs(sheet.TakeSnapshot()))
+            if (step.Sheets.Any(state => !state.Snapshot.HasSameRowsAs(state.Sheet.TakeSnapshot())))
             {
                 return true;
             }
@@ -149,7 +169,10 @@ namespace Handlers.DataHandling
             this.thisApplying = true;
             try
             {
-                sheet.RestoreSnapshot(step.Snapshot);
+                foreach (SheetState state in step.Sheets)
+                {
+                    state.Sheet.RestoreSnapshot(state.Snapshot);
+                }
             }
             finally
             {
@@ -171,12 +194,18 @@ namespace Handlers.DataHandling
             from.RemoveAt(from.Count - 1);
 
             // The state being left goes on the other stack, so the opposite command returns to it.
-            to.Add(step with { Snapshot = step.Sheet.TakeSnapshot() });
+            to.Add(step with
+            {
+                Sheets = step.Sheets.Select(state => new SheetState(state.Sheet, state.Sheet.TakeSnapshot())).ToList()
+            });
 
             this.thisApplying = true;
             try
             {
-                step.Sheet.RestoreSnapshot(step.Snapshot);
+                foreach (SheetState state in step.Sheets)
+                {
+                    state.Sheet.RestoreSnapshot(state.Snapshot);
+                }
             }
             finally
             {
@@ -202,12 +231,18 @@ namespace Handlers.DataHandling
             return rows.Count == 0 ? null : rows[Math.Clamp(step.FocusIndex, 0, rows.Count - 1)];
         }
 
+        // Every sheet the step changed, each with its state from before; the first is the sheet
+        // the change was made on.
         private sealed record Step(
-            BoardTableSheet Sheet,
-            BoardTableSheetSnapshot Snapshot,
+            IReadOnlyList<SheetState> Sheets,
             BoardTableRow? FocusRow,
             int FocusIndex,
-            int FocusColumn);
+            int FocusColumn)
+        {
+            public BoardTableSheet Sheet => this.Sheets[0].Sheet;
+        }
+
+        private sealed record SheetState(BoardTableSheet Sheet, BoardTableSheetSnapshot Snapshot);
     }
 
     // Where an undo or redo happened: the sheet, the row to put the cursor on, and the column (-1

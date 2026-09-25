@@ -7,6 +7,8 @@ using CRT.Server.Handlers.Email;
 using CRT.Server.Handlers.Health;
 using CRT.Server.Handlers.Submissions;
 using Handlers.DataHandling;
+using CRT.Server.Handlers;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 
 namespace CRT.Server
@@ -59,65 +61,10 @@ namespace CRT.Server
                 options.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
             });
 
-            builder.Services.ConfigureHttpJsonOptions(options =>
-            {
-                options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-                options.SerializerOptions.DefaultIgnoreCondition =
-                    System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
-            });
-
             var options = new ServerOptions();
             builder.Configuration.GetSection(ServerOptions.SectionName).Bind(options);
-            builder.Services.AddSingleton(options);
 
-            // ---------------------------------------------------------------------------------
-            // Account services. Both are stateless and cheap to hold, so singletons.
-            //
-            // IEmailSender is registered as the INTERFACE deliberately: it is the seam that lets
-            // the flows be tested without sending mail (CLAUDE.md test rule 6 forbids a test that
-            // needs a network call). The SMTP implementation behind it is an untested I/O
-            // boundary, the same as ScopeScpiClient and MiniproProcessRunner in CRT.App.
-            // ---------------------------------------------------------------------------------
-            builder.Services.AddSingleton<Argon2PasswordHasher>();
-            builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-            builder.Services.AddSingleton<IAccountStore, MySqlAccountStore>();
-
-            // ---------------------------------------------------------------------------------
-            // Submissions (Phase 4). BlobStoreRoot has no default and is validated below, so the
-            // "!" here cannot be reached with a null - a misconfigured service never gets this far.
-            // ---------------------------------------------------------------------------------
-            builder.Services.AddSingleton<ISubmissionStore, MySqlSubmissionStore>();
-            builder.Services.AddSingleton(provider => new BlobStore(
-                options.BlobStoreRoot!,
-                provider.GetRequiredService<ILogger<BlobStore>>()));
-
-            // Collects submissions whose upload window closed without a finalise - their partial
-            // blobs and their rows. Anonymous submitting is what makes this necessary: it is what
-            // bounds the disk an abandoned or hostile upload can take. It existed as a flow for
-            // months with nothing running it; see AbandonedUploadSweeper's header. Hosted services
-            // start with app.Run(), so it never touches a schema the migrations below have not
-            // brought up to date.
-            builder.Services.AddAbandonedUploadSweeper();
-
-            // Reads the published board a submission is compared against (Phase 5, task 3).
-            // A singleton because it holds no per-request state; BoardDataReader's own cache sits
-            // behind it and is shared deliberately, so two reviewers opening submissions for the
-            // same board do not each pay for a parse.
-            builder.Services.AddSingleton<PublishedBoardReader>();
-
-            // Publishing (Phase 5, tasks 5 and 6). Singletons for the same reason: neither holds
-            // per-request state, and both take their inputs as arguments rather than as fields.
-            //
-            // ApprovePublishFlow is the ONLY irreversible operation the service exposes - it
-            // overwrites a published board with no retained revision behind it - so its own header
-            // is worth reading before changing anything it touches.
-            builder.Services.AddSingleton<PublishExecutor>();
-            builder.Services.AddSingleton<ApprovePublishFlow>();
-
-            // Tells the contributor what a reviewer decided. A singleton for the same reason as
-            // the two above - it holds only the mailer seam and a logger, and takes everything
-            // about a particular submission as arguments.
-            builder.Services.AddSingleton<SubmissionNotifier>();
+            Program.AddServerServices(builder.Services, options);
 
             var app = builder.Build();
 
@@ -133,9 +80,11 @@ namespace CRT.Server
             //
             // This is the enforcement half of "no default for the data tree": the values that
             // decide where data goes have no fallback, so a service that was not told explicitly
-            // stops here instead of starting and guessing. Throwing means the process exits
-            // non-zero, systemd reports the unit failed, and the journal carries the reasons -
-            // an outage, which is noticed at once and harms nobody, rather than an exposure.
+            // stops here instead of starting and guessing. The process exits with
+            // ServerExitCodes.ConfigurationRefused, systemd reports the unit failed and - because
+            // the unit names that code in RestartPreventExitStatus - does not retry it, and the
+            // journal carries the reasons: an outage, which is noticed at once and harms nobody,
+            // rather than an exposure.
             //
             // Health is NOT exempt. Serving health from a misconfigured process would report
             // "ok" for something that must not be running at all.
@@ -158,11 +107,19 @@ namespace CRT.Server
                 foreach (string failure in failures)
                     configurationLogger.LogCritical("Configuration error: {Failure}", failure);
 
-                throw new InvalidOperationException(
+                // EXIT, not throw - see ServerExitCodes for the core dump every five seconds that
+                // throwing produced. Disposing the app first flushes the console logger, which
+                // writes on a background thread and would lose the lines above at process exit.
+                ((IDisposable)app).Dispose();
+
+                Console.Error.WriteLine(
                     $"The service cannot start: {failures.Count} configuration error(s) in " +
                     $"appsettings.Production.json. See the journal for details " +
                     $"(journalctl -u crt-server -n 20 --no-pager -p warning). " +
                     $"First: {failures[0]}");
+
+                Environment.ExitCode = ServerExitCodes.ConfigurationRefused;
+                return;
             }
 
             // ---------------------------------------------------------------------------------
@@ -189,6 +146,124 @@ namespace CRT.Server
 
             app.UseForwardedHeaders();
 
+            // Routing runs HERE, explicitly, so the body-size middleware below sees the endpoint it
+            // chose. Left implicit, WebApplication would still route first - but the limit's
+            // correctness should not rest on a default nobody wrote down.
+            app.UseRouting();
+
+            // ---------------------------------------------------------------------------------
+            // A body-size limit for every request, taken from the ROUTE routing chose - each route
+            // carries its own, written where it is mapped (`.WithBodyLimit(...)`) - BEFORE the
+            // endpoint reads a byte (security review, 2026-09-25; on the routes themselves since the
+            // code review the same day). A route with none, and a request matching no route, get
+            // the small default. Without this every route - including the anonymous submission
+            // endpoint, which stores its body in the database - accepted Kestrel's default ~30 MB.
+            //
+            // IsReadOnly is true once a body has started to be read, and setting the limit then
+            // throws; nothing has read it yet at this point, so the guard is belt and braces.
+            // ---------------------------------------------------------------------------------
+            app.Use(async (context, next) =>
+            {
+                IHttpMaxRequestBodySizeFeature? limit = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+
+                if (limit is { IsReadOnly: false })
+                    limit.MaxRequestBodySize = RequestBodyLimits.For(context.GetEndpoint());
+
+                await next(context);
+            });
+
+            Program.MapServerEndpoints(app);
+
+            app.Run();
+        }
+
+        // ###########################################################################################
+        // Every service the endpoints take, registered - split out of Main so a test can build the
+        // server's REAL route table with the real registrations (RequestBodyLimitsTests): routing
+        // decides from these which handler parameters come from the container and which from the
+        // body. Registering constructs nothing; the stores only open a connection when resolved.
+        // ###########################################################################################
+        internal static void AddServerServices(IServiceCollection services, ServerOptions options)
+        {
+            // The JSON both ends of the review API agree on - CRT.Data's ReviewApiContract, which
+            // the review application serialises its requests with too (code review, 2026-09-25).
+            services.ConfigureHttpJsonOptions(json =>
+                ReviewApiContract.ApplyWireSettings(json.SerializerOptions));
+
+            services.AddSingleton(options);
+
+            // ---------------------------------------------------------------------------------
+            // Account services. Both are stateless and cheap to hold, so singletons.
+            //
+            // IEmailSender is registered as the INTERFACE deliberately: it is the seam that lets
+            // the flows be tested without sending mail (CLAUDE.md test rule 6 forbids a test that
+            // needs a network call). The SMTP implementation behind it is an untested I/O
+            // boundary, the same as ScopeScpiClient and MiniproProcessRunner in CRT.App.
+            // ---------------------------------------------------------------------------------
+            services.AddSingleton<Argon2PasswordHasher>();
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+            services.AddSingleton<IAccountStore, MySqlAccountStore>();
+
+            // ---------------------------------------------------------------------------------
+            // Submissions (Phase 4). BlobStoreRoot has no default and is validated below, so the
+            // "!" here cannot be reached with a null - a misconfigured service never gets this far.
+            // ---------------------------------------------------------------------------------
+            services.AddSingleton<ISubmissionStore, MySqlSubmissionStore>();
+            //
+            // The free-space probe and reserve are what stop contributions filling the disk the
+            // web site and the database share (security review, 2026-09-25) - see
+            // BlobStore.HasRoomFor. The probe answers null when it cannot measure, which the store
+            // treats as room rather than refusing every upload over a transient error.
+            services.AddSingleton(provider => new BlobStore(
+                options.BlobStoreRoot!,
+                provider.GetRequiredService<ILogger<BlobStore>>(),
+                () => Program.FreeBytesAt(options.BlobStoreRoot!),
+                options.MinimumFreeDiskBytes));
+
+            // Collects submissions whose upload window closed without a finalise - their partial
+            // blobs and their rows. Anonymous submitting is what makes this necessary: it is what
+            // bounds the disk an abandoned or hostile upload can take. It existed as a flow for
+            // months with nothing running it; see AbandonedUploadSweeper's header. Hosted services
+            // start with app.Run(), so it never touches a schema the migrations below have not
+            // brought up to date.
+            services.AddAbandonedUploadSweeper();
+
+            // Reads the published board a submission is compared against (Phase 5, task 3).
+            // A singleton because it holds no per-request state; BoardDataReader's own cache sits
+            // behind it and is shared deliberately, so two reviewers opening submissions for the
+            // same board do not each pay for a parse.
+            services.AddSingleton<PublishedBoardReader>();
+
+            // Publishing (Phase 5, tasks 5 and 6). Singletons for the same reason: neither holds
+            // per-request state, and both take their inputs as arguments rather than as fields.
+            //
+            // ApprovePublishFlow is the ONLY irreversible operation the service exposes - it
+            // overwrites a published board with no retained revision behind it - so its own header
+            // is worth reading before changing anything it touches.
+            services.AddSingleton<PublishExecutor>();
+
+            // The one lock every write to a published tree takes - the BETA publish and the
+            // production promotion both. See PublishLock.
+            services.AddSingleton<PublishLock>();
+            services.AddSingleton<ApprovePublishFlow>();
+
+            // BETA to production (2026-09-25). Switched off until the three Production* settings
+            // are set; see ServerOptions.
+            services.AddSingleton<ProductionPromotionFlow>();
+
+            // Tells the contributor what a reviewer decided. A singleton for the same reason as
+            // the two above - it holds only the mailer seam and a logger, and takes everything
+            // about a particular submission as arguments.
+            services.AddSingleton<SubmissionNotifier>();
+        }
+
+        // ###########################################################################################
+        // Every route the service answers - split out of Main for the same test. Each route that
+        // takes more than the default body carries its own limit where it is mapped; see
+        // RequestBodyLimits.
+        // ###########################################################################################
+        internal static void MapServerEndpoints(WebApplication app)
+        {
             // ---------------------------------------------------------------------------------
             // Health. Unauthenticated on purpose - it is what the maintainer and any uptime check
             // call, and it reveals nothing beyond "the process is alive" plus the deployed build.
@@ -208,8 +283,28 @@ namespace CRT.Server
             app.MapAccountEndpoints();
             app.MapSubmissionEndpoints();
             app.MapReviewEndpoints();
+            app.MapAdminEndpoints();
+            app.MapProductionEndpoints();
+        }
 
-            app.Run();
+        // ###########################################################################################
+        // The free space on the disk holding `directory`, or null when it cannot be measured.
+        //
+        // DriveInfo on Linux resolves the mount the path lives on, which is the number that
+        // matters: the blob store sharing a partition with the site and the database is exactly
+        // the case the reserve exists for. Null on failure rather than zero, so a transient error
+        // reading the mount table does not refuse every upload - see BlobStore.HasRoomFor.
+        // ###########################################################################################
+        private static long? FreeBytesAt(string directory)
+        {
+            try
+            {
+                return new DriveInfo(Path.GetFullPath(directory)).AvailableFreeSpace;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                return null;
+            }
         }
 
         // ###########################################################################################

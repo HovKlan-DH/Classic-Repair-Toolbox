@@ -16,7 +16,10 @@ against the live service.
 **Phase 5 is largely built** (the review application, sliding-expiry sign-in, the reviewer
 round trip) and **Phase 6a is DONE (2026-09-23)**: drafts are now stored as real board
 folders rather than as row deltas, which reverses a Phase 2 decision - read that phase
-before touching anything under `Drafts/`. Phases 6 and 7 are not started.
+before touching anything under `Drafts/`. **Phase 6's ROLES are DONE (2026-09-25)** as two
+roles rather than the four planned - read the phase before assuming the four-role table - and
+its two-stage publish, two-person approval for shared files, orphan removal and the reviewer's
+table are DONE too (2026-09-25). Phase 7 is not started.
 
 This file is a handoff document. It is written to be picked up by an agent (or a person) who has
 not been part of the conversation that produced it, across many sessions, with no memory of
@@ -1796,6 +1799,46 @@ A typo fix uploads a manifest and nothing else. A new 76 MB system uploads every
 only changes. Shared images already present under another board are never re-sent, because the hash
 is the identity. SHA-256 is already what `dataChecksums.json` uses, so this reuses a proven idea.
 
+**[FIXED 2026-09-25] "What the server lacks" did not count the PUBLISHED TREE, so that promise
+was false for the first submission to every board.** The server asked only its blob store, which
+holds what somebody has UPLOADED - and the shipped tree was never uploaded. Changing one
+component's text on a shipped board therefore sent the whole board (reported: 1,212 files,
+121 MB), and so did any resubmission after a rejection or a cancel, once the collector had
+removed the earlier blobs. The tests only ever proved the second submission of content the blob
+store had already seen.
+
+Now `SubmissionFlows.CreateAsync` takes a file the published tree holds **at the same path with
+the same hash** (`PublishedTreeView.HashOf`, the cached hash the file rules and the review
+comparison already use) from this server's own disk, via `BlobStore.TryImportAsync`, and counts
+it as held. Decisions worth keeping:
+
+- **Imported INTO the store, not read from the tree later.** The reviewer, finalise's content
+  check and the publish all read the store, so none of them changed. A file only NAMED as "in
+  the tree" could be overwritten there by another board's publish (a shared file) before this
+  submission was reviewed, leaving it citing bytes that exist nowhere.
+- **Verified exactly like an upload**: hashed as it is copied, moved in only on a match. The
+  tree's hash is a cache keyed on length and write time, so it is a reason to try, never proof.
+  A failed import falls back to asking the contributor for the file.
+- **Copied, never hard-linked.** A link would let an in-place edit of the published file change a
+  blob that is meant to be immutable, and `Contains` would then keep answering "held" for bytes
+  that fail every finalise.
+- **Disk use is unchanged.** The store ends up holding exactly the bytes the upload used to put
+  there; they now come off the local disk instead of over the contributor's connection. They
+  still count against the disk reserve, but not against the sender's upload budget: they cost
+  the sender nothing, and a sender cannot make the published tree any bigger.
+- **Same path only.** Identical bytes under a different published name would need the whole tree
+  hashed to find. Untouched files of the board being edited are the case that cost real uploads.
+
+The client did not need to change for this, and older builds get the saving too, because they
+already upload only `MissingHashes`. The one catch is their 5-second create timeout, which a
+large board's FIRST import could run past. A retry then finds the files already imported and
+answers quickly. Two client fixes shipped alongside it: create and finalise
+now have their own 2-minute timeout (`AppConfig.SubmissionRequestTimeout`). They used to share the
+5-second `ApiTimeout`, too short for a large manifest going over a slow upload line, and a create
+that times out after the server has done its work loses the capability token for good. And the
+progress line carries its byte count across files (`SubmissionProgress.AfterFileSent`). It used
+to restart at "0 bytes" for every file, so the bar sat empty for the whole upload.
+
 Uploads must be **resumable per blob**. A contributor whose 300 MB upload dies at 90% and must start
 again will not start again.
 
@@ -1959,7 +2002,16 @@ alone, with nothing to update on any contributor's disk.
 the only copy of the token and with it any further ability to check on that submission from this
 machine; the contribution itself is untouched and still gets reviewed.
 
-### system.json (task 7, format and read path done 2026-09-21)
+### system.json (task 7, format and read path done 2026-09-21) [RETIRED 2026-09-25]
+
+> **RETIRED by the maintainer, 2026-09-25:** "I do not want this file visible in the source ... it
+> should not be something downloaded by all users, as this file is not relevant for them." It was
+> synced to every user while CRT showed nothing from it, and every fact it held is in the database
+> (`systems.current_revision`, `content_hash`, `origin`; the `reviewers` table). Nothing writes or
+> reads it now: a publish removes one left in the board's folder by an earlier build, a production
+> promotion never carries one and removes one already there (`RetiredSystemDescriptor`), and
+> `DataManager.LastLoadedSystemDescriptor` - read by nothing - is gone. `SystemDescriptor` survives
+> only as the in-memory result of a publish (revision + content hash). Everything below is history.
 
 **What landed:** `SystemDescriptorRules` (id and content hash), `SystemDescriptorStore` (read and
 write), a `SystemId` check in `SubmissionValidator`, `DataManager.LastLoadedSystemDescriptor`, and
@@ -2820,9 +2872,18 @@ CRT's exactly as the task requires.
   means nothing for it.
 - **The tag and packId are PREFIXED** (`review-v0.1.0-alpha.1`, `Classic-Repair-Toolbox-Review`).
   The two products share one repository, so one tag namespace and one Releases page; an unprefixed
-  tag would sit beside CRT's with nothing saying which product it belongs to. The packId matters
-  more: it is what an installed client checks for updates, so a collision would offer review-app
-  updates to CRT installs.
+  tag would sit beside CRT's with nothing saying which product it belongs to. **Corrected
+  2026-09-25: the packId does NOT keep the two update feeds apart.** Velopack's GithubSource
+  (1.2.158, decompiled) merges the `releases.<channel>.json` of every recent release in the repo
+  and picks the highest version without looking at the package id. What separates them is the
+  CHANNEL: the review app packs on `review-win` / `review-linux`, whose feed files CRT never asks
+  for - which also protects CRT versions already installed. **Then moved out entirely (maintainer
+  decision, same day): review releases publish to their own repository,
+  `HovKlan-DH/Classic-Repair-Toolbox-Review`**, so CRT's Releases page lists only CRT and CRT's
+  update check never sees them; the channels stay as a second guard. Needs the
+  `REVIEW_RELEASES_TOKEN` secret. `ReviewReleaseSeparationTests` (CRT.App.Tests) pins both.
+  The same day the review app got `VelopackApp.Build().Run()` (install hooks only, no updater):
+  without it `vpk pack` refused the package, so no review release had ever been built.
 - **The release body is GENERATED, never read from `CHANGELOG.md`.** That file is CRT's, written
   by hand, and is the body of every CRT release - putting it on a review-app release would
   describe changes that are not in it, and sharing it would mean editing a file that is explicitly
@@ -3340,8 +3401,9 @@ calls both, and it does not exist yet. Do not wire either into a request path to
 8. Ship it through the existing Velopack pipeline, as a **separate** workflow with its **own**
    version. Do not entangle it with CRT's release. **[DONE 2026-09-22]** -
    [build-and-release-review.yml](../.github/workflows/build-and-release-review.yml). Prefixed tag
-   and packId so the two products cannot collide; its own generated release body, never
-   `CHANGELOG.md`.
+   and packId, released into its OWN repository (`HovKlan-DH/Classic-Repair-Toolbox-Review`) on its
+   own Velopack CHANNELS (`review-win`/`review-linux`) - the packId alone does not keep it out of
+   CRT's update feed; see task 8's section; its own generated release body, never `CHANGELOG.md`.
 
 ### Definition of done
 
@@ -3457,7 +3519,7 @@ always had a published home in the sidecar, which a draft folder now carries unc
 - The server contract is untouched. `SubmissionManifestBuilder` always wanted the complete intended
   state, so no wire format changed and no server work was required.
 
-### Follow-on: editing a draft as a table [CLIENT DONE 2026-09-24; reviewer side NOT started]
+### Follow-on: editing a draft as a table [CLIENT DONE 2026-09-24; reviewer side DONE 2026-09-25]
 
 A draft being a real workbook is what made this possible: the Drafts tab's **"Edit in table
 format"** shows the draft's nine sheets as an editable grid, coloured against the published board
@@ -3467,8 +3529,8 @@ CLAUDE.md's Drafts paragraph has the rules; the short version is that ALL logic 
 (`BoardTableDocument`, `BoardTableSheet`, `DraftTableSession`, `BoardTableClipboard`, and
 `BoardTableHistory` for Ctrl+Z / Ctrl+Y) and the app's `BoardTableEditor` only paints it.
 
-**The maintainer wants the same table in `CRT.Review`, so a reviewer can make the same edits.** That
-was deliberately NOT started. What it will need, so a later session does not rediscover it:
+**The maintainer wants the same table in `CRT.Review`, so a reviewer can make the same edits.** Built
+2026-09-25 - see Phase 6, "The reviewer's table". What it needed, as planned here:
 
 - **The control moves to a shared Avalonia library** referenced by both apps (it touches nothing of
   `Main` or `DataManager`, by design). Its `BoardTable_*` theme keys then have to exist in BOTH apps'
@@ -3489,122 +3551,433 @@ change. Nothing persisted a component key, so no stored data needed migrating.
 
 ---
 
-## Phase 6 - Maintainers
+## Phase 6 - Reviewers [DONE 2026-09-25: roles, two-stage publish, two-person approval, orphan removal, the reviewer's table]
 
-**Goal.** Per-system maintainers who can approve work on their own systems, publishing directly.
+**Goal.** Per-system reviewers who approve and publish work on their own systems.
 
-### Roles
+### Roles - TWO, by the maintainer's decision (2026-09-25)
 
-Four, and deliberately no more. Every one of them exists to answer a question the others cannot.
+The plan below this line was written for FOUR roles. The maintainer collapsed it in one sentence:
+*"Only those two roles. An Administrator will probably be only ONE person, me, having access to
+everything and can also do review and whatever. Then a Reviewer is someone I assign specifically to
+a system, and then that person can review and publish changes for that specific system. The person
+may be able to maintain multiple systems, if I associate him to multiple systems."*
 
 | Role | May | Blast radius if the account is stolen |
 | --- | --- | --- |
-| **Contributor** | Submit to any system. No review rights. | None - submissions still need approval |
-| **Reviewer** | Vet a NEW system and **recommend** it. Cannot publish anything, ever. | **None - no published data can change** |
-| **Maintainer** | Approve, reject, request changes on the systems they are a maintainer of. | That maintainer's systems only |
-| **Administrator** | Maintainer of every system, plus appointing maintainers and reviewers, plus shared files. | Everything |
+| **Administrator** | Everything: review and publish every system, assign and remove reviewers, co-approve shared-file changes | Everything |
+| **Reviewer** | Review AND publish the systems they are assigned to. Nothing on any other system | That reviewer's systems only |
 
-Three properties of this table are load-bearing and must survive implementation.
+Mapped onto the old table: the new **Reviewer is the old Maintainer** renamed, and the old
+recommend-only Reviewer (blast radius "none") **no longer exists**. That is a change of security
+model, made by the maintainer explicitly - which is exactly what the old traps said such a request
+must be - and it is NOT the dangerous case they warned about (a global publisher): a stolen reviewer
+account reaches only that person's systems. Contributor is not a role at all; contributing needs
+no account (Phase 4).
 
-**A system has a POOL of maintainers, not an owner.** Any maintainer of a system may approve work
-on it. There is no "core maintainer" who outranks the others, and no ownership to transfer - people
-are added to and removed from a system's pool. This is what keeps a system moving when one person
-goes quiet, which is the normal way volunteer projects stall.
+Four properties survive from the four-role design and are load-bearing:
 
-**The administrator is a maintainer of every system**, by definition rather than by escalation.
-There is no "take over this system" action and no override path to audit, because there is nothing
-to override: the administrator is already in every pool. This matters for
-[secure by design](#secure-by-design) - an escalation mechanism is a thing that can be stolen or
-mis-implemented, and the cleanest way to secure it is for it not to exist.
+- **A system has a POOL of reviewers, not an owner.** Any reviewer of a system may act; there is no
+  rank and nothing to transfer. The `reviewers` table (renamed from `maintainers` by migration
+  0006) is a set of (system, account) pairs.
+- **The administrator is in every pool by definition**, computed, never by rows and never by an
+  override path. `accounts.is_administrator` is still granted by hand only (DEPLOYMENT.md).
+- **A shared-file change needs TWO approvals: a reviewer of the board AND the administrator**
+  (maintainer decision, 2026-09-25: *"in case of changes to any shared file, then both the reviewer
+  and the admin should approve before publishing to BETA or production. If there is no shared files
+  changed, then normal reviewer is sufficient."*). A submission that adds or changes a file under
+  `Shared files` or `Generic shared files` reaches every board citing it. Decided at create
+  (`SubmissionSharedFiles`, CRT.Data), stored as `submissions.touches_shared_files`. The rule is
+  `ApprovalRules` (CRT.Data, pure) - see "Two approvals for a shared-file change" below. This
+  REPLACES the first version of the day, where such a submission was the administrator's ALONE and
+  hidden from reviewers.
+- **A system with an empty pool is normal** - it means the administrator handles it, which is also
+  how "a NEW system routes to the administrator, always" falls out with no special case.
 
-**Reviewer carries no publish authority at all.** It exists so that vetting a new system can be
-delegated when volume demands it, without creating a role that can change published data. A stolen
-Reviewer account yields a recommendation, which a human then still has to act on. Resist any later
-request to let Reviewers "just publish the easy ones" - that turns a zero-blast-radius role into a
-global publisher, which is the single most dangerous role this design could have.
+### What was built (2026-09-25)
 
-**There is deliberately no global-scope maintainer pool.** It was considered and rejected: it would
-be the highest-privilege role in the system, granted for the lowest-frequency task (new systems),
-to the people with the least specific knowledge of the systems they could reach. The Reviewer role
-plus an administrator who is already in every pool covers the same need with no publish rights
-handed out.
+- **`ReviewAccess` + `ReviewAuthority` (CRT.Server).** One object per request - the account and
+  the set of systems it reviews, read from the pool table in `ReviewEndpoints.AuthenticateAsync` on
+  EVERY call - and one rule: "administrator, or in THIS system's pool". `CanReview` and
+  `CanPublish` are two questions with one answer today, pinned by a
+  property test so a later split is deliberate. Every route naming a submission checks it against
+  that submission (threat 3, "check the object"); the queue is filtered by it; the two asset routes
+  refuse another system's bytes. `ReviewDecisionRules` and `ApprovePublishFlow` take the access
+  object and refuse per system with a sentence naming the system.
+- **Removal bites on the next request**, proven by
+  `ReviewerAssignmentFlowsTests.Removing_a_reviewer_takes_effect_on_the_very_next_request` -
+  Phase 6's definition of done, verbatim.
+- **Migration 0006**: `maintainers` -> `reviewers`; `accounts.is_reviewer` dropped (it meant the
+  role that no longer exists); `submissions.touches_shared_files` added.
+- **The administrator's API and screen.** `/api/admin/systems`, `/api/admin/accounts`,
+  `POST /api/admin/reviewers` and `/reviewers/remove` (`AdminEndpoints`, a rim over
+  `ReviewerAssignmentFlows`), administrator-only with a negative test. The systems list is the
+  `systems` rows UNIONED with the boards in the data tree (`PublishedSystemLister`), so a shipped
+  board can get a reviewer before its first submission; the first assignment creates its row as
+  'shipped'. An unverified, locked or administrator account is refused with a sentence
+  (`ReviewerAssignmentRules`), and the review app's list says the same sentence before the button
+  is pressed (`ReviewerAssignmentDisplay`). Every grant and revocation is an audit row. In
+  CRT.Review: a **Reviewers** button above the queue, shown only when the queue answer says
+  `isAdministrator`, opening `ReviewersWindow`.
+- **Reviewers are told.** On finalise, whoever must approve is e-mailed (`SubmissionRouting`,
+  `EmailTemplates.SubmissionWaiting`): the system's reviewers; the reviewers AND the administrators
+  on a shared-files change; the administrators alone when nobody is assigned. Never fails the contributor's request. The "somebody else handled
+  it" mail of task 11 is not built - a decided submission simply leaves the queue.
+- ~~**`system.json` mirrors the pool** (task 1)~~ - withdrawn the same day with `system.json`
+  itself (see its section above). The pool lives in the database only.
+- **Vocabulary.** "Reviewer" everywhere a user reads it: the review app's sign-in text, CRT's
+  submit dialog and the new-system agreement (`NewSystemMaintainerWindow` keeps its class name),
+  the three Wiki pages. "Maintainer" survives only where it means the project's maintainer.
 
-### Tasks
+### Deliberately NOT built, and the accepted risk
 
-1. Roles and per-system assignment in MariaDB; mirrored into each `system.json` so the published
-   tree is self-describing and ownership survives a restore. A system's `Maintainers` is a **list**;
-   the administrator is not listed in it and does not need to be, since authority is computed as
-   "is a maintainer of this system OR is an administrator".
-2. Route each submission to **every** maintainer of its system. Any one of them may act; the first
-   decision wins and the others are told it was handled.
-3. **A NEW system routes to the administrator, always.** No maintainer exists for it yet, and this
-   is the highest-risk item in the pipeline: unreviewed content, from someone with no track record,
-   establishing a system nobody else knows. It is also the natural onboarding path - the
-   administrator reviews the first one and, if it is good, adds the contributor to that system's
-   maintainer pool. Ownership follows the work.
-4. **Reviewer role**: may open a new-system submission, run the validation report, and attach a
-   recommendation (`recommend` / `do not recommend` plus notes). This records an opinion and
-   nothing else. The publish action must be structurally unavailable to the role - not hidden in
-   the UI, but rejected by the server and impossible to reach in the authorisation model.
-   Build this only when new-system volume actually justifies it; until then the administrator is
-   the only reviewer and this role sits unused.
-5. **Managing a system's maintainer pool**: the administrator can add and remove maintainers on any
-   system. Removal takes effect immediately, not at next login. A system may have zero maintainers -
-   that is the normal state for a new one, and it simply means the administrator handles it.
-6. Enforce permissions **server-side**, on every request, against the specific system in that
-   request. The desktop app hiding a button is not enforcement - the app is public source, and an
-   attacker calls the API directly. Read [Security model](#security-model) before writing any of
-   this, and ship a negative test per protected endpoint (wrong role; right role, wrong system;
-   Reviewer attempting to publish).
-7. **Require TOTP two-factor authentication before granting maintainer or administrator rights.**
-   Maintainer approval publishes directly to every user of that system, so a stolen maintainer
-   account is a supply chain attack on the userbase. Make 2FA a precondition of the grant, not a
-   setting the maintainer may skip. Reviewers should have it too, since the role is a stepping
-   stone to maintainership.
-8. Full audit trail: who decided what, when, with what comment. Record **which** maintainer of a
-   pool acted, not merely that the system's maintainers approved it.
-9. An administrator feed of everything published across all systems - read at leisure, blocking
-   nobody. **This is now the MAIN safeguard on direct publishing, not half of one.** It was
-   written as "combined with retained revisions"; revisions are no longer retained (open question
-   5), so oversight-after-the-fact plus the maintainer's own backups are what stand behind a
-   publish. Weigh that before widening who may publish.
-10. Derive credits from account identity rather than hand-typed Credits rows, so contribution and
-    attribution cannot drift apart.
-11. Notifications: every maintainer of a system learns of a submission to it without polling. Email
-    is sufficient. Include the "already handled by someone else" notification, or a pool of
-    maintainers duplicates each other's work.
-12. Sessions expire, tokens are revocable, and revoking maintainership takes effect immediately
-    rather than at next login.
+- **TOTP two-factor (task 7, threat 2).** The maintainer chose to defer it (2026-09-25) and to open
+  publishing to reviewers without it. **Recorded here as an accepted risk:** a stolen reviewer
+  account can publish to that reviewer's systems - to BETA today, and to Production once the
+  two-stage publish exists - with a password as the only factor. The remaining safeguards are the
+  server-side validation, the review itself, the audit rows, and the maintainer's own backups. It
+  stays on the security review's open list until it is built.
+- **The administrator feed (task 9)** and the anomaly alerts of threat 2. The audit rows exist;
+  nothing renders them yet.
+- **Credits from account identity (task 10).**
 
-### Definition of done
+### Two-stage publish: BETA, then Production [DONE 2026-09-25]
 
-- A maintainer can approve only the systems they are in the pool for, proven by a server-side
-  denial test.
-- Two maintainers on one system can both act, and the audit trail names which one did.
-- The administrator can act on **every** system without being added to any pool, and without a
-  distinct "override" code path.
-- A new system routes to the administrator and cannot be published by anyone else.
-- A Reviewer can record a recommendation and is refused by the server when attempting to publish.
-- Approval publishes; the administrator sees it in the feed afterwards.
-- Removing a maintainer takes effect immediately, proven by a test using an already-issued token.
-- Every decision is in the audit trail.
+The maintainer: *"it should be a two-fold process, where it is first published to BETA and then it
+is published to the real production. The reviewer is still allowed to do this, but only after he
+has checked that the data looks correct in BETA."* **This REVERSES open question 6's answer** (BETA
+to Production was a manual copy, and the service could never write Production) - by the
+maintainer's explicit decision, and only when switched on. **The environment stays named BETA**: it
+is what users see in CRT's Configuration tab and what every installed build's sync URL carries.
+
+- **Approve writes BETA, exactly as before.** "Publish to production" is a second, per-SYSTEM act
+  in the review application (a **Production** window), allowed to whoever may publish that system.
+  Per system rather than per submission because BETA is one tree - two merged submissions to a
+  board are in one workbook.
+- **`ProductionPromotionPlan` (CRT.Data, pure)** decides what is copied: every file under the
+  system's BETA folder that Production lacks or holds differently, plus every SHARED file the BETA
+  board cites that differs. It refuses a board citing ANOTHER board's file that is not already
+  identical in Production (that board goes first), a cited file BETA itself lacks, and a case-only
+  collision with Production. What the board no longer uses is removed from production, from a list
+  shown before approving - see "Orphan files" below. Order: content, then workbooks and sidecars; a `system.json` is never
+  carried and one already in production is removed. The same records go to the review app as `PromotionFile`, so the reviewer sees the
+  exact list the server then performs.
+- **`ProductionPromoter`** resolves and link-checks every source and destination before the first
+  write, then copies each file through **`VerifiedFileCopy`** (hashed as written, renamed in only
+  on a match - the same helper `BlobStore.TryCopyToAsync` now uses) against the hash the plan saw.
+- **"Only after he has checked it in BETA", in code:** the request carries back the BETA content
+  hash the reviewer was shown, and `ProductionPromotionFlow` refuses (409) if a publish has landed
+  in BETA since. The review app adds the human half - a box the reviewer ticks - and the button
+  follows the server's `canPublish` AND the tick (`ProductionDisplay.CanPress`).
+- **One `PublishLock`** serialises the BETA publish and the promotion, so a promotion can never
+  copy half a publish and the hash check means something.
+- **A copy list holding a shared file needs the reviewer AND the administrator** here too
+  (`TouchesSharedFiles` on the plan; see the next section).
+- **Off until configured.** `ProductionDataTreeRoot`, `ProductionManifestPath`,
+  `ProductionPublicDataBaseUrl`: all three or none; none may carry the `-BETA` marker or equal its
+  BETA twin; the data root must sit inside `ProductionTreeRoot` and be writable at startup.
+  DEPLOYMENT.md step 13 is the procedure, including the permissions and `ReadWritePaths` change
+  that undoes step 3 for the production data folder only.
+- **Migration 0007**: `systems.production_revision`, `production_content_hash`,
+  `production_published_utc`. "Waiting for production" is BETA's `content_hash` differing from
+  `production_content_hash` (`ProductionPromotionRules.IsAwaitingProduction`) - the hash, not the
+  revision date, because two publishes in a day share a date.
+- **After a promotion** (none of it may fail the request): Production's `dataChecksums.json` is
+  regenerated; the contributors of every submission merged since the previous promotion are mailed
+  "published"; the administrators are mailed when a reviewer did it (the feed's stand-in); an audit
+  row names who.
+- **The contributor's view changed with it (the "every side" rule).** A reviewer's approval mail
+  now says "published to the BETA source", with one more mail to come
+  (`SubmissionPublishedToBeta`); the promotion sends "published to the source"
+  (`SubmissionPublishedToSource`) - the maintainer's own words for the two stages, matching the
+  "source" / "BETA source" names in CRT's Configuration tab. The server reports a merged submission as `published` once its
+  system has been promoted since (`ContributorFacingState`), without touching the stored state.
+  CRT shows "merged" as "Published to BETA source" and "published" as "Published to source", and
+  keeps asking about a merged one at launch until it reads "published" - for at most 30 days after
+  the decision (`SubmissionReceiptPresenter.MergedRecheckWindow`), since the second publish may
+  never come; "Check for updates" in My submissions still asks after that. `DraftRetirement` needed
+  no change: it already waits for the contributor's own synced data to carry the change.
+- **Known gap, not addressed: a NEW system is never added to the master workbook** by a publish
+  (to either tree), and CRT finds boards only through the master's "Hardware & Board" sheet - so a
+  new system is copied and does not appear in CRT until its row is added by hand. This predates the
+  two-stage publish and is a maintainer decision (writing the master touches generation rules).
+
+### Orphan files [DONE 2026-09-25]
+
+The maintainer: "My goal at least is that there must be no orphan files." Until now a publish never
+deleted anything, so a file a board stopped using (replaced under a DIFFERENT name, or no longer
+cited) stayed in BETA and production and was synced to every user for ever. A file replaced under
+the SAME name is simply overwritten and leaves nothing behind.
+
+**The rule is `DataTreeUsage` (CRT.Data), one definition for every caller.** A file is USED when it
+is (1) a master workbook, (2) a board workbook - one a master lists, OR one found at the top of a
+board folder - of every generation, and its `.json` sidecar, (3) cited by any of those workbooks,
+(4) inside a board's `KiCad data` folder, (5) inside a folder CRT reads by name
+(`FoldersReadByName`, today only `Generic shared files/MiniPro/IC tests`; `IcTestCatalogue` now
+builds its paths from the same constant, and `DataFoldersReadByNameTests` in CRT.App fails if the
+app and the rule disagree on it or on the KiCad folder name), or (6) a file whose name starts with
+`!`. Matching ignores case, the safe direction for a rule that deletes. **Fail closed:** an
+unreadable master or board workbook, a master listing a workbook the tree lacks, or a folder that
+cannot be walked makes the result incomplete, and an incomplete result removes nothing. A board
+found in the tree counts even when no master lists it, because a new system the server publishes is
+not added to any master (done by hand) - trusting the masters alone would delete it.
+
+**The shipped data was cleaned first.** Run over `Assets/Data` the rule found 2 masters, 22 board
+workbooks, 10,971 files and **50 orphans (8.7 MB)**: 11 `.fsc` image-editor files, 3 VGG Image
+Annotator project files (`CPC664_*.json`), 29 component images/PDFs no board uses, 5 scope captures
+no row cites and 4 readme/introduction texts. The maintainer reviewed the full list and approved
+removing all of them (2026-09-25); they are deleted from `Assets/Data`. A further 8 files are cited
+only by an older generation and stay. **`DataTreeUsageShippedDataTests` now fails, naming the file,
+whenever a file enters the shipped tree that nothing uses.** The live BETA and production trees are
+cleaned through the administrator's list below, not by hand.
+
+**When files are removed - always from a list somebody has seen:**
+
+- **A BETA publish** removes what the board stops citing that nothing else in BETA uses
+  (`ApprovePublishFlow.PreviewRemovals`: the candidates are `DataTreeUsage.NoLongerCited`, and the
+  tree is read with the workbook the plan WRITES standing in for its new citations). The maintainer
+  required the list to be "visible BEFORE the reviewer/admin approves it ... so it is clear what will
+  happen": the submission detail carries it as `removals` (CRT.Data's `FileRemovalPreview`), the
+  review app lists each file as REMOVED and says so beside the Approve button, and the approval
+  sends the list back. **The server refuses (409) when the list it would now remove differs** -
+  another publish may have started or stopped citing a shared file - so what goes is exactly what
+  was on screen. After the write, `UnusedFileRemover` removes only those files, and only if the
+  tree, read again, still does not use them.
+- **A production promotion** does the same for production (`ProductionPromotionFlow.PreviewRemovals`:
+  production's workbooks for the system are compared with BETA's, which replace them). The plan
+  carries `removals`, the Production window lists them first in red, and the publish request sends
+  them back with the same refusal rule.
+- **Files that were already orphans** are the administrator's: the **Unused files** window in the
+  review app (`/api/admin/unused-files`, `UnusedFileFlows`), per tree, administrator-only. It lists
+  every unused file with its size; Remove needs the administrator's tick in "I have looked through
+  this list"; the server removes only the files sent that it still finds unused, regenerates that
+  tree's `dataChecksums.json`, and writes an audit row (`data.unused_removed`) naming every file.
+
+**Every removal** goes through `SubmissionPathRules` and `PublishPathSafety` (no link is followed),
+considers only files the sync manifest would list (never a dot-file or a half-written `.tmp_`),
+removes a folder it leaves empty, runs under the `PublishLock`, and never fails the publish it
+follows. **A removed shared file needs no second approval**: it is removed only when no board in
+that tree uses it, so it changes nothing any board shows. (Adding or changing one still needs both
+approvals - see above.)
+
+**Known limits, deliberate for now:** a board workbook with a MISSING sheet reads as citing nothing
+from that sheet (`BoardDataReader`'s existing behaviour, which CRT's own cleanup shares), not as
+unreadable; and a file removed from a board's `KiCad data` folder in BETA stays in production,
+because that folder is kept whole.
+
+**On users' machines:** a file removed on the server drops out of that tree's dataChecksums.json,
+but CRT deletes its local copy only when "Delete orphan and non-used files" is on - and that setting
+is OFF by default with its checkbox disabled in the Configuration tab. Whether to switch it on is
+the maintainer's decision, not yet taken.
+
+### The reviewer's table [DONE 2026-09-25]
+
+The maintainer: *"make the same 'Edit in table format' (maybe call it 'View in table format')
+available in the review app ... The reviewer should be able to also edit whatever, if he chooses to
+publish it afterwards."* The button is **"View in table format"**, beside the decision buttons.
+
+- **The editor is shared, not copied.** `BoardTableEditor` and `UnsavedTableEditsWindow` moved from
+  CRT.App into a new Avalonia library, **`src/CRT.UI/`**, referenced by both applications, with
+  `ThemeResources` (the one two-step theme lookup). The `BoardTable_*` colours moved into
+  `CRT.UI/BoardTable/BoardTableColors.axaml`, merged by both apps' `App.axaml`, so the two tables
+  cannot drift. The review app defines the six general keys the editor borrows (`Bg`, `Fg`,
+  `Table_Bg`, `Table_BorderRowLine`, `Text_Fail_Fg`, `Button_Cancel_*`) and includes ProDataGrid's
+  theme. The Drafts tab is unchanged - its 138 tests passed across the move.
+- **Document mode.** `BoardTableEditor.Open(BoardTableDocument)` shows a table with no draft file
+  behind it: "Save changes" raises `SaveRequested` and the host saves; Reload and the draft-file
+  notices are hidden; it opens on the first sheet with a change. The review window
+  (`ReviewTableWindow`) builds the document from the published board and the submission
+  (`BoardTableDocument.Create`, the Drafts tab's own rule), and asks before unsaved changes are lost
+  (the prompt's `LeavingSubmission` wording).
+- **An amendment is the server's decision, not the client's** (`AmendSubmissionFlow`,
+  `POST /api/review/submissions/{id}/amend`; the table is `GET .../table`, CRT.Data's
+  `ReviewTableData`). In order: authority over THIS board; still undecided (pending or waiting for
+  its second approval); still at the amendment VERSION the reviewer opened (a second reviewer's save
+  is refused naming who changed it); only the table's nine sheets are taken
+  (`SubmissionRowsBoard.WithTableSections` - highlights, calibrations and the revision date stay as
+  submitted); FILES are rebuilt from what the rows cite - a file the submission carries is kept, a
+  file already PUBLISHED is taken from the tree (imported into the blob store, as create does), and
+  anything else is refused (`amend.file_unknown`: a reviewer edits rows, and cannot bring in a file
+  nobody sent); then the same path, file and row rules a new submission passes.
+- **Stored beside the original.** `submission_payloads`/`submission_files` hold the current content,
+  so nothing that reads a submission changed; migration 0009's `submission_amendments` keeps what
+  each amendment replaced - its first row is the contributor's original. The store's `AmendAsync`
+  is one transaction, and it **clears the approvals already given** (they were given to other
+  content), moves 'approved' back to 'pending', and re-decides `touches_shared_files`, so the
+  two-person rule follows the content actually published. An audit row (`submission.amended`)
+  records who.
+- **The contributor is told.** The BETA-publish mail says a reviewer changed some details; the status
+  answer carries `amendedByReviewer` (CRT.Data's `SubmissionStatus`), stored on the receipt and
+  shown in "My submissions" (`SubmissionReceiptPresenter.DescribeAmended`). The review app's
+  submission view names who last changed it.
+
+**Known limits, deliberate for now:** a reviewer cannot add a NEW file through the table (rows
+only). Deleting or renaming a SCHEMATIC takes its highlights and calibrations with it
+(`SubmissionRowsBoard.WithTableSections`): a rename is recognised by the same image file, and an
+ambiguous one drops them rather than guess. Until the code review below, deleting a schematic with
+highlights was refused and nothing in the table could fix it.
+
+### A deleted component takes everything with it [DONE 2026-09-25]
+
+The maintainer: *"if a component really is deleted, then it should remove EVERYTHING related to
+this component."* Deleting one used to leave its highlights behind everywhere, and in the table its
+image, file and link rows too.
+
+- **The table (both apps):** deleting a Components row also deletes that component's rows on the
+  image, local file and link sheets - red on their own sheets, ONE undo step
+  (`BoardTableHistory` steps can now span sheets) - and the save drops its highlights
+  (`BoardTableDocument.ApplyTo`). A rename keeps them: the document remembers the component rows
+  it opened with, so a row object still live under a new label is a rename, not a delete. A
+  regional variant deleted beside its twin takes only its own region's images. The status line
+  says what else went (`BoardTableDeletedWith`).
+- **The Contribute window's "Delete this component"** now drops the highlights too
+  (`ComponentBoardWriter.ApplyComponentDelete`). Its notice already said they would go.
+- **The reviewer's amendment:** `WithTableSections` drops a highlight only when the edit left it
+  out AND no component in the edit has its label - so the route still cannot remove a highlight of a
+  component the board keeps.
+
+### A new system's draft is retired like any other [DONE 2026-09-25]
+
+It used to be refused outright. Now it is retired once its published board is on the machine and
+matches (`DraftRetirement`), which can only happen after the master workbook lists the system -
+CRT downloads a board workbook only then - so retiring it never hides the contributor's board. The
+draft and the published workbook have different names (the draft's has no generation suffix), so
+`DraftStatusReader.ResolveForSystem` finds the draft by its folder and keeps the draft's own key.
+**It still depends on the master row, which is added by hand** - the known gap recorded with the
+two-stage publish above ("a NEW system is never added to the master workbook").
+
+### Code review follow-up [DONE 2026-09-25]
+
+A review of this phase's work found fifteen problems; all were fixed the same day. The ones that
+change a design, for a later session:
+
+- **The review API's bodies are CRT.Data's `ReviewApiContract` records.** The requests were
+  records inside the server's endpoint classes while the review app sent anonymous objects, and the
+  answers were anonymous objects on the server. Now both ends build the same records, the JSON
+  settings are one method both apply (`ApplyWireSettings`), and CRT.Review.Tests'
+  `ReviewWireContractTests` serialises each answer with the server's settings and parses it with
+  the real parser. It caught a startup crash in the shared settings on its first run.
+- **Saving the reviewer's table was refused with 413 for every real board**: the amend route fell
+  to the 64 KB default body limit. It now gets the manifest's 8 MB; the approve, production-publish
+  and unused-file routes, which send a file list, get 2 MB (`RequestBodyLimits`).
+- **A pool row counts as "the board has a reviewer" only when that account can approve as one**
+  (`ReviewAuthority.CanGiveReviewerApproval`: verified, not locked, not an administrator). An
+  account granted a pool and later made administrator by hand made a shared-file change wait for
+  ever. Routing uses the same rule.
+- **A board's second reviewer is no longer told "you have already approved"** for a colleague's
+  approval. `GivenApproval.AccountId` (kept off the wire) and `ApprovalStatus.YouApproved` tell the
+  two apart; the server's refusal names who approved, and the button reads "Another reviewer
+  approved - waiting for ...".
+- **Creating a submission holds the blob reference gate only for its last step.** Imports from the
+  published tree used to run inside the service-wide gate. Now they run outside it; inside, each
+  "held" blob is confirmed still there (else asked for) and the row is created. A budget refusal
+  after the imports takes back what this create imported.
+- **The removal preview no longer re-reads the whole tree on every click.** It builds no plan when
+  the board stops citing nothing, and what it reads goes through `WorkbookReadCache` (once per
+  file version). The removal itself never uses the cache.
+- **The published-tree probe hashes synchronously** instead of blocking a request thread on an
+  async read.
+- **A "merged" receipt is checked at launch for 30 days at most** (see above).
+- **Every shipped board's folder names are run through the identity rules**
+  (`SubmissionRulesShippedDataTests`), and a path the path rules refuse is no longer reported a
+  second time by the file rules.
+
+### Second code review follow-up [DONE 2026-09-25]
+
+A second review found twelve more; all were fixed the same day. The ones that change a design:
+
+- **"Changes a shared file" is judged against the tree as it is NOW** (`ApprovePublishFlow.
+  TouchesSharedFilesNow`). The flag stored at create compared the submission with the tree of that
+  moment, so a submission citing a shared file unchanged stayed a one-approval item even after
+  another publish changed that file - and would then have reverted it for every board on one
+  reviewer's say. The stored flag is now a floor; the approval and the detail screen re-check,
+  and the approval stores a raised flag (`MarkTouchesSharedFilesAsync`) so the queue agrees.
+- **No approval is recorded for what cannot be published.** The payload and the plan (both
+  read-only) now run BEFORE the first of two approvals is recorded; they used to run after, so
+  the second approver was mailed for a submission the plan then refused.
+- **An item whose required approvals shrank is not stranded** (`ApprovalRules.Status`): if every
+  required role has already approved - the board's last reviewer left its pool after the
+  administrator approved - the next approval by a role it needs publishes. BETA and production.
+- **An amendment takes the `PublishLock`, and the store re-checks the version and the state
+  inside its transaction** (`AmendAsync(expectedVersion, ...)`, `AmendStoreResult`). Two
+  amendments at once both passed the flow's early checks and the second overwrote the first; one
+  could also land mid-publish, leaving the tree with the old rows.
+- **An older review application that sends no removal list is told to update**
+  (`RemovalsNotSentMessage`, 400) instead of "the list changed since you opened it" (409), which
+  was false and could never be fixed by reopening. Approve and production publish alike.
+- **Body limits live on the routes** (`.WithBodyLimit(...)` where each is mapped;
+  `RequestBodyLimits.For(endpoint)` after `UseRouting`). `RequestBodyLimitsTests` builds the
+  server's real route table through `Program.AddServerServices`/`MapServerEndpoints` and fails on
+  any route that reads a body without a decided limit.
+- **The three lists are contract records too**: `ProductionListAnswer`, `ReviewerSystemsAnswer`,
+  `ReviewerAccountsAnswer`, each with a `ReviewWireContractTests` case.
+- **A publish no longer rewrites files that are already there byte for byte** - the board's own
+  and shared files now follow the rule another board's files did (`PublishPlanDetail.
+  UnchangedFiles`, formerly `UnchangedForeignFiles`). A typo fix writes the workbook and sidecar
+  and nothing else.
+- Smaller: one shared-folder-name rule (`SubmissionFileScopes.IsSharedFolderName`) for the
+  validator, `DataTreeUsage` and the reviewer list; the blob store's import uses
+  `VerifiedFileCopy`; the Review app's windows share `WindowMessage`.
+
+### Next in this phase
+
+Nothing planned. Open maintainer decisions are listed under "Open questions" and in the orphan
+section (CRT's own "Delete orphan and non-used files" setting).
+
+### Definition of done (roles - met 2026-09-25)
+
+- A reviewer can approve only the systems they are in the pool for, proven by a server-side denial
+  test (`A_reviewer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written`).
+- Two reviewers on one system can both act, and the audit trail names which one did
+  (`SetDecisionAsync` records the account; the pool is a set).
+- The administrator can act on every system without being added to any pool, and without a
+  distinct override code path.
+- A new system cannot be published by anyone but an administrator (its pool is empty), and a
+  shared-files change is published only once a reviewer of the board AND the administrator have
+  both approved it (`ApprovalRules`; the administrator alone when the board has no reviewers).
+- Removing a reviewer takes effect immediately, proven by a test using the same access path a
+  request takes.
+- Every grant, revocation and decision is in the audit trail.
+
+### Two approvals for a shared-file change [DONE 2026-09-25]
+
+The maintainer: *"in case of changes to any shared file, then both the reviewer and the admin
+should approve before publishing to BETA or production. If there is no shared files changed, then
+normal reviewer is sufficient."* The worked case that prompted it: a submission that edits a text
+on the board AND replaces a shared image is ONE submission, so both approve that one submission -
+it is not split.
+
+- **`ApprovalRules` (CRT.Data, pure) is the rule, used for both stages.** `Required(touchesShared,
+  systemHasReviewers)`: an ordinary change needs any one approval (empty list, today's behaviour);
+  a shared-file change needs `[Reviewer, Administrator]`, or `[Administrator]` alone when nobody
+  reviews the board - the administrator does not approve twice. `Status(required, given, yourRole)`
+  says who is still awaited, what this account may do and whether its approval publishes; the
+  server sends that record to the review app as-is (`approval` on the submission detail and on the
+  production plan) and `ApprovalWording` writes the button and the line from it.
+- **Either may approve first.** The first approval records a row (`submission_approvals` /
+  `production_approvals`, migration 0008, keyed by role so one role cannot count twice) and
+  publishes NOTHING; the submission's state becomes `approved`, it stays in the queue marked "one
+  of two approvals given", and the other side is e-mailed (`EmailTemplates.ApprovalNeeded`). The
+  second approval publishes, under the same `PublishLock` and with every check the first ran.
+- **A production approval is tied to the BETA content hash it was given for.** If BETA changes
+  between the two, the first approval no longer counts and both approve again - what was approved
+  is what is copied.
+- **Reject or Return by either one ends it.** An approval is agreement to publish, not a lock.
+- **An administrator who is also in a board's pool approves as the administrator.** One account
+  never supplies both halves.
 
 ### Traps
 
-- **Do not build a permission matrix.** Four roles plus a per-system maintainer list is the whole
-  model. The authority question is always "is this account in this system's pool, or an
-  administrator?"
-- **Do not implement the administrator as a special case at each call site.** Compute authority once
-  ("maintainer of this system OR administrator") and use it everywhere. Special-casing invites a
-  site that forgets the check, and it is exactly the escalation path this design avoids having.
-- **Do not let Reviewer grow publish rights.** If volume pressure later suggests letting Reviewers
-  "just publish the easy ones", that is a request to create a global publisher. Refer it to the
-  maintainer as a change of security model, not as a feature.
-- **Shared files are administrator-owned** (see [Open questions](#open-questions-for-the-maintainer)).
-  A submission touching `Generic shared files` or a manufacturer's `Shared files` must not be
-  approvable by a system maintainer.
-- **A system with an empty maintainer pool is normal**, not an error state. It means the
-  administrator handles it.
+- **Do not build a permission matrix.** Two roles plus a per-system pool is the whole model. The
+  authority question is always "is this account in this system's pool, or an administrator?"
+- **Do not implement the administrator as a special case at each call site.** `ReviewAuthority` is
+  the one place; a route that needs a new question adds it THERE and takes a `ReviewAccess`.
+- **Do not reintroduce a role flag on the account.** `is_reviewer` was dropped precisely so no code
+  path can grant the old global-queue behaviour by reading it.
+- **A shared-file change needs both approvals.** `TouchesSharedFiles` is set at create and must be
+  honoured by every rule that PUBLISHES; a new publishing route that forgets `ApprovalRules` lets
+  one person change a file every board cites.
+- **A system with an empty reviewer pool is normal**, not an error state.
 
 ---
 
@@ -3739,7 +4112,7 @@ Ordered by real-world likelihood multiplied by damage - not by how alarming they
 | 2 | **Stolen maintainer account** | Moderate | Attacker publishes to every user of that system | Strong auth (2FA), scoped authority, audit feed, maintainer's own BETA backups. **NOT retained revisions - struck 2026-09-21, open question 5** |
 | 3 | **Privilege escalation** by an ordinary contributor | Moderate | Approving their own or others' work | Server-side authorisation on every request |
 | 4 | **Rogue maintainer** | Low | Same as 2, without the theft | Scope limits, audit trail, revocation. **Not rollback - struck 2026-09-21, open question 5**; recovery is a corrective publish plus backups |
-| 4b | **Rogue or stolen Reviewer** | Low | A misleading recommendation on a new system | Role holds no publish authority; a human still decides |
+| 4b | ~~**Rogue or stolen Reviewer**~~ | - | **Folded into 2 and 4 on 2026-09-25**: the recommend-only role no longer exists; a Reviewer is the per-system publisher the old Maintainer was | See 2 and 4 |
 | 5 | **Server compromise** via the new API | Low | Total | Small attack surface, localhost binding, no shell-outs |
 | 6 | **Denial of service / disk exhaustion** by upload | Moderate | Service unavailable, disk full | Quotas, rate limits, blob garbage collection |
 
@@ -3814,8 +4187,8 @@ chain attack on CRT's users.** This is the scenario to design against hardest.
 - Write a deliberate **negative test per protected endpoint**: an authenticated contributor, and a
   maintainer of a *different* system, must both be refused. Per project rules these tests ship with
   the endpoint, not afterwards.
-- Administrator-only actions (appointing maintainers, touching shared files) are checked the same
-  way, with no back door.
+- Administrator-only actions (appointing reviewers, and the administrator's half of a shared-file
+  approval) are checked the same way, with no back door.
 
 ### Threat 5 - server compromise
 
@@ -3847,6 +4220,46 @@ State these plainly so no future change quietly depends on them:
   administrator-only endpoints, but nothing may *depend* on it.
 - **Good intentions.** The model must hold when a maintainer account is hostile, because sooner or
   later one will be.
+
+### Security review, 2026-09-25 - what was closed, and what is still open
+
+A full read of the server, CRT.Data and the review app, asking how an anonymous contributor, a
+reviewer or an administrator could change, damage or overwrite the published data. What it found
+and what was done, so the next session does not re-derive it:
+
+| Finding | Fixed by |
+| --- | --- |
+| Submitted paths were contained to the DATA ROOT only, so a submission to one board could overwrite any non-workbook file of any other board (its highlight sidecar, its `system.json`, its PDFs) once approved | `SubmissionFileScope` + `SubmissionFileRules` (CRT.Data), at create AND in `PublishPlan`: a submission may change only its own folder and the two shared folders. Another board's file may be cited only byte-identical to the published copy, and is then never written |
+| A file no row used was carried and published, and the review app drew only images - so it was approved unseen | Every file must be cited by a row (`SubmissionFileRules`, `PublishPlan`). The review app lists EVERY changed file (`ReviewFileComparison`) from new per-file facts the server sends (`SubmittedFileFact`, a CRT.Data type both ends share) |
+| No file-type or content check (threat 1 asked for both); a dot-file such as `.htaccess` passed, and the data tree is under `public_html` with `AllowOverride All` | Allowlist of the types rows actually cite (`.png .jpg .jpeg .gif .bmp .webp .pdf .txt .html .htm`), no dot-segments, and a signature check at finalise and before publish (`SubmissionContentRules`). Apache hardening is DEPLOYMENT.md step 12a - **the maintainer applies it by hand** |
+| The system id was case-insensitive and the `systems` row is created by the first anonymous submission, so a case-variant could hijack a board's row and make every real submission fail | Migration 0005 (`utf8mb4_bin` in all three tables); case-variants of published paths and folders refused against the real tree (`PublishedTreeView.FindCaseVariant`) |
+| No quota on anonymous submissions; completed blobs and payload rows were never collected | Per-address limit (`SubmissionRateLimitPolicy`: 20 a day, 4 GiB), a free-disk reserve (`BlobStore.HasRoomFor`), per-route body limits (`RequestBodyLimits`), and the hourly sweep now collects unreferenced blobs and ended submissions' rows |
+| A blob was verified once, on arrival; an append racing completion could poison it, and publishing copied on trust | Per-upload lock in `BlobStore`; every blob re-verified before any write, and each copy hashed and renamed into place only on a match |
+| `AccessTokenMinutes` promised a short-lived token that did not exist | Removed; the one token is the sliding session token (maintainer's 2026-09-22 decision) |
+| Smaller: upload-state oracle for any hash; over-long summary/revision/finding subject failing an INSERT with a 500; `is_accepting` never read; no symlink check on publish | Each closed - see the section headers in `SubmissionFlows`, `SubmissionValidator`, `PublishPathSafety` |
+
+**The check that shaped the rules.** `SubmissionRulesShippedDataTests` runs every new rule over every
+board in `Assets/Data`. It found that C128DCR 250477 cites two texts in the C128 310378 folder (hence
+"foreign, unchanged" is allowed) and that three shared images are misnamed - a PNG saved as `.jpg`,
+two JPEGs saved as `.png` (hence an image name accepts any image signature). A stricter rule would
+have been the third time this pipeline rejected published data.
+
+**Still open, deliberately, each a maintainer decision:**
+
+- **Images are signature-checked, not decoded.** Decoding on the server needs an imaging library
+  there - a dependency and licence choice (threat 1 asked for it).
+- ~~**Publishing never deletes a file.**~~ Resolved 2026-09-25: a publish removes the files the board
+  stops citing that nothing else in that tree uses, from a list shown before approving and checked
+  again at approval - see Phase 6, "Orphan files". A shared file another board cites is never removed.
+- **No second factor, by decision (2026-09-25).** Phase 6's per-system scope IS built, and
+  publishing is now open to reviewers on their systems - with a password as the only factor. The
+  maintainer chose to defer TOTP; the accepted risk is written into Phase 6. A stolen reviewer
+  account publishes to that reviewer's systems - and, once publishing to production is switched
+  on, to PRODUCTION for them. Mitigations: only bytes already in BETA, no shared file without the
+  administrator's own approval too, an administrator mail on every reviewer's production publish,
+  and the audit row.
+- **Blobs of merged submissions are kept for ever**, so the next edit to a board uploads only what
+  changed. Growth is bounded by what an administrator approves.
 
 ### Review checklist for each of Phases 3-6
 
@@ -3909,6 +4322,9 @@ These need answers before the phases that depend on them. They are not blocking 
    `Generic shared files` 48 MB; neither belongs to one system, but contributions will want to add
    to them. Proposal: shared files are always administrator-owned, and a submission adding one is
    flagged for the administrator specifically. Confirm or redirect.
+   **[ANSWERED 2026-09-25] Redirected: a shared-file change needs the board's reviewer AND the
+   administrator**, for the BETA publish and again for production; with no shared file changed,
+   one reviewer is enough. See Phase 6, "Two approvals for a shared-file change".
 
 2. **Cross-system contributions** (affects Phase 4). A fact affecting five C64 revisions is five
    submissions, potentially to five maintainers. Acceptable, or should the app support a

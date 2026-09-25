@@ -608,7 +608,16 @@
 					     Phase 2, session 2b) - IsVisible starts False so a launch with no drafts
 					     never flashes an empty tab; ApplyDraftsTabVisibility sets the real value at
 					     startup and after every board load, the same pattern WorkbooksTabItem uses. -->
-					<TabItem x:Name="DraftsTabItem" Header="Drafts" IsVisible="False">
+					<!-- The title is IndianRed in both themes (maintainer request, 2026-09-25): a
+					     draft is temporary - local work waiting to be submitted and published -
+					     and the tab says so at a glance. A TextBlock with its own Foreground, since
+					     the tab's selected and hover states would otherwise recolour a plain header. -->
+					<TabItem x:Name="DraftsTabItem" IsVisible="False">
+						<TabItem.Header>
+							<TextBlock x:Name="DraftsTabHeaderText"
+							           Text="Drafts"
+							           Foreground="{DynamicResource Main_TabHeader_Drafts_Fg}" />
+						</TabItem.Header>
 						<local:TabDrafts x:Name="TabDrafts" />
 					</TabItem>
 

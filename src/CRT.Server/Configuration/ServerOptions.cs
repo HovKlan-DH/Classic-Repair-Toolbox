@@ -32,15 +32,42 @@ namespace CRT.Server.Configuration
         // writes through it.
         public string? DataTreeRoot { get; set; }
 
-        // The Production tree, named here ONLY so it can be refused. The service never writes it:
-        // promotion from BETA to Production is a manual copy the maintainer performs. Naming it
-        // lets the validator reject a DataTreeRoot that equals, contains, or sits inside it.
+        // The Production tree, named so the BETA settings can be kept AWAY from it: the validator
+        // rejects a DataTreeRoot that equals, contains, or sits inside it, so no publish - which
+        // writes BETA - can ever land in Production.
         //
-        // This check is the in-code half of the interlock and is NOT what makes it safe. The real
-        // guarantee is that the service user holds no write permission on that tree, so the kernel
-        // refuses the write regardless of what this program believes - plus systemd's
-        // ProtectSystem=strict. See DEPLOYMENT.md step 3.
+        // *** PRODUCTION IS WRITTEN SINCE 2026-09-25, BUT ONLY BY THE PROMOTION. *** The
+        // maintainer asked for a two-stage publish - BETA first, Production after a reviewer has
+        // checked it there - so the service may now write ProductionDataTreeRoot below, and only
+        // through ProductionPromoter, which copies bytes that are already in BETA and nothing
+        // else. Until the three Production* settings below are set, that is switched OFF and the
+        // service is as unable to write Production as it always was. See DEPLOYMENT.md step 3.
         public string? ProductionTreeRoot { get; set; }
+
+        // -----------------------------------------------------------------------------------
+        // Publishing to PRODUCTION (maintainer request, 2026-09-25). All three, or none.
+        //
+        // NONE means the feature is off: the review application says so, and nothing can write
+        // Production. That is the safe answer for a service configured before this existed, which
+        // is why these three have no default and are not required.
+        //
+        // ALL THREE are the Production twins of DataTreeRoot, ManifestPath and PublicDataBaseUrl.
+        // Each is a separate value for the reason those are: the data root, the manifest beside it
+        // and the URL clients fetch from cannot be derived from one another, and pairing the wrong
+        // two produces a manifest that sends every client to the wrong tree with nothing failing.
+        // The validator refuses any of them carrying the BETA marker, and any that equals its BETA
+        // twin.
+        // -----------------------------------------------------------------------------------
+        public string? ProductionDataTreeRoot { get; set; }
+
+        public string? ProductionManifestPath { get; set; }
+
+        public string? ProductionPublicDataBaseUrl { get; set; }
+
+        public bool IsProductionPublishingConfigured =>
+            !string.IsNullOrWhiteSpace(this.ProductionDataTreeRoot) &&
+            !string.IsNullOrWhiteSpace(this.ProductionManifestPath) &&
+            !string.IsNullOrWhiteSpace(this.ProductionPublicDataBaseUrl);
 
         // Where the published data is served from, e.g. https://classic-repair-toolbox.dk/app-data-BETA/Data.
         // Unread until Phase 5, which regenerates dataChecksums.json - but validated from Phase 3,
@@ -102,15 +129,31 @@ namespace CRT.Server.Configuration
         public string MailFromDisplayName { get; set; } = "Classic Repair Toolbox";
 
         // -----------------------------------------------------------------------------------
-        // Token lifetimes. Defaults are sane, so these are tuning rather than safety.
+        // Session lifetime, in days since the session was LAST USED. A default is sane, so this is
+        // tuning rather than safety.
         //
-        // Access is short because it is presented on every request; refresh is long because the
-        // audience opens CRT every few weeks and forcing a monthly password re-entry trains people
-        // into weaker passwords. Rotation with reuse detection is what keeps the long refresh
-        // lifetime acceptable - see the sessions design.
+        // *** THERE IS ONE TOKEN, AND THIS IS ITS LIFETIME. *** Login answers a `refreshToken`, and
+        // that very value is the bearer token every request presents; AuthenticateAsync slides its
+        // expiry forward as it is used (SessionExtensionRules). There is no separate short-lived
+        // access token. An `AccessTokenMinutes` setting used to sit here describing one - it was
+        // validated at startup and read by nothing, so it promised a protection that did not exist
+        // (security review, 2026-09-25). It was removed rather than implemented, because a desktop
+        // client holding a rotating token in a file is exactly what SessionExtensionRules' header
+        // explains the maintainer decided against. An old appsettings file that still carries the
+        // key is harmless: an unknown key binds to nothing.
         // -----------------------------------------------------------------------------------
-        public int AccessTokenMinutes { get; set; } = 30;
         public int RefreshTokenDays { get; set; } = 30;
+
+        // -----------------------------------------------------------------------------------
+        // The free space the blob store's disk must keep (security review, 2026-09-25).
+        //
+        // New submissions and upload chunks are refused while the disk holding BlobStoreRoot has
+        // less than this free, so an anonymous sender with many addresses can pause contributions
+        // but cannot fill the disk the web site and the database share. Tuning, so it has a
+        // default: 5 GiB is far more than any honest day of contributions and small beside any
+        // disk this service runs on. 0 turns the reserve off.
+        // -----------------------------------------------------------------------------------
+        public long MinimumFreeDiskBytes { get; set; } = 5L * 1024 * 1024 * 1024;
 
         // -----------------------------------------------------------------------------------
         // Argon2id parameters. Defaults are RFC 9106's second recommended profile, chosen for a

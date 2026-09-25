@@ -48,6 +48,26 @@ namespace CRT.Data.Tests
             Assert.Equal(0.25, progress.Fraction!.Value, 3);
         }
 
+        // ###########################################################################################
+        // *** THE BYTE COUNT CARRIES OVER FROM ONE FILE TO THE NEXT. *** The upload loop carried
+        // the file count forward and never the bytes, so every file started again from "0 bytes" -
+        // reported as "Uploading 470 of 1212 - U25_5_NTSC.png (0 bytes of 121.0 MB)" - and since
+        // the fraction prefers bytes, the bar measured one small file against the whole total and
+        // sat near empty for the entire upload.
+        // ###########################################################################################
+        [Fact]
+        public void The_byte_count_carries_over_from_one_file_to_the_next()
+        {
+            var progress = new SubmissionProgress(SubmissionPhase.Uploading, 0, 3, 0, 300, "a.png");
+
+            progress = progress.AfterFileSent(100).AfterFileSent(100);
+
+            Assert.Equal(2, progress.FilesDone);
+            Assert.Equal(200, progress.BytesDone);
+            Assert.Equal(2.0 / 3.0, progress.Fraction!.Value, 3);
+            Assert.Contains("(200 bytes of 300 bytes)", progress.Describe());
+        }
+
         [Fact]
         public void The_fraction_never_exceeds_one_or_goes_negative()
         {

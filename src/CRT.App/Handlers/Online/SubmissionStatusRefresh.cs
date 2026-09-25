@@ -59,7 +59,7 @@ namespace Handlers.Online
             ArgumentNullException.ThrowIfNull(lookup);
 
             List<SubmissionReceipt> toCheck = SubmissionReceiptStore.All
-                .Where(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
+                .Where(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt, now))
                 .ToList();
 
             int changed = 0;
@@ -115,7 +115,8 @@ namespace Handlers.Online
                     status.State ?? string.Empty,
                     status.ReviewerComment ?? string.Empty,
                     now,
-                    status.DecidedUtc);
+                    status.DecidedUtc,
+                    status.AmendedByReviewer);
 
                 if (stateMoved || commentMoved)
                 {
@@ -145,10 +146,10 @@ namespace Handlers.Online
         //     there was nothing open to ask about, or when the server could not be reached).
         //
         // Retiring published drafts used to hang off onChanged, which is the wrong trigger for
-        // work whose precondition is a STATE rather than a transition: a receipt stored as
-        // "merged" by an earlier launch is never open again, so it never changes again, so
-        // onChanged never fires for it - and a draft whose sync arrived one launch late was never
-        // retired at all. Work like that belongs on onFinished.
+        // work whose precondition is a STATE rather than a transition: a receipt that reached its
+        // last state ("published") by an earlier launch is never open again, so it never changes
+        // again, so onChanged never fires for it - and a draft whose sync arrived one launch late
+        // was never retired at all. Work like that belongs on onFinished.
         //
         // Neither fires when the check is cancelled - the app is closing.
         // ###########################################################################################
@@ -164,7 +165,7 @@ namespace Handlers.Online
             try
             {
                 if (SubmissionReceiptStore.All.Any(receipt =>
-                        SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState)))
+                        SubmissionReceiptPresenter.IsStillOpen(receipt, now)))
                 {
                     changed = await SubmissionStatusRefresh
                         .RefreshAsync(lookup, now, cancellationToken)

@@ -31,6 +31,10 @@ namespace CRT.Server.Handlers.Submissions
     //                  let a caller enumerate submissions by walking integers.
     //   409          - the submission is no longer accepting uploads.
     //   416          - the offset does not match; the body says where to resume.
+    //   429          - this address has submitted its daily allowance (Retry-After says when).
+    //   507          - the server's disk is below its free-space reserve; nothing is wrong
+    //                  with the submission. (Both added by the security review, 2026-09-25, and
+    //                  both carry { errors: [...] } so CRT shows a sentence, not a number.)
     // ###########################################################################################
     public static class SubmissionEndpoints
     {
@@ -40,8 +44,10 @@ namespace CRT.Server.Handlers.Submissions
 
             RouteGroupBuilder submissions = app.MapGroup("/api/submissions");
 
-            submissions.MapPost("/", SubmissionEndpoints.CreateAsync);
-            submissions.MapPut("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.UploadAsync);
+            submissions.MapPost("/", SubmissionEndpoints.CreateAsync)
+                .WithBodyLimit(RequestBodyLimits.ManifestBytes);
+            submissions.MapPut("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.UploadAsync)
+                .WithBodyLimit(RequestBodyLimits.BlobChunkBytes);
             submissions.MapGet("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.GetUploadStateAsync);
             submissions.MapPost("/{submissionId:long}/finalise", SubmissionEndpoints.FinaliseAsync);
             submissions.MapGet("/{submissionId:long}", SubmissionEndpoints.GetSubmissionAsync);
@@ -67,9 +73,17 @@ namespace CRT.Server.Handlers.Submissions
             // account, but its absence is the ordinary case and not an error.
             AccountRecord? account = await SubmissionEndpoints.AuthenticateAsync(context, accounts, cancellationToken);
 
+            // A reviewer or administrator is exempt from the per-address submission limit - trusted
+            // by the database rows, not by anything the request says. See SubmissionRateLimitPolicy.
+            // "Reviewer" means in at least one system's pool (Phase 6 roles), read here per request
+            // like everywhere else.
             Submitter submitter = account is null
                 ? Submitter.Anonymous(manifest.ContactEmail, SubmissionEndpoints.ClientAddress(context))
-                : Submitter.SignedIn(account.Id, SubmissionEndpoints.ClientAddress(context));
+                : Submitter.SignedIn(
+                    account.Id,
+                    SubmissionEndpoints.ClientAddress(context),
+                    isTrusted: ReviewAuthority.CanReviewAnything(new ReviewAccess(
+                        account, await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken))));
 
             // Where this system's files would land. Used ONLY to resolve and containment-check the
             // submitted paths - nothing is written here at submission time, because nothing is
@@ -77,7 +91,22 @@ namespace CRT.Server.Handlers.Submissions
             string containmentRoot = SubmissionEndpoints.ResolveContainmentRoot(options);
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, submitter, containmentRoot, store, blobs, DateTimeOffset.UtcNow, cancellationToken);
+                manifest, submitter, containmentRoot, store, blobs, DateTimeOffset.UtcNow, cancellationToken,
+                PublishedTreeProbe.For(options.DataTreeRoot));
+
+            // The refusals all carry { errors: [...] } - the one shape CRT reads findings from - so
+            // a rate limit or a full disk reaches the contributor as a sentence, not a status code.
+            if (outcome.IsRateLimited)
+            {
+                context.Response.Headers.RetryAfter =
+                    ((int)Math.Ceiling(outcome.RetryAfter.TotalSeconds))
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                return Results.Json(new { errors = outcome.Findings }, statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            if (outcome.IsNoRoom)
+                return Results.Json(new { errors = outcome.Findings }, statusCode: StatusCodes.Status507InsufficientStorage);
 
             if (!outcome.IsAccepted)
                 return Results.BadRequest(new { errors = outcome.Findings });
@@ -141,6 +170,11 @@ namespace CRT.Server.Handlers.Submissions
                 BlobUploadStatus.HashMismatch =>
                     Results.BadRequest(new { message = outcome.Error }),
 
+                // The disk is below its reserve. Not the contributor's fault and not retried by
+                // CRT's upload loop (507 is not a transient status there), so they are told plainly.
+                BlobUploadStatus.NoRoom =>
+                    Results.Json(new { message = outcome.Error }, statusCode: StatusCodes.Status507InsufficientStorage),
+
                 _ => Results.BadRequest(new { message = "The upload could not be accepted." })
             };
         }
@@ -161,15 +195,16 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             CancellationToken cancellationToken)
         {
-            SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
+            UploadState? state = await SubmissionFlows.GetUploadStateAsync(
+                submissionId, hash, SubmissionEndpoints.UploadToken(context), store, blobs, cancellationToken);
 
-            if (!SubmissionEndpoints.HoldsToken(submission, context))
+            if (state is null)
                 return Results.NotFound();
 
             return Results.Ok(new
             {
-                uploaded = blobs.GetUploadedLength(submissionId, hash),
-                complete = blobs.Contains(hash)
+                uploaded = state.Uploaded,
+                complete = state.Complete
             });
         }
 
@@ -184,6 +219,7 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             ISubmissionStore store,
             BlobStore blobs,
+            SubmissionNotifier notifier,
             CancellationToken cancellationToken)
         {
             SubmissionResult result = await SubmissionFlows.FinaliseAsync(
@@ -192,6 +228,36 @@ namespace CRT.Server.Handlers.Submissions
 
             if (result.Findings.Any(finding => finding.Code == "submission.not_found"))
                 return Results.NotFound();
+
+            // ###########################################################################################
+            // *** THE REVIEWERS ARE TOLD, AFTER THE SUBMISSION IS DURABLY QUEUED (Phase 6 task 11,
+            // 2026-09-25). *** Nothing here may fail the request: the contributor's upload is
+            // complete and recorded, and a mail problem is the server's to log, not theirs to
+            // retry. Who is told is SubmissionRouting's decision - the system's reviewers, or the
+            // administrators when there are none or the submission changes shared files.
+            // ###########################################################################################
+            if (result.IsAccepted)
+            {
+                try
+                {
+                    SubmissionRecord? record = await store.FindAsync(submissionId, cancellationToken);
+
+                    if (record is not null)
+                    {
+                        IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+                            record, accounts, cancellationToken);
+
+                        await notifier.NotifyReviewersAsync(
+                            recipients, record.SystemId, record.Id, record.Summary, cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    context.RequestServices
+                        .GetRequiredService<ILogger<SubmissionNotifier>>()
+                        .LogWarning(ex, "Submission {SubmissionId} was queued but its reviewers could not be told.", submissionId);
+                }
+            }
 
             return Results.Ok(result);
         }
@@ -224,11 +290,18 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<ValidationFinding> findings =
                 await store.GetFindingsAsync(submissionId, cancellationToken);
 
+            // "merged" is in BETA; once the system has been published to production since, the
+            // contributor is told "published" - see ProductionPromotionRules.ContributorFacingState.
+            SystemRecord? system = submission!.State == SubmissionState.Merged
+                ? await store.FindSystemAsync(submission.SystemId, cancellationToken)
+                : null;
+
             return Results.Ok(new
             {
-                id = submission!.Id,
+                id = submission.Id,
                 systemId = submission.SystemId,
-                state = submission.State,
+                state = ProductionPromotionRules.ContributorFacingState(
+                    submission.State, submission.DecidedUtc, system?.ProductionPublishedUtc),
                 summary = submission.Summary,
                 createdUtc = submission.CreatedUtc,
                 decidedUtc = submission.DecidedUtc,
@@ -244,6 +317,9 @@ namespace CRT.Server.Handlers.Submissions
                 // decisions landed 2026-09-22 and this needed only to stop returning empty.
                 // ###########################################################################################
                 reviewerComment = submission.DecisionComment ?? string.Empty,
+
+                // A reviewer changed rows before deciding it - SubmissionStatus.AmendedByReviewer.
+                amendedByReviewer = await store.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
 
                 findings
             });
@@ -285,8 +361,8 @@ namespace CRT.Server.Handlers.Submissions
             return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
 
-        // Used by the read-only upload-state endpoint, which does not go through SubmissionFlows.
-        // The comparison is fixed-time for the same reason SubmissionFlows.OwnsSubmission's is.
+        // Used by the read-only status endpoint, which does not go through SubmissionFlows. The
+        // comparison is fixed-time for the same reason SubmissionFlows.OwnsSubmission's is.
         private static bool HoldsToken(SubmissionRecord? submission, HttpContext context)
         {
             string? presented = SubmissionEndpoints.UploadToken(context);
