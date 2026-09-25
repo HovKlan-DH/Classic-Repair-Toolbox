@@ -5,7 +5,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Where a component's rows go in the Components sheet (maintainer request, 2026-09-24).
+// Where a component's rows go in the Components sheet (owner request, 2026-09-24).
 //
 // Row order is what the user SEES: the main window's component list, its category list and the
 // Overview all show components in the sheet's own order. So: a NEW component joins its category

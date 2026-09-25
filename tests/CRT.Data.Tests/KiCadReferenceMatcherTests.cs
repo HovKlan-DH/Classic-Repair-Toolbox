@@ -111,7 +111,7 @@ public sealed class KiCadReferenceMatcherTests
     }
 
     // ###########################################################################################
-    // *** NATURAL ORDER, for human eyes (maintainer request, 2026-09-24). ***
+    // *** NATURAL ORDER, for human eyes (owner request, 2026-09-24). ***
     //
     // Every list is shown in full as badges, and a board runs to hundreds of references. Plain
     // string order read "C1, C10, C100, C101, ..., C2", which nobody can scan for C7. All three

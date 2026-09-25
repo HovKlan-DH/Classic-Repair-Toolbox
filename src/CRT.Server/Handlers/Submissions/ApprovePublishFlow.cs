@@ -5,11 +5,11 @@ using Microsoft.Extensions.Logging;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // APPROVING a submission: the whole chain, from a reviewer's decision to a published board
+    // APPROVING a submission: the whole chain, from a maintainer's decision to a published board
     // (NewContributeStrategy.md Phase 5, tasks 5 and 6).
     //
     // *** THIS IS THE ONLY IRREVERSIBLE OPERATION IN THE SYSTEM. *** Task 7 was struck by the
-    // maintainer, so no publish history is retained: this overwrites the published board in place
+    // project owner, so no publish history is retained: this overwrites the published board in place
     // and the only way back is to publish a correction. Every decision below is made on that
     // basis.
     //
@@ -17,7 +17,7 @@ namespace CRT.Server.Handlers.Submissions
     // dangerous work only ever runs after everything that could refuse has:
     //
     //   1. AUTHORITY   - may this account publish anything at all? (an administrator, or a
-    //                    reviewer of at least one system)
+    //                    maintainer of at least one system)
     //   2. EXISTENCE   - is there such a submission?
     //   3. AUTHORITY   - over THIS submission's system (ReviewDecisionRules, through
     //      AND STATE     ReviewAuthority), and is it still undecided? (the double-publish
@@ -75,7 +75,7 @@ namespace CRT.Server.Handlers.Submissions
         // Approves a submission and publishes it.
         //
         // Returns an outcome rather than throwing, because every caller is an HTTP endpoint that
-        // has to turn a failure into a status code and a sentence a reviewer can act on.
+        // has to turn a failure into a status code and a sentence a maintainer can act on.
         // ###########################################################################################
         public Task<ApproveOutcome> ApproveAsync(
             long submissionId,
@@ -85,7 +85,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default) =>
             this.ApproveAsync(submissionId, access, dataTreeRoot, nowUtc, shownRemovals: null, cancellationToken);
 
-        // `shownRemovals` is the list of files the reviewer was shown this publish would remove
+        // `shownRemovals` is the list of files the maintainer was shown this publish would remove
         // (FileRemovalPreview). The publish is refused when the list it would now remove differs -
         // see step 5b. Null means none were shown, which matches only "nothing to remove".
         public async Task<ApproveOutcome> ApproveAsync(
@@ -132,7 +132,7 @@ namespace CRT.Server.Handlers.Submissions
 
             // ---- 3. Authority over THIS system, then state -------------------------------------
             //
-            // The system half first, and as a FORBIDDEN: a reviewer of another board is refused
+            // The system half first, and as a FORBIDDEN: a maintainer of another board is refused
             // whatever the state.
             if (!ReviewAuthority.CanPublish(access, record))
                 return ApproveOutcome.Refused(ReviewAuthority.DescribeRefusal(access, record), isForbidden: true);
@@ -188,8 +188,8 @@ namespace CRT.Server.Handlers.Submissions
 
             // ---- 6. Is this the approval that publishes? ---------------------------------------
             //
-            // A submission changing a shared file needs a reviewer of the board AND an
-            // administrator (maintainer decision, 2026-09-25); the first of them is recorded here
+            // A submission changing a shared file needs a maintainer of the board AND an
+            // administrator (owner decision, 2026-09-25); the first of them is recorded here
             // and the submission waits, in the queue, as 'approved'. Nothing is published until
             // the second arrives. See ApprovalRules.
             //
@@ -230,13 +230,13 @@ namespace CRT.Server.Handlers.Submissions
                 return ApproveOutcome.AwaitingApproval(stillWaiting);
             }
 
-            // ---- 6b. What it removes, and is that what the reviewer was shown? ----------------
+            // ---- 6b. What it removes, and is that what the maintainer was shown? ----------------
             //
             // Files the board stops citing that nothing else in the tree uses are removed after
-            // the write (maintainer decision, 2026-09-25: no orphan files). The reviewer saw that
+            // the write (owner decision, 2026-09-25: no orphan files). The maintainer saw that
             // list before approving; if it has changed since - another publish started or stopped
             // citing a shared file - they look again rather than having files removed they were
-            // never shown. No list at all is an older review application - see
+            // never shown. No list at all is an older maintainer application - see
             // RemovalsNotSentMessage.
             FileRemovalPreview removals = ApprovePublishFlow.PreviewRemovals(dataTreeRoot, published, board, plan);
 
@@ -270,7 +270,7 @@ namespace CRT.Server.Handlers.Submissions
 
             // ---- 8. Remove what the board no longer uses ---------------------------------------
             //
-            // Only the files the reviewer was shown, and only those the tree - read again, now
+            // Only the files the maintainer was shown, and only those the tree - read again, now
             // that the new workbook is written - still does not use. Never fails the publish: it
             // has already happened.
             UnusedFileRemoval removal = UnusedFileRemover.Remove(dataTreeRoot, removals.Files, this.thisLogger);
@@ -281,7 +281,7 @@ namespace CRT.Server.Handlers.Submissions
                 .ConfigureAwait(false);
 
             // The decision row, recording WHO approved it. PublishExecutor already moved the state
-            // to merged; this adds the reviewer and the audit trail, which SetStateAsync cannot.
+            // to merged; this adds the maintainer and the audit trail, which SetStateAsync cannot.
             await this.thisStore
                 .SetDecisionAsync(
                     submissionId,
@@ -304,18 +304,18 @@ namespace CRT.Server.Handlers.Submissions
             "changed what uses them. Open the submission again and check the list, then approve.";
 
         // ###########################################################################################
-        // The refusal for a review application that sent NO list at all (code review, 2026-09-25) -
+        // The refusal for a maintainer application that sent NO list at all (code review, 2026-09-25) -
         // shared with ProductionPromotionFlow. The current application always sends its list, empty
         // or not, so none at all means one built before the list existed. It was told the list had
         // "changed since you opened it", which was false and which reopening could never fix.
         // ###########################################################################################
         public const string RemovalsNotSentMessage =
-            "This would remove files that nothing uses any more, and your review application did not send " +
-            "the list of them it showed you - it is older than the server. Update the review application, " +
+            "This would remove files that nothing uses any more, and your copy of CRT Maintainer did not send " +
+            "the list of them it showed you - it is older than the server. Update CRT Maintainer, " +
             "then open this again and check the list before approving.";
 
         // ###########################################################################################
-        // THE FILES THIS PUBLISH WOULD REMOVE, shown to the reviewer before they approve and
+        // THE FILES THIS PUBLISH WOULD REMOVE, shown to the maintainer before they approve and
         // checked again when they do - the same computation both times.
         //
         // The candidates are what the board stops citing; the tree is then read with the workbook
@@ -392,9 +392,9 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // Where a submission's approval stands for this account - the rule is ApprovalRules; this
-        // gathers what it needs: whether the board has reviewers, what has been given, and the
+        // gathers what it needs: whether the board has maintainers, what has been given, and the
         // account's role. `touchesSharedFiles` is TouchesSharedFilesNow's answer, which the caller
-        // already holds. Shared with the detail endpoint, so the review application shows exactly
+        // already holds. Shared with the detail endpoint, so the maintainer application shows exactly
         // what an approval here would do.
         // ###########################################################################################
         internal static async Task<ApprovalStatus> ApprovalStatusAsync(
@@ -405,18 +405,18 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             CancellationToken cancellationToken)
         {
-            // A reviewer who can actually give the reviewer half - see
-            // ReviewAuthority.CanGiveReviewerApproval for the rows that cannot.
-            bool hasReviewers = touchesSharedFiles &&
-                (await accounts.GetReviewersOfSystemAsync(record.SystemId, cancellationToken).ConfigureAwait(false))
-                    .Any(ReviewAuthority.CanGiveReviewerApproval);
+            // A maintainer who can actually give the maintainer half - see
+            // ReviewAuthority.CanGiveMaintainerApproval for the rows that cannot.
+            bool hasMaintainers = touchesSharedFiles &&
+                (await accounts.GetMaintainersOfSystemAsync(record.SystemId, cancellationToken).ConfigureAwait(false))
+                    .Any(ReviewAuthority.CanGiveMaintainerApproval);
 
             IReadOnlyList<GivenApproval> given = await store
                 .GetApprovalsAsync(record.Id, cancellationToken)
                 .ConfigureAwait(false);
 
             return ApprovalRules.Status(
-                ApprovalRules.Required(touchesSharedFiles, hasReviewers),
+                ApprovalRules.Required(touchesSharedFiles, hasMaintainers),
                 given,
                 ReviewAuthority.RoleIn(access, record.SystemId),
                 access?.Account.Id);
@@ -429,7 +429,7 @@ namespace CRT.Server.Handlers.Submissions
         // The flag stored at create compared the submission with the tree of THAT moment. A
         // submission citing a shared file unchanged was an ordinary one-approval item for ever -
         // and once another publish changed that file, its now-old bytes would revert the file for
-        // every board that cites it, on a single reviewer's approval, with the administrator never
+        // every board that cites it, on a single maintainer's approval, with the administrator never
         // asked. So the stored flag is only a floor: true stays true, and the submission is checked
         // afresh against the published tree (SubmissionSharedFiles, the create-time rule).
         //
@@ -460,9 +460,9 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // Why this account's approval cannot be added: this account gave it already; somebody else
-        // gave the approval in this account's role (a board's second reviewer - told who, rather
+        // gave the approval in this account's role (a board's second maintainer - told who, rather
         // than "you have already approved" for something they never did); or not a role this item
-        // needs (a reviewer on a board whose shared-file change is the administrator's alone -
+        // needs (a maintainer on a board whose shared-file change is the administrator's alone -
         // which only a pool changed mid-request can produce).
         // ###########################################################################################
         internal static string WhyNot(ApprovalStatus approval, string what)
@@ -478,7 +478,7 @@ namespace CRT.Server.Handlers.Submissions
 
             if (sameRole is not null)
             {
-                string role = sameRole.Role == ApproverRole.Administrator ? "the administrator" : "a reviewer of the board";
+                string role = sameRole.Role == ApproverRole.Administrator ? "the administrator" : "a maintainer of the board";
 
                 return $"{sameRole.By} has already approved {what} as {role}. It is waiting for {waiting}.";
             }
@@ -486,9 +486,9 @@ namespace CRT.Server.Handlers.Submissions
             return $"This needs the approval of {waiting}.";
         }
 
-        // "the administrator", "a reviewer of the board", or both - for a sentence.
+        // "the administrator", "a maintainer of the board", or both - for a sentence.
         internal static string Describe(IReadOnlyList<ApproverRole> roles) =>
-            string.Join(" and ", roles.Select(role => role == ApproverRole.Administrator ? "the administrator" : "a reviewer of the board"));
+            string.Join(" and ", roles.Select(role => role == ApproverRole.Administrator ? "the administrator" : "a maintainer of the board"));
 
         internal static string Label(ReviewAccess access) =>
             $"{access.Account.DisplayName} ({access.Account.Email})";
@@ -498,7 +498,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // *** ORIGIN IS SET ONCE AND NEVER RECOMPUTED. *** A system that arrived through this
         // pipeline stays "contributed" however many times it is later revised, including by the
-        // maintainer - SystemDescriptorRules says so outright. So an EXISTING descriptor's origin
+        // project owner - SystemDescriptorRules says so outright. So an EXISTING descriptor's origin
         // wins, and only a system with none at all is classified here.
         //
         // The revision is the board's own REVISION DATE - see PublishMerge.RevisionOf for why that
@@ -539,9 +539,9 @@ namespace CRT.Server.Handlers.Submissions
                 PublishMerge.RevisionOf(board),
                 nowUtc,
 
-                // No reviewers and a fixed origin: the descriptor these would fill is no longer
-                // written anywhere (system.json was retired, 2026-09-25). The reviewers are the
-                // `reviewers` table and the origin is `systems.origin`, both in the database.
+                // No maintainers and a fixed origin: the descriptor these would fill is no longer
+                // written anywhere (system.json was retired, 2026-09-25). The maintainers are the
+                // `maintainers` table and the origin is `systems.origin`, both in the database.
                 maintainers: null,
                 SystemDescriptorRules.SystemOrigin.Contributed,
 
@@ -591,7 +591,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // IsForbidden and IsConflict are distinguished because the endpoint turns them into different
     // status codes, and the difference matters to the reader: "your account may not do this" and
-    // "somebody else already decided this" send a reviewer to completely different places.
+    // "somebody else already decided this" send a maintainer to completely different places.
     // ###########################################################################################
     public sealed record ApproveOutcome(
         bool IsPublished,

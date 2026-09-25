@@ -37,7 +37,7 @@ manufacturer, hardware and board name, and it appears in the lists straight away
 empty, and ready for you to add board images, label components and attach files exactly as you would
 edit any other board.
 
-Creating one asks you to accept the role of **reviewer** for it: if you submit the system for the
+Creating one asks you to accept the role of **maintainer** for it: if you submit the system for the
 community to use, you will review the changes others submit for it and publish the ones that are
 right. The system is only created if you accept.
 

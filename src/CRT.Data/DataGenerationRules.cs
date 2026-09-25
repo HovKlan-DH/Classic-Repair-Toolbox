@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     // compatibility target serving a range of application builds. Keep the two apart; the strategy
     // document records that conflating them sent an earlier reading of open question 5 astray.
     //
-    // *** AN OLDER GENERATION IS FROZEN, NOT STALE. *** The maintainer's decision is that
+    // *** AN OLDER GENERATION IS FROZEN, NOT STALE. *** The owner's decision is that
     // publishing writes ONLY the newest generation and never touches an older one, because older
     // generations still serve older application builds and keep working precisely because nothing
     // writes to them. This class exists so that rule has one implementation rather than being
@@ -82,7 +82,7 @@ namespace Handlers.DataHandling
         // right for an existing board and useless for one being created: an empty folder yields
         // null, and null means UNVERSIONED - so a brand-new system would publish as
         // "Data C64 250407.xlsx", landing in the frozen generation that serves every pre-2.0.0
-        // build. That is precisely the file the maintainer said must never be written.
+        // build. That is precisely the file the project owner said must never be written.
         //
         // The master workbooks are the right source because they ARE the generations: the tree
         // root carries "Classic-Repair-Toolbox.xlsx" for the original and

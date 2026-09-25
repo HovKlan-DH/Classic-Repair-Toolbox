@@ -26,7 +26,7 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
-        private const long ReviewerAccountId = 7;
+        private const long MaintainerAccountId = 7;
 
         private static async Task<(FakeSubmissionStore Store, long Id)> PendingAsync()
         {
@@ -46,14 +46,14 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_REJECTION_records_the_state_the_reviewer_and_the_reason()
+        public async Task A_REJECTION_records_the_state_the_maintainer_and_the_reason()
         {
             (FakeSubmissionStore store, long id) = await ReviewDecisionRecordingTests.PendingAsync();
 
             await store.SetDecisionAsync(
                 id,
                 SubmissionState.Rejected,
-                ReviewDecisionRecordingTests.ReviewerAccountId,
+                ReviewDecisionRecordingTests.MaintainerAccountId,
                 "The highlight coordinates for U8 look wrong.",
                 ReviewDecisionRecordingTests.Now,
                 CancellationToken.None);
@@ -61,7 +61,7 @@ namespace CRT.Server.Tests
             RecordedDecision decision = store.Decisions[id];
 
             Assert.Equal(SubmissionState.Rejected, decision.State);
-            Assert.Equal(ReviewDecisionRecordingTests.ReviewerAccountId, decision.DecidedByAccountId);
+            Assert.Equal(ReviewDecisionRecordingTests.MaintainerAccountId, decision.DecidedByAccountId);
             Assert.Equal("The highlight coordinates for U8 look wrong.", decision.Comment);
         }
 
@@ -86,7 +86,7 @@ namespace CRT.Server.Tests
         public async Task A_DECIDED_submission_leaves_the_queue()
         {
             // The end-to-end consequence, asserted rather than assumed: the queue is `pending`
-            // only, so deciding must remove it. A reviewer who decides something and still sees it
+            // only, so deciding must remove it. A maintainer who decides something and still sees it
             // next refresh will decide it again.
             (FakeSubmissionStore store, long id) = await ReviewDecisionRecordingTests.PendingAsync();
 
@@ -152,7 +152,7 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task The_reviewers_COMMENT_reaches_the_contributors_own_record()
+        public async Task The_maintainers_COMMENT_reaches_the_contributors_own_record()
         {
             // *** THE POINT OF THE WHOLE "REQUEST CHANGES" OUTCOME. *** Contributing needs no
             // account, so there is no inbox and no thread - the contact email and this sentence
@@ -160,13 +160,13 @@ namespace CRT.Server.Tests
             // in an audit table would reach nobody.
             //
             // The contributor's status endpoint reads it off this record and returns it as
-            // `reviewerComment`, a field reserved from the start for exactly this moment.
+            // `maintainerComment`, a field reserved from the start for exactly this moment.
             (FakeSubmissionStore store, long id) = await ReviewDecisionRecordingTests.PendingAsync();
 
             await store.SetDecisionAsync(
                 id,
                 SubmissionState.ChangesRequested,
-                ReviewDecisionRecordingTests.ReviewerAccountId,
+                ReviewDecisionRecordingTests.MaintainerAccountId,
                 "The highlight for U8 looks like it is on the wrong pin - could you check?",
                 ReviewDecisionRecordingTests.Now,
                 CancellationToken.None);
@@ -198,7 +198,7 @@ namespace CRT.Server.Tests
         public async Task A_submission_decided_ONCE_cannot_be_decided_AGAIN()
         {
             // *** THE INTERLOCK, exercised as a sequence rather than as a table of states. *** Two
-            // reviewers with the queue open both act on the same row; the second must be refused
+            // maintainers with the queue open both act on the same row; the second must be refused
             // on the state the first one wrote, not on the state their screen was showing.
             (FakeSubmissionStore store, long id) = await ReviewDecisionRecordingTests.PendingAsync();
 
@@ -209,23 +209,23 @@ namespace CRT.Server.Tests
             SubmissionRecord? record = await store.FindAsync(id, CancellationToken.None);
 
             Assert.False(ReviewDecisionRules.CanReject(
-                ReviewDecisionRecordingTests.Reviewer(), record, out string why));
+                ReviewDecisionRecordingTests.Maintainer(), record, out string why));
 
             Assert.False(ReviewDecisionRules.CanRequestChanges(
-                ReviewDecisionRecordingTests.Reviewer(), record, out _));
+                ReviewDecisionRecordingTests.Maintainer(), record, out _));
 
             Assert.NotEmpty(why);
         }
 
-        // A reviewer OF THE FIXTURE'S SYSTEM - authority is per system since Phase 6.
-        private static ReviewAccess Reviewer() =>
+        // A maintainer OF THE FIXTURE'S SYSTEM - authority is per system since Phase 6.
+        private static ReviewAccess Maintainer() =>
             ReviewAccess.For(
                 new Handlers.Accounts.AccountRecord(
-                    Id: ReviewDecisionRecordingTests.ReviewerAccountId,
-                    Email: "reviewer@example.com",
-                    NormalisedEmail: "reviewer@example.com",
+                    Id: ReviewDecisionRecordingTests.MaintainerAccountId,
+                    Email: "maintainer@example.com",
+                    NormalisedEmail: "maintainer@example.com",
                     PasswordHash: "hash",
-                    DisplayName: "Reviewer",
+                    DisplayName: "Maintainer",
                     IsVerified: true,
                     IsAdministrator: false,
                     IsLocked: false,

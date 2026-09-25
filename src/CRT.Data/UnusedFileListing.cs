@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // The administrator's "Unused files" list for one data tree (2026-09-25): every file nothing
     // uses (DataTreeUsage), with its size - or, when the tree could not be read completely, why
-    // none can be named. The server writes it and the review application reads it as the same
+    // none can be named. The server writes it and the maintainer application reads it as the same
     // record, so the two cannot drift apart.
     // ###########################################################################################
     public sealed record UnusedFileListing(

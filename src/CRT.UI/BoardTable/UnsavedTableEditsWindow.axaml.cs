@@ -23,7 +23,7 @@ namespace CRT
         // "Reload": Discard or Cancel.
         Reloading,
 
-        // Closing the REVIEW APPLICATION's table on a submission (2026-09-25): Save, Discard or
+        // Closing the MAINTAINER APPLICATION's table on a submission (2026-09-25): Save, Discard or
         // Cancel - the same choice as Leaving, but the edits go into the submission, not a draft.
         LeavingSubmission,
 
@@ -56,10 +56,10 @@ namespace CRT
     // table's own save is refused. Offering Save there made "Close table" a loop: Save, refused,
     // the table stays open, Close asks again. The prompt now says why and offers Discard or Cancel.
     //
-    // *** AND THE OTHER EDITORS DO NOT WRITE UNDER A TABLE WITH UNSAVED EDITS AT ALL (maintainer
+    // *** AND THE OTHER EDITORS DO NOT WRITE UNDER A TABLE WITH UNSAVED EDITS AT ALL (owner
     // request, 2026-09-24). *** Their "Save to draft" is held back with the SavingElsewhere notice
     // instead, sending the contributor to the Drafts tab to save or discard the table first. The
-    // maintainer chose that over offering to save the table from here: from another tab you may not
+    // project owner chose that over offering to save the table from here: from another tab you may not
     // remember what you did in the table, and saving it blind is not a decision to make there.
     //
     // Enter and Escape both CANCEL, on the Tunnel route - the same rule and the same reason as

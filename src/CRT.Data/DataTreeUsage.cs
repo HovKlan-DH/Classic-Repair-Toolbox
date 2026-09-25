@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // WHICH FILES IN A DATA TREE ARE USED - the rule behind "there must be no orphan files"
-    // (maintainer decision, 2026-09-25). Every file the rule does not call used is an orphan: a
+    // (owner decision, 2026-09-25). Every file the rule does not call used is an orphan: a
     // file every CRT downloads and nothing ever shows.
     //
     // A file is USED when it is:
@@ -67,7 +67,7 @@ namespace Handlers.DataHandling
         //
         // `citationsAfter` PREVIEWS a publish: board workbook (data-root-relative) -> what it WILL
         // cite, used instead of what the file on disk cites - or as an extra workbook when the
-        // publish creates it. That is how a reviewer is shown what a publish would remove BEFORE
+        // publish creates it. That is how a maintainer is shown what a publish would remove BEFORE
         // anything is written, from the same rule that then removes it.
         //
         // `cache` skips re-reading a workbook that has not changed since it was last read - for

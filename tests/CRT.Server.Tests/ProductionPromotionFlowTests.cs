@@ -10,7 +10,7 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers publishing a system from BETA to PRODUCTION, end to end (maintainer request,
+    // Covers publishing a system from BETA to PRODUCTION, end to end (owner request,
     // 2026-09-25): a real submission is published into a temp BETA tree through ApprovePublishFlow,
     // exactly as the Approve button does, and then promoted into a temp production tree.
     //
@@ -68,7 +68,7 @@ namespace CRT.Server.Tests
         private static ReviewAccess Admin() =>
             ReviewAccess.For(ProductionPromotionFlowTests.Account(1, administrator: true));
 
-        private static ReviewAccess ReviewerOf(params string[] systems) =>
+        private static ReviewAccess MaintainerOf(params string[] systems) =>
             ReviewAccess.For(ProductionPromotionFlowTests.Account(2, administrator: false), systems);
 
         private static AccountRecord Account(long id, bool administrator) =>
@@ -164,12 +164,12 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task A_reviewer_of_the_system_publishes_it_to_production_and_the_board_arrives_whole()
+        public async Task A_maintainer_of_the_system_publishes_it_to_production_and_the_board_arrives_whole()
         {
             FakeSubmissionStore store = await this.PublishToBetaAsync();
 
             PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
-                ProductionPromotionFlowTests.ReviewerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
                 ProductionPromotionFlowTests.SystemId,
                 ProductionPromotionFlowTests.BetaHashOf(store),
                 this.Options(),
@@ -255,9 +255,9 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task If_BETA_changed_since_the_reviewer_looked_NOTHING_is_copied()
+        public async Task If_BETA_changed_since_the_maintainer_looked_NOTHING_is_copied()
         {
-            // *** THE CHECKED-IN-BETA INTERLOCK. *** The reviewer checked one state; another
+            // *** THE CHECKED-IN-BETA INTERLOCK. *** The maintainer checked one state; another
             // contribution was published into BETA after that. Promoting now would send out work
             // nobody looked at.
             FakeSubmissionStore store = await this.PublishToBetaAsync();
@@ -294,12 +294,12 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task A_reviewer_of_ANOTHER_system_cannot_publish_it_to_production_and_nothing_arrives()
+        public async Task A_maintainer_of_ANOTHER_system_cannot_publish_it_to_production_and_nothing_arrives()
         {
             FakeSubmissionStore store = await this.PublishToBetaAsync();
 
             PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
-                ProductionPromotionFlowTests.ReviewerOf("Commodore/C128/310378"),
+                ProductionPromotionFlowTests.MaintainerOf("Commodore/C128/310378"),
                 ProductionPromotionFlowTests.SystemId,
                 ProductionPromotionFlowTests.BetaHashOf(store),
                 this.Options(),
@@ -309,33 +309,33 @@ namespace CRT.Server.Tests
             Assert.False(Directory.Exists(this.InProduction("Commodore")));
         }
 
-        // An account store in which the board HAS a reviewer (account 2, ReviewerOf's id).
-        private static FakeAccountStore AccountsWithAReviewer()
+        // An account store in which the board HAS a maintainer (account 2, MaintainerOf's id).
+        private static FakeAccountStore AccountsWithAMaintainer()
         {
             // The pool row AND its account: the store drops a row whose account is missing, as
             // the real join does.
             var accounts = new FakeAccountStore();
             accounts.Accounts[2] = ProductionPromotionFlowTests.Account(2, administrator: false);
-            accounts.Reviewers.Add((ProductionPromotionFlowTests.SystemId, 2));
+            accounts.Maintainers.Add((ProductionPromotionFlowTests.SystemId, 2));
             return accounts;
         }
 
         [Fact]
-        public async Task A_promotion_changing_a_SHARED_file_needs_the_reviewer_AND_the_administrator()
+        public async Task A_promotion_changing_a_SHARED_file_needs_the_maintainer_AND_the_administrator()
         {
-            // The maintainer's rule for production as for BETA (2026-09-25). The first approval is
+            // The project owner's rule for production as for BETA (2026-09-25). The first approval is
             // recorded and NOTHING is copied; the second publishes.
             FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
             string hash = ProductionPromotionFlowTests.BetaHashOf(store);
 
-            PromotionOutcome byReviewer = await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.ReviewerOf(ProductionPromotionFlowTests.SystemId),
+            PromotionOutcome byMaintainer = await this.Flow(store, accounts).PromoteAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
                 ProductionPromotionFlowTests.SystemId, hash, this.Options(), ProductionPromotionFlowTests.Now);
 
-            Assert.False(byReviewer.IsPublished);
-            Assert.True(byReviewer.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Administrator], byReviewer.WaitingFor);
+            Assert.False(byMaintainer.IsPublished);
+            Assert.True(byMaintainer.IsAwaitingApproval);
+            Assert.Equal([ApproverRole.Administrator], byMaintainer.WaitingFor);
             Assert.False(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
 
             PromotionOutcome byAdmin = await this.Flow(store, accounts).PromoteAsync(
@@ -348,13 +348,13 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_production_approval_does_NOT_carry_over_once_BETA_has_changed()
         {
-            // The reviewer approved one BETA state; another publish landed in BETA since. The
+            // The maintainer approved one BETA state; another publish landed in BETA since. The
             // administrator's approval now starts again - nobody approved the new state twice.
             FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.ReviewerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
                 ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
 
             await this.PublishToBetaAsync(store, "Commodore/Shared files/74LS08.png", "SHARED-2", ProductionPromotionFlowTests.Now.AddHours(1));
@@ -364,29 +364,29 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now.AddHours(2));
 
             Assert.True(byAdmin.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Reviewer], byAdmin.WaitingFor);
+            Assert.Equal([ApproverRole.Maintainer], byAdmin.WaitingFor);
             Assert.False(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
         }
 
         [Fact]
-        public async Task A_promotion_with_NO_shared_change_is_published_by_the_reviewer_alone()
+        public async Task A_promotion_with_NO_shared_change_is_published_by_the_maintainer_alone()
         {
             FakeSubmissionStore store = await this.PublishToBetaAsync();
 
-            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAReviewer()).PromoteAsync(
-                ProductionPromotionFlowTests.ReviewerOf(ProductionPromotionFlowTests.SystemId),
+            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
                 ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
 
             Assert.True(outcome.IsPublished, outcome.Error);
         }
 
         [Fact]
-        public async Task The_list_offers_a_reviewer_only_their_own_systems()
+        public async Task The_list_offers_a_maintainer_only_their_own_systems()
         {
             FakeSubmissionStore store = await this.PublishToBetaAsync();
 
-            Assert.Single(await this.Flow(store).ListAwaitingAsync(ProductionPromotionFlowTests.ReviewerOf(ProductionPromotionFlowTests.SystemId)));
-            Assert.Empty(await this.Flow(store).ListAwaitingAsync(ProductionPromotionFlowTests.ReviewerOf("Commodore/C128/310378")));
+            Assert.Single(await this.Flow(store).ListAwaitingAsync(ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId)));
+            Assert.Empty(await this.Flow(store).ListAwaitingAsync(ProductionPromotionFlowTests.MaintainerOf("Commodore/C128/310378")));
             Assert.Single(await this.Flow(store).ListAwaitingAsync(ProductionPromotionFlowTests.Admin()));
         }
 
@@ -412,7 +412,7 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options(configured: false))).IsNotConfigured);
         }
         // ###########################################################################################
-        // WHAT A PROMOTION REMOVES FROM PRODUCTION (maintainer decisions, 2026-09-25: no orphan
+        // WHAT A PROMOTION REMOVES FROM PRODUCTION (owner decisions, 2026-09-25: no orphan
         // files, and the list shown BEFORE anyone approves). Production holds the older board,
         // which cites a manual the BETA board no longer does.
         // ###########################################################################################
@@ -460,8 +460,8 @@ namespace CRT.Server.Tests
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
         }
 
-        // Nothing is copied and nothing removed when the list the reviewer saw is not the list the
-        // promotion would now remove. An EMPTY list is a list: the reviewer was shown nothing.
+        // Nothing is copied and nothing removed when the list the maintainer saw is not the list the
+        // promotion would now remove. An EMPTY list is a list: the maintainer was shown nothing.
         [Fact]
         public async Task Publishing_to_production_with_a_different_list_is_refused_and_nothing_is_copied()
         {
@@ -485,7 +485,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** NO LIST AT ALL IS AN OLDER REVIEW APPLICATION, NOT A CHANGED ONE (code review,
+        // *** NO LIST AT ALL IS AN OLDER MAINTAINER APPLICATION, NOT A CHANGED ONE (code review,
         // 2026-09-25). *** The current one always sends its list, empty or not; one built before
         // the list existed sends none. It used to be told the list had "changed since you opened
         // it" - false, and reopening changed nothing, so it could never publish and never learn why.

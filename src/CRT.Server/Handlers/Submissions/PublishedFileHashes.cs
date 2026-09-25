@@ -5,15 +5,15 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // THE SHA-256 OF EACH PUBLISHED FILE A SUBMISSION ALSO CARRIES, so the review app can tell an
+    // THE SHA-256 OF EACH PUBLISHED FILE A SUBMISSION ALSO CARRIES, so the maintainer app can tell an
     // unchanged file from a replaced one (fixed 2026-09-23).
     //
     // *** WHY THIS EXISTS: WITHOUT IT, EVERY FILE ON BOTH SIDES READS AS "REPLACED". *** A
     // submission names every file the board references, with a hash, because the manifest
-    // describes the whole intended state. The review app pairs those against the published
+    // describes the whole intended state. The maintainer app pairs those against the published
     // list, and ReviewImageComparison.Plan drops a pair only when it is told the published hash
     // and it matches. Nothing sent that hash, so a submission that changed one component's short
-    // description was shown to the reviewer as "1178 images to compare" - all of them identical.
+    // description was shown to the maintainer as "1178 images to compare" - all of them identical.
     //
     // *** THE FILES ARE HASHED HERE, NOT READ OUT OF dataChecksums.json, DELIBERATELY. *** That
     // manifest holds the same hash for every file, but nothing in this service writes it - it is
@@ -24,13 +24,13 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** EVERY SUBMITTED PATH THAT EXISTS IS HASHED, not only the ones the published board cites
     // (security review, 2026-09-25). *** This used to hash just the paths on BOTH lists, so a file
-    // the submission would OVERWRITE but the old board never cited was reported to the reviewer as
+    // the submission would OVERWRITE but the old board never cited was reported to the maintainer as
     // "added" - exactly backwards for the one case that matters, a submission writing over a file
     // it has no business touching. What is on disk is the truth; the published board's list is not.
     //
     // THE COST IS SMALL AND MOSTLY PAID ONCE. The whole C64 250407 folder is 76 MB across ~1,100
     // files, well under a second, and the cache below keys on length plus last-write time so a
-    // reviewer refreshing the same submission pays nothing. The same hash, taken synchronously, is
+    // maintainer refreshing the same submission pays nothing. The same hash, taken synchronously, is
     // what PublishedTreeProbe answers "is this file published unchanged?" with.
     //
     // CONTAINMENT IS THE SAME RULE AS EVERY OTHER PATH INTO THE TREE. The paths come from the
@@ -51,8 +51,8 @@ namespace CRT.Server.Handlers.Submissions
         // Path -> lowercase hex SHA-256, for every path that resolves safely and exists.
         //
         // A path that does not resolve or is not on disk is simply absent from the result, never
-        // an error: the review app then treats that file as replaced, which is the safe direction
-        // to be wrong in (shown to a reviewer rather than hidden from one).
+        // an error: the maintainer app then treats that file as replaced, which is the safe direction
+        // to be wrong in (shown to a maintainer rather than hidden from one).
         //
         // Lowercase hex, because that is what the client sends in the manifest, what
         // dataChecksums.json holds, and what ReviewImageComparison compares with an ORDINAL

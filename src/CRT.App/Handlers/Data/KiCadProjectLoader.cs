@@ -190,7 +190,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Registers each sheet's already-resolved wires under the OTHER names the same net answers
-        // to elsewhere in the hierarchy (maintainer report, 2026-09-24).
+        // to elsewhere in the hierarchy (owner report, 2026-09-24).
         //
         // *** THE REPORTED BUG. *** Selecting a component reads net names off the PCB pads, but a
         // hierarchical design renames a net at every sheet boundary - the C128's userport sheet

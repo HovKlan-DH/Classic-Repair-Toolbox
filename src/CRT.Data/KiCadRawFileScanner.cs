@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // Finding the raw KiCad files inside a folder - the ONE rule, shared by the importer that
-    // copies them into a draft and by the app that later reads them back (maintainer request,
+    // copies them into a draft and by the app that later reads them back (owner request,
     // 2026-09-24).
     //
     // *** SUB-FOLDERS ARE INCLUDED, AND THAT IS A BUG FIX RATHER THAN A NEW FEATURE. ***

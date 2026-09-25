@@ -10,7 +10,7 @@ namespace CRT.Server.Tests
     // *** WHY READ THE MIGRATIONS. *** The collectors keep a submission's files when its state is
     // "live" and sweep them when it is "retired". A state added to the CHECK constraint and to
     // neither list would keep its files for ever; one added to both would have them swept while a
-    // reviewer still needs them. Every test of the flows runs against an in-memory store, so nothing
+    // maintainer still needs them. Every test of the flows runs against an in-memory store, so nothing
     // else would notice the database growing a state the code does not know about - the same blind
     // spot migration 0004 was written to correct. The migration files are copied beside the tests.
     // ###########################################################################################

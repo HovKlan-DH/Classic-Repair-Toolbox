@@ -8,7 +8,7 @@ namespace CRT.Server.Tests
     // Covers the review QUEUE - which submissions are waiting, and in what order.
     //
     // Both properties are real decisions rather than incidental behaviour, and both are the kind
-    // that fail quietly: a queue that includes the wrong states puts a reviewer in front of a
+    // that fail quietly: a queue that includes the wrong states puts a maintainer in front of a
     // half-uploaded contribution, and a queue in the wrong order lets a steady trickle of new
     // submissions bury the one that has been waiting a month. Neither throws.
     //
@@ -40,7 +40,7 @@ namespace CRT.Server.Tests
         public async Task Only_PENDING_and_HALF_APPROVED_submissions_are_queued()
         {
             // *** THE FILTER IS A DECISION. *** 'uploading' is a contribution still arriving - a
-            // reviewer acting on one would be deciding about a half-delivered submission. 'pending'
+            // maintainer acting on one would be deciding about a half-delivered submission. 'pending'
             // means "arrived intact and is somebody's to decide", which is what a queue is.
             //
             // 'approved' joined it on 2026-09-25: it is where the FIRST of the two approvals a
@@ -63,12 +63,12 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // THE QUEUE A REVIEWER SEES IS FILTERED BY ReviewAuthority (Phase 6 roles). The endpoint
+        // THE QUEUE A MAINTAINER SEES IS FILTERED BY ReviewAuthority (Phase 6 roles). The endpoint
         // applies CanReview row by row; this pins the rule over the rows the store returns, so the
         // two halves are tested against the same records.
         // ###########################################################################################
         [Fact]
-        public async Task A_reviewer_sees_only_their_own_systems_INCLUDING_a_shared_files_one()
+        public async Task A_maintainer_sees_only_their_own_systems_INCLUDING_a_shared_files_one()
         {
             var store = new FakeSubmissionStore();
 
@@ -77,18 +77,18 @@ namespace CRT.Server.Tests
             long shared = await ReviewQueueTests.AddAsync(store, SubmissionState.Pending, "Shared.");
             store.Submissions[shared] = store.Submissions[shared] with { TouchesSharedFiles = true };
 
-            var reviewer = ReviewAccess.For(
+            var maintainer = ReviewAccess.For(
                 new Handlers.Accounts.AccountRecord(
                     5, "r@example.com", "r@example.com", "hash", "R", true, false, false, ReviewQueueTests.Now, null),
                 ["Commodore/C64/250407"]);
 
             IReadOnlyList<SubmissionRecord> queue = await store.GetQueueAsync(100, CancellationToken.None);
 
-            // The shared-files one too, since 2026-09-25: the reviewer's approval is one of the two
+            // The shared-files one too, since 2026-09-25: the maintainer's approval is one of the two
             // it needs.
             Assert.Equal(
                 [mine, shared],
-                queue.Where(record => ReviewAuthority.CanReview(reviewer, record)).Select(record => record.Id));
+                queue.Where(record => ReviewAuthority.CanReview(maintainer, record)).Select(record => record.Id));
 
             // The administrator sees all three.
             var admin = ReviewAccess.For(
@@ -170,10 +170,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_queued_row_carries_what_the_reviewer_needs_to_reply()
+        public async Task A_queued_row_carries_what_the_maintainer_needs_to_reply()
         {
             // Contributors have no account, so the contact address is the ENTIRE channel back to
-            // them. A queue row without it would leave a reviewer able to reject something with no
+            // them. A queue row without it would leave a maintainer able to reject something with no
             // way to say why.
             var store = new FakeSubmissionStore();
 

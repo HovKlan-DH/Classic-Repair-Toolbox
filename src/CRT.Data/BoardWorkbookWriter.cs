@@ -18,7 +18,7 @@ namespace Handlers.DataHandling
     // draft system beside draft.json. Nothing here changes that - this writer exists for the
     // SERVER, at publish time, writing a board that has already been reviewed and accepted. If a
     // future change makes the app want to write a workbook, that is a decision to re-open with the
-    // maintainer, not a call site to add.
+    // project owner, not a call site to add.
     //
     // *** EVERY CELL IS WRITTEN AS TEXT, AND THIS IS THE SUBTLE PART. *** BoardData holds every
     // field as a string, including ones that look numeric: highlight opacities ("0.35"), scope
@@ -33,7 +33,7 @@ namespace Handlers.DataHandling
     // *** THE UUID COLUMN IS GONE ENTIRELY (2026-09-23). *** Phase 4 retired UuidV4 as an identity
     // - rows pair on natural keys - and this writer used to carry whatever a row held through
     // verbatim, on the strategy document's "stop WRITING new ones; keep READING existing ones".
-    // The maintainer has since dropped the column from the data outright: nothing generated one,
+    // The project owner has since dropped the column from the data outright: nothing generated one,
     // nothing compared one, and the only code still touching it was a validator warning that a
     // dead field needed fixing. So a written workbook has no UUID column at all.
     //
@@ -45,13 +45,13 @@ namespace Handlers.DataHandling
     public static class BoardWorkbookWriter
     {
         // ###########################################################################################
-        // *** THE HEADER ROW IS NO LONGER A CONSTANT (maintainer request, 2026-09-23). ***
+        // *** THE HEADER ROW IS NO LONGER A CONSTANT (owner request, 2026-09-23). ***
         //
         // It used to be row 2 on every sheet, with a bare revision-date marker above it on the
         // schematics sheet and nothing else anywhere. That produced a workbook carrying only data:
         // no identity lines, no documentation links, no shaded header band, no column widths. The
         // first real publish turned a 190 KB hand-maintained board into an 81 KB stripped one, and
-        // the maintainer asked for the presentation to be kept.
+        // the project owner asked for the presentation to be kept.
         //
         // The header now sits below a PREAMBLE whose height differs by one row between the
         // schematics sheet (which carries the revision date) and the rest, so the position comes
@@ -66,7 +66,7 @@ namespace Handlers.DataHandling
         // Writes the whole board to a new workbook at the given path, replacing anything there.
         //
         // The caller is responsible for the path being the right GENERATION - see
-        // DataGenerationRules, and the maintainer's rule that publishing writes only the newest
+        // DataGenerationRules, and the project owner's rule that publishing writes only the newest
         // one and never an older, frozen one.
         // ###########################################################################################
         public static void Write(string excelPath, BoardData data)
@@ -81,7 +81,7 @@ namespace Handlers.DataHandling
             using var package = new ExcelPackage();
 
             // ###########################################################################################
-            // *** THE DEFAULT FONT IS SET EXPLICITLY (maintainer report, 2026-09-24). ***
+            // *** THE DEFAULT FONT IS SET EXPLICITLY (owner report, 2026-09-24). ***
             //
             // A generated package does not inherit Excel's Calibri 11 - EPPlus applies its own
             // default - so a workbook written without this came out in a different typeface from
@@ -214,7 +214,7 @@ namespace Handlers.DataHandling
             // ###########################################################################################
             // *** THE HEADERS ARE NOT BOLD, and they WRAP (corrected 2026-09-24). ***
             //
-            // Both were wrong in the first version and the maintainer spotted them side by side.
+            // Both were wrong in the first version and the project owner spotted them side by side.
             // Nothing on the reference's title or header rows is bold - the shading is what marks
             // them out - and the headers wrap onto up to three lines at a fixed row height, which
             // is what keeps the sheet a readable width. Without the wrap, "Schematic highlight
@@ -281,9 +281,9 @@ namespace Handlers.DataHandling
             // minimum - there is nothing to measure, and a brand-new system is exactly that case.
             // ###########################################################################################
             // ###########################################################################################
-            // *** THE REFERENCE'S OWN WIDTHS, column by column (maintainer request, 2026-09-24). ***
+            // *** THE REFERENCE'S OWN WIDTHS, column by column (owner request, 2026-09-24). ***
             //
-            // Fitting the data produced sensible-but-different columns, and the maintainer asked for
+            // Fitting the data produced sensible-but-different columns, and the project owner asked for
             // the shipped boards' actual widths. They are keyed by HEADER NAME in
             // BoardWorkbookStyle - see there for why position would be wrong.
             //
@@ -352,7 +352,7 @@ namespace Handlers.DataHandling
                 //
                 // The reference stores this cell as two runs: a plain "# Revision date: " followed
                 // by the date in bold. A single bolded cell would be visibly different, and a plain
-                // one loses the emphasis the maintainer asked to keep.
+                // one loses the emphasis the project owner asked to keep.
                 //
                 // The reader is unaffected either way: ScanRevisionDate takes the cell's TEXT, which
                 // is the concatenation of the runs, so the formatting is presentation only.
@@ -392,7 +392,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The schematics sheet's three-colour title band (maintainer report, 2026-09-24).
+        // The schematics sheet's three-colour title band (owner report, 2026-09-24).
         //
         // Every other sheet's title row is a plain white strip carrying the sheet name, which the
         // generic path above has already written. This one groups its columns instead - see
@@ -446,7 +446,7 @@ namespace Handlers.DataHandling
             // The reference merges C8:G8 into one cell spanning the five highlight columns, and the
             // centring is that merged cell's own alignment. Centring a single unmerged cell instead
             // - which is what the first version did - puts the text in the middle of ONE column and
-            // reads as a mistake, which the maintainer said outright.
+            // reads as a mistake, which the project owner said outright.
             //
             // Merging reproduces the reference exactly, so the centring is right again rather than
             // being something to remove.
@@ -485,7 +485,7 @@ namespace Handlers.DataHandling
         //
         // The reference stores all three identity lines this way - two runs in one cell - and only
         // the revision date was being written like that. The other two came out entirely plain,
-        // which the maintainer spotted against the real file.
+        // which the project owner spotted against the real file.
         // ###########################################################################################
         private static void WriteIdentityCell(
             ExcelWorksheet worksheet,

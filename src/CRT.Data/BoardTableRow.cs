@@ -6,12 +6,12 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // THE CELLS AND ROWS OF THE BOARD TABLE EDITOR (maintainer request, 2026-09-24) - the Drafts
+    // THE CELLS AND ROWS OF THE BOARD TABLE EDITOR (owner request, 2026-09-24) - the Drafts
     // tab's "Edit in table format", which shows a draft's workbook as editable sheets with every
     // difference from the published data coloured in.
     //
-    // *** WHY THIS LIVES IN CRT.Data AND NOT IN THE APP. *** The maintainer wants the same table
-    // in the review application later, so a reviewer can make the same edits. Everything that
+    // *** WHY THIS LIVES IN CRT.Data AND NOT IN THE APP. *** The project owner wants the same table
+    // in the maintainer application later, so a maintainer can make the same edits. Everything that
     // decides WHAT a cell is - its text, whether it differs, what the published value was - is
     // here, Avalonia-free; the app's BoardTableEditor only paints it. INotifyPropertyChanged is
     // plain .NET, so the grid can bind straight to these without a view-model layer in between
@@ -36,7 +36,7 @@ namespace Handlers.DataHandling
         Deleted,
 
         // The row is marked "!" - a duplicate of a row above, or incomplete - violet across the
-        // whole row (maintainer request, 2026-09-24: the "!" alone was too easy to miss). Not a
+        // whole row (owner request, 2026-09-24: the "!" alone was too easy to miss). Not a
         // change: it counts towards none of the other three, and it is coloured with or without a
         // published board, since it is about the data rather than about publishing.
         Flagged

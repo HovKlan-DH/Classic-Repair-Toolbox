@@ -6,7 +6,7 @@ using Handlers.Geometry;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Following one net across a SHEET BOUNDARY (maintainer report, 2026-09-24).
+// Following one net across a SHEET BOUNDARY (owner report, 2026-09-24).
 //
 // *** THE REPORTED BUG. *** Selecting CN9 on the C128 Open128 board highlighted every trace
 // except two. Those two were the userport CNT1/SP1 lines, and the cause was that a hierarchical
@@ -19,7 +19,7 @@ namespace ClassicRepairToolbox.Tests;
 // symbol's CNT pin are joined by a run of bare wire. Component selection reads net names off the
 // PCB pads, so it looked up "CNT" on a sheet that only knows "CNT1" and found nothing - while
 // hovering the same wire still highlighted it, because hover hit-tests geometry and never does
-// this lookup. That asymmetry is exactly what the maintainer noticed.
+// this lookup. That asymmetry is exactly what the project owner noticed.
 //
 // The fixture below is that real topology in miniature: two child sheets whose differently named
 // pins are joined by an UNLABELLED wire run on the parent. An earlier implementation keyed the
@@ -388,7 +388,7 @@ public sealed class KiCadSheetNetAliasesTests
     // ------------------------------------------------------------------ labels partway along a wire
 
     // ###########################################################################################
-    // *** A LABEL ATTACHES ANYWHERE ALONG A WIRE, NOT ONLY AT ITS ENDS (maintainer report,
+    // *** A LABEL ATTACHES ANYWHERE ALONG A WIRE, NOT ONLY AT ITS ENDS (owner report,
     // 2026-09-24, the "I/O; Cassette Interface" sheet). ***
     //
     // On the real C128 I/O sheet the cassette WRITE pin sits at x=210.82, its wire runs back to

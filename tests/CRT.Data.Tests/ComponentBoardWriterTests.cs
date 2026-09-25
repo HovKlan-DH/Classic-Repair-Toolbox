@@ -7,7 +7,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // Saving a component-contribution editing session into a draft's BOARD
-// (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+// (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
 //
 // Replaces ComponentDraftWriterTests, which pinned the same behaviours expressed as BoardDraft
 // row deltas across six sections. What has gone is everything that existed only to describe an
@@ -88,8 +88,8 @@ public sealed class ComponentBoardWriterTests
     // writer replaced the label's image rows wholesale, so the rows the window never saw were
     // silently dropped.
     //
-    // Reported by the maintainer: editing U1's short description while viewing PAL deleted all 40
-    // of U1's NTSC scope baselines. The review app then correctly offered a submission that
+    // Reported by the project owner: editing U1's short description while viewing PAL deleted all 40
+    // of U1's NTSC scope baselines. The maintainer app then correctly offered a submission that
     // removed 40 files, from a change that was meant to touch one line of text - and approving it
     // would have destroyed them on the server.
     // ###########################################################################################
@@ -457,7 +457,7 @@ public sealed class ComponentBoardWriterTests
     // ###########################################################################################
     // *** A DELETE TAKES THE COMPONENT'S HIGHLIGHTS TOO, AND LEAVES THE BOARD'S OWN ROWS ALONE. ***
     //
-    // Changed 2026-09-25 (maintainer: "if a component really is deleted, then it should remove
+    // Changed 2026-09-25 (owner: "if a component really is deleted, then it should remove
     // EVERYTHING related to this component"). Highlights used to be kept as "the label editor's
     // concern", which left rectangles naming a component the board no longer had - while this
     // window's own notice said they would go. The board's own files and links are not the
@@ -513,7 +513,7 @@ public sealed class ComponentBoardWriterTests
     // ------------------------------------------------------------------ Row positions (2026-09-24)
 
     // ###########################################################################################
-    // *** REPORTED BY THE MAINTAINER: C2 showed above C1, although C1 was added first. *** A save
+    // *** REPORTED BY THE PROJECT OWNER: C2 showed above C1, although C1 was added first. *** A save
     // removed the component's rows and appended them at the bottom, so re-saving C1 after C2 had
     // been added moved C1 below it. Row order is what the application's component list shows, so
     // the drift was visible. An edited component now stays where it was.

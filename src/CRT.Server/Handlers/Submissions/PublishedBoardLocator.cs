@@ -12,11 +12,11 @@ namespace CRT.Server.Handlers.Submissions
     // *** THE IDENTITY IS UNTRUSTED, EVEN HERE. *** Manufacturer/Hardware/Board arrive in a
     // submission, and a manufacturer of "../.." would otherwise relocate the system folder
     // outside the data tree - which on a READ means disclosing an arbitrary file's contents to a
-    // reviewer, and would make this endpoint a file-disclosure hole rather than a review screen.
+    // maintainer, and would make this endpoint a file-disclosure hole rather than a review screen.
     // So every part goes through SubmissionPathRules exactly as the write paths do.
     //
     // *** IT PICKS THE NEWEST GENERATION, the same rule publishing writes with. *** Reading an
-    // older, frozen generation would show the reviewer a diff against a board no current build
+    // older, frozen generation would show the maintainer a diff against a board no current build
     // uses, and the generation gap would appear as changes the contributor never made.
     // ###########################################################################################
     public static class PublishedBoardLocator
@@ -26,7 +26,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // A BLANK OR UNSAFE IDENTITY YIELDS "does not exist" rather than throwing. The manifest's
         // own validation already reports a bad identity with a message the contributor can act
-        // on; throwing here would turn a reviewer opening that submission into an error page
+        // on; throwing here would turn a maintainer opening that submission into an error page
         // instead of showing them the findings that explain it.
         // ###########################################################################################
         public static PublishedBoardLocation Locate(string? dataTreeRoot, SubmissionManifest manifest)

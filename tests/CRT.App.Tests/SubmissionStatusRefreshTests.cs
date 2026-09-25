@@ -10,11 +10,11 @@ using Handlers.Online;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// SubmissionStatusRefresh - the check that now runs AT LAUNCH (maintainer report, 2026-09-22).
+// SubmissionStatusRefresh - the check that now runs AT LAUNCH (owner report, 2026-09-22).
 //
 // *** THE BUG THIS CLASS EXISTS FOR: the check only ever ran from a button. *** Receipts were
 // loaded from disk at startup, but nothing asked the server until the contributor opened "My
-// submissions" and pressed Refresh. So a reviewer could request changes and the contributor would
+// submissions" and pressed Refresh. So a maintainer could request changes and the contributor would
 // launch CRT to a stale cache - no badge, no comment - until they happened to press a button they
 // had no reason to think was necessary. Reported after a real review round trip.
 //
@@ -68,13 +68,13 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
             {
                 Id = id,
                 State = state,
-                ReviewerComment = comment
+                MaintainerComment = comment
             });
         };
     }
 
     [Fact]
-    public async Task A_reviewers_comment_arrives_WITHOUT_anybody_pressing_refresh()
+    public async Task A_maintainers_comment_arrives_WITHOUT_anybody_pressing_refresh()
     {
         // The whole point. Launching the app is when somebody expects to be told.
         SubmissionStatusRefreshTests.Record(42, "pending");
@@ -88,7 +88,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         SubmissionReceipt receipt = SubmissionReceiptStore.All.Single();
 
         Assert.Equal("changes_requested", receipt.LastKnownState);
-        Assert.Equal("Check the U8 highlight.", receipt.ReviewerComment);
+        Assert.Equal("Check the U8 highlight.", receipt.MaintainerComment);
 
         // And the badge lights up off the back of it, which is the user-visible consequence.
         Assert.Equal(1, SubmissionReceiptStore.UnreadCommentCount());
@@ -172,7 +172,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
     [Fact]
     public async Task A_NEW_COMMENT_on_an_unchanged_state_still_counts_as_a_change()
     {
-        // A reviewer can add or reword a comment without the state moving. Comparing only the
+        // A maintainer can add or reword a comment without the state moving. Comparing only the
         // state would leave that feedback sitting on disk with no badge.
         SubmissionStatusRefreshTests.Record(42, "pending");
 
@@ -202,7 +202,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
                 {
                     Id = id,
                     State = "changes_requested",
-                    ReviewerComment = "Have a look at U8."
+                    MaintainerComment = "Have a look at U8."
                 }),
             SubmissionStatusRefreshTests.Now);
 

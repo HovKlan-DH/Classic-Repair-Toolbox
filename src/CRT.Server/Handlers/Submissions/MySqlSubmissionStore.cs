@@ -72,7 +72,7 @@ namespace CRT.Server.Handlers.Submissions
             // rewrite that on every submission.
             //
             // current_revision stays NULL: this system has not been published yet. Publishing is
-            // the maintainer's act and is what fills it in.
+            // the project owner's act and is what fills it in.
             // ###########################################################################################
             await using (MySqlCommand command = connection.CreateCommand())
             {
@@ -232,7 +232,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // origin is deliberately UNTOUCHED. It records where a system CAME FROM and is set once,
         // so a contributed system stays contributed however many times it is later revised -
-        // including by the maintainer.
+        // including by the project owner.
         //
         // *** THERE IS NO `updated_utc` COLUMN ON `systems`, AND THIS SETS NONE. *** A first
         // version of this method wrote one; the schema has only created_utc. It would have thrown
@@ -287,7 +287,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Records a reviewer's decision - the state, who made it, when, and why.
+        // Records a maintainer's decision - the state, who made it, when, and why.
         //
         // *** THE COLUMNS WERE CHECKED AGAINST 0001_initial.sql, one by one. *** `submissions` has
         // state, decided_utc, decided_by and decision_comment, and no updated_utc - the fourth
@@ -438,7 +438,7 @@ namespace CRT.Server.Handlers.Submissions
                 //
                 // They come from the `systems` row rather than the payload JSON because that is
                 // where they live: the schema stores them as their own columns precisely "so the
-                // review app can list by manufacturer without parsing" (0001_initial.sql).
+                // maintainer app can list by manufacturer without parsing" (0001_initial.sql).
                 // ###########################################################################################
                 Manufacturer = manufacturer,
                 Hardware = hardware,
@@ -746,7 +746,7 @@ namespace CRT.Server.Handlers.Submissions
         // -----------------------------------------------------------------------------------
 
         // -----------------------------------------------------------------------------------
-        // A reviewer's amendment (migration 0009). See ISubmissionStore.AmendAsync.
+        // A maintainer's amendment (migration 0009). See ISubmissionStore.AmendAsync.
         // -----------------------------------------------------------------------------------
 
         public async Task<AmendStoreResult> AmendAsync(
@@ -773,7 +773,7 @@ namespace CRT.Server.Handlers.Submissions
                 return command;
             }
 
-            // ---- Still amendable, and still at the version the reviewer opened? ------------------
+            // ---- Still amendable, and still at the version the maintainer opened? ------------------
             //
             // Both read with LOCKING reads, after which nothing another transaction commits can
             // change the answer before this one does: the submission row first, so a second
@@ -1008,7 +1008,7 @@ namespace CRT.Server.Handlers.Submissions
         // The text the CHECK constraint allows. A role this build does not know reads back as
         // nothing rather than as the wrong role.
         private static string RoleText(ApproverRole role) =>
-            role == ApproverRole.Administrator ? "administrator" : "reviewer";
+            role == ApproverRole.Administrator ? "administrator" : "maintainer";
 
         private static string Cut(string? value, int length)
         {
@@ -1027,7 +1027,7 @@ namespace CRT.Server.Handlers.Submissions
                 ApproverRole? role = reader.GetString(0) switch
                 {
                     "administrator" => ApproverRole.Administrator,
-                    "reviewer" => ApproverRole.Reviewer,
+                    "maintainer" => ApproverRole.Maintainer,
                     _ => null
                 };
 

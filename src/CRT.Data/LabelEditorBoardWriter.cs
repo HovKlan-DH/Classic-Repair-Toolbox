@@ -29,7 +29,7 @@ namespace Handlers.DataHandling
 
     // ###########################################################################################
     // APPLIES A SCHEMATIC LABEL EDITOR SAVE TO A DRAFT'S BOARD
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS REPLACES LabelEditorDraftWriter, AND IT IS MOSTLY A DELETION. *** That class turned
     // a save into BoardDraft row deltas, which meant it had to reason about three things this one

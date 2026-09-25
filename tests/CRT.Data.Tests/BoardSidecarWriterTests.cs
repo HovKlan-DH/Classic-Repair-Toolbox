@@ -364,7 +364,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
     {
         // A board with no highlights and no calibrations still gets both roots, so the file has one
         // shape rather than four. The app's own loaders tolerate a missing root, but a consistent
-        // file is far easier to diff by hand - which is how the maintainer inspects the tree.
+        // file is far easier to diff by hand - which is how the project owner inspects the tree.
         BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);
 
         JsonObject root = JsonNode.Parse(File.ReadAllText(this.SidecarPath))!.AsObject();
@@ -378,7 +378,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
     {
         // Anything already in the file that this writer does not know about is dropped, on purpose.
         // The published sidecar must be exactly what the submission describes; carrying an unknown
-        // root forward would publish data no reviewer ever saw.
+        // root forward would publish data no maintainer ever saw.
         File.WriteAllText(this.SidecarPath, """{"Something else":{"kept":true}}""");
 
         BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);

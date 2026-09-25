@@ -6,7 +6,7 @@ using System;
 namespace CRT
 {
     // ###########################################################################################
-    // BoardTableEditor - WATCHING THE DRAFT FILE WHILE THE TABLE IS ON SCREEN (maintainer request,
+    // BoardTableEditor - WATCHING THE DRAFT FILE WHILE THE TABLE IS ON SCREEN (owner request,
     // 2026-09-24: "it would be nice to see a warning that edits have been detected in Excel, and
     // that the content on screen may be invalid").
     //
@@ -21,9 +21,9 @@ namespace CRT
     //     is greyed out - that save would be refused anyway.
     //   - OPEN in Excel (or LibreOffice), going by the lock file it leaves beside the workbook: a
     //     notice asks to edit it in one place at a time - shown the whole time, from the moment the
-    //     table opens, since that advice matters most BEFORE any editing starts (maintainer's
+    //     table opens, since that advice matters most BEFORE any editing starts (owner's
     //     choice, 2026-09-24, after briefly showing it only once the table had unsaved edits).
-    //     "Save changes" is OFF while the workbook is really held open there (maintainer request) -
+    //     "Save changes" is OFF while the workbook is really held open there (owner request) -
     //     that save would fail. Not on the lock file alone: a crashed Excel leaves it behind, and
     //     the table must not be blocked for good (see DraftTableSession.IsHeldOpen).
     //

@@ -3,11 +3,11 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // REMOVES FILES NOTHING USES from a data tree (maintainer decision, 2026-09-25: "there must be
+    // REMOVES FILES NOTHING USES from a data tree (owner decision, 2026-09-25: "there must be
     // no orphan files").
     //
     // Called in three places, always with a list somebody has SEEN: after a BETA publish and after
-    // a production promotion (the FileRemovalPreview the reviewer approved), and from the
+    // a production promotion (the FileRemovalPreview the maintainer approved), and from the
     // administrator's "Unused files" screen (the files the administrator chose). It never decides
     // what to remove on its own - it only ever removes FEWER:
     //

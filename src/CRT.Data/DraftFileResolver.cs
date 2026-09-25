@@ -85,7 +85,7 @@ namespace Handlers.DataHandling
             // copied into any one draft - see DraftFolderLayout.GetReferencedFilePath).
             //
             // *** THE DRAFTED COPY IS LOOKED FOR EXACTLY WHERE BuildDraftFileDestination WRITES
-            // IT (maintainer report, 2026-09-25). *** For the board's own files that is the draft
+            // IT (owner report, 2026-09-25). *** For the board's own files that is the draft
             // folder with the system's prefix stripped. For a NEW file the contributor filed in a
             // shared folder it is the draft folder plus the WHOLE path - and this used to look only
             // for the first kind, so "Commodore/Shared files/Component images/HotCPU.png" was on

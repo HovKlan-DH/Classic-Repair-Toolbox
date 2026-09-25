@@ -66,7 +66,7 @@ namespace CRT.Server.Tests
                 administrator ? [] : [DataTreeBuilder.BoardFolder]);
 
         [Fact]
-        public async Task A_reviewer_cannot_remove_unused_files_and_nothing_is_touched()
+        public async Task A_maintainer_cannot_remove_unused_files_and_nothing_is_touched()
         {
             var accounts = new FakeAccountStore();
 

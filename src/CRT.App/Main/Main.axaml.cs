@@ -444,7 +444,7 @@ namespace CRT
                 await this.StartBackgroundSyncAsync();
 
                 // ###########################################################################################
-                // ASK THE SERVER WHETHER A REVIEWER HAS REPLIED (maintainer report, 2026-09-22).
+                // ASK THE SERVER WHETHER A MAINTAINER HAS REPLIED (owner report, 2026-09-22).
                 //
                 // *** THIS ONLY EVER RAN FROM A BUTTON BEFORE. *** Receipts were loaded from disk at
                 // startup, but nothing asked the server until the contributor opened "My submissions"
@@ -461,7 +461,7 @@ namespace CRT
                 // unobserved faulted Task would be the worst possible shape for this.
                 //
                 // ###########################################################################################
-                // RETIRE ANY DRAFT THE PUBLISHED DATA HAS NOW ABSORBED (maintainer request,
+                // RETIRE ANY DRAFT THE PUBLISHED DATA HAS NOW ABSORBED (owner request,
                 // 2026-09-23).
                 //
                 // *** HERE, RATHER THAN AT THE MOMENT OF PUBLISHING, BECAUSE THE TEST NEEDS THE SYNCED
@@ -709,12 +709,12 @@ namespace CRT
             this.ApplyDraftBadges();
 
             // ###########################################################################################
-            // *** UNREAD REVIEWER FEEDBACK KEEPS THIS TAB VISIBLE EVEN WITH NO DRAFTS. ***
+            // *** UNREAD MAINTAINER FEEDBACK KEEPS THIS TAB VISIBLE EVEN WITH NO DRAFTS. ***
             //
             // Without this the badge would be unreachable in exactly the case it exists for. A
             // contributor submits a draft and then discards it locally - the ordinary thing to do
             // once it has been sent - which takes their draft count to zero and hides the tab. The
-            // reviewer then asks for changes, and the only place that feedback is shown is behind a
+            // maintainer then asks for changes, and the only place that feedback is shown is behind a
             // button on a tab that is no longer on screen. They would never find out.
             //
             // The reverse is deliberately NOT true: no feedback and no drafts still hides the tab,
@@ -732,7 +732,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Deletes any local draft whose work is now in the published data (maintainer request,
+        // Deletes any local draft whose work is now in the published data (owner request,
         // 2026-09-23).
         //
         // *** THE DECISION IS DraftRetirement'S, NOT THIS METHOD'S. *** Everything about when a
@@ -746,7 +746,7 @@ namespace CRT
         // confirms first because it destroys work that exists in only one place. This path runs
         // only when the draft has been proved to contain NOTHING the published board does not
         // already carry - so the bytes it removes are a duplicate of data the sync will hand back
-        // on demand. There is nothing to lose and therefore nothing to confirm; the maintainer
+        // on demand. There is nothing to lose and therefore nothing to confirm; the project owner
         // asked for it to be automatic precisely so a contributor does not have to remember.
         //
         // Failures are logged and swallowed. This runs unattended on the launch path, and a
@@ -843,7 +843,7 @@ namespace CRT
             // Guarded like the block above, and for the same reason: on the launch path this Task
             // is started and discarded, so anything escaping here would fault it unobserved. The
             // refresh runs whether or not retirement worked - it is also what shows the badge for a
-            // reviewer's reply the status check just brought down.
+            // maintainer's reply the status check just brought down.
             try
             {
                 this.ApplyDraftsTabVisibility();
@@ -951,7 +951,7 @@ namespace CRT
         // *** THE DRAFTS TAB'S TABLE EDITOR OWNS THE KEYBOARD WHILE IT IS OPEN. *** A click on a
         // grid cell focuses the GRID, not a text box, so the "another TextBox holds focus" check
         // below does not cover it: focus went straight back to the filter, and typing into the
-        // selected cell landed in the component filter instead (reported by the maintainer).
+        // selected cell landed in the component filter instead (reported by the project owner).
         // ###########################################################################################
         internal bool ShouldReturnFocusToComponentSearch()
         {

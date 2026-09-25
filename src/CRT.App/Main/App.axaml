@@ -6,7 +6,7 @@
 	<Application.Resources>
 		<ResourceDictionary>
 
-			<!-- The table editor's own colours, shared with the review application (CRT.UI). -->
+			<!-- The table editor's own colours, shared with the maintainer application (CRT.UI). -->
 			<ResourceDictionary.MergedDictionaries>
 				<ResourceInclude Source="avares://CRT.UI/BoardTable/BoardTableColors.axaml" />
 			</ResourceDictionary.MergedDictionaries>
@@ -72,7 +72,7 @@
 					     so a pending row still reads as a STATUS rather than as disabled text. -->
 					<SolidColorBrush x:Key="Text_Waiting_Fg">#B07A1E</SolidColorBrush>
 
-					<!-- "THIS ONE IS WAITING ON YOU" - a warning, not a failure (maintainer
+					<!-- "THIS ONE IS WAITING ON YOU" - a warning, not a failure (owner
 					     request, 2026-09-23). "Changes requested" used to share Text_Fail_Fg with
 					     "Not accepted", which made a submission that is still very much alive look
 					     identical to one that had been turned down - reported as exactly that.
@@ -98,7 +98,7 @@
 
 					<!-- Light, Main -->
 					<!-- The Drafts tab's title: a draft is temporary, so its tab stands out in the
-					     same IndianRed the selected-tab underline uses (maintainer request, 2026-09-25). -->
+					     same IndianRed the selected-tab underline uses (owner request, 2026-09-25). -->
 					<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
@@ -156,7 +156,7 @@
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
 
 					<!-- Light, the table editor's colours (BoardTable_*) now live in CRT.UI's
-					     BoardTable/BoardTableColors.axaml, merged below, so the review application's
+					     BoardTable/BoardTableColors.axaml, merged below, so the maintainer application's
 					     table uses the very same ones. -->
 
 					<!-- Light, Workbooks tab: the surfaces the tab actually paints.

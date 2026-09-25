@@ -36,8 +36,8 @@ namespace Handlers.DataHandling
         // ComponentListBuilder.BuildComponentsInScope). Keyed on the label alone, those two rows
         // were ONE row to every comparison: adding the NTSC row next to an existing PAL one was
         // no change at all to the Drafts tab's count, the table editor flagged it as a duplicate
-        // instead of colouring it added, and a reviewer's summary never showed it. Reported by
-        // the maintainer from the table editor. Component images already key on region too.
+        // instead of colouring it added, and a maintainer's summary never showed it. Reported by
+        // the project owner from the table editor. Component images already key on region too.
         //
         // With NO region the key is the bare label, exactly as before, so every row that is not
         // regionalised - nearly all of them - keys identically to how it always did. The

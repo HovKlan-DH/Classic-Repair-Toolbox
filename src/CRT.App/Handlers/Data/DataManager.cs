@@ -1131,7 +1131,7 @@ namespace Handlers.DataHandling
         {
             // ###########################################################################################
             // *** A DRAFT IS NOW A BOARD FOLDER, SO THIS CHOOSES A FILE INSTEAD OF MERGING ONE ***
-            // (NewContributeStrategy.md Phase 6, maintainer request 2026-09-23).
+            // (NewContributeStrategy.md Phase 6, owner request 2026-09-23).
             //
             // It used to read the published workbook and merge a draft's recorded row deltas over
             // it, which meant a drafted board was a computation rather than a file - there was

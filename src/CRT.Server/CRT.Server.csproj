@@ -2,10 +2,10 @@
 
   <!--
   The contribution API service (Phase 3 of Assets/NewContributeStrategy.md). Runs on the
-  maintainer's AlmaLinux box behind Apache, bound to 127.0.0.1 only, and is reached at /api/.
+  project owner's AlmaLinux box behind Apache, bound to 127.0.0.1 only, and is reached at /api/.
 
   It references CRT.Data so the board-reading and merging rules exist exactly once across the
-  desktop app, this service and the future review app - that shared-library goal is the whole
+  desktop app, this service and the future maintainer app - that shared-library goal is the whole
   reason CRT.Data was extracted in Phase 1.
 
   WHAT MUST NOT LAND HERE:
@@ -58,8 +58,8 @@
   </ItemGroup>
 
   <!--
-  The test project reaches a few internal seams - ReviewEndpoints.NotAReviewer, so the 403 a
-  non-reviewer gets is proved to EXECUTE with no authentication scheme registered, which is how
+  The test project reaches a few internal seams - ReviewEndpoints.NotAMaintainer, so the 403 a
+  non-maintainer gets is proved to EXECUTE with no authentication scheme registered, which is how
   this service runs. The same "internal plus InternalsVisibleTo rather than public" rule CRT.Data
   follows.
   -->

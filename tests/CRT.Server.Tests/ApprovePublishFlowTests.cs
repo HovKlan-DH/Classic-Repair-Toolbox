@@ -72,15 +72,15 @@ namespace CRT.Server.Tests
                 accounts ?? new FakeAccountStore(),
                 NullLogger<ApprovePublishFlow>.Instance);
 
-        // An account store in which the board HAS a reviewer - which is what makes a shared-file
+        // An account store in which the board HAS a maintainer - which is what makes a shared-file
         // change need two approvals rather than the administrator's alone.
-        private static FakeAccountStore AccountsWithAReviewer()
+        private static FakeAccountStore AccountsWithAMaintainer()
         {
             // The pool row AND its account: the store drops a row whose account is missing, as
             // the real join does.
             var accounts = new FakeAccountStore();
             accounts.Accounts[7] = ApprovePublishFlowTests.AccountRecord(administrator: false);
-            accounts.Reviewers.Add((ApprovePublishFlowTests.SystemId, 7));
+            accounts.Maintainers.Add((ApprovePublishFlowTests.SystemId, 7));
             return accounts;
         }
 
@@ -90,17 +90,17 @@ namespace CRT.Server.Tests
         private static ReviewAccess Account() =>
             ReviewAccess.For(ApprovePublishFlowTests.AccountRecord(administrator: true));
 
-        // A reviewer of exactly the systems named - and of nothing else.
-        private static ReviewAccess ReviewerOf(params string[] systems) =>
+        // A maintainer of exactly the systems named - and of nothing else.
+        private static ReviewAccess MaintainerOf(params string[] systems) =>
             ReviewAccess.For(ApprovePublishFlowTests.AccountRecord(administrator: false), systems);
 
         private static Handlers.Accounts.AccountRecord AccountRecord(bool administrator) =>
             new(
                 Id: 7,
-                Email: administrator ? "admin@example.com" : "reviewer@example.com",
-                NormalisedEmail: administrator ? "admin@example.com" : "reviewer@example.com",
+                Email: administrator ? "admin@example.com" : "maintainer@example.com",
+                NormalisedEmail: administrator ? "admin@example.com" : "maintainer@example.com",
                 PasswordHash: "hash",
-                DisplayName: administrator ? "Admin" : "Reviewer",
+                DisplayName: administrator ? "Admin" : "Maintainer",
                 IsVerified: true,
                 IsAdministrator: administrator,
                 IsLocked: false,
@@ -234,7 +234,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task The_submission_is_recorded_as_MERGED_with_the_reviewer_who_approved_it()
+        public async Task The_submission_is_recorded_as_MERGED_with_the_maintainer_who_approved_it()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -297,16 +297,16 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task A_reviewer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written()
+        public async Task A_maintainer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written()
         {
             // *** THE STRUCTURAL GUARANTEE, asserted on the DISK rather than on a bool. *** A
-            // reviewer's authority stops at their own systems; the only honest way to test that
+            // maintainer's authority stops at their own systems; the only honest way to test that
             // is to check nothing changed.
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id,
-                ApprovePublishFlowTests.ReviewerOf("Commodore/C128/310378"),
+                ApprovePublishFlowTests.MaintainerOf("Commodore/C128/310378"),
                 this.thisDataTree,
                 ApprovePublishFlowTests.Now,
                 CancellationToken.None);
@@ -323,15 +323,15 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_reviewer_of_THIS_system_publishes_it()
+        public async Task A_maintainer_of_THIS_system_publishes_it()
         {
-            // The maintainer's model: a reviewer assigned to a board publishes to it, with no
+            // The project owner's model: a maintainer assigned to a board publishes to it, with no
             // administrator in the loop.
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id,
-                ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId),
+                ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId),
                 this.thisDataTree,
                 ApprovePublishFlowTests.Now,
                 CancellationToken.None);
@@ -341,7 +341,7 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // A shared-file change needs the board's reviewer AND the administrator (2026-09-25).
+        // A shared-file change needs the board's maintainer AND the administrator (2026-09-25).
         // -----------------------------------------------------------------------------------
 
         private async Task<(FakeSubmissionStore Store, long Id)> SharedPendingAsync()
@@ -352,15 +352,15 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task The_REVIEWERS_approval_of_a_shared_change_alone_publishes_NOTHING()
+        public async Task The_MAINTAINERS_approval_of_a_shared_change_alone_publishes_NOTHING()
         {
-            // *** THE MAINTAINER'S RULE, asserted on the DISK. *** The reviewer's approval is
+            // *** THE PROJECT OWNER'S RULE, asserted on the DISK. *** The maintainer's approval is
             // recorded and the submission waits - in the queue, as 'approved' - for the
             // administrator's.
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
 
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAReviewer()).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -369,18 +369,18 @@ namespace CRT.Server.Tests
 
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
             Assert.Equal(SubmissionState.Approved, (await store.FindAsync(id, CancellationToken.None))!.State);
-            Assert.Equal(ApproverRole.Reviewer, Assert.Single(await store.GetApprovalsAsync(id)).Role);
+            Assert.Equal(ApproverRole.Maintainer, Assert.Single(await store.GetApprovalsAsync(id)).Role);
             Assert.Contains(await store.GetQueueAsync(100), record => record.Id == id);
         }
 
         [Fact]
-        public async Task The_ADMINISTRATORS_approval_after_the_reviewers_publishes_it()
+        public async Task The_ADMINISTRATORS_approval_after_the_maintainers_publishes_it()
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
@@ -390,24 +390,24 @@ namespace CRT.Server.Tests
             Assert.True(second.IsPublished, second.Error);
             Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
             Assert.Equal(
-                [ApproverRole.Reviewer, ApproverRole.Administrator],
+                [ApproverRole.Maintainer, ApproverRole.Administrator],
                 (await store.GetApprovalsAsync(id)).Select(approval => approval.Role));
         }
 
         [Fact]
-        public async Task Either_may_go_FIRST_the_administrator_then_the_reviewer_publishes_too()
+        public async Task Either_may_go_FIRST_the_administrator_then_the_maintainer_publishes_too()
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             ApproveOutcome first = await this.Flow(store, accounts).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.True(first.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Reviewer], first.WaitingFor);
+            Assert.Equal([ApproverRole.Maintainer], first.WaitingFor);
 
             ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now.AddMinutes(5), CancellationToken.None);
 
             Assert.True(second.IsPublished, second.Error);
@@ -417,14 +417,14 @@ namespace CRT.Server.Tests
         public async Task The_same_role_approving_TWICE_is_refused_and_still_publishes_nothing()
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ApproveOutcome again = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
 
             Assert.True(again.IsConflict);
@@ -433,18 +433,18 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A BOARD'S SECOND REVIEWER IS TOLD WHO APPROVED - NOT "YOU HAVE" (code review,
-        // 2026-09-25). *** The reviewer half is done either way, so the refusal stands; what was
+        // *** A BOARD'S SECOND MAINTAINER IS TOLD WHO APPROVED - NOT "YOU HAVE" (code review,
+        // 2026-09-25). *** The maintainer half is done either way, so the refusal stands; what was
         // wrong was the sentence, which named the wrong person.
         // ###########################################################################################
         [Fact]
-        public async Task A_SECOND_reviewer_of_the_board_is_told_a_colleague_approved_rather_than_that_they_did()
+        public async Task A_SECOND_maintainer_of_the_board_is_told_a_colleague_approved_rather_than_that_they_did()
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ReviewAccess colleague = ReviewAccess.For(
@@ -456,23 +456,23 @@ namespace CRT.Server.Tests
 
             Assert.True(refused.IsConflict);
             Assert.DoesNotContain("You have", refused.Error, StringComparison.Ordinal);
-            Assert.Contains("Reviewer (reviewer@example.com) has already approved", refused.Error, StringComparison.Ordinal);
+            Assert.Contains("Maintainer (maintainer@example.com) has already approved", refused.Error, StringComparison.Ordinal);
             Assert.Contains("waiting for the administrator", refused.Error, StringComparison.Ordinal);
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
         }
 
         // ###########################################################################################
-        // *** A POOL ROW THAT CANNOT GIVE THE REVIEWER HALF DOES NOT COUNT (code review,
+        // *** A POOL ROW THAT CANNOT GIVE THE MAINTAINER HALF DOES NOT COUNT (code review,
         // 2026-09-25). *** An account granted a pool and later made administrator by hand keeps its
         // row but approves as the administrator; a locked or unverified one cannot approve at all.
-        // Counted as "the board has a reviewer", each made a shared-file change wait for ever for a
-        // reviewer approval nobody could give.
+        // Counted as "the board has a maintainer", each made a shared-file change wait for ever for a
+        // maintainer approval nobody could give.
         // ###########################################################################################
         [Theory]
         [InlineData("administrator")]
         [InlineData("locked")]
         [InlineData("unverified")]
-        public async Task A_pool_row_that_cannot_approve_as_a_reviewer_leaves_the_administrator_to_decide_alone(string kind)
+        public async Task A_pool_row_that_cannot_approve_as_a_maintainer_leaves_the_administrator_to_decide_alone(string kind)
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
 
@@ -487,7 +487,7 @@ namespace CRT.Server.Tests
 
             var accounts = new FakeAccountStore();
             accounts.Accounts[9] = member;
-            accounts.Reviewers.Add((ApprovePublishFlowTests.SystemId, 9));
+            accounts.Maintainers.Add((ApprovePublishFlowTests.SystemId, 9));
 
             ApproveOutcome outcome = await this.Flow(store, accounts).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
@@ -499,7 +499,7 @@ namespace CRT.Server.Tests
         // *** WHETHER A SHARED FILE CHANGES IS DECIDED AGAINST THE TREE AS IT IS NOW (code review,
         // 2026-09-25). *** The flag was frozen at create: a submission citing a shared file
         // UNCHANGED was an ordinary one-approval item for ever. Once another publish changed that
-        // file, this submission's old bytes would REVERT it for every board - on one reviewer's
+        // file, this submission's old bytes would REVERT it for every board - on one maintainer's
         // approval, with the administrator never asked.
         // ###########################################################################################
         [Fact]
@@ -521,8 +521,8 @@ namespace CRT.Server.Tests
             // ...and another publish has changed the shared file since.
             File.WriteAllText(onDisk, "the notes as another publish left them");
 
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAReviewer()).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -554,8 +554,8 @@ namespace CRT.Server.Tests
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(manifest);
             store.Submissions[id] = store.Submissions[id] with { TouchesSharedFiles = true };
 
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAReviewer()).ApproveAsync(
-                id, ApprovePublishFlowTests.ReviewerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -567,22 +567,22 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** THE REQUIREMENT SHRINKING AFTER THE FIRST APPROVAL DOES NOT STRAND THE ITEM (code
-        // review, 2026-09-25). *** The administrator approves first; the board's only reviewer then
+        // review, 2026-09-25). *** The administrator approves first; the board's only maintainer then
         // leaves its pool, so the change needs the administrator alone - who was refused as
         // "already approved" while nobody else could approve. See ApprovalRules.Status.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_change_whose_reviewer_LEAVES_after_the_administrator_approved_is_then_published_by_the_administrator()
+        public async Task A_shared_change_whose_maintainer_LEAVES_after_the_administrator_approved_is_then_published_by_the_administrator()
         {
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAReviewer();
+            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             ApproveOutcome first = await this.Flow(store, accounts).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.True(first.IsAwaitingApproval);
 
-            accounts.Reviewers.Clear();
+            accounts.Maintainers.Clear();
 
             ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree,
@@ -593,7 +593,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_shared_change_on_a_board_with_NO_reviewers_is_published_by_the_administrator_alone()
+        public async Task A_shared_change_on_a_board_with_NO_maintainers_is_published_by_the_administrator_alone()
         {
             // Nobody to ask for the other half.
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
@@ -702,11 +702,11 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_NEW_SYSTEM_publishes_into_the_NEWEST_generation_and_never_the_frozen_one()
         {
-            // *** THE MAINTAINER'S RULE, and the bug that writing these tests caught. *** A new
+            // *** THE PROJECT OWNER'S RULE, and the bug that writing these tests caught. *** A new
             // system's folder is EMPTY, so the generation cannot be read from it - and the first
             // version of this flow fell back to "no version", publishing
             // "Data C64 250407.xlsx". That is the frozen file serving every pre-2.0.0 build, the
-            // one file the maintainer said must never be written.
+            // one file the project owner said must never be written.
             //
             // The generation now comes from the TREE's master workbooks instead. Asserted by the
             // ABSENCE of the unversioned file as well as the presence of the versioned one: only
@@ -880,9 +880,9 @@ namespace CRT.Server.Tests
             Assert.Equal("U9", Assert.Single(published!.Components).BoardLabel);
         }
         // ###########################################################################################
-        // FILES THE BOARD NO LONGER USES ARE REMOVED - AND ONLY THOSE THE REVIEWER WAS SHOWN
-        // (maintainer decisions, 2026-09-25: "there must be no orphan files", and the list "must be
-        // visible BEFORE the reviewer/admin approves it").
+        // FILES THE BOARD NO LONGER USES ARE REMOVED - AND ONLY THOSE THE MAINTAINER WAS SHOWN
+        // (owner decisions, 2026-09-25: "there must be no orphan files", and the list "must be
+        // visible BEFORE the maintainer/admin approves it").
         //
         // These need a REAL master: the placeholder the constructor writes makes the tree
         // unreadable, and an unreadable tree removes nothing.
@@ -909,7 +909,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task The_reviewer_is_shown_what_a_publish_would_remove_before_approving()
+        public async Task The_maintainer_is_shown_what_a_publish_would_remove_before_approving()
         {
             (_, _, SubmissionManifest manifest) = await this.DroppingTheManualAsync();
 
@@ -936,7 +936,7 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.OldManual)));
         }
 
-        // What is removed is what was on screen. A reviewer shown a different list - here an empty
+        // What is removed is what was on screen. A maintainer shown a different list - here an empty
         // one, because the list changed since they opened it - is refused, and NOTHING is written.
         [Fact]
         public async Task Approving_with_a_different_list_is_refused_and_nothing_is_written()
@@ -958,7 +958,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** NO LIST AT ALL IS AN OLDER REVIEW APPLICATION, NOT A CHANGED ONE (code review,
+        // *** NO LIST AT ALL IS AN OLDER MAINTAINER APPLICATION, NOT A CHANGED ONE (code review,
         // 2026-09-25). *** The current one always sends its list, empty or not; one built before
         // the list existed sends none. It used to be told the list had "changed since you opened
         // it" - false, and reopening changed nothing, so it could never publish and never learn

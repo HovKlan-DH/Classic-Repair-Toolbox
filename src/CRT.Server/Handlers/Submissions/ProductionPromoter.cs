@@ -14,7 +14,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** EACH COPY IS VERIFIED AGAINST THE HASH THE PLAN SAW. *** The plan read BETA; a file that
     // changed in BETA since (a hand edit, a publish racing without the lock) must not reach every
-    // user under the name of the file the reviewer checked. VerifiedFileCopy hashes as it writes
+    // user under the name of the file the maintainer checked. VerifiedFileCopy hashes as it writes
     // and replaces the real file only on a match.
     //
     // NOT ATOMIC, and it cannot be - the same position PublishExecutor is in. The plan's ORDER is

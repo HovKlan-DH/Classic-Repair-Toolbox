@@ -8,7 +8,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // Seeding a draft folder as a full copy of the published board
-// (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+// (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
 //
 // *** WHY "COMPLETE COPY" IS THE THING BEING TESTED. *** The draft is compared against the
 // published board to work out what the contributor changed (BoardDataDiffer), and that
@@ -316,7 +316,7 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM GETS AN EMPTY "Scope baseline" FOLDER (maintainer request, 2026-09-24). ***
+    // *** A NEW SYSTEM GETS AN EMPTY "Scope baseline" FOLDER (owner request, 2026-09-24). ***
     //
     // Beside the workbook, so the contributor can pick it straight away when referencing their
     // first baseline image rather than first creating it by hand with the exact name.

@@ -77,7 +77,7 @@ namespace CRT.Server.Handlers.Email
             {
                 // Logged at Warning rather than Error: a single undeliverable mail is not a
                 // service fault, and the user's recovery path (ask for another verification mail)
-                // is already there. A repeated pattern of these is what a maintainer should notice,
+                // is already there. A repeated pattern of these is what the project owner should notice,
                 // which is what the log is for.
                 this.thisLogger.LogWarning(
                     ex,

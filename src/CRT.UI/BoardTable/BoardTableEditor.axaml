@@ -3,7 +3,7 @@
              x:Class="CRT.BoardTableEditor">
 
 	<UserControl.Styles>
-		<!-- One TAB per workbook sheet (maintainer request, 2026-09-24 - they were buttons at
+		<!-- One TAB per workbook sheet (owner request, 2026-09-24 - they were buttons at
 		     first). A real TabControl rather than restyled buttons, so a sheet tab looks and behaves
 		     exactly like the application's own tabs: the same IndianRed underline for the selected
 		     one and faint one on hover (App.axaml's TabItem styles), the same keyboard handling.
@@ -12,7 +12,7 @@
 
 		     The font and padding are Main.axaml's own TabItem setters, repeated here and scoped to
 		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - it
-		     is meant to move to the review application later, which has no Main.axaml. -->
+		     is meant to move to the maintainer application later, which has no Main.axaml. -->
 		<Style Selector="TabControl#SheetTabs TabItem">
 			<Setter Property="FontSize" Value="12" />
 			<Setter Property="Padding" Value="12,4" />
@@ -45,7 +45,7 @@
 			<Setter Property="FontWeight" Value="Bold" />
 		</Style>
 
-		<!-- A pill counting nothing fades back like a disabled control (maintainer request,
+		<!-- A pill counting nothing fades back like a disabled control (owner request,
 		     2026-09-24), so the kinds actually present are what catches the eye. The class is set
 		     in UpdateToolbar. -->
 		<!-- The two notices about the draft FILE (changed underneath the table, open in Excel). -->
@@ -54,7 +54,7 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Notice_Border}" />
 			<Setter Property="BorderThickness" Value="1" />
 			<Setter Property="CornerRadius" Value="3" />
-			<!-- Roomy on purpose (maintainer request, 2026-09-24: 5px more than at first), so a
+			<!-- Roomy on purpose (owner request, 2026-09-24: 5px more than at first), so a
 			     notice that matters reads as one rather than as another line of text. -->
 			<Setter Property="Padding" Value="15,11" />
 			<Setter Property="Margin" Value="0,0,0,6" />
@@ -88,7 +88,7 @@
 			<Setter Property="Opacity" Value="0.45" />
 			<Setter Property="Cursor" Value="Hand" />
 			<Setter Property="ToolTip.Tip" Value="Drag to move this row (or Alt+Up / Alt+Down)" />
-			<!-- Centred in the whole header (maintainer request, 2026-09-24). The template puts
+			<!-- Centred in the whole header (owner request, 2026-09-24). The template puts
 			     the grip in a 16px first column of a two-column grid, so on its own it sat
 			     centred in that column - visibly to the left of the header's middle. -->
 			<Setter Property="Grid.ColumnSpan" Value="2" />
@@ -98,7 +98,7 @@
 			<Setter Property="Opacity" Value="1" />
 		</Style>
 
-		<!-- *** THE DRAGGED ROW IS DRAWN AS AN EMPTY DASHED SLOT (maintainer request, 2026-09-24:
+		<!-- *** THE DRAGGED ROW IS DRAWN AS AN EMPTY DASHED SLOT (owner request, 2026-09-24:
 		     "like moving an image in the worklog"). *** The same red, dash and rounding as the
 		     worklog's photo and file placeholders (WorklogEntryEditorWindow.axaml), drawn on the
 		     row's own BackgroundRectangle with the cells and grip faded out, so what shows is the
@@ -122,7 +122,7 @@
 			<Setter Property="Opacity" Value="0" />
 		</Style>
 
-		<!-- *** THE CURRENT CELL: NO FILL, A 2px DASHED RED FRAME (maintainer request,
+		<!-- *** THE CURRENT CELL: NO FILL, A 2px DASHED RED FRAME (owner request,
 		     2026-09-24). *** The grid's own look filled it with the accent colour, which could be
 		     taken for "added" (and hid the cell's own colour - the cell theme now keeps that, see
 		     BuildCellTheme), inside a solid frame drawn twice over: the cell's FocusVisual and the
@@ -183,7 +183,7 @@
 						Content="Delete row"
 						ToolTip.Tip="Remove the selected row. A published row stays visible in red, where it was. Ctrl+Z undoes it."
 						Click="OnDeleteRowClick" />
-				<!-- No Move up / Move down buttons (removed by the maintainer, 2026-09-24): a row is
+				<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
 				     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
 			</StackPanel>
 
@@ -245,7 +245,7 @@
 						Content="Reload"
 						ToolTip.Tip="Read the draft again from its file, for example after editing it in Excel"
 						Click="OnReloadClick" />
-				<!-- The same red as the Drafts row's "Discard" button (maintainer request,
+				<!-- The same red as the Drafts row's "Discard" button (owner request,
 				     2026-09-24), so the one button that writes the draft stands out. Disabled - and
 				     therefore greyed by the theme - while there is nothing to save. -->
 				<Button x:Name="SaveButton"
@@ -296,7 +296,7 @@
 		<!-- Sorting is off on purpose: deleted rows are shown where they used to be, which only
 		     means something in the sheet's own order.
 
-		     A smaller font and fixed row height than the grid's defaults (2026-09-24, maintainer
+		     A smaller font and fixed row height than the grid's defaults (2026-09-24, owner
 		     request), so a sheet shows more rows at once - closer to how dense Excel is. -->
 		<DataGrid Grid.Row="3"
 				  x:Name="TableGrid"

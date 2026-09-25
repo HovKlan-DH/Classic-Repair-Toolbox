@@ -26,7 +26,7 @@ namespace CRT.Server.Handlers.Accounts
     // THE PARSER IS DELIBERATELY STRICT. Anything it does not fully understand is rejected rather
     // than half-interpreted, because a partially-parsed hash is a hash that might verify against
     // the wrong parameters. A malformed stored hash must fail closed: the login fails, the
-    // maintainer sees it, nobody is let in.
+    // project owner sees it, nobody is let in.
     // ###########################################################################################
     public static class PasswordHashEncoding
     {

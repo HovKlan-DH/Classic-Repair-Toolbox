@@ -6,7 +6,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Dragging a row in the Drafts tab's table editor with a live placeholder (maintainer request,
+// Dragging a row in the Drafts tab's table editor with a live placeholder (owner request,
 // 2026-09-24: "like moving an image in the worklog"). The row moves while it is dragged, into the
 // place of the row under the pointer; these pin where it lands, that a red ghost is never a place
 // to land, and that a whole drag is one undo step - or none, when it ends where it began.

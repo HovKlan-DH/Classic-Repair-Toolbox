@@ -11,7 +11,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The Drafts tab's table editor as a control (maintainer request, 2026-09-24) - what the grid
+// The Drafts tab's table editor as a control (owner request, 2026-09-24) - what the grid
 // actually shows. The rules behind it (pairing, colours, ghost placement, what a save writes)
 // are pinned in CRT.Data.Tests' BoardTableDocumentTests; this file pins that the control PAINTS
 // them: that a changed cell's container really carries the orange wash, a deleted row really
@@ -99,7 +99,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void Every_workbook_sheet_gets_a_real_TAB_and_a_changed_sheet_names_its_count()
     {
-        // Real TabItems in a TabControl (maintainer request, 2026-09-24 - they were buttons at
+        // Real TabItems in a TabControl (owner request, 2026-09-24 - they were buttons at
         // first), so they look and behave like the application's own tabs.
         UiTest.Run(() =>
         {
@@ -339,7 +339,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void Typing_on_a_selected_EMPTY_cell_puts_the_text_in_that_cell()
     {
-        // The maintainer's own steps (2026-09-24): select an empty Friendly name cell and type.
+        // The project owner's own steps (2026-09-24): select an empty Friendly name cell and type.
         // Driven with REAL key input through the headless platform, so it exercises the grid's
         // "typing starts editing" trigger rather than setting the model behind its back.
         UiTest.Run(() =>
@@ -453,7 +453,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void The_insert_buttons_say_above_and_below_and_there_are_no_move_buttons()
     {
-        // Maintainer request, 2026-09-24: "Insert row" became two buttons, and Move up / Move down
+        // Owner request, 2026-09-24: "Insert row" became two buttons, and Move up / Move down
         // went - a row is dragged by its grip, or moved with Alt+Up / Alt+Down.
         UiTest.Run(() =>
         {
@@ -495,8 +495,8 @@ public sealed class BoardTableEditorTests : IDisposable
     [InlineData("RevertCellButton")]
     public void There_are_no_Restore_row_or_Revert_cell_buttons_undo_does_both(string removed)
     {
-        // Removed at the maintainer's request (2026-09-24) once Ctrl+Z existed: less clutter. The
-        // model keeps BoardTableSheet.RestoreRow / RevertCell for the review application's table.
+        // Removed at the owner's request (2026-09-24) once Ctrl+Z existed: less clutter. The
+        // model keeps BoardTableSheet.RestoreRow / RevertCell for the maintainer application's table.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
@@ -816,7 +816,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void Dragging_a_grip_turns_the_row_into_a_dashed_placeholder_that_travels_and_drops_there()
     {
-        // Maintainer request: "a placeholder when I drag a row, like moving an image in the
+        // Owner request: "a placeholder when I drag a row, like moving an image in the
         // worklog". Driven with real pointer input: press the grip, move onto another row, release.
         UiTest.Run(() =>
         {
@@ -1234,7 +1234,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void After_saving_a_placed_regional_variant_the_cursor_is_on_it_where_it_went()
     {
-        // The maintainer's case: the row seemed to vanish on save. It now goes beside its twin,
+        // The project owner's case: the row seemed to vanish on save. It now goes beside its twin,
         // and the cursor follows it there rather than staying on whatever row took its old place.
         UiTest.Run(() =>
         {
@@ -1356,7 +1356,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void A_duplicate_row_is_painted_violet_counted_as_flagged_and_left_out_of_the_tab_number()
     {
-        // Maintainer request: the "!" row should be visualised like the other three, not only
+        // Owner request: the "!" row should be visualised like the other three, not only
         // told by a character at its start.
         UiTest.Run(() =>
         {
@@ -1798,7 +1798,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void A_pill_counting_nothing_fades_back_like_a_disabled_control()
     {
-        // Maintainer request: "0 Added" should steal less attention than the kinds that are there.
+        // Owner request: "0 Added" should steal less attention than the kinds that are there.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "changed")), published: Board(Component("U1")));
@@ -1979,7 +1979,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void The_open_in_Excel_notice_shows_the_whole_time_the_lock_file_is_there_edits_or_not()
     {
-        // Maintainer's choice: "edit it in one place at a time" matters most BEFORE any editing
+        // Owner's choice: "edit it in one place at a time" matters most BEFORE any editing
         // starts, so the notice does not wait for the table to have unsaved edits.
         UiTest.Run(() =>
         {
@@ -2107,7 +2107,7 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void Save_is_greyed_out_while_Excel_really_holds_the_draft_open_and_back_once_it_lets_go()
     {
-        // Maintainer request: "if I cannot save before Excel is closed, the save button should be
+        // Owner request: "if I cannot save before Excel is closed, the save button should be
         // disabled until the file gets closed". Held = lock file AND the workbook really held open,
         // so a lock file left behind by a crashed Excel does not block the table for good.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "File sharing is advisory outside Windows.");
@@ -2142,7 +2142,7 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
     // ###########################################################################################
-    // DOCUMENT MODE - the review application's table (2026-09-25). The same editor, opened on a
+    // DOCUMENT MODE - the maintainer application's table (2026-09-25). The same editor, opened on a
     // document with no draft file behind it: Save hands the document to the host, nothing is
     // written anywhere, and the controls that only make sense for a draft file stay out of sight.
     // ###########################################################################################
@@ -2171,7 +2171,7 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
-    // Save in document mode hands the edited document to the host - the review application
+    // Save in document mode hands the edited document to the host - the maintainer application
     // sends it to the server - and writes nothing itself.
     [Fact]
     public void Save_in_a_document_asks_the_host_and_hands_it_the_edited_document()
@@ -2223,7 +2223,7 @@ public sealed class BoardTableEditorTests : IDisposable
             window.Close();
         });
     }
-    // A reviewer opening a submission lands on what changed, not on the first sheet every time.
+    // A maintainer opening a submission lands on what changed, not on the first sheet every time.
     [Fact]
     public void A_document_opens_on_the_first_sheet_with_a_change()
     {

@@ -14,7 +14,7 @@ namespace CRT.Server.Handlers.Submissions
     // THE FOUR PROPERTIES THIS FILE GUARANTEES:
     //
     // 1. NOTHING IS PUBLISHED HERE. A finalised submission is QUEUED. Promotion to the production
-    //    tree stays a manual act by the maintainer - Phase 3 step 3's filesystem permissions make
+    //    tree stays a manual act by the project owner - Phase 3 step 3's filesystem permissions make
     //    it impossible for this service to do otherwise, and this code must not pretend otherwise
     //    either.
     //
@@ -75,7 +75,7 @@ namespace CRT.Server.Handlers.Submissions
             var findings = new List<ValidationFinding>();
 
             // A contact address is the ONE thing a contributor must give. Not a credential -
-            // nothing signs in with it - but without it a reviewer cannot say "accepted" or "this
+            // nothing signs in with it - but without it a maintainer cannot say "accepted" or "this
             // needs changing", and a submission nobody can reply to can only be taken or dropped.
             if (!submitter.HasContact)
             {
@@ -212,7 +212,7 @@ namespace CRT.Server.Handlers.Submissions
             // changed. Correcting one component's text on a shipped board sent 1,212 files and
             // 121 MB (reported), every byte of which was already on this disk.
             //
-            // Taken INTO the store, verified, rather than read from the tree later: the reviewer
+            // Taken INTO the store, verified, rather than read from the tree later: the maintainer
             // reads a submission's files from the store, finalise checks them there, and the
             // publish copies them from there. A file only NAMED as "in the tree" could be replaced
             // there by another board's publish before this one was reviewed, and the submission
@@ -323,7 +323,7 @@ namespace CRT.Server.Handlers.Submissions
             // leaves it alone.
             await store.SavePayloadAsync(submissionId, manifest, cancellationToken);
 
-            // Warnings are kept even on a submission that is proceeding: the reviewer needs to see
+            // Warnings are kept even on a submission that is proceeding: the maintainer needs to see
             // what was flagged at the time it was accepted.
             if (findings.Count > 0)
                 await store.SaveFindingsAsync(submissionId, SubmissionFlows.FitForStorage(findings), cancellationToken);
@@ -562,7 +562,7 @@ namespace CRT.Server.Handlers.Submissions
             // *** THE BYTES ARE CHECKED AGAINST THEIR NAMES (security review, 2026-09-25). ***
             //
             // Only now are all of them here. A ".png" whose bytes are an executable, or a ".txt"
-            // carrying NUL bytes, is refused before any reviewer sees it - and before it could ever
+            // carrying NUL bytes, is refused before any maintainer sees it - and before it could ever
             // reach every user's disk under a name that invites opening it. See
             // SubmissionContentRules for what is and is not checked.
             // ###########################################################################################
@@ -678,7 +678,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // How long a submission that ended without publishing keeps its stored rows and file list
         // before CollectRetiredAsync removes them (security review, 2026-09-25). Long enough that a
-        // contributor or reviewer asking "what was in that one?" a few weeks later can be answered
+        // contributor or maintainer asking "what was in that one?" a few weeks later can be answered
         // from the database; short enough that an anonymous sender cannot pile them up for ever.
         // ###########################################################################################
         public static readonly TimeSpan RetiredRetention = TimeSpan.FromDays(30);
@@ -867,7 +867,7 @@ namespace CRT.Server.Handlers.Submissions
     // opened CRT, fixed a typo and pressed Submit - and set only when a signed-in maintainer
     // submits to a system they maintain.
     //
-    // ContactEmail is what a reviewer replies to. It is NOT a credential and NOT an identity:
+    // ContactEmail is what a maintainer replies to. It is NOT a credential and NOT an identity:
     // nothing signs in with it, and two submissions from the same address are two unrelated
     // submissions. It is required precisely because a contribution nobody can reply to can only be
     // taken or dropped, never improved.
@@ -875,7 +875,7 @@ namespace CRT.Server.Handlers.Submissions
     // A signed-in maintainer needs no separate address - their account carries one - which is why
     // HasContact is satisfied by either.
     //
-    // IsTrusted is set ONLY for an account the database lists as a reviewer or administrator
+    // IsTrusted is set ONLY for an account the database lists as a maintainer or administrator
     // (ReviewAuthority.CanReview), and exempts it from SubmissionRateLimitPolicy. Anybody may
     // register an ordinary account, so being signed in alone earns nothing.
     // ###########################################################################################

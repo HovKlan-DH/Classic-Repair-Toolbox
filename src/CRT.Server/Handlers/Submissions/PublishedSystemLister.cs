@@ -3,18 +3,18 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // The boards the published tree holds, as (manufacturer, hardware, board) - so a reviewer can
+    // The boards the published tree holds, as (manufacturer, hardware, board) - so a maintainer can
     // be assigned to a shipped board BEFORE anything has ever been submitted to it (Phase 6
     // roles, 2026-09-25).
     //
     // The `systems` table only gains a row when a submission arrives or a publish happens, so on
     // a fresh deployment it is nearly empty while the tree holds twenty-odd boards. The
-    // administrator assigns reviewers by looking at the tree, and the row is created on the first
+    // administrator assigns maintainers by looking at the tree, and the row is created on the first
     // assignment (ISubmissionStore.EnsureSystemAsync).
     //
     // A board is a folder three levels down holding at least one workbook. The two shared-file
     // folders are skipped by name: "Generic shared files" at the top and "Shared files" beside a
-    // manufacturer's boards are not systems and never get a reviewer. Skipped by
+    // manufacturer's boards are not systems and never get a maintainer. Skipped by
     // SubmissionFileScopes.IsSharedFolderName, the rule SubmissionValidator refuses such board names
     // by - so no board it skips can ever be published. A thin filesystem walk, tested against a
     // temp tree.

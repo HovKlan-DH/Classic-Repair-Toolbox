@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // EVERYTHING A SURFACE NEEDS TO KNOW ABOUT ONE DRAFT, without loading a BoardDraft
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS IS WHAT THE DRAFTS TAB READS NOW. *** It used to take a BoardDraft and count its
     // delta rows for the "N rows changed" chip, read NewSystem off it for the registration, and
@@ -82,7 +82,7 @@ namespace Handlers.DataHandling
         // workbook again among the boards the app knows, the same way round, and resolves it.
         //
         // It used to be Resolve called with the id itself, which looks one folder too high and finds
-        // nothing - so a draft whose work had been published was never retired (maintainer report,
+        // nothing - so a draft whose work had been published was never retired (owner report,
         // 2026-09-25: published to BETA, and the draft stayed in the list).
         //
         // Null when no known board has that id - the draft is then left alone, which is the safe way.

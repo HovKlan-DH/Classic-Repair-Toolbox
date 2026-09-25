@@ -483,7 +483,7 @@ namespace CRT.Server.Handlers.Accounts
                 return null;
 
             // ###########################################################################################
-            // SLIDING EXPIRY (maintainer request, 2026-09-22).
+            // SLIDING EXPIRY (owner request, 2026-09-22).
             //
             // *** THIS RUNS ONLY AFTER EVERY CHECK ABOVE HAS PASSED, AND THAT ORDERING IS THE
             // DESIGN. *** A revoked, rotated or expired session, or one whose account has since
@@ -496,7 +496,7 @@ namespace CRT.Server.Handlers.Accounts
             //
             // *** A FAILURE HERE MUST NOT FAIL THE REQUEST. *** The caller is authenticated and
             // entitled to what they asked for; losing an expiry bump is a convenience, not a
-            // correctness matter. The worst case is that the reviewer signs in again sooner than
+            // correctness matter. The worst case is that the maintainer signs in again sooner than
             // they otherwise would - never that a valid request is refused because a bookkeeping
             // UPDATE could not be written.
             // ###########################################################################################
@@ -770,8 +770,8 @@ namespace CRT.Server.Handlers.Accounts
         // maps with MapGet. Exactly one does: "/verify". It was also called with "reset" until
         // 2026-09-22, producing ".../api/accounts/reset?token=..." - a path nothing is mapped at,
         // because resetting needs a new PASSWORD and so is POST /reset-password. Every reset mail
-        // ever sent therefore led to a 404, unnoticed from Phase 3 until the maintainer clicked
-        // one. Reset mails now carry a code to paste into the review app instead.
+        // ever sent therefore led to a 404, unnoticed from Phase 3 until the project owner clicked
+        // one. Reset mails now carry a code to paste into the maintainer app instead.
         //
         // Before adding a second caller, confirm the path is mapped with MapGet in
         // AccountEndpoints - a wrong value here fails in a mail client days later, not at build.

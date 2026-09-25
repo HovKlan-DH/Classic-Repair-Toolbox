@@ -10,8 +10,8 @@ namespace Handlers.DataHandling
     // WHAT A WORKBOOK CITES, READ ONCE PER VERSION OF THE FILE (code review, 2026-09-25).
     //
     // DataTreeUsage parses every master and board workbook in a tree with EPPlus - a few seconds for
-    // the whole BETA tree. The review application asks for it on EVERY click on a queue row (the
-    // removal preview in the submission detail), and again on Approve, so a reviewer moving between
+    // the whole BETA tree. The maintainer application asks for it on EVERY click on a queue row (the
+    // removal preview in the submission detail), and again on Approve, so a maintainer moving between
     // three submissions paid for the whole tree three times over although nothing had changed.
     //
     // Keyed on the full path, and valid only while the file's LENGTH and LAST-WRITE TIME are what

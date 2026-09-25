@@ -14,11 +14,11 @@ and a MiniPro USB IC programmer/tester.
 
 **This is one system in four parts, and a change to shared behaviour is not done until every
 part that shares it has been changed in the SAME session.** The parts are the CRT desktop app
-(`src/CRT.App/`), the contribution service (`src/CRT.Server/`), the review application
-(`src/CRT.Review/`), the shared library they all reference (`src/CRT.Data/`), and the board DATA
+(`src/CRT.App/`), the contribution service (`src/CRT.Server/`), the maintainer application
+(`src/CRT.Maintainer/`), the shared library they all reference (`src/CRT.Data/`), and the board DATA
 itself (`Assets/Data/`, and the published tree the server writes).
 
-**The legacy PHP contribution path is NOT one of them, by maintainer decision (2026-09-23).**
+**The legacy PHP contribution path is NOT one of them, by owner decision (2026-09-23).**
 `Assets/Webserver/app-contribution/` is going away when the new pipeline ships, and the old
 method will not be supported alongside it - so a shared change does NOT have to be mirrored into
 the PHP, and a change is not blocked by it. Do not spend effort keeping it in step, and do not
@@ -31,13 +31,13 @@ section and now applies only while something is deliberately still using the old
 so a changed method signature or a renamed property fails the build everywhere at once. That is
 exactly why the dangerous surfaces are the ones it CANNOT see:
 
-- **HTTP routes and JSON field names.** `CRT.Review` calls `CRT.Server` over the wire. A renamed
+- **HTTP routes and JSON field names.** `CRT.Maintainer` calls `CRT.Server` over the wire. A renamed
   endpoint or a renamed JSON property compiles perfectly on both sides and fails at runtime, in
   the user's hands. The Phase 5 password-reset link was a live example: the email named a path
   the server mapped nothing at, and the tests asserted the dead URL, so nothing caught it until
   a real reset was attempted. **The review API's bodies are CRT.Data's `ReviewApiContract`
   records** (2026-09-25): a request is one record both ends use, an answer is a record the server
-  returns and the review app parses, and CRT.Review.Tests' `ReviewWireContractTests` puts each
+  returns and the maintainer app parses, and CRT.Maintainer.Tests' `ReviewWireContractTests` puts each
   answer through the server's JSON settings and the real parser. A new route gets its records
   there and a case in that test.
 - **The workbook schema.** `BoardWorkbookSchema` names the columns the reader reads and the
@@ -59,15 +59,15 @@ failure this rule exists to prevent.
 ## Hands off CHANGELOG.md
 
 **Never create, edit, rewrite, reformat or delete [CHANGELOG.md](../CHANGELOG.md) unless the
-maintainer explicitly asks for it in that message.** It is written by hand, in the maintainer's own
+project owner explicitly asks for it in that message.** It is written by hand, in the project owner's own
 words, and it is the body of every GitHub Release — an "improvement" there is not a small edit, it
-is words the maintainer never wrote going out under their name.
+is words the project owner never wrote going out under their name.
 
 This holds even when a change would normally warrant a changelog entry, and even when the file
-already has uncommitted edits in it (those are the maintainer's, in progress). Do not touch it as a
+already has uncommitted edits in it (those are the project owner's, in progress). Do not touch it as a
 "finishing touch" on a feature, do not tidy its formatting, and do not stage, commit, revert or
-`git checkout` it. If you think an entry is needed, say so in your summary and let the maintainer
-write it. "Update the changelog" from the maintainer is the only permission — and it covers that
+`git checkout` it. If you think an entry is needed, say so in your summary and let the project owner
+write it. "Update the changelog" from the project owner is the only permission — and it covers that
 one request, not the rest of the session.
 
 ## Documentation: the Wiki, mirrored in `Assets/Wiki/`
@@ -96,7 +96,7 @@ job", "a data job"). The problem is only prose implying paid work. Code comments
 rationale are also out of scope - the rule is about what a user reads.
 
 **Nothing publishes automatically.** GitHub offers no way to push a folder in this repository to
-the Wiki, so the maintainer copies changed files across by hand. Editing a file here changes what
+the Wiki, so the project owner copies changed files across by hand. Editing a file here changes what
 the page *should* say; the page itself changes only when they paste it. Never tell the user a Wiki
 page has been updated — say which files changed and that they are ready to be pasted.
 
@@ -120,19 +120,19 @@ page has been updated — say which files changed and that they are ready to be 
 
   This exists because the file previously recorded sync state only in prose ("Verified against the
   live Wiki on 2026-09-06"), which nothing could check. Six pages had changed while the prose still
-  named three, and the maintainer had to ask for a manual re-check every time. The point of the
+  named three, and the project owner had to ask for a manual re-check every time. The point of the
   automation is that they no longer have to: the table can be trusted on sight.
 
   **It holds ONE table and exactly two columns: the FILE, and where that page lives in the live
   Wiki** (`Workbooks-Daily-use.md` | `Home > At the bench > Workbooks > Daily use`). Both halves of
-  that are a maintainer instruction, not a default to improve on:
+  that are a owner instruction, not a default to improve on:
 
   - **No other columns.** It used to carry "Last pasted" and "Changed since", which answer a
     question nobody asks - a page is listed because it needs pasting, and how stale it is changes
     nothing about what to do. What was missing was the only thing that costs real time: *where in
     the Wiki the page actually is*, so it can be found and opened.
   - **No other content.** The mechanism explanation, the "what changed in each page" prose and the
-    "not a Wiki page" notes were all removed outright. The maintainer opens this file to go and
+    "not a Wiki page" notes were all removed outright. The project owner opens this file to go and
     paste pages and reads nothing else in it, and that prose pushed the table itself below the
     fold. **Do not write a "what changed" section back into it** - if a change needs explaining,
     say it in your turn summary. Mechanism notes belong here in CLAUDE.md and in
@@ -140,7 +140,7 @@ page has been updated — say which files changed and that they are ready to be 
 
   **The Wiki location is DERIVED from [Assets/Wiki/_Sidebar.md](../Assets/Wiki/_Sidebar.md) at hook
   run time, never hardcoded.** The sidebar is what GitHub renders beside every Wiki page, so it is
-  what the maintainer actually navigates by, and deriving it means a sidebar edit cannot leave this
+  what the project owner actually navigates by, and deriving it means a sidebar edit cannot leave this
   table describing a structure that no longer exists. A page listed twice there (`Workbooks-tab` is
   under both "At the bench" and "The tabs") keeps its FIRST, deeper trail; a page the sidebar does
   not list falls back to `Home`. **If you restructure `_Sidebar.md`, re-run the hook and glance at
@@ -150,13 +150,13 @@ page has been updated — say which files changed and that they are ready to be 
   pasted while their edits are still uncommitted, and a commit-based check then reports every
   stamped page as dirty against HEAD forever, so the list could never be cleared - which is exactly
   what happened when it was first built that way.
-- **When the maintainer CONFIRMS a paste** ("I pasted Configuration-tab and Workbooks-tab", or
+- **When the project owner CONFIRMS a paste** ("I pasted Configuration-tab and Workbooks-tab", or
   "pasted all of them"), run [hooks/wiki-mark-synced.sh](hooks/wiki-mark-synced.sh) with those page
   names (or `--all`). It stamps each at its current content, and they drop off the table on the
-  next turn. Never stamp a page the maintainer has not confirmed.
+  next turn. Never stamp a page the project owner has not confirmed.
 - **When asked for a sync diff**, the table already IS the answer - read it rather than re-deriving
   it, then say what changed in each page **in your reply** (not in the file) and leave the pasting
-  to the maintainer.
+  to the project owner.
 
 **Documentation changes ship in the same commit as the code they describe.** When a change alters
 behaviour a mirrored page documents, update that page in the same commit and say so.
@@ -230,7 +230,7 @@ display, a database or a network; the whole suite is about 75 seconds in Release
 | [tests/CRT.App.Tests/](../tests/CRT.App.Tests/) | the desktop app's `Handlers/`, plus the headless UI tests | ~3,100 |
 | [tests/CRT.Data.Tests/](../tests/CRT.Data.Tests/) | the shared board-data library | ~940 |
 | [tests/CRT.Server.Tests/](../tests/CRT.Server.Tests/) | the contribution service's flows and rules | ~440 |
-| [tests/CRT.Review.Tests/](../tests/CRT.Review.Tests/) | the review application's parsing and presentation | ~200 |
+| [tests/CRT.Maintainer.Tests/](../tests/CRT.Maintainer.Tests/) | the maintainer application's parsing and presentation | ~200 |
 
 Counts go stale, so treat them as "what order of magnitude", not as a figure to quote - read the
 real numbers off a run.
@@ -289,6 +289,15 @@ find a hang, since `dotnet test` shows nothing until the run ends).
    cannot alter it silently. Several encode deliberate quirks (relative-tolerance value matching, "no
    vector grid + a successful summary IS a pass", micro sign vs Greek mu, the dead `region` argument
    in `BoardDataWriter`). Read the comment before assuming a test is wrong.
+8. **NEVER hard-code a Windows path in a test** (`@"C:\Drafts\..."`, `"D:\\data"`). The suite is
+   written and run on Windows, but GitHub runs it on Linux, where a backslash is not a separator -
+   so such a test passes here, passes the Stop hook, and fails only after the push. It has happened
+   three or four times; the last one held back every build and both release workflows. Build paths
+   with `Path.Combine` (from `Path.GetTempPath()` when one must be rooted). A literal that is safe
+   on purpose - a hostile input refused on every OS, command-line text compared as text, a test that
+   returns early off Windows - carries a `// windows-path-literal: <why>` comment on its line or up
+   to three lines above. **This one is machine-enforced:** `TestPathLiteralTests` (CRT.App.Tests)
+   scans every test file and fails - on Windows too, so before the push - on any unexplained one.
 
 **Writing them:** one test file per class under test, named `<ClassName>Tests.cs`. Give each test a
 sentence-shaped name saying what must hold (`A_faulty_chip_fails_and_names_the_failing_pin`), and put
@@ -450,7 +459,7 @@ the plain-await version. Do not "simplify" it back to one `await`.
 | `WorklogAttachCaptureWindowTests.cs` | The modal that files a captured oscilloscope image into a worklog: that the PRESELECTED row is the ranked-first one (asserted with a component match that is NOT lowest by id, so a dialog doing no ranking at all fails it), that "Create new worklog" is always offered and is always LAST so it never displaces a real entry from the preselected slot (and is correctly the only row, and preselected, when the workbook has no entries), that the button reads "Attach to existing worklog" for an existing worklog and "Create worklog" for the new-entry row (it opens the full editor rather than attaching there and then, and a button still reading "Attach" would misdescribe that), that the target workbook is NAMED (this dialog opens from the component popup, which can be sitting over a schematic while the user has been looking at the scope), and the GROUP HEADERS - that both bands are named in the list itself ("Worklogs with U8 in scope" / "All other worklogs"), that every header is disabled so it can never be selected while the preselected row is still a real worklog, that a header is faint enough not to read as an option and is OUTDENTED with its worklogs indented under it (asserted past the Fluent theme's own 11px item padding, since a row at the default already sits right of the header - verified by removing the `ContainerPrepared` hook), that the matched heading picks the component out in BOLD inside brackets with only that run bold and the joined runs still reading "Worklogs with [U8] in scope", that the "All other worklogs" heading stays a plain string, and that no headers appear at all when nothing matches the component |
 | `TextLinkRendererTests.cs` | Rendering a user-typed note with its web links clickable: that link-free text stays a plain single-`Text` block with no Hand cursor, that a linked one moves its content into `Inlines` with `Text == null` (a block carrying both renders the Text and silently ignores the Inlines), that only the link run is underlined, that re-rendering replaces the previous pass rather than layering on it, and the LINK + SEARCH-HIGHLIGHT merge - a search term landing inside a URL, one outside it, highlighting with no link present, and that the merged runs are never empty and always rebuild the original string. Plus the `LinkText` attached property the editor's DataTemplates use, including re-rendering when a recycled container is handed a different row |
 | `WorklogEntryModeTests.cs` | The parked-pill canvas (separate from the anchored badge canvas, so parked pills do not pan and zoom with the board; no `Background`, since one would swallow every press across the schematic panel; below the "Netlist names" panel in z-order) and the "Add worklog" mode hint (its wording, that it starts hidden and is not hit-testable, that it covers the data-sync icon, that its text wraps inside its box rather than overflowing - a horizontal `StackPanel` measures with infinite width and would never wrap - and that it is plain text with no icon). Formerly `WorklogCreateCardTests.cs`; the quick card's own tests went with the card |
-| `BoardTableEditorTests.cs` | The Drafts tab's table editor as painted: one tab per sheet with its change count, the marker column then the schema's columns, and - in a SHOWN window, reading real `DataGridCell.Background`s - a changed cell orange while its neighbour is not, an added row green, a deleted row red with the `BoardTableDeleted` strike-through class, a duplicate row violet and counted as flagged but not on the tab, each legend count sharing one pill with its own word, "Show changes only" surviving a sheet switch, a clicked cell unfilled (or keeping its orange) inside a 2px dashed red frame with the grid's own frame and fill handle hidden, the drag grip centred, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on real keys (a typed word is ONE step, Ctrl+Z inside a cell being edited is left to it, undo returns to the sheet of the change, works after "Delete row" and from the check box, and greys "Save changes" out again), and a cell edit recolouring once the posted refresh runs (fails if the per-column cell theme binds the wrong column). Plus a REAL pointer drag by the grip (the dashed placeholder row mid-drag, the order live, one undo step; a click is not a drag; past the top edge steps; ghosts and the filtered view refuse), insert above/below and no move buttons, zero pills faded, Credits the last sheet tab, the toolbar's enablement per selected cell, insert/delete (there are NO "Restore row" / "Revert cell" buttons - removed by the maintainer once undo existed; the model keeps `RestoreRow`/`RevertCell` for the review app), "Show changes only" surviving a MAIN tab switch and never left on, hidden, for a draft with nothing published, single-cell paste (Excel's trailing line break dropped, a block refused with a message, a ghost refused), copy quoting, `EditTriggers` not editing on a single click, save and the refused-when-changed-on-disk message, watching the draft file (an outside change reloads when nothing is unsaved, raises the warning bar and greys Save when something is, never reloads under a cell being typed in; the open-in-Excel notice follows the lock file, edits or not, and shows at once when a table is opened on a draft already open in Excel; the outside-change reload is announced; the timer runs only while on screen), and every `BoardTable_*` key in BOTH themes |
+| `BoardTableEditorTests.cs` | The Drafts tab's table editor as painted: one tab per sheet with its change count, the marker column then the schema's columns, and - in a SHOWN window, reading real `DataGridCell.Background`s - a changed cell orange while its neighbour is not, an added row green, a deleted row red with the `BoardTableDeleted` strike-through class, a duplicate row violet and counted as flagged but not on the tab, each legend count sharing one pill with its own word, "Show changes only" surviving a sheet switch, a clicked cell unfilled (or keeping its orange) inside a 2px dashed red frame with the grid's own frame and fill handle hidden, the drag grip centred, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on real keys (a typed word is ONE step, Ctrl+Z inside a cell being edited is left to it, undo returns to the sheet of the change, works after "Delete row" and from the check box, and greys "Save changes" out again), and a cell edit recolouring once the posted refresh runs (fails if the per-column cell theme binds the wrong column). Plus a REAL pointer drag by the grip (the dashed placeholder row mid-drag, the order live, one undo step; a click is not a drag; past the top edge steps; ghosts and the filtered view refuse), insert above/below and no move buttons, zero pills faded, Credits the last sheet tab, the toolbar's enablement per selected cell, insert/delete (there are NO "Restore row" / "Revert cell" buttons - removed by the project owner once undo existed; the model keeps `RestoreRow`/`RevertCell` for the maintainer app), "Show changes only" surviving a MAIN tab switch and never left on, hidden, for a draft with nothing published, single-cell paste (Excel's trailing line break dropped, a block refused with a message, a ghost refused), copy quoting, `EditTriggers` not editing on a single click, save and the refused-when-changed-on-disk message, watching the draft file (an outside change reloads when nothing is unsaved, raises the warning bar and greys Save when something is, never reloads under a cell being typed in; the open-in-Excel notice follows the lock file, edits or not, and shows at once when a table is opened on a draft already open in Excel; the outside-change reload is announced; the timer runs only while on screen), and every `BoardTable_*` key in BOTH themes |
 | `UnsavedTableEditsWindowTests.cs` | The table editor's unsaved-edits prompt: Enter and Escape both CANCEL, including with "Discard edits" focused (Tunnel route, as `DeleteWorklogWindowTests`), and neither the reload wording nor the draft-changed-on-disk one offers Save (the latter says why), and the saving-elsewhere notice has Cancel alone and sends you to the Drafts tab |
 
 **Do NOT add the `Avalonia.Headless.XUnit` package to get `[AvaloniaFact]`.** It was first kept out
@@ -494,7 +503,7 @@ interaction tests that assert observable state over more construction tests.
 - **`DataValidator`'s findings.** `ValidateAllDataAsync` returns a bare `Task` and reports everything
   through `Logger`, so the tests only prove it walks real data without throwing. Testing what it
   actually detects means changing it to return its findings — a public API change, and a decision for
-  the maintainer rather than something to do in passing.
+  the project owner rather than something to do in passing.
 
 That extraction has been done — see `Handlers/Geometry/` above. What is left inside `TabSchematics`
 is genuinely UI: event handlers, control updates and rendering. Two methods that look pure are not
@@ -613,22 +622,22 @@ locally, sees how it has drifted from the published copy, and submits when ready
 `SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `SystemFilesWindow`,
 `DiscardDraftWindow`, `ForgetSubmissionWindow`), the same way `Worklog/` holds the worklog's.
 
-**"Save to draft" in the Contribute tab's component editor lands on the Drafts tab** (maintainer
+**"Save to draft" in the Contribute tab's component editor lands on the Drafts tab** (owner
 request, 2026-09-24): `ComponentContributionWindow.SetAfterSaved`, which Main sets to close the
 window and call `SwitchToDraftsTab` - only after a SUCCESSFUL save, so a refused one keeps the
 window and its message. The board refresh (which also shows the Drafts tab for a first draft)
 runs before it.
 
 **While the table is on screen it watches its draft file** (`BoardTableEditor.FileWatch.cs`,
-maintainer request, 2026-09-24): every 2 s, `DraftTableSession.CheckFile` - one stat call unless
+owner request, 2026-09-24): every 2 s, `DraftTableSession.CheckFile` - one stat call unless
 the file's time or size moved, and judged against the session's CURRENT fingerprint, so the table's
 own save never counts. Changed and nothing unsaved: reload in place. Changed with unsaved edits: the
 `ChangedOnDiskBar` (with Reload) and "Save changes" OFF. Never reloads while a cell is being edited
 (the typing is not in the model yet) or a row dragged. The reload raises `ReloadedFromOutside`,
 which `TabDrafts` answers exactly like `Saved` - without it the draft row's "N rows changed" and the
-board on screen stayed stale (seen by the maintainer). `OpenElsewhereBar` shows the WHOLE time Excel's `~$`
+board on screen stayed stale (seen by the project owner). `OpenElsewhereBar` shows the WHOLE time Excel's `~$`
 owner file or LibreOffice's `.~lock.<name>#` sits beside the workbook, set the moment a table is
-read (`ShowWhetherOpenElsewhere` in `Attach`) - the maintainer's choice after a round where it only
+read (`ShowWhetherOpenElsewhere` in `Attach`) - the owner's choice after a round where it only
 showed with unsaved edits, since "edit in one place at a time" matters most before editing starts.
 "Save changes" is OFF while the workbook is REALLY held open (`DraftTableSession.IsHeldOpen`: an
 exclusive open that fails while another program has it, probed only while a lock file exists) -
@@ -638,34 +647,34 @@ reason `DraftChangedOnDisk` offers none. File sharing is advisory outside Window
 is ever held and a save goes ahead; the held tests `Assert.SkipUnless` Windows. The timer runs only while the editor is attached and
 holds a table; it replaced `CatchUpWithOutsideChanges`, which checked only on returning to the tab.
 
-**No other editor writes a draft under a table with unsaved edits** (maintainer design,
+**No other editor writes a draft under a table with unsaved edits** (owner design,
 2026-09-24). The Contribute window's "Save to draft" and the label editor's save both ask
 `TabDrafts.HasUnsavedTableEditsFor(excelDataFile)` first; when the table is open on that board
 with unsaved edits they save NOTHING and show the `SavingElsewhere` notice (Cancel alone) sending
 the contributor to the Drafts tab. Writing anyway made the table's own save refused and its edits
-lost. The maintainer rejected offering "save the table first" from there: from another tab you may
+lost. The project owner rejected offering "save the table first" from there: from another tab you may
 not remember what you did in the table. Excel is the one writer that cannot be held back - for it
 the refusal, Reload and the `DraftChangedOnDisk` prompt remain.
 
 **"Edit in table format" (2026-09-24) opens a draft's workbook as editable sheets** directly below
 its row, hiding the other drafts (`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` is the
 control; `UnsavedTableEditsWindow` the prompt). **Both live in `src/CRT.UI/BoardTable/` since
-2026-09-25**, a library shared with the review application's table (see "Review application"), with
+2026-09-25**, a library shared with the maintainer application's table (see "Maintainer application"), with
 their colours in `BoardTableColors.axaml` - so the editor's files named below are under `src/CRT.UI/`,
-and a change to it reaches the reviewer's table too. Colours are the maintainer's: green added, orange
+and a change to it reaches the maintainer's table too. Colours are the project owner's: green added, orange
 modified (the changed CELL only, published value in its tooltip), red + strikethrough deleted,
 shown WHERE THE ROW USED TO BE. Things to know before touching it:
 
 - **The control only paints.** Every rule is in `CRT.Data` - `BoardTableDocument`/`BoardTableSheet`
   (pairing, colours, ghost placement), `DraftTableSession` (open/save), `BoardTableClipboard` - because
-  the maintainer wants the same table in `CRT.Review` later. Logic added to the control is logic the
-  reviewer's copy would have to duplicate.
+  the project owner wants the same table in `CRT.Maintainer` later. Logic added to the control is logic the
+  maintainer's copy would have to duplicate.
 - **Pairing is `BoardDataDiffer`'s rule, deliberately** (`BoardDraftNaturalKeys`, keys
   case-insensitive, values trimmed + ordinal, first row per key wins). The sheet tabs' counts sit
   right under the draft row's own "N rows changed", and
   `BoardTableDocumentTests.The_change_counts_agree_with_BoardDataDiffer_on_the_board_a_save_writes`
   holds them equal. A key edit (U8 -> U9) is an add plus a deleted ghost, as the differ and the
-  reviewer see it.
+  maintainer see it.
 - **A save replaces all nine sheets, so it may only land on the file it was read from.**
   `DraftWorkbookStore.EditIfUnchanged` compares a SHA-256 of the workbook taken BEFORE the read;
   anything else is `ChangedOnDisk` and the table offers Reload. Never route the table's save through
@@ -689,7 +698,7 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   selector silently matched nothing while the row class looked right.
 - **Data columns set `IsReadOnly = false` explicitly.** Left unset, the grid infers read-only-ness
   from the binding path, and `Cells[i]` indexes an `IReadOnlyList` - so every column came out
-  read-only and nothing at all could be typed (reported by the maintainer). Tests that set cell text
+  read-only and nothing at all could be typed (reported by the project owner). Tests that set cell text
   through the MODEL cannot see this; `BoardTableEditorTests` now types with real key input too.
 - **The table owns the keyboard while it is open.** The always-on component filter pulls focus back
   after every click in the window (`Main.ShouldReturnFocusToComponentSearch`, extracted from that
@@ -717,7 +726,7 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   live version. The rules are in CRT.Data: a red ghost is never a drop target (the refresh
   would put it straight back and the row would flicker), a whole drag is ONE undo step (the
   history's group), and a drag back to its start leaves no step and no "moved by hand" mark. There
-  are no Move up / Move down buttons any more (maintainer request); Alt+Up / Alt+Down remain. The
+  are no Move up / Move down buttons any more (owner request); Alt+Up / Alt+Down remain. The
   grid template hides the grip; the editor's styles show it, with the `RowsDraggable` CLASS in the
   selector - a trigger is needed to outrank the template's Template-priority value.
 - **The unsaved-edits prompt has THREE wordings** (`UnsavedTableEditsPrompt`): Leaving (Save /
@@ -728,7 +737,7 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
 - **"Insert row above" / "Insert row below"** (`BoardTableSheet.InsertRowAbove` / `InsertRow`), and
   a legend pill counting nothing fades to 0.4 opacity (the `Empty` class) so the kinds present stand
   out.
-- **Deleting a component deletes everything that is its own** (maintainer, 2026-09-25): its rows on
+- **Deleting a component deletes everything that is its own** (owner, 2026-09-25): its rows on
   the image, local file and link sheets at once (`BoardTableDocument.DeleteRowsOfComponent`, shown
   red there), its highlights at save (`ApplyTo`), all ONE undo step - `BoardTableHistory` steps span
   sheets for this. A RENAME keeps them: the document remembers the component rows it opened with,
@@ -745,11 +754,11 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
 - **A component row's identity is its label PLUS its region** (`BoardDraftNaturalKeys.ForComponent`,
   2026-09-24) - a regionalised component is one row per region. It used to be the label alone, so
   an added U1/NTSC beside U1/PAL was flagged a duplicate in the table, counted nowhere, and never
-  shown to a reviewer. Rows with no region key exactly as before. The price, pinned by
+  shown to a maintainer. Rows with no region key exactly as before. The price, pinned by
   `ReviewFieldDiffTests`: giving a component a region is now a removal plus an addition, like a
   label change. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
   `ComponentPlacement` puts a new regional variant straight after its twin (a blank category used
-  to send it to the end of the sheet, where the maintainer thought it had vanished).
+  to send it to the end of the sheet, where the project owner thought it had vanished).
 - **Excel keys:** Tab / Shift+Tab move right/left and wrap rows (handled on the tunnel route, since
   left alone Tab is the window's focus navigation and left the table); Enter moves down (the grid's
   own). "Show changes only" filters through a `DataGridCollectionView` over the sheet's rows and
@@ -764,14 +773,14 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   so the denser rows do not clip the current cell's frame.
 - **Order is NOT a change `BoardDataDiffer` counts** (it pairs by key). A reorder is saved into the
   draft and published with a submission - `PublishMerge` takes rows as submitted - but a draft whose
-  ONLY change is a new order reads "0 rows changed" and cannot be submitted, and a reviewer is not
-  shown it. Making order count would touch the differ the server and review app share; that is a
-  maintainer decision, not yet taken.
-- **No "Restore row" / "Revert cell" buttons** (removed at the maintainer's request, 2026-09-24,
+  ONLY change is a new order reads "0 rows changed" and cannot be submitted, and a maintainer is not
+  shown it. Making order count would touch the differ the server and maintainer app share; that is a
+  owner decision, not yet taken.
+- **No "Restore row" / "Revert cell" buttons** (removed at the owner's request, 2026-09-24,
   once undo existed). Undo only reaches back to the last save, so a row deleted or a cell changed
   BEFORE it is put back by typing - the red row and the orange cell's tooltip still show the
   published values. `BoardTableSheet.RestoreRow`/`RevertCell` stay in the model, tested, for the
-  review application's table.
+  maintainer application's table.
 - **Undo and redo (Ctrl+Z / Ctrl+Y, the platform's own gestures) live in the model**, in
   `BoardTableHistory` (`BoardTableDocument.History`). Each step is a SNAPSHOT of one sheet's live
   rows - the row OBJECTS, their values and their two placement flags - taken just before the
@@ -785,7 +794,7 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   the cursor on the red ghost, which disables the button, and a focused button that disables
   drops the focus to NOTHING - so Ctrl+Z straight after reached no handler at all. Undo is also
   handled on the whole editor, not just the grid, for focus on the check box beside it.
-- **The current cell has no fill and a 2px dashed red frame** (maintainer request). The grid
+- **The current cell has no fill and a 2px dashed red frame** (owner request). The grid
   theme's selected fill looked like "added" and covered the cell's own state colour, so the cell
   theme re-binds `Background` in a `^:selected` trigger of its own (added after the grid
   theme's, so it wins). The frame is the template's `CurrencyVisual` RECTANGLE restyled - a
@@ -1515,13 +1524,13 @@ thumbnail gallery), `SchematicsThumbnailsWindow` (the window that hosts it), and
 **Phase 1 of [Assets/NewContributeStrategy.md](../Assets/NewContributeStrategy.md) split this
 folder across two projects.** `src/CRT.Data/` (a plain, Avalonia-free `net10.0` library, no
 namespace change — everything stayed in `Handlers.DataHandling`) holds the board-data schema and
-read/write logic shared with the future server and review app; everything that orchestrates the
+read/write logic shared with the future server and maintainer app; everything that orchestrates the
 app itself (data-root resolution, sync, settings, logging) stayed in `src/CRT.App/Handlers/Data/`.
 **Before moving anything else here, check which side it actually belongs on** — `DataValidator` was
 in the original move list and was pulled back out because it calls `DataManager.HardwareBoards`/
 `LoadBoardDataAsync`/`DataRoot` directly, which would have meant either moving `DataManager` (a
 1600+ line app-orchestration class, clearly out of scope) or rewriting `DataValidator`'s signature
-(a public API change the strategy doc's own coverage table already flags as a maintainer decision,
+(a public API change the strategy doc's own coverage table already flags as a owner decision,
 not something to do in passing). A class with a hidden dependency like this is not a "move."
 
 **In `src/CRT.Data/`:**
@@ -1540,9 +1549,9 @@ not something to do in passing). A class with a hidden dependency like this is n
   never affected reading.
 - `BoardTableDocument` / `BoardTableSheet` / `BoardTableRow` / `DraftTableSession` /
   `BoardTableClipboard` — the Drafts tab's table editor model (see the Drafts paragraph under Tabs).
-  Avalonia-free so `CRT.Review` can reuse it.
+  Avalonia-free so `CRT.Maintainer` can reuse it.
 - `BoardTableHistory` — the table editor's undo/redo: one sheet snapshot per step, back to the
-  last save. In `CRT.Data` so the review application's table gets it too.
+  last save. In `CRT.Data` so the maintainer application's table gets it too.
 - `BoardTableRowDrag` — one row being dragged in the table: `MoveOnto` the row under the pointer,
   `Step` past an edge, `Finish`. Ghosts are never targets; one undo step per drag.
 - `ComponentPlacement` — where a NEW component's rows go (its category, natural label order) and
@@ -1665,7 +1674,7 @@ about. Three things about it:
 
 ### Contribution service (`src/CRT.Server/`) — the PHP's replacement, not yet its retirement
 
-An ASP.NET Core minimal-API service on the maintainer's own AlmaLinux box, built by phases 3-5 of
+An ASP.NET Core minimal-API service on the project owner's own AlmaLinux box, built by phases 3-5 of
 [Assets/NewContributeStrategy.md](../Assets/NewContributeStrategy.md). **Read that document before
 touching this project** — it carries the phase status, the decisions already settled, and the traps
 per phase. It is the handoff document between sessions; nothing else records that state.
@@ -1693,22 +1702,22 @@ Things that are load-bearing and easy to undo by accident:
 - **Only token HASHES are stored**, for sessions, verification links, reset links and the
   submission capability token alike.
 - **`SubmissionPathRules` is the single path-containment rule** and it RESOLVES then checks
-  containment rather than pattern-matching for `..`. Every write path and the reviewer's file-read
+  containment rather than pattern-matching for `..`. Every write path and the maintainer's file-read
   path go through it. Do not add a second way to turn a submitted string into a path.
 - **`ApprovePublishFlow` is the only irreversible operation in the system** — no revision history is
   retained, so a publish overwrites in place. Its header explains why the order of its checks is
   the design.
-- **Two roles, and authority is PER SYSTEM (maintainer decision, 2026-09-25).** An
+- **Two roles, and authority is PER SYSTEM (owner decision, 2026-09-25).** An
   ADMINISTRATOR (`accounts.is_administrator`, granted by hand - see DEPLOYMENT.md) reviews and
-  publishes everything and assigns reviewers; a REVIEWER is an account in one or more systems'
-  pools (the `reviewers` table, the admin screen in CRT.Review) and reviews AND publishes exactly
+  publishes everything and assigns maintainers; a MAINTAINER is an account in one or more systems'
+  pools (the `maintainers` table, the admin screen in CRT.Maintainer) and reviews AND publishes exactly
   those systems. There is no recommend-only role and no `is_reviewer` flag any more. The question
   is always "administrator, or in THIS system's pool" - `ReviewAuthority`, given a `ReviewAccess`
   (the account plus its pool, loaded once per request in `ReviewEndpoints.AuthenticateAsync`).
   Every route naming a submission checks it against that submission; the queue is filtered by it.
   A submission that adds or changes a SHARED file (`SubmissionRecord.TouchesSharedFiles`, decided
-  at create by `SubmissionSharedFiles`) needs TWO approvals - a reviewer of the board AND the
-  administrator - for the BETA publish and again for production (maintainer decision, 2026-09-25).
+  at create by `SubmissionSharedFiles`) needs TWO approvals - a maintainer of the board AND the
+  administrator - for the BETA publish and again for production (owner decision, 2026-09-25).
   **The create-time flag is only a floor**: the approval and the detail screen re-check against the
   tree as it is NOW (`ApprovePublishFlow.TouchesSharedFilesNow`), because a shared file cited
   unchanged at create can be changed by another publish before this one is approved.
@@ -1717,8 +1726,8 @@ Things that are load-bearing and easy to undo by accident:
   publish the server would not perform. The first approval publishes nothing (state `approved`,
   migration 0008's approval tables); a production approval is tied to the BETA content hash it
   was given for. Whoever must approve is mailed (`SubmissionRouting`). A pool row counts as the
-  board's reviewer only when its account can approve as one
-  (`ReviewAuthority.CanGiveReviewerApproval`: verified, not locked, not an administrator) - a row
+  board's maintainer only when its account can approve as one
+  (`ReviewAuthority.CanGiveMaintainerApproval`: verified, not locked, not an administrator) - a row
   left for an account later made administrator by hand made a shared-file change wait for ever.
   **TOTP is deliberately NOT built** - the accepted risk is recorded in NewContributeStrategy.md's
   security review.
@@ -1731,12 +1740,12 @@ Things that are load-bearing and easy to undo by accident:
 - **A blob is re-verified before a publish writes anything**, and every copy is hashed and renamed
   into place only on a match (`VerifiedFileCopy`, which `BlobStore.TryCopyToAsync` and the
   production promotion both use). Never copy a blob into the tree directly.
-- **Publishing is TWO stages (maintainer decision, 2026-09-25): Approve writes BETA, and
-  "Publish to production" in the review app copies a SYSTEM from BETA to Production.** Only bytes
-  already in BETA; per system, not per submission; a shared-file change needs the reviewer AND the
-  administrator. `ProductionPromotionPlan` (CRT.Data, pure, shown to the reviewer and then
+- **Publishing is TWO stages (owner decision, 2026-09-25): Approve writes BETA, and
+  "Publish to production" in the maintainer app copies a SYSTEM from BETA to Production.** Only bytes
+  already in BETA; per system, not per submission; a shared-file change needs the maintainer AND the
+  administrator. `ProductionPromotionPlan` (CRT.Data, pure, shown to the maintainer and then
   performed) decides the copies; `ProductionPromoter` copies; `ProductionPromotionFlow` sequences.
-  The publish request carries the BETA content hash the reviewer was shown and is refused if BETA
+  The publish request carries the BETA content hash the maintainer was shown and is refused if BETA
   moved - that is what "only after he has checked it in BETA" means in code. Both stages take the
   one `PublishLock`. **Off until the three `Production*` settings are set** (DEPLOYMENT.md step
   13), which also reverses step 3's kernel-level interlock for the production data folder. A
@@ -1746,7 +1755,7 @@ Things that are load-bearing and easy to undo by accident:
   receipts at launch until then, for at most 30 days after the decision
   (`SubmissionReceiptPresenter.MergedRecheckWindow`). A new system published by the server is NOT added to the master workbook,
   so CRT does not list it until that is done by hand - a known gap, not yet decided.
-- **No orphan files (maintainer decision, 2026-09-25): `DataTreeUsage` (CRT.Data) is the one rule
+- **No orphan files (owner decision, 2026-09-25): `DataTreeUsage` (CRT.Data) is the one rule
   for what a data tree uses**, and a publish or promotion REMOVES what the board stops citing that
   nothing else uses. **Always from a list the approver was shown:** the submission detail and the
   production plan carry `removals` (CRT.Data's `FileRemovalPreview`), the approval sends it back,
@@ -1764,11 +1773,20 @@ Things that are load-bearing and easy to undo by accident:
   re-uploaded the whole board. Do not change it to "read such files from the tree later": review,
   finalise and publish all read the store, and a shared file in the tree can change while a
   submission waits for review.
-- **The review app's `submittedFiles` field is CRT.Data's `SubmittedFileFact`**, serialised by the
-  server and read by the review app as the same type, so the two cannot drift. The full list of
+- **The maintainer app's `submittedFiles` field is CRT.Data's `SubmittedFileFact`**, serialised by the
+  server and read by the maintainer app as the same type, so the two cannot drift. The full list of
   what the review closed and what it left open is in NewContributeStrategy.md's security model.
 
-### Review application (`src/CRT.Review/`)
+### CRT Maintainer (`src/CRT.Maintainer/`)
+
+**Named "CRT Maintainer", and the role it serves is "maintainer"** (owner decision, 2026-09-25).
+Both were "Review" / "reviewer" until then; everything was renamed before the app's first release -
+code, the API, the database (migration 0010 renames the `reviewers` table back to `maintainers` and
+the stored approval roles; `MaintainerRoleMigrationTests` holds the code's role words to it) and
+every text. **Two words, two meanings:** "maintainer" is ONLY the role - a person in a system's
+pool - and the person who owns this project is "the project owner" in every document and comment.
+The ACTIVITY is still "review": a maintainer reviews a submission, the queue is the review queue,
+and names like `ReviewEndpoints`, `/api/review/...` and `ReviewSummary` stay as they are.
 
 A separate Avalonia desktop app for working the submission queue (Phase 5). It talks to CRT.Server
 over HTTP and holds its session token **in memory only** — see `ReviewSession`, whose header also
@@ -1779,12 +1797,12 @@ access-token exchange to go looking for.
 `src/CRT.UI/` library, in DOCUMENT mode (`BoardTableEditor.Open(BoardTableDocument)`: no draft file,
 Save raises `SaveRequested`, the host saves). `ReviewTableWindow` sends the table as an AMENDMENT,
 which the server decides (`AmendSubmissionFlow`): authority over the board, still undecided, still
-at the version the reviewer opened, only the table's nine sheets
+at the version the maintainer opened, only the table's nine sheets
 (`SubmissionRowsBoard.WithTableSections`), files rebuilt from the rows (kept, or taken from the
 published tree, else refused), the same validation as a new submission, and approvals already given
 cleared. It runs under the `PublishLock`, and the store re-checks the version and the state inside
 its own transaction - the flow's checks are only the early answer. Migration 0009 keeps what each amendment replaced - the contributor's original first. The
-contributor is told (`SubmissionStatus.AmendedByReviewer`, the BETA mail). **Anything the table
+contributor is told (`SubmissionStatus.AmendedByMaintainer`, the BETA mail). **Anything the table
 covers is `CRT.UI`'s and `CRT.Data`'s, not either application's** - the same rule as "the control only
 paints" above, now across two apps.
 
@@ -1798,7 +1816,7 @@ the live server data and merges or rejects it. `api/index.php` requires `review/
 its shared helpers. It is deployed by hand and never ships with the app (Assets are whitelisted
 per-file in the csproj).
 
-**This whole path is being retired and is NOT kept in step any more** (maintainer decision,
+**This whole path is being retired and is NOT kept in step any more** (owner decision,
 2026-09-23) - see "One change, every side of it" above. The new pipeline replaces it, the old
 method will not be supported alongside it, and a change to shared behaviour does not have to be
 mirrored here. What follows describes how it works and stays accurate for as long as it is
@@ -1845,14 +1863,14 @@ three wrong PINs). The macOS and Linux builds are not signed: macOS needs an App
 certificate (the YubiKey's Authenticode certificate cannot sign for it), and Linux has no
 operating-system check of an AppImage's signature to satisfy.
 
-**The review app's releases are published to their OWN repository,
-[HovKlan-DH/Classic-Repair-Toolbox-Review](https://github.com/HovKlan-DH/Classic-Repair-Toolbox-Review)**
-(maintainer decision, 2026-09-25; the source stays here). CRT's Releases page is where the README
+**The maintainer app's releases are published to their OWN repository,
+[HovKlan-DH/Classic-Repair-Toolbox-Maintainer](https://github.com/HovKlan-DH/Classic-Repair-Toolbox-Maintainer)**
+(owner decision, 2026-09-25; the source stays here). CRT's Releases page is where the README
 sends every hobbyist, and Velopack's GithubSource reads the 10 newest releases of CRT's repository
 and merges their feeds WITHOUT checking the package id - so review releases here would clutter
 that page, take CRT's update-check slots, and on CRT's `win`/`linux` channels be offered to
-installed CRTs as updates. As a second guard the review app also packs on its own channels
-(`review-win`, `review-linux`). The workflow publishes with the `REVIEW_RELEASES_TOKEN` secret, a
+installed CRTs as updates. As a second guard the maintainer app also packs on its own channels
+(`maintainer-win`, `maintainer-linux`). The workflow publishes with the `REVIEW_RELEASES_TOKEN` secret, a
 fine-grained token with Contents read/write on the release repository only.
-`ReviewReleaseSeparationTests` (CRT.App.Tests) reads both workflows and `AppConfig` and fails if
+`MaintainerReleaseSeparationTests` (CRT.App.Tests) reads both workflows and `AppConfig` and fails if
 either guard goes.

@@ -82,7 +82,7 @@ namespace CRT
         // caller is the one place that knows whether it is looking at a drafted-only board or an
         // official one with an overlay.
         //
-        // *** ONE SECTION PER OPENING (maintainer request, 2026-09-24). *** The Drafts tab used to
+        // *** ONE SECTION PER OPENING (owner request, 2026-09-24). *** The Drafts tab used to
         // open this window from a single "Schematic images and KiCad data" button showing both;
         // it now has a button for each. One window with a section rather than two windows, because
         // the two halves share every piece of plumbing here (the draft folder, the status line, the
@@ -121,7 +121,7 @@ namespace CRT
             this.RefreshKiCadState();
 
             // ###########################################################################################
-            // *** AND REBUILD THE REPORT FOR DATA THAT IS ALREADY THERE (maintainer report,
+            // *** AND REBUILD THE REPORT FOR DATA THAT IS ALREADY THERE (owner report,
             // 2026-09-24). ***
             //
             // The match report used to be built only at the end of an import, so reopening the
@@ -261,7 +261,7 @@ namespace CRT
         // Says what KiCad data this system actually has - a count, and then the files themselves.
         //
         // *** IT NAMES THE FILES, because a count alone told a returning contributor nothing
-        // (maintainer report, 2026-09-24). *** Reopening this window after an import showed
+        // (owner report, 2026-09-24). *** Reopening this window after an import showed
         // "25 KiCad files imported" and not one word about WHICH project that was, so there was no
         // way to tell an import of the right folder from an import of the wrong one - or to notice
         // that the pages sub-folder had come along. The files are the only durable record: the
@@ -696,7 +696,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Removes one imported KiCad file from the draft (maintainer request, 2026-09-24), then
+        // Removes one imported KiCad file from the draft (owner request, 2026-09-24), then
         // refreshes the listing and the match report so both describe what is left.
         //
         // The FILE is deleted, not just hidden - see KiCadImportedFiles for why a KiCad file,
@@ -757,7 +757,7 @@ namespace CRT
         // Copies the KiCad project's own files into the draft, then reports what they line up with.
         //
         // *** A CONTRIBUTOR MAY PICK THE WHOLE KiCad PROJECT FOLDER, and only the few relevant
-        // files are taken (maintainer request, 2026-09-24). *** That is the EXTENSION filter's
+        // files are taken (owner request, 2026-09-24). *** That is the EXTENSION filter's
         // doing: .kicad_pcb / .kicad_pro / .kicad_sch and nothing else, so footprint libraries
         // (.kicad_mod), 3D models (.step/.wrl), gerbers, netlists and backups are all left where
         // they are - at any depth.
@@ -886,7 +886,7 @@ namespace CRT
         // shown with a zero - an empty heading reads as a fault, and the unmatched section in
         // particular must only appear when there is genuinely something wrong.
         //
-        // *** EVERY COMPONENT IS LISTED, EACH AS ITS OWN BADGE (maintainer request, 2026-09-24). ***
+        // *** EVERY COMPONENT IS LISTED, EACH AS ITS OWN BADGE (owner request, 2026-09-24). ***
         // The lists used to be comma-separated prose, and the unlabelled one stopped after 50 with
         // "and 315 more" - on a new board that hid most of the to-do list the section exists to
         // show. The cap was there so a long list could not push the unmatched section off screen,
@@ -1001,7 +1001,7 @@ namespace CRT
         public string CadName { get; init; } = string.Empty;
 
         // ###########################################################################################
-        // A small preview of the image this row names (maintainer request, 2026-09-24), so a
+        // A small preview of the image this row names (owner request, 2026-09-24), so a
         // contributor can SEE what they imported rather than trusting a file name.
         //
         // Null when the file is missing or unreadable, which the template shows as a placeholder -

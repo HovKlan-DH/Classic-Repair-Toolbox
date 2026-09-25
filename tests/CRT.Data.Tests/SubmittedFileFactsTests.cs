@@ -6,8 +6,8 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // Covers SubmittedFileFacts - the per-file account the server sends the review application so
-    // a reviewer is shown EVERY file that would change, not only the images (security review,
+    // Covers SubmittedFileFacts - the per-file account the server sends the maintainer application so
+    // a maintainer is shown EVERY file that would change, not only the images (security review,
     // 2026-09-25).
     // ###########################################################################################
     public sealed class SubmittedFileFactsTests

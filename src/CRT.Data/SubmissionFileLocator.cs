@@ -87,7 +87,7 @@ namespace Handlers.DataHandling
                 // sits in the draft under its WHOLE path, which is where
                 // DraftFileResolver.BuildDraftFileDestination writes it. Looking only for the
                 // board's own files reported such an attachment as missing although it was on disk
-                // (maintainer report, 2026-09-25: "HotCPU.png").
+                // (owner report, 2026-09-25: "HotCPU.png").
                 draftRoot = draftSystemFolder;
                 draftedRelative = withinSystem ?? relativePath;
             }

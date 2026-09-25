@@ -12,11 +12,11 @@ namespace CRT.Server.Tests
     //
     //   1. The identity comes from a SUBMISSION and is untrusted. On a WRITE path a traversal
     //      would corrupt the tree; on this READ path it would disclose an arbitrary file's
-    //      contents to a reviewer, turning a review screen into a file-disclosure hole.
+    //      contents to a maintainer, turning a review screen into a file-disclosure hole.
     //   2. A missing board must read as "new system", never as an error - because a new system is
-    //      the highest-risk submission there is and must reach a reviewer rather than failing to
+    //      the highest-risk submission there is and must reach a maintainer rather than failing to
     //      open. But a board that exists and cannot be READ must NOT read as "new system", or a
-    //      reviewer approves a replacement for a board they were told did not exist.
+    //      maintainer approves a replacement for a board they were told did not exist.
     //
     // Uses a real temp folder: what is under test is which file on disk is chosen, which a fake
     // filesystem would not exercise.
@@ -74,7 +74,7 @@ namespace CRT.Server.Tests
         public void The_NEWEST_generation_is_chosen()
         {
             // *** THE SAME RULE PUBLISHING WRITES WITH. *** Reading an older, frozen generation
-            // would show the reviewer a diff against a board no current build uses, and every
+            // would show the maintainer a diff against a board no current build uses, and every
             // difference between the generations would appear as a change the contributor made.
             this.SystemFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
 
@@ -125,7 +125,7 @@ namespace CRT.Server.Tests
         public void A_system_with_no_folder_at_all_is_reported_as_having_no_board()
         {
             // The new-system case. It must not throw: a new system is the highest-risk submission
-            // there is and has to reach a reviewer.
+            // there is and has to reach a maintainer.
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
 
@@ -154,7 +154,7 @@ namespace CRT.Server.Tests
         public void A_TRAVERSAL_in_the_identity_finds_nothing_rather_than_escaping_the_tree(string manufacturer)
         {
             // *** ON A READ PATH, A TRAVERSAL IS FILE DISCLOSURE. *** The identity arrives in a
-            // submission. Without containment this endpoint would hand a reviewer the contents of
+            // submission. Without containment this endpoint would hand a maintainer the contents of
             // any file the service can read, which is a far worse outcome than the write-side
             // corruption the same check prevents elsewhere.
             //
@@ -181,7 +181,7 @@ namespace CRT.Server.Tests
             // lands somewhere REAL, so that is what this builds.
             //
             // The layout mirrors a genuine deployment: the data tree is one folder among several
-            // under a parent, and a sibling holds a board the reviewer must never be shown as if
+            // under a parent, and a sibling holds a board the maintainer must never be shown as if
             // it were this system's history.
             string parent = Path.Combine(this.thisRoot, "parent");
             string dataTree = Path.Combine(parent, "beta");
@@ -217,7 +217,7 @@ namespace CRT.Server.Tests
         {
             // Falling back to the root would compare the submission against whatever workbook
             // happened to sit at the top of the data tree - a diff against an unrelated board,
-            // presented to the reviewer as this system's history.
+            // presented to the maintainer as this system's history.
             PublishedBoardLocation location = PublishedBoardLocator.Locate(
                 this.thisRoot,
                 PublishedBoardLocatorTests.Manifest("", "", ""));

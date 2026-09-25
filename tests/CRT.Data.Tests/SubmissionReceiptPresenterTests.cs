@@ -85,7 +85,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // THE FOUR PHASE 5 REVIEW STATES - missing until 2026-09-22, and reported from live use.
     //
-    // They were added to the server's vocabulary when the review application was built and never
+    // They were added to the server's vocabulary when the maintainer application was built and never
     // taught to DescribeState, so the very first real review round trip showed the contributor
     // "Reported as [changes_requested]" - a raw database value, underscore and all, in the one
     // place this class exists to prevent exactly that.
@@ -129,7 +129,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ------------------------------------------------------------------ ClassifyState
 
     // ###########################################################################################
-    // THE COLOUR AND THE WORDS COME OFF THE SAME SWITCH (maintainer request, 2026-09-22).
+    // THE COLOUR AND THE WORDS COME OFF THE SAME SWITCH (owner request, 2026-09-22).
     //
     // The submissions list paints a status-coloured edge on each card. Deciding that colour in the
     // UI would let it drift from DescribeState - a card reading "Changes requested" in green is
@@ -313,15 +313,15 @@ public sealed class SubmissionReceiptPresenterTests
     // ------------------------------------------------------------------ DescribeDecided
 
     // ###########################################################################################
-    // WHEN THE REVIEWER REPLIED - distinct from "last checked", which is this computer's own
-    // bookkeeping and says nothing about the submission (maintainer request, 2026-09-22).
+    // WHEN THE MAINTAINER REPLIED - distinct from "last checked", which is this computer's own
+    // bookkeeping and says nothing about the submission (owner request, 2026-09-22).
     //
     // A comment written three weeks ago on a board the contributor has since revised means
     // something quite different from one written this morning, and the window could not tell them
     // apart: it showed only when this machine last asked.
     // ###########################################################################################
     [Fact]
-    public void The_decided_line_names_the_day_the_reviewer_replied()
+    public void The_decided_line_names_the_day_the_maintainer_replied()
     {
         var decided = new DateTimeOffset(2026, 9, 22, 9, 15, 0, TimeSpan.Zero);
 
@@ -433,10 +433,10 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     // -----------------------------------------------------------------------------------
-    // UNREAD REVIEWER FEEDBACK - what the badge on the Drafts tab counts.
+    // UNREAD MAINTAINER FEEDBACK - what the badge on the Drafts tab counts.
     //
     // *** A COMMENT NOBODY NOTICES IS A COMMENT NOBODY READS. *** Contributing needs no account,
-    // so there is no inbox and no thread: the reviewer's sentence is the entire channel back to
+    // so there is no inbox and no thread: the maintainer's sentence is the entire channel back to
     // the person who did the work, and it lived behind a button nobody had a reason to press.
     // -----------------------------------------------------------------------------------
 
@@ -444,7 +444,7 @@ public sealed class SubmissionReceiptPresenterTests
         new()
         {
             SubmissionId = 7,
-            ReviewerComment = comment,
+            MaintainerComment = comment,
             AcknowledgedComment = acknowledged
         };
 
@@ -509,11 +509,11 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // *** THE BUG THESE EXIST FOR: AN APPROVAL WITH NO COMMENT WAS COMPLETELY SILENT. ***
     //
-    // A reviewer approving good work usually types nothing - there is nothing to say - so
+    // A maintainer approving good work usually types nothing - there is nothing to say - so
     // HasUnreadComment saw an empty comment and answered "not unread". The submission went to
     // "Published", the row said so, and the application told the contributor nothing at all: no
     // badge, and once the draft was gone, no Drafts tab either. The one outcome everybody is
-    // actually waiting for was the one that arrived without a sound. Reported by the maintainer
+    // actually waiting for was the one that arrived without a sound. Reported by the project owner
     // after the first real publish.
     // ###########################################################################################
     private static SubmissionReceipt Decided(string state, string acknowledgedState) =>
@@ -624,7 +624,7 @@ public sealed class SubmissionReceiptPresenterTests
             SubmissionId = 12,
             LastKnownState = "published",
             AcknowledgedState = "published",
-            ReviewerComment = "Nice work.",
+            MaintainerComment = "Nice work.",
             AcknowledgedComment = "Nice work."
         }));
     }
@@ -654,7 +654,7 @@ public sealed class SubmissionReceiptPresenterTests
                 SubmissionId = 13,
                 LastKnownState = "changes_requested",
                 AcknowledgedState = string.Empty,
-                ReviewerComment = "Please fix the region.",
+                MaintainerComment = "Please fix the region.",
                 AcknowledgedComment = string.Empty
             }
         };
@@ -695,7 +695,7 @@ public sealed class SubmissionReceiptPresenterTests
         var receipt = new SubmissionReceipt
         {
             SubmissionId = 1,
-            ReviewerComment = "Could you check the region?"
+            MaintainerComment = "Could you check the region?"
         };
 
         Assert.True(SubmissionReceiptPresenter.HasUnreadComment(receipt));
@@ -704,7 +704,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ------------------------------------------------------------------ FormatDate
 
     // ###########################################################################################
-    // THE ONE DATE SHAPE, PINNED LITERALLY (maintainer request, 2026-09-23).
+    // THE ONE DATE SHAPE, PINNED LITERALLY (owner request, 2026-09-23).
     //
     // Every other date test in this file now asserts THROUGH FormatDate, which on its own would be
     // vacuous - the format could be changed to anything and they would all still pass together.
@@ -737,7 +737,7 @@ public sealed class SubmissionReceiptPresenterTests
     // This is the bug that produced the reported "22 september 2026": on a Danish machine the old
     // CultureInfo.CurrentCulture format rendered a lower-case month, because Danish does not
     // capitalise them. The format string looked correct in the source and produced something else
-    // on the maintainer's own computer.
+    // on the project owner's own computer.
     //
     // Danish is used here deliberately - it is the locale the defect was actually seen in - and the
     // date separator differs too, so a regression to the current culture fails on more than one
@@ -766,7 +766,7 @@ public sealed class SubmissionReceiptPresenterTests
 
     // ###########################################################################################
     // "Last checked" is THIS COMPUTER'S bookkeeping - when CRT last asked the server, and nothing
-    // about the submission itself. The maintainer asked what it meant, which is reason enough to
+    // about the submission itself. The project owner asked what it meant, which is reason enough to
     // pin the wording: it sits beside two dates that ARE facts about the contribution.
     // ###########################################################################################
     [Fact]
@@ -821,12 +821,12 @@ public sealed class SubmissionReceiptPresenterTests
             SubmissionReceiptPresenter.ClassifyState("changes_requested"),
             SubmissionReceiptPresenter.ClassifyState("rejected"));
     }
-    // A reviewer changed the submission in the review application before deciding (2026-09-25):
+    // A maintainer changed the submission in the maintainer application before deciding (2026-09-25):
     // said, so a contributor comparing what was published with what they sent knows why.
     [Fact]
-    public void A_submission_a_reviewer_changed_says_so_and_one_nobody_changed_says_nothing()
+    public void A_submission_a_maintainer_changed_says_so_and_one_nobody_changed_says_nothing()
     {
-        Assert.StartsWith("A reviewer changed some of the details", SubmissionReceiptPresenter.DescribeAmended(true));
+        Assert.StartsWith("A maintainer changed some of the details", SubmissionReceiptPresenter.DescribeAmended(true));
         Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeAmended(false));
     }
 }

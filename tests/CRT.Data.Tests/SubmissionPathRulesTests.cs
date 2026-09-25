@@ -116,7 +116,7 @@ namespace CRT.Data.Tests
         [InlineData("/etc/passwd")]
         [InlineData("/tmp/evil.png")]
         [InlineData("C:/Windows/System32/evil.dll")]
-        [InlineData("C:\\Windows\\evil.dll")]
+        [InlineData("C:\\Windows\\evil.dll")] // windows-path-literal: a hostile input, refused on every OS.
         [InlineData("//server/share/evil.png")]
         [InlineData("\\\\server\\share\\evil.png")]
         public void An_absolute_path_is_refused(string relativePath)

@@ -10,13 +10,13 @@ namespace Handlers.DataHandling
     // paths in, findings out. It opens nothing and reads no images, so every rule is a unit test.
     //
     // *** THIS IS THE HIGHEST-LEVERAGE WORK IN THE WHOLE PLAN. *** NewContributeStrategy.md says
-    // so outright, and the reason is arithmetic: the maintainer is one volunteer. Every submission
-    // rejected automatically with a clear explanation is reviewer time not spent, and every bad
+    // so outright, and the reason is arithmetic: the project owner is one volunteer. Every submission
+    // rejected automatically with a clear explanation is maintainer time not spent, and every bad
     // submission that reaches a human costs far more than the contributor saved by not checking.
     // A rejection here is also FASTER for the contributor than a review queue.
     //
     // HARD FAILURES ARE REJECTED AUTOMATICALLY AND NEVER QUEUED. Warnings are attached for the
-    // reviewer to weigh. The line between them is "could a reasonable contributor have meant
+    // maintainer to weigh. The line between them is "could a reasonable contributor have meant
     // this?" - a highlight outside its image is a mistake in any reading, while an unusually large
     // number of components is merely worth a glance.
     //
@@ -172,7 +172,7 @@ namespace Handlers.DataHandling
             // own folder the same place as a shared one - and a submission may change its own folder
             // freely, so that would turn the shared-folder rules in SubmissionFileScope inside out.
             //
-            // EITHER name in EITHER position, by the one rule DataTreeUsage and the reviewer list
+            // EITHER name in EITHER position, by the one rule DataTreeUsage and the maintainer list
             // also skip by: a board they skip must never be publishable (code review, 2026-09-25).
             // ###########################################################################################
             if (SubmissionFileScopes.IsSharedFolderName(manifest.Manufacturer) ||
@@ -199,7 +199,7 @@ namespace Handlers.DataHandling
                     "summary.too_long",
                     string.Empty,
                     $"The description of what changed is longer than {SubmissionFormat.MaximumSummaryLength} " +
-                    "characters. Shorten it - the reviewer sees the full list of changes anyway."));
+                    "characters. Shorten it - the maintainer sees the full list of changes anyway."));
             }
 
             if (string.IsNullOrWhiteSpace(manifest.Hardware))
@@ -216,7 +216,7 @@ namespace Handlers.DataHandling
 
             if (string.IsNullOrWhiteSpace(manifest.Summary))
             {
-                // A warning, not an error: a reviewer can read the diff. But a submission that
+                // A warning, not an error: a maintainer can read the diff. But a submission that
                 // says what it changed is reviewed far faster, so it is worth asking for.
                 findings.Add(SubmissionValidator.Warning(
                     "summary.missing",
@@ -301,7 +301,7 @@ namespace Handlers.DataHandling
                 //
                 // Keying on the label alone therefore rejected six rows of correct, already-
                 // published data and made the whole board unsubmittable. Reported by the
-                // maintainer on the first real submission of this board.
+                // project owner on the first real submission of this board.
                 //
                 // A duplicate within ONE region is still an error: that is genuinely ambiguous,
                 // because the region filter cannot tell the two rows apart. A blank region is its

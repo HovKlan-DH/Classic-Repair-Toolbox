@@ -81,7 +81,7 @@ namespace Handlers.DataHandling
         // *** REFUSED, NOT TRUNCATED, AND REFUSED EARLY. *** An over-long value used to reach the
         // INSERT and fail there under strict mode, answering a 500 - and the revision date only
         // reaches its column AFTER a publish has already written the tree, so an over-long one
-        // turned a successful, irreversible publish into an error the reviewer would retry.
+        // turned a successful, irreversible publish into an error the maintainer would retry.
         // ###########################################################################################
         public const int MaximumSummaryLength = 500;
 
@@ -100,7 +100,7 @@ namespace Handlers.DataHandling
     // It is EMPTY for a brand-new system - there is no published revision to have started from.
     // The server decides new-versus-update by whether SystemId already exists - one lookup -
     // rather than by trusting a flag in the payload, which is the "server figures it out"
-    // behaviour the maintainer asked for.
+    // behaviour the project owner asked for.
     // ###########################################################################################
     public sealed class SubmissionManifest
     {
@@ -128,7 +128,7 @@ namespace Handlers.DataHandling
         // The published revision this was drafted from. Empty for a new system.
         public string BaseRevision { get; set; } = string.Empty;
 
-        // Free text from the contributor saying what they changed and why. This is what a reviewer
+        // Free text from the contributor saying what they changed and why. This is what a maintainer
         // reads first, so it is part of the contract rather than an afterthought.
         public string Summary { get; set; } = string.Empty;
 
@@ -216,7 +216,7 @@ namespace Handlers.DataHandling
         // against a value their drafts never carry and the drift warning would fire forever.
         //
         // *** ADDED 2026-09-22, and OPTIONAL on purpose. *** It was missing, which meant two
-        // things: a reviewer could not see a revision-date change (ReviewEndpoints had to use the
+        // things: a maintainer could not see a revision-date change (ReviewEndpoints had to use the
         // published date for both sides), and a contributor could not publish one at all. An older
         // client simply omits it, and PublishMerge then KEEPS the published date rather than
         // blanking it - so this needed no format-version bump.
@@ -229,7 +229,7 @@ namespace Handlers.DataHandling
         public List<ComponentHighlightEntry> ComponentHighlights { get; set; } = new();
 
         // Component-scoped and board-scoped files and links are SEPARATE sections in BoardData,
-        // and stay separate here. They carry different natural keys and a reviewer needs to see
+        // and stay separate here. They carry different natural keys and a maintainer needs to see
         // which is which - a datasheet attached to U8 is a different claim from one attached to
         // the board as a whole.
         public List<ComponentLocalFileEntry> ComponentLocalFiles { get; set; } = new();
@@ -300,12 +300,12 @@ namespace Handlers.DataHandling
     // Step 3: the outcome of finalising.
     //
     // Accepted means QUEUED FOR REVIEW, never published. Nothing in this pipeline writes to the
-    // Production tree - promotion stays a manual act by the maintainer (Phase 3 step 3's interlock
+    // Production tree - promotion stays a manual act by the project owner (Phase 3 step 3's interlock
     // makes it impossible for the service to do otherwise).
     //
     // A submission that fails automated validation is rejected HERE, before any human sees it, with
     // the reasons attached. That is the highest-leverage part of the whole plan: it turns most bad
-    // submissions into a fast, polite, automatic answer rather than reviewer time.
+    // submissions into a fast, polite, automatic answer rather than maintainer time.
     // ###########################################################################################
     public sealed class SubmissionResult
     {
@@ -330,7 +330,7 @@ namespace Handlers.DataHandling
     // is answered 404 rather than 403, so the small sequential id space cannot be walked to learn
     // which submissions exist.
     //
-    // ReviewerComment is carried now and filled by Phase 5. The review application does not exist
+    // MaintainerComment is carried now and filled by Phase 5. The maintainer application does not exist
     // yet, so the server has no field for it and it arrives empty - defined here so that adding it
     // server-side later needs no contract version bump and no change on any contributor's disk.
     // ###########################################################################################
@@ -351,12 +351,12 @@ namespace Handlers.DataHandling
 
         public DateTimeOffset? DecidedUtc { get; set; }
 
-        public string ReviewerComment { get; set; } = string.Empty;
+        public string MaintainerComment { get; set; } = string.Empty;
 
-        // A reviewer changed some of the submission's rows in the review application before
+        // A maintainer changed some of the submission's rows in the maintainer application before
         // deciding it (2026-09-25) - what is published is then not exactly what was sent, and the
         // contributor is told so in "My submissions".
-        public bool AmendedByReviewer { get; set; }
+        public bool AmendedByMaintainer { get; set; }
 
         public List<ValidationFinding> Findings { get; set; } = new();
     }
@@ -365,7 +365,7 @@ namespace Handlers.DataHandling
     // One thing wrong with a submission.
     //
     // Severity decides the outcome: any Error rejects the submission automatically and it is never
-    // queued. A Warning is attached for the reviewer to weigh and does not block.
+    // queued. A Warning is attached for the maintainer to weigh and does not block.
     //
     // Subject names the offending row or file - the board label, the path - so a contributor with
     // 400 components can find the one at fault. A finding without a subject is nearly useless to

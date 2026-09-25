@@ -210,7 +210,7 @@ namespace CRT.Server.Handlers.Accounts
 
             // The systems this account reviews (Phase 6 roles). Empty for an administrator, who is
             // in every pool by definition rather than by rows.
-            IReadOnlySet<string> reviewerOf = await store.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
+            IReadOnlySet<string> maintainerOf = await store.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
 
             return Results.Ok(new
             {
@@ -219,7 +219,7 @@ namespace CRT.Server.Handlers.Accounts
                 displayName = account.DisplayName,
                 isVerified = account.IsVerified,
                 isAdministrator = account.IsAdministrator,
-                reviewerOf = reviewerOf.OrderBy(id => id, StringComparer.Ordinal).ToList(),
+                maintainerOf = maintainerOf.OrderBy(id => id, StringComparer.Ordinal).ToList(),
                 createdUtc = account.CreatedUtc,
                 lastLoginUtc = account.LastLoginUtc
             });

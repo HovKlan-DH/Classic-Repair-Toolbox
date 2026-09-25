@@ -106,7 +106,7 @@ namespace Handlers.DataHandling
                     // The board's own revision date travels with the rows, so a contributor who
                     // corrects it can actually publish that correction. Added 2026-09-22; before
                     // that the field did not exist and a revision-date change was both invisible
-                    // to the reviewer and unpublishable.
+                    // to the maintainer and unpublishable.
                     //
                     // Calibrations come from the CALLER, not from `merged` - see the parameter's
                     // own comment for why a BoardData cannot carry them.

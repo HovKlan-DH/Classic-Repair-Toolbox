@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace Handlers.DataHandling
 {
@@ -18,7 +19,7 @@ namespace Handlers.DataHandling
     //
     // A receipt is therefore exactly what a paper receipt is: the thing you keep so you can ask
     // about the transaction later. The server stores only the token's HASH, so a lost receipt
-    // cannot be recovered by anyone, including the maintainer.
+    // cannot be recovered by anyone, including the project owner.
     //
     // WHAT THIS IS NOT. It is not an identity, not a login, and not a list the server maintains.
     // It is per-machine by construction, which is a real limitation and is stated to the user in
@@ -30,7 +31,7 @@ namespace Handlers.DataHandling
     // not depend on this file existing". NO SUCH EMAIL IS SENT. EmailTemplates carries four
     // account messages (verification, already-registered, password reset, password changed) and
     // nothing for a submission outcome; no submission flow injects IEmailSender at all. The
-    // contact address is stored so a REVIEWER can reply by hand, and that is its only use.
+    // contact address is stored so a MAINTAINER can reply by hand, and that is its only use.
     //
     // So this file IS the channel. Losing it loses the outcome - which is why the badge rules
     // below matter more than they look, and why the notification work in Phase 6 (item 11) is
@@ -76,17 +77,51 @@ namespace Handlers.DataHandling
 
         public DateTimeOffset? LastCheckedUtc { get; init; }
 
-        // What a reviewer said, once there is a reviewer to say it. Phase 5 builds the review
+        // What a maintainer said, once there is a maintainer to say it. Phase 5 builds the review
         // application; until then the server has no field for this and it stays empty. Carried now
         // so that adding it server-side does not need a format change on every contributor's disk.
-        public string ReviewerComment { get; init; } = string.Empty;
+        public string MaintainerComment { get; init; } = string.Empty;
 
-        // A reviewer changed some of the rows in the review application before deciding
-        // (2026-09-25) - SubmissionStatus.AmendedByReviewer, cached like the state.
-        public bool AmendedByReviewer { get; init; }
+        // A maintainer changed some of the rows in the maintainer application before deciding
+        // (2026-09-25) - SubmissionStatus.AmendedByMaintainer, cached like the state.
+        public bool AmendedByMaintainer { get; init; }
 
         // ###########################################################################################
-        // The reviewer comment this contributor has SEEN, verbatim.
+        // *** THE TWO NAMES A RECEIPT WAS WRITTEN WITH BEFORE THE RENAME - READ, NEVER WRITTEN (code
+        // review, 2026-09-25). *** The role was "reviewer" until then, and an earlier build saved
+        // ReviewerComment and AmendedByReviewer. A decided submission is never asked about again, so
+        // without these its maintainer's comment would be gone from "My submissions" for good. Each
+        // only fills the new field; the getters answer null, which WhenWritingNull leaves out, so the
+        // next save writes the new names alone.
+        // ###########################################################################################
+        [JsonInclude]
+        [JsonPropertyName("ReviewerComment")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        private string? LegacyReviewerComment
+        {
+            get => null;
+            init
+            {
+                if (!string.IsNullOrEmpty(value) && string.IsNullOrEmpty(this.MaintainerComment))
+                    this.MaintainerComment = value;
+            }
+        }
+
+        [JsonInclude]
+        [JsonPropertyName("AmendedByReviewer")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        private bool? LegacyAmendedByReviewer
+        {
+            get => null;
+            init
+            {
+                if (value == true)
+                    this.AmendedByMaintainer = true;
+            }
+        }
+
+        // ###########################################################################################
+        // The maintainer comment this contributor has SEEN, verbatim.
         //
         // *** IT STORES THE TEXT, NOT A BOOLEAN. *** A "seen" flag would have to be cleared by
         // whatever writes a new comment, and the moment one writer forgets, a second round of
@@ -105,13 +140,13 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The DECIDED state this contributor has seen, verbatim - the twin of AcknowledgedComment
-        // and stored for exactly the same reason (maintainer report, 2026-09-23).
+        // and stored for exactly the same reason (owner report, 2026-09-23).
         //
         // *** IT EXISTS BECAUSE A DECISION WITH NO COMMENT WAS INVISIBLE. *** HasUnreadComment
-        // returns false the moment the comment is empty, and a reviewer approving a submission
+        // returns false the moment the comment is empty, and a maintainer approving a submission
         // usually types nothing at all - there is nothing to say about work being accepted. So the
         // state moved to "Published", the row said so, and NOTHING told the contributor to go and
-        // look: no badge, and with the draft gone no Drafts tab either. Reported by the maintainer
+        // look: no badge, and with the draft gone no Drafts tab either. Reported by the project owner
         // on the first real publish.
         //
         // "A comment nobody notices is a comment nobody reads" is the rule HasUnreadComment was
@@ -129,7 +164,7 @@ namespace Handlers.DataHandling
         public string AcknowledgedState { get; init; } = string.Empty;
 
         // ###########################################################################################
-        // When the reviewer actually decided - the server's own `decidedUtc`, not when this machine
+        // When the maintainer actually decided - the server's own `decidedUtc`, not when this machine
         // happened to find out.
         //
         // *** DISTINCT FROM LastCheckedUtc, AND THE DIFFERENCE IS THE POINT. *** "Last checked" is
@@ -200,7 +235,7 @@ namespace Handlers.DataHandling
                 "uploading" => "Never finished sending",
                 "pending" => "Waiting for review",
                 "accepted" => "Accepted",
-                // *** "BETA source" AND "source" (maintainer wording, 2026-09-25). *** The two
+                // *** "BETA source" AND "source" (owner wording, 2026-09-25). *** The two
                 // stages are named for where the data went, in the words CRT's own Configuration
                 // tab uses for the two places it downloads from ("online source", "BETA source").
                 "published" => "Published to source",
@@ -208,7 +243,7 @@ namespace Handlers.DataHandling
                 "abandoned" => "Expired before it was finished",
 
                 // *** THE FOUR PHASE 5 REVIEW STATES, MISSING UNTIL 2026-09-22. *** They were added
-                // to the server's own vocabulary when the review application was built and never
+                // to the server's own vocabulary when the maintainer application was built and never
                 // taught to this method, so the first real review round trip showed a contributor
                 // "Reported as [changes_requested]" - a raw database value, complete with its
                 // underscore, in the one place this class exists to prevent exactly that.
@@ -219,7 +254,7 @@ namespace Handlers.DataHandling
                 "approved" => "Approved, waiting to be published",
 
                 // *** "merged" IS THE BETA SOURCE, NOT EVERYONE'S (2026-09-25). *** Since the
-                // two-stage publish, a reviewer's approval writes the BETA data; the board goes out
+                // two-stage publish, a maintainer's approval writes the BETA data; the board goes out
                 // to everyone when it is published to production, and the server then reports this
                 // same submission as "published" (ProductionPromotionRules.ContributorFacingState)
                 // - which is the row that says "Published to source".
@@ -235,7 +270,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // WHAT KIND OF OUTCOME a state represents, for anything that needs to COLOUR it
-        // (maintainer request, 2026-09-22).
+        // (owner request, 2026-09-22).
         //
         // *** THE CLASSIFICATION IS HERE, NOT IN THE UI, so the colour cannot disagree with the
         // words. *** DescribeState already turns a state into a sentence; this turns the same state
@@ -312,7 +347,7 @@ namespace Handlers.DataHandling
         // How long after its decision a "merged" (in BETA) submission is still asked about.
         //
         // *** A BOUND, BECAUSE THE SECOND PUBLISH MAY NEVER COME (code review, 2026-09-25). ***
-        // Publishing to production is off until the server is set up for it, and a reviewer may
+        // Publishing to production is off until the server is set up for it, and a maintainer may
         // never promote a board. Without a bound, every merged receipt was asked about on every
         // launch for ever - the very re-check "withdrawn" once caused. Thirty days is far longer
         // than BETA to production is meant to take; after it the row keeps its last answer.
@@ -341,19 +376,19 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // THE ONE DATE FORMAT EVERY SUBMISSION LINE USES: "2026-September-23" (maintainer request,
+        // THE ONE DATE FORMAT EVERY SUBMISSION LINE USES: "2026-September-23" (owner request,
         // 2026-09-23).
         //
         // *** YEAR FIRST, MONTH BY NAME, DAY WITHOUT A LEADING ZERO. *** The shape was chosen to be
         // unambiguous on sight: "09-10-2026" is the tenth of September to half the world and the
         // ninth of October to the other half, and these dates are read beside one another on a list
-        // where the difference decides whether a reviewer's comment is stale.
+        // where the difference decides whether a maintainer's comment is stale.
         //
         // *** INVARIANT CULTURE, DELIBERATELY. *** The month name is the one part of this that a
-        // culture can change, and it did: on the maintainer's own Danish machine the previous
+        // culture can change, and it did: on the project owner's own Danish machine the previous
         // format rendered "22 september 2026" - lower case, because Danish does not capitalise
         // month names. Formatting with CultureInfo.CurrentCulture would give a different string on
-        // every machine while the format string looked identical, so the format the maintainer
+        // every machine while the format string looked identical, so the format the project owner
         // asked for would only actually appear in English locales.
         //
         // The "d" (not "dd") is what drops the leading zero, and it is the reason this cannot just
@@ -377,7 +412,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // "Replied 2026-September-22" - when the REVIEWER decided, not when this machine noticed.
+        // "Replied 2026-September-22" - when the MAINTAINER decided, not when this machine noticed.
         //
         // Empty when nothing has been decided, so the caller can leave the line out entirely rather
         // than print a label with nothing after it.
@@ -387,13 +422,13 @@ namespace Handlers.DataHandling
         // there. See that method's header.
         // ###########################################################################################
         // ###########################################################################################
-        // The line "My submissions" shows when a reviewer changed the submission before deciding it
+        // The line "My submissions" shows when a maintainer changed the submission before deciding it
         // (2026-09-25), so a contributor comparing what was published with what they sent knows
         // where a difference came from. Empty when nobody changed it.
         // ###########################################################################################
-        public static string DescribeAmended(bool amendedByReviewer) =>
-            amendedByReviewer
-                ? "A reviewer changed some of the details before deciding, so what is published is not exactly what you sent."
+        public static string DescribeAmended(bool amendedByMaintainer) =>
+            amendedByMaintainer
+                ? "A maintainer changed some of the details before deciding, so what is published is not exactly what you sent."
                 : string.Empty;
 
         public static string DescribeDecided(DateTimeOffset? decidedUtc)
@@ -409,7 +444,7 @@ namespace Handlers.DataHandling
         // bookkeeping and nothing more.
         //
         // *** IT SAYS NOTHING ABOUT THE SUBMISSION, and that is why it is phrased and coloured as
-        // the quietest thing on the card. *** The maintainer asked what it meant, which is fair
+        // the quietest thing on the card. *** The project owner asked what it meant, which is fair
         // warning: beside "Sent" and "Replied", both of which are facts about the contribution, a
         // third date invites the reader to look for meaning that is not there.
         //
@@ -442,10 +477,10 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Does this receipt carry a reviewer comment the contributor has NOT yet acknowledged?
+        // Does this receipt carry a maintainer comment the contributor has NOT yet acknowledged?
         //
         // *** THE WHOLE POINT: A COMMENT NOBODY NOTICES IS A COMMENT NOBODY READS. *** Contributing
-        // needs no account, so there is no inbox and no thread - the reviewer's sentence is the
+        // needs no account, so there is no inbox and no thread - the maintainer's sentence is the
         // entire channel back to the person who did the work. Before this, it appeared only inside
         // a window reached by a button nobody has a reason to press, so being asked for changes was
         // invisible unless the contributor happened to go looking.
@@ -468,7 +503,7 @@ namespace Handlers.DataHandling
             if (receipt is null)
                 return false;
 
-            string comment = (receipt.ReviewerComment ?? string.Empty).Trim();
+            string comment = (receipt.MaintainerComment ?? string.Empty).Trim();
 
             // Nothing said. Not unread - there is nothing to read.
             if (comment.Length == 0)
@@ -483,8 +518,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Has this submission been DECIDED since the contributor last looked?
         //
-        // *** THE HALF THAT WAS MISSING, AND THE COMMONEST CASE OF ALL (maintainer report,
-        // 2026-09-23). *** A reviewer approving good work usually writes nothing - there is
+        // *** THE HALF THAT WAS MISSING, AND THE COMMONEST CASE OF ALL (owner report,
+        // 2026-09-23). *** A maintainer approving good work usually writes nothing - there is
         // nothing to say - so HasUnreadComment saw an empty comment and reported "not unread".
         // The contributor's submission went to "Published" and the application said nothing:
         // no badge, and once the draft was gone, no Drafts tab either. The one outcome everybody
@@ -531,7 +566,7 @@ namespace Handlers.DataHandling
         {
             return state.Trim().ToLowerInvariant() switch
             {
-                // Queued for a reviewer, or still mid-send. Neither is a decision.
+                // Queued for a maintainer, or still mid-send. Neither is a decision.
                 "pending" or "uploading" => true,
 
                 // Anything decided - and anything this build does not recognise, which is safer

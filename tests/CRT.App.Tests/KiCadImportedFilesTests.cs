@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // KiCadImportedFiles - removing one imported KiCad file from a draft's "KiCad data" folder, the
-// per-file "Remove" in SystemFilesWindow (maintainer request, 2026-09-24).
+// per-file "Remove" in SystemFilesWindow (owner request, 2026-09-24).
 //
 // This DELETES FILES, so half of these are about what it must refuse: anything not strictly inside
 // the KiCad folder - the draft's own workbook beside it, a sibling folder whose name merely starts

@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // APPLIES A COMPONENT-CONTRIBUTION EDITING SESSION TO A DRAFT'S BOARD
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS REPLACES ComponentDraftWriter, AND LIKE THE LABEL EDITOR'S IT IS MOSTLY A DELETION.
     // *** That class turned one editing session into BoardDraft row deltas across six sections,
@@ -33,7 +33,7 @@ namespace Handlers.DataHandling
     // every other component's rows are carried across untouched. Getting that boundary wrong would
     // wipe the rest of the board from a window the contributor believes is editing one component.
     //
-    // *** AND IT KEEPS POSITIONS (maintainer request, 2026-09-24). *** An edited component's rows
+    // *** AND IT KEEPS POSITIONS (owner request, 2026-09-24). *** An edited component's rows
     // go back where they were; a new component's go into its category in label order
     // (ComponentPlacement). They used to be appended at the bottom on every save, so editing a
     // component moved it to the end of the list the application shows.
@@ -115,8 +115,8 @@ namespace Handlers.DataHandling
                 // region's, and replacing the label's rows wholesale deleted the OTHER region's
                 // silently.
                 //
-                // Reported by the maintainer: editing U1's short description while viewing PAL
-                // removed all 40 of U1's NTSC scope baselines, and the review app correctly showed
+                // Reported by the project owner: editing U1's short description while viewing PAL
+                // removed all 40 of U1's NTSC scope baselines, and the maintainer app correctly showed
                 // 40 files being deleted by a submission that was meant to change one line of text.
                 //
                 // A row with a BLANK region is visible in every region (the window loads it too),
@@ -195,7 +195,7 @@ namespace Handlers.DataHandling
         // Every row belonging to this board label goes, across all four component-scoped sections
         // INCLUDING the Components row itself - AND its highlights on every schematic.
         //
-        // *** THE HIGHLIGHTS GO TOO (maintainer decision, 2026-09-25): "if a component really is
+        // *** THE HIGHLIGHTS GO TOO (owner decision, 2026-09-25): "if a component really is
         // deleted, then it should remove EVERYTHING related to this component." *** They used to be
         // kept, on the reasoning that highlights are the label editor's concern - which left
         // rectangles naming a component the board no longer has, and contradicted this window's

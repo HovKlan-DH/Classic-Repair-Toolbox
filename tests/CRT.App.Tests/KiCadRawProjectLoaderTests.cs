@@ -663,7 +663,7 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
     // ------------------------------------------------------------------ child sheet PINS
 
     // ###########################################################################################
-    // *** SHEET PINS ARE WHAT MAKE A CROSS-SHEET NET FOLLOWABLE (maintainer report, 2026-09-24). ***
+    // *** SHEET PINS ARE WHAT MAKE A CROSS-SHEET NET FOLLOWABLE (owner report, 2026-09-24). ***
     //
     // A hierarchical design renames a net at every boundary: the C128 userport sheet draws "CNT1"
     // while the PCB calls that copper "/I{slash}O/Serial Bus/CNT", because on the parent sheet the

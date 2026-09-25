@@ -17,8 +17,8 @@ namespace Handlers.DataHandling
     //
     // WHAT THIS FILE DOES NOT DO: it does not write system.json, and nothing in the running server
     // may. The Production tree is denied to the service AT THE FILESYSTEM (Phase 3 step 0's
-    // interlock), so publishing stays a deliberate act by the maintainer. These helpers produce
-    // the values; the publishing tool the maintainer runs is what puts them on disk.
+    // interlock), so publishing stays a deliberate act by the project owner. These helpers produce
+    // the values; the publishing tool the project owner runs is what puts them on disk.
     // ###########################################################################################
     public static class SystemDescriptorRules
     {
@@ -235,7 +235,7 @@ namespace Handlers.DataHandling
         //
         // IT IS SET ONCE, WHEN THE SYSTEM ROW IS FIRST CREATED, and never recomputed: a system
         // that arrived through the contribution pipeline stays "contributed" however many times it
-        // is later revised, including revisions made by the maintainer. It records where the
+        // is later revised, including revisions made by the project owner. It records where the
         // system CAME FROM, not who touched it last.
         // ###########################################################################################
         public static class SystemOrigin

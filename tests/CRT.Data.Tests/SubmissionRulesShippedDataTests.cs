@@ -15,7 +15,7 @@ namespace CRT.Data.Tests
     //
     // *** WHY THIS TEST EXISTS. *** This pipeline has twice shipped a validation rule that
     // rejected correct, already-published data - region-variant labels, then note-only image rows
-    // - each found only when the maintainer's first real submission of a board failed. The file
+    // - each found only when the project owner's first real submission of a board failed. The file
     // rules added in the security review are stricter still (own folder, allowed types, content
     // signatures), so every one of them is run here over every board in Assets/Data, exactly as a
     // client would submit it.

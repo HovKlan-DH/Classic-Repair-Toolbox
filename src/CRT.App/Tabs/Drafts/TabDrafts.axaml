@@ -58,7 +58,7 @@
 							Command="{Binding ViewDriftCommand}" />
 
 					<!-- Opens this draft's workbook as editable sheets directly below the
-					     row, hiding every other draft while it is open (maintainer request,
+					     row, hiding every other draft while it is open (owner request,
 					     2026-09-24). Reads "Close table" while open. See BoardTableEditor. -->
 					<Button Grid.Column="2"
 							Content="{Binding TableButtonText}"
@@ -67,7 +67,7 @@
 							ToolTip.Tip="{Binding TableButtonTooltip}"
 							Command="{Binding EditTableCommand}" />
 
-					<!-- One button per kind of file (maintainer request, 2026-09-24) - they
+					<!-- One button per kind of file (owner request, 2026-09-24) - they
 					     used to share one "Schematic images and KiCad data" button. Both
 					     open SystemFilesWindow, each on its own section. -->
 					<Button Grid.Column="3"
@@ -89,7 +89,7 @@
 					     learned it is and the tooltip can say why it is unavailable - a
 					     button that appears only sometimes reads as the app having lost
 					     it. No account is needed to press this; the dialog asks only for
-					     an email address, so a reviewer can contact the contributor if
+					     an email address, so a maintainer can contact the contributor if
 					     they need to. The OUTCOME is reported in "My submissions" - no
 					     email is sent, see SubmissionReceipt's header. -->
 					<Button Grid.Column="5"
@@ -146,9 +146,9 @@
 				     will appear there, which is more use than a button that is simply absent until
 				     the day it silently appears. -->
 				<!--
-				THE BUTTON CARRIES A BADGE when a reviewer has said something that has not been
+				THE BUTTON CARRIES A BADGE when a maintainer has said something that has not been
 				read. Contributing needs no account, so there is no inbox and no email thread -
-				the reviewer's sentence inside this window is the ENTIRE channel back to the
+				the maintainer's sentence inside this window is the ENTIRE channel back to the
 				person who did the work, and before the badge it was reachable only by pressing a
 				button nobody had a reason to press.
 
@@ -168,7 +168,7 @@
 						"this needs you" rather than a new colour introduced here.
 						-->
 						<!--
-						*** A CIRCLE, NOT A LOZENGE (maintainer request, 2026-09-23). *** The
+						*** A CIRCLE, NOT A LOZENGE (owner request, 2026-09-23). *** The
 						earlier badge was MinWidth 16 with 5px side padding and CornerRadius 8, so
 						a single digit rendered as a rounded rectangle wider than it was tall. The
 						fix is a fixed square - Width and Height equal, with CornerRadius at half

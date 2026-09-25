@@ -7,8 +7,8 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // Covers ApprovalRules - who must approve before a publish (maintainer decision, 2026-09-25):
-    // one reviewer normally; a reviewer AND the administrator when a shared file changes.
+    // Covers ApprovalRules - who must approve before a publish (owner decision, 2026-09-25):
+    // one maintainer normally; a maintainer AND the administrator when a shared file changes.
     // ###########################################################################################
     public sealed class ApprovalRulesTests
     {
@@ -23,23 +23,23 @@ namespace CRT.Data.Tests
         [Fact]
         public void Nothing_shared_needs_ANY_one_approval()
         {
-            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasReviewers: true));
-            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasReviewers: false));
+            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasMaintainers: true));
+            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasMaintainers: false));
         }
 
         [Fact]
-        public void A_shared_change_needs_a_reviewer_AND_the_administrator()
+        public void A_shared_change_needs_a_maintainer_AND_the_administrator()
         {
             Assert.Equal(
-                [ApproverRole.Reviewer, ApproverRole.Administrator],
-                ApprovalRules.Required(touchesSharedFiles: true, systemHasReviewers: true));
+                [ApproverRole.Maintainer, ApproverRole.Administrator],
+                ApprovalRules.Required(touchesSharedFiles: true, systemHasMaintainers: true));
         }
 
         [Fact]
-        public void A_shared_change_on_a_board_with_NO_reviewers_needs_the_administrator_alone()
+        public void A_shared_change_on_a_board_with_NO_maintainers_needs_the_administrator_alone()
         {
             // There is nobody to ask for the other half.
-            Assert.Equal([ApproverRole.Administrator], ApprovalRules.Required(touchesSharedFiles: true, systemHasReviewers: false));
+            Assert.Equal([ApproverRole.Administrator], ApprovalRules.Required(touchesSharedFiles: true, systemHasMaintainers: false));
         }
 
         // -----------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ namespace CRT.Data.Tests
         // -----------------------------------------------------------------------------------
 
         [Theory]
-        [InlineData(ApproverRole.Reviewer)]
+        [InlineData(ApproverRole.Maintainer)]
         [InlineData(ApproverRole.Administrator)]
         public void Without_shared_files_either_role_publishes_alone(ApproverRole role)
         {
@@ -71,10 +71,10 @@ namespace CRT.Data.Tests
         // Both must approve
         // -----------------------------------------------------------------------------------
 
-        private static readonly IReadOnlyList<ApproverRole> Both = [ApproverRole.Reviewer, ApproverRole.Administrator];
+        private static readonly IReadOnlyList<ApproverRole> Both = [ApproverRole.Maintainer, ApproverRole.Administrator];
 
         [Theory]
-        [InlineData(ApproverRole.Reviewer)]
+        [InlineData(ApproverRole.Maintainer)]
         [InlineData(ApproverRole.Administrator)]
         public void The_FIRST_approval_of_a_shared_change_does_not_publish(ApproverRole first)
         {
@@ -87,22 +87,22 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_SECOND_role_publishes_in_either_order()
         {
-            ApprovalStatus adminAfterReviewer = ApprovalRules.Status(
-                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Reviewer)], ApproverRole.Administrator);
+            ApprovalStatus adminAfterMaintainer = ApprovalRules.Status(
+                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Maintainer)], ApproverRole.Administrator);
 
-            ApprovalStatus reviewerAfterAdmin = ApprovalRules.Status(
-                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Administrator)], ApproverRole.Reviewer);
+            ApprovalStatus maintainerAfterAdmin = ApprovalRules.Status(
+                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Administrator)], ApproverRole.Maintainer);
 
-            Assert.True(adminAfterReviewer.ApprovalPublishes);
-            Assert.True(reviewerAfterAdmin.ApprovalPublishes);
+            Assert.True(adminAfterMaintainer.ApprovalPublishes);
+            Assert.True(maintainerAfterAdmin.ApprovalPublishes);
         }
 
         [Fact]
         public void The_same_role_cannot_approve_twice_and_the_status_says_who_is_awaited()
         {
-            // A second reviewer of the same board does not count as the administrator.
+            // A second maintainer of the same board does not count as the administrator.
             ApprovalStatus status = ApprovalRules.Status(
-                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Reviewer)], ApproverRole.Reviewer);
+                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Maintainer)], ApproverRole.Maintainer);
 
             Assert.False(status.CanApprove);
             Assert.False(status.ApprovalPublishes);
@@ -111,31 +111,31 @@ namespace CRT.Data.Tests
 
         // ###########################################################################################
         // WHO gave an approval, not only in which role (code review, 2026-09-25): a board's second
-        // reviewer cannot add a second reviewer approval, but did not give the first one either.
+        // maintainer cannot add a second maintainer approval, but did not give the first one either.
         // ###########################################################################################
         [Fact]
         public void YouApproved_is_true_only_for_the_account_that_gave_the_approval()
         {
-            GivenApproval anna = new(ApproverRole.Reviewer, "Anna", DateTimeOffset.UnixEpoch, AccountId: 7);
+            GivenApproval anna = new(ApproverRole.Maintainer, "Anna", DateTimeOffset.UnixEpoch, AccountId: 7);
 
-            ApprovalStatus annas = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Reviewer, yourAccountId: 7);
-            ApprovalStatus bos = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Reviewer, yourAccountId: 8);
-            ApprovalStatus unknown = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Reviewer);
+            ApprovalStatus annas = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Maintainer, yourAccountId: 7);
+            ApprovalStatus bos = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Maintainer, yourAccountId: 8);
+            ApprovalStatus unknown = ApprovalRules.Status(ApprovalRulesTests.Both, [anna], ApproverRole.Maintainer);
 
             Assert.True(annas.YouApproved);
             Assert.False(bos.YouApproved);
             Assert.False(unknown.YouApproved);
 
-            // Neither may add a second reviewer approval.
+            // Neither may add a second maintainer approval.
             Assert.False(annas.CanApprove);
             Assert.False(bos.CanApprove);
         }
 
-        // Every reviewer is sent the list of approvals; who gave each is the label, not an id.
+        // Every maintainer is sent the list of approvals; who gave each is the label, not an id.
         [Fact]
         public void The_approvers_account_id_stays_off_the_wire()
         {
-            GivenApproval anna = new(ApproverRole.Reviewer, "Anna", DateTimeOffset.UnixEpoch, AccountId: 7);
+            GivenApproval anna = new(ApproverRole.Maintainer, "Anna", DateTimeOffset.UnixEpoch, AccountId: 7);
 
             string json = JsonSerializer.Serialize(anna, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
@@ -143,7 +143,7 @@ namespace CRT.Data.Tests
         }
 
         [Fact]
-        public void The_administrator_alone_publishes_when_the_board_has_no_reviewers()
+        public void The_administrator_alone_publishes_when_the_board_has_no_maintainers()
         {
             ApprovalStatus status = ApprovalRules.Status([ApproverRole.Administrator], [], ApproverRole.Administrator);
 
@@ -153,7 +153,7 @@ namespace CRT.Data.Tests
         // ###########################################################################################
         // *** WHAT IS REQUIRED CAN SHRINK AFTER AN APPROVAL, AND THE ITEM MUST NOT STICK (code review,
         // 2026-09-25). *** The administrator approves a shared change first; the board's only
-        // reviewer then leaves its pool, so the item needs the administrator alone - who has already
+        // maintainer then leaves its pool, so the item needs the administrator alone - who has already
         // approved. Nothing is waited for, yet the administrator was refused as "already approved"
         // and no other role existed to press the button: the item sat in 'approved' for ever.
         // ###########################################################################################
@@ -175,7 +175,7 @@ namespace CRT.Data.Tests
         public void A_role_the_item_no_longer_needs_still_cannot_approve_it()
         {
             ApprovalStatus status = ApprovalRules.Status(
-                [ApproverRole.Administrator], [ApprovalRulesTests.By(ApproverRole.Administrator)], ApproverRole.Reviewer);
+                [ApproverRole.Administrator], [ApprovalRulesTests.By(ApproverRole.Administrator)], ApproverRole.Maintainer);
 
             Assert.False(status.CanApprove);
             Assert.False(status.ApprovalPublishes);
@@ -188,10 +188,10 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_status_round_trips_with_its_roles_as_NAMES()
         {
-            // The server serialises this record and the review application reads it back as the
+            // The server serialises this record and the maintainer application reads it back as the
             // same record; roles travel as names so a member added later cannot shift the others.
             ApprovalStatus status = ApprovalRules.Status(
-                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Reviewer)], ApproverRole.Administrator);
+                ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Maintainer)], ApproverRole.Administrator);
 
             var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
             string json = JsonSerializer.Serialize(status, web);
@@ -202,7 +202,7 @@ namespace CRT.Data.Tests
 
             Assert.NotNull(back);
             Assert.Equal(status.WaitingFor, back!.WaitingFor);
-            Assert.Equal(ApproverRole.Reviewer, Assert.Single(back.Given).Role);
+            Assert.Equal(ApproverRole.Maintainer, Assert.Single(back.Given).Role);
             Assert.True(back.ApprovalPublishes);
         }
     }

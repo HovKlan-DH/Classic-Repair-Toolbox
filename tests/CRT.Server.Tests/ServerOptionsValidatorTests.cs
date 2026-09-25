@@ -87,7 +87,7 @@ namespace CRT.Server.Tests
         }
 
         // The message is what appears in "systemctl status" when the unit fails, and DEPLOYMENT.md
-        // promises the maintainer that a refusal names the setting. If that stops being true, the
+        // promises the project owner that a refusal names the setting. If that stops being true, the
         // runbook is lying.
         [Fact]
         public void A_refusal_names_the_setting_that_caused_it()
@@ -249,7 +249,7 @@ namespace CRT.Server.Tests
                 f => f.Contains("required marker", StringComparison.Ordinal));
         }
 
-        // Clearing the marker is how the maintainer deliberately targets a tree without "-BETA" in
+        // Clearing the marker is how the project owner deliberately targets a tree without "-BETA" in
         // its name. It must be possible, or the service could never be pointed anywhere else - but
         // it has to be an explicit act, which is why the default is not empty.
         [Fact]
@@ -565,7 +565,7 @@ namespace CRT.Server.Tests
         // Reporting behaviour.
         // -----------------------------------------------------------------------------------
 
-        // A maintainer editing a config file over SSH should see every problem at once. Fixing one,
+        // The project owner editing a config file over SSH should see every problem at once. Fixing one,
         // restarting, and discovering the next is a slow loop, so validation must not stop at the
         // first failure.
         // -----------------------------------------------------------------------------------

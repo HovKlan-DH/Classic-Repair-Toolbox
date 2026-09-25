@@ -109,7 +109,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Save to draft" then takes the contributor to the Drafts tab (maintainer request,
+    // "Save to draft" then takes the contributor to the Drafts tab (owner request,
     // 2026-09-24): the window reports a landed save to Main, which closes it and switches tab.
     // Driven through the WHOLE click path (SubmitAsync, which the click handler awaits), since that
     // is where the report is made - and exactly once, after the save, not before it.
@@ -145,7 +145,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (maintainer
+    // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (owner
     // request, 2026-09-24). *** The save would make the table's own save refused and its edits
     // lost, so nothing is written, a notice is shown, and the window stays - no refresh, no
     // switch to the Drafts tab.

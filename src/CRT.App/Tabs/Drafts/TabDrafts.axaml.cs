@@ -158,17 +158,17 @@ namespace CRT
             this.EmptyStateText.IsVisible = !hasAnyDrafts;
 
             // *** THE EMPTY STATE HAS TO EXPLAIN WHY THE TAB IS EVEN HERE. *** With no drafts this
-            // tab is normally hidden, so the one case it appears empty is when unread reviewer
+            // tab is normally hidden, so the one case it appears empty is when unread maintainer
             // feedback is holding it open (Main.ApplyDraftsTabVisibility). "No local drafts yet"
             // would then be a true sentence that answers the wrong question, and the contributor
-            // would have no idea a reviewer had written to them.
+            // would have no idea a maintainer had written to them.
             if (!hasAnyDrafts)
             {
                 int unread = this.UnreadCommentCountOverrideForTests
                     ?? SubmissionReceiptStore.UnreadCommentCount();
 
                 this.EmptyStateText.Text = unread > 0
-                    ? "A reviewer has replied to something you sent. Open \"My submissions\" above to read it."
+                    ? "A maintainer has replied to something you sent. Open \"My submissions\" above to read it."
                     : "No local drafts yet. Edits made through the Contribute tab that have not been submitted will appear here.";
             }
         }
@@ -417,13 +417,13 @@ namespace CRT
         // drafted rows would mean the server had to reconstruct that merge from a draft format it
         // has no reason to know about.
         //
-        // NO ACCOUNT IS INVOLVED. The dialog asks for an email address purely so a REVIEWER can
+        // NO ACCOUNT IS INVOLVED. The dialog asks for an email address purely so a MAINTAINER can
         // contact the contributor if they need to; there is no sign-in, and pressing this button
-        // is the whole interaction. A maintainer account is created by the maintainer afterwards,
+        // is the whole interaction. A maintainer account is created by the project owner afterwards,
         // for a NEW system's author, and has nothing to do with sending.
         //
         // *** NOTHING EMAILS THE CONTRIBUTOR THE OUTCOME (corrected 2026-09-23). *** That address
-        // is stored and shown to the reviewer, and no submission flow sends to it - the outcome is
+        // is stored and shown to the maintainer, and no submission flow sends to it - the outcome is
         // reported in "My submissions" and nowhere else. See SubmissionReceipt's header.
         //
         // THE DRAFT IS LEFT ALONE, deliberately - nothing here discards it. An accepted submission
@@ -606,10 +606,10 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Shows or hides the "you have unread reviewer feedback" badge on the My submissions button.
+        // Shows or hides the "you have unread maintainer feedback" badge on the My submissions button.
         //
         // *** IT COUNTS UNREAD COMMENTS, NOT SUBMISSIONS IN ANY PARTICULAR STATE. *** Tying it to
-        // "changes requested" would miss a reviewer who left a note while approving, and would
+        // "changes requested" would miss a maintainer who left a note while approving, and would
         // keep shouting at somebody who has already read the note and is working on it. What the
         // contributor needs to know is "somebody said something you have not seen".
         //
@@ -673,7 +673,7 @@ namespace CRT
         public ICommand DiscardCommand { get; }
 
         // One per button - "Schematic images" and "KiCad data" each open SystemFilesWindow on its
-        // own section (maintainer request, 2026-09-24).
+        // own section (owner request, 2026-09-24).
         public ICommand ManageSchematicImagesCommand { get; }
         public ICommand ManageKiCadDataCommand { get; }
         public ICommand ViewDriftCommand { get; }
@@ -743,7 +743,7 @@ namespace CRT
             // An EMPTY draft has nothing to review. That is a real state, not a theoretical one: a
             // system created through "Add a new system" exists as a registration before a single
             // row or image is added to it, and this tab lists it from that moment. Sending it would
-            // put an empty system in front of a reviewer, so the button says why instead.
+            // put an empty system in front of a maintainer, so the button says why instead.
             //
             // A drafted system with rows is always submittable, drift or no drift - the server
             // diffs against the base revision itself, and refusing to send while the official data

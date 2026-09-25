@@ -13,7 +13,7 @@ using System.Linq;
 namespace CRT
 {
     // ###########################################################################################
-    // BoardTableEditor - DRAGGING A ROW, WITH A PLACEHOLDER (maintainer request, 2026-09-24: "insert
+    // BoardTableEditor - DRAGGING A ROW, WITH A PLACEHOLDER (owner request, 2026-09-24: "insert
     // a placeholder when I drag a row up and down, like when moving an image in the worklog").
     //
     // It works the way the worklog's photo and file lists do (WorklogEntryEditorWindow.Attachments):

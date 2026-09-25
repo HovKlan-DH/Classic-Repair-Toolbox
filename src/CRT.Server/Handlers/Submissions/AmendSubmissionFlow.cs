@@ -4,9 +4,9 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // A REVIEWER'S AMENDMENT to a submission (maintainer request, 2026-09-25): the review
-    // application's table editor lets a reviewer correct a submission's rows before publishing it -
-    // "The reviewer should be able to also edit whatever, if he chooses to publish it afterwards."
+    // A MAINTAINER'S AMENDMENT to a submission (owner request, 2026-09-25): the review
+    // application's table editor lets a maintainer correct a submission's rows before publishing it -
+    // "The maintainer should be able to also edit whatever, if he chooses to publish it afterwards."
     //
     // *** THE ORDER OF THE CHECKS IS THE DESIGN, as in ApprovePublishFlow. *** Cheap refusals
     // first, and nothing is stored until every one has passed. Everything from the first read to
@@ -15,7 +15,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     //   1. AUTHORITY - may this account review anything, and THIS submission's board?
     //   2. STATE     - is it still undecided (pending, or waiting for its second approval)?
-    //   3. VERSION   - is it still at the amendment the reviewer opened? Two reviewers editing at
+    //   3. VERSION   - is it still at the amendment the maintainer opened? Two maintainers editing at
     //                  once must not silently overwrite each other; the second is told to reload.
     //                  Steps 2 and 3 are checked AGAIN by the store, inside the transaction that
     //                  writes - the answer here is only the early one.
@@ -25,7 +25,7 @@ namespace CRT.Server.Handlers.Submissions
     //   5. FILES     - rebuilt from what the rows cite. A file the submission carries is kept; a
     //                  file already PUBLISHED at that path is taken from the published tree (the
     //                  server's own copy, imported like a new submission's unchanged files); a
-    //                  row citing anything else is refused - a reviewer edits rows, and cannot
+    //                  row citing anything else is refused - a maintainer edits rows, and cannot
     //                  bring in a file nobody has sent.
     //   6. VALIDATE  - the same path, file and row rules a new submission passes.
     //   7. STORE     - the store keeps what is replaced (the contributor's original first), clears
@@ -34,7 +34,7 @@ namespace CRT.Server.Handlers.Submissions
     //                  content actually being published.
     //
     // An audit row records who amended what. The contributor is told in the decision mail and in
-    // CRT's "My submissions" (the status answer carries `amendedByReviewer`).
+    // CRT's "My submissions" (the status answer carries `amendedByMaintainer`).
     // ###########################################################################################
     public static class AmendSubmissionFlow
     {
@@ -66,7 +66,7 @@ namespace CRT.Server.Handlers.Submissions
             // 2026-09-25). *** ApprovePublishFlow holds it from reading the submission to recording
             // it published. Without it an amendment could land in between: the tree got the rows as
             // they were, the database the amended ones, and the contributor was mailed that a
-            // reviewer's change had been published. Now it waits for the publish, and then finds the
+            // maintainer's change had been published. Now it waits for the publish, and then finds the
             // submission decided.
             using IDisposable gate = await publishLock.EnterAsync(cancellationToken).ConfigureAwait(false);
 
@@ -138,7 +138,7 @@ namespace CRT.Server.Handlers.Submissions
                     Code = "amend.file_unknown",
                     Subject = path,
                     Message = $"[{path}] is neither in this submission nor in the published data. A change made " +
-                        "in the review application can only use files that are already there."
+                        "in CRT Maintainer can only use files that are already there."
                 });
             }
 
@@ -264,8 +264,8 @@ namespace CRT.Server.Handlers.Submissions
 
         public static AmendOutcome Conflict(string error) => new(false, 0, error, [], IsConflict: true);
 
-        // The refusal as ONE sentence for the reviewer: the error, then what each blocking finding
-        // says - the review application shows a refusal's `error` and nothing else.
+        // The refusal as ONE sentence for the maintainer: the error, then what each blocking finding
+        // says - the maintainer application shows a refusal's `error` and nothing else.
         public string FullError =>
             string.Join(" ", new[] { this.Error }
                 .Concat(this.Findings.Where(finding => finding.Severity == ValidationSeverity.Error).Select(finding => finding.Message))

@@ -4,9 +4,9 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // ONE CELL TO AND FROM THE CLIPBOARD, the way Excel reads and writes it - for the table
-    // editor's Ctrl+C / Ctrl+V on a selected cell (maintainer request, 2026-09-24).
+    // editor's Ctrl+C / Ctrl+V on a selected cell (owner request, 2026-09-24).
     //
-    // *** ONE CELL AT A TIME, DELIBERATELY. *** The maintainer asked for the simple version first:
+    // *** ONE CELL AT A TIME, DELIBERATELY. *** The project owner asked for the simple version first:
     // insert a row, then copy cells across one by one. So a clipboard holding a BLOCK of cells
     // (tabs or line breaks - what Excel puts there for more than one cell) is refused rather than
     // squeezed into one cell or spread across several. Pasting a block is a later feature with

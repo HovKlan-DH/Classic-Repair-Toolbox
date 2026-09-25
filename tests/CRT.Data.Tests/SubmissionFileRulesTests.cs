@@ -10,7 +10,7 @@ namespace CRT.Data.Tests
     // 2026-09-25).
     //
     // Each rule closes a way a perfectly SHAPED path still did harm: overwriting another board's
-    // file, carrying a file no row uses (so no reviewer ever saw it), carrying a dot-file the web
+    // file, carrying a file no row uses (so no maintainer ever saw it), carrying a dot-file the web
     // server reads as configuration, or landing beside a published path that differs only by case.
     // SubmissionRulesShippedDataTests proves none of them refuses a board that is already published.
     // ###########################################################################################
@@ -108,7 +108,7 @@ namespace CRT.Data.Tests
 
         // --------------------------------------------------------------------- used by a row
 
-        // Nothing would show a file no row names - so no reviewer could have seen it.
+        // Nothing would show a file no row names - so no maintainer could have seen it.
         [Fact]
         public void A_file_NO_ROW_USES_is_refused()
         {

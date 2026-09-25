@@ -7,7 +7,7 @@ using System;
 namespace CRT
 {
     // ###########################################################################################
-    // The amber "Draft" chip on the Hardware and Board drop-down entries (maintainer request,
+    // The amber "Draft" chip on the Hardware and Board drop-down entries (owner request,
     // 2026-09-24) - the same chip a drafted component row carries in the component list, so a
     // system with local, unpublished work is recognisable before it is even opened. See
     // Main.axaml.cs for the file map of the whole partial class.

@@ -513,7 +513,7 @@ public sealed class TabDraftsTests : IDisposable
     // THE UNREAD-FEEDBACK BADGE on the My submissions button.
     //
     // *** WHY IT EXISTS: a comment nobody notices is a comment nobody reads. *** Contributing
-    // needs no account, so the reviewer's sentence is the whole channel back to the contributor,
+    // needs no account, so the maintainer's sentence is the whole channel back to the contributor,
     // and it lived behind a button nobody had a reason to press. Somebody could be asked for
     // changes and never find out.
     //
@@ -540,7 +540,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public void The_badge_SHOWS_THE_COUNT_when_a_reviewer_has_said_something_unread()
+    public void The_badge_SHOWS_THE_COUNT_when_a_maintainer_has_said_something_unread()
     {
         UiTest.Run(() =>
         {
@@ -567,12 +567,12 @@ public sealed class TabDraftsTests : IDisposable
         UiTest.Run(() =>
         {
             // *** THE ONE CASE THIS TAB APPEARS EMPTY. *** With no drafts it is normally hidden
-            // outright; unread reviewer feedback is what holds it open
+            // outright; unread maintainer feedback is what holds it open
             // (Main.ApplyDraftsTabVisibility), because a contributor who submitted and then
             // discarded their draft would otherwise never see the reply.
             //
             // "No local drafts yet" would then be a true sentence answering the wrong question,
-            // leaving somebody staring at an empty tab with no idea a reviewer had written.
+            // leaving somebody staring at an empty tab with no idea a maintainer had written.
             var tab = new TabDrafts
             {
                 HardwareBoardsOverrideForTests = [],
@@ -584,7 +584,7 @@ public sealed class TabDraftsTests : IDisposable
             var empty = tab.GetControl<TextBlock>("EmptyStateText");
 
             Assert.True(empty.IsVisible);
-            Assert.Contains("reviewer has replied", empty.Text!, StringComparison.Ordinal);
+            Assert.Contains("maintainer has replied", empty.Text!, StringComparison.Ordinal);
             Assert.Contains("My submissions", empty.Text!, StringComparison.Ordinal);
         });
     }
@@ -606,7 +606,7 @@ public sealed class TabDraftsTests : IDisposable
             var empty = tab.GetControl<TextBlock>("EmptyStateText");
 
             Assert.Contains("No local drafts yet", empty.Text!, StringComparison.Ordinal);
-            Assert.DoesNotContain("reviewer", empty.Text!, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("maintainer", empty.Text!, StringComparison.OrdinalIgnoreCase);
         });
     }
 
@@ -646,7 +646,7 @@ public sealed class TabDraftsTests : IDisposable
     // ###########################################################################################
     // A system registered but not yet filled in is a REAL state, not a theoretical one: "Add a new
     // system" creates the registration, and this tab lists it from that moment. Submitting it
-    // would put an empty system in front of a reviewer, so the button is disabled and says why.
+    // would put an empty system in front of a maintainer, so the button is disabled and says why.
     //
     // Disabled rather than hidden, deliberately - an action that disappears reads as the app
     // having lost it, and the tooltip is where the reason can actually be given.
@@ -778,7 +778,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** "Schematic images" AND "KiCad data" ARE TWO BUTTONS (maintainer request, 2026-09-24). ***
+    // *** "Schematic images" AND "KiCad data" ARE TWO BUTTONS (owner request, 2026-09-24). ***
     //
     // They used to be one "Schematic images and KiCad data" button. Asserted on the RENDERED row
     // for the same reason as the Submit test above: a button bound to the wrong command, or left
@@ -857,7 +857,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     // ###########################################################################################
-    // TABLE MODE - "Edit in table format" (maintainer request, 2026-09-24).
+    // TABLE MODE - "Edit in table format" (owner request, 2026-09-24).
     //
     // The table itself is pinned by BoardTableEditorTests; these pin the TAB around it: that
     // opening one draft's table hides every other row but leaves `Drafts` whole (Main decides

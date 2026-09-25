@@ -91,13 +91,13 @@
 
   <!--
   CRT.Data holds the Avalonia-free board-data layer (BoardData/Reader/Writer, board JSON
-  highlights, DataValidator, plus a few pure text helpers) shared with the review app and, from
+  highlights, DataValidator, plus a few pure text helpers) shared with the maintainer app and, from
   Phase 3, the server. See src/CRT.Data/CRT.Data.csproj's own header for what deliberately stayed
   behind in this project instead.
   -->
   <ItemGroup>
     <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
-    <!-- The table editor, shared with the review application (2026-09-25). -->
+    <!-- The table editor, shared with the maintainer application (2026-09-25). -->
     <ProjectReference Include="..\CRT.UI\CRT.UI.csproj" />
   </ItemGroup>
 

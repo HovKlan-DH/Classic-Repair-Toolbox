@@ -8,11 +8,11 @@ namespace CRT.Data.Tests
 {
     // ###########################################################################################
     // Covers ProductionPromotionPlan - what publishing one system from BETA to Production copies,
-    // and what it refuses (maintainer request, 2026-09-25).
+    // and what it refuses (owner request, 2026-09-25).
     //
     // Production is what every user downloads, so the refusals matter as much as the copies: a
     // board promoted while pointing at a file Production does not have is a broken board on every
-    // machine, and a shared file changed by a reviewer reaches boards nobody asked them about.
+    // machine, and a shared file changed by a maintainer reaches boards nobody asked them about.
     // ###########################################################################################
     public sealed class ProductionPromotionPlanTests
     {
@@ -115,7 +115,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void A_system_json_left_in_BETA_by_an_earlier_build_is_NEVER_promoted()
         {
-            // Retired by the maintainer (2026-09-25): it is not relevant to users and must not be
+            // Retired by the project owner (2026-09-25): it is not relevant to users and must not be
             // downloaded by them. One still in BETA is left behind, not carried to production.
             PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
                 (P("system.json"), "d"),

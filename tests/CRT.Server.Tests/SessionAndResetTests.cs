@@ -117,7 +117,7 @@ namespace CRT.Server.Tests
         public async Task Reuse_detection_is_recorded_in_the_audit_trail()
         {
             // The user is about to be logged out of everything with no explanation; the audit row
-            // is how the maintainer can tell them why.
+            // is how the project owner can tell them why.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
 
             await AccountFlows.RefreshAsync(token, null, null, store, SessionAndResetTests.Options(),
@@ -471,9 +471,9 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // SLIDING EXPIRY (maintainer request, 2026-09-22).
+        // SLIDING EXPIRY (owner request, 2026-09-22).
         //
-        // The promise being kept: a reviewer signs in once and keeps working. The promise being
+        // The promise being kept: a maintainer signs in once and keeps working. The promise being
         // preserved alongside it: signing out, locking an account, or a session expiring still
         // stops access immediately. These tests assert BOTH halves, because a change that keeps
         // someone signed in by accidentally reviving dead sessions would pass the first half
@@ -531,7 +531,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_FRESH_session_is_not_rewritten_on_every_request()
         {
-            // The review app calls the queue on launch, on every refresh click and after every
+            // The maintainer app calls the queue on launch, on every refresh click and after every
             // decision. Extending on each would turn a read-only screen into a stream of UPDATEs
             // that move the expiry by seconds.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
@@ -549,7 +549,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_SIGNED_OUT_session_is_never_revived_by_a_later_request()
         {
-            // *** SIGNING OUT MUST BE FINAL. *** The maintainer named logging off as a thing that
+            // *** SIGNING OUT MUST BE FINAL. *** The project owner named logging off as a thing that
             // must forget the login, so a revoked session being extended back to life by a
             // request already in flight would break the one guarantee they asked for by name.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
@@ -568,7 +568,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_LOCKED_account_stops_immediately_and_its_session_is_not_extended()
         {
-            // *** THE OTHER THING THE MAINTAINER NAMED BY NAME. *** Phase 6's definition of done
+            // *** THE OTHER THING THE PROJECT OWNER NAMED BY NAME. *** Phase 6's definition of done
             // requires removal to bite on the very next request rather than at natural expiry.
             // Extension runs only AFTER the lock check, so a locked account cannot prolong the
             // credential it is no longer entitled to.
@@ -608,7 +608,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_ROTATED_session_is_not_extended_either()
         {
-            // The review app never calls refresh, but AccountFlows.RefreshAsync still exists and
+            // The maintainer app never calls refresh, but AccountFlows.RefreshAsync still exists and
             // a future client might. A superseded session must not be handed a fresh lease.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
 

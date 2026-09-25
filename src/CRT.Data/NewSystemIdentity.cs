@@ -216,7 +216,7 @@ namespace Handlers.DataHandling
         // exactly right.
         //
         // The server's `systems` table stores the three parts alongside system_id precisely so the
-        // review app can list by them without parsing the id, which only works while they ARE the
+        // maintainer app can list by them without parsing the id, which only works while they ARE the
         // id's parts. Display names belong on screen, not in the identity.
         // ###########################################################################################
         public static string ExtractHardware(string? excelDataFile)

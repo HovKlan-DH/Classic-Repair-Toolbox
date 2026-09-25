@@ -8,13 +8,13 @@ namespace CRT.Server.Configuration
     // human-readable failures. It opens nothing, writes nothing and logs nothing, so every branch
     // below is a unit test with no server, no disk and no database.
     //
-    // WHY A LIST RATHER THAN THE FIRST FAILURE. A maintainer editing a config file by hand on a
+    // WHY A LIST RATHER THAN THE FIRST FAILURE. The project owner editing a config file by hand on a
     // server, through the deployment runbook, wants every problem at once - fixing one, restarting,
     // and discovering the next is a slow loop over an SSH session. Every check therefore runs and
     // the messages accumulate.
     //
     // WHY THE MESSAGES NAME THE SETTING. These strings are what appears in "systemctl status" and
-    // the journal when the unit fails to start. DEPLOYMENT.md tells the maintainer that a refusal
+    // the journal when the unit fails to start. DEPLOYMENT.md tells the project owner that a refusal
     // names the setting, so each message must carry the key as written in the JSON.
     //
     // WHAT THIS IS NOT. Passing here does NOT make writing to Production impossible - only the
@@ -182,7 +182,7 @@ namespace CRT.Server.Configuration
         }
 
         // ###########################################################################################
-        // Publishing to PRODUCTION (maintainer request, 2026-09-25): all three settings or none.
+        // Publishing to PRODUCTION (owner request, 2026-09-25): all three settings or none.
         //
         // None is the feature switched off, and valid. Some-but-not-all is refused, because a
         // half-configured promotion either cannot run or - worse - writes one tree and advertises
@@ -577,7 +577,7 @@ namespace CRT.Server.Configuration
 
         private static bool HasRequiredMarker(string value, string? marker)
         {
-            // An empty marker means the maintainer deliberately turned the check off.
+            // An empty marker means the project owner deliberately turned the check off.
             if (string.IsNullOrEmpty(marker))
                 return true;
 

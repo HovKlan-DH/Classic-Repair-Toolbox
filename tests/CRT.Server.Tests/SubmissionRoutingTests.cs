@@ -11,7 +11,7 @@ namespace CRT.Server.Tests
     // and 11).
     //
     // The rule mirrors ReviewAuthority for people rather than requests, and a mismatch between
-    // the two is the failure worth pinning: a reviewer mailed about a submission they cannot
+    // the two is the failure worth pinning: a maintainer mailed about a submission they cannot
     // open, or - worse - nobody mailed at all for a submission only the administrator can
     // decide.
     // ###########################################################################################
@@ -36,15 +36,15 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_submission_goes_to_EVERY_reviewer_of_its_system()
+        public async Task A_submission_goes_to_EVERY_maintainer_of_its_system()
         {
             // Phase 6 task 2: route to every maintainer of the pool; any one may act.
             var accounts = new FakeAccountStore();
             long anna = await SubmissionRoutingTests.AccountAsync(accounts, "anna@example.com");
             long bob = await SubmissionRoutingTests.AccountAsync(accounts, "bob@example.com");
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, anna));
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, bob));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, bob));
 
             IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
                 SubmissionRoutingTests.Submission(), accounts);
@@ -53,7 +53,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_system_with_NO_reviewers_goes_to_the_administrators()
+        public async Task A_system_with_NO_maintainers_goes_to_the_administrators()
         {
             // Phase 6 task 3: "a new system routes to the administrator, always" - and so does a
             // shipped board nobody has been assigned to yet.
@@ -68,13 +68,13 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_submission_changing_SHARED_FILES_goes_to_the_reviewers_AND_the_administrators()
+        public async Task A_submission_changing_SHARED_FILES_goes_to_the_maintainers_AND_the_administrators()
         {
             // Both must approve it (2026-09-25), so both are told.
             var accounts = new FakeAccountStore();
             long anna = await SubmissionRoutingTests.AccountAsync(accounts, "anna@example.com");
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, anna));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
 
             IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
                 SubmissionRoutingTests.Submission(touchesShared: true), accounts);
@@ -83,7 +83,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_SHARED_FILES_submission_to_a_board_with_no_reviewers_goes_to_the_administrators_alone()
+        public async Task A_SHARED_FILES_submission_to_a_board_with_no_maintainers_goes_to_the_administrators_alone()
         {
             var accounts = new FakeAccountStore();
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
@@ -97,12 +97,12 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_other_half_of_an_approval_is_found_by_ROLE()
         {
-            // After a reviewer approves, the administrators are the ones to tell - and the other way
+            // After a maintainer approves, the administrators are the ones to tell - and the other way
             // round.
             var accounts = new FakeAccountStore();
             long anna = await SubmissionRoutingTests.AccountAsync(accounts, "anna@example.com");
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, anna));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
 
             Assert.Equal(
                 ["admin@example.com"],
@@ -110,37 +110,37 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 ["anna@example.com"],
-                await SubmissionRouting.RecipientsForRolesAsync([ApproverRole.Reviewer], SubmissionRoutingTests.C64, accounts));
+                await SubmissionRouting.RecipientsForRolesAsync([ApproverRole.Maintainer], SubmissionRoutingTests.C64, accounts));
         }
 
         // ###########################################################################################
-        // A pool row whose account cannot approve as a reviewer - made administrator by hand, locked
-        // or unverified - is not "the board's reviewer" (code review, 2026-09-25). Routing counts
-        // reviewers by the same rule the approval does (ReviewAuthority.CanGiveReviewerApproval),
+        // A pool row whose account cannot approve as a maintainer - made administrator by hand, locked
+        // or unverified - is not "the board's maintainer" (code review, 2026-09-25). Routing counts
+        // maintainers by the same rule the approval does (ReviewAuthority.CanGiveMaintainerApproval),
         // so a shared-file change goes to the administrators alone rather than waiting for a
-        // reviewer half nobody can give, and nobody is mailed "as the reviewer" who cannot act as one.
+        // maintainer half nobody can give, and nobody is mailed "as the maintainer" who cannot act as one.
         // ###########################################################################################
         [Fact]
-        public async Task A_pool_row_that_cannot_approve_as_a_reviewer_is_not_asked_as_one()
+        public async Task A_pool_row_that_cannot_approve_as_a_maintainer_is_not_asked_as_one()
         {
             var accounts = new FakeAccountStore();
             long promoted = await SubmissionRoutingTests.AccountAsync(accounts, "promoted@example.com", admin: true);
             long locked = await SubmissionRoutingTests.AccountAsync(accounts, "locked@example.com", locked: true);
             long unverified = await SubmissionRoutingTests.AccountAsync(accounts, "new@example.com", verified: false);
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, promoted));
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, locked));
-            accounts.Reviewers.Add((SubmissionRoutingTests.C64, unverified));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, promoted));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, locked));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, unverified));
 
             IReadOnlyList<string> shared = await SubmissionRouting.RecipientsForAsync(
                 SubmissionRoutingTests.Submission(touchesShared: true), accounts);
 
             Assert.Equal(["admin@example.com", "promoted@example.com"], shared.Order(StringComparer.Ordinal));
 
-            IReadOnlyList<string> asReviewer = await SubmissionRouting.RecipientsForRolesAsync(
-                [ApproverRole.Reviewer], SubmissionRoutingTests.C64, accounts);
+            IReadOnlyList<string> asMaintainer = await SubmissionRouting.RecipientsForRolesAsync(
+                [ApproverRole.Maintainer], SubmissionRoutingTests.C64, accounts);
 
-            Assert.Empty(asReviewer);
+            Assert.Empty(asMaintainer);
         }
 
         [Fact]

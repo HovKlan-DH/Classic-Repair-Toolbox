@@ -221,7 +221,7 @@ public sealed class MainWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // The Drafts tab's title is IndianRed in both themes (maintainer request, 2026-09-25): a draft
+    // The Drafts tab's title is IndianRed in both themes (owner request, 2026-09-25): a draft
     // is temporary, and the tab says so. Asserted on the header the window really builds, through
     // its theme key, so a header turned back into plain text - which the tab's selected and hover
     // states would recolour - or a key missing from one theme fails here.
@@ -717,7 +717,7 @@ public sealed class MainWindowTests : IDisposable
     // ------------------------------------------------------------------ landing on the Drafts tab
 
     // ###########################################################################################
-    // *** CREATING A SYSTEM LANDS THE USER ON THE DRAFTS TAB (maintainer request, 2026-09-24). ***
+    // *** CREATING A SYSTEM LANDS THE USER ON THE DRAFTS TAB (owner request, 2026-09-24). ***
     //
     // Creating a system is never the end of a task - schematic images, KiCad data and component
     // rows all still have to be added, and every one of those actions lives on the Drafts tab.

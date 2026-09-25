@@ -124,7 +124,7 @@ namespace Handlers.DataHandling
 
             // NATURAL order in every list (C1, C2, C10 - not C1, C10, C100, C2): each is shown in
             // full, one badge per component, and a board runs to hundreds of them, so the order has
-            // to be the one a person counts in (maintainer request, 2026-09-24).
+            // to be the one a person counts in (owner request, 2026-09-24).
             foreach (string label in labels.OrderBy(label => label, NaturalLabelComparer.Instance))
             {
                 if (references.Contains(label))

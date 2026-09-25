@@ -12,7 +12,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** THIS WRITES THE BETA TREE AND NEVER PRODUCTION. *** Since 2026-09-25 Production IS
     // written - by ProductionPromoter, and only by copying files that are already in BETA, once a
-    // reviewer has checked them there (the maintainer's two-stage publish). A submission never
+    // maintainer has checked them there (the project owner's two-stage publish). A submission never
     // goes straight to Production, and nothing in this class may learn to: the BETA stage is the
     // one a person looks at before everybody gets it.
     //
@@ -39,7 +39,7 @@ namespace CRT.Server.Handlers.Submissions
     // is a board that fails to load. RE-RUNNING THE SAME PUBLISH IS SAFE and is the recovery: each
     // step overwrites, and the blobs are content-addressed so a re-copy is byte-identical.
     //
-    // The maintainer decided against retained revisions (open question 5), so there is no previous
+    // The project owner decided against retained revisions (open question 5), so there is no previous
     // version to roll back to. That is what makes the ordering above matter rather than being
     // merely tidy.
     // ###########################################################################################
@@ -111,7 +111,7 @@ namespace CRT.Server.Handlers.Submissions
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     // ###########################################################################################
-                    // *** A FILESYSTEM REFUSAL IS A STOPPED PUBLISH, NOT A CRASH (maintainer report,
+                    // *** A FILESYSTEM REFUSAL IS A STOPPED PUBLISH, NOT A CRASH (owner report,
                     // 2026-09-23). ***
                     //
                     // TryCopyToAsync returns false for a MISSING blob, which the branch below
@@ -127,7 +127,7 @@ namespace CRT.Server.Handlers.Submissions
                     // Stopping here is safe for the same reason the missing-blob branch is: the
                     // workbook has not been touched, so nothing downstream reads the partially
                     // copied files. The publish is genuinely incomplete either way - what changes
-                    // is that the reviewer is told WHICH file and WHY.
+                    // is that the maintainer is told WHICH file and WHY.
                     //
                     // Narrow on purpose: an IOException or a permission refusal is an environment
                     // problem to report, whereas anything else here is a defect that should not be
@@ -181,7 +181,7 @@ namespace CRT.Server.Handlers.Submissions
             try
             {
                 // ###########################################################################################
-                // *** THE REVISION DATE IS STAMPED WITH THE PUBLISH DATE (maintainer request,
+                // *** THE REVISION DATE IS STAMPED WITH THE PUBLISH DATE (owner request,
                 // 2026-09-23). ***
                 //
                 // It is the "# Revision date:" line at the top of the Board schematics sheet, and it
@@ -215,7 +215,7 @@ namespace CRT.Server.Handlers.Submissions
                 // Step 1 stopping is clean - the workbook is untouched, so nothing reads the files
                 // it managed to copy. Stopping HERE is not clean: the images have been replaced and
                 // the workbook has not, so the board on disk is a mixture until the publish is
-                // re-run. Reported as such rather than thrown, because a reviewer needs to know the
+                // re-run. Reported as such rather than thrown, because a maintainer needs to know the
                 // tree is mid-publish, which a 500 does not tell them.
                 //
                 // Re-running the publish repairs it: every step overwrites unconditionally, so the

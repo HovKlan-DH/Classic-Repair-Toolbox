@@ -75,7 +75,7 @@ namespace Handlers.DataHandling
             // ONE document carrying BOTH roots - see the class header on why this is not two
             // writes. Built from scratch rather than loaded: the published sidecar must be exactly
             // what the submission describes, and carrying an unknown root forward from whatever
-            // was there before would publish data no reviewer ever saw.
+            // was there before would publish data no maintainer ever saw.
             var root = new JsonObject
             {
                 [BoardSidecarWriter.HighlightsRoot] = BoardSidecarWriter.BuildHighlights(highlights),

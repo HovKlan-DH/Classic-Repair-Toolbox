@@ -6,12 +6,12 @@ namespace ClassicRepairToolbox.Tests;
 // field-level diff").
 //
 // WHY THIS IS THE PART THAT MAKES REVIEWING POSSIBLE: "U8 changed" is not something anyone can act
-// on. A reviewer given only that has to open the board in CRT, find U8, and compare it by eye
+// on. A maintainer given only that has to open the board in CRT, find U8, and compare it by eye
 // against a submission they cannot see side by side. "Part-number: 906114 -> 251715-01" IS the
 // decision - it takes a second and needs nothing else open.
 //
-// The field NAMES come from BoardWorkbookSchema, so a reviewer reading "Part-number" and a
-// maintainer opening the .xlsx to check are talking about the same column.
+// The field NAMES come from BoardWorkbookSchema, so a maintainer reading "Part-number" and
+// someone opening the .xlsx to check are talking about the same column.
 public sealed class ReviewFieldDiffTests
 {
     private static ComponentEntry Component(
@@ -60,7 +60,7 @@ public sealed class ReviewFieldDiffTests
     [Fact]
     public void The_field_name_is_the_WORKBOOK_COLUMN_HEADER()
     {
-        // A reviewer reading this and a maintainer opening the .xlsx must be talking about the
+        // A maintainer reading this and someone opening the .xlsx must be talking about the
         // same column. Inventing a friendlier label here would create a second vocabulary for the
         // same data, and the two would drift.
         BoardData published = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(description: "old"));
@@ -108,7 +108,7 @@ public sealed class ReviewFieldDiffTests
     [Fact]
     public void A_CLEARED_field_is_reported_with_an_empty_after()
     {
-        // *** DELETING INFORMATION IS THE EDIT HARDEST TO NOTICE, and the one a reviewer most
+        // *** DELETING INFORMATION IS THE EDIT HARDEST TO NOTICE, and the one a maintainer most
         // needs shown. *** Omitting a cleared field because its new value is blank would hide
         // exactly the change that deserves a second look.
         BoardData published = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(description: "Decodes the memory map"));
@@ -141,11 +141,11 @@ public sealed class ReviewFieldDiffTests
     // ###########################################################################################
     // *** A REGIONAL VARIANT IS A ROW OF ITS OWN (2026-09-24). *** A component stored once per
     // region - U8 for PAL, U8 for NTSC - used to key on the label alone, so a submission adding the
-    // NTSC row beside an existing PAL one showed the reviewer NOTHING: the two collapsed into one.
+    // NTSC row beside an existing PAL one showed the maintainer NOTHING: the two collapsed into one.
     // Hiding an added row from the person approving it is what this screen exists to prevent.
     // ###########################################################################################
     [Fact]
-    public void A_regional_variant_added_beside_an_existing_one_is_shown_to_the_reviewer_as_added()
+    public void A_regional_variant_added_beside_an_existing_one_is_shown_to_the_maintainer_as_added()
     {
         BoardData published = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(region: "PAL"));
         BoardData submitted = ReviewFieldDiffTests.Board(
@@ -208,7 +208,7 @@ public sealed class ReviewFieldDiffTests
     public void A_highlight_that_MOVED_reports_its_coordinates()
     {
         // Task 4's own example is "1 highlight moved". Until the schematic can be drawn, the
-        // coordinates are what tells a reviewer how far it moved - "10 -> 15" is a nudge,
+        // coordinates are what tells a maintainer how far it moved - "10 -> 15" is a nudge,
         // "10 -> 900" is a different part of the board entirely.
         var published = new BoardData
         {
@@ -266,7 +266,7 @@ public sealed class ReviewFieldDiffTests
     [Fact]
     public void Every_section_can_produce_a_field_diff()
     {
-        // A section whose rows changed but which reports no field detail would leave a reviewer
+        // A section whose rows changed but which reports no field detail would leave a maintainer
         // back at "something changed". This walks one edit through each of the ten.
         var published = new BoardData
         {

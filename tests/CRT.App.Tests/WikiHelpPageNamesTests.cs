@@ -18,7 +18,7 @@ namespace ClassicRepairToolbox.Tests;
 // is plain string and file-existence work.
 //
 // Assets/Wiki/ is the source of truth for the published Wiki (nothing publishes automatically; the
-// maintainer pastes each file across), so a page present here is the page that exists - or is
+// project owner pastes each file across), so a page present here is the page that exists - or is
 // about to - and a page absent here is one the button cannot reach.
 public class WikiHelpPageNamesTests
 {

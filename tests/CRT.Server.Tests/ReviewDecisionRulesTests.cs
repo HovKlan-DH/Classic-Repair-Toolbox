@@ -8,7 +8,7 @@ namespace CRT.Server.Tests
     // Covers ReviewDecisionRules - whether a review decision may be made at all (Phase 5, task 5).
     //
     // *** APPROVE PUBLISHES, AND PUBLISHING CANNOT BE UNDONE. *** Task 7 was struck by the
-    // maintainer, so no publish history is retained: a published file is overwritten in place and
+    // project owner, so no publish history is retained: a published file is overwritten in place and
     // a bad merge is fixed only by publishing a correction. That single fact is why these rules
     // are a separate, unit-tested class rather than a few `if`s in an endpoint - every one of them
     // is the last thing standing between a wrong request and a data tree that cannot be restored.
@@ -22,7 +22,7 @@ namespace CRT.Server.Tests
     //   REQUEST CHANGES  - returns it to the contributor as an editable draft with a comment.
     //                      The cheapest outcome and the one the strategy says not to skip.
     //
-    // Since Phase 6 (2026-09-25) all three need the same authority - a reviewer of the
+    // Since Phase 6 (2026-09-25) all three need the same authority - a maintainer of the
     // submission's own system, or an administrator - and the per-system half of that is
     // ReviewAuthorityTests' subject. What is pinned here is that each outcome asks it, and the
     // state interlock on top.
@@ -54,11 +54,11 @@ namespace CRT.Server.Tests
         private static ReviewAccess Admin(bool verified = true, bool locked = false) =>
             ReviewAccess.For(ReviewDecisionRulesTests.Account(administrator: true, verified: verified, locked: locked));
 
-        // A reviewer of the C64 board the fixture submission names.
-        private static ReviewAccess Reviewer() =>
+        // A maintainer of the C64 board the fixture submission names.
+        private static ReviewAccess Maintainer() =>
             ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C64]);
 
-        private static ReviewAccess ReviewerOfAnotherSystem() =>
+        private static ReviewAccess MaintainerOfAnotherSystem() =>
             ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C128]);
 
         private static ReviewAccess Ordinary() => ReviewAccess.For(ReviewDecisionRulesTests.Account());
@@ -84,38 +84,38 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_REVIEWER_of_the_system_may_approve_a_pending_submission()
+        public void A_MAINTAINER_of_the_system_may_approve_a_pending_submission()
         {
-            // The maintainer's model: a reviewer assigned to a system publishes to it.
+            // The project owner's model: a maintainer assigned to a system publishes to it.
             Assert.True(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.Reviewer(),
+                ReviewDecisionRulesTests.Maintainer(),
                 ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out _));
         }
 
         [Fact]
-        public void A_reviewer_of_ANOTHER_system_may_NOT_approve()
+        public void A_maintainer_of_ANOTHER_system_may_NOT_approve()
         {
-            // *** THE STRUCTURAL GUARANTEE. *** A reviewer's authority is bounded to their own
+            // *** THE STRUCTURAL GUARANTEE. *** A maintainer's authority is bounded to their own
             // systems; on any other it is exactly an ordinary account.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.ReviewerOfAnotherSystem(),
+                ReviewDecisionRulesTests.MaintainerOfAnotherSystem(),
                 ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out string reason));
 
             // And the refusal says WHY, so the app can explain rather than silently not drawing
-            // a button - it names the system the reviewer is not assigned to.
+            // a button - it names the system the maintainer is not assigned to.
             Assert.Contains(ReviewDecisionRulesTests.C64, reason, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void A_shared_files_submission_may_be_approved_by_BOTH_its_reviewer_and_the_administrator()
+        public void A_shared_files_submission_may_be_approved_by_BOTH_its_maintainer_and_the_administrator()
         {
             // Since 2026-09-25 both take part; ApprovalRules decides whether an approval publishes
             // or waits for the other - these rules only say either may act.
             SubmissionRecord shared = ReviewDecisionRulesTests.Submission(SubmissionState.Pending, touchesShared: true);
 
-            Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Reviewer(), shared, out _));
+            Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Maintainer(), shared, out _));
             Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Admin(), shared, out _));
         }
 
@@ -127,7 +127,7 @@ namespace CRT.Server.Tests
             SubmissionRecord half = ReviewDecisionRulesTests.Submission(SubmissionState.Approved, touchesShared: true);
 
             Assert.True(ReviewDecisionRules.CanApprove(ReviewDecisionRulesTests.Admin(), half, out _));
-            Assert.True(ReviewDecisionRules.CanReject(ReviewDecisionRulesTests.Reviewer(), half, out _));
+            Assert.True(ReviewDecisionRules.CanReject(ReviewDecisionRulesTests.Maintainer(), half, out _));
         }
 
         [Fact]
@@ -145,7 +145,7 @@ namespace CRT.Server.Tests
         public void An_ALREADY_DECIDED_submission_cannot_be_approved_again(string state)
         {
             // *** THE DOUBLE-PUBLISH GUARD, and the reason it matters more here than it looks. ***
-            // Two reviewers with the queue open both click Approve; or one clicks twice on a slow
+            // Two maintainers with the queue open both click Approve; or one clicks twice on a slow
             // link. Without this the second publish overwrites the tree again - and with no
             // revision history, re-running a publish whose blobs have since been garbage-collected
             // is not a no-op. The state is the interlock.
@@ -178,7 +178,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void An_APPROVED_but_unpublished_submission_CAN_still_be_approved()
         {
-            // `approved` means a reviewer accepted it but publishing has not happened or did not
+            // `approved` means a maintainer accepted it but publishing has not happened or did not
             // finish. That is precisely the state a retry must be allowed from - refusing it would
             // strand a submission that has been agreed to, with no way forward.
             Assert.True(ReviewDecisionRules.CanApprove(
@@ -220,21 +220,21 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_REVIEWER_may_REJECT()
+        public void A_MAINTAINER_may_REJECT()
         {
             // Rejecting changes no published data - the contributor keeps their draft locally.
             Assert.True(ReviewDecisionRules.CanReject(
-                ReviewDecisionRulesTests.Reviewer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
+                ReviewDecisionRulesTests.Maintainer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         [Fact]
-        public void A_REVIEWER_may_REQUEST_CHANGES()
+        public void A_MAINTAINER_may_REQUEST_CHANGES()
         {
             // The outcome the strategy says explicitly not to skip: most imperfect contributions
             // are fixable by their author in a minute, and a reject that could have been a
             // conversation costs a contributor.
             Assert.True(ReviewDecisionRules.CanRequestChanges(
-                ReviewDecisionRulesTests.Reviewer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
+                ReviewDecisionRulesTests.Maintainer(), ReviewDecisionRulesTests.Submission(SubmissionState.Pending), out _));
         }
 
         [Fact]
@@ -259,11 +259,11 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_reviewer_of_ANOTHER_system_may_do_NONE_of_the_three_either()
+        public void A_maintainer_of_ANOTHER_system_may_do_NONE_of_the_three_either()
         {
             // Rejecting a submission on a board you do not review is as out of bounds as
             // publishing to it - the cheap outcomes are scoped exactly like the expensive one.
-            ReviewAccess other = ReviewDecisionRulesTests.ReviewerOfAnotherSystem();
+            ReviewAccess other = ReviewDecisionRulesTests.MaintainerOfAnotherSystem();
             SubmissionRecord pending = ReviewDecisionRulesTests.Submission(SubmissionState.Pending);
 
             Assert.False(ReviewDecisionRules.CanApprove(other, pending, out _));
@@ -337,13 +337,13 @@ namespace CRT.Server.Tests
         public void The_minimum_reason_length_is_the_value_the_REVIEW_APP_also_uses()
         {
             // *** A CONTRACT ACROSS TWO PROJECTS THAT DO NOT REFERENCE EACH OTHER. ***
-            // ReviewDecisionWording.MinimumCommentLength in CRT.Review checks the same rule
-            // locally, purely so a reviewer is told to write more BEFORE a round trip. The server
+            // ReviewDecisionWording.MinimumCommentLength in CRT.Maintainer checks the same rule
+            // locally, purely so a maintainer is told to write more BEFORE a round trip. The server
             // owns the rule and refuses regardless.
             //
             // What must never happen is the CLIENT becoming the stricter of the two: it would
-            // refuse something this method would have accepted, and the reviewer would have no way
-            // past it. The review app cannot reference CRT.Server, so this literal is the pin -
+            // refuse something this method would have accepted, and the maintainer would have no way
+            // past it. The maintainer app cannot reference CRT.Server, so this literal is the pin -
             // change one and this test names the other.
             Assert.Equal(10, ReviewDecisionRules.MinimumReasonLength);
         }
@@ -351,7 +351,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void The_refusal_message_SAYS_what_is_wrong()
         {
-            // Shown to the reviewer who typed it, so it has to be actionable rather than "invalid".
+            // Shown to the maintainer who typed it, so it has to be actionable rather than "invalid".
             ReviewDecisionRules.IsUsableReason("no", out string reason);
 
             Assert.NotEmpty(reason);

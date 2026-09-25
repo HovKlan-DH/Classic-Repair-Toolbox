@@ -5,7 +5,7 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHERE A COMPONENT'S ROWS GO IN A BOARD WORKBOOK (maintainer request, 2026-09-24).
+    // WHERE A COMPONENT'S ROWS GO IN A BOARD WORKBOOK (owner request, 2026-09-24).
     //
     // *** ROW ORDER IS WHAT THE USER SEES. *** The main window's component list, its category list
     // and the Overview tab all show components in the Components sheet's own order and never
@@ -21,10 +21,10 @@ namespace Handlers.DataHandling
     //   - An EXISTING component stays where it is when it is edited. It used to be removed and
     //     re-added at the bottom on every save from the Contribute window, so simply editing C1
     //     after adding C2 put C2 above C1 - the order a contributor saw drifted with every edit,
-    //     which is what the maintainer reported.
+    //     which is what the project owner reported.
     //
     // Only NEW rows are placed. Nothing here ever re-sorts rows that are already in the file: a
-    // workbook's existing order is the maintainer's (or a contributor's, dragged into place in
+    // workbook's existing order is the project owner's (or a contributor's, dragged into place in
     // the table editor), and rearranging it behind their back would be worse than the drift this
     // fixes.
     //

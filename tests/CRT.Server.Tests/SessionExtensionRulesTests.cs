@@ -5,7 +5,7 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers SessionExtensionRules - WHEN a session's expiry moves and WHAT it moves to
-    // (sliding expiry, maintainer request 2026-09-22).
+    // (sliding expiry, owner request 2026-09-22).
     //
     // The behaviour being pinned is a promise to a person: sign in once and keep working. The
     // failure modes on either side are both real - extending too eagerly writes a database row on
@@ -22,7 +22,7 @@ namespace CRT.Server.Tests
         public void A_FRESH_session_is_not_extended()
         {
             // Just issued, so nearly a full lifetime remains. Extending here would move the expiry
-            // by seconds and write a row for nothing - and the review app calls the queue on
+            // by seconds and write a row for nothing - and the maintainer app calls the queue on
             // launch, on every refresh click and after every decision.
             Assert.False(SessionExtensionRules.ShouldExtend(
                 SessionExtensionRulesTests.Now.AddDays(30),

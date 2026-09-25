@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 // Covers PublishPlan - what a publish will write, decided before anything is written.
 //
 // WHY THESE TESTS MATTER MORE THAN MOST: publishing changes what every user of a system
-// downloads, and the maintainer decided against retained revisions, so it cannot be undone. Every
+// downloads, and the project owner decided against retained revisions, so it cannot be undone. Every
 // refusal here is a thing that would otherwise be discovered halfway through replacing a board.
 //
 // The one that carries the most weight is the GENERATION guard. Older workbook generations are
@@ -92,7 +92,7 @@ public sealed class PublishPlanTests
     [Fact]
     public void A_newer_generation_in_the_tree_is_targeted_without_any_configuration_change()
     {
-        // The maintainer's rule: "always use the newest version". Adding a 3.0.0 file to the tree
+        // The project owner's rule: "always use the newest version". Adding a 3.0.0 file to the tree
         // is the ONLY action needed - nothing here is configured.
         PublishPlanResult result = PublishPlanTests.Build(
             PublishPlanTests.Manifest(),
@@ -125,7 +125,7 @@ public sealed class PublishPlanTests
         // "Data C64 250407.xlsx".
         //
         // That file is the FROZEN generation serving every application build before 2.0.0, and the
-        // maintainer's rule is that it is never written. So every new system - the highest-value
+        // project owner's rule is that it is never written. So every new system - the highest-value
         // kind of contribution there is - would have been published into the one place it must not
         // go, silently, and older builds would have received contributed data they cannot read.
         //
@@ -314,7 +314,7 @@ public sealed class PublishPlanTests
     //
     // The first real publish duplicated 1,215 files into the board folder that way - the whole
     // board nested inside itself - and every client then re-downloaded the lot, which is how the
-    // maintainer noticed.
+    // project owner noticed.
     //
     // The unrealistic input is what let it hide, so the input is corrected here too.
     // ###########################################################################################
@@ -658,7 +658,7 @@ public sealed class PublishPlanTests
     [Fact]
     public void A_file_NO_ROW_USES_is_refused()
     {
-        // Nothing would show it, so no reviewer could have seen it - which is exactly how a file
+        // Nothing would show it, so no maintainer could have seen it - which is exactly how a file
         // that should never be published gets published.
         SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "a.png"));
         manifest.Rows.BoardLocalFiles.Clear();

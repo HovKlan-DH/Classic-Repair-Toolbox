@@ -61,7 +61,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // WHAT COUNTS AS WAITING IS A DECISION, NOT A DETAIL. Only 'pending' qualifies. The
         // transport states are not review states - an 'uploading' row is a contribution still
-        // arriving and a reviewer acting on it would be deciding about a half-delivered
+        // arriving and a maintainer acting on it would be deciding about a half-delivered
         // submission - and every other state has already been decided. `SubmissionState.Pending`
         // is the one state that means "arrived intact and is somebody's to decide", which is
         // exactly what a queue is.
@@ -89,7 +89,7 @@ namespace CRT.Server.Handlers.Submissions
         // It is a SEPARATE call from SetStateAsync, deliberately. The submission's state and the
         // system's published revision are two different facts about two different rows, and a
         // publish updates both - but a system can also be published WITHOUT a submission behind it
-        // (the maintainer correcting their own data), which a combined call could not express.
+        // (the project owner correcting their own data), which a combined call could not express.
         // ###########################################################################################
         Task SetSystemPublishedAsync(
             string systemId,
@@ -99,7 +99,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Records a reviewer's DECISION on a submission (Phase 5, task 5).
+        // Records a maintainer's DECISION on a submission (Phase 5, task 5).
         //
         // *** SEPARATE FROM SetStateAsync BECAUSE A DECISION IS NOT JUST A STATE. *** It carries
         // WHO decided and WHY, and `submissions` has had `decided_by` and `decision_comment`
@@ -160,18 +160,18 @@ namespace CRT.Server.Handlers.Submissions
         Task<int> DeleteRetiredPayloadsAsync(DateTimeOffset decidedBefore, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Every `systems` row, for the administrator's reviewer overview (Phase 6 roles).
+        // Every `systems` row, for the administrator's maintainer overview (Phase 6 roles).
         //
         // Only systems that have received a submission or been published have a row; a shipped
-        // board nobody has touched has none. ReviewerAssignmentFlows unions this with the boards
-        // found in the data tree, so a reviewer can be assigned to a board BEFORE its first
+        // board nobody has touched has none. MaintainerAssignmentFlows unions this with the boards
+        // found in the data tree, so a maintainer can be assigned to a board BEFORE its first
         // submission arrives - which is the ordinary order of events.
         // ###########################################################################################
         Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default);
 
         // ###########################################################################################
         // Makes sure a `systems` row exists, leaving an existing one completely alone - the same
-        // INSERT IGNORE CreateAsync performs for a submission. Needed before a reviewer can be
+        // INSERT IGNORE CreateAsync performs for a submission. Needed before a maintainer can be
         // assigned to a shipped board that has never been submitted to: the pool table's foreign
         // key requires the row.
         // ###########################################################################################
@@ -243,7 +243,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // A REVIEWER'S AMENDMENT (migration 0009), in ONE transaction: the submission's current rows
+        // A MAINTAINER'S AMENDMENT (migration 0009), in ONE transaction: the submission's current rows
         // and files become `amended`'s; what they replace is kept in submission_amendments (the
         // first row holds the contributor's original); the approvals already given are cleared -
         // they were given to other content - and an 'approved' submission goes back to 'pending';
@@ -254,7 +254,7 @@ namespace CRT.Server.Handlers.Submissions
         // *** THE VERSION AND THE STATE ARE CHECKED INSIDE THE TRANSACTION (code review,
         // 2026-09-25). *** Nothing is changed unless the submission is still amendable
         // (SubmissionState.CanBeAmended) and its latest amendment is still `expectedVersion` - the
-        // one the reviewer opened - both read under the row locks the write holds. The caller's
+        // one the maintainer opened - both read under the row locks the write holds. The caller's
         // own checks run earlier and outside it, so two amendments at once both passed them and
         // the second silently overwrote the first.
         // ###########################################################################################
@@ -312,7 +312,7 @@ namespace CRT.Server.Handlers.Submissions
     {
         Amended,
 
-        // Another amendment was stored after the reviewer opened this one.
+        // Another amendment was stored after the maintainer opened this one.
         VersionChanged,
 
         // Decided (or never finished uploading) - SubmissionState.CanBeAmended is false.
@@ -321,7 +321,7 @@ namespace CRT.Server.Handlers.Submissions
 
     public static class SubmissionState
     {
-        // Created, files being uploaded. Not yet visible to a reviewer.
+        // Created, files being uploaded. Not yet visible to a maintainer.
         public const string Uploading = "uploading";
 
         // Complete, validated, queued for review.
@@ -347,7 +347,7 @@ namespace CRT.Server.Handlers.Submissions
         // Returned to the contributor with a comment, as an editable draft.
         public const string ChangesRequested = "changes_requested";
 
-        // Accepted by a reviewer but not yet published. Since 2026-09-25 this is what the FIRST of
+        // Accepted by a maintainer but not yet published. Since 2026-09-25 this is what the FIRST of
         // the two approvals a shared-file change needs leaves behind - it stays in the review
         // queue until the second approval publishes it. See ApprovalRules.
         public const string Approved = "approved";
@@ -355,7 +355,7 @@ namespace CRT.Server.Handlers.Submissions
         // Taken back by the contributor.
         public const string Withdrawn = "withdrawn";
 
-        // Still undecided, so a reviewer may change it: waiting for review, or for the second of
+        // Still undecided, so a maintainer may change it: waiting for review, or for the second of
         // two approvals. The one rule AmendSubmissionFlow and both stores check it by.
         public static bool CanBeAmended(string? state) => state is Pending or Approved;
 
@@ -372,7 +372,7 @@ namespace CRT.Server.Handlers.Submissions
     // (security review, 2026-09-25) - the two halves the collectors work from.
     //
     // *** COMPLEMENTS, AND IT MATTERS WHICH SIDE A NEW STATE LANDS ON. *** A state in neither list
-    // keeps its blobs for ever; a state in both has them swept while a reviewer may still need
+    // keeps its blobs for ever; a state in both has them swept while a maintainer may still need
     // them. SubmissionCollectionStatesTests fails if the two stop covering SubmissionState.All
     // exactly once between them - which is the prompt, when a state is added, to decide here.
     //
@@ -395,7 +395,7 @@ namespace CRT.Server.Handlers.Submissions
     // Manufacturer/Hardware/Board travel WITH the submission, not just inside SystemId.
     //
     // They are needed to create the `systems` row a first submission for a new system implies -
-    // that table stores the three parts separately "so the review app can list by manufacturer
+    // that table stores the three parts separately "so the maintainer app can list by manufacturer
     // without parsing" (0001_initial.sql). Splitting SystemId back apart in the store would be
     // that parsing, in the one place the schema says to avoid it.
     // ###########################################################################################
@@ -421,7 +421,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // Whether it adds or changes a file under "Shared files" / "Generic shared files" -
         // decided at creation by SubmissionSharedFiles, and what routes it to the administrator
-        // rather than to the system's reviewers. See ReviewAuthority.
+        // rather than to the system's maintainers. See ReviewAuthority.
         bool TouchesSharedFiles = false);
 
     public sealed record SubmissionRecord(
@@ -439,12 +439,12 @@ namespace CRT.Server.Handlers.Submissions
         DateTimeOffset? DecidedUtc,
 
         // ###########################################################################################
-        // What the reviewer said, for a submission that was rejected or returned for changes.
+        // What the maintainer said, for a submission that was rejected or returned for changes.
         //
         // *** THIS IS THE CONTRIBUTOR'S ONLY FEEDBACK. *** Contributing needs no account, so there
         // is no inbox, no thread and no history - the contact email and this sentence are the whole
         // channel. It reaches them through the contributor's own status endpoint, whose
-        // `reviewerComment` field was reserved from the start for exactly this.
+        // `maintainerComment` field was reserved from the start for exactly this.
         //
         // TRAILING and OPTIONAL so every existing construction keeps working; a record built
         // without it simply has none, which is correct for anything not yet decided.
@@ -456,7 +456,7 @@ namespace CRT.Server.Handlers.Submissions
         // queue filters without loading the payload.
         bool TouchesSharedFiles = false);
 
-    // One reviewer's amendment: its version (1, 2, ...), who made it, and when.
+    // One maintainer's amendment: its version (1, 2, ...), who made it, and when.
     public sealed record SubmissionAmendment(int Version, string By, DateTimeOffset AtUtc);
 
     public sealed record SubmissionFileRecord(

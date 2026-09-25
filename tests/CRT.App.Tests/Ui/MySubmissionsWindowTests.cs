@@ -76,16 +76,16 @@ public sealed class MySubmissionsWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A DECISION THAT ARRIVED WITH NO COMMENT MUST BE DISMISSIBLE (maintainer report,
+    // *** A DECISION THAT ARRIVED WITH NO COMMENT MUST BE DISMISSIBLE (owner report,
     // 2026-09-23). ***
     //
-    // A reviewer approving good work usually writes nothing, so that row has no reviewer panel -
+    // A maintainer approving good work usually writes nothing, so that row has no maintainer panel -
     // and both the "New" badge and the "Mark as read" button used to live INSIDE that panel. The
     // tab badge counted the row, correctly, and the window then offered no way whatever to clear
-    // it: the maintainer saw "2" and could find nothing to act on.
+    // it: the project owner saw "2" and could find nothing to act on.
     //
     // The first attempt at this cleared such rows automatically when the window opened. That was
-    // WRONG and the maintainer said so: rows are tracked individually, and opening a list to check
+    // WRONG and the project owner said so: rows are tracked individually, and opening a list to check
     // on one submission must not silently mark another as seen. The markup had already recorded
     // that decision ("EXPLICIT DISMISS, not cleared by opening this window"). So the fix is a
     // dismiss control on the row itself, and opening the window still changes nothing.
@@ -176,7 +176,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
         });
     }
 
-    // A row WITH an unread comment already carries a "New" badge and a button inside the reviewer
+    // A row WITH an unread comment already carries a "New" badge and a button inside the maintainer
     // panel, so the row-level pair must stay hidden - otherwise the card says "New" twice about
     // the same thing.
     [Fact]
@@ -202,7 +202,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
         });
     }
 
-    // A submission still waiting for a reviewer is not news and must not be badged - otherwise
+    // A submission still waiting for a maintainer is not news and must not be badged - otherwise
     // every contribution lights up the moment it is sent.
     [Fact]
     public void A_PENDING_submission_shows_no_dismiss_and_counts_nothing()
@@ -351,7 +351,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
                 {
                     Id = id,
                     State = "rejected",
-                    ReviewerComment = "The highlight for U8 is outside the image."
+                    MaintainerComment = "The highlight for U8 is outside the image."
                 });
 
             window.Initialize();
@@ -360,8 +360,8 @@ public sealed class MySubmissionsWindowTests : IDisposable
             SubmissionListItem row = Assert.Single(window.Submissions);
 
             Assert.Equal("Not accepted", row.StateText);
-            Assert.Equal("The highlight for U8 is outside the image.", row.ReviewerComment);
-            Assert.True(row.HasReviewerComment);
+            Assert.Equal("The highlight for U8 is outside the image.", row.MaintainerComment);
+            Assert.True(row.HasMaintainerComment);
 
             // And it survives a reload - the point of writing it back at all.
             Assert.Equal("rejected", SubmissionReceiptStore.All.Single().LastKnownState);
@@ -431,10 +431,10 @@ public sealed class MySubmissionsWindowTests : IDisposable
         });
     }
 
-    // The reviewer-comment panel stays collapsed until there is a comment. Phase 5 is what fills
+    // The maintainer-comment panel stays collapsed until there is a comment. Phase 5 is what fills
     // these in; until then every row would otherwise carry an empty labelled box.
     [Fact]
-    public void A_row_with_no_reviewer_comment_does_not_offer_an_empty_comment_panel()
+    public void A_row_with_no_maintainer_comment_does_not_offer_an_empty_comment_panel()
     {
         UiTest.Run(() =>
         {
@@ -443,7 +443,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
             var window = new MySubmissionsWindow();
             window.Initialize();
 
-            Assert.False(Assert.Single(window.Submissions).HasReviewerComment);
+            Assert.False(Assert.Single(window.Submissions).HasMaintainerComment);
         });
     }
 
@@ -487,7 +487,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** "Last checked" IS GONE FROM THE CARD (maintainer request, 2026-09-23). ***
+    // *** "Last checked" IS GONE FROM THE CARD (owner request, 2026-09-23). ***
     //
     // It was this computer's bookkeeping - when CRT last asked the server - and said nothing about
     // the submission. Asserted against the RENDERED card rather than against the row model, since
@@ -519,15 +519,15 @@ public sealed class MySubmissionsWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // The reviewer panel's heading, verbatim (maintainer request, 2026-09-23): "Feedback from
-    // reviewer", with the date on its OWN line beneath it rather than beside it.
+    // The maintainer panel's heading, verbatim (owner request, 2026-09-23): "Feedback from
+    // maintainer", with the date on its OWN line beneath it rather than beside it.
     //
     // The two-line shape is what was asked for - side by side the pair read as a caption strip
     // rather than as the heading of something to be read - so the DATE BEING ITS OWN TextBlock is
     // the thing worth pinning, not merely that both strings appear somewhere.
     // ###########################################################################################
     [Fact]
-    public void The_reviewer_panel_is_headed_by_the_label_with_the_date_on_its_own_line()
+    public void The_maintainer_panel_is_headed_by_the_label_with_the_date_on_its_own_line()
     {
         UiTest.Run(() =>
         {
@@ -541,16 +541,16 @@ public sealed class MySubmissionsWindowTests : IDisposable
 
             IReadOnlyList<TextBlock> blocks = MySubmissionsWindowTests.CardTextBlocks(window);
 
-            Assert.Contains(blocks, block => block.Text == "Feedback from reviewer");
+            Assert.Contains(blocks, block => block.Text == "Feedback from maintainer");
 
             // The old wording, which must not survive anywhere on the card.
-            Assert.DoesNotContain(blocks, block => block.Text == "From the reviewer");
+            Assert.DoesNotContain(blocks, block => block.Text == "From the maintainer");
 
             // Its OWN block, carrying the date alone - not a label with the date appended.
             Assert.Contains(
                 blocks,
                 block => block.Text?.StartsWith("Replied ", StringComparison.Ordinal) == true
-                    && !block.Text.Contains("reviewer", StringComparison.Ordinal));
+                    && !block.Text.Contains("maintainer", StringComparison.Ordinal));
         });
     }
 }

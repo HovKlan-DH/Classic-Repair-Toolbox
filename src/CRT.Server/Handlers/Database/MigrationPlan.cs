@@ -90,7 +90,7 @@ namespace CRT.Server.Handlers.Database
         // is not cosmetic: these files are edited on Windows and executed on Linux, and git's
         // autocrlf can rewrite them in transit. Without it, every migration would appear modified
         // the first time the repository was checked out on the other platform - which would train
-        // the maintainer to ignore rule 3, the one rule most worth heeding.
+        // the project owner to ignore rule 3, the one rule most worth heeding.
         //
         // This is an integrity check against accidental edits, not a security control. Nobody is
         // defending against an attacker who can already rewrite migration files AND the
@@ -254,7 +254,7 @@ namespace CRT.Server.Handlers.Database
 
     // ###########################################################################################
     // A migration file found on disk. FileName is carried alongside Number purely so failures can
-    // name the actual file the maintainer has to go and look at.
+    // name the actual file the project owner has to go and look at.
     // ###########################################################################################
     public sealed record MigrationScript(int Number, string FileName, string Sql, string Checksum);
 

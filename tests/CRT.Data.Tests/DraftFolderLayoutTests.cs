@@ -14,7 +14,8 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class DraftFolderLayoutTests
 {
-    private const string Root = @"C:\Drafts";
+    // Built for THIS machine, never a literal @"C:\..." - see TestPathLiteralTests.
+    private static readonly string Root = Path.Combine(Path.GetTempPath(), "Drafts");
     private const string System = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     [Fact]

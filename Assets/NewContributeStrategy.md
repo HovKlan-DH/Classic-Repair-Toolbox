@@ -2,23 +2,23 @@
 
 A staged plan to replace the Contribute tab and the `app-contribution` PHP backend with a
 local-first authoring experience in CRT, a shared C# data library, an ASP.NET Core service on the
-maintainer's own AlmaLinux server, and a separate desktop review application with per-system
+project owner's own AlmaLinux server, and a separate desktop maintainer application with per-system
 maintainers.
 
 **Status: Phases 0-4 are DONE, except that nothing PUBLISHES yet - a submission is queued for
-review and stops there, which is by design until Phase 5 builds the review application
+review and stops there, which is by design until Phase 5 builds the maintainer application
 (2026-09-21).**
-The CRT.Server service is deployed and running on the maintainer's AlmaLinux box: it answers over
+The CRT.Server service is deployed and running on the project owner's AlmaLinux box: it answers over
 HTTPS, creates its own schema, and accounts can register, verify their address, log in, refresh and
 log out. The submission endpoints exist and are tested but have not yet been deployed or exercised
 against the live service.
 
-**Phase 5 is largely built** (the review application, sliding-expiry sign-in, the reviewer
+**Phase 5 is largely built** (the maintainer application, sliding-expiry sign-in, the maintainer
 round trip) and **Phase 6a is DONE (2026-09-23)**: drafts are now stored as real board
 folders rather than as row deltas, which reverses a Phase 2 decision - read that phase
 before touching anything under `Drafts/`. **Phase 6's ROLES are DONE (2026-09-25)** as two
 roles rather than the four planned - read the phase before assuming the four-role table - and
-its two-stage publish, two-person approval for shared files, orphan removal and the reviewer's
+its two-stage publish, two-person approval for shared files, orphan removal and the maintainer's
 table are DONE too (2026-09-25). Phase 7 is not started.
 
 This file is a handoff document. It is written to be picked up by an agent (or a person) who has
@@ -33,19 +33,19 @@ earlier ones. Read [How to use this document](#how-to-use-this-document) first.
 - [Why this is being done](#why-this-is-being-done)
 - [The target architecture](#the-target-architecture)
 - [Decisions already made](#decisions-already-made-do-not-relitigate)
-- [Access the maintainer must provide](#access-the-maintainer-must-provide)
+- [Access the project owner must provide](#access-the-project-owner-must-provide)
 - [Phase 0 - Repository restructure](#phase-0---repository-restructure-done-2026-09-20)
 - [Phase 1 - Extract CRT.Data](#phase-1---extract-crtdata-done-2026-09-20)
 - [Phase 2 - Local-first drafts in CRT](#phase-2---local-first-drafts-in-crt-done-2026-09-20)
 - [Phase 3 - Server service and accounts](#phase-3---server-service-and-accounts-done-2026-09-21)
 - [Phase 4 - Submission pipeline](#phase-4---submission-pipeline-done-2026-09-21)
-- [Phase 5 - Review application, single user](#phase-5---review-application-single-user-started-2026-09-21)
+- [Phase 5 - Maintainer application, single user](#phase-5---maintainer-application-single-user-started-2026-09-21)
 - [Phase 6a - Drafts as real board folders](#phase-6a---drafts-as-real-board-folders-done-2026-09-23)
 - [Phase 6 - Maintainers](#phase-6---maintainers)
 - [Phase 7 - Retire the PHP contribution path](#phase-7---retire-the-php-contribution-path)
 - [Security model](#security-model)
 - [Cross-cutting concerns](#cross-cutting-concerns)
-- [Open questions for the maintainer](#open-questions-for-the-maintainer)
+- [Open questions for the project owner](#open-questions-for-the-project-owner)
 
 ---
 
@@ -68,14 +68,14 @@ sessions; nothing else carries it.
 [.claude/CLAUDE.md](../.claude/CLAUDE.md):
 
 - **Never touch [CHANGELOG.md](../CHANGELOG.md).** Not as a finishing touch, not to record a phase.
-  If an entry is warranted, say so in the session summary and let the maintainer write it.
+  If an entry is warranted, say so in the session summary and let the project owner write it.
 - **Tests arrive with the code, never after.** Run `dotnet test` before reporting any change done.
   A `Stop` hook enforces this.
 - **Never commit or push.** Leave changes in the working tree.
 - **Plain ASCII punctuation.** No em dashes, no smart quotes.
 - **Write for hobbyists.** No prose implying paid work, customers or billing.
 - **Wiki pages ship with the code that changes their behaviour**, and are pasted by hand by the
-  maintainer - never claim a Wiki page has been updated online.
+  project owner - never claim a Wiki page has been updated online.
 
 ---
 
@@ -139,17 +139,17 @@ Problem 4 is the most dangerous and, as it happens, the cheapest to fix. See
          All three C# programs compile against ONE shared library: CRT.Data
 ```
 
-The key property: the app, the review app and the server all read and write board data with the
+The key property: the app, the maintainer app and the server all read and write board data with the
 same code. The PHP parity problem stops existing.
 
 ---
 
 ## Decisions already made (do not relitigate)
 
-These were settled with the maintainer. An agent picking this up should treat them as given, and
+These were settled with the project owner. An agent picking this up should treat them as given, and
 raise a concern only if implementation reveals one to be genuinely unworkable.
 
-**One decision on this list HAS been reversed, by the maintainer, on 2026-09-23: the draft
+**One decision on this list HAS been reversed, by the project owner, on 2026-09-23: the draft
 file format.** Phase 2 stored a draft as row deltas in `draft.json`; a draft is now a real
 board folder with its own workbook. The reasoning, what it cost and what it bought are in
 [Phase 6a](#phase-6a---drafts-as-real-board-folders-done-2026-09-23). Every other decision
@@ -163,20 +163,20 @@ below stands.
 | Who owns a system | **A pool of maintainers, no single owner** | Work continues when one person goes quiet |
 | Administrator scope | **Implicitly a maintainer of every system** | No escalation path to steal or mis-implement |
 | New systems | **Always approved by the administrator** | Highest-risk item in the pipeline; no maintainer exists yet |
-| Global-scope approvers | **Rejected** | Highest privilege for the lowest-frequency task; Reviewer covers the need with no publish rights |
+| Global-scope approvers | **Rejected** | Highest privilege for the lowest-frequency task; the recommend-only Reviewer (since retired) covered the need with no publish rights |
 | Guiding principle | **Secure by design, not merely by default** | Insecure states must be unreachable, not just discouraged |
 | Server stack | **ASP.NET Core on existing AlmaLinux box** | Enables the shared library; no new machine needed |
 | Review state storage | **MariaDB** (already installed) | Queue/permission/audit data; hardware data stays as files |
 | Published data storage | **Plain files, exactly as today** | Backup and comparison by copying folders |
 | Review tool | **Separate Avalonia desktop app** | Review is visual; reuses CRT rendering; audiences barely overlap |
 | Repository layout | **One repo (monorepo)** | `CRT.Data` as ProjectReference, not a versioned NuGet package |
-| GitHub as backend | **Rejected** | Maintainer considers it too troublesome; contributors must never need it |
-| Maintainer server access | **Never** | Maintainers get an account in the review app, nothing more |
+| GitHub as backend | **Rejected** | Owner considers it too troublesome; contributors must never need it |
+| Maintainer server access | **Never** | Maintainers get an account in the maintainer app, nothing more |
 | Per-row UUIDs | **Retire them** | Base-revision diffing plus natural keys replaces them; see Phase 4 |
 
 ---
 
-## Access the maintainer must provide
+## Access the project owner must provide
 
 The agent doing Phases 3 onward needs access that does not exist yet. **Phases 0-2 need none of
 this** - they are entirely local - so this can be arranged while those are underway.
@@ -232,7 +232,7 @@ Provide to the agent:
   answer is not in the repository.
 
 **All development targets BETA.** Production must not be written by any new code until the
-maintainer explicitly says so - see [Phase 3](#phase-3---server-service-and-accounts-done-2026-09-21).
+project owner explicitly says so - see [Phase 3](#phase-3---server-service-and-accounts-done-2026-09-21).
 
 ### C. Server shell access
 
@@ -255,7 +255,7 @@ Needed to install the runtime, create the service and configure the reverse prox
 - Add a `.gitignore` entry for any local config file that could hold a secret, and include a
   committed `appsettings.Example.json` with placeholder values so the shape is documented.
 - If a credential is ever pasted into a session transcript, treat it as compromised and ask the
-  maintainer to rotate it.
+  project owner to rotate it.
 
 ---
 
@@ -320,7 +320,7 @@ Assets/                         <- stays at repository root, unchanged
 .claude/
 ```
 
-`CRT.Data`, `CRT.Server` and `CRT.Review` join `src/` in later phases.
+`CRT.Data`, `CRT.Server` and `CRT.Maintainer` join `src/` in later phases.
 
 **Keep `Assets/` at the root.** It holds the data pack, the Wiki mirror and the webserver copy -
 none of it belongs to a single project, the release workflow copies it by path, and moving it would
@@ -443,22 +443,22 @@ directly calls `DataManager.HardwareBoards`, `DataManager.LoadBoardDataAsync` an
 it would have meant either moving `DataManager` too (a 1600+ line app-orchestration class, clearly
 out of scope for "the UI-free data layer") or changing `ValidateAllDataAsync`'s signature to accept
 what it needs as parameters instead of reaching out for it - which the strategy doc's own coverage
-table already flags as a maintainer decision ("a public API change... a decision for the maintainer
+table already flags as a owner decision ("a public API change... a decision for the project owner
 rather than something to do in passing"), not something to do in passing during a phase whose whole
 premise is "a move, not a rewrite." `DataValidator` stayed in `CRT.App`, byte-for-byte identical to
 its pre-Phase-0 content. It is a leaf (nothing else in the moved set depends on it), so this cost
 nothing beyond not getting the file where the plan originally guessed it should go.
 
 **Deviation 2 - the three "also move" geometry files were skipped**, and this was flagged to the
-maintainer as a genuine plan conflict before proceeding, not decided unilaterally: `RectGeometry`,
+project owner as a genuine plan conflict before proceeding, not decided unilaterally: `RectGeometry`,
 `PolygonGeometry` and `HighlightRectBuilder` are all built on `Avalonia.Point`/`Rect`/`Matrix`,
 which directly contradicts the plan's own "no Avalonia reference at all" instruction for
 `CRT.Data` - a constraint that exists specifically because the future server must never depend on
 a desktop UI framework. Investigation showed `RectGeometry`/`PolygonGeometry` are called from 21
 files across the whole Schematics/Worklog rendering pipeline, so converting them to a portable
-representation is a real refactor (touching every call site), not a file move, and the maintainer
+representation is a real refactor (touching every call site), not a file move, and the project owner
 agreed to defer it to whichever later phase actually needs a portable geometry library - most
-likely when the review app is built and has a second, concrete consumer to design the abstraction
+likely when the maintainer app is built and has a second, concrete consumer to design the abstraction
 around, rather than guessing at its shape now with only one.
 
 **Two things the next phase should know:**
@@ -488,7 +488,7 @@ Both hooks (`remind-wiki-mirror.sh`'s MAP, `require-green-tests.sh`) and the dup
 workflow step were updated for the new `src/CRT.Data/` path and live-fire tested.
 
 **Goal.** Move the UI-free data layer into a shared `net10.0` class library that the app, the
-server and the review app all reference.
+server and the maintainer app all reference.
 
 **Why this is the highest-value single change.** It retires the two-language duplication described
 in [Why this is being done](#why-this-is-being-done) problem 4. Verified during planning: these
@@ -504,7 +504,7 @@ Confirmed UI-free and ready to move:
 - `Handlers/Data/DataValidator.cs`
 
 Also move, as they are pure and will be needed server-side: `ComponentListBuilder`,
-`ContactLinkFormatter`, `TextLinkFinder`, and the parts of `Handlers/Geometry/` the review app will
+`ContactLinkFormatter`, `TextLinkFinder`, and the parts of `Handlers/Geometry/` the maintainer app will
 need for previews (`PolygonGeometry`, `RectGeometry`, `HighlightRectBuilder`).
 
 **Do not move** `WorklogManager`, `WorklogEntryScope` or `WorkbookPdfExporter` - all three reference
@@ -528,7 +528,7 @@ Avalonia, and none is needed by the server.
 6. **Resolve the EPPlus licence call.** `ExcelPackage.License.SetNonCommercialPersonal(...)` appears
    in several files. Centralise it in one internal initialiser inside `CRT.Data` called from a
    static constructor or an explicit `Initialize`.
-   **Flag to the maintainer:** that licence mode is chosen for a desktop application used by an
+   **Flag to the project owner:** that licence mode is chosen for a desktop application used by an
    individual. Whether it also covers running EPPlus inside a server process is a licence question,
    not a technical one, and must be confirmed before Phase 3 ships anything.
 7. Confirm `DataValidator` carries no UI assumptions once isolated (it reports through `Logger`;
@@ -561,8 +561,8 @@ per-row view - when the official data moves underneath a draft. Nothing in the a
 or creates a `_UserContribution` sidecar any more; `Drafts/` is the only mechanism new authoring
 writes through, and a sync provably cannot destroy a draft.
 
-**Phase 3 is the next one, and it is the first to need the maintainer access listed under "Access
-the maintainer must provide"** (MariaDB, server shell, secrets). Phases 0-2 needed none of it.
+**Phase 3 is the next one, and it is the first to need the project owner access listed under "Access
+the project owner must provide"** (MariaDB, server shell, secrets). Phases 0-2 needed none of it.
 
 **Goal.** A contributor's edits are saved locally, survive sync, render on top of official data,
 and are clearly marked as pending.
@@ -648,7 +648,7 @@ updated in this change, confirming the mapping and the doc edit are in sync).
 
    > **REVERSED ON 2026-09-23 - see [Phase 6a](#phase-6a---drafts-as-real-board-folders-done-2026-09-23).**
    > This is what was built and it worked, but it made a draft a COMPUTATION rather than a
-   > file: there was nothing a contributor could open. The maintainer asked for a draft to be
+   > file: there was nothing a contributor could open. The project owner asked for a draft to be
    > a real board folder, so the row deltas are gone and the workbook IS the draft. Do not
    > reinstate `draft.json` on the strength of this task.
 3. Implement the overlay merge in `CRT.Data` as a pure function:
@@ -676,7 +676,7 @@ which cannot mix with a conditional chip) - a small amber "Draft" pill via two n
 `Draft_Chip_Bg/Fg/Border`. All five call sites that rebuild that list (`Main.BoardSelection.cs`
 x2, `Main.ComponentPopup.cs` x3) now pass `_currentBoardDraftSummary.DraftedComponentBoardLabels`.
 
-**Task 5, the tint.** The harder half - flagged to the maintainer mid-session as touching a hot
+**Task 5, the tint.** The harder half - flagged to the project owner mid-session as touching a hot
 render path, and confirmed to proceed rather than defer. `HighlightSpatialIndex` (previously a
 flat, positional `Rect[]` with no per-item metadata at all, and previously untested) gained a
 parallel `bool[]? isDrafted` and `GetIsDrafted(int)`; `SchematicHighlightsOverlay.Render` now does
@@ -738,7 +738,7 @@ draft root" piece of task 8) is also done. Component add/edit and file/link atta
 wholesale and redirecting only its save path; see the dedicated section below. Only task 9 ("Add a
 new system") and session 2d remain - see "What remains" below.
 
-**The real design decision this session made, flagged to and confirmed by the maintainer before
+**The real design decision this session made, flagged to and confirmed by the project owner before
 writing any code:** `BoardDataWriter.SaveLabelEditorChangesAsync` mutated the officially-synced
 `.xlsx` directly with EPPlus (inserting Components rows) and called
 `BoardComponentHighlightStorage.SaveComponentHighlights` for the JSON sidecar - a completely
@@ -790,7 +790,7 @@ draft mechanism.
 - `BoardDraft`/`DraftDataStore` gained an **eleventh section, `KiCadCalibrations`**
   (`KiCadCalibrationEntry` in `BoardData.cs` - schematic name, CAD name, offset/scale/mirror,
   mirroring `BoardComponentHighlightStorage`'s existing JSON field shape exactly), confirmed with
-  the maintainer as the right call since KiCad calibration had NO representation in `BoardDraft` at
+  the project owner as the right call since KiCad calibration had NO representation in `BoardDraft` at
   all before this. `BoardDraftTests.cs` (new) pins `IsEmpty` across all eleven sections via
   reflection so a twelfth section added later cannot be forgotten from that check silently.
 - **KiCad calibration's read/write redirect, built later the same session**:
@@ -826,7 +826,7 @@ draft mechanism.
   has after the label editor's redirect).
 
 **Component add/edit and file/link attachment, the last piece of task 8, built the same session.**
-Confirmed with the maintainer this was not going to be a network gap needing its own architecture
+Confirmed with the project owner this was not going to be a network gap needing its own architecture
 question (see below) before writing code: **reuse `ComponentContributionWindow` wholesale rather
 than build a new editor.** It already had every field, every validation rule, the file picker, the
 category-suggestion `AutoCompleteBox`, and the "delete this component" mode task 8 needed - the
@@ -835,7 +835,7 @@ So this piece is a redirect exactly like the label editor's, not new constructio
 "genuinely new UI" framing task 8 originally carried (that framing predates this session's
 research into what the window already had).
 
-**A real architecture gap had to be closed first, and the maintainer explicitly delegated the
+**A real architecture gap had to be closed first, and the project owner explicitly delegated the
 design to the agent ("investigate and figure out what is the best-possible solution") rather than
 picking between the two options offered:** `ComponentEntry.File`/`ComponentImageEntry.File`/
 `BoardLocalFileEntry.File` are relative paths, and EVERY existing consumer resolves one as a
@@ -941,7 +941,7 @@ published" toggle, and the walkthrough's step 5/6 renamed from "write the mandat
 
 Built in full (both the registration/creation half and the import/report half) in one further
 session, after an Opus planning pass whose investigation turned up materially more dependency
-surface than the task list named. The plan itself recommended splitting it in two; the maintainer
+surface than the task list named. The plan itself recommended splitting it in two; the project owner
 chose to build both halves together.
 
 **The registration lives INSIDE `draft.json`, not in a registry file** - a new
@@ -1277,22 +1277,22 @@ until now.
 **Goal.** An ASP.NET Core service running on the AlmaLinux box, reachable at `/api/`, with accounts
 in MariaDB. No submission handling yet.
 
-**Needs the access described in [Access the maintainer must provide](#access-the-maintainer-must-provide).**
+**Needs the access described in [Access the project owner must provide](#access-the-project-owner-must-provide).**
 
 ### Progress
 
-**Step 0 is complete (2026-09-20) and is waiting on the maintainer to deploy.** Built:
+**Step 0 is complete (2026-09-20) and is waiting on the project owner to deploy.** Built:
 `src/CRT.Server/` (ASP.NET Core `net10.0`, referencing `CRT.Data`) answering `GET /api/health` and
 nothing else, `tests/CRT.Server.Tests/` (13 tests), and `src/CRT.Server/DEPLOYMENT.md` written as a
-runbook the maintainer executes themselves, every step carrying a Verify command. Both projects are
+runbook the project owner executes themselves, every step carrying a Verify command. Both projects are
 in the `.slnx`. Full suite green at 3555, Release build 0 warnings / 0 errors.
 
 **Decisions taken during step 0, none of which should be re-opened:**
 
-- **Production-write interlock: denied at the FILESYSTEM**, not merely in code. The maintainer
+- **Production-write interlock: denied at the FILESYSTEM**, not merely in code. The project owner
   confirmed this approach. `crt-server` has no write permission on the Production tree, so a write
   attempt is refused by the kernel; `DEPLOYMENT.md` step 3 carries a probe whose output the
-  maintainer checks. `systemd`'s `ProtectSystem=strict` + `ReadWritePaths` is a second, independent
+  project owner checks. `systemd`'s `ProtectSystem=strict` + `ReadWritePaths` is a second, independent
   interlock. This is what makes the rule secure-by-DESIGN (structurally unreachable) rather than
   secure-by-default, satisfying [checklist item 8](#review-checklist-for-each-of-phases-3-6)
   properly rather than with a recorded exception.
@@ -1311,7 +1311,7 @@ in the `.slnx`. Full suite green at 3555, Release build 0 warnings / 0 errors.
 - **EPPlus licensing (open question 8) does NOT block Phase 3.** Verified: `EpplusLicense.Ensure()`
   is called only from `BoardDataReader`'s EPPlus entry points, never from a static constructor or
   module initializer, so a service that reads no workbook executes no EPPlus code. The assembly
-  ships as a transitive reference; nothing runs. The maintainer has asked to keep using EPPlus and
+  ships as a transitive reference; nothing runs. The project owner has asked to keep using EPPlus and
   revisit later, possibly replacing it. **It becomes a real question at Phase 4 task 3**, where the
   server-side diff does read workbooks.
 
@@ -1335,7 +1335,7 @@ in the `.slnx`. Full suite green at 3555, Release build 0 warnings / 0 errors.
   from an unauthenticated, publicly reachable endpoint. `HealthReport` now strips build metadata,
   pinned by four tests. Worth remembering for any future endpoint that reports a version.
 
-**Step 1 (the maintainer's) is COMPLETE - the chain is proven, 2026-09-20.**
+**Step 1 (the project owner's) is COMPLETE - the chain is proven, 2026-09-20.**
 `curl -i https://classic-repair-toolbox.dk/api/health` answers `200 OK` with the expected JSON from
 a separate machine over the public internet. Also verified: the service restarts within ~5 s after
 `SIGKILL`; it listens on `127.0.0.1:5199` only; port 5199 is not reachable from outside; the
@@ -1401,7 +1401,7 @@ working directory.
 Both that check and the identical one on `ManifestPath` now test the raw value. This is the third
 time in this project that writing the test first has caught something the code got wrong.
 
-**Deployment layout changed before step 3 was run (2026-09-20), at the maintainer's request.**
+**Deployment layout changed before step 3 was run (2026-09-20), at the owner's request.**
 Everything the service owns now sits under ONE root beside the site it serves,
 `<site>/crt-server/`, holding `app/` (binaries plus `appsettings.Production.json`) and
 `previous/` (the rollback copy) - instead of being split across `/opt/crt-server` and
@@ -1439,7 +1439,7 @@ supplementary groups, so the file reads fine by hand while the service cannot op
 `systemd-run --uid=... --gid=...` instead. The failure appears as `IOException: Permission denied`
 inside `WebApplication.CreateBuilder`, before any of our own validation runs.
 
-**Step 4 is DONE (2026-09-21).** Plain numbered SQL migrations, no ORM - chosen by the maintainer
+**Step 4 is DONE (2026-09-21).** Plain numbered SQL migrations, no ORM - chosen by the project owner
 over EF Core so the schema stays readable as SQL in the repository and no dependency is added.
 
 - **`MigrationPlan`** is pure and carries every rule: filename ordering, gap detection, checksum
@@ -1582,7 +1582,7 @@ of done is now verified in production, not only in tests:
 the rate limiter (11.7) and the password-reset round trip (11 step 3 onward). Neither blocks
 Phase 4.
 
-**Also noticed and left for the maintainer:** postfix listens on `0.0.0.0:25` rather than loopback,
+**Also noticed and left for the project owner:** postfix listens on `0.0.0.0:25` rather than loopback,
 so port 25 should be confirmed closed at the firewall - an open relay is how a box lands on a
 blocklist. Unrelated to this project.
 
@@ -1615,7 +1615,7 @@ piece of work than any phase so far.
    verification, password reset. No federated login: some CRT users specifically avoid GitHub.
 6. Authentication for the desktop clients: a bearer token with a sensible lifetime and refresh.
 7. **Point everything at BETA.** The service must read and write only the BETA tree until the
-   maintainer says otherwise. Make the target tree a configuration value with **no default**, so a
+   project owner says otherwise. Make the target tree a configuration value with **no default**, so a
    misconfigured service fails to start rather than quietly writing to production.
 
 ### Definition of done
@@ -1630,7 +1630,7 @@ piece of work than any phase so far.
 
 - **Do not let the service touch Production.** See item 7.
 - **File ownership.** The service user must be able to write the data tree without breaking what the
-  web server serves. Agree group ownership with the maintainer rather than loosening permissions.
+  web server serves. Agree group ownership with the project owner rather than loosening permissions.
 - **`dotnet publish -r linux-x64` from Windows works fine**, but confirm no Windows-only path
   assumption leaked into `CRT.Data`.
 
@@ -1692,7 +1692,7 @@ below. It applies automatically on the next service start.
   column rather than eleven tables - they are never queried field by field, and eleven tables would
   need a migration every time `BoardData` changed.
 
-### CONTRIBUTING NEEDS NO ACCOUNT (maintainer's decision, 2026-09-21)
+### CONTRIBUTING NEEDS NO ACCOUNT (owner's decision, 2026-09-21)
 
 **This reverses what the server was first built to do, and it changes Phase 6's entry point.**
 
@@ -1702,7 +1702,7 @@ argues that a CONTRIBUTOR needs one, and the threat model says the opposite outr
 submitting hostile content is the cheaper route, and it needs no account theft at all."* Accounts
 never defended against threat 1; content validation and human review do.
 
-The maintainer's decision, which replaces the implemented behaviour:
+The owner's decision, which replaces the implemented behaviour:
 
 - **Contributing anything requires NO account and must not even ask for one.** A sign-up wall
   before a hobbyist can fix a typo is how a contribution does not happen. This matches the old PHP
@@ -1710,8 +1710,8 @@ The maintainer's decision, which replaces the implemented behaviour:
 - **An email address IS required, for contact only.** It is how the contributor learns their work
   was accepted or rejected. It is not a credential, there is no password, and nothing is stored to
   sign in with.
-- **A NEW SYSTEM is where an account appears - and the MAINTAINER creates it, the contributor does
-  not sign up for it.** When a new system is accepted, the maintainer creates a maintainer account
+- **A NEW SYSTEM is where an account appears - and the PROJECT OWNER creates it, the contributor does
+  not sign up for it.** When a new system is accepted, the project owner creates a maintainer account
   for that person (if they do not already have one) and assigns them to the system. They then
   maintain their own system from then on.
 
@@ -1812,7 +1812,7 @@ the same hash** (`PublishedTreeView.HashOf`, the cached hash the file rules and 
 comparison already use) from this server's own disk, via `BlobStore.TryImportAsync`, and counts
 it as held. Decisions worth keeping:
 
-- **Imported INTO the store, not read from the tree later.** The reviewer, finalise's content
+- **Imported INTO the store, not read from the tree later.** The maintainer, finalise's content
   check and the publish all read the store, so none of them changed. A file only NAMED as "in
   the tree" could be overwritten there by another board's publish (a shared file) before this
   submission was reviewed, leaving it citing bytes that exist nowhere.
@@ -1863,7 +1863,7 @@ compares two states it fully knows, so row identity need not live in the data.
 2. Server endpoints: create submission, negotiate hashes, upload blob, finalise.
 3. Server-side diff of base revision vs submitted state, using `CRT.Data`. New-system vs update is
    decided by whether `SystemId` already exists - one lookup, which is the "server figures it out"
-   behaviour the maintainer asked for.
+   behaviour the project owner asked for.
 4. **Automated validation before any human sees it.** This is the highest-leverage work in the whole
    plan: it turns most bad submissions into a fast, automatic, polite answer.
    - run `DataValidator`;
@@ -1887,7 +1887,7 @@ compares two states it fully knows, so row identity need not live in the data.
    progress, and the outcome. Submitting does **not** clear the draft - it stays until the
    submission is accepted, so the contributor keeps using their work. **[DONE 2026-09-21]** - see
    "The Submit action" below.
-6. A "my submissions" view in CRT showing state and any reviewer comment. **[DONE 2026-09-21]** -
+6. A "my submissions" view in CRT showing state and any maintainer comment. **[DONE 2026-09-21]** -
    see "My submissions, with no account to hang it on" below.
 7. `system.json` per system in the published tree:
    `SystemId`, `Manufacturer`, `Hardware`, `Board`, `Revision`, `PublishedUtc`, `Maintainers`,
@@ -1950,14 +1950,14 @@ go through the locator and both check the result.
 
 ### My submissions, with no account to hang it on (task 6, done 2026-09-21)
 
-**The problem this had to solve first.** The task says "a view showing state and any reviewer
+**The problem this had to solve first.** The task says "a view showing state and any maintainer
 comment", which quietly assumes the app can ask "what did I send". It cannot: contributing needs no
 account, so the server has no idea who is asking. The capability token returned once at creation is
 the only proof of ownership - and it was living in a local variable inside the Submit dialog and
 being discarded when that dialog closed. **Nothing persisted it**, so before task 6 could be built
 at all, that receipt had to start being kept.
 
-**Decision (maintainer, 2026-09-21): keep receipts LOCALLY.** CRT writes `{id, token, systemId,
+**Decision (owner, 2026-09-21): keep receipts LOCALLY.** CRT writes `{id, token, systemId,
 summary, sentUtc}` to `submissions.json` beside the user's settings, and the view reads its own
 list. The alternative considered was an email-address lookup endpoint, which works across machines
 but needs a mailed link or code to be safe - an address is not a secret, so without one anybody who
@@ -1994,7 +1994,7 @@ that way is one extra request, whereas treating it as final would freeze a row f
 one bad row does not fail the refresh, and the cached state stays - that cache exists precisely so
 the window says something true offline.
 
-**`ReviewerComment` is in the contract now and empty until Phase 5.** There is no reviewer and no
+**`MaintainerComment` is in the contract now and empty until Phase 5.** There is no maintainer and no
 column behind it yet. Carrying it from the start means filling it in later is a server change
 alone, with nothing to update on any contributor's disk.
 
@@ -2004,10 +2004,10 @@ machine; the contribution itself is untouched and still gets reviewed.
 
 ### system.json (task 7, format and read path done 2026-09-21) [RETIRED 2026-09-25]
 
-> **RETIRED by the maintainer, 2026-09-25:** "I do not want this file visible in the source ... it
+> **RETIRED by the project owner, 2026-09-25:** "I do not want this file visible in the source ... it
 > should not be something downloaded by all users, as this file is not relevant for them." It was
 > synced to every user while CRT showed nothing from it, and every fact it held is in the database
-> (`systems.current_revision`, `content_hash`, `origin`; the `reviewers` table). Nothing writes or
+> (`systems.current_revision`, `content_hash`, `origin`; the `maintainers` table). Nothing writes or
 > reads it now: a publish removes one left in the board's folder by an earlier build, a production
 > promotion never carries one and removes one already there (`RetiredSystemDescriptor`), and
 > `DataManager.LastLoadedSystemDescriptor` - read by nothing - is gone. `SystemDescriptor` survives
@@ -2020,7 +2020,7 @@ migration `0004` plus the `systems`-row insert that Phase 4 needed and did not h
 **What did NOT land, and why it must not be forced:** nothing writes a `system.json` into the
 Production tree. **That is the Phase 3 step 0 interlock working as designed** - `crt-server` has no
 write permission there and the kernel refuses it. A descriptor is written at PUBLISH time, and
-publishing is still a deliberate act by the maintainer with no tool behind it yet. `Write` exists
+publishing is still a deliberate act by the project owner with no tool behind it yet. `Write` exists
 for that future tool and for tests; **do not wire it into a request path to "finish" task 7.**
 
 **[RESOLVED 2026-09-21] `SystemDescriptorStore.Write` now has its call site: `PublishExecutor`, at
@@ -2029,7 +2029,7 @@ instruction above was followed rather than worked around - the writer waited for
 exist instead of being wired into a request path.
 
 **The Production interlock is UNCHANGED and still absolute.** `PublishExecutor` writes the BETA
-tree only. BETA to Production remains a manual file copy the maintainer performs (open question 6),
+tree only. BETA to Production remains a manual file copy the project owner performs (open question 6),
 the service has no write permission on Production, and no "publish to production" option may be
 added.
 
@@ -2082,7 +2082,7 @@ Each of those words is load-bearing:
 It is a `systems` column that already existed, holding `shipped` (came with CRT) or `contributed`
 (arrived through this pipeline and was vetted). **Set once when the system row is created and never
 recomputed** - a contributed system stays contributed however many times it is later revised,
-including by the maintainer, because it records where the system CAME FROM. Migration `0004` adds a
+including by the project owner, because it records where the system CAME FROM. Migration `0004` adds a
 CHECK so the database refuses a third value.
 
 #### Three schema-versus-code disagreements, found by reading and not by testing
@@ -2127,25 +2127,25 @@ step and neither is decidable without it.
 
 ---
 
-## Phase 5 - Review application, single user [STARTED 2026-09-21]
+## Phase 5 - Maintainer application, single user [STARTED 2026-09-21]
 
-**Goal.** A separate Avalonia desktop app where the maintainer reviews and merges submissions. One
-reviewer only; roles come in Phase 6.
+**Goal.** A separate Avalonia desktop app where the project owner reviews and merges submissions. One
+maintainer only; roles come in Phase 6.
 
 ### Progress
 
-**Started with the PUBLISHING STEP, not the app** (maintainer's choice, 2026-09-21). Publishing is
+**Started with the PUBLISHING STEP, not the app** (owner's choice, 2026-09-21). Publishing is
 what finally unblocks Phase 4 task 7's `system.json` writer, it is pure logic that unit tests can
-cover properly, and the review app has nothing worth reviewing until something can be published.
+cover properly, and the maintainer app has nothing worth reviewing until something can be published.
 
 **Landed so far: `DataGenerationRules` in CRT.Data** (+34 tests; suite 4148 to 4182), which owns
-the maintainer's "newest generation only, never touch an older one" rule:
+the project owner's "newest generation only, never touch an older one" rule:
 
 - `ResolveNewestGeneration` DISCOVERS the target from the tree rather than reading a setting -
   see open question 3 for why a configured generation fails silently.
 - `IsOlderGeneration` is the guard that protects a frozen generation, expressed as its own
   question rather than left to each call site to compare versions. The unversioned original is
-  older than every real generation, which is the case the maintainer named outright.
+  older than every real generation, which is the case the project owner named outright.
 - Both shipped naming conventions are pinned: the master separates its version with a DOT
   (`Classic-Repair-Toolbox.v2.0.0.xlsx`), a board file with a SPACE
   (`Data C64 250407 v2.0.0.xlsx`). A test proves `Data VIC20 250403` is not read as a version.
@@ -2253,7 +2253,7 @@ publish that throws at the very last step, AFTER the tree has been written. All 
 were cross-checked against the CHECK constraint and match exactly.
 
 **Landed next: `ReviewSummary`** in CRT.Data (+21 tests; suite 4240 to 4261) - task 3's screen,
-built as pure logic BEFORE any UI so the review app's central view is unit tested rather than
+built as pure logic BEFORE any UI so the maintainer app's central view is unit tested rather than
 verified by eye.
 
 - **Rows pair on NATURAL KEYS, never on position.** Pinned by a test that inserts a row at the top
@@ -2272,7 +2272,7 @@ Written to the intended behaviour first, then run - and both failed, which is th
 
 1. **A clean rename reported "also changed".** The renamed value IS one of the compared fields (a
    component's `BoardLabel` is its key), so a whole-row comparison counts every rename twice. A
-   reviewer reading "renamed, and something else changed" looks for an edit that is not there;
+   maintainer reading "renamed, and something else changed" looks for an edit that is not there;
    worse, the signal that would matter - an edit hiding behind a rename - becomes meaningless.
    Fixed with `RowsMatchIgnoringKey`, which drops the key's parts BY VALUE rather than by index,
    since a key's fields are not always the leading ones.
@@ -2281,7 +2281,7 @@ Written to the intended behaviour first, then run - and both failed, which is th
    had `U9` absorbed as a rename and never shown as the ADDITION it was - hiding an added row from
    the person approving it, which is the one thing this screen exists to prevent.
 
-**Landed next: `src/CRT.Review/` and `tests/CRT.Review.Tests/`** (task 1; +11 tests; suite 4261 to
+**Landed next: `src/CRT.Maintainer/` and `tests/CRT.Maintainer.Tests/`** (task 1; +11 tests; suite 4261 to
 4272). The app builds, launches and shows the queue-plus-summary layout task 3 describes. Both
 projects are in the solution, so CI builds and tests them with everything else.
 
@@ -2290,13 +2290,13 @@ projects are in the solution, so CI builds and tests them with everything else.
   landing view SAYS and is unit tested, while the window only walks the result and makes controls.
   That split is why the screen deciding whether a change gets looked at has real coverage.
 - **Removals are listed FIRST within a section**, pinned by a test. A removal is the least
-  recoverable thing a submission can do and the easiest to skim past, because a reviewer scanning
+  recoverable thing a submission can do and the easiest to skim past, because a maintainer scanning
   for "what did they add" is not looking for it.
 - **Sections with no changes are omitted.** Ten lines of "0 changed" buries the one that matters -
   the same failure as opening on the whole board, just smaller.
 - **Its own version (`0.1.0-alpha.1`) and its own `AssemblyName`**, per task 8, so it can never
   get entangled with CRT's release.
-- **`ReviewApp` is deliberately EMPTY beyond showing the window.** CRT's own `App` initialises a
+- **`MaintainerApp` is deliberately EMPTY beyond showing the window.** CRT's own `App` initialises a
   logger, shows a splash and syncs over the network, which is exactly why its headless tests need
   a subclass with an empty override. Keeping startup work out of here means this app's tests never
   need that workaround.
@@ -2312,38 +2312,38 @@ HTTP client now would be a second, untested idea of the API's shape - the exact 
 
 - **Separate from `SubmissionEndpoints` because the authorisation model is the OPPOSITE.** Those
   are for contributors: no account, a capability token, and 404 covering both "no such thing" and
-  "not yours" so the id space cannot be walked. These are for reviewers: an account and a role are
-  required, there is no token, and 401 and 403 are DISTINGUISHED - a reviewer whose account lacks
+  "not yours" so the id space cannot be walked. These are for maintainers: an account and a role are
+  required, there is no token, and 401 and 403 are DISTINGUISHED - a maintainer whose account lacks
   the role needs telling that, not a login prompt that will not help. Mixing the two in one file
   is how a route eventually gets mapped into the wrong group and silently inherits the wrong rule.
 - **`ReviewAuthority` answers the authority question in ONE place**, written now rather than
   retrofitted at Phase 6, because a rule introduced after its call sites exist has to find them
   all. Phase 6's own trap says exactly this: "compute authority once and use it everywhere".
-- **A REVIEWER MAY NOT PUBLISH, and that is enforced structurally.** Phase 6's role table gives
-  Reviewer a blast radius of "none - no published data can change", which holds only while
-  `CanPublish` refuses the role. Verified by widening it to admit reviewers and watching
-  `A_REVIEWER_MAY_NOT_PUBLISH` fail - and only that test.
+- **A REVIEWER (the old recommend-only role, retired 2026-09-25) MAY NOT PUBLISH, and that is
+  enforced structurally.** Phase 6's role table gave Reviewer a blast radius of "none - no
+  published data can change", which held only while `CanPublish` refused the role. Verified by
+  widening it to admit reviewers and watching `A_REVIEWER_MAY_NOT_PUBLISH` fail - and only that test.
 - **Locked and unverified accounts are refused whatever their role**, so withdrawing access bites
   on the very next request rather than at next login (Phase 6's definition of done).
 - **The queue is `pending` only, OLDEST FIRST** - the opposite of "my submissions" and
   deliberately so. A work queue is worked from the front; newest-first lets a steady trickle of
   new contributions bury the one that has waited a month, which is how a contribution quietly
   never gets reviewed.
-- **The upload token hash is NEVER echoed to a reviewer.** It is the contributor's capability for
-  that submission, and handing it over would let a reviewer act as them.
-- **`ReviewApiRoutes` (CRT.Review, pure)** builds the URLs, separately from the HTTP client so the
+- **The upload token hash is NEVER echoed to a maintainer.** It is the contributor's capability for
+  that submission, and handing it over would let a maintainer act as them.
+- **`ReviewApiRoutes` (CRT.Maintainer, pure)** builds the URLs, separately from the HTTP client so the
   half that actually breaks is the half that is tested - a trailing slash on a human-typed base
   address, a path-hosted server, a blank address producing a relative URL that would post a
-  reviewer's credentials somewhere unintended.
+  maintainer's credentials somewhere unintended.
 
 **Landed next: the client half of task 2** (+21 tests; suite 4303 to 4324) - `ReviewSession`,
-`ReviewApiParser` and `ReviewApiClient` in CRT.Review.
+`ReviewApiParser` and `ReviewApiClient` in CRT.Maintainer.
 
 - **The client is deliberately THIN, because it is an untested I/O boundary** (test rule 6). The
   routes are in `ReviewApiRoutes` and the parsing in `ReviewApiParser`, both pure and both
   covered; what is left in the client is sending a request and reading a status code.
 - **A failure is a VALUE, never an exception.** It is called from UI event handlers, where an
-  unhandled task exception is a crash, and a reviewer whose connection dropped needs a sentence
+  unhandled task exception is a crash, and a maintainer whose connection dropped needs a sentence
   rather than a stack trace.
 - **An unreachable server and an EMPTY queue are different answers**, carried all the way through
   the parser and the client. If they collapse into one, a broken connection reads as "nothing to
@@ -2406,10 +2406,10 @@ complete end to end** - the window signs in against `/api/accounts/login` and fi
 one needs BOTH the published board and the submitted manifest, and the queue endpoint returns
 neither - it answers ids, system names and summaries, which is kilobytes. Making it return enough
 to summarise every row would mean loading two full `BoardData` per queued submission on the
-server, for a list the reviewer scrolls past.
+server, for a list the maintainer scrolls past.
 
 So the summary belongs to OPENING a submission, and the queue shows **what the contributor said**.
-That is also the better screen, not merely the cheaper one: "Corrected R12." is what a reviewer
+That is also the better screen, not merely the cheaper one: "Corrected R12." is what a maintainer
 scans for, whereas "3 components changed" says nothing about whether it is worth opening next.
 
 #### The waiting time TRUNCATES, deliberately
@@ -2435,17 +2435,17 @@ findings.
 - **A missing published board is an ANSWER, not an error** - it means a new system, the
   highest-risk submission there is, and `ReviewSummary.Compare` already takes a null for it. But a
   board that exists and cannot be READ throws instead of returning null: reporting that as "new
-  system" would have a reviewer approve a replacement for a board they were told did not exist.
+  system" would have a maintainer approve a replacement for a board they were told did not exist.
 - **The locator reads the NEWEST generation**, the same rule publishing writes with. Reading a
   frozen one would show a diff against a board no current build uses, and the generation gap would
   appear as changes the contributor never made.
 
-**EPPlus now executes on the server** (maintainer's decision, 2026-09-21), via a new
+**EPPlus now executes on the server** (owner's decision, 2026-09-21), via a new
 `InternalsVisibleTo` grant for `BoardDataReader`. Open question 8 predicted this would arrive at
 Phase 4 task 3 and was wrong - it arrives here and at the publish writer.
 
 **A gap worth knowing: the manifest carries no RevisionDate.** `SubmissionRows` has the ten board
-sections and no revision date, so a revision-date CHANGE is currently invisible to the reviewer.
+sections and no revision date, so a revision-date CHANGE is currently invisible to the maintainer.
 The endpoint uses the published board's date for both sides deliberately - the manifest's
 `BaseRevision` is the date the contributor STARTED from, and using it would report a change
 backwards on every submission built against an older revision. Fixing this properly means adding
@@ -2454,7 +2454,7 @@ the field to `SubmissionRows`, which is a contract change for both sides.
 #### A VACUOUS SECURITY TEST, caught by trying to break the thing it guarded
 
 The locator resolves an untrusted identity, so a traversal there is **file disclosure** - it would
-hand a reviewer the contents of any file the service can read. Three traversal tests were written
+hand a maintainer the contents of any file the service can read. Three traversal tests were written
 (`..`, `../..`, `/etc`) and all three passed.
 
 **Then `SubmissionPathRules` was removed from the locator entirely and all twelve tests still
@@ -2488,7 +2488,7 @@ change summary and findings.
 - **The selected row is drawn IMMEDIATELY from what the queue already knows**, with the summary
   filling in when it arrives. Waiting for the request would blank the panel on every click over a
   slow link, which reads as the app having lost the selection.
-- **A response whose selection moved while it was in flight is DISCARDED.** A reviewer arrowing
+- **A response whose selection moved while it was in flight is DISCARDED.** A maintainer arrowing
   down the queue starts a request per row and they can finish out of order; without the check, a
   slow earlier answer overwrites a faster later one and the panel describes a different submission
   from the one highlighted - exactly the state in which somebody approves the wrong thing.
@@ -2509,15 +2509,15 @@ server.
 sub-parts this is the one needing no image bytes, so it went first.
 
 - **"U8 changed" is not reviewable; "Part-number: 906114 -> 251715-01" is.** Without this a
-  reviewer had to open the board in CRT and hunt for what moved.
+  maintainer had to open the board in CRT and hunt for what moved.
 - **The field NAMES are the workbook's own column headers**, from `BoardWorkbookSchema`. A
-  reviewer reading "Part-number" and a maintainer opening the .xlsx are talking about the same
+  maintainer reading "Part-number" and someone opening the .xlsx are talking about the same
   column; inventing friendlier labels would create a second vocabulary that drifts.
 - **A CLEARED field is shown as `-> (blank)`, never trailing off.** Deleting information is the
   edit hardest to notice and the one most deserving a second look; an empty right-hand side reads
   as the app failing to draw something.
 - **Long values truncate in the MIDDLE.** A description runs to a sentence, and a real edit
-  usually differs at one END - cutting the middle keeps both, so the reviewer sees what differs
+  usually differs at one END - cutting the middle keeps both, so the maintainer sees what differs
   rather than two identical-looking prefixes.
 - **Added and removed rows carry no field diff**, deliberately: there is nothing to diff against,
   and seven "(blank) -> value" lines would be noise.
@@ -2533,7 +2533,7 @@ was real and was in `PublishedBoardReader`, added this session: it passed the wo
 path** as `BoardDataReader`'s cache key.
 
 That key is safe in CRT, which never rewrites a published board. **On the server it is exactly
-wrong**, because publishing rewrites that very file - so after a merge, the next reviewer opening
+wrong**, because publishing rewrites that very file - so after a merge, the next maintainer opening
 a submission for that system would be served the PRE-PUBLISH board out of cache and shown a diff
 against data that no longer exists, with nothing indicating anything was wrong.
 
@@ -2548,7 +2548,7 @@ quick succession, and a Windows handle from the preceding read may not be releas
 reopens it. **Unproven, and labelled as such.**
 
 **Landed next: the ASSET ENDPOINT and IMAGES SIDE BY SIDE** (+68 tests; suite 4392 to 4460). This
-is the piece the remaining three sub-parts of task 4 were all blocked on - the review app could
+is the piece the remaining three sub-parts of task 4 were all blocked on - the maintainer app could
 compute a diff but could not fetch a single byte of image.
 
 Two routes, `GET /api/review/submissions/{id}/submitted/{hash}` and
@@ -2561,16 +2561,16 @@ gets applied.
   lowercase hex string cannot carry one. The risk is CROSS-SUBMISSION READING: the blob store is
   shared and content-addressed, so without a scope check "may review submission 7" would mean "may
   read any blob anyone has ever uploaded" to anyone holding a hash - and hashes travel in
-  manifests, which reviewers see. `ReviewAssetLocator.IsSubmittedBlobAllowed` requires the hash to
+  manifests, which maintainers see. `ReviewAssetLocator.IsSubmittedBlobAllowed` requires the hash to
   be one the named submission's own manifest references.
 - **The PUBLISHED side is addressed by a caller-supplied PATH and IS the disclosure boundary.** It
   goes through `SubmissionPathRules`, resolved against **this system's own folder** rather than
-  against the data tree - so a reviewer opening a C64 submission cannot read an Amstrad board
+  against the data tree - so a maintainer opening a C64 submission cannot read an Amstrad board
   through it. The identity is resolved through the same rules first, since a manufacturer of ".."
   would relocate the very folder being contained to.
 - **The content type is an ALLOWLIST of six image types, never inferred.** These bytes are
   contributor-supplied and served from the server's own origin, so a file served as `text/html`
-  would run script there against a signed-in reviewer's session. Everything else is
+  would run script there against a signed-in maintainer's session. Everything else is
   `octet-stream`, which downloads - also the right behaviour for a datasheet. **SVG is absent on
   purpose** despite being an image: it is scriptable XML. The extension is read from the LAST dot,
   so `evil.png.html` is not an image.
@@ -2583,7 +2583,7 @@ tests red; removing the manifest-scope check turns one red. Every traversal test
 **real file in a real sibling folder**, and carries an anti-vacuity half proving the same shape
 inside the tree is still found.
 
-**`ReviewImageComparison` (CRT.Review, pure) decides WHICH images are shown.** Fetching bytes is
+**`ReviewImageComparison` (CRT.Maintainer, pure) decides WHICH images are shown.** Fetching bytes is
 the easy half; picking the right pair is the half that can be wrong, and wrong silently.
 
 - **The manifest's file list is the COMPLETE intended state, not a list of changes**, so an
@@ -2603,7 +2603,7 @@ nothing ever matched: every submitted image would have been reported as an addit
 image would never have appeared at all.
 
 Both failures are silent. The panel draws perfectly and describes something that did not happen -
-the worst shape a defect can take on a screen whose entire purpose is telling a reviewer what a
+the worst shape a defect can take on a screen whose entire purpose is telling a maintainer what a
 submission does. The server now states the list outright in a `publishedFiles` field, which is
 also where it belongs: the server is the only place the published board exists, the same reasoning
 the change summary itself is computed there. `ReviewPublishedFilesTests` pins that the values are
@@ -2611,13 +2611,13 @@ paths and not keys.
 
 **Landed next: the MOVED HIGHLIGHT drawn on the schematic** (+30 tests; suite 4460 to 4490). The
 change a row diff genuinely cannot answer: `X: 100 -> 400` is the same information and tells nobody
-whether the new position is *right*, which is the reviewer's only real question.
+whether the new position is *right*, which is the maintainer's only real question.
 
 - **A move arrives as an ordinary CHANGED ROW.** A highlight's natural key is
   `SchematicName|BoardLabel`, so X/Y/Width/Height are compared FIELDS - the data was already
   flowing and what was missing was the geometry.
 - **The placement is PROPORTIONAL, and that is the whole design.** `ReviewHighlightGeometry`
-  (CRT.Review, pure) turns stored pixel coordinates into FRACTIONS of the image; the control
+  (CRT.Maintainer, pure) turns stored pixel coordinates into FRACTIONS of the image; the control
   multiplies by whatever size it was given. No panel dimension appears in the geometry at all -
   the same split `ExportOverlayGeometry` uses, after the PDF version that confused fractions with
   absolute lengths drew a tenth of a board as most of it.
@@ -2626,15 +2626,15 @@ whether the new position is *right*, which is the reviewer's only real question.
   thing it marks. Proved by swapping it and watching three tests go red.
 - **Invariant-culture parsing, verified by actually switching to `da-DK`** rather than by reading
   the parse call. This is the project's fourth encounter with that bug; `0.5` read
-  culture-sensitively becomes `5`, a highlight ten times too far across, on one reviewer's
+  culture-sensitively becomes `5`, a highlight ten times too far across, on one maintainer's
   machine only.
 - **An ABSENT field reports the same value on BOTH sides.** A field diff lists only what changed,
   so a purely horizontal move carries no Y row. Reading a missing field as blank would put the
   "before" rectangle at the top of the board and **invent a vertical move that never happened** -
-  and inventing a change is worse than missing one, because the reviewer acts on it.
+  and inventing a change is worse than missing one, because the maintainer acts on it.
 - **Both rectangles go on ONE copy of the board**, red for where it was and green for where it is
   being put - the same colour vocabulary the change summary already uses. Two images side by side
-  would make the reviewer hold one in their head; overlaying makes the distance itself the thing
+  would make the maintainer hold one in their head; overlaying makes the distance itself the thing
   on screen.
 
 `ReviewHighlightCanvas` is a custom control rather than a Canvas with children because the board
@@ -2679,13 +2679,13 @@ circuit. That is the commonest way a baseline goes wrong - somebody recaptures o
 differently-configured scope and does not mention it - and approving it replaces a good reference
 with one that cannot be compared against anything.
 
-- `ReviewScopeBaseline` (CRT.Review, pure) reports which of T/DIV, V/DIV and T.LVL moved, in the
+- `ReviewScopeBaseline` (CRT.Maintainer, pure) reports which of T/DIV, V/DIV and T.LVL moved, in the
   order a scope's own controls read rather than the order the diff happens to list them.
 - **A row whose settings did NOT change is not reported.** Component-image rows change for all
-  sorts of ordinary reasons, and a warning that fires on everything is one a reviewer learns to
+  sorts of ordinary reasons, and a warning that fires on everything is one a maintainer learns to
   ignore. Proved by removing the filter and watching that test go red.
 - **The warning names the CONSEQUENCE, not just the fact**: "...so these two traces are not drawn
-  at the same scale" is what a reviewer needs in order to judge the pictures below it.
+  at the same scale" is what a maintainer needs in order to judge the pictures below it.
 - **Listed by component rather than pinned to its image panel, deliberately.** A component image's
   row key is `BoardLabel|Region|Pin|Name` and carries no file name, so matching a row to the
   picture it produced is not something the client can do RELIABLY - and a warning attached to the
@@ -2696,7 +2696,7 @@ with one that cannot be compared against anything.
 #### A presentation defect the field-level diff had been shipping since it landed
 
 Natural keys join their parts with **U+241F**, which renders as a box or as nothing at all
-depending on the font. The field diff had been drawing them raw, so a reviewer saw
+depending on the font. The field diff had been drawing them raw, so a maintainer saw
 `U8ASSY 250407 12Clock` rather than four distinct fields. `ReviewScopeBaseline.DescribeRowKey`
 spells them out with a visible separator and drops empty parts - a component image with no region
 would otherwise read as `U8 /  / 12`, which looks like missing data rather than a field that does
@@ -2708,22 +2708,23 @@ not apply. Both the scope section and the field diff now use it.
 `ReviewDecisionRules` (CRT.Server, pure) owns whether a decision may be made at all, and
 `POST .../reject` and `POST .../request-changes` are mapped.
 
-- **A REVIEWER may reject and return but NEVER approve, and that is enforced here.** Phase 6's role
-  table gives Reviewer a blast radius of "none - no published data can change", which holds only
-  because both outcomes a reviewer can reach leave the tree untouched. Proved by widening
+- **A REVIEWER (the old recommend-only role, retired 2026-09-25) may reject and return but NEVER
+  approve, and that is enforced here.** Phase 6's role table gave Reviewer a blast radius of "none -
+  no published data can change", which held only because both outcomes a reviewer could reach
+  leave the tree untouched. Proved by widening
   `CanApprove` to `CanReview` and watching that test go red.
 - **Rejecting and returning need the SAME authority, deliberately.** If returning needed a higher
-  role than rejecting, the cheap outcome would be the harder one to reach and reviewers would
+  role than rejecting, the cheap outcome would be the harder one to reach and maintainers would
   reject things that could have been a conversation - the exact failure task 5 warns about.
-- **The double-decision interlock.** Two reviewers with the queue open both press a button, or one
+- **The double-decision interlock.** Two maintainers with the queue open both press a button, or one
   presses twice over a slow link. The state is re-read and re-checked SERVER-SIDE on every request,
   because the app's belief that a submission is still pending can be seconds out of date. Removing
   that check turns nine tests red.
-- **`approved` is still actionable**, which is the one non-obvious case: it means a reviewer
+- **`approved` is still actionable**, which is the one non-obvious case: it means a maintainer
   accepted the submission but publishing did not happen or did not finish, and refusing it would
   strand something already agreed to. `merged` is terminal.
 - **A refusal on STATE is 409, not 403.** The account may well be allowed to review - what is
-  wrong is that somebody else decided first. A 403 would send the reviewer looking at their own
+  wrong is that somebody else decided first. A 403 would send the maintainer looking at their own
   permissions for a conflict that is about timing.
 - **A reason is REQUIRED for both outcomes**, with a deliberately low floor (10 characters) that
   rejects thoughtlessness rather than brevity. Contributing needs no account, so the contact email
@@ -2741,7 +2742,7 @@ this project. The fake records what was written so a test cannot pass while the 
 #### APPROVE IS DELIBERATELY NOT MAPPED, and this is the important part of this session
 
 Approving publishes, and **the publish path does not write the JSON sidecar** - see the warning
-added to task 6 above. Wiring Approve today would let a reviewer press a button that silently drops
+added to task 6 above. Wiring Approve today would let a maintainer press a button that silently drops
 every component highlight and every KiCad calibration from a board, with no revision to restore
 from. The two outcomes that touch no published data shipped; the one that does is held back until
 the writer is complete. `ReviewDecisionRules.CanApprove` exists and is tested, so the rule is ready
@@ -2773,7 +2774,7 @@ Six consecutive full-assembly runs green, from ~1-in-5 before. The header note h
 rather than left to mislead the next reader.
 
 **Landed next: APPROVE, end to end - task 5 and task 6 are now COMPLETE** (+58 tests; suite 4565
-to 4623). `POST /api/review/submissions/{id}/approve` is mapped, and the review app has all three
+to 4623). `POST /api/review/submissions/{id}/approve` is mapped, and the maintainer app has all three
 decision buttons.
 
 - **`PublishMerge` (CRT.Data) assembles the board**, and the first thing to understand is that
@@ -2801,7 +2802,7 @@ decision buttons.
 
 **`SubmissionRows.RevisionDate` was added** (optional, so no format-version bump - an older client
 omits it and the publish keeps the published date). It closes the gap recorded earlier: a
-revision-date change was both invisible to the reviewer and unpublishable. `ReviewEndpoints` now
+revision-date change was both invisible to the maintainer and unpublishable. `ReviewEndpoints` now
 compares it properly instead of using the published date for both sides.
 
 #### A NEW SYSTEM was publishing into the FROZEN generation
@@ -2810,7 +2811,7 @@ Found by `ApprovePublishFlowTests` failing on the path the board landed at. `Pub
 the generation from the files already in the system's folder - and **a new system's folder is
 empty**, so it resolved to null, and null means "no version suffix". Every new system would have
 published as `Data C64 250407.xlsx`: the frozen file serving every pre-2.0.0 build, the one file
-the maintainer's rule says is never written. Older builds would have received contributed data
+the project owner's rule says is never written. Older builds would have received contributed data
 they cannot read.
 
 The generation now comes from the TREE's master workbooks when the system's own folder is empty,
@@ -2847,10 +2848,10 @@ Three separate things were missing, and fixing only one would have been worse th
 
 **They are also REVIEWED now, and that mattered more than the wiring.** `ReviewSummary` compares
 two `BoardData`, so without a deliberate eleventh section the calibrations would have reached the
-published tree **with no reviewer ever having seen them** - creating the exact failure this phase
+published tree **with no maintainer ever having seen them** - creating the exact failure this phase
 exists to prevent. A calibration is the offset/scale/mirror box mapping a schematic onto the KiCad
 board's coordinates: getting one wrong breaks nothing visibly, the trace overlay just lands in the
-wrong place, so it is precisely the change a reviewer must be TOLD about.
+wrong place, so it is precisely the change a maintainer must be TOLD about.
 
 `ReviewSummaryTests.Every_section_of_a_board_is_compared` - which exists to catch a section whose
 changes are invisible - now covers all eleven.
@@ -2861,42 +2862,42 @@ rather than strings, so they are formatted for display; a culture-sensitive form
 forever, against a board nobody had touched. Fifth encounter with that class of bug here.
 
 **Landed next: task 8's RELEASE WORKFLOW** -
-[build-and-release-review.yml](../.github/workflows/build-and-release-review.yml), separate from
+[build-and-release-maintainer.yml](../.github/workflows/build-and-release-maintainer.yml), separate from
 CRT's exactly as the task requires.
 
 - **Separate because the AUDIENCES barely overlap.** CRT ships to every hobbyist using the app;
-  this ships to a handful of maintainers. One workflow would push a review-app fix at thousands of
-  people who cannot sign in to it, and hold a review-app fix behind whatever CRT is mid-way
+  this ships to a handful of maintainers. One workflow would push a maintainer-app fix at thousands of
+  people who cannot sign in to it, and hold a maintainer-app fix behind whatever CRT is mid-way
   through. The versions are independent too - 0.1.0-alpha.1 against CRT's 2.6.x - and a shared
   workflow reads ONE `InformationalVersion`, so one product would release under a version that
   means nothing for it.
-- **The tag and packId are PREFIXED** (`review-v0.1.0-alpha.1`, `Classic-Repair-Toolbox-Review`).
+- **The tag and packId are PREFIXED** (`maintainer-v0.1.0-alpha.1`, `Classic-Repair-Toolbox-Maintainer`).
   The two products share one repository, so one tag namespace and one Releases page; an unprefixed
   tag would sit beside CRT's with nothing saying which product it belongs to. **Corrected
   2026-09-25: the packId does NOT keep the two update feeds apart.** Velopack's GithubSource
   (1.2.158, decompiled) merges the `releases.<channel>.json` of every recent release in the repo
   and picks the highest version without looking at the package id. What separates them is the
-  CHANNEL: the review app packs on `review-win` / `review-linux`, whose feed files CRT never asks
-  for - which also protects CRT versions already installed. **Then moved out entirely (maintainer
+  CHANNEL: the maintainer app packs on `maintainer-win` / `maintainer-linux`, whose feed files CRT never asks
+  for - which also protects CRT versions already installed. **Then moved out entirely (owner
   decision, same day): review releases publish to their own repository,
-  `HovKlan-DH/Classic-Repair-Toolbox-Review`**, so CRT's Releases page lists only CRT and CRT's
+  `HovKlan-DH/Classic-Repair-Toolbox-Maintainer`**, so CRT's Releases page lists only CRT and CRT's
   update check never sees them; the channels stay as a second guard. Needs the
-  `REVIEW_RELEASES_TOKEN` secret. `ReviewReleaseSeparationTests` (CRT.App.Tests) pins both.
-  The same day the review app got `VelopackApp.Build().Run()` (install hooks only, no updater):
+  `REVIEW_RELEASES_TOKEN` secret. `MaintainerReleaseSeparationTests` (CRT.App.Tests) pins both.
+  The same day the maintainer app got `VelopackApp.Build().Run()` (install hooks only, no updater):
   without it `vpk pack` refused the package, so no review release had ever been built.
 - **The release body is GENERATED, never read from `CHANGELOG.md`.** That file is CRT's, written
-  by hand, and is the body of every CRT release - putting it on a review-app release would
+  by hand, and is the body of every CRT release - putting it on a maintainer-app release would
   describe changes that are not in it, and sharing it would mean editing a file that is explicitly
   off-limits. The body says the version and points at the commit history, which is all it can say
-  truthfully. If the review app ever wants real notes it gets its own changelog; it must never
+  truthfully. If the maintainer app ever wants real notes it gets its own changelog; it must never
   borrow CRT's.
-- **It tests the WHOLE SOLUTION, not just `CRT.Review.Tests`.** The review app is built on
+- **It tests the WHOLE SOLUTION, not just `CRT.Maintainer.Tests`.** The maintainer app is built on
   CRT.Data, which CRT and the server also depend on, so a change breaking either of them breaks
   this release's foundation. Testing only its own assembly would ship an app built on a library
   whose tests are red.
 - **No data pack.** CRT ships `Assets/Data` so a fresh install has boards before its first sync;
-  the review app reads everything from the server, so copying it would add tens of megabytes a
-  reviewer never uses.
+  the maintainer app reads everything from the server, so copying it would add tens of megabytes a
+  maintainer never uses.
 
 Verified by actually running the pieces rather than by reading: `InformationalVersion` reads as
 `0.1.0-alpha.1`, and both `win-x64` and `linux-x64` publish self-contained and produce executables
@@ -2904,11 +2905,11 @@ whose names match `EXE_WINDOWS`/`EXE_UNIX` exactly - a mismatch there would fail
 step, on a self-hosted runner, at release time.
 
 **It reuses `Assets/CRT_icon.ico`**, because that is the only icon in the repository. A distinct
-icon for the review app is a design decision for the maintainer rather than something to invent;
+icon for the maintainer app is a design decision for the project owner rather than something to invent;
 until then the two installers share one.
 
-**Landed next: the reviewer's COMMENT now reaches the contributor** (+3 tests; suite 4644 to
-4646). `GET /api/submissions/{id}`'s `reviewerComment` field had been returning the empty string
+**Landed next: the maintainer's COMMENT now reaches the contributor** (+3 tests; suite 4644 to
+4646). `GET /api/submissions/{id}`'s `maintainerComment` field had been returning the empty string
 with a comment saying "always present, always empty for now... filling it in later is a server
 change alone, with nothing to update on contributors' machines". That prediction held exactly: the
 decisions landed, and this needed only to stop returning empty.
@@ -2933,10 +2934,10 @@ the contributor's drafts", so that link is the remaining work.
 reviewed and merged end to end into BETA, and the merged board opening correctly in CRT after a
 sync. Nothing in this phase has been exercised against the live server or a real MariaDB - every
 test runs against an in-memory fake and a temp folder. That is a deployment step for the
-maintainer, and the five schema-versus-code disagreements already found by hand-checking columns
+project owner, and the five schema-versus-code disagreements already found by hand-checking columns
 are the reason it matters.
 
-#### Sign-in screen reworked after maintainer feedback (2026-09-22)
+#### Sign-in screen reworked after owner feedback (2026-09-22)
 
 Three things, from first launch of the built app:
 
@@ -2971,11 +2972,11 @@ that the constant does not end in `/api`.
 
 `accounts.is_administrator` defaults to 0, **no endpoint sets it, and nothing seeds it**. So a
 freshly deployed server has no account that can approve anything - the queue answers 403 for
-everyone and the review app shows "this account is not allowed to review submissions".
+everyone and the maintainer app shows "this account is not allowed to review submissions".
 
 That is deliberate rather than an omission: an endpoint that grants administrator is an endpoint
 that can be abused to grant administrator. The first one is made by hand in MariaDB, by somebody
-who already has database access (confirmed with the maintainer 2026-09-22 - no UI wanted).
+who already has database access (confirmed with the project owner 2026-09-22 - no UI wanted).
 
 [DEPLOYMENT.md](../src/CRT.Server/DEPLOYMENT.md) now carries the runbook: register through the
 normal flow so the password is hashed by the service, verify the address, then
@@ -3038,7 +3039,7 @@ pass.
 Reported from the screen after the first real review round trip. Three things, one of them a bug.
 
 **The bug: `Reported as [changes_requested]`.** The four Phase 5 review states were added to the
-server's vocabulary when the review application was built and **never taught to
+server's vocabulary when the maintainer application was built and **never taught to
 `SubmissionReceiptPresenter.DescribeState`**, so they fell through to its unknown-state fallback -
 a raw database value, underscore and all, in the one place that class exists to prevent exactly
 that. `changes_requested` is the state where somebody is being ASKED TO DO SOMETHING, and it read
@@ -3050,7 +3051,7 @@ launch check landed, on every launch - forever.** `changes_requested` and `appro
 deliberately still open: neither is the end, and treating either as decided would freeze the row.
 
 **The layout.** Each submission is now its own card: a faint fill, a 1px border, and a **4px
-status-coloured left edge** (maintainer's choice over a plain grey card or a fully tinted one). A
+status-coloured left edge** (owner's choice over a plain grey card or a fully tinted one). A
 single bottom rule per row made five submissions read as one continuous block, and the 1px
 `#EEEEEE` outline that replaced it was invisible against a white window.
 
@@ -3070,7 +3071,7 @@ single bottom rule per row made five submissions read as one continuous block, a
   `Card_Bg` back to White turns two of them red.
 
 **The dates.** `SubmissionReceipt` gained `DecidedUtc` (the server already sent `decidedUtc`;
-nothing stored it), shown as **"Replied 22 September 2026" inside the reviewer's own panel** rather
+nothing stored it), shown as **"Replied 22 September 2026" inside the maintainer's own panel** rather
 than in the row of dates above - a date about the comment belongs with the comment. "Last checked"
 is dimmed, being this computer's bookkeeping rather than anything about the submission.
 
@@ -3092,7 +3093,7 @@ updates for the new comment to show up? This should of course load at applicatio
 
 Correct, and the badge made it worse rather than caused it. `SubmissionReceiptStore.Load()` runs at
 startup, but that only reads the LOCAL cache - **the only call to `GetStatusAsync` in the whole app
-was inside `MySubmissionsWindow`'s Refresh button.** So a reviewer could request changes and the
+was inside `MySubmissionsWindow`'s Refresh button.** So a maintainer could request changes and the
 contributor would launch to a stale cache, no badge and no comment, until they pressed a button
 they had no reason to think was necessary.
 
@@ -3108,7 +3109,7 @@ they had no reason to think was necessary.
 - **It returns how many receipts CHANGED, not how many were checked.** `UpdateState` rewrites and
   saves unconditionally, so counting calls would report "something happened" every launch and
   redraw the tab for nothing.
-- **A comment that moved counts even when the state did not** - a reviewer can reword or add a
+- **A comment that moved counts even when the state did not** - a maintainer can reword or add a
   note without the state changing, and comparing only the state would leave that with no badge.
 - **One unreachable row does not abandon the rest.**
 
@@ -3120,7 +3121,7 @@ and the shared method returns only the changed count. The SKIP rule
 
 #### ONE email address for the whole application (2026-09-22)
 
-Maintainer: "I think I ask for the email already in Feedback... log one email address for the user,
+Project owner: "I think I ask for the email already in Feedback... log one email address for the user,
 and use that everywhere it asks for an email address."
 
 **The setting already existed.** `UserSettings.ContactEmail` has been written by the Feedback tab
@@ -3144,9 +3145,9 @@ the fresh path only stops tests overwriting each other's files.
 
 (+6 tests; suite 4742 to 4748.)
 
-#### Reviewer feedback is now VISIBLE: an unread badge on the Drafts tab (2026-09-22)
+#### Maintainer feedback is now VISIBLE: an unread badge on the Drafts tab (2026-09-22)
 
-Maintainer question after the first real review: "I asked for changes - where can the user see
+Owner question after the first real review: "I asked for changes - where can the user see
 this?" It was already displayed, in `MySubmissionsWindow`, but only for somebody who thought to
 press "My submissions". **A comment nobody notices is a comment nobody reads**, and contributing
 needs no account - so that window is the entire channel back to the person who did the work.
@@ -3160,7 +3161,7 @@ needs no account - so that window is the entire channel back to the person who d
   comment from the server, so resetting it there would resurrect the badge on every check - and a
   badge that reappears for no visible reason is one the contributor learns to ignore. Sabotaging
   this line turns exactly one test red.
-- **Explicit dismiss ("Mark as read"), not "cleared by opening the window"** (maintainer's
+- **Explicit dismiss ("Mark as read"), not "cleared by opening the window"** (owner's
   choice): opening the list to check on a different submission must not silently mark feedback
   read that was never looked at. The comment **stays on screen** afterwards - only the "New" flag
   and the IndianRed outline go, since the contributor is about to act on it.
@@ -3193,9 +3194,9 @@ because completing a reset needs the new PASSWORD, which a URL does not carry. T
 with the URL itself as a test constant. It pinned the bug in place. A test that a mail contains a
 link is not a test that the link resolves.
 
-**The fix (maintainer's choice): a CODE to paste, not a page to serve.** The alternative was an
+**The fix (owner's choice): a CODE to paste, not a page to serve.** The alternative was an
 HTML form served from the API; rejected because the audience is a handful of maintainers already
-sitting in front of the review app, and it would mean the API growing a page to style, escape and
+sitting in front of the maintainer app, and it would mean the API growing a page to style, escape and
 keep accessible for one form.
 
 It is also the **safer** shape, which was not the reason for choosing it but matters: the old link
@@ -3204,7 +3205,7 @@ before the person ever read the mail. A code pasted into an application cannot b
 
 - Both mails that offer a reset (`PasswordReset` and `AlreadyRegistered`) now print a bare code
   and name where to paste it.
-- `CRT.Review` gained the other half of the flow: a reset panel (code + new password) revealed by
+- `CRT.Maintainer` gained the other half of the flow: a reset panel (code + new password) revealed by
   "I forgot my password", `ReviewApiClient.ResetPasswordAsync`, and `ReviewApiRoutes.ResetPassword`.
   **The panel opens on any success**, since the server answers a neutral 202 for unknown addresses
   too - a panel that appeared only for registered addresses would be the enumeration oracle that
@@ -3231,7 +3232,7 @@ rather than by the sentence above it, so rewording a mail cannot break every res
 
 #### Staying signed in: SLIDING EXPIRY, not a longer token (2026-09-22)
 
-Maintainer request: "the password is complex and not something you want to deal with for a
+Owner request: "the password is complex and not something you want to deal with for a
 low-volume thing like this" - sign in once, and forget it only on sign-out, lock or invalidation.
 **The interesting part is the option that was rejected**, because the obvious two are both wrong.
 
@@ -3272,7 +3273,7 @@ Load-bearing details:
 **Client side:** `ReviewSessionStore` persists the session, with the token **DPAPI-encrypted to
 the logged-in Windows user** - a copied file is inert on another machine or account. **Off Windows
 nothing is stored at all**, deliberately: a plaintext fallback would look protected and not be,
-which is worse than an honest refusal, so those reviewers sign in each launch as before.
+which is worse than an honest refusal, so those maintainers sign in each launch as before.
 `ShowSignInPanel` is the single funnel that forgets it, reached from expiry, from any 401 (which
 is what a lock, a revocation and a sign-out all look like from the client) and from the new **Sign
 out** button - which revokes server-side first, while the token is still in hand.
@@ -3307,9 +3308,9 @@ calls both, and it does not exist yet. Do not wire either into a request path to
 
 ### Tasks
 
-1. Create `src/CRT.Review/`, Avalonia, referencing `CRT.Data`. Follow CRT's own conventions: no
+1. Create `src/CRT.Maintainer/`, Avalonia, referencing `CRT.Data`. Follow CRT's own conventions: no
    MVVM, code-behind, partial classes by area with header comments, pure logic in `Handlers/`.
-   **[DONE 2026-09-21]** - plus `tests/CRT.Review.Tests/`, both in the solution.
+   **[DONE 2026-09-21]** - plus `tests/CRT.Maintainer.Tests/`, both in the solution.
 2. Log in against `/api/`; list the queue. **[DONE 2026-09-21]** - `ReviewEndpoints` server-side,
    `ReviewApiRoutes`/`ReviewApiParser`/`ReviewApiClient`/`ReviewSession` client-side, and the
    window's sign-in panel and live queue. **Not yet exercised against the real server** - see the
@@ -3394,15 +3395,15 @@ calls both, and it does not exist yet. Do not wire either into a request path to
 
    Removing the sidecar write turns **ten** executor tests red.
 7. ~~**Retain every published revision** so any merge can be rolled back by republishing the
-   previous one.~~ **STRUCK 2026-09-21 by the maintainer - see open question 5.** No publish
+   previous one.~~ **STRUCK 2026-09-21 by the project owner - see open question 5.** No publish
    history is kept; a published file is overwritten in place. A bad merge is undone by publishing
    a correction. `systems.current_revision` still increments, because a submission diffs against
    it - that is not rollback.
 8. Ship it through the existing Velopack pipeline, as a **separate** workflow with its **own**
    version. Do not entangle it with CRT's release. **[DONE 2026-09-22]** -
-   [build-and-release-review.yml](../.github/workflows/build-and-release-review.yml). Prefixed tag
-   and packId, released into its OWN repository (`HovKlan-DH/Classic-Repair-Toolbox-Review`) on its
-   own Velopack CHANNELS (`review-win`/`review-linux`) - the packId alone does not keep it out of
+   [build-and-release-maintainer.yml](../.github/workflows/build-and-release-maintainer.yml). Prefixed tag
+   and packId, released into its OWN repository (`HovKlan-DH/Classic-Repair-Toolbox-Maintainer`) on its
+   own Velopack CHANNELS (`maintainer-win`/`maintainer-linux`) - the packId alone does not keep it out of
    CRT's update feed; see task 8's section; its own generated release body, never `CHANGELOG.md`.
 
 ### Definition of done
@@ -3431,8 +3432,8 @@ calls both, and it does not exist yet. Do not wire either into a request path to
 **Goal.** A draft on the contributor's machine is indistinguishable from a published board
 folder, so they can edit it in CRT or in Excel and it makes no difference which.
 
-Numbered 6a because it is not the maintainer work Phase 6 describes - it landed between 5 and 6
-at the maintainer's request and has nothing to do with per-system maintainers.
+Numbered 6a because it is not the project owner work Phase 6 describes - it landed between 5 and 6
+at the owner's request and has nothing to do with per-system maintainers.
 
 ### Why this reverses a Phase 2 decision
 
@@ -3442,7 +3443,7 @@ rejected". That reasoning was sound for what it addressed: an EMPTY workbook sit
 `draft.json` would have been two mechanisms for one job.
 
 This is the opposite. The workbook REPLACES `draft.json` as the single source, so there is exactly
-one mechanism - and the maintainer's actual requirement could not be met any other way:
+one mechanism - and the project owner's actual requirement could not be met any other way:
 
 > "I want to have exact same format as any normal/released board [...] Then the user can decide
 > himself, if they want to do things inside of app or edit directly the Excel file."
@@ -3502,7 +3503,7 @@ the draft folder keeps no copy of. That is a feature in its own right, not an ov
    production called `SaveComponentHighlights` any more.
 - **`UuidV4` was write-dead across the whole codebase.** Nothing generated one; the only remaining
    consumer was a validator warning that a dead field needed fixing. Removed entirely at the
-   maintainer's instruction (2026-09-23), including from the workbook schema.
+   owner's instruction (2026-09-23), including from the workbook schema.
 
 ### What was retired
 
@@ -3514,12 +3515,12 @@ always had a published home in the sidecar, which a draft folder now carries unc
 ### Definition of done
 
 - A draft folder opens in Excel and round-trips through CRT. **Not yet verified against a real
-  board by the maintainer** - the suite covers it, running the app does not.
+  board by the project owner** - the suite covers it, running the app does not.
 - No migration exists and none is needed: nothing had been released.
 - The server contract is untouched. `SubmissionManifestBuilder` always wanted the complete intended
   state, so no wire format changed and no server work was required.
 
-### Follow-on: editing a draft as a table [CLIENT DONE 2026-09-24; reviewer side DONE 2026-09-25]
+### Follow-on: editing a draft as a table [CLIENT DONE 2026-09-24; maintainer side DONE 2026-09-25]
 
 A draft being a real workbook is what made this possible: the Drafts tab's **"Edit in table
 format"** shows the draft's nine sheets as an editable grid, coloured against the published board
@@ -3529,68 +3530,69 @@ CLAUDE.md's Drafts paragraph has the rules; the short version is that ALL logic 
 (`BoardTableDocument`, `BoardTableSheet`, `DraftTableSession`, `BoardTableClipboard`, and
 `BoardTableHistory` for Ctrl+Z / Ctrl+Y) and the app's `BoardTableEditor` only paints it.
 
-**The maintainer wants the same table in `CRT.Review`, so a reviewer can make the same edits.** Built
-2026-09-25 - see Phase 6, "The reviewer's table". What it needed, as planned here:
+**The project owner wants the same table in `CRT.Maintainer`, so a maintainer can make the same edits.** Built
+2026-09-25 - see Phase 6, "The maintainer's table". What it needed, as planned here:
 
 - **The control moves to a shared Avalonia library** referenced by both apps (it touches nothing of
   `Main` or `DataManager`, by design). Its `BoardTable_*` theme keys then have to exist in BOTH apps'
   resources, and ProDataGrid's theme include with them.
-- **The server is the real work, not the grid.** A reviewer's edit is a new version of the
+- **The server is the real work, not the grid.** A maintainer's edit is a new version of the
   submission: it needs an upload route, a `ReviewAuthority` rule for who may amend, an audit entry,
-  and a way for the contributor to see what the reviewer changed. None of that exists yet, and all
+  and a way for the contributor to see what the maintainer changed. None of that exists yet, and all
   of it is covered by "One change, every side of it".
 - **The table would compare against the submission's BASE revision** on the server, where
   `BoardDataDiffer` already runs - not against a local published copy as the app does.
 
 **A shared identity rule changed with it (2026-09-24): a component row's natural key is now its
 label PLUS its region** (`BoardDraftNaturalKeys.ForComponent`). This reaches the server and the
-review app through `ReviewSummary`, deliberately: before it, a submission adding U1/NTSC beside an
-existing U1/PAL showed the reviewer nothing at all. Rows without a region key exactly as before. A
+maintainer app through `ReviewSummary`, deliberately: before it, a submission adding U1/NTSC beside an
+existing U1/PAL showed the maintainer nothing at all. Rows without a region key exactly as before. A
 component GIVEN a region now reads as a removal plus an addition in review, the same as a label
 change. Nothing persisted a component key, so no stored data needed migrating.
 
 ---
 
-## Phase 6 - Reviewers [DONE 2026-09-25: roles, two-stage publish, two-person approval, orphan removal, the reviewer's table]
+## Phase 6 - Maintainers [DONE 2026-09-25: roles, two-stage publish, two-person approval, orphan removal, the maintainer's table]
 
-**Goal.** Per-system reviewers who approve and publish work on their own systems.
+**Goal.** Per-system maintainers who approve and publish work on their own systems.
 
-### Roles - TWO, by the maintainer's decision (2026-09-25)
+### Roles - TWO, by the owner's decision (2026-09-25)
 
-The plan below this line was written for FOUR roles. The maintainer collapsed it in one sentence:
+The plan below this line was written for FOUR roles. The project owner collapsed it in one sentence:
 *"Only those two roles. An Administrator will probably be only ONE person, me, having access to
-everything and can also do review and whatever. Then a Reviewer is someone I assign specifically to
+everything and can also do review and whatever. Then a Reviewer [now called Maintainer] is someone I assign specifically to
 a system, and then that person can review and publish changes for that specific system. The person
 may be able to maintain multiple systems, if I associate him to multiple systems."*
 
 | Role | May | Blast radius if the account is stolen |
 | --- | --- | --- |
-| **Administrator** | Everything: review and publish every system, assign and remove reviewers, co-approve shared-file changes | Everything |
-| **Reviewer** | Review AND publish the systems they are assigned to. Nothing on any other system | That reviewer's systems only |
+| **Administrator** | Everything: review and publish every system, assign and remove maintainers, co-approve shared-file changes | Everything |
+| **Maintainer** | Review AND publish the systems they are assigned to. Nothing on any other system | That maintainer's systems only |
 
-Mapped onto the old table: the new **Reviewer is the old Maintainer** renamed, and the old
-recommend-only Reviewer (blast radius "none") **no longer exists**. That is a change of security
-model, made by the maintainer explicitly - which is exactly what the old traps said such a request
-must be - and it is NOT the dangerous case they warned about (a global publisher): a stolen reviewer
+Mapped onto the old table: the new role is the old **Maintainer** (for a few hours on 2026-09-25
+it was called "Reviewer" - see the naming note below), and the old recommend-only **Reviewer**
+(blast radius "none") **no longer exists**. That is a change of security
+model, made by the project owner explicitly - which is exactly what the old traps said such a request
+must be - and it is NOT the dangerous case they warned about (a global publisher): a stolen maintainer
 account reaches only that person's systems. Contributor is not a role at all; contributing needs
 no account (Phase 4).
 
 Four properties survive from the four-role design and are load-bearing:
 
-- **A system has a POOL of reviewers, not an owner.** Any reviewer of a system may act; there is no
-  rank and nothing to transfer. The `reviewers` table (renamed from `maintainers` by migration
-  0006) is a set of (system, account) pairs.
+- **A system has a POOL of maintainers, not an owner.** Any maintainer of a system may act; there is no
+  rank and nothing to transfer. The `maintainers` table (renamed to `reviewers` by migration 0006
+  and back by 0010) is a set of (system, account) pairs.
 - **The administrator is in every pool by definition**, computed, never by rows and never by an
   override path. `accounts.is_administrator` is still granted by hand only (DEPLOYMENT.md).
-- **A shared-file change needs TWO approvals: a reviewer of the board AND the administrator**
-  (maintainer decision, 2026-09-25: *"in case of changes to any shared file, then both the reviewer
+- **A shared-file change needs TWO approvals: a maintainer of the board AND the administrator**
+  (owner decision, 2026-09-25: *"in case of changes to any shared file, then both the maintainer
   and the admin should approve before publishing to BETA or production. If there is no shared files
-  changed, then normal reviewer is sufficient."*). A submission that adds or changes a file under
+  changed, then normal maintainer is sufficient."*). A submission that adds or changes a file under
   `Shared files` or `Generic shared files` reaches every board citing it. Decided at create
   (`SubmissionSharedFiles`, CRT.Data), stored as `submissions.touches_shared_files`. The rule is
   `ApprovalRules` (CRT.Data, pure) - see "Two approvals for a shared-file change" below. This
   REPLACES the first version of the day, where such a submission was the administrator's ALONE and
-  hidden from reviewers.
+  hidden from maintainers.
 - **A system with an empty pool is normal** - it means the administrator handles it, which is also
   how "a NEW system routes to the administrator, always" falls out with no special case.
 
@@ -3605,37 +3607,43 @@ Four properties survive from the four-role design and are load-bearing:
   refuse another system's bytes. `ReviewDecisionRules` and `ApprovePublishFlow` take the access
   object and refuse per system with a sentence naming the system.
 - **Removal bites on the next request**, proven by
-  `ReviewerAssignmentFlowsTests.Removing_a_reviewer_takes_effect_on_the_very_next_request` -
+  `MaintainerAssignmentFlowsTests.Removing_a_maintainer_takes_effect_on_the_very_next_request` -
   Phase 6's definition of done, verbatim.
-- **Migration 0006**: `maintainers` -> `reviewers`; `accounts.is_reviewer` dropped (it meant the
+- **Migration 0006**: `maintainers` -> `reviewers` (named back by 0010); `accounts.is_reviewer` dropped (it meant the
   role that no longer exists); `submissions.touches_shared_files` added.
 - **The administrator's API and screen.** `/api/admin/systems`, `/api/admin/accounts`,
-  `POST /api/admin/reviewers` and `/reviewers/remove` (`AdminEndpoints`, a rim over
-  `ReviewerAssignmentFlows`), administrator-only with a negative test. The systems list is the
+  `POST /api/admin/maintainers` and `/maintainers/remove` (`AdminEndpoints`, a rim over
+  `MaintainerAssignmentFlows`), administrator-only with a negative test. The systems list is the
   `systems` rows UNIONED with the boards in the data tree (`PublishedSystemLister`), so a shipped
-  board can get a reviewer before its first submission; the first assignment creates its row as
+  board can get a maintainer before its first submission; the first assignment creates its row as
   'shipped'. An unverified, locked or administrator account is refused with a sentence
-  (`ReviewerAssignmentRules`), and the review app's list says the same sentence before the button
-  is pressed (`ReviewerAssignmentDisplay`). Every grant and revocation is an audit row. In
-  CRT.Review: a **Reviewers** button above the queue, shown only when the queue answer says
-  `isAdministrator`, opening `ReviewersWindow`.
-- **Reviewers are told.** On finalise, whoever must approve is e-mailed (`SubmissionRouting`,
-  `EmailTemplates.SubmissionWaiting`): the system's reviewers; the reviewers AND the administrators
+  (`MaintainerAssignmentRules`), and the maintainer app's list says the same sentence before the button
+  is pressed (`MaintainerAssignmentDisplay`). Every grant and revocation is an audit row. In
+  CRT.Maintainer: a **Maintainers** button above the queue, shown only when the queue answer says
+  `isAdministrator`, opening `MaintainersWindow`.
+- **Maintainers are told.** On finalise, whoever must approve is e-mailed (`SubmissionRouting`,
+  `EmailTemplates.SubmissionWaiting`): the system's maintainers; the maintainers AND the administrators
   on a shared-files change; the administrators alone when nobody is assigned. Never fails the contributor's request. The "somebody else handled
   it" mail of task 11 is not built - a decided submission simply leaves the queue.
 - ~~**`system.json` mirrors the pool** (task 1)~~ - withdrawn the same day with `system.json`
   itself (see its section above). The pool lives in the database only.
-- **Vocabulary.** "Reviewer" everywhere a user reads it: the review app's sign-in text, CRT's
-  submit dialog and the new-system agreement (`NewSystemMaintainerWindow` keeps its class name),
-  the three Wiki pages. "Maintainer" survives only where it means the project's maintainer.
+- **Vocabulary.** "Maintainer" everywhere a user reads it: CRT Maintainer's sign-in text, CRT's
+  submit dialog and the new-system agreement (`NewSystemMaintainerWindow`), the Wiki pages.
+- **Naming note (owner decision, later on 2026-09-25).** The role was first renamed from Maintainer
+  to "Reviewer", then back: "Reviewer" became "maintainer" everywhere - code, database (migration
+  0010 renames the pool table back to `maintainers` and the stored approval roles), API and text -
+  and the review application became **CRT Maintainer** (`src/CRT.Maintainer/`). What this document
+  used to call "the maintainer" - the person who owns the project - is now "the project owner", so
+  "maintainer" only ever means the role. Older passages that quote the intermediate "Reviewer" name
+  were rewritten with the rest.
 
 ### Deliberately NOT built, and the accepted risk
 
-- **TOTP two-factor (task 7, threat 2).** The maintainer chose to defer it (2026-09-25) and to open
-  publishing to reviewers without it. **Recorded here as an accepted risk:** a stolen reviewer
-  account can publish to that reviewer's systems - to BETA today, and to Production once the
+- **TOTP two-factor (task 7, threat 2).** The project owner chose to defer it (2026-09-25) and to open
+  publishing to maintainers without it. **Recorded here as an accepted risk:** a stolen maintainer
+  account can publish to that maintainer's systems - to BETA today, and to Production once the
   two-stage publish exists - with a password as the only factor. The remaining safeguards are the
-  server-side validation, the review itself, the audit rows, and the maintainer's own backups. It
+  server-side validation, the review itself, the audit rows, and the project owner's own backups. It
   stays on the security review's open list until it is built.
 - **The administrator feed (task 9)** and the anomaly alerts of threat 2. The audit rows exist;
   nothing renders them yet.
@@ -3643,15 +3651,15 @@ Four properties survive from the four-role design and are load-bearing:
 
 ### Two-stage publish: BETA, then Production [DONE 2026-09-25]
 
-The maintainer: *"it should be a two-fold process, where it is first published to BETA and then it
-is published to the real production. The reviewer is still allowed to do this, but only after he
+The project owner: *"it should be a two-fold process, where it is first published to BETA and then it
+is published to the real production. The maintainer is still allowed to do this, but only after he
 has checked that the data looks correct in BETA."* **This REVERSES open question 6's answer** (BETA
 to Production was a manual copy, and the service could never write Production) - by the
-maintainer's explicit decision, and only when switched on. **The environment stays named BETA**: it
+owner's explicit decision, and only when switched on. **The environment stays named BETA**: it
 is what users see in CRT's Configuration tab and what every installed build's sync URL carries.
 
 - **Approve writes BETA, exactly as before.** "Publish to production" is a second, per-SYSTEM act
-  in the review application (a **Production** window), allowed to whoever may publish that system.
+  in the maintainer application (a **Production** window), allowed to whoever may publish that system.
   Per system rather than per submission because BETA is one tree - two merged submissions to a
   board are in one workbook.
 - **`ProductionPromotionPlan` (CRT.Data, pure)** decides what is copied: every file under the
@@ -3660,18 +3668,18 @@ is what users see in CRT's Configuration tab and what every installed build's sy
   identical in Production (that board goes first), a cited file BETA itself lacks, and a case-only
   collision with Production. What the board no longer uses is removed from production, from a list
   shown before approving - see "Orphan files" below. Order: content, then workbooks and sidecars; a `system.json` is never
-  carried and one already in production is removed. The same records go to the review app as `PromotionFile`, so the reviewer sees the
+  carried and one already in production is removed. The same records go to the maintainer app as `PromotionFile`, so the maintainer sees the
   exact list the server then performs.
 - **`ProductionPromoter`** resolves and link-checks every source and destination before the first
   write, then copies each file through **`VerifiedFileCopy`** (hashed as written, renamed in only
   on a match - the same helper `BlobStore.TryCopyToAsync` now uses) against the hash the plan saw.
 - **"Only after he has checked it in BETA", in code:** the request carries back the BETA content
-  hash the reviewer was shown, and `ProductionPromotionFlow` refuses (409) if a publish has landed
-  in BETA since. The review app adds the human half - a box the reviewer ticks - and the button
+  hash the maintainer was shown, and `ProductionPromotionFlow` refuses (409) if a publish has landed
+  in BETA since. The maintainer app adds the human half - a box the maintainer ticks - and the button
   follows the server's `canPublish` AND the tick (`ProductionDisplay.CanPress`).
 - **One `PublishLock`** serialises the BETA publish and the promotion, so a promotion can never
   copy half a publish and the hash check means something.
-- **A copy list holding a shared file needs the reviewer AND the administrator** here too
+- **A copy list holding a shared file needs the maintainer AND the administrator** here too
   (`TouchesSharedFiles` on the plan; see the next section).
 - **Off until configured.** `ProductionDataTreeRoot`, `ProductionManifestPath`,
   `ProductionPublicDataBaseUrl`: all three or none; none may carry the `-BETA` marker or equal its
@@ -3684,12 +3692,12 @@ is what users see in CRT's Configuration tab and what every installed build's sy
   revision date, because two publishes in a day share a date.
 - **After a promotion** (none of it may fail the request): Production's `dataChecksums.json` is
   regenerated; the contributors of every submission merged since the previous promotion are mailed
-  "published"; the administrators are mailed when a reviewer did it (the feed's stand-in); an audit
+  "published"; the administrators are mailed when a maintainer did it (the feed's stand-in); an audit
   row names who.
-- **The contributor's view changed with it (the "every side" rule).** A reviewer's approval mail
+- **The contributor's view changed with it (the "every side" rule).** A maintainer's approval mail
   now says "published to the BETA source", with one more mail to come
   (`SubmissionPublishedToBeta`); the promotion sends "published to the source"
-  (`SubmissionPublishedToSource`) - the maintainer's own words for the two stages, matching the
+  (`SubmissionPublishedToSource`) - the project owner's own words for the two stages, matching the
   "source" / "BETA source" names in CRT's Configuration tab. The server reports a merged submission as `published` once its
   system has been promoted since (`ContributorFacingState`), without touching the stored state.
   CRT shows "merged" as "Published to BETA source" and "published" as "Published to source", and
@@ -3700,11 +3708,11 @@ is what users see in CRT's Configuration tab and what every installed build's sy
 - **Known gap, not addressed: a NEW system is never added to the master workbook** by a publish
   (to either tree), and CRT finds boards only through the master's "Hardware & Board" sheet - so a
   new system is copied and does not appear in CRT until its row is added by hand. This predates the
-  two-stage publish and is a maintainer decision (writing the master touches generation rules).
+  two-stage publish and is a owner decision (writing the master touches generation rules).
 
 ### Orphan files [DONE 2026-09-25]
 
-The maintainer: "My goal at least is that there must be no orphan files." Until now a publish never
+The project owner: "My goal at least is that there must be no orphan files." Until now a publish never
 deleted anything, so a file a board stopped using (replaced under a DIFFERENT name, or no longer
 cited) stayed in BETA and production and was synced to every user for ever. A file replaced under
 the SAME name is simply overwritten and leaves nothing behind.
@@ -3725,7 +3733,7 @@ not added to any master (done by hand) - trusting the masters alone would delete
 **The shipped data was cleaned first.** Run over `Assets/Data` the rule found 2 masters, 22 board
 workbooks, 10,971 files and **50 orphans (8.7 MB)**: 11 `.fsc` image-editor files, 3 VGG Image
 Annotator project files (`CPC664_*.json`), 29 component images/PDFs no board uses, 5 scope captures
-no row cites and 4 readme/introduction texts. The maintainer reviewed the full list and approved
+no row cites and 4 readme/introduction texts. The project owner reviewed the full list and approved
 removing all of them (2026-09-25); they are deleted from `Assets/Data`. A further 8 files are cited
 only by an older generation and stay. **`DataTreeUsageShippedDataTests` now fails, naming the file,
 whenever a file enters the shipped tree that nothing uses.** The live BETA and production trees are
@@ -3735,10 +3743,10 @@ cleaned through the administrator's list below, not by hand.
 
 - **A BETA publish** removes what the board stops citing that nothing else in BETA uses
   (`ApprovePublishFlow.PreviewRemovals`: the candidates are `DataTreeUsage.NoLongerCited`, and the
-  tree is read with the workbook the plan WRITES standing in for its new citations). The maintainer
-  required the list to be "visible BEFORE the reviewer/admin approves it ... so it is clear what will
+  tree is read with the workbook the plan WRITES standing in for its new citations). The project owner
+  required the list to be "visible BEFORE the maintainer/admin approves it ... so it is clear what will
   happen": the submission detail carries it as `removals` (CRT.Data's `FileRemovalPreview`), the
-  review app lists each file as REMOVED and says so beside the Approve button, and the approval
+  maintainer app lists each file as REMOVED and says so beside the Approve button, and the approval
   sends the list back. **The server refuses (409) when the list it would now remove differs** -
   another publish may have started or stopped citing a shared file - so what goes is exactly what
   was on screen. After the write, `UnusedFileRemover` removes only those files, and only if the
@@ -3748,7 +3756,7 @@ cleaned through the administrator's list below, not by hand.
   carries `removals`, the Production window lists them first in red, and the publish request sends
   them back with the same refusal rule.
 - **Files that were already orphans** are the administrator's: the **Unused files** window in the
-  review app (`/api/admin/unused-files`, `UnusedFileFlows`), per tree, administrator-only. It lists
+  maintainer app (`/api/admin/unused-files`, `UnusedFileFlows`), per tree, administrator-only. It lists
   every unused file with its size; Remove needs the administrator's tick in "I have looked through
   this list"; the server removes only the files sent that it still finds unused, regenerates that
   tree's `dataChecksums.json`, and writes an audit row (`data.unused_removed`) naming every file.
@@ -3768,19 +3776,19 @@ because that folder is kept whole.
 **On users' machines:** a file removed on the server drops out of that tree's dataChecksums.json,
 but CRT deletes its local copy only when "Delete orphan and non-used files" is on - and that setting
 is OFF by default with its checkbox disabled in the Configuration tab. Whether to switch it on is
-the maintainer's decision, not yet taken.
+the owner's decision, not yet taken.
 
-### The reviewer's table [DONE 2026-09-25]
+### The maintainer's table [DONE 2026-09-25]
 
-The maintainer: *"make the same 'Edit in table format' (maybe call it 'View in table format')
-available in the review app ... The reviewer should be able to also edit whatever, if he chooses to
+The project owner: *"make the same 'Edit in table format' (maybe call it 'View in table format')
+available in the maintainer app ... The maintainer should be able to also edit whatever, if he chooses to
 publish it afterwards."* The button is **"View in table format"**, beside the decision buttons.
 
 - **The editor is shared, not copied.** `BoardTableEditor` and `UnsavedTableEditsWindow` moved from
   CRT.App into a new Avalonia library, **`src/CRT.UI/`**, referenced by both applications, with
   `ThemeResources` (the one two-step theme lookup). The `BoardTable_*` colours moved into
   `CRT.UI/BoardTable/BoardTableColors.axaml`, merged by both apps' `App.axaml`, so the two tables
-  cannot drift. The review app defines the six general keys the editor borrows (`Bg`, `Fg`,
+  cannot drift. The maintainer app defines the six general keys the editor borrows (`Bg`, `Fg`,
   `Table_Bg`, `Table_BorderRowLine`, `Text_Fail_Fg`, `Button_Cancel_*`) and includes ProDataGrid's
   theme. The Drafts tab is unchanged - its 138 tests passed across the move.
 - **Document mode.** `BoardTableEditor.Open(BoardTableDocument)` shows a table with no draft file
@@ -3792,12 +3800,12 @@ publish it afterwards."* The button is **"View in table format"**, beside the de
 - **An amendment is the server's decision, not the client's** (`AmendSubmissionFlow`,
   `POST /api/review/submissions/{id}/amend`; the table is `GET .../table`, CRT.Data's
   `ReviewTableData`). In order: authority over THIS board; still undecided (pending or waiting for
-  its second approval); still at the amendment VERSION the reviewer opened (a second reviewer's save
+  its second approval); still at the amendment VERSION the maintainer opened (a second maintainer's save
   is refused naming who changed it); only the table's nine sheets are taken
   (`SubmissionRowsBoard.WithTableSections` - highlights, calibrations and the revision date stay as
   submitted); FILES are rebuilt from what the rows cite - a file the submission carries is kept, a
   file already PUBLISHED is taken from the tree (imported into the blob store, as create does), and
-  anything else is refused (`amend.file_unknown`: a reviewer edits rows, and cannot bring in a file
+  anything else is refused (`amend.file_unknown`: a maintainer edits rows, and cannot bring in a file
   nobody sent); then the same path, file and row rules a new submission passes.
 - **Stored beside the original.** `submission_payloads`/`submission_files` hold the current content,
   so nothing that reads a submission changed; migration 0009's `submission_amendments` keeps what
@@ -3806,12 +3814,12 @@ publish it afterwards."* The button is **"View in table format"**, beside the de
   content), moves 'approved' back to 'pending', and re-decides `touches_shared_files`, so the
   two-person rule follows the content actually published. An audit row (`submission.amended`)
   records who.
-- **The contributor is told.** The BETA-publish mail says a reviewer changed some details; the status
-  answer carries `amendedByReviewer` (CRT.Data's `SubmissionStatus`), stored on the receipt and
-  shown in "My submissions" (`SubmissionReceiptPresenter.DescribeAmended`). The review app's
+- **The contributor is told.** The BETA-publish mail says a maintainer changed some details; the status
+  answer carries `amendedByMaintainer` (CRT.Data's `SubmissionStatus`), stored on the receipt and
+  shown in "My submissions" (`SubmissionReceiptPresenter.DescribeAmended`). The maintainer app's
   submission view names who last changed it.
 
-**Known limits, deliberate for now:** a reviewer cannot add a NEW file through the table (rows
+**Known limits, deliberate for now:** a maintainer cannot add a NEW file through the table (rows
 only). Deleting or renaming a SCHEMATIC takes its highlights and calibrations with it
 (`SubmissionRowsBoard.WithTableSections`): a rename is recognised by the same image file, and an
 ambiguous one drops them rather than guess. Until the code review below, deleting a schematic with
@@ -3819,7 +3827,7 @@ highlights was refused and nothing in the table could fix it.
 
 ### A deleted component takes everything with it [DONE 2026-09-25]
 
-The maintainer: *"if a component really is deleted, then it should remove EVERYTHING related to
+The project owner: *"if a component really is deleted, then it should remove EVERYTHING related to
 this component."* Deleting one used to leave its highlights behind everywhere, and in the table its
 image, file and link rows too.
 
@@ -3832,7 +3840,7 @@ image, file and link rows too.
   says what else went (`BoardTableDeletedWith`).
 - **The Contribute window's "Delete this component"** now drops the highlights too
   (`ComponentBoardWriter.ApplyComponentDelete`). Its notice already said they would go.
-- **The reviewer's amendment:** `WithTableSections` drops a highlight only when the edit left it
+- **The maintainer's amendment:** `WithTableSections` drops a highlight only when the edit left it
   out AND no component in the edit has its label - so the route still cannot remove a highlight of a
   component the board keeps.
 
@@ -3852,21 +3860,21 @@ A review of this phase's work found fifteen problems; all were fixed the same da
 change a design, for a later session:
 
 - **The review API's bodies are CRT.Data's `ReviewApiContract` records.** The requests were
-  records inside the server's endpoint classes while the review app sent anonymous objects, and the
+  records inside the server's endpoint classes while the maintainer app sent anonymous objects, and the
   answers were anonymous objects on the server. Now both ends build the same records, the JSON
-  settings are one method both apply (`ApplyWireSettings`), and CRT.Review.Tests'
+  settings are one method both apply (`ApplyWireSettings`), and CRT.Maintainer.Tests'
   `ReviewWireContractTests` serialises each answer with the server's settings and parses it with
   the real parser. It caught a startup crash in the shared settings on its first run.
-- **Saving the reviewer's table was refused with 413 for every real board**: the amend route fell
+- **Saving the maintainer's table was refused with 413 for every real board**: the amend route fell
   to the 64 KB default body limit. It now gets the manifest's 8 MB; the approve, production-publish
   and unused-file routes, which send a file list, get 2 MB (`RequestBodyLimits`).
-- **A pool row counts as "the board has a reviewer" only when that account can approve as one**
-  (`ReviewAuthority.CanGiveReviewerApproval`: verified, not locked, not an administrator). An
+- **A pool row counts as "the board has a maintainer" only when that account can approve as one**
+  (`ReviewAuthority.CanGiveMaintainerApproval`: verified, not locked, not an administrator). An
   account granted a pool and later made administrator by hand made a shared-file change wait for
   ever. Routing uses the same rule.
-- **A board's second reviewer is no longer told "you have already approved"** for a colleague's
+- **A board's second maintainer is no longer told "you have already approved"** for a colleague's
   approval. `GivenApproval.AccountId` (kept off the wire) and `ApprovalStatus.YouApproved` tell the
-  two apart; the server's refusal names who approved, and the button reads "Another reviewer
+  two apart; the server's refusal names who approved, and the button reads "Another maintainer
   approved - waiting for ...".
 - **Creating a submission holds the blob reference gate only for its last step.** Imports from the
   published tree used to run inside the service-wide gate. Now they run outside it; inside, each
@@ -3890,69 +3898,69 @@ A second review found twelve more; all were fixed the same day. The ones that ch
   TouchesSharedFilesNow`). The flag stored at create compared the submission with the tree of that
   moment, so a submission citing a shared file unchanged stayed a one-approval item even after
   another publish changed that file - and would then have reverted it for every board on one
-  reviewer's say. The stored flag is now a floor; the approval and the detail screen re-check,
+  maintainer's say. The stored flag is now a floor; the approval and the detail screen re-check,
   and the approval stores a raised flag (`MarkTouchesSharedFilesAsync`) so the queue agrees.
 - **No approval is recorded for what cannot be published.** The payload and the plan (both
   read-only) now run BEFORE the first of two approvals is recorded; they used to run after, so
   the second approver was mailed for a submission the plan then refused.
 - **An item whose required approvals shrank is not stranded** (`ApprovalRules.Status`): if every
-  required role has already approved - the board's last reviewer left its pool after the
+  required role has already approved - the board's last maintainer left its pool after the
   administrator approved - the next approval by a role it needs publishes. BETA and production.
 - **An amendment takes the `PublishLock`, and the store re-checks the version and the state
   inside its transaction** (`AmendAsync(expectedVersion, ...)`, `AmendStoreResult`). Two
   amendments at once both passed the flow's early checks and the second overwrote the first; one
   could also land mid-publish, leaving the tree with the old rows.
-- **An older review application that sends no removal list is told to update**
+- **An older maintainer application that sends no removal list is told to update**
   (`RemovalsNotSentMessage`, 400) instead of "the list changed since you opened it" (409), which
   was false and could never be fixed by reopening. Approve and production publish alike.
 - **Body limits live on the routes** (`.WithBodyLimit(...)` where each is mapped;
   `RequestBodyLimits.For(endpoint)` after `UseRouting`). `RequestBodyLimitsTests` builds the
   server's real route table through `Program.AddServerServices`/`MapServerEndpoints` and fails on
   any route that reads a body without a decided limit.
-- **The three lists are contract records too**: `ProductionListAnswer`, `ReviewerSystemsAnswer`,
-  `ReviewerAccountsAnswer`, each with a `ReviewWireContractTests` case.
+- **The three lists are contract records too**: `ProductionListAnswer`, `MaintainerSystemsAnswer`,
+  `MaintainerAccountsAnswer`, each with a `ReviewWireContractTests` case.
 - **A publish no longer rewrites files that are already there byte for byte** - the board's own
   and shared files now follow the rule another board's files did (`PublishPlanDetail.
   UnchangedFiles`, formerly `UnchangedForeignFiles`). A typo fix writes the workbook and sidecar
   and nothing else.
 - Smaller: one shared-folder-name rule (`SubmissionFileScopes.IsSharedFolderName`) for the
-  validator, `DataTreeUsage` and the reviewer list; the blob store's import uses
-  `VerifiedFileCopy`; the Review app's windows share `WindowMessage`.
+  validator, `DataTreeUsage` and the maintainer list; the blob store's import uses
+  `VerifiedFileCopy`; the Maintainer app's windows share `WindowMessage`.
 
 ### Next in this phase
 
-Nothing planned. Open maintainer decisions are listed under "Open questions" and in the orphan
+Nothing planned. Open owner decisions are listed under "Open questions" and in the orphan
 section (CRT's own "Delete orphan and non-used files" setting).
 
 ### Definition of done (roles - met 2026-09-25)
 
-- A reviewer can approve only the systems they are in the pool for, proven by a server-side denial
-  test (`A_reviewer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written`).
-- Two reviewers on one system can both act, and the audit trail names which one did
+- A maintainer can approve only the systems they are in the pool for, proven by a server-side denial
+  test (`A_maintainer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written`).
+- Two maintainers on one system can both act, and the audit trail names which one did
   (`SetDecisionAsync` records the account; the pool is a set).
 - The administrator can act on every system without being added to any pool, and without a
   distinct override code path.
 - A new system cannot be published by anyone but an administrator (its pool is empty), and a
-  shared-files change is published only once a reviewer of the board AND the administrator have
-  both approved it (`ApprovalRules`; the administrator alone when the board has no reviewers).
-- Removing a reviewer takes effect immediately, proven by a test using the same access path a
+  shared-files change is published only once a maintainer of the board AND the administrator have
+  both approved it (`ApprovalRules`; the administrator alone when the board has no maintainers).
+- Removing a maintainer takes effect immediately, proven by a test using the same access path a
   request takes.
 - Every grant, revocation and decision is in the audit trail.
 
 ### Two approvals for a shared-file change [DONE 2026-09-25]
 
-The maintainer: *"in case of changes to any shared file, then both the reviewer and the admin
+The project owner: *"in case of changes to any shared file, then both the maintainer and the admin
 should approve before publishing to BETA or production. If there is no shared files changed, then
-normal reviewer is sufficient."* The worked case that prompted it: a submission that edits a text
+normal maintainer is sufficient."* The worked case that prompted it: a submission that edits a text
 on the board AND replaces a shared image is ONE submission, so both approve that one submission -
 it is not split.
 
 - **`ApprovalRules` (CRT.Data, pure) is the rule, used for both stages.** `Required(touchesShared,
-  systemHasReviewers)`: an ordinary change needs any one approval (empty list, today's behaviour);
-  a shared-file change needs `[Reviewer, Administrator]`, or `[Administrator]` alone when nobody
+  systemHasMaintainers)`: an ordinary change needs any one approval (empty list, today's behaviour);
+  a shared-file change needs `[Maintainer, Administrator]`, or `[Administrator]` alone when nobody
   reviews the board - the administrator does not approve twice. `Status(required, given, yourRole)`
   says who is still awaited, what this account may do and whether its approval publishes; the
-  server sends that record to the review app as-is (`approval` on the submission detail and on the
+  server sends that record to the maintainer app as-is (`approval` on the submission detail and on the
   production plan) and `ApprovalWording` writes the button and the line from it.
 - **Either may approve first.** The first approval records a row (`submission_approvals` /
   `production_approvals`, migration 0008, keyed by role so one role cannot count twice) and
@@ -3977,7 +3985,7 @@ it is not split.
 - **A shared-file change needs both approvals.** `TouchesSharedFiles` is set at create and must be
   honoured by every rule that PUBLISHES; a new publishing route that forgets `ApprovalRules` lets
   one person change a file every board cites.
-- **A system with an empty reviewer pool is normal**, not an error state.
+- **A system with an empty maintainer pool is normal**, not an error state.
 
 ---
 
@@ -3987,7 +3995,7 @@ it is not split.
 
 ### Tasks
 
-1. Confirm with the maintainer that BETA has run on the new pipeline long enough to trust, and get
+1. Confirm with the project owner that BETA has run on the new pipeline long enough to trust, and get
    explicit approval to enable Production.
 2. Raise `$minimumContributionVersion` in
    [api/index.php](Webserver/app-contribution/api/index.php) to the first CRT release speaking the
@@ -4000,14 +4008,14 @@ it is not split.
    Keep `app-feedback` and `app-checkin` - they are unrelated.
 6. Update the Wiki: `Contribute-tab.md`, `Contribute-data-via-CRT.md`,
    `Contribute-data-via-GitHub.md` (likely removable), `Explanation-of-data-files.md`, plus any
-   sidebar entry. Tell the maintainer which files are ready to paste - **never** say a Wiki page has
+   sidebar entry. Tell the project owner which files are ready to paste - **never** say a Wiki page has
    been updated.
 
 ### Definition of done
 
 - Old-version submissions are rejected with the tailored update message.
 - No supported CRT version posts to the old endpoint.
-- Wiki files are updated in the repo and the maintainer has been told which to paste.
+- Wiki files are updated in the repo and the project owner has been told which to paste.
 
 ---
 
@@ -4033,7 +4041,7 @@ The practical difference, in the one place it matters most:
 | --- | --- |
 | "Remember to authorise every endpoint" | Endpoints are deny-by-default; an unauthorised one cannot serve a request |
 | "Do not put secrets in the client" | The client has no code path that could use one |
-| "Reviewers should not publish" | The publish action does not exist in the Reviewer's authorisation model |
+| "Reviewers should not publish" | The publish action did not exist in the (since retired) recommend-only Reviewer's authorisation model |
 | "Validate uploaded files" | Nothing reaches the data tree except through the validating writer |
 | "Do not write to Production yet" | The production path has no default, so a misconfigured service refuses to start |
 
@@ -4043,7 +4051,7 @@ The practical difference, in the one place it matters most:
    must refuse everyone, including the administrator. The failure mode of forgetting is an outage,
    never an exposure - an outage is noticed immediately and harms nobody.
 2. **Make the dangerous thing impossible, not discouraged.** Where a capability should not exist for
-   a role, remove the capability rather than hiding the button. See the Reviewer role in
+   a role, remove the capability rather than hiding the button. See the retired recommend-only Reviewer role in
    [Phase 6](#phase-6---maintainers).
 3. **One way in.** Every write to the data tree goes through a single validating writer. If a second
    path exists, it will eventually be the unvalidated one.
@@ -4055,18 +4063,18 @@ The practical difference, in the one place it matters most:
    happened earlier in the session, or what the client asserts about itself. Authority is looked up
    per request, from the database, for the specific object being acted on.
 6. **Least privilege, structurally.** The service user can write the data tree and its blob store
-   and nothing else. A maintainer's token is useless against systems they do not maintain. A
-   Reviewer's token cannot change published data at all.
+   and nothing else. A maintainer's token is useless against systems they do not maintain. The
+   retired recommend-only Reviewer's token could not change published data at all.
 7. **Assume every input is hostile.** Contributed data, manifests, file names, images, board rows,
    API parameters. There is no trusted input in this system - not even from an administrator.
 
-When a requirement and this principle conflict, raise it with the maintainer rather than quietly
-choosing convenience. The answer is sometimes "accept the risk", but that is the maintainer's call
+When a requirement and this principle conflict, raise it with the project owner rather than quietly
+choosing convenience. The answer is sometimes "accept the risk", but that is the project owner's call
 to make explicitly, and it belongs in this document when it happens.
 
 ### The governing rule
 
-> **The review application contains no authority. It is a rendering surface for decisions the
+> **The maintainer application contains no authority. It is a rendering surface for decisions the
 > server has already made.**
 
 Every permission decision happens on the server, against the database, on every request. The
@@ -4075,7 +4083,7 @@ is ever protected only by the client, the whole model collapses.
 
 ### Why open source does not weaken this
 
-CRT and the review app are public on GitHub, so an attacker can read exactly how access works. That
+CRT and the maintainer app are public on GitHub, so an attacker can read exactly how access works. That
 is fine, and it is the normal condition for security software (OpenSSL, SSH and Signal are all
 public). The design must be secure **because of its structure**, not because attackers cannot see
 it - Kerckhoffs's principle. Only keys are secret; the design is not.
@@ -4112,12 +4120,12 @@ Ordered by real-world likelihood multiplied by damage - not by how alarming they
 | 2 | **Stolen maintainer account** | Moderate | Attacker publishes to every user of that system | Strong auth (2FA), scoped authority, audit feed, maintainer's own BETA backups. **NOT retained revisions - struck 2026-09-21, open question 5** |
 | 3 | **Privilege escalation** by an ordinary contributor | Moderate | Approving their own or others' work | Server-side authorisation on every request |
 | 4 | **Rogue maintainer** | Low | Same as 2, without the theft | Scope limits, audit trail, revocation. **Not rollback - struck 2026-09-21, open question 5**; recovery is a corrective publish plus backups |
-| 4b | ~~**Rogue or stolen Reviewer**~~ | - | **Folded into 2 and 4 on 2026-09-25**: the recommend-only role no longer exists; a Reviewer is the per-system publisher the old Maintainer was | See 2 and 4 |
+| 4b | ~~**Rogue or stolen Reviewer**~~ | - | **Folded into 2 and 4 on 2026-09-25**: the recommend-only Reviewer role no longer exists; a Maintainer is the per-system publisher | See 2 and 4 |
 | 5 | **Server compromise** via the new API | Low | Total | Small attack surface, localhost binding, no shell-outs |
 | 6 | **Denial of service / disk exhaustion** by upload | Moderate | Service unavailable, disk full | Quotas, rate limits, blob garbage collection |
 
 Note that threat 1 outranks everything. **The most valuable thing to attack here is not the review
-app - it is the data pipeline into thousands of CRT installations.** Breaking into the review app
+app - it is the data pipeline into thousands of CRT installations.** Breaking into the maintainer app
 is merely one route to that end; simply submitting hostile content is the cheaper route, and it
 needs no account theft at all.
 
@@ -4158,15 +4166,15 @@ chain attack on CRT's users.** This is the scenario to design against hardest.
   TOTP is sufficient, needs no third party, and works offline. Contributors do not need it;
   maintainers do. Make this a precondition of being granted maintainership, not an option.
 - Keep authority **narrow**: a maintainer's token must be useless against systems they do not
-  maintain. Scope every check to the specific system id in the request. A Reviewer's token must be
-  useless for publishing anything at all.
+  maintain. Scope every check to the specific system id in the request. The retired recommend-only
+  Reviewer's token had to be useless for publishing anything at all.
 - **A pool raises the value of revocation, not the risk.** Several maintainers per system means more
   accounts that can publish to it, so removal must be immediate and a departing maintainer's tokens
   must stop working at once - not at next login.
 - ~~Keep authority **reversible**: retained revisions (Phase 5) mean any publish can be rolled
   back.~~ **NO LONGER TRUE - open question 5, answered 2026-09-21.** Publishing overwrites in
   place and keeps no history, so a publish is NOT reversible by the system. Recovery is a
-  corrective publish, or the maintainer's own backup of the BETA tree. This was listed as what
+  corrective publish, or the project owner's own backup of the BETA tree. This was listed as what
   "makes direct publishing tolerable at all", so anything in Phase 6 that leaned on it needs
   re-arguing on the remaining safeguards: validation, review before publishing, and the
   administrator feed.
@@ -4187,7 +4195,7 @@ chain attack on CRT's users.** This is the scenario to design against hardest.
 - Write a deliberate **negative test per protected endpoint**: an authenticated contributor, and a
   maintainer of a *different* system, must both be refused. Per project rules these tests ship with
   the endpoint, not afterwards.
-- Administrator-only actions (appointing reviewers, and the administrator's half of a shared-file
+- Administrator-only actions (appointing maintainers, and the administrator's half of a shared-file
   approval) are checked the same way, with no back door.
 
 ### Threat 5 - server compromise
@@ -4223,19 +4231,19 @@ State these plainly so no future change quietly depends on them:
 
 ### Security review, 2026-09-25 - what was closed, and what is still open
 
-A full read of the server, CRT.Data and the review app, asking how an anonymous contributor, a
-reviewer or an administrator could change, damage or overwrite the published data. What it found
+A full read of the server, CRT.Data and the maintainer app, asking how an anonymous contributor, a
+maintainer or an administrator could change, damage or overwrite the published data. What it found
 and what was done, so the next session does not re-derive it:
 
 | Finding | Fixed by |
 | --- | --- |
 | Submitted paths were contained to the DATA ROOT only, so a submission to one board could overwrite any non-workbook file of any other board (its highlight sidecar, its `system.json`, its PDFs) once approved | `SubmissionFileScope` + `SubmissionFileRules` (CRT.Data), at create AND in `PublishPlan`: a submission may change only its own folder and the two shared folders. Another board's file may be cited only byte-identical to the published copy, and is then never written |
-| A file no row used was carried and published, and the review app drew only images - so it was approved unseen | Every file must be cited by a row (`SubmissionFileRules`, `PublishPlan`). The review app lists EVERY changed file (`ReviewFileComparison`) from new per-file facts the server sends (`SubmittedFileFact`, a CRT.Data type both ends share) |
-| No file-type or content check (threat 1 asked for both); a dot-file such as `.htaccess` passed, and the data tree is under `public_html` with `AllowOverride All` | Allowlist of the types rows actually cite (`.png .jpg .jpeg .gif .bmp .webp .pdf .txt .html .htm`), no dot-segments, and a signature check at finalise and before publish (`SubmissionContentRules`). Apache hardening is DEPLOYMENT.md step 12a - **the maintainer applies it by hand** |
+| A file no row used was carried and published, and the maintainer app drew only images - so it was approved unseen | Every file must be cited by a row (`SubmissionFileRules`, `PublishPlan`). The maintainer app lists EVERY changed file (`ReviewFileComparison`) from new per-file facts the server sends (`SubmittedFileFact`, a CRT.Data type both ends share) |
+| No file-type or content check (threat 1 asked for both); a dot-file such as `.htaccess` passed, and the data tree is under `public_html` with `AllowOverride All` | Allowlist of the types rows actually cite (`.png .jpg .jpeg .gif .bmp .webp .pdf .txt .html .htm`), no dot-segments, and a signature check at finalise and before publish (`SubmissionContentRules`). Apache hardening is DEPLOYMENT.md step 12a - **the project owner applies it by hand** |
 | The system id was case-insensitive and the `systems` row is created by the first anonymous submission, so a case-variant could hijack a board's row and make every real submission fail | Migration 0005 (`utf8mb4_bin` in all three tables); case-variants of published paths and folders refused against the real tree (`PublishedTreeView.FindCaseVariant`) |
 | No quota on anonymous submissions; completed blobs and payload rows were never collected | Per-address limit (`SubmissionRateLimitPolicy`: 20 a day, 4 GiB), a free-disk reserve (`BlobStore.HasRoomFor`), per-route body limits (`RequestBodyLimits`), and the hourly sweep now collects unreferenced blobs and ended submissions' rows |
 | A blob was verified once, on arrival; an append racing completion could poison it, and publishing copied on trust | Per-upload lock in `BlobStore`; every blob re-verified before any write, and each copy hashed and renamed into place only on a match |
-| `AccessTokenMinutes` promised a short-lived token that did not exist | Removed; the one token is the sliding session token (maintainer's 2026-09-22 decision) |
+| `AccessTokenMinutes` promised a short-lived token that did not exist | Removed; the one token is the sliding session token (owner's 2026-09-22 decision) |
 | Smaller: upload-state oracle for any hash; over-long summary/revision/finding subject failing an INSERT with a 500; `is_accepting` never read; no symlink check on publish | Each closed - see the section headers in `SubmissionFlows`, `SubmissionValidator`, `PublishPathSafety` |
 
 **The check that shaped the rules.** `SubmissionRulesShippedDataTests` runs every new rule over every
@@ -4244,7 +4252,7 @@ board in `Assets/Data`. It found that C128DCR 250477 cites two texts in the C128
 two JPEGs saved as `.png` (hence an image name accepts any image signature). A stricter rule would
 have been the third time this pipeline rejected published data.
 
-**Still open, deliberately, each a maintainer decision:**
+**Still open, deliberately, each a owner decision:**
 
 - **Images are signature-checked, not decoded.** Decoding on the server needs an imaging library
   there - a dependency and licence choice (threat 1 asked for it).
@@ -4252,11 +4260,11 @@ have been the third time this pipeline rejected published data.
   stops citing that nothing else in that tree uses, from a list shown before approving and checked
   again at approval - see Phase 6, "Orphan files". A shared file another board cites is never removed.
 - **No second factor, by decision (2026-09-25).** Phase 6's per-system scope IS built, and
-  publishing is now open to reviewers on their systems - with a password as the only factor. The
-  maintainer chose to defer TOTP; the accepted risk is written into Phase 6. A stolen reviewer
-  account publishes to that reviewer's systems - and, once publishing to production is switched
+  publishing is now open to maintainers on their systems - with a password as the only factor. The
+  project owner chose to defer TOTP; the accepted risk is written into Phase 6. A stolen maintainer
+  account publishes to that maintainer's systems - and, once publishing to production is switched
   on, to PRODUCTION for them. Mitigations: only bytes already in BETA, no shared file without the
-  administrator's own approval too, an administrator mail on every reviewer's production publish,
+  administrator's own approval too, an administrator mail on every maintainer's production publish,
   and the audit row.
 - **Blobs of merged submissions are kept for ever**, so the next edit to a board uploads only what
   changed. Growth is bounded by what an administrator approves.
@@ -4267,19 +4275,19 @@ Before declaring any of those phases done:
 
 1. Does any client hold a secret? (Must be no.)
 2. Is every protected endpoint authorised server-side, against the specific object?
-3. Is there a negative test per protected endpoint - wrong role; right role but wrong system; and a
-   Reviewer attempting to publish?
+3. Is there a negative test per protected endpoint - wrong role; right role but wrong system; and, while it
+   existed, a recommend-only Reviewer attempting to publish?
 4. Is all contributed content validated by extension **and** content before it is stored?
 5. Is every action attributable in the audit trail?
 6. ~~Can every publish be rolled back?~~ **No, by decision - open question 5, 2026-09-21.** The
    replacement question: **is a bad publish RECOVERABLE, and does the design say how?** Today the
-   answer is a corrective publish plus the maintainer's own BETA backups. Do not answer this one
+   answer is a corrective publish plus the project owner's own BETA backups. Do not answer this one
    "yes" by quietly building a revision store; if rollback becomes necessary, re-open question 5
-   with the maintainer first.
+   with the project owner first.
 7. Would the design still hold if the attacker knew everything except the passwords and tokens?
 8. Is the insecure state **unreachable**, or merely **not the default**? (See
    [Secure by design](#secure-by-design). If it is only the latter, say so explicitly and get the
-   maintainer's agreement rather than leaving it implied.)
+   project owner's agreement rather than leaving it implied.)
 
 ---
 
@@ -4299,7 +4307,7 @@ Reuse the existing validation reasoning in `OnlineServices` and `ExternalTargetL
 inventing new rules. Passwords hashed with Argon2id or bcrypt. Rate-limit auth endpoints. The
 service listens on localhost only and is reached through the existing reverse proxy.
 
-**Backups.** Before the first Production merge, confirm with the maintainer that both the data trees
+**Backups.** Before the first Production merge, confirm with the project owner that both the data trees
 and the MariaDB database are backed up, and that a restore has actually been tested. The whole
 design assumes published data is recoverable.
 
@@ -4310,11 +4318,11 @@ demonstrates the technique and its subtleties.
 
 **Documentation.** Wiki pages ship in the same commit as the code whose behaviour they describe.
 `remind-wiki-mirror.sh` will name candidates; its `MAP` needs new entries as new code appears
-(contribution, drafts, review app). Never claim a page is live - the maintainer pastes them by hand.
+(contribution, drafts, maintainer app). Never claim a page is live - the project owner pastes them by hand.
 
 ---
 
-## Open questions for the maintainer
+## Open questions for the project owner
 
 These need answers before the phases that depend on them. They are not blocking earlier work.
 
@@ -4322,9 +4330,9 @@ These need answers before the phases that depend on them. They are not blocking 
    `Generic shared files` 48 MB; neither belongs to one system, but contributions will want to add
    to them. Proposal: shared files are always administrator-owned, and a submission adding one is
    flagged for the administrator specifically. Confirm or redirect.
-   **[ANSWERED 2026-09-25] Redirected: a shared-file change needs the board's reviewer AND the
+   **[ANSWERED 2026-09-25] Redirected: a shared-file change needs the board's maintainer AND the
    administrator**, for the BETA publish and again for production; with no shared file changed,
-   one reviewer is enough. See Phase 6, "Two approvals for a shared-file change".
+   one maintainer is enough. See Phase 6, "Two approvals for a shared-file change".
 
 2. **Cross-system contributions** (affects Phase 4). A fact affecting five C64 revisions is five
    submissions, potentially to five maintainers. Acceptable, or should the app support a
@@ -4353,7 +4361,7 @@ These need answers before the phases that depend on them. They are not blocking 
    both generations are genuinely referenced** - it is working correctly, not failing.
 
    **[ANSWERED 2026-09-21] The merge writes ONLY the newest workbook generation, and never
-   touches an older one.** The maintainer's words: "I only want to have the merge write into the
+   touches an older one.** The project owner's words: "I only want to have the merge write into the
    newest versionized Excel [...] for sure it should not merge into older Excel files."
 
    **An older generation is FROZEN, not stale.** `Classic-Repair-Toolbox.xlsx` and its 9
@@ -4363,12 +4371,12 @@ These need answers before the phases that depend on them. They are not blocking 
    orphan cleanup must not treat its files as unreferenced.
 
    **The generation may itself be bumped for this work** (2.0.0 to 3.0.0, or 2.6.0 - the
-   maintainer has not decided which, and it is their call, not a derivation). Whatever the number,
+   project owner has not decided which, and it is their call, not a derivation). Whatever the number,
    the rule is the same: publishing writes the newest generation only, and every older generation
    is immutable from that moment.
 
    **[ANSWERED 2026-09-21] The target generation is DISCOVERED, never configured.** The
-   maintainer: "You should always use the newest version, so if newest version is 2.0.0, you
+   project owner: "You should always use the newest version, so if newest version is 2.0.0, you
    should use that - if it is 3.0.0 you should use that."
 
    So publishing resolves the newest master workbook present in the tree and writes that
@@ -4385,7 +4393,7 @@ These need answers before the phases that depend on them. They are not blocking 
    from the next publish onward.
 
 4. **Conflict policy** (affects Phase 5). Two contributors edit the same component simultaneously.
-   Proposal: last-approved-wins plus a warning to the second reviewer, and nothing more until it
+   Proposal: last-approved-wins plus a warning to the second maintainer, and nothing more until it
    demonstrably hurts. Confirm.
 
 5. **Revision retention** (affects Phase 5). Keeping every published revision of every system costs
@@ -4410,11 +4418,11 @@ These need answers before the phases that depend on them. They are not blocking 
    place, and there is no rollback store.**
 
    **First, TWO DIFFERENT THINGS were being called a "revision", and the question above conflated
-   them. The agent asked the maintainer a question that mixed the two and had to re-ask.** Whoever
+   them. The agent asked the project owner a question that mixed the two and had to re-ask.** Whoever
    reads this next must keep them apart:
 
    - a **workbook GENERATION** (no-version, `v2.0.0`, a future `v3.0.0`) - a compatibility target
-     for a range of app builds. It is in the FILE NAME and the maintainer sees it every day;
+     for a range of app builds. It is in the FILE NAME and the project owner sees it every day;
    - a **published REVISION** - `systems.current_revision` in `0001_initial.sql`, incremented on
      each publish and recorded by a submission as the `base_revision` it was built against. It
      lives in the DATABASE and never appears in the data tree at all.
@@ -4431,18 +4439,18 @@ These need answers before the phases that depend on them. They are not blocking 
 
    **What this removes from Phase 5:** task 7 ("retain every published revision so any merge can
    be rolled back") is **struck**. There is no revision store, no content-addressed archive of
-   published trees, and no rollback action in the review app. `systems.current_revision` still
+   published trees, and no rollback action in the maintainer app. `systems.current_revision` still
    increments - it is what a submission diffs against, which is a different job from rollback and
    is still needed.
 
    **What carries the risk instead, and it must not be quietly weakened:** a bad merge is undone
    by publishing a correction, not by reverting. That puts the weight on automated validation
    (Phase 4 task 4) and on human review catching a problem BEFORE it publishes, plus the
-   maintainer's own backups of the BETA tree. Phase 6's "direct maintainer publishing" was argued
+   project owner's own backups of the BETA tree. Phase 6's "direct maintainer publishing" was argued
    partly on retained revisions making it safe; with no revisions retained, that argument is gone
    and the safety rests on review and backups. Revisit before widening who may publish.
 
-6. **BETA to Production promotion** [ANSWERED 2026-09-20]. **A manual file copy the maintainer
+6. **BETA to Production promotion** [ANSWERED 2026-09-20]. **A manual file copy the project owner
    performs.** There is no script, no rsync job and no automation to fit into. Two consequences,
    both already applied in Phase 3: the service must never write Production **by any code path**,
    and because it has no legitimate reason to, the service user is denied write permission on that
@@ -4452,12 +4460,12 @@ These need answers before the phases that depend on them. They are not blocking 
 7. **`_UserContribution` vs `Drafts/`** [ANSWERED 2026-09-20]. **Drafts supersede it.** `Drafts/`
    is the only mechanism new authoring ever writes through; the existing `_UserContribution`
    sidecar stays **readable indefinitely** so boards already authored that way keep loading exactly
-   as before, but nothing new ever creates one. Confirmed by the maintainer - do not re-ask this in
+   as before, but nothing new ever creates one. Confirmed by the project owner - do not re-ask this in
    Session 2c, build task 10 on this basis directly. See
    [Phase 2](#phase-2---local-first-drafts-in-crt-done-2026-09-20) task 10.
 
 8. **EPPlus licensing** [DECIDED 2026-09-21 - build the writer on EPPlus and proceed. The
-   maintainer will settle the licence later and has judged it not a current issue: "Use EPPlus for
+   project owner will settle the licence later and has judged it not a current issue: "Use EPPlus for
    now, and I WILL take this later." It is a licensing action, not a code one, and it does NOT
    block Phase 5. Do not re-ask it, and do not swap the library on your own initiative].
 
@@ -4472,13 +4480,13 @@ These need answers before the phases that depend on them. They are not blocking 
    **[IT IS NOW REAL, 2026-09-21.] EPPlus EXECUTES ON THE SERVER from Phase 5**, in two places,
    neither of which is the submission diff the prediction pointed at:
 
-   - **Reading** - `PublishedBoardReader` (task 3) opens the published workbook so a reviewer can
+   - **Reading** - `PublishedBoardReader` (task 3) opens the published workbook so a maintainer can
      be shown what actually changed. Only the server has the data tree, so only the server can
      read that half.
    - **Writing** - `BoardWorkbookWriter`, called by `PublishExecutor` (task 6). The first EPPlus
      WRITE anywhere in this codebase.
 
-   `CRT.Server` was added to `CRT.Data`'s `InternalsVisibleTo` for the read half. The maintainer
+   `CRT.Server` was added to `CRT.Data`'s `InternalsVisibleTo` for the read half. The project owner
    has decided to proceed on the current licence and settle it separately - it is a licensing
    action, not a code one, and it does not block Phase 5.
 
@@ -4501,7 +4509,7 @@ These need answers before the phases that depend on them. They are not blocking 
    EPPlus code at all**: `EpplusLicense.Ensure()` is called only from `BoardDataReader`'s EPPlus
    entry points, never from a static constructor or module initializer, so a service that reads no
    workbook never invokes it. The assembly ships as a transitive reference of `CRT.Data` and sits
-   inert. The maintainer has decided to keep using EPPlus for now and revisit later, with replacing
+   inert. The project owner has decided to keep using EPPlus for now and revisit later, with replacing
    it a real possibility. **This becomes a genuine question at [Phase 4](#phase-4---submission-pipeline-done-2026-09-21)
    task 3**, where the server-side diff does read workbooks - confirm the licence covers server-side
    use, obtain one, or replace the dependency before that task.

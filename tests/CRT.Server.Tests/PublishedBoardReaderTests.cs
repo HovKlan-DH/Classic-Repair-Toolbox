@@ -12,7 +12,7 @@ namespace CRT.Server.Tests
     // cache keyed by whatever string the caller supplies, and the first version of this class
     // passed the workbook's own PATH - which reads as obviously correct and is exactly wrong on a
     // server. The file at that path is REWRITTEN by every publish, so a cached read would serve
-    // the PRE-PUBLISH board to the next reviewer opening a submission for that system, and show
+    // the PRE-PUBLISH board to the next maintainer opening a submission for that system, and show
     // them a diff against data that no longer exists.
     //
     // It surfaced as PublishExecutorTests.Re_running_the_same_publish_is_safe failing
@@ -100,7 +100,7 @@ namespace CRT.Server.Tests
         {
             // *** THE REGRESSION TEST FOR THE STALE-CACHE BUG. *** Publishing rewrites the board
             // in place. A reader caching by path would hand the second call the FIRST board, and
-            // the reviewer would be comparing a submission against a board that has already been
+            // the maintainer would be comparing a submission against a board that has already been
             // replaced - with no indication anything was wrong.
             //
             // This fails against the version that passed location.WorkbookPath as the cache key.
@@ -124,7 +124,7 @@ namespace CRT.Server.Tests
         public async Task A_system_that_was_never_published_reads_as_NULL()
         {
             // The new-system case, and a first-class answer rather than a failure: a new system is
-            // the highest-risk submission there is and must reach a reviewer.
+            // the highest-risk submission there is and must reach a maintainer.
             BoardData? board = await PublishedBoardReaderTests.Reader()
                 .TryReadAsync(this.thisRoot, PublishedBoardReaderTests.Manifest());
 

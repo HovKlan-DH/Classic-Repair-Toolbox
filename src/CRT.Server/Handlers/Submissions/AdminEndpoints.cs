@@ -6,7 +6,7 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // The ADMINISTRATOR's API (Phase 6 roles, 2026-09-25): which accounts exist, which systems
-    // exist, and who reviews what - a rim over ReviewerAssignmentFlows - and the "Unused files"
+    // exist, and who reviews what - a rim over MaintainerAssignmentFlows - and the "Unused files"
     // screen, a rim over UnusedFileFlows.
     //
     // Its own group, "/api/admin", rather than routes under "/api/review": everything here is
@@ -30,8 +30,8 @@ namespace CRT.Server.Handlers.Submissions
 
             // Both POST with a body. A system id carries slashes, so it cannot ride in the route
             // without a catch-all, and a catch-all cannot be followed by the account id.
-            admin.MapPost("/reviewers", AdminEndpoints.AddReviewerAsync);
-            admin.MapPost("/reviewers/remove", AdminEndpoints.RemoveReviewerAsync);
+            admin.MapPost("/maintainers", AdminEndpoints.AddMaintainerAsync);
+            admin.MapPost("/maintainers/remove", AdminEndpoints.RemoveMaintainerAsync);
 
             // Files nothing uses, per tree, and removing the ones the administrator chose - see
             // UnusedFileFlows. The tree is "beta" or "production".
@@ -41,12 +41,12 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // The two lists, and the bodies of changing a pool and removing unused files, are CRT.Data's
-        // ReviewApiContract records (ReviewerSystemsAnswer, ReviewerAccountsAnswer,
-        // ReviewerChangeRequest, UnusedFilesRemoveRequest, UnusedFilesRemoveAnswer), shared with the
-        // review application.
+        // ReviewApiContract records (MaintainerSystemsAnswer, MaintainerAccountsAnswer,
+        // MaintainerChangeRequest, UnusedFilesRemoveRequest, UnusedFilesRemoveAnswer), shared with the
+        // maintainer application.
 
         // ###########################################################################################
-        // GET /api/admin/systems - every system with its reviewers.
+        // GET /api/admin/systems - every system with its maintainers.
         // ###########################################################################################
         private static async Task<IResult> GetSystemsAsync(
             HttpContext context,
@@ -61,22 +61,22 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            IReadOnlyList<SystemWithReviewers> systems = await ReviewerAssignmentFlows.ListSystemsAsync(
+            IReadOnlyList<SystemWithMaintainers> systems = await MaintainerAssignmentFlows.ListSystemsAsync(
                 PublishedSystemLister.List(options.DataTreeRoot), submissions, accounts, cancellationToken);
 
-            return Results.Ok(new ReviewerSystemsAnswer(
-                systems.Select(system => new ReviewerSystemEntry(
+            return Results.Ok(new MaintainerSystemsAnswer(
+                systems.Select(system => new MaintainerSystemEntry(
                     system.SystemId,
                     system.Manufacturer,
                     system.Hardware,
                     system.Board,
                     system.CurrentRevision,
                     system.IsAccepting,
-                    system.Reviewers.Select(AdminEndpoints.ToReviewer).ToList())).ToList()));
+                    system.Maintainers.Select(AdminEndpoints.ToMaintainer).ToList())).ToList()));
         }
 
         // ###########################################################################################
-        // GET /api/admin/accounts - every account, to pick a reviewer from.
+        // GET /api/admin/accounts - every account, to pick a maintainer from.
         //
         // *** NO PASSWORD HASH, no session, no token - only what the administrator needs to
         // recognise a person and see whether they can be granted anything. ***
@@ -93,10 +93,10 @@ namespace CRT.Server.Handlers.Submissions
                 return refusal;
 
             IReadOnlyList<AccountRecord> all =
-                await accounts.ListAccountsAsync(ReviewerAssignmentFlows.AccountListLimit, cancellationToken);
+                await accounts.ListAccountsAsync(MaintainerAssignmentFlows.AccountListLimit, cancellationToken);
 
-            return Results.Ok(new ReviewerAccountsAnswer(
-                all.Select(account => new ReviewerAccountEntry(
+            return Results.Ok(new MaintainerAccountsAnswer(
+                all.Select(account => new MaintainerAccountEntry(
                     account.Id,
                     account.Email,
                     account.DisplayName,
@@ -105,9 +105,9 @@ namespace CRT.Server.Handlers.Submissions
                     account.IsLocked)).ToList()));
         }
 
-        // POST /api/admin/reviewers  { systemId, accountId }
-        private static async Task<IResult> AddReviewerAsync(
-            ReviewerChangeRequest request,
+        // POST /api/admin/maintainers  { systemId, accountId }
+        private static async Task<IResult> AddMaintainerAsync(
+            MaintainerChangeRequest request,
             HttpContext context,
             IAccountStore accounts,
             ISubmissionStore submissions,
@@ -120,7 +120,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            ReviewerAssignmentOutcome outcome = await ReviewerAssignmentFlows.AddAsync(
+            MaintainerAssignmentOutcome outcome = await MaintainerAssignmentFlows.AddAsync(
                 access,
                 request?.SystemId,
                 request?.AccountId ?? 0,
@@ -133,9 +133,9 @@ namespace CRT.Server.Handlers.Submissions
             return AdminEndpoints.ToResult(outcome, request);
         }
 
-        // POST /api/admin/reviewers/remove  { systemId, accountId }
-        private static async Task<IResult> RemoveReviewerAsync(
-            ReviewerChangeRequest request,
+        // POST /api/admin/maintainers/remove  { systemId, accountId }
+        private static async Task<IResult> RemoveMaintainerAsync(
+            MaintainerChangeRequest request,
             HttpContext context,
             IAccountStore accounts,
             CancellationToken cancellationToken)
@@ -146,7 +146,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            ReviewerAssignmentOutcome outcome = await ReviewerAssignmentFlows.RemoveAsync(
+            MaintainerAssignmentOutcome outcome = await MaintainerAssignmentFlows.RemoveAsync(
                 access, request?.SystemId, request?.AccountId ?? 0, accounts, DateTimeOffset.UtcNow, cancellationToken);
 
             return AdminEndpoints.ToResult(outcome, request);
@@ -211,7 +211,7 @@ namespace CRT.Server.Handlers.Submissions
                 removal.NotDoneBecause));
         }
 
-        private static IResult ToResult(ReviewerAssignmentOutcome outcome, ReviewerChangeRequest? request)
+        private static IResult ToResult(MaintainerAssignmentOutcome outcome, MaintainerChangeRequest? request)
         {
             if (outcome.IsDone)
                 return Results.Ok(new { systemId = request?.SystemId, accountId = request?.AccountId });
@@ -225,8 +225,8 @@ namespace CRT.Server.Handlers.Submissions
             return Results.BadRequest(new { error = outcome.Error });
         }
 
-        private static PoolReviewerEntry ToReviewer(ReviewerRecord reviewer) =>
-            new(reviewer.AccountId, reviewer.DisplayName, reviewer.Email);
+        private static PoolMaintainerEntry ToMaintainer(MaintainerRecord maintainer) =>
+            new(maintainer.AccountId, maintainer.DisplayName, maintainer.Email);
 
         // ###########################################################################################
         // The same authentication ReviewEndpoints performs, with the administrator rule on top.

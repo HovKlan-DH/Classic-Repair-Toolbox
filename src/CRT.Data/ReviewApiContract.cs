@@ -9,19 +9,19 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // THE REVIEW API'S BODIES, IN ONE PLACE BOTH ENDS COMPILE AGAINST (code review, 2026-09-25).
     //
-    // *** WHY THIS FILE EXISTS. *** CRT.Review calls CRT.Server over HTTP, so a renamed JSON field
-    // compiles on both sides and fails in the reviewer's hands - CLAUDE.md's "One change, every side
+    // *** WHY THIS FILE EXISTS. *** CRT.Maintainer calls CRT.Server over HTTP, so a renamed JSON field
+    // compiles on both sides and fails in the maintainer's hands - CLAUDE.md's "One change, every side
     // of it" names it as the danger the compiler cannot see. The requests used to be records inside
-    // the server's endpoint classes while the review app sent ANONYMOUS objects with hand-typed
+    // the server's endpoint classes while the maintainer app sent ANONYMOUS objects with hand-typed
     // names, and every answer was an anonymous object on the server read back by hand-typed names in
     // ReviewApiParser. Renaming AmendRequest.ExpectedVersion would have made every amendment arrive
     // as version -1 and be refused as "changed since you opened it", with every test green.
     //
-    //   - A REQUEST is now one record here, built by the review app and bound by the server, so a
+    //   - A REQUEST is now one record here, built by the maintainer app and bound by the server, so a
     //     rename moves both ends at once.
-    //   - An ANSWER the review app reads is one record here, written by the server. The review app
+    //   - An ANSWER the maintainer app reads is one record here, written by the server. The maintainer app
     //     still reads it field by field (ReviewApiParser is forgiving on purpose), so
-    //     CRT.Review.Tests' ReviewWireContractTests serialises each record with the server's
+    //     CRT.Maintainer.Tests' ReviewWireContractTests serialises each record with the server's
     //     settings and parses it with the real parser - a rename on either side fails there.
     //
     // WireSettings is the JSON the two agree on. The server applies it in Program.cs and the review
@@ -44,7 +44,7 @@ namespace Handlers.DataHandling
             options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         }
 
-        // The same settings as a ready object, for the review app's requests and for tests.
+        // The same settings as a ready object, for the maintainer app's requests and for tests.
         public static JsonSerializerOptions WireSettings { get; } = ReviewApiContract.CreateWireSettings();
 
         private static JsonSerializerOptions CreateWireSettings()
@@ -60,30 +60,30 @@ namespace Handlers.DataHandling
         }
     }
 
-    // ---- Requests: the review application -> CRT.Server ----------------------------------------
+    // ---- Requests: the maintainer application -> CRT.Server ----------------------------------------
 
-    // Approve, reject, request changes. ExpectedRemovals (approve only): the files the reviewer was
+    // Approve, reject, request changes. ExpectedRemovals (approve only): the files the maintainer was
     // shown the publish would remove - see ApprovePublishFlow step 5b. Null sends nothing.
     public sealed record ReviewDecisionRequest(string? Comment, IReadOnlyList<string>? ExpectedRemovals = null);
 
-    // A reviewer's amendment: the rows as edited, and the amendment version the table opened at.
+    // A maintainer's amendment: the rows as edited, and the amendment version the table opened at.
     public sealed record AmendRequest(int ExpectedVersion, SubmissionRows? Rows);
 
     public sealed record ProductionPlanRequest(string? SystemId);
 
-    // ExpectedBetaContentHash: the BETA state the reviewer checked. ExpectedRemovals: the files they
+    // ExpectedBetaContentHash: the BETA state the maintainer checked. ExpectedRemovals: the files they
     // were shown the promotion would remove from production.
     public sealed record ProductionPublishRequest(
         string? SystemId,
         string? ExpectedBetaContentHash,
         IReadOnlyList<string>? ExpectedRemovals = null);
 
-    // Adding a reviewer to a system's pool, or removing one. The answer is not read beyond its status.
-    public sealed record ReviewerChangeRequest(string? SystemId, long AccountId);
+    // Adding a maintainer to a system's pool, or removing one. The answer is not read beyond its status.
+    public sealed record MaintainerChangeRequest(string? SystemId, long AccountId);
 
     public sealed record UnusedFilesRemoveRequest(string? Tree, IReadOnlyList<string>? Files);
 
-    // ---- Answers: CRT.Server -> the review application ----------------------------------------
+    // ---- Answers: CRT.Server -> the maintainer application ----------------------------------------
 
     // ###########################################################################################
     // What a decision did. State is what the submission became ("merged", "approved", "rejected",
@@ -152,29 +152,29 @@ namespace Handlers.DataHandling
         string? ProductionRevision,
         DateTimeOffset? ProductionPublishedUtc);
 
-    // GET /api/admin/systems - every system with its reviewers, for the administrator's Reviewers
+    // GET /api/admin/systems - every system with its maintainers, for the administrator's Maintainers
     // window.
-    public sealed record ReviewerSystemsAnswer(IReadOnlyList<ReviewerSystemEntry> Systems);
+    public sealed record MaintainerSystemsAnswer(IReadOnlyList<MaintainerSystemEntry> Systems);
 
-    public sealed record ReviewerSystemEntry(
+    public sealed record MaintainerSystemEntry(
         string SystemId,
         string Manufacturer,
         string Hardware,
         string Board,
         string? CurrentRevision,
         bool IsAccepting,
-        IReadOnlyList<PoolReviewerEntry> Reviewers);
+        IReadOnlyList<PoolMaintainerEntry> Maintainers);
 
-    public sealed record PoolReviewerEntry(long AccountId, string DisplayName, string Email);
+    public sealed record PoolMaintainerEntry(long AccountId, string DisplayName, string Email);
 
     // ###########################################################################################
-    // GET /api/admin/accounts - every account, to pick a reviewer from. *** NO PASSWORD HASH, no
+    // GET /api/admin/accounts - every account, to pick a maintainer from. *** NO PASSWORD HASH, no
     // session, no token *** - only what the administrator needs to recognise a person and see
     // whether they can be granted anything. A field added here goes to the administrator's screen.
     // ###########################################################################################
-    public sealed record ReviewerAccountsAnswer(IReadOnlyList<ReviewerAccountEntry> Accounts);
+    public sealed record MaintainerAccountsAnswer(IReadOnlyList<MaintainerAccountEntry> Accounts);
 
-    public sealed record ReviewerAccountEntry(
+    public sealed record MaintainerAccountEntry(
         long Id,
         string Email,
         string DisplayName,

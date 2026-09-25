@@ -7,9 +7,9 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // The Drafts tab's table editor model - BoardTableDocument, BoardTableSheet and the row and
-// cell types they hand to the grid (maintainer request, 2026-09-24).
+// cell types they hand to the grid (owner request, 2026-09-24).
 //
-// Colours are the maintainer's: red = deleted (shown where the row used to be), orange =
+// Colours are the project owner's: red = deleted (shown where the row used to be), orange =
 // modified (on the changed cell only), green = added.
 //
 // *** THE TEST THAT MATTERS MOST is The_change_counts_agree_with_BoardDataDiffer_on_the_board_a_save_writes.
@@ -98,7 +98,7 @@ public sealed class BoardTableDocumentTests
         Assert.Equal("CPU", changed.PublishedText);
         Assert.Equal("Published value: CPU", changed.ToolTip);
 
-        // Every OTHER cell of the same row stays uncoloured - the maintainer asked for the
+        // Every OTHER cell of the same row stays uncoloured - the project owner asked for the
         // changed cell, not the row.
         Assert.All(
             row.Cells.Where(cell => cell != changed),
@@ -217,7 +217,7 @@ public sealed class BoardTableDocumentTests
     public void Changing_a_key_cell_reads_as_an_addition_plus_a_deleted_ghost()
     {
         // The table must describe the change the way BoardDataDiffer, the submission and the
-        // reviewer all will - so a renamed Board label is NOT shown as a friendly "modified".
+        // maintainer all will - so a renamed Board label is NOT shown as a friendly "modified".
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U8")),
             Board(Component("U8")));
@@ -280,7 +280,7 @@ public sealed class BoardTableDocumentTests
         Assert.NotNull(duplicate.MarkerToolTip);
         Assert.Equal(0, sheet.ChangeCount);
 
-        // Coloured across the whole row and counted on its own (maintainer request, 2026-09-24:
+        // Coloured across the whole row and counted on its own (owner request, 2026-09-24:
         // the "!" alone was easy to miss) - but still not a change.
         Assert.All(duplicate.Cells, cell => Assert.Equal(BoardTableCellState.Flagged, cell.State));
         Assert.All(sheet.Rows[0].Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
@@ -802,7 +802,7 @@ public sealed class BoardTableDocumentTests
     [Fact]
     public void Rows_that_were_already_there_are_never_re_sorted_on_save()
     {
-        // Only NEW rows are placed - the existing order is the maintainer's.
+        // Only NEW rows are placed - the existing order is the project owner's.
         BoardTableDocument document = BoardTableDocument.Create(
             null,
             Board(InCategory("U9", "IC"), InCategory("C1", "Capacitor"), InCategory("U1", "IC")));
@@ -831,7 +831,7 @@ public sealed class BoardTableDocumentTests
     [Fact]
     public void A_regional_variant_typed_in_beside_its_twin_is_GREEN_not_a_duplicate()
     {
-        // The maintainer's steps: insert a row under U1, give it the same label, then set the two
+        // The project owner's steps: insert a row under U1, give it the same label, then set the two
         // rows' regions to PAL and NTSC. The new one used to be flagged "!" and counted nowhere.
         BoardData board = new() { Components = [new ComponentEntry { BoardLabel = "U1", TechnicalNameOrValue = "x", Category = "IC" }] };
         BoardTableDocument document = BoardTableDocument.Create(board, board);
@@ -874,7 +874,7 @@ public sealed class BoardTableDocumentTests
     [Fact]
     public void A_regional_variant_inserted_with_NO_category_is_saved_right_beside_its_twin()
     {
-        // The maintainer's report: the row "disappeared" after saving - it had gone to the end of
+        // The owner's report: the row "disappeared" after saving - it had gone to the end of
         // a long sheet, because a blank category is a category nobody else uses.
         BoardData board = new()
         {
@@ -932,7 +932,7 @@ public sealed class BoardTableDocumentTests
     // ------------------------------------------------------------------ A deleted component
 
     // ###########################################################################################
-    // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (maintainer request, 2026-09-25):
+    // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (owner request, 2026-09-25):
     // "if a component really is deleted, then it should remove EVERYTHING related to this
     // component." *** Its rows on the image, local file and link sheets are deleted at once (red on
     // their own sheets), its highlights go when the table is saved, and one undo brings it all back.
@@ -972,7 +972,7 @@ public sealed class BoardTableDocumentTests
 
         Assert.True(Components(document).DeleteRow(Row(Components(document), "U8"), out BoardTableDeletedWith? deletedWith));
 
-        // Shown as deleted on their own sheets, where the contributor or reviewer can see them.
+        // Shown as deleted on their own sheets, where the contributor or maintainer can see them.
         Assert.Equal(["U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
         Assert.True(Row(document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!, "U8", deleted: true).IsDeleted);
         Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLocalFiles));

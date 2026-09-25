@@ -9,7 +9,7 @@ namespace CRT.Server.Handlers.Database
     // database. If a rule ends up here it is a rule no test can reach.
     //
     // WHY MIGRATIONS RUN AT STARTUP rather than from a separate command. This service is deployed
-    // by hand by one maintainer, and a separate step is a step that gets forgotten - the failure
+    // by hand by the project owner, and a separate step is a step that gets forgotten - the failure
     // mode being a service running against a schema it does not match, which surfaces as confusing
     // runtime errors rather than as a clear refusal. Running at startup means the deployment
     // either works or does not start, which is the same bargain ServerOptions makes.

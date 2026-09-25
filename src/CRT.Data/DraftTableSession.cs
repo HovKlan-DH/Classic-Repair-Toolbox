@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // ONE SITTING IN THE TABLE EDITOR: the draft it was read from, the table, and the fingerprint
-    // that decides whether a save is still safe (maintainer request, 2026-09-24).
+    // that decides whether a save is still safe (owner request, 2026-09-24).
     //
     // *** THE FINGERPRINT IS TAKEN BEFORE THE READ, NOT AFTER. *** If Excel saves between the two,
     // the table holds the newer content but the older fingerprint - so the first save refuses and
@@ -105,7 +105,7 @@ namespace Handlers.DataHandling
                 StringComparison.Ordinal);
 
         // ###########################################################################################
-        // WATCHING THE DRAFT FILE WHILE THE TABLE IS OPEN (maintainer request, 2026-09-24): what is
+        // WATCHING THE DRAFT FILE WHILE THE TABLE IS OPEN (owner request, 2026-09-24): what is
         // true of the file right now - changed since the table read it, gone, or open in Excel (or
         // LibreOffice). The table asks every couple of seconds while it is on screen, so an edit
         // saved in Excel is noticed straight away rather than when the table's own save is refused.
@@ -159,7 +159,7 @@ namespace Handlers.DataHandling
         // once) when nothing does.
         //
         // *** WHY THIS, AND NOT THE LOCK FILE ALONE (2026-09-24). *** "Save changes" is switched off
-        // while the draft is open in Excel (maintainer request), and a lock file alone would switch
+        // while the draft is open in Excel (owner request), and a lock file alone would switch
         // it off for good after an Excel crash, which leaves its lock file behind. So the lock file
         // says "open in Excel", and this says whether that is still true.
         //

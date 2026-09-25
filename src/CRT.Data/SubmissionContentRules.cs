@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     // WHAT THIS IS NOT: a decoder. It checks the signature every format opens with - enough to
     // refuse a file of the wrong KIND - but a well-formed signature on a deliberately malformed
     // image still passes. Decoding every image on the server would need an imaging library there,
-    // which is a dependency decision for the maintainer rather than something to add in passing.
+    // which is a dependency decision for the project owner rather than something to add in passing.
     //
     // Pure: bytes in, verdict out. The caller reads the first SampleBytes of the file.
     // ###########################################################################################

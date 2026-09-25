@@ -6,9 +6,9 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // The reviewer's table (2026-09-25): the rows<->board conversions, the one rule for what an
+    // The maintainer's table (2026-09-25): the rows<->board conversions, the one rule for what an
     // amendment may change (SubmissionRowsBoard.WithTableSections), and the wire shapes the server
-    // writes and the review application and CRT read. The records are shared, so the wire tests
+    // writes and the maintainer application and CRT read. The records are shared, so the wire tests
     // serialise the way ASP.NET does (web defaults, camelCase) and read back as the clients do - a
     // renamed property fails here instead of arriving as an empty table or a missing flag.
     // ###########################################################################################
@@ -91,7 +91,7 @@ namespace CRT.Data.Tests
 
         // ###########################################################################################
         // *** HIGHLIGHTS AND CALIBRATIONS FOLLOW THE SCHEMATIC THEY ARE DRAWN ON (code review,
-        // 2026-09-25). *** Kept as submitted, the ones on a schematic the reviewer deleted named a
+        // 2026-09-25). *** Kept as submitted, the ones on a schematic the maintainer deleted named a
         // schematic that no longer existed, the validator refused the save, and nothing in the table
         // could fix it.
         // ###########################################################################################
@@ -250,15 +250,15 @@ namespace CRT.Data.Tests
             Assert.Single(read.Published!.Schematics);
         }
 
-        // The server answers { "amendedByReviewer": true }; CRT reads the status with web defaults.
+        // The server answers { "amendedByMaintainer": true }; CRT reads the status with web defaults.
         [Fact]
         public void The_amended_flag_reaches_CRT_under_the_name_the_server_writes()
         {
-            string server = JsonSerializer.Serialize(new { state = "merged", amendedByReviewer = true }, JsonSerializerOptions.Web);
+            string server = JsonSerializer.Serialize(new { state = "merged", amendedByMaintainer = true }, JsonSerializerOptions.Web);
 
             SubmissionStatus? status = JsonSerializer.Deserialize<SubmissionStatus>(server, JsonSerializerOptions.Web);
 
-            Assert.True(status!.AmendedByReviewer);
+            Assert.True(status!.AmendedByMaintainer);
         }
     }
 }

@@ -31,7 +31,9 @@ namespace ClassicRepairToolbox.Tests.Ui;
 public class ComponentInfoWindowTests : IDisposable
 {
     private const string BoardLabel = "U8";
-    private const string DataRoot = @"C:\data";
+    // A root nothing is ever written under, built for THIS machine - never a literal @"C:\..."
+    // (see TestPathLiteralTests).
+    private static readonly string DataRoot = Path.Combine(Path.GetTempPath(), "crt-no-such-data-root-" + Guid.NewGuid().ToString("N"));
 
     private readonly TempWorkspace thisWorkspace = new();
 

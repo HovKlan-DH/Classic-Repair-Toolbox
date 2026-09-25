@@ -5,7 +5,7 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // Removing one imported KiCad file from a draft's "KiCad data" folder (maintainer request,
+    // Removing one imported KiCad file from a draft's "KiCad data" folder (owner request,
     // 2026-09-24) - the per-file "Remove" in SystemFilesWindow, the KiCad twin of removing a
     // schematic image.
     //

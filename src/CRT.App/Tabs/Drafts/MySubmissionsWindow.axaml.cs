@@ -18,7 +18,7 @@ namespace CRT
 {
     // ###########################################################################################
     // THE "MY SUBMISSIONS" VIEW (NewContributeStrategy.md Phase 4, task 6) - what this computer
-    // has sent, where each one stands, and anything the reviewer said.
+    // has sent, where each one stands, and anything the maintainer said.
     //
     // *** THE LIST IS LOCAL, AND THAT IS NOT A SHORTCUT. *** Contributing needs no account, so the
     // server cannot answer "what did I send" - it has no idea who is asking. What proves ownership
@@ -175,10 +175,10 @@ namespace CRT
                     SubmissionReceiptStore.UpdateState(
                         receipt.SubmissionId,
                         status.State,
-                        status.ReviewerComment,
+                        status.MaintainerComment,
                         DateTimeOffset.UtcNow,
                         status.DecidedUtc,
-                        status.AmendedByReviewer);
+                        status.AmendedByMaintainer);
 
                     updated++;
                 }
@@ -297,17 +297,17 @@ namespace CRT
         public string StateText { get; }
         public string SentText { get; }
         public string CheckedText { get; }
-        public string ReviewerComment { get; }
+        public string MaintainerComment { get; }
         public IReadOnlyList<string> Findings { get; }
         public ICommand ForgetCommand { get; }
         public ICommand MarkReadCommand { get; }
 
-        // "Replied 22 September 2026" - when the reviewer decided, empty until one has. Distinct
+        // "Replied 22 September 2026" - when the maintainer decided, empty until one has. Distinct
         // from CheckedText, which is this computer's own bookkeeping and says nothing about the
         // submission.
         public string DecidedText { get; }
 
-        // "A reviewer changed some of the details ..." - empty when nobody did (2026-09-25).
+        // "A maintainer changed some of the details ..." - empty when nobody did (2026-09-25).
         public string AmendedText { get; }
 
         public bool HasAmendedText => !string.IsNullOrWhiteSpace(this.AmendedText);
@@ -315,7 +315,7 @@ namespace CRT
         public bool HasSummary => !string.IsNullOrWhiteSpace(this.Summary);
         public bool HasCheckedText => !string.IsNullOrWhiteSpace(this.CheckedText);
         public bool HasDecidedText => !string.IsNullOrWhiteSpace(this.DecidedText);
-        public bool HasReviewerComment => !string.IsNullOrWhiteSpace(this.ReviewerComment);
+        public bool HasMaintainerComment => !string.IsNullOrWhiteSpace(this.MaintainerComment);
         public bool HasFindings => this.Findings.Count > 0;
 
         // ###########################################################################################
@@ -329,7 +329,7 @@ namespace CRT
 
         // ###########################################################################################
         // Is there anything on this row the contributor has not seen - a comment, a decision, or
-        // both? (maintainer report, 2026-09-23.)
+        // both? (owner report, 2026-09-23.)
         //
         // *** DISTINCT FROM HasUnreadComment, and the difference is a row like a silent publish. ***
         // That one has a new OUTCOME and nothing written, so it carries no comment panel at all -
@@ -362,7 +362,7 @@ namespace CRT
         public IBrush StatusTextBrush => this.StatusAccentBrush;
 
         // ###########################################################################################
-        // A faint fill so each card reads as a panel against the window (maintainer request).
+        // A faint fill so each card reads as a panel against the window (owner request).
         //
         // *** RESOLVED FROM THE THEME, NOT HARDCODED GREY. *** A literal #F5F5F5 would be invisible
         // in the light theme's own white and would glare in the dark one - this app defines both,
@@ -398,7 +398,7 @@ namespace CRT
         // Text_Fail_Fg is IndianRed, the same red the unread badge and every destructive action
         // already use, and Text_Success_Fg is the green the rest of the app reads as "good".
         //
-        // *** NeedsAction IS ORANGE, NOT RED (maintainer request, 2026-09-23). *** It used to share
+        // *** NeedsAction IS ORANGE, NOT RED (owner request, 2026-09-23). *** It used to share
         // Text_Fail_Fg with Bad, on the reasoning that both mean "this did not go through" and that
         // the words beside them ("Changes requested" vs "Not accepted") carry the difference. That
         // was wrong in practice and was reported: on a list of four cards the two states were
@@ -445,9 +445,9 @@ namespace CRT
             // Through the shared presenter, like every other displayed string on this row, so the
             // wording is pinned by unit tests rather than living in a data template.
             this.DecidedText = SubmissionReceiptPresenter.DescribeDecided(receipt.DecidedUtc);
-            this.AmendedText = SubmissionReceiptPresenter.DescribeAmended(receipt.AmendedByReviewer);
+            this.AmendedText = SubmissionReceiptPresenter.DescribeAmended(receipt.AmendedByMaintainer);
 
-            this.ReviewerComment = receipt.ReviewerComment ?? string.Empty;
+            this.MaintainerComment = receipt.MaintainerComment ?? string.Empty;
             this.HasUnreadComment = SubmissionReceiptPresenter.HasUnreadComment(receipt);
             this.HasUnreadNews = SubmissionReceiptPresenter.HasUnreadNews(receipt);
 

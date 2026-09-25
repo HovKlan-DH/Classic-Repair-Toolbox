@@ -138,18 +138,18 @@ namespace Handlers.DataHandling
         public static void UpdateState(
             long submissionId,
             string state,
-            string reviewerComment,
+            string maintainerComment,
             DateTimeOffset checkedUtc,
 
-            // When the REVIEWER decided, as the server reports it. Optional and trailing so every
+            // When the MAINTAINER decided, as the server reports it. Optional and trailing so every
             // existing caller and test is unaffected; a caller that omits it leaves whatever was
             // already recorded, which is correct - "the server did not tell us" must never erase a
             // date it told us last time.
             DateTimeOffset? decidedUtc = null,
 
-            // Whether a reviewer changed it (2026-09-25). Optional and trailing for the same reason
+            // Whether a maintainer changed it (2026-09-25). Optional and trailing for the same reason
             // as decidedUtc, and kept when omitted for the same reason too.
-            bool? amendedByReviewer = null)
+            bool? amendedByMaintainer = null)
         {
             int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
             if (index < 0)
@@ -166,7 +166,7 @@ namespace Handlers.DataHandling
                 SentUtc = existing.SentUtc,
                 LastKnownState = state ?? string.Empty,
                 LastCheckedUtc = checkedUtc,
-                ReviewerComment = reviewerComment ?? string.Empty,
+                MaintainerComment = maintainerComment ?? string.Empty,
 
                 // *** CARRIED THROUGH UNCHANGED, and that is what makes the badge work. *** A
                 // refresh re-reads the same comment from the server every time, so resetting this
@@ -189,7 +189,7 @@ namespace Handlers.DataHandling
                 // date does not wipe one recorded earlier.
                 DecidedUtc = decidedUtc ?? existing.DecidedUtc,
 
-                AmendedByReviewer = amendedByReviewer ?? existing.AmendedByReviewer
+                AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer
             };
 
             Save();
@@ -209,7 +209,7 @@ namespace Handlers.DataHandling
         // this one was open.
         //
         // *** IT ACKNOWLEDGES THE DECIDED STATE TOO SINCE 2026-09-23. *** The badge now counts a
-        // decision as news even when the reviewer wrote nothing (see
+        // decision as news even when the maintainer wrote nothing (see
         // SubmissionReceiptPresenter.HasUnreadDecision), so marking a row read has to clear both
         // or a silently-approved submission would stay badged forever with no way to dismiss it.
         // ###########################################################################################
@@ -222,7 +222,7 @@ namespace Handlers.DataHandling
             SubmissionReceipt existing = _receipts[index];
 
             // *** THE EMPTY-COMMENT EARLY RETURN IS GONE, and removing it is the fix. *** It used
-            // to bail out here whenever the reviewer had written nothing, which is precisely the
+            // to bail out here whenever the maintainer had written nothing, which is precisely the
             // publish-with-no-comment case the badge now reports - so the row could be shown,
             // read, and still come back badged on the next launch.
             //
@@ -239,8 +239,8 @@ namespace Handlers.DataHandling
                 SentUtc = existing.SentUtc,
                 LastKnownState = existing.LastKnownState,
                 LastCheckedUtc = existing.LastCheckedUtc,
-                ReviewerComment = existing.ReviewerComment,
-                AcknowledgedComment = existing.ReviewerComment,
+                MaintainerComment = existing.MaintainerComment,
+                AcknowledgedComment = existing.MaintainerComment,
 
                 // The state as it reads RIGHT NOW, for the same reason the comment is stored as
                 // text: a later decision differs from this one and is therefore unread again,
@@ -252,7 +252,7 @@ namespace Handlers.DataHandling
                 // silently drop the date it was written, and the row would lose its "Replied ..."
                 // line the moment the contributor acknowledged it.
                 DecidedUtc = existing.DecidedUtc,
-                AmendedByReviewer = existing.AmendedByReviewer
+                AmendedByMaintainer = existing.AmendedByMaintainer
             };
 
             Save();

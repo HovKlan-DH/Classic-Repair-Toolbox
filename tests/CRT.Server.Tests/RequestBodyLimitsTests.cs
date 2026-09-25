@@ -72,7 +72,7 @@ namespace CRT.Server.Tests
             { "POST", "/api/admin/unused-files/remove", RequestBodyLimits.PathListBytes },
 
             // Small bodies, deliberately at the default: a sign-in, a token, an address and a
-            // password, a reviewer change, a plan request, a review comment of at most 4,000
+            // password, a maintainer change, a plan request, a review comment of at most 4,000
             // characters.
             { "POST", "/api/accounts/register", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/login", RequestBodyLimits.DefaultBytes },
@@ -80,8 +80,8 @@ namespace CRT.Server.Tests
             { "POST", "/api/accounts/logout", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/forgot-password", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/reset-password", RequestBodyLimits.DefaultBytes },
-            { "POST", "/api/admin/reviewers", RequestBodyLimits.DefaultBytes },
-            { "POST", "/api/admin/reviewers/remove", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/maintainers", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/maintainers/remove", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/production/plan", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/reject", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/request-changes", RequestBodyLimits.DefaultBytes },
@@ -164,13 +164,13 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** SAVING THE REVIEWER'S TABLE SENDS A WHOLE BOARD (code review, 2026-09-25). *** The
+        // *** SAVING THE MAINTAINER'S TABLE SENDS A WHOLE BOARD (code review, 2026-09-25). *** The
         // amend route fell to the 64 KB default, so every save of a real board was refused with 413
         // before the endpoint ran. Measured on the largest shipped board, serialised exactly as the
-        // review application sends it.
+        // maintainer application sends it.
         // ###########################################################################################
         [Fact]
-        public async Task Saving_the_reviewers_table_for_the_largest_shipped_board_fits_its_limit()
+        public async Task Saving_the_maintainers_table_for_the_largest_shipped_board_fits_its_limit()
         {
             string workbook = RequestBodyLimitsTests.LargestShippedWorkbook();
             string cacheKey = "body-limits:" + Guid.NewGuid().ToString("N");
@@ -200,7 +200,7 @@ namespace CRT.Server.Tests
         }
 
         // Approving, publishing to production and removing unused files send back a list of paths
-        // the reviewer was shown. Even the whole shipped tree listed that way fits with room to spare.
+        // the maintainer was shown. Even the whole shipped tree listed that way fits with room to spare.
         [Theory]
         [InlineData("/api/review/submissions/{submissionId:long}/approve")]
         [InlineData("/api/review/production/publish")]

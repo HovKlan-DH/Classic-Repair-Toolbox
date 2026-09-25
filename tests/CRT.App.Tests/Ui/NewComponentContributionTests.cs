@@ -362,7 +362,7 @@ public class NewComponentContributionTests
                 Invoke(window, "BuildComponentImageDraftRows", effectiveLabel)!;
             Assert.Equal("U99", Assert.Single(componentImageDraftRows).BoardLabel);
 
-            // The summary the reviewer sees.
+            // The summary the maintainer sees.
             string displayText = (string)Invoke(window, "ResolveComponentDisplayText")!;
             Assert.Equal("U99 | Colour clock buffer", displayText);
         });

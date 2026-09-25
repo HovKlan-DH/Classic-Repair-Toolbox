@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The "Draft" chip on the Hardware and Board drop-downs (maintainer request, 2026-09-24), on the
+// The "Draft" chip on the Hardware and Board drop-downs (owner request, 2026-09-24), on the
 // real main window. DraftBadgeSetTests covers WHICH names are badged; these cover the drop-downs
 // actually drawing it, and - the part that is easy to get wrong - drawing it on a drop-down that
 // was ALREADY RENDERED when the draft appeared.

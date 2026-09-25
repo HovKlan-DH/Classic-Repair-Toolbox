@@ -145,7 +145,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** EVERY UNLABELLED COMPONENT IS LISTED - NO CAP (maintainer request, 2026-09-24). ***
+    // *** EVERY UNLABELLED COMPONENT IS LISTED - NO CAP (owner request, 2026-09-24). ***
     //
     // This list used to stop after 50 with "and 315 more". On a brand-new board that is most of
     // the to-do list the section exists to show. It REPLACES a test that pinned the cap: the cap
@@ -169,7 +169,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** EACH COMPONENT IS ITS OWN BADGE (maintainer request, 2026-09-24). ***
+    // *** EACH COMPONENT IS ITS OWN BADGE (owner request, 2026-09-24). ***
     //
     // Rendered for real (Show, so the WrapPanel realises its containers) and read back off the
     // visual tree: one ReferenceBadge per reference in EVERY component list, each holding exactly
@@ -410,7 +410,7 @@ public sealed class SystemFilesWindowTests : IDisposable
 
     // ------------------------------------------------------------------ ONE section per opening
     //
-    // *** THE DRAFTS TAB HAS A BUTTON EACH FOR "Schematic images" AND "KiCad data" (maintainer
+    // *** THE DRAFTS TAB HAS A BUTTON EACH FOR "Schematic images" AND "KiCad data" (owner
     // request, 2026-09-24), where it used to have one for both. *** Each opens this window on its
     // own section: that section is the only one shown, the title names it, and - the part a
     // screenshot cannot show - only that section's data is loaded. Opening "Schematic images" must
@@ -478,7 +478,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** EACH SCHEMATIC ROW CARRIES A PREVIEW OF ITS OWN IMAGE (maintainer request, 2026-09-24).
+    // *** EACH SCHEMATIC ROW CARRIES A PREVIEW OF ITS OWN IMAGE (owner request, 2026-09-24).
     // ***
     //
     // The list used to name a file and nothing more, so the only way to find out whether the right
@@ -637,7 +637,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE WINDOW NAMES THE IMPORTED FILES, not just how many there are (maintainer report,
+    // *** THE WINDOW NAMES THE IMPORTED FILES, not just how many there are (owner report,
     // 2026-09-24). ***
     //
     // Reopening this window after an import said "25 KiCad files imported" and nothing else, so a
@@ -686,7 +686,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE LISTING HAS NO SCROLLER OF ITS OWN (maintainer report, 2026-09-24). ***
+    // *** THE LISTING HAS NO SCROLLER OF ITS OWN (owner report, 2026-09-24). ***
     //
     // It used to sit in its own ScrollViewer capped at 150px, inside the window's ScrollViewer - a
     // scroll inside a scroll, where the wheel moved whichever one the pointer was over. Every file
@@ -772,7 +772,7 @@ public sealed class SystemFilesWindowTests : IDisposable
 
     // ------------------------------------------------------------------ REMOVING a KiCad file
     //
-    // *** EACH IMPORTED KiCad FILE CAN BE REMOVED ON ITS OWN (maintainer request, 2026-09-24), the
+    // *** EACH IMPORTED KiCad FILE CAN BE REMOVED ON ITS OWN (owner request, 2026-09-24), the
     // way a schematic image can. *** The delete itself - and what it refuses - is covered by
     // KiCadImportedFilesTests; these cover the window offering it and describing what is left.
 
@@ -876,7 +876,7 @@ public sealed class SystemFilesWindowTests : IDisposable
     """;
 
     // ###########################################################################################
-    // *** THE MATCH REPORT IS REBUILT WHEN THE WINDOW REOPENS (maintainer report, 2026-09-24). ***
+    // *** THE MATCH REPORT IS REBUILT WHEN THE WINDOW REOPENS (owner report, 2026-09-24). ***
     //
     // It used to be produced only at the end of an import, so a contributor returning to a system
     // that already had KiCad data saw an empty panel. The report is the one thing that says whether

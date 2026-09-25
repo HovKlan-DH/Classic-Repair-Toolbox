@@ -240,7 +240,7 @@ public sealed class DraftFileResolverTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A SHARED FILE THE CONTRIBUTOR ATTACHED is found where it was written (maintainer report,
+    // *** A SHARED FILE THE CONTRIBUTOR ATTACHED is found where it was written (owner report,
     // 2026-09-25). *** The component editor lets a new image be filed in a shared folder
     // ("Commodore/Shared files/Component images"), and BuildDraftFileDestination writes it inside
     // the draft under that whole path. Resolve only ever looked in the draft for the board's OWN

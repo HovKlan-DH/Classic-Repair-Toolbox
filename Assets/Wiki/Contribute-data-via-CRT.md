@@ -103,7 +103,7 @@ board name, and it appears in the lists immediately as your own local draft. Fro
 ordinary board in every respect — you add board images, label the components and attach files with
 exactly the same tools described above.
 
-Before it is created you are asked to accept the role of **reviewer** for it. If you later submit
+Before it is created you are asked to accept the role of **maintainer** for it. If you later submit
 the system for the community to use, you will review the changes others submit for it and publish
 the ones that are right.
 
@@ -269,7 +269,7 @@ When a draft is ready, open the **"Drafts"** tab and click **"Submit"** on that 
 **You do not need an account, and CRT will not ask you to make one.** The only thing the dialog
 asks for is an email address, and it is used for one purpose: telling you whether your
 contribution was accepted, and why if it was not. You also write a short summary of what you
-changed, which is what the reviewer reads first.
+changed, which is what the maintainer reads first.
 
 Before anything is sent, the dialog shows you exactly what is about to go: how many schematics,
 components and highlights, and how many files are referenced. Nothing leaves your machine until
@@ -318,17 +318,17 @@ and why:
 ## Checking how a contribution is getting on
 
 The **"My submissions"** button on the Drafts tab lists what you have sent, with the state of each
-one and anything the reviewer has said. **"Check for updates"** asks the server for the latest.
+one and anything the maintainer has said. **"Check for updates"** asks the server for the latest.
 
 **An accepted contribution is published in two steps.** First it is published to the **BETA
-source**, where a reviewer gives the board a final check; "My submissions" then says *Published to
+source**, where a maintainer gives the board a final check; "My submissions" then says *Published to
 BETA source*. After that it is published to the ordinary **source** that everyone downloads from, and
 the row says *Published to source*. You get an email at each step. CRT looks for the second step
 each time it starts, for a month after the first; after that, "Check for updates" still asks.
 
-**A reviewer may correct small things before publishing** - a typo, a wrong part number - rather
+**A maintainer may correct small things before publishing** - a typo, a wrong part number - rather
 than sending the whole contribution back to you. When that happens, "My submissions" and the email
-both say that a reviewer changed some of the details, so what is published is not exactly what you
+both say that a maintainer changed some of the details, so what is published is not exactly what you
 sent. Your own draft is not changed, so it still holds what you sent and is not removed
 automatically - once your data has updated, look at the board, then discard the draft on the
 Drafts tab (or keep working from it).
@@ -349,7 +349,7 @@ A few things worth knowing about that list:
 
 ### If you contributed a whole new system
 
-For a brand new hardware and board, the maintainer may set you up as a **reviewer** of that
+For a brand new hardware and board, the project owner may set you up as a **maintainer** of that
 system once it is published, so you can look after it from then on - reviewing what others send in
 for it, and publishing what is right. That happens after the fact and only for new systems; it is
 never something you need before contributing.

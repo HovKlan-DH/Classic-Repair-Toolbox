@@ -414,7 +414,7 @@ public partial class TabSchematics
             mirrorY);
 
         // ###########################################################################################
-        // *** THE DRAFTS TAB HAS TO APPEAR HERE TOO (maintainer report, 2026-09-23). ***
+        // *** THE DRAFTS TAB HAS TO APPEAR HERE TOO (owner report, 2026-09-23). ***
         //
         // Calibrating seeds a draft for a published system exactly as a component or label edit
         // does - the seeding is a dozen lines above this - so it can be the moment a system gains

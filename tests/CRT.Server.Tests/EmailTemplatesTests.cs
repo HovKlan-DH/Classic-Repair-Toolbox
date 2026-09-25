@@ -21,12 +21,12 @@ namespace CRT.Server.Tests
         // *** A CODE, NOT A URL - and this constant used to hold the URL that shipped broken. ***
         // The reset mail printed "https://.../api/accounts/reset?token=...", a path the server maps
         // nothing at (only POST /reset-password exists), so every reset link 404'd from Phase 3
-        // until the maintainer clicked one on 2026-09-22. These tests asserted the dead URL was
+        // until the project owner clicked one on 2026-09-22. These tests asserted the dead URL was
         // present, which is why they never caught it.
         private const string ResetCode = "iAXr2z0PPffPwpmzHR-bOFo5ZPCPfHEK1hZbFAKAoYQ";
 
         // -----------------------------------------------------------------------------------
-        // The reviewer's "something is waiting" mail (Phase 6 task 11).
+        // The maintainer's "something is waiting" mail (Phase 6 task 11).
         // -----------------------------------------------------------------------------------
 
         [Fact]
@@ -39,14 +39,14 @@ namespace CRT.Server.Tests
             Assert.Contains("Commodore/C64/250407", message.Body, StringComparison.Ordinal);
             Assert.Contains("#42", message.Body, StringComparison.Ordinal);
             Assert.Contains("Corrected R12.", message.Body, StringComparison.Ordinal);
-            Assert.Contains("Review", message.Body, StringComparison.Ordinal);
+            Assert.Contains("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
         public void The_waiting_mail_says_so_when_the_contributor_gave_no_description()
         {
             // A blank quote reads as a rendering fault; the ordinary "(no description given)"
-            // the review app's queue also shows is used instead.
+            // the maintainer app's queue also shows is used instead.
             EmailMessage message = EmailTemplates.SubmissionWaiting("anna@example.com", "X/Y/Z", 1, "  ");
 
             Assert.Contains("(no description given)", message.Body, StringComparison.Ordinal);
@@ -68,7 +68,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void The_first_mail_says_published_to_the_BETA_SOURCE_and_promises_the_second()
         {
-            // The maintainer's words for the two stages: "published to BETA source" and
+            // The project owner's words for the two stages: "published to BETA source" and
             // "published to source" - the same two names CRT's Configuration tab uses.
             EmailMessage message = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "Commodore/C64/250407", null);
 
@@ -78,19 +78,19 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
         }
 
-        // A reviewer changed rows in the review application before publishing (2026-09-25): the
+        // A maintainer changed rows in the maintainer application before publishing (2026-09-25): the
         // contributor is told, and only then - and through the notifier's mapping too.
         [Fact]
-        public void The_first_mail_says_when_a_reviewer_changed_the_submission()
+        public void The_first_mail_says_when_a_maintainer_changed_the_submission()
         {
-            EmailMessage changed = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null, amendedByReviewer: true);
+            EmailMessage changed = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null, amendedByMaintainer: true);
             EmailMessage unchanged = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
 
-            Assert.Contains("A reviewer changed some of the details", changed.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("A reviewer changed", unchanged.Body, StringComparison.Ordinal);
+            Assert.Contains("A maintainer changed some of the details", changed.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("A maintainer changed", unchanged.Body, StringComparison.Ordinal);
 
-            EmailMessage? mapped = SubmissionNotifier.BuildMessage("c@example.com", "X/Y/Z", "merged", null, amendedByReviewer: true);
-            Assert.Contains("A reviewer changed some of the details", mapped!.Body, StringComparison.Ordinal);
+            EmailMessage? mapped = SubmissionNotifier.BuildMessage("c@example.com", "X/Y/Z", "merged", null, amendedByMaintainer: true);
+            Assert.Contains("A maintainer changed some of the details", mapped!.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -238,7 +238,7 @@ namespace CRT.Server.Tests
             EmailMessage message = EmailTemplates.PasswordReset(
                 "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
 
-            Assert.Contains("Review application", message.Body, StringComparison.Ordinal);
+            Assert.Contains("CRT Maintainer", message.Body, StringComparison.Ordinal);
             Assert.Contains("I forgot my password", message.Body, StringComparison.Ordinal);
         }
 

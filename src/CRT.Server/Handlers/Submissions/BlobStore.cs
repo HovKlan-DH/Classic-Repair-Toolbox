@@ -22,7 +22,7 @@ namespace CRT.Server.Handlers.Submissions
     // verified once, on arrival, and copied into the published tree on trust. Now every copy is
     // hashed as it is written and refused on a mismatch, so a blob that changed on disk - by a
     // race, a bad sector or a hand edit - never reaches every user's machine under the name of the
-    // file a reviewer approved.
+    // file a maintainer approved.
     //
     // A blob is written to its partial path, verified, and only then MOVED into the store - so a
     // file in the store has always been verified, and an interrupted upload can never be mistaken

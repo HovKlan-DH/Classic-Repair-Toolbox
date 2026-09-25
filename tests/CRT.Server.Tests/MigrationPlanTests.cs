@@ -183,7 +183,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void Every_problem_is_reported_in_one_pass()
         {
-            // Same reasoning as ServerOptionsValidator: a maintainer fixing one problem,
+            // Same reasoning as ServerOptionsValidator: the project owner fixing one problem,
             // restarting, and discovering the next is a slow loop over an SSH session.
             var available = new[]
             {
@@ -209,7 +209,7 @@ namespace CRT.Server.Tests
         {
             // These files are edited on Windows and executed on Linux, and git's autocrlf can
             // rewrite them in transit. Without normalisation every migration would look modified
-            // on the other platform - which would train the maintainer to ignore the one rule
+            // on the other platform - which would train the project owner to ignore the one rule
             // most worth heeding.
             string windows = "CREATE TABLE t (\r\n  id INT\r\n);\r\n";
             string unix = "CREATE TABLE t (\n  id INT\n);\n";

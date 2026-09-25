@@ -354,7 +354,7 @@ public sealed class NewSystemWindowTests : IDisposable
 
     // ------------------------------------------------------------------ The maintainer agreement
     //
-    // *** A NEW SYSTEM CAN ONLY BE CREATED BY ACCEPTING THE MAINTAINER ROLE (maintainer request,
+    // *** A NEW SYSTEM CAN ONLY BE CREATED BY ACCEPTING THE MAINTAINER ROLE (owner request,
     // 2026-09-24). *** "Create system" shows NewSystemMaintainerWindow, and the window hands back a
     // registration - the only thing Main creates a system from - only when that is accepted.
     //

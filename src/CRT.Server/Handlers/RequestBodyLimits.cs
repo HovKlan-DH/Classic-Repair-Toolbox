@@ -19,18 +19,18 @@ namespace CRT.Server.Handlers
     // Everything else - a sign-in, a review comment of at most 4,000 characters - fits in 64 KB
     // with room to spare.
     //
-    // *** THE REVIEWER'S ROUTES THAT CARRY A BOARD OR A FILE LIST (2026-09-25). *** Saving the
-    // reviewer's table sends the submission's whole rows - the same size as a manifest - so it gets
+    // *** THE MAINTAINER'S ROUTES THAT CARRY A BOARD OR A FILE LIST (2026-09-25). *** Saving the
+    // maintainer's table sends the submission's whole rows - the same size as a manifest - so it gets
     // the manifest's limit; left at 64 KB, every save of a real board was refused with 413 before
     // the endpoint ran. Approving, publishing to production and removing unused files send back
-    // the list of files the reviewer was shown for removal. The whole shipped tree listed that way
+    // the list of files the maintainer was shown for removal. The whole shipped tree listed that way
     // is about 600 KB (10,921 files), so two megabytes covers any such list.
     //
     // *** EACH LIMIT IS WRITTEN ON ITS ROUTE, where the route is mapped (code review, 2026-09-25):
     // `.WithBodyLimit(RequestBodyLimits.ManifestBytes)`. *** It used to be a second copy of the
     // route table here - URL segments and verbs matched by hand - so a new route that posts rows or
     // a file list, or a renamed segment, compiled, passed the tests of the routes this file knew,
-    // and was refused with 413 in the reviewer's hands. That had already happened once (the table
+    // and was refused with 413 in the maintainer's hands. That had already happened once (the table
     // save above). Now the limit sits beside the MapPost it governs, and RequestBodyLimitsTests
     // builds the server's real route table and fails on any route that reads a body without a
     // decision recorded there.

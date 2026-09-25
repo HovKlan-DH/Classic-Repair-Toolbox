@@ -15,7 +15,7 @@ namespace CRT.Server.Handlers.Accounts
     //
     // 1. EVERY value reaching SQL goes through a PARAMETER. Never string concatenation, not even
     //    for an integer id, not even for a value this service generated itself. The moment one
-    //    call is written differently, it becomes the one a reviewer has to reason about.
+    //    call is written differently, it becomes the one a maintainer has to reason about.
     //
     // 2. DATETIME(3) columns hold UTC (see 0001_initial.sql). Values go in as UtcDateTime and come
     //    back tagged Utc, so nothing in the rest of the service has to remember.
@@ -502,7 +502,7 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // -----------------------------------------------------------------------------------
-        // Reviewer pools (Phase 6 roles). The `reviewers` table - `maintainers` until 0006.
+        // Maintainer pools (Phase 6 roles). The `maintainers` table - `reviewers` between migrations 0006 and 0010.
         // -----------------------------------------------------------------------------------
 
         public async Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
@@ -510,7 +510,7 @@ namespace CRT.Server.Handlers.Accounts
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            command.CommandText = "SELECT system_id FROM reviewers WHERE account_id = @accountId;";
+            command.CommandText = "SELECT system_id FROM maintainers WHERE account_id = @accountId;";
             command.Parameters.AddWithValue("@accountId", accountId);
 
             var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -523,43 +523,43 @@ namespace CRT.Server.Handlers.Accounts
             return ids;
         }
 
-        private const string ReviewerColumns =
+        private const string MaintainerColumns =
             "r.system_id, r.account_id, a.display_name, a.email, a.is_administrator, a.is_verified, a.is_locked";
 
-        public async Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText =
-                $"SELECT {MySqlAccountStore.ReviewerColumns} FROM reviewers r " +
+                $"SELECT {MySqlAccountStore.MaintainerColumns} FROM maintainers r " +
                 "JOIN accounts a ON a.id = r.account_id " +
                 "WHERE r.system_id = @systemId ORDER BY a.display_name, a.id;";
             command.Parameters.AddWithValue("@systemId", systemId);
 
-            return await MySqlAccountStore.ReadReviewersAsync(command, cancellationToken);
+            return await MySqlAccountStore.ReadMaintainersAsync(command, cancellationToken);
         }
 
-        public async Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<MaintainerRecord>> ListMaintainersAsync(CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText =
-                $"SELECT {MySqlAccountStore.ReviewerColumns} FROM reviewers r " +
+                $"SELECT {MySqlAccountStore.MaintainerColumns} FROM maintainers r " +
                 "JOIN accounts a ON a.id = r.account_id " +
                 "ORDER BY r.system_id, a.display_name, a.id;";
 
-            return await MySqlAccountStore.ReadReviewersAsync(command, cancellationToken);
+            return await MySqlAccountStore.ReadMaintainersAsync(command, cancellationToken);
         }
 
-        public Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        public Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
             // INSERT IGNORE: a second grant of the same pair keeps the FIRST grant's attribution
-            // and date, which is the honest record of when this person became a reviewer.
+            // and date, which is the honest record of when this person became a maintainer.
             return this.ExecuteAsync(
                 """
-                INSERT IGNORE INTO reviewers (system_id, account_id, granted_by, granted_utc)
+                INSERT IGNORE INTO maintainers (system_id, account_id, granted_by, granted_utc)
                 VALUES (@systemId, @accountId, @grantedBy, @when);
                 """,
                 command =>
@@ -572,10 +572,10 @@ namespace CRT.Server.Handlers.Accounts
                 cancellationToken);
         }
 
-        public Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        public Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
         {
             return this.ExecuteAsync(
-                "DELETE FROM reviewers WHERE system_id = @systemId AND account_id = @accountId;",
+                "DELETE FROM maintainers WHERE system_id = @systemId AND account_id = @accountId;",
                 command =>
                 {
                     command.Parameters.AddWithValue("@systemId", systemId);
@@ -619,15 +619,15 @@ namespace CRT.Server.Handlers.Accounts
             return accounts;
         }
 
-        private static async Task<IReadOnlyList<ReviewerRecord>> ReadReviewersAsync(MySqlCommand command, CancellationToken cancellationToken)
+        private static async Task<IReadOnlyList<MaintainerRecord>> ReadMaintainersAsync(MySqlCommand command, CancellationToken cancellationToken)
         {
-            var reviewers = new List<ReviewerRecord>();
+            var maintainers = new List<MaintainerRecord>();
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
 
             while (await reader.ReadAsync(cancellationToken))
             {
-                reviewers.Add(new ReviewerRecord(
+                maintainers.Add(new MaintainerRecord(
                     reader.GetString(0),
                     reader.GetInt64(1),
                     reader.GetString(2),
@@ -637,7 +637,7 @@ namespace CRT.Server.Handlers.Accounts
                     reader.GetBoolean(6)));
             }
 
-            return reviewers;
+            return maintainers;
         }
 
         // -----------------------------------------------------------------------------------

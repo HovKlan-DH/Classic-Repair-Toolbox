@@ -18,7 +18,7 @@ namespace Handlers.DataHandling
     // folder the contributor can edit it in Excel, outside the application entirely - and an
     // edit-time ledger cannot survive that, because nothing tells the app the file changed. A
     // derived answer is correct no matter which of the two routes made the change, which is
-    // exactly the interchangeability the maintainer asked for.
+    // exactly the interchangeability the project owner asked for.
     // ###########################################################################################
     public enum BoardRowChangeKind
     {

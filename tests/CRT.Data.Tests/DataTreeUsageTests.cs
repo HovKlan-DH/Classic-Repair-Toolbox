@@ -10,7 +10,7 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // DataTreeUsage - which files in a data tree are used, and so which may be removed (maintainer
+    // DataTreeUsage - which files in a data tree are used, and so which may be removed (owner
     // decision, 2026-09-25: "there must be no orphan files").
     //
     // Every test builds a real tree with real workbooks: the rule is only as good as its reading of
@@ -291,7 +291,7 @@ namespace CRT.Data.Tests
 
         // ---- previewing a publish ------------------------------------------------------------
 
-        // The reviewer is shown what a publish would remove before anything is written, from the
+        // The maintainer is shown what a publish would remove before anything is written, from the
         // SAME rule - with the workbook's new citations standing in for the file on disk.
         [Fact]
         public void A_preview_uses_what_the_workbook_WILL_cite_and_leaves_the_real_tree_alone()

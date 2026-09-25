@@ -2576,6 +2576,7 @@ public sealed class WorklogManagerTests : IDisposable
     [Fact]
     public void ResolveExplicitWorkbookRoot_uses_the_workbooks_root_command_line_argument()
     {
+        // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\somewhere\Workbooks",
             WorklogManager.ResolveExplicitWorkbookRoot(new[] { @"--workbooks-root=D:\somewhere\Workbooks" }));
@@ -2584,6 +2585,7 @@ public sealed class WorklogManagerTests : IDisposable
     [Fact]
     public void ResolveExplicitWorkbookRoot_strips_surrounding_quotes()
     {
+        // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\my data\Workbooks",
             WorklogManager.ResolveExplicitWorkbookRoot(new[] { "--workbooks-root=\"D:\\my data\\Workbooks\"" }));

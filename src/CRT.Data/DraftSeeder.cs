@@ -35,7 +35,7 @@ namespace Handlers.DataHandling
 
     // ###########################################################################################
     // CREATES A DRAFT FOLDER AS A FULL COPY OF THE PUBLISHED BOARD
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** SEEDING IS A COMPLETE COPY, AND THAT IS LOAD-BEARING RATHER THAN GENEROUS. ***
     //
@@ -45,7 +45,7 @@ namespace Handlers.DataHandling
     // row the contributor had not yet touched would read as deleted - the report would be noise,
     // and a submission built from it would ask the server to delete most of the board.
     //
-    // So: complete copy, deletion means deletion. The maintainer chose this over the cheaper
+    // So: complete copy, deletion means deletion. The project owner chose this over the cheaper
     // alternative explicitly ("I do believe it is the most transparent thing to do").
     //
     // WHAT IS COPIED: the workbook, its JSON sidecar, and every file the board's own ROWS
@@ -200,7 +200,7 @@ namespace Handlers.DataHandling
                 Directory.CreateDirectory(folder);
 
                 // ###########################################################################################
-                // *** AND AN EMPTY "Scope baseline" FOLDER BESIDE THE WORKBOOK (maintainer request,
+                // *** AND AN EMPTY "Scope baseline" FOLDER BESIDE THE WORKBOOK (owner request,
                 // 2026-09-24). ***
                 //
                 // A new system has no baseline images yet, so there was no such folder - and a

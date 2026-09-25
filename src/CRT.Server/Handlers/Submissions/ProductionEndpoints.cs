@@ -5,11 +5,11 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // BETA TO PRODUCTION, over HTTP (maintainer request, 2026-09-25). A rim over
+    // BETA TO PRODUCTION, over HTTP (owner request, 2026-09-25). A rim over
     // ProductionPromotionFlow and nothing else.
     //
     // Under "/api/review/production": the same people as the review queue - an administrator, or
-    // a reviewer of the system in question - with the same authentication, and every route asks
+    // a maintainer of the system in question - with the same authentication, and every route asks
     // about the system it names.
     //
     //   GET  /                 - the systems whose BETA state is ahead of production, that the
@@ -40,7 +40,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // The list, the plan and publish bodies, and their answers, are CRT.Data's ReviewApiContract
         // records (ProductionListAnswer, ProductionPlanRequest, ProductionPublishRequest,
-        // ProductionPlanAnswer, ProductionPublishAnswer), shared with the review application.
+        // ProductionPlanAnswer, ProductionPublishAnswer), shared with the maintainer application.
 
         private static async Task<IResult> ListAsync(
             HttpContext context,
@@ -59,7 +59,7 @@ namespace CRT.Server.Handlers.Submissions
                 ? await flow.ListAwaitingAsync(access, cancellationToken)
                 : [];
 
-            // CRT.Data's ProductionListAnswer, read by the review application as the same record.
+            // CRT.Data's ProductionListAnswer, read by the maintainer application as the same record.
             // Configured is told rather than inferred from an empty list: "nothing is waiting" and
             // "this server cannot do it" must not look the same.
             return Results.Ok(new ProductionListAnswer(
@@ -125,7 +125,7 @@ namespace CRT.Server.Handlers.Submissions
                 Approval: outcome.Approval,
                 UnchangedCount: plan.UnchangedCount,
 
-                // CRT.Data's PromotionFile, read by the review application as the same record.
+                // CRT.Data's PromotionFile, read by the maintainer application as the same record.
                 Files: plan.Files,
                 Problems: plan.Problems,
 
@@ -233,7 +233,7 @@ namespace CRT.Server.Handlers.Submissions
         // - the same lesson ReviewEndpoints.AfterPublishAsync records for BETA.
         //
         // THEN the contributors whose work went out with this promotion (merged since the previous
-        // one), and the administrators when a reviewer did it.
+        // one), and the administrators when a maintainer did it.
         // ###########################################################################################
         private static async Task AfterPublishAsync(
             ReviewAccess access,
@@ -270,7 +270,7 @@ namespace CRT.Server.Handlers.Submissions
                     submission.ContactEmail,
                     submission.SystemId,
                     ProductionPromotionRules.PublishedState,
-                    reviewerComment: null,
+                    maintainerComment: null,
                     cancellationToken: cancellationToken);
             }
 
@@ -300,7 +300,7 @@ namespace CRT.Server.Handlers.Submissions
                 return (null, refusal);
 
             if (!ReviewAuthority.CanReviewAnything(access))
-                return (null, ReviewEndpoints.NotAReviewer());
+                return (null, ReviewEndpoints.NotAMaintainer());
 
             return (access, null);
         }
