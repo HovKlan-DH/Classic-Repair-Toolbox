@@ -14,7 +14,7 @@ namespace Handlers.DataHandling
     // This class only resolves the root and maps a system to its folder under it - the same split
     // DataManager (root resolution, sync) keeps from BoardDataReader (board file parsing).
     // Reading/writing one system's draft.json is DraftDataStore, in CRT.Data, since that logic is
-    // pure and needed by the future review app too; only "where is Drafts/" is an app concern.
+    // pure and needed by the future maintainer app too; only "where is Drafts/" is an app concern.
     //
     // Mirrors WorklogManager's own root-resolution pattern (its own "--workbooks-root=" beside
     // DataManager's "--data-root="): a "--drafts-root=" switch, parsed the same way (case-

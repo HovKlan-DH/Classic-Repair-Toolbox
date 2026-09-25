@@ -444,7 +444,7 @@ jobs:
       # Matching is on the HEADER POSITION, not on the version string. The workflow's
       # version comes from the csproj and a release is often built before the changelog's
       # own "2026-September-?" date placeholder is filled in, so requiring the two to
-      # agree would fail the release over a date the maintainer is still deciding.
+      # agree would fail the release over a date the project owner is still deciding.
       #
       # CRLF is stripped first - CHANGELOG.md is maintained on Windows, and a trailing
       # \r inside the GITHUB_OUTPUT heredoc corrupts the rendered Markdown.

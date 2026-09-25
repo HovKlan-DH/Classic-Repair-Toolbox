@@ -1,6 +1,6 @@
 # CRT.Server deployment
 
-How the contribution API is installed on the AlmaLinux box. Written for the maintainer to run
+How the contribution API is installed on the AlmaLinux box. Written for the project owner to run
 directly: every step has a **Verify** whose output says plainly whether it worked.
 
 Work through it in order. **Do not skip step 3** - it is the one that makes writing to Production
@@ -107,8 +107,8 @@ write the Production tree. Not "configured not to" - *unable*, refused by the ke
 promote BETA to Production by hand, the service never has any legitimate reason to write
 Production, so denying it costs nothing and removes a whole class of accident.
 
-> **Since 2026-09-25 this is the DEFAULT, not the only way.** Reviewers can publish a board from
-> BETA to Production from the review application, once you switch that on - step 13, which
+> **Since 2026-09-25 this is the DEFAULT, not the only way.** Maintainers can publish a board from
+> BETA to Production from the maintainer application, once you switch that on - step 13, which
 > deliberately undoes part of this step for the Production data folder only. Until you do, this
 > step stands exactly as written, and nothing can write Production.
 
@@ -654,7 +654,7 @@ Then edit it and replace every `/REPLACE/WITH/REAL/PATH/` and `REPLACE_ME`. For 
 > systemctl daemon-reload && systemctl restart crt-server
 > ```
 >
-> **This directory grows.** Blobs are kept after a submission is queued, since a reviewer needs
+> **This directory grows.** Blobs are kept after a submission is queued, since a maintainer needs
 > them; partial uploads are collected automatically after 24 hours. Worth a `du -sh` now and then.
 
 **No systemd change is needed.** The unit already sets `Environment=ASPNETCORE_ENVIRONMENT=Production`
@@ -1052,7 +1052,7 @@ mysql -u crt_review -p -h 127.0.0.1 crt_review -e "SELECT system_id, current_rev
 ```
 
 Anything whose spelling differs from the published folder names and has no `current_revision` was
-never published; reject its submissions in the review app.
+never published; reject its submissions in the maintainer app.
 
 ### 12c - Settings
 
@@ -1072,13 +1072,13 @@ never published; reject its submissions in the review app.
   type. A path that differs from a published one only by capitalisation is refused.
 * **Every file is re-verified before a publish writes anything**, and each copy is hashed as it is
   written and renamed into place only on a match. A symbolic link on the way refuses the publish.
-* **Per address: at most 20 submissions and 4 GiB of uploads a day.** Reviewers and administrators
+* **Per address: at most 20 submissions and 4 GiB of uploads a day.** Maintainers and administrators
   are exempt. Request bodies are capped per route (8 MB for a manifest, an upload chunk or a
-  reviewer's saved table, 2 MB for a list of files to remove, 64 KB for everything else).
+  maintainer's saved table, 2 MB for a list of files to remove, 64 KB for everything else).
 * **The hourly sweep now also deletes completed blobs no live submission needs**, and clears the
   stored rows of submissions that ended without publishing once they are 30 days old. Blobs of
   merged submissions are kept, so the next edit to that board uploads only what changed.
-* **The review app lists every file that changes on the server**, not only images, and flags
+* **The maintainer app lists every file that changes on the server**, not only images, and flags
   shared folders, other boards' files and files no row uses.
 
 **Closing a board to contributions** - the lever for one being flooded - no longer needs a code
@@ -1093,24 +1093,24 @@ open.
 
 ---
 
-## Step 13 - Publishing to production from the review application (optional, 2026-09-25)
+## Step 13 - Publishing to production from the maintainer application (optional, 2026-09-25)
 
 **Publishing is two steps now.** Approving a submission publishes it to **BETA**, as before.
-Then, once a reviewer has looked at the board in CRT with the BETA data, they press **Production**
-in the review application and publish that board to **Production** - the data every user downloads.
-Reviewers can do this for the systems they review; you can do it for all of them. **You are e-mailed
-every time a reviewer does it.**
+Then, once a maintainer has looked at the board in CRT with the BETA data, they press **Production**
+in the maintainer application and publish that board to **Production** - the data every user downloads.
+Maintainers can do this for the systems they review; you can do it for all of them. **You are e-mailed
+every time a maintainer does it.**
 
 What is copied: every file in the board's BETA folder that Production lacks or has different bytes
 for, plus the shared files the board uses that differ. Files the board no longer uses, and that
 nothing else in Production uses either, are removed - the plan lists them in red before anyone
 approves, and the publish is refused if that list has changed since. If that list holds
-a shared file, the board's reviewer AND you must both approve before anything is copied (either of
+a shared file, the board's maintainer AND you must both approve before anything is copied (either of
 you first; the other is e-mailed). Each file is hashed as it is copied and only replaces the real
-one if it matches BETA. If BETA has changed since the reviewer opened the board, the publish is
+one if it matches BETA. If BETA has changed since the maintainer opened the board, the publish is
 refused and they are told to look again.
 
-**It is OFF until you do all of the following.** Until then the review application says so, and the
+**It is OFF until you do all of the following.** Until then the maintainer application says so, and the
 interlock from step 3 holds exactly as before.
 
 **1. Let the service write the Production DATA folder - and only that folder.** This is the one
@@ -1160,9 +1160,9 @@ journalctl -u crt-server -n 30 --no-pager
 **To switch it off again,** empty the three settings and restart, then undo steps 1 and 2 to put
 back the kernel-level guarantee.
 
-**The risk you are accepting,** stated plainly: a reviewer's account, with a password as its only
+**The risk you are accepting,** stated plainly: a maintainer's account, with a password as its only
 factor (two-factor sign-in is not built), can now publish its own boards to every user. What still
-stands in the way: the reviewer only has their own systems, and a shared file also needs your own
+stands in the way: the maintainer only has their own systems, and a shared file also needs your own
 approval; only bytes already in BETA can be published; you are e-mailed each time; and the audit trail records who did it.
 
 ---
@@ -1182,16 +1182,16 @@ What they will need when you do:
 - **Migrations 0002, 0003 and 0004** apply automatically on the next start. **0004 is required
   before the server can take a single real submission**; it fixes three schema-versus-code
   disagreements that would otherwise fail every submission against MariaDB.
-- **The review endpoints need an administrator account, or a reviewer assigned to at least one
+- **The review endpoints need an administrator account, or a maintainer assigned to at least one
   system.** `GET /api/review/queue` answers 401 without credentials and 403 for an account with
   neither, so the first useful check is a login followed by a queue request with the bearer token.
 - **Migration 0006** (Phase 6 roles, 2026-09-25) applies itself on the next start: it renames the
   pool table to `reviewers`, drops `accounts.is_reviewer`, and adds
-  `submissions.touches_shared_files`. Nothing to do by hand; verify with
-  `SHOW TABLES LIKE 'reviewers'` if in doubt.
+  `submissions.touches_shared_files`. Migration 0010 later renames the table back to `maintainers`
+  (see "The reviewer role is now called maintainer" below). Nothing to do by hand.
 - **Publishing writes the BETA tree only.** The service has no write permission on Production (step
   0), which is the interlock working as designed rather than a misconfiguration to fix. Publishing
-  to production from the review application is a separate, switched-off-by-default feature - step
+  to production from the maintainer application is a separate, switched-off-by-default feature - step
   13.
 
 ---
@@ -1201,11 +1201,11 @@ What they will need when you do:
 **This is the one step with no code path, and nothing works without it.** `is_administrator`
 defaults to 0, no endpoint sets it, and nothing seeds it - so a freshly deployed server has no
 account that can approve anything. `GET /api/review/queue` answers 403 for every account, and the
-review app shows an empty queue with "this account is not allowed to review submissions".
+maintainer app shows an empty queue with "this account is not allowed to review submissions".
 
 That is deliberate rather than an omission: an endpoint that grants administrator is an endpoint
 that can be abused to grant administrator. The first one is made by hand, on the server, by
-somebody who already has database access - which is the maintainer and nobody else.
+somebody who already has database access - which is the project owner and nobody else.
 
 **Register the account through the normal flow first**, so the password is hashed by the service
 rather than written by hand:
@@ -1234,48 +1234,78 @@ SELECT id, email, is_verified, is_administrator, is_locked
 **No restart is needed.** Authority is resolved per request from the account row, which is the
 same property that makes locking an account bite immediately rather than at next login.
 
-## Granting REVIEWERS - from the review application, not SQL
+## Granting MAINTAINERS - from the maintainer application, not SQL
 
-**A reviewer is somebody you assign to a system, and that person reviews AND publishes changes
-to exactly the systems you assign** (the maintainer's two-role model, 2026-09-25). There is no
-flag to set: sign in to the review application as the administrator, press **Reviewers** above
+**A maintainer is somebody you assign to a system, and that person reviews AND publishes changes
+to exactly the systems you assign** (the project owner's two-role model, 2026-09-25). There is no
+flag to set: sign in to the maintainer application as the administrator, press **Maintainers** above
 the queue, pick a system on the left and add an account from the list underneath. The list shows
 every registered account and says, in the line itself, why one cannot be granted - address not
 verified, locked, or already an administrator.
 
 Every board in the BETA tree is listed, whether or not anything has ever been submitted to it,
-so a reviewer can be assigned before the first contribution arrives. **Removal takes effect on
-the person's very next request** - authority is read from the `reviewers` table on every call,
+so a maintainer can be assigned before the first contribution arrives. **Removal takes effect on
+the person's very next request** - authority is read from the `maintainers` table on every call,
 never cached in a session.
 
-What a reviewer gets: the queue filtered to their systems, and Approve on each. A submission that
+What a maintainer gets: the queue filtered to their systems, and Approve on each. A submission that
 adds or changes a file under `Shared files` or `Generic shared files` needs TWO approvals, the
-reviewer's AND yours, for BETA and again for Production (it says "changes shared files" in the row).
+maintainer's AND yours, for BETA and again for Production (it says "changes shared files" in the row).
 Either of you may approve first; that publishes nothing, the row then says "one of two approvals
-given", and the other is e-mailed. The second approval publishes. On a board with no reviewer, your
+given", and the other is e-mailed. The second approval publishes. On a board with no maintainer, your
 approval alone does it. When a submission is queued, whoever must approve is e-mailed: its system's
-reviewers, plus you on a shared-files change; with nobody assigned, you alone.
+maintainers, plus you on a shared-files change; with nobody assigned, you alone.
 
 Migration 0008 (the two approval tables) applies itself on the next start, like 0006 and 0007.
 
-Only an administrator can open the Reviewers screen or call `/api/admin/*`; the server refuses
+Only an administrator can open the Maintainers screen or call `/api/admin/*`; the server refuses
 everyone else regardless of what the app shows.
 
 ### Changing a submission before publishing it
 
-**View in table format** in the review application shows a submission as the Drafts tab's table,
-coloured against the published board, and a reviewer of that board (or you) can correct rows there
+**View in table format** in the maintainer application shows a submission as the Drafts tab's table,
+coloured against the published board, and a maintainer of that board (or you) can correct rows there
 and press Save changes. That saves a new version of the submission: the contributor's original is
 kept in the database, any approval already given is cleared (it was given to other content), the
 contributor is told in their mail and in CRT, and the audit trail records who changed it. A row may
 only point at a file the submission carries or one already published - new files still come from
 contributors. Migration 0009 (`submission_amendments`) applies itself on the next start.
 
+### The reviewer role is now called maintainer (migration 0010)
+
+The review application is now **CRT Maintainer**, and the role it serves is **maintainer** - it was
+"reviewer" until 2026-09-25. Migration 0010 applies itself on the next start: it renames the pool
+table `reviewers` back to `maintainers`, rewrites the stored approval roles (`reviewer` becomes
+`maintainer`, with the CHECK constraints that allow them) and the grant/revoke actions in the audit
+trail. Nothing to do by hand. Check it landed:
+
+```bash
+mysql -u crt_review -p -h 127.0.0.1 crt_review -e "
+  SHOW TABLES LIKE 'maintainers';
+  SELECT DISTINCT role FROM submission_approvals;
+  SELECT DISTINCT role FROM production_approvals;"
+```
+
+The first answers one row; the other two list only `maintainer` and `administrator` (or nothing).
+
+**Deploy this server build before anyone uses the new CRT Maintainer**: the new app calls
+`/api/admin/maintainers`, which the previous server does not have, and the old review application
+calls routes this server no longer answers.
+
+**If the service stops at startup during 0010**, fix what the log names and restart: every statement
+in 0010 is safe to run again except the final rename, which only runs once everything before it has
+succeeded. In the unlikely case the log says `Table 'reviewers' doesn't exist`, the rename happened
+but its record did not; put the name back and restart, and 0010 runs again from the top:
+
+```bash
+mysql -u crt_review -p -h 127.0.0.1 crt_review -e "RENAME TABLE maintainers TO reviewers;"
+```
+
 ### Unused files
 
 A publish now removes the files a board stops using, when nothing else uses them either - the
-reviewer sees that list before approving. Files that were ALREADY unused are yours: **Unused files**
-in the review application (beside Reviewers, administrator only) lists them per data tree, BETA or
+maintainer sees that list before approving. Files that were ALREADY unused are yours: **Unused files**
+in the maintainer application (beside Maintainers, administrator only) lists them per data tree, BETA or
 Production, with sizes. Look through the list, tick the box, and press Remove. The server removes
 only the files on the list that it still finds unused, rewrites that tree's `dataChecksums.json`,
 and records every file in the audit trail (`data.unused_removed`).
@@ -1290,7 +1320,7 @@ is switched on in its Configuration tab (off by default).
 
 ## Staying signed in, and how to end a session
 
-The review app remembers its session between launches, so a reviewer signs in once rather than
+The maintainer app remembers its session between launches, so a maintainer signs in once rather than
 retyping a long password every time. Two things make that safe, and both are worth knowing when
 something looks wrong.
 
@@ -1308,10 +1338,10 @@ and write a `session.reuse_detected` audit entry that reads as an attack. Do not
 app into calling refresh.
 
 **On Windows the stored token is encrypted to the logged-in user** (DPAPI). A copy of
-`%LOCALAPPDATA%\Classic-Repair-Toolbox\review-session.json` taken to another machine or another
+`%LOCALAPPDATA%\Classic-Repair-Toolbox\maintainer-session.json` taken to another machine or another
 account is inert. **On Linux and macOS nothing is stored at all** - there is no equivalent, and
 writing a publishing credential in plain text would be worse than asking for a password - so
-reviewers on those platforms sign in each launch, as before.
+maintainers on those platforms sign in each launch, as before.
 
 ### Ending a session
 
@@ -1354,11 +1384,11 @@ Once an administrator exists, in order. Each step's failure tells you something 
    - `200` with an empty list - working, nothing waiting.
 3. **Submit something from CRT** against the same server, to put a row in the queue. CRT already
    points at `CrtServerBaseUrl`; no client configuration is needed.
-4. **Open it in the review app** - sign in, click the row. The change summary is computed
+4. **Open it in the maintainer app** - sign in, click the row. The change summary is computed
    server-side, so an empty one here means the payload could not be loaded rather than that
    nothing changed.
 5. **Request changes**, then check the contributor side - `GET /api/submissions/{id}` with the
-   contributor's upload token returns `reviewerComment`. That sentence is the contributor's ONLY
+   contributor's upload token returns `maintainerComment`. That sentence is the contributor's ONLY
    feedback; if it comes back empty, the decision did not record.
 6. **Approve** something, last. It writes the BETA tree and **cannot be undone**. Check afterwards
    that the board file appeared under its system folder with the `v2.0.0` suffix, that a `.json`

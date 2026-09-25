@@ -38,10 +38,10 @@
 				<ItemsControl.ItemTemplate>
 					<DataTemplate DataType="local:SubmissionListItem">
 						<!--
-						EACH SUBMISSION IS ITS OWN PANEL (maintainer request, 2026-09-22). A single
+						EACH SUBMISSION IS ITS OWN PANEL (owner request, 2026-09-22). A single
 						bottom rule per row made a list of five read as one continuous block, with
 						nothing saying where one submission ended and the next began - especially
-						once a reviewer comment box appeared inside some of them and not others.
+						once a maintainer comment box appeared inside some of them and not others.
 
 						A full 1px border and a margin between cards is the same "one card per
 						thing" language the Workbooks tab already uses for its entry cards.
@@ -74,7 +74,7 @@
 											   TextWrapping="Wrap" />
 
 									<!--
-									*** "SENT" SITS DIRECTLY UNDER THE HEADLINE *** (maintainer
+									*** "SENT" SITS DIRECTLY UNDER THE HEADLINE *** (owner
 									request, 2026-09-23). It is the one fact that never changes
 									about a submission, so it belongs with the thing it identifies
 									- which board, and when it went. Below the summary and the
@@ -102,10 +102,10 @@
 
 										<!--
 										*** "New" ON THE OUTCOME ITSELF, for a decision that arrived with
-										no comment (maintainer report, 2026-09-23). ***
+										no comment (owner report, 2026-09-23). ***
 
-										A reviewer approving good work usually writes nothing, so that row
-										has no reviewer panel - and the existing "New" badge and "Mark as
+										A maintainer approving good work usually writes nothing, so that row
+										has no maintainer panel - and the existing "New" badge and "Mark as
 										read" button both live INSIDE that panel. The badge in the tab
 										counted the row, correctly, and the window then offered no way at
 										all to say it had been seen.
@@ -125,7 +125,7 @@
 													   FontWeight="SemiBold" />
 										</Border>
 
-										<!-- Same EXPLICIT DISMISS rule the reviewer panel's own button
+										<!-- Same EXPLICIT DISMISS rule the maintainer panel's own button
 										     follows: opening this window marks nothing read, so each row
 										     is tracked individually. -->
 										<Button Content="Mark as read"
@@ -137,7 +137,7 @@
 									</StackPanel>
 
 									<!--
-									*** "Last checked" IS GONE (maintainer request, 2026-09-23). ***
+									*** "Last checked" IS GONE (owner request, 2026-09-23). ***
 									It was this computer's own bookkeeping - when CRT last asked the
 									server - and said nothing about the submission itself. Asked what it
 									meant and then told to remove it, which is the right call: beside
@@ -149,11 +149,11 @@
 									records LastCheckedUtc - the value is genuinely useful for diagnosing
 									a stale list, it just does not earn a line on every card.
 
-									"Replied ..." lives INSIDE the reviewer panel below - a date about the
+									"Replied ..." lives INSIDE the maintainer panel below - a date about the
 									comment belongs with the comment.
 									-->
 
-									<!-- A reviewer changed it in the review application before deciding
+									<!-- A maintainer changed it in the maintainer application before deciding
 									     (2026-09-25). Collapsed when nobody did. -->
 									<TextBlock Text="{Binding AmendedText}"
 											   IsVisible="{Binding HasAmendedText}"
@@ -161,7 +161,7 @@
 											   FontStyle="Italic"
 											   Margin="0,4,0,0" />
 
-									<!-- What a reviewer said, once Phase 5 gives them somewhere to
+									<!-- What a maintainer said, once Phase 5 gives them somewhere to
 									     say it. Collapsed entirely until then, rather than showing
 									     an empty labelled box on every row. -->
 									<!--
@@ -171,7 +171,7 @@
 									acknowledged it falls back to the ordinary form border and
 									stays readable - marking it read must not hide what was said.
 									-->
-									<Border IsVisible="{Binding HasReviewerComment}"
+									<Border IsVisible="{Binding HasMaintainerComment}"
 											Background="{DynamicResource Form_Bg}"
 											BorderBrush="{Binding CommentBorderBrush}"
 											BorderThickness="{Binding CommentBorderThickness}"
@@ -181,7 +181,7 @@
 										<StackPanel Spacing="2">
 											<!--
 											THE HEADER: who, when, and whether it is new - STACKED ON TWO LINES,
-											with a blank line before the comment itself (maintainer request,
+											with a blank line before the comment itself (owner request,
 											2026-09-23). Label and date used to sit side by side, which read as a
 											caption strip rather than as the heading of something to be read.
 
@@ -189,7 +189,7 @@
 											comment, so it belongs with it.
 											-->
 											<StackPanel Orientation="Horizontal" Spacing="8">
-												<TextBlock Text="Feedback from reviewer" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+												<TextBlock Text="Feedback from maintainer" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
 
 												<!-- The badge takes the row's own status colour
 												     rather than a literal IndianRed, so it matches
@@ -211,18 +211,18 @@
 													   FontSize="10"
 													   Opacity="0.75" />
 
-											<!-- The blank line the maintainer asked for, as a MARGIN rather than
+											<!-- The blank line the project owner asked for, as a MARGIN rather than
 											     an empty TextBlock: an empty block still claims a line box whose
 											     height depends on the font, where a margin is exactly the gap
 											     that was asked for. -->
-											<TextBlock Text="{Binding ReviewerComment}"
+											<TextBlock Text="{Binding MaintainerComment}"
 													   TextWrapping="Wrap"
 													   FontSize="11"
 													   Margin="0,8,0,0" />
 
 											<!--
 											EXPLICIT DISMISS, not "cleared by opening this window"
-											(maintainer's choice). Opening the list to check on a
+											(owner's choice). Opening the list to check on a
 											different submission must not silently mark feedback
 											read that was never actually looked at.
 											-->

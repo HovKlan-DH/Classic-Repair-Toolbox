@@ -37,7 +37,7 @@ namespace CRT.Server.Configuration
         // writes BETA - can ever land in Production.
         //
         // *** PRODUCTION IS WRITTEN SINCE 2026-09-25, BUT ONLY BY THE PROMOTION. *** The
-        // maintainer asked for a two-stage publish - BETA first, Production after a reviewer has
+        // project owner asked for a two-stage publish - BETA first, Production after a maintainer has
         // checked it there - so the service may now write ProductionDataTreeRoot below, and only
         // through ProductionPromoter, which copies bytes that are already in BETA and nothing
         // else. Until the three Production* settings below are set, that is switched OFF and the
@@ -45,9 +45,9 @@ namespace CRT.Server.Configuration
         public string? ProductionTreeRoot { get; set; }
 
         // -----------------------------------------------------------------------------------
-        // Publishing to PRODUCTION (maintainer request, 2026-09-25). All three, or none.
+        // Publishing to PRODUCTION (owner request, 2026-09-25). All three, or none.
         //
-        // NONE means the feature is off: the review application says so, and nothing can write
+        // NONE means the feature is off: the maintainer application says so, and nothing can write
         // Production. That is the safe answer for a service configured before this existed, which
         // is why these three have no default and are not required.
         //
@@ -101,7 +101,7 @@ namespace CRT.Server.Configuration
         // ProductionTreeRoot were somehow both wrong, a path with no "-BETA" in it does not start
         // the service.
         //
-        // The maintainer sets this to empty ONLY when deliberately pointing the service at
+        // The project owner sets this to empty ONLY when deliberately pointing the service at
         // Production, which is a decision the strategy document says must be explicit. Defaulted
         // rather than null because the safe value is knowable.
         public string RequiredTreeMarker { get; set; } = "-BETA";
@@ -139,7 +139,7 @@ namespace CRT.Server.Configuration
         // validated at startup and read by nothing, so it promised a protection that did not exist
         // (security review, 2026-09-25). It was removed rather than implemented, because a desktop
         // client holding a rotating token in a file is exactly what SessionExtensionRules' header
-        // explains the maintainer decided against. An old appsettings file that still carries the
+        // explains the project owner decided against. An old appsettings file that still carries the
         // key is harmless: an unknown key binds to nothing.
         // -----------------------------------------------------------------------------------
         public int RefreshTokenDays { get; set; } = 30;

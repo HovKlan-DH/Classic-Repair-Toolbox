@@ -4,7 +4,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // BoardTableDeletedWith - the sentence the board table shows when a deleted component took rows on
-// other sheets and its highlights with it (maintainer request, 2026-09-25). Those sheets are not
+// other sheets and its highlights with it (owner request, 2026-09-25). Those sheets are not
 // the one on screen, so this line is the only place the user learns what else went.
 // ###########################################################################################
 public sealed class BoardTableDeletedWithTests

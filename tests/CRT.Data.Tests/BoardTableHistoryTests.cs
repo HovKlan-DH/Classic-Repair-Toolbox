@@ -6,7 +6,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Undo and redo in the Drafts tab's table editor - Ctrl+Z / Ctrl+Y (maintainer request,
+// Undo and redo in the Drafts tab's table editor - Ctrl+Z / Ctrl+Y (owner request,
 // 2026-09-24).
 //
 // Every step is a snapshot of one sheet's live rows (see BoardTableHistory's header), so these

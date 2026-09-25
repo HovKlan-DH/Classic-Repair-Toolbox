@@ -5,19 +5,19 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // THE FILES A PUBLISH WILL REMOVE, shown to the reviewer BEFORE they approve (maintainer,
-    // 2026-09-25: "Is this list of file deletions visible BEFORE the reviewer/admin approves it to
+    // THE FILES A PUBLISH WILL REMOVE, shown to the maintainer BEFORE they approve (owner,
+    // 2026-09-25: "Is this list of file deletions visible BEFORE the maintainer/admin approves it to
     // either BETA or real? It must be, so it is clear what will happen").
     //
-    // One record on both ends of the wire - the server builds it, the review application shows it
+    // One record on both ends of the wire - the server builds it, the maintainer application shows it
     // and sends the list it showed back with the approval - so what is on screen and what is
     // removed cannot drift apart. The server refuses an approval whose list no longer matches
-    // (Matches): another publish can change whether a shared file is still used, and the reviewer
+    // (Matches): another publish can change whether a shared file is still used, and the maintainer
     // then looks again rather than having files removed they were never shown.
     //
     // A file is removed only when the board stops citing it AND nothing else in that tree uses it
     // (DataTreeUsage). BlockedBecause is set when the tree cannot be read completely - fail closed,
-    // so nothing is removed and the reviewer is told why.
+    // so nothing is removed and the maintainer is told why.
     // ###########################################################################################
     public sealed record FileRemovalPreview(IReadOnlyList<string> Files, string? BlockedBecause)
     {
@@ -61,7 +61,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Is this the list the reviewer was shown? Order-free, exact spelling. A client that sends
+        // Is this the list the maintainer was shown? Order-free, exact spelling. A client that sends
         // nothing was shown nothing, which matches only an empty list.
         // ###########################################################################################
         public bool Matches(IEnumerable<string>? shown)

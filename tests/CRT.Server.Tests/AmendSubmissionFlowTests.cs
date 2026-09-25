@@ -8,8 +8,8 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // AmendSubmissionFlow - a reviewer's change to a submission, made in the review application's
-    // table (maintainer request, 2026-09-25: "The reviewer should be able to also edit whatever, if
+    // AmendSubmissionFlow - a maintainer's change to a submission, made in the maintainer application's
+    // table (owner request, 2026-09-25: "The maintainer should be able to also edit whatever, if
     // he chooses to publish it afterwards").
     //
     // The negative tests come first: an amendment rewrites what will be published, so who may do
@@ -48,7 +48,7 @@ namespace CRT.Server.Tests
 
         private BlobStore Blobs() => new(this.thisBlobs, NullLogger<BlobStore>.Instance);
 
-        private static ReviewAccess ReviewerOf(params string[] systems) =>
+        private static ReviewAccess MaintainerOf(params string[] systems) =>
             ReviewAccess.For(AmendSubmissionFlowTests.Account(administrator: false), systems);
 
         private static ReviewAccess Administrator() =>
@@ -110,19 +110,19 @@ namespace CRT.Server.Tests
             FakeSubmissionStore store, long id, SubmissionRows rows, ReviewAccess? access = null, int expectedVersion = 0,
             FakeAccountStore? accounts = null, PublishLock? publishLock = null) =>
             AmendSubmissionFlow.AmendAsync(
-                access ?? AmendSubmissionFlowTests.ReviewerOf(AmendSubmissionFlowTests.SystemId),
+                access ?? AmendSubmissionFlowTests.MaintainerOf(AmendSubmissionFlowTests.SystemId),
                 id, expectedVersion, rows, this.thisData, store, accounts ?? new FakeAccountStore(), this.Blobs(),
                 publishLock ?? new PublishLock(), AmendSubmissionFlowTests.Now, CancellationToken.None);
 
         // ---- who, and when --------------------------------------------------------------------
 
         [Fact]
-        public async Task A_reviewer_of_ANOTHER_board_cannot_amend_and_nothing_changes()
+        public async Task A_maintainer_of_ANOTHER_board_cannot_amend_and_nothing_changes()
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
             SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(store, id);
 
-            AmendOutcome outcome = await this.AmendAsync(store, id, rows, AmendSubmissionFlowTests.ReviewerOf("Commodore/C128/310378"));
+            AmendOutcome outcome = await this.AmendAsync(store, id, rows, AmendSubmissionFlowTests.MaintainerOf("Commodore/C128/310378"));
 
             Assert.True(outcome.IsForbidden);
             Assert.Empty(store.Amendments);
@@ -143,9 +143,9 @@ namespace CRT.Server.Tests
             Assert.Empty(store.Amendments);
         }
 
-        // Two reviewers at once: the second is told whose change they would overwrite.
+        // Two maintainers at once: the second is told whose change they would overwrite.
         [Fact]
-        public async Task An_amendment_made_after_the_reviewer_opened_it_is_refused_naming_who()
+        public async Task An_amendment_made_after_the_maintainer_opened_it_is_refused_naming_who()
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
             SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(store, id);
@@ -162,8 +162,8 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // *** THE VERSION IS RE-CHECKED WHERE IT IS STORED (code review, 2026-09-25). *** The flow's
         // own check ran before the store's transaction, and the store never saw the version the
-        // reviewer opened - so an amendment committed in between was silently overwritten, the
-        // exact loss the version exists to prevent. Here the other reviewer's change lands in that
+        // maintainer opened - so an amendment committed in between was silently overwritten, the
+        // exact loss the version exists to prevent. Here the other maintainer's change lands in that
         // gap, after the flow has checked and before it saves.
         // ###########################################################################################
         [Fact]
@@ -211,7 +211,7 @@ namespace CRT.Server.Tests
         // *** AN AMENDMENT WAITS FOR A PUBLISH IN PROGRESS (code review, 2026-09-25). *** Without the
         // publish lock an amendment could land while an approval was writing the tree: the tree got
         // the rows as they were, the database the amended ones - and the contributor was mailed that
-        // a reviewer's change had been published. Taking the lock, it waits, then finds the
+        // a maintainer's change had been published. Taking the lock, it waits, then finds the
         // submission decided.
         // ###########################################################################################
         [Fact]
@@ -225,7 +225,7 @@ namespace CRT.Server.Tests
 
             using (await publishLock.EnterAsync(CancellationToken.None))
             {
-                // A publish is under way while the reviewer saves...
+                // A publish is under way while the maintainer saves...
                 amending = this.AmendAsync(store, id, rows, publishLock: publishLock);
 
                 // ...and finishes, recording the submission as published.
@@ -284,9 +284,9 @@ namespace CRT.Server.Tests
 
         // Files follow the rows: a deleted row drops the file it cited.
         // ###########################################################################################
-        // *** A REVIEWER CAN DELETE A SCHEMATIC THAT HAS HIGHLIGHTS (code review, 2026-09-25). ***
+        // *** A MAINTAINER CAN DELETE A SCHEMATIC THAT HAS HIGHLIGHTS (code review, 2026-09-25). ***
         // The highlights are not in the table, so the save used to be refused on
-        // highlight.unknown_schematic with nothing the reviewer could do about it. They now go with
+        // highlight.unknown_schematic with nothing the maintainer could do about it. They now go with
         // their schematic (SubmissionRowsBoard.WithTableSections), and so does its image file.
         // ###########################################################################################
         [Fact]
@@ -318,7 +318,7 @@ namespace CRT.Server.Tests
                 (await store.LoadPayloadAsync(id, CancellationToken.None))!.Files.Select(file => file.Path));
         }
 
-        // A reviewer may point a row at a file that is already PUBLISHED - the server takes its own
+        // A maintainer may point a row at a file that is already PUBLISHED - the server takes its own
         // copy, the way a new submission's unchanged files are taken.
         [Fact]
         public async Task A_row_may_cite_a_file_already_published_and_the_server_takes_its_own_copy()
@@ -337,7 +337,7 @@ namespace CRT.Server.Tests
             Assert.True(this.Blobs().Contains(added.Sha256));
         }
 
-        // A reviewer edits rows; they cannot bring in a file nobody has sent.
+        // A maintainer edits rows; they cannot bring in a file nobody has sent.
         [Fact]
         public async Task A_row_citing_a_file_nobody_has_is_refused_and_nothing_changes()
         {
@@ -357,7 +357,7 @@ namespace CRT.Server.Tests
         public async Task Amending_clears_the_approvals_given_and_an_approved_submission_waits_again()
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync(SubmissionState.Approved);
-            await store.AddApprovalAsync(id, ApproverRole.Reviewer, 7, "Anna", AmendSubmissionFlowTests.Now, CancellationToken.None);
+            await store.AddApprovalAsync(id, ApproverRole.Maintainer, 7, "Anna", AmendSubmissionFlowTests.Now, CancellationToken.None);
 
             Assert.True((await this.AmendAsync(store, id, await AmendSubmissionFlowTests.EditedRowsAsync(store, id))).IsAmended);
 

@@ -5,17 +5,17 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // THE REVIEWER'S TABLE (maintainer request, 2026-09-25): "make the same 'Edit in table
-    // format' available in the review app ... The reviewer should be able to also edit whatever, if
+    // THE MAINTAINER'S TABLE (owner request, 2026-09-25): "make the same 'Edit in table
+    // format' available in the maintainer app ... The maintainer should be able to also edit whatever, if
     // he chooses to publish it afterwards."
     //
-    // What goes over the wire between CRT.Server and CRT.Review for it, and the one rule for what
+    // What goes over the wire between CRT.Server and CRT.Maintainer for it, and the one rule for what
     // an amendment may change - in CRT.Data so both ends use the same types and the same rule.
     // ###########################################################################################
 
-    // What the review application's table opens on: the published board (null for a new system)
+    // What the maintainer application's table opens on: the published board (null for a new system)
     // and the submission's current rows, plus the amendment version the rows are at - sent back
-    // with an amendment, so two reviewers editing at once cannot silently overwrite each other.
+    // with an amendment, so two maintainers editing at once cannot silently overwrite each other.
     public sealed record ReviewTableData(int Version, SubmissionRows? Published, SubmissionRows Submitted);
 
     public static class SubmissionRowsBoard
@@ -75,10 +75,10 @@ namespace Handlers.DataHandling
         // *** EXCEPT THAT THEY FOLLOW THE SCHEMATIC THEY ARE DRAWN ON (code review, 2026-09-25). ***
         // Highlights and calibrations name a schematic, and the table can delete or rename one.
         // Kept unchanged, they named a schematic that no longer existed, the validator refused the
-        // save (highlight.unknown_schematic), and nothing in the table could fix it - the reviewer
+        // save (highlight.unknown_schematic), and nothing in the table could fix it - the maintainer
         // could not correct a schematic at all. See FollowSchematics for the rule.
         //
-        // *** AND A DELETED COMPONENT'S HIGHLIGHTS GO WITH IT (maintainer decision, 2026-09-25). ***
+        // *** AND A DELETED COMPONENT'S HIGHLIGHTS GO WITH IT (owner decision, 2026-09-25). ***
         // The table drops them when it saves (BoardTableDocument.ApplyTo), because only the table
         // can tell a component deleted from one renamed. So a highlight the edit no longer carries
         // is dropped - but ONLY when no component in the edit has its label: a request cannot use
@@ -222,7 +222,7 @@ namespace Handlers.DataHandling
 
         // The name a highlight or calibration on `schematicName` carries after the edit: unchanged,
         // renamed, or null when its schematic was deleted. A name the CURRENT rows never had is left
-        // as it is - it was not the reviewer's edit that made it unknown.
+        // as it is - it was not the maintainer's edit that made it unknown.
         private static string? Follow(IReadOnlyDictionary<string, string?> follow, string? schematicName)
         {
             string name = schematicName ?? string.Empty;

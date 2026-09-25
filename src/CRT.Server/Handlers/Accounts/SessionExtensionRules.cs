@@ -3,8 +3,8 @@ using System;
 namespace CRT.Server.Handlers.Accounts
 {
     // ###########################################################################################
-    // WHEN A SESSION'S EXPIRY SHOULD BE PUSHED FORWARD - sliding expiry, so a reviewer signs in
-    // once rather than on a schedule (maintainer request, 2026-09-22).
+    // WHEN A SESSION'S EXPIRY SHOULD BE PUSHED FORWARD - sliding expiry, so a maintainer signs in
+    // once rather than on a schedule (owner request, 2026-09-22).
     //
     // *** THIS IS NOT REFRESH, AND THE DIFFERENCE IS THE WHOLE POINT. *** AccountFlows.RefreshAsync
     // issues a NEW token and marks the old one `replaced_by_id`, which arms reuse detection: the
@@ -33,7 +33,7 @@ namespace CRT.Server.Handlers.Accounts
         // ###########################################################################################
         // Only extend once the session is meaningfully used up.
         //
-        // *** WITHOUT THIS THRESHOLD, EVERY REQUEST WRITES A ROW. *** The review app calls the
+        // *** WITHOUT THIS THRESHOLD, EVERY REQUEST WRITES A ROW. *** The maintainer app calls the
         // queue on launch, on every refresh click and after every decision, so extending on each
         // one turns a read-only screen into a steady stream of UPDATEs against the sessions table
         // for no benefit - the expiry would move by seconds.

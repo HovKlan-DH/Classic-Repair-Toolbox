@@ -8,9 +8,9 @@ namespace Handlers.DataHandling
     // What CHANGED between the published board and a submitted one, counted per section
     // (NewContributeStrategy.md Phase 5, task 3).
     //
-    // *** THE REVIEW APP OPENS ON THIS, NEVER ON A WHOLE BOARD. *** That is task 3's instruction
+    // *** THE MAINTAINER APP OPENS ON THIS, NEVER ON A WHOLE BOARD. *** That is task 3's instruction
     // and it is the difference between reviewing and reading: a C64 board carries hundreds of
-    // components and over a thousand files, and a reviewer shown all of it has to find the change
+    // components and over a thousand files, and a maintainer shown all of it has to find the change
     // themselves. "3 components changed, 1 added, 2 images added, 1 highlight moved" is a
     // reviewable sentence; a board is not.
     //
@@ -21,11 +21,11 @@ namespace Handlers.DataHandling
     // submissions it matters most for.
     //
     // *** A RENAME IS CARRIED EXPLICITLY, because natural keys cannot see one. *** Renaming U8 to
-    // U9 reads as a delete plus an add, which is technically true and tells the reviewer nothing.
+    // U9 reads as a delete plus an add, which is technically true and tells the maintainer nothing.
     // The client knows it was a rename and says so in the manifest, and this honours that.
     //
     // Pure, so the whole thing is unit tested with no UI, no database and no files - which is the
-    // point of putting the review app's central screen in CRT.Data rather than in its code-behind.
+    // point of putting the maintainer app's central screen in CRT.Data rather than in its code-behind.
     // ###########################################################################################
     public static class ReviewSummary
     {
@@ -46,9 +46,9 @@ namespace Handlers.DataHandling
             //
             // *** WITHOUT THESE, CALIBRATIONS PUBLISH UNREVIEWED. *** They began travelling with
             // submissions on 2026-09-22; BoardData has no calibration section, so comparing only
-            // the two boards would let them reach the published tree with no reviewer ever having
+            // the two boards would let them reach the published tree with no maintainer ever having
             // seen them. Getting one wrong breaks nothing visibly - the trace overlay simply lands
-            // in the wrong place - so it is exactly the change a reviewer must be TOLD about.
+            // in the wrong place - so it is exactly the change a maintainer must be TOLD about.
             //
             // Optional and trailing, so every existing caller keeps working and reports no
             // calibration changes, which is right for one that does not know about them.
@@ -179,7 +179,7 @@ namespace Handlers.DataHandling
                 //
                 // The third is the one a first implementation omitted, and the omission matters:
                 // with U8 still present, a submission declaring "U8 became U9" would have had U9
-                // absorbed as a rename and never shown to the reviewer as the ADDITION it really
+                // absorbed as a rename and never shown to the maintainer as the ADDITION it really
                 // is. Hiding an added row from the person approving it is precisely what this
                 // screen exists to prevent. Caught by its own test.
                 if (!beforeRows.ContainsKey(rename.From) ||
@@ -192,7 +192,7 @@ namespace Handlers.DataHandling
                 // *** "ALSO CHANGED" MEANS "BESIDES THE RENAME". *** The renamed value is itself
                 // one of the compared fields - a component's BoardLabel IS its key - so a
                 // straight row comparison reports every rename as also changed, which is true and
-                // useless: it is the rename, counted twice. What a reviewer needs to know is
+                // useless: it is the rename, counted twice. What a maintainer needs to know is
                 // whether anything OTHER than the name moved, because "renamed" invites them not
                 // to look further. So the key's own parts are excluded from this comparison.
                 //
@@ -246,11 +246,11 @@ namespace Handlers.DataHandling
         //
         // *** UuidV4 IS DELIBERATELY IGNORED. *** Phase 4 retired it as an identity and stopped
         // writing new ones, so an old row carrying one and a resubmitted row without it are the
-        // SAME row as far as a reviewer is concerned. Comparing it would report a change nobody
+        // SAME row as far as a maintainer is concerned. Comparing it would report a change nobody
         // made, on every row of every board authored before the transition.
         //
         // Comparison is ORDINAL and case-SENSITIVE, like every other comparison in this project:
-        // changing "u8" to "U8" is a real edit a reviewer should see, and on the Linux server a
+        // changing "u8" to "U8" is a real edit a maintainer should see, and on the Linux server a
         // file name's case genuinely matters.
         // ###########################################################################################
         private static bool RowsMatch(object before, object after) =>
@@ -292,7 +292,7 @@ namespace Handlers.DataHandling
         // One row's fields, as NAME/VALUE pairs.
         //
         // *** THE NAMES ARE THE WORKBOOK'S OWN COLUMN HEADERS, from BoardWorkbookSchema. *** A
-        // reviewer reading "Part-number changed" and a maintainer opening the .xlsx to look must
+        // maintainer reading "Part-number changed" and someone opening the .xlsx to look must
         // be talking about the same column. Inventing friendlier labels here would create a second
         // vocabulary for the same data, and the two would drift.
         //
@@ -336,7 +336,7 @@ namespace Handlers.DataHandling
             ],
             // The coordinates are STRINGS here, like every other BoardData field - they are
             // parsed invariant-culture where they are used, not on the way in. So they compare as
-            // text, which is also what a reviewer wants: "100" becoming "100.0" is a real edit to
+            // text, which is also what a maintainer wants: "100" becoming "100.0" is a real edit to
             // the stored data even though the number is the same.
             ComponentHighlightEntry entry =>
             [
@@ -391,8 +391,8 @@ namespace Handlers.DataHandling
             // a change on every field of every calibration, forever, against a board nobody had
             // touched. Fifth encounter with that class of bug in this project.
             //
-            // The names are the JSON sidecar's own field names, so a reviewer reading "ScaleX" and
-            // a maintainer opening the `.json` by hand are talking about the same thing.
+            // The names are the JSON sidecar's own field names, so a maintainer reading "ScaleX" and
+            // someone opening the `.json` by hand are talking about the same thing.
             // ###########################################################################################
             KiCadCalibrationEntry entry =>
             [
@@ -415,7 +415,7 @@ namespace Handlers.DataHandling
         // as a field-level diff").
         //
         // *** THIS IS WHAT MAKES A "changed" ROW REVIEWABLE. *** Knowing that U8 changed tells a
-        // reviewer nothing they can act on; knowing its Part-number went from 906114 to 251715-01
+        // maintainer nothing they can act on; knowing its Part-number went from 906114 to 251715-01
         // is the whole decision. Without it they would have to open the board in CRT and hunt.
         //
         // A cleared field is reported with an EMPTY "after" rather than omitted, because deleting
@@ -450,7 +450,7 @@ namespace Handlers.DataHandling
         // A section's rows keyed by natural key.
         //
         // A DUPLICATE KEY KEEPS THE FIRST ROW rather than throwing. Duplicates are a validation
-        // error SubmissionValidator already reports, and a reviewer opening a submission to find
+        // error SubmissionValidator already reports, and a maintainer opening a submission to find
         // out what is wrong with it must not be met with a crash instead of the answer.
         // ###########################################################################################
         private static Dictionary<string, object> KeyRows(ReviewSection section, BoardData data)
@@ -474,19 +474,19 @@ namespace Handlers.DataHandling
                 : new ReviewFieldChange("Revision date", before.RevisionDate, after.RevisionDate);
 
         // ###########################################################################################
-        // The sections, in the order a reviewer reads them: what the board IS first (schematics,
+        // The sections, in the order a maintainer reads them: what the board IS first (schematics,
         // components), then what is attached to it, then metadata.
         //
-        // Section names are the SHEET names, so a finding that names a section and a workbook a
-        // maintainer opens by hand agree about what it is called.
+        // Section names are the SHEET names, so a finding that names a section and a workbook
+        // someone opens by hand agree about what it is called.
         // ###########################################################################################
         // ###########################################################################################
-        // The highlights section's name, as a constant because the REVIEW APP matches on it.
+        // The highlights section's name, as a constant because the MAINTAINER APP matches on it.
         //
         // Every other section is named by a BoardWorkbookSchema sheet constant, but highlights do
         // not live in the workbook at all - they are in the `.json` sidecar beside it
         // (BoardComponentHighlightStorage), whose own property name this matches exactly. So there
-        // is no sheet constant to borrow, and it was a bare literal until the review app needed to
+        // is no sheet constant to borrow, and it was a bare literal until the maintainer app needed to
         // find this section to draw a moved highlight. A literal on both sides of a process
         // boundary is a rename waiting to break the one screen that renders geometry.
         // ###########################################################################################
@@ -495,8 +495,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The KiCad calibration section's name. Like highlights, this does NOT come from a workbook
         // sheet - calibrations live in the `.json` sidecar under their own root - so there is no
-        // BoardWorkbookSchema constant to borrow. Named to match that root, so a reviewer reading
-        // this and a maintainer opening the file by hand are talking about the same thing.
+        // BoardWorkbookSchema constant to borrow. Named to match that root, so a maintainer reading
+        // this and someone opening the file by hand are talking about the same thing.
         // ###########################################################################################
         public const string SectionKiCadCalibrations = "KiCad calibration points";
 

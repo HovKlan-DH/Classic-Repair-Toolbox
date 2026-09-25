@@ -7,7 +7,7 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers ReviewEndpoints.PublishedFilePaths - the list of files the PUBLISHED board
-    // references, which the review app pairs a submission's own files against (Phase 5, task 4).
+    // references, which the maintainer app pairs a submission's own files against (Phase 5, task 4).
     //
     // *** THIS EXISTS BECAUSE THE FIRST VERSION DERIVED IT ON THE CLIENT AND WAS WRONG. *** The
     // review window built the published side from the change summary's row keys. A summary's keys
@@ -17,7 +17,7 @@ namespace CRT.Server.Tests
     //
     // Both failures are silent. The panel draws perfectly; it simply describes something that did
     // not happen. That is the worst shape a defect can take on a screen whose entire purpose is
-    // telling a reviewer what a submission does, so the server states the list outright instead.
+    // telling a maintainer what a submission does, so the server states the list outright instead.
     //
     // Reached by reflection rather than made public: it is an implementation detail of one
     // endpoint, and widening it to public for a test would put it on the server's API surface for
@@ -75,7 +75,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void One_file_cited_by_SEVERAL_rows_is_listed_ONCE()
         {
-            // Legitimate and common: the same scope capture cited for two pins. The review app
+            // Legitimate and common: the same scope capture cited for two pins. The maintainer app
             // wants the set of files, and a duplicate would draw the same comparison twice.
             IReadOnlyList<string> files = ReviewPublishedFilesTests.Invoke(
                 ReviewPublishedFilesTests.Board("Images/shared.png", "Images/shared.png"));
@@ -99,7 +99,7 @@ namespace CRT.Server.Tests
         public void Files_differing_only_in_CASE_are_kept_apart()
         {
             // The server's filesystem is Linux and the data tree is case-sensitive from Phase 3
-            // onward. Folding them together here would hide one of the two from the reviewer.
+            // onward. Folding them together here would hide one of the two from the maintainer.
             IReadOnlyList<string> files = ReviewPublishedFilesTests.Invoke(
                 ReviewPublishedFilesTests.Board("Images/U8.png", "Images/u8.png"));
 
@@ -107,7 +107,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void The_order_is_STABLE_so_two_reviewers_see_the_same_list()
+        public void The_order_is_STABLE_so_two_maintainers_see_the_same_list()
         {
             IReadOnlyList<string> files = ReviewPublishedFilesTests.Invoke(
                 ReviewPublishedFilesTests.Board("z.png", "a.png", "m.png"));
@@ -128,11 +128,11 @@ namespace CRT.Server.Tests
         //
         // This method used to read ComponentImages alone, while the SUBMISSION side
         // (SubmissionManifestBuilder.CollectReferencedFiles) collects four sources: schematic
-        // images, component images, component local files and board local files. The review app
+        // images, component images, component local files and board local files. The maintainer app
         // compares the two lists, so every file from the three missing sources was present on the
-        // submitted side, absent on the published side, and reported to the reviewer as ADDED.
+        // submitted side, absent on the published side, and reported to the maintainer as ADDED.
         //
-        // Reported by the maintainer: a submission changing one component's short description
+        // Reported by the project owner: a submission changing one component's short description
         // listed every schematic image as "Added / Not in the published board".
         //
         // Every test ABOVE builds a board out of ComponentImages only, which is exactly why none
@@ -246,7 +246,7 @@ namespace CRT.Server.Tests
         }
 
         // -------------------------------------------------------------------------------------
-        // SchematicImageFiles - which picture each schematic is drawn from, so the review app can
+        // SchematicImageFiles - which picture each schematic is drawn from, so the maintainer app can
         // put a moved highlight back on its own board.
         // -------------------------------------------------------------------------------------
 
@@ -289,7 +289,7 @@ namespace CRT.Server.Tests
         public void The_SUBMITTED_board_WINS_when_both_name_a_schematic()
         {
             // *** THE ORDERING IS THE POINT. *** A submission can repoint a schematic at a new
-            // image, and the reviewer must see the board as the submission PROPOSES it - drawing
+            // image, and the maintainer must see the board as the submission PROPOSES it - drawing
             // the moved highlight on the old picture would be judging the change against the
             // wrong board.
             IReadOnlyDictionary<string, string> images = ReviewPublishedFilesTests.InvokeImages(

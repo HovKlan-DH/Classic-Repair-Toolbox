@@ -4,7 +4,7 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // What went with a component deleted in the board table (maintainer request, 2026-09-25): its
+    // What went with a component deleted in the board table (owner request, 2026-09-25): its
     // rows on the other component sheets, deleted at once, and its highlights, which go when the
     // table is saved. See BoardTableDocument.DeleteRowsOfComponent.
     //

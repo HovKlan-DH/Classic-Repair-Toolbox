@@ -108,7 +108,7 @@ namespace CRT.Server.Handlers.Email
 
                 {resetCode}
 
-                Open the Review application, choose "I forgot my password", then paste this code
+                Open CRT Maintainer, choose "I forgot my password", then paste this code
                 and type the password you want.
 
                 The code works for {validHours} hours.
@@ -133,8 +133,8 @@ namespace CRT.Server.Handlers.Email
         // on 2026-09-22, having been unreachable since Phase 3.
         //
         // The fix could have been an HTML form served by the API. It is a pasted code instead
-        // (maintainer's choice) because the audience is a handful of maintainers who are already
-        // sitting in front of the review app, and serving HTML would mean the API growing a page
+        // (owner's choice) because the audience is a handful of maintainers who are already
+        // sitting in front of the maintainer app, and serving HTML would mean the API growing a page
         // to style, escape and keep accessible for one form.
         //
         // *** A PREFETCHING MAIL CLIENT CANNOT BURN THIS. *** The old link was a GET, so a scanner
@@ -161,7 +161,7 @@ namespace CRT.Server.Handlers.Email
 
                 {resetCode}
 
-                Open the Review application, choose "I forgot my password", then paste this code
+                Open CRT Maintainer, choose "I forgot my password", then paste this code
                 and type the password you want.
 
                 The code works for {validHours} hours and can only be used once.
@@ -205,7 +205,7 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // THE THREE REVIEW-OUTCOME MAILS (maintainer request, 2026-09-23).
+        // THE THREE REVIEW-OUTCOME MAILS (owner request, 2026-09-23).
         //
         // *** THE AUDIENCE HERE IS NOT AN ACCOUNT HOLDER. *** Every mail above goes to somebody
         // who signed up. These go to a CONTRIBUTOR, who by design has no account, no password and
@@ -214,11 +214,11 @@ namespace CRT.Server.Handlers.Email
         // submission was accepted" is meaningless to someone who sent one three weeks ago.
         //
         // *** NO LINKS, AND NOTHING TO CLICK. *** There is no account to sign in to, so a link
-        // would have nowhere to go. The mail carries the outcome and the reviewer's own words;
+        // would have nowhere to go. The mail carries the outcome and the maintainer's own words;
         // "My submissions" in the app remains the place to see it in context, and is named rather
         // than linked.
         //
-        // *** THE REVIEWER'S COMMENT IS QUOTED VERBATIM AND IS THE POINT OF THE MAIL. *** For a
+        // *** THE MAINTAINER'S COMMENT IS QUOTED VERBATIM AND IS THE POINT OF THE MAIL. *** For a
         // rejection or a change request it is the entire explanation, and the server already
         // refuses either without one (ReviewDecisionRules.IsUsableReason). An approval usually
         // carries none, which is why Published takes it as optional.
@@ -230,24 +230,24 @@ namespace CRT.Server.Handlers.Email
         public static EmailMessage SubmissionPublishedToBeta(
             string toAddress,
             string systemName,
-            string? reviewerComment,
-            bool amendedByReviewer = false)
+            string? maintainerComment,
+            bool amendedByMaintainer = false)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
 
-            string comment = EmailTemplates.QuotedComment(reviewerComment);
+            string comment = EmailTemplates.QuotedComment(maintainerComment);
 
-            // A reviewer corrected some rows in the review application before publishing
+            // A maintainer corrected some rows in the maintainer application before publishing
             // (2026-09-25). Said, so a contributor comparing the result with what they sent is not
             // left wondering where the difference came from.
-            string amended = amendedByReviewer
-                ? "\n\nA reviewer changed some of the details before publishing them, so what is published is not\n" +
+            string amended = amendedByMaintainer
+                ? "\n\nA maintainer changed some of the details before publishing them, so what is published is not\n" +
                   $"exactly what you sent - have a look in {EmailTemplates.ProductName} once your data has updated."
                 : string.Empty;
 
-            // *** "BETA source", NOT JUST "published" (maintainer wording, 2026-09-25). *** Since
+            // *** "BETA source", NOT JUST "published" (owner wording, 2026-09-25). *** Since
             // the two-stage publish, an approval writes the BETA data; everyone else gets it once a
-            // reviewer has checked it there and published it to the source. Saying only
+            // maintainer has checked it there and published it to the source. Saying only
             // "published" told somebody whose own copy of the data would not change for days that
             // it had. "BETA source" and "source" are the words CRT's Configuration tab uses.
             string body =
@@ -299,7 +299,7 @@ namespace CRT.Server.Handlers.Email
 
         // ###########################################################################################
         // Sent to the OTHER HALF of a two-person approval (2026-09-25): a change to a shared file
-        // needs a reviewer of the board AND the administrator, one of them has approved, and it
+        // needs a maintainer of the board AND the administrator, one of them has approved, and it
         // waits for the other. `what` names the item - a submission, or publishing a board to
         // production.
         // ###########################################################################################
@@ -318,7 +318,7 @@ namespace CRT.Server.Handlers.Email
                 {approvedBy} has approved {what} for {EmailTemplates.DescribeSystem(systemName)}.
                 It changes shared files, so it needs your approval too before it is published.
 
-                Open the {EmailTemplates.ProductName} Review application to look at it.
+                Open CRT Maintainer to look at it.
                 """;
 
             return new EmailMessage(
@@ -328,10 +328,10 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // Sent to the ADMINISTRATORS when a reviewer publishes a system to production (2026-09-25).
+        // Sent to the ADMINISTRATORS when a maintainer publishes a system to production (2026-09-25).
         //
         // The stand-in for Phase 6's administrator feed until that exists: publishing to production
-        // is what every user downloads, and with no second factor on a reviewer's account, an
+        // is what every user downloads, and with no second factor on a maintainer's account, an
         // unexpected one must be noticed. Not sent when an administrator did it themselves.
         // ###########################################################################################
         public static EmailMessage PublishedToProduction(
@@ -363,7 +363,7 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // Sent when a reviewer asks for something to be changed before it can go in.
+        // Sent when a maintainer asks for something to be changed before it can go in.
         //
         // *** THIS IS THE ONE THAT MOST NEEDS TO ARRIVE. *** It is the only outcome where the
         // contributor has to DO something, and until this mail existed the request sat behind a
@@ -375,7 +375,7 @@ namespace CRT.Server.Handlers.Email
         public static EmailMessage SubmissionChangesRequested(
             string toAddress,
             string systemName,
-            string reviewerComment)
+            string maintainerComment)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
 
@@ -386,7 +386,7 @@ namespace CRT.Server.Handlers.Email
                 Someone has looked at your contribution to {EmailTemplates.DescribeSystem(systemName)}
                 and has asked for a change before it can go in:
 
-                {EmailTemplates.Indent(reviewerComment)}
+                {EmailTemplates.Indent(maintainerComment)}
 
                 Your draft is still on your own computer, exactly as you left it. Open the
                 Drafts tab in {EmailTemplates.ProductName}, make the change, and send it again.
@@ -406,13 +406,13 @@ namespace CRT.Server.Handlers.Email
         // without a comment. The draft survives locally, and saying so is what stops this reading
         // as "your afternoon was wasted".
         //
-        // No "please try again" flourish. If the reviewer wanted a change they would have asked
+        // No "please try again" flourish. If the maintainer wanted a change they would have asked
         // for one; inviting a resubmission of something just declined wastes everybody's time.
         // ###########################################################################################
         public static EmailMessage SubmissionRejected(
             string toAddress,
             string systemName,
-            string reviewerComment)
+            string maintainerComment)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
 
@@ -423,7 +423,7 @@ namespace CRT.Server.Handlers.Email
                 Your contribution to {EmailTemplates.DescribeSystem(systemName)} will not be going
                 in. The reason given was:
 
-                {EmailTemplates.Indent(reviewerComment)}
+                {EmailTemplates.Indent(maintainerComment)}
 
                 Your draft is still on your own computer and nothing has been deleted. You can keep
                 using it locally, change it, or discard it from the Drafts tab in
@@ -437,16 +437,16 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // Sent to each REVIEWER of a system when a submission to it is queued (Phase 6 task 11,
-        // 2026-09-25) - or to the administrators, when the system has no reviewers or the
+        // Sent to each MAINTAINER of a system when a submission to it is queued (Phase 6 task 11,
+        // 2026-09-25) - or to the administrators, when the system has no maintainers or the
         // submission changes shared files.
         //
         // This one goes to an account holder, unlike the three above: somebody who agreed to look
-        // after a board and would otherwise have to open the review application on the off-chance.
+        // after a board and would otherwise have to open the maintainer application on the off-chance.
         // It names the board and quotes the contributor's own summary, which is what tells a
-        // reviewer whether it is a two-minute typo or an evening's work.
+        // maintainer whether it is a two-minute typo or an evening's work.
         //
-        // No link, like every other mail here; the review application is named.
+        // No link, like every other mail here; the maintainer application is named.
         // ###########################################################################################
         public static EmailMessage SubmissionWaiting(
             string toAddress,
@@ -469,8 +469,8 @@ namespace CRT.Server.Handlers.Email
 
                 {EmailTemplates.Indent(summary)}
 
-                Open the {EmailTemplates.ProductName} Review application to look at it. If somebody
-                else reviews it first, it will simply be gone from the queue.
+                Open CRT Maintainer to look at it. If somebody else reviews it first, it will simply
+                be gone from the queue.
                 """;
 
             return new EmailMessage(
@@ -495,7 +495,7 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // The reviewer's words, indented so they read as a quotation rather than as the service
+        // The maintainer's words, indented so they read as a quotation rather than as the service
         // speaking. Every line is indented, not just the first, or a wrapped sentence loses the
         // visual distinction halfway through.
         // ###########################################################################################
@@ -514,7 +514,7 @@ namespace CRT.Server.Handlers.Email
         }
 
         // An optional comment as its own paragraph, or nothing at all. Used by the published mail,
-        // where a reviewer usually has nothing to add and an empty "Reviewer said:" heading would
+        // where a maintainer usually has nothing to add and an empty "Maintainer said:" heading would
         // be worse than silence.
         private static string QuotedComment(string? comment)
         {
@@ -525,7 +525,7 @@ namespace CRT.Server.Handlers.Email
                 return string.Empty;
             }
 
-            return $"\n\nThe reviewer added:\n\n{EmailTemplates.Indent(trimmed)}";
+            return $"\n\nThe maintainer added:\n\n{EmailTemplates.Indent(trimmed)}";
         }
 
         // ###########################################################################################

@@ -10,13 +10,13 @@ namespace Handlers.DataHandling
     // list of refusals comes out. Nothing here opens a file.
     //
     // *** WHY A PLAN OBJECT RATHER THAN JUST DOING IT. *** Publishing is the one operation in this
-    // system that changes what every user downloads, and it is NOT reversible - the maintainer
+    // system that changes what every user downloads, and it is NOT reversible - the project owner
     // decided against retained revisions (open question 5), so there is no previous version to go
     // back to. An irreversible operation deserves to be decidable and inspectable in full before
     // its first byte lands: every refusal is found up front rather than halfway through a write
     // that has already replaced half a board.
     //
-    // *** THE GENERATION GUARD IS THE POINT OF THIS CLASS. *** The maintainer's rule is that
+    // *** THE GENERATION GUARD IS THE POINT OF THIS CLASS. *** The project owner's rule is that
     // publishing writes ONLY the newest workbook generation and NEVER an older one, because older
     // generations are frozen compatibility targets still serving older application builds
     // ("Classic-Repair-Toolbox.xlsx" serves everything before 2.0.0). Writing one is silent
@@ -124,7 +124,7 @@ namespace Handlers.DataHandling
             //   - The folder is EMPTY. There is no generation to read because the system does not
             //     exist yet, and falling back to "no version suffix" would publish
             //     "Data C64 250407.xlsx" - the frozen file serving every pre-2.0.0 build, the one
-            //     file the maintainer's rule says is NEVER written.
+            //     file the project owner's rule says is NEVER written.
             //
             // ResolveNewestGeneration answers null for both, so the folder's EMPTINESS is what
             // distinguishes them. Only a genuinely new system falls through to the tree.
@@ -209,7 +209,7 @@ namespace Handlers.DataHandling
                 // "<root>/Commodore/C64/250407/Commodore/C64/250407/Board Layout...png": the entire
                 // board duplicated INSIDE ITSELF.
                 //
-                // Reported by the maintainer after the first real publish. 1,215 files were written
+                // Reported by the project owner after the first real publish. 1,215 files were written
                 // into "250407/Commodore/" and "250407/Generic shared files/", the manifest grew by
                 // ~1,200 entries, and every client then downloaded the whole board again - which is
                 // how it was noticed at all. The originals were also updated, so the board still

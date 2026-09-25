@@ -299,7 +299,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The CHILD SHEET SYMBOLS drawn on this sheet, each with the pins that carry a net across
-        // the boundary into the child (maintainer report, 2026-09-24).
+        // the boundary into the child (owner report, 2026-09-24).
         //
         // *** THIS IS WHAT MAKES A CROSS-SHEET NET RESOLVABLE. *** A hierarchical design renames a
         // net at every sheet boundary: the C128's userport sheet draws "CNT1", while the PCB calls

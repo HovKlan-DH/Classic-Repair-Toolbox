@@ -92,7 +92,7 @@ public sealed class SystemDescriptorRulesTests
     }
 
     // The two ways to arrive at an id must agree, or a system submitted from a draft would carry a
-    // different key from the same system published by the maintainer.
+    // different key from the same system published by the project owner.
     [Fact]
     public void Both_ways_of_building_an_id_agree()
     {

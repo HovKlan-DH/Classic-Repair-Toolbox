@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Finding a KiCad project's real files, sub-folders included (maintainer request, 2026-09-24).
+// Finding a KiCad project's real files, sub-folders included (owner request, 2026-09-24).
 //
 // *** THE BUG THESE EXIST FOR. *** Both the importer and the app's own reader enumerated with
 // SearchOption.TopDirectoryOnly, while DataManager SYNCED the same folder with AllDirectories.
@@ -80,7 +80,7 @@ public sealed class KiCadRawFileScannerTests : IDisposable
     // ------------------------------------------------------------------ what is left behind
 
     // ###########################################################################################
-    // *** THE WHOLE REASON RECURSING IS SAFE. *** The maintainer's requirement is that picking a
+    // *** THE WHOLE REASON RECURSING IS SAFE. *** The project owner's requirement is that picking a
     // full KiCad project yields only the few relevant files. That is the EXTENSION filter's doing,
     // not the depth limit's - so it has to hold at depth, which is what this asserts.
     //

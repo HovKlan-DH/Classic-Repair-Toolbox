@@ -101,6 +101,7 @@ public class SimulationOptionsTests
     [Fact]
     public void Unrelated_arguments_are_ignored()
     {
+        // windows-path-literal: command-line TEXT this parser skips - no path API sees it.
         var options = SimulationOptions.Parse(new[] { "--data-root=C:\\Temp\\Data", "--verbose", "nonsense" });
 
         Assert.False(options.SimulateUpdate);
@@ -109,6 +110,7 @@ public class SimulationOptionsTests
     [Fact]
     public void The_switch_is_found_alongside_other_arguments_in_any_position()
     {
+        // windows-path-literal: command-line TEXT this parser skips - no path API sees it.
         var options = SimulationOptions.Parse(new[] { "--data-root=C:\\Temp\\Data", "--simulate-update=1.2.3" });
 
         Assert.True(options.SimulateUpdate);

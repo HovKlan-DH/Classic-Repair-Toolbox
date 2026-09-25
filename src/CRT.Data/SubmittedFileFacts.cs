@@ -5,13 +5,13 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // What the REVIEWER needs to know about each file a submission carries (security review,
+    // What the MAINTAINER needs to know about each file a submission carries (security review,
     // 2026-09-25).
     //
     // *** THE REVIEW SCREEN USED TO SHOW IMAGES ONLY. *** Everything else - a PDF, a text file, a
     // file no row used, a file belonging to another board - was drawn nowhere, so an
     // administrator approved it without ever being shown it. This is the per-file account the
-    // server now sends alongside the change summary, and the review application lists every file
+    // server now sends alongside the change summary, and the maintainer application lists every file
     // that would change the tree.
     //
     // *** ONE TYPE FOR BOTH ENDS OF THE WIRE. *** The server serialises this record and the review
@@ -20,7 +20,7 @@ namespace Handlers.DataHandling
     //
     // PublishedSha256 is the hash of whatever is published at this path NOW, not of the file the
     // published board references - a submission can name a path the old board never cited, and
-    // overwriting an existing file there is exactly the case a reviewer must not see as "added".
+    // overwriting an existing file there is exactly the case a maintainer must not see as "added".
     // ###########################################################################################
     public sealed record SubmittedFileFact(
         string Path,

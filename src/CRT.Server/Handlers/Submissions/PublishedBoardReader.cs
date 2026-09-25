@@ -9,19 +9,19 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** A MISSING BOARD IS AN ANSWER, NOT AN ERROR. *** It means the system has never been
     // published - a NEW SYSTEM - which is the highest-risk submission there is (Phase 6 task 3)
-    // and must reach a reviewer rather than failing to open. `ReviewSummary.Compare` takes a null
+    // and must reach a maintainer rather than failing to open. `ReviewSummary.Compare` takes a null
     // published board and reports "New system, N rows" for exactly this case, so the null travels
     // all the way through rather than being turned into an empty board here. An empty board would
     // report every row as an addition, which is the same information stripped of the one fact
     // that matters: that nobody has ever vetted this system.
     //
     // *** IT READS THE NEWEST GENERATION, using the same rule publishing writes with. *** If this
-    // read an older, frozen generation the reviewer would be shown a diff against a board no
+    // read an older, frozen generation the maintainer would be shown a diff against a board no
     // current build uses - every change would look real and most of them would be noise from the
     // generation gap. DataGenerationRules owns that decision for both directions.
     //
     // *** THIS IS WHERE EPPlus RUNS ON THE SERVER. *** Open question 8 predicted Phase 4 task 3;
-    // it turned out to be here and the publish writer. The maintainer has decided to proceed on
+    // it turned out to be here and the publish writer. The project owner has decided to proceed on
     // the current licence and settle it separately.
     //
     // An I/O boundary, so it is thin on purpose: resolving WHICH file and deciding what a missing
@@ -43,7 +43,7 @@ namespace CRT.Server.Handlers.Submissions
         // keeps a static cache keyed by whatever string the caller supplies, and the first version
         // here passed the workbook's own PATH - which looks like the obviously right key and is
         // exactly wrong for this caller. The file at that path is REWRITTEN by every publish, so
-        // after a merge the next reviewer to open a submission for that system would be served the
+        // after a merge the next maintainer to open a submission for that system would be served the
         // PRE-PUBLISH board out of cache and shown a diff against data that no longer exists. In
         // the app the same key is safe because CRT never rewrites a published board; on the server
         // it is the one thing that does.
@@ -91,7 +91,7 @@ namespace CRT.Server.Handlers.Submissions
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 // A board that cannot be READ is NOT the same as one that does not exist, and the
-                // difference is the whole point: returning null here would tell the reviewer this
+                // difference is the whole point: returning null here would tell the maintainer this
                 // is a brand-new system, and they would approve it on that basis while a
                 // published board sat on disk unreadable. So this fails loudly instead.
                 this.thisLogger.LogError(

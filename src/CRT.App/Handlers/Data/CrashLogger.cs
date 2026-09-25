@@ -27,7 +27,7 @@ namespace Handlers.DataHandling
     //
     // A crash entry is deliberately VERBOSE where the ordinary log is terse: the full exception
     // chain including every inner exception, the stack trace, the application version, the OS and
-    // runtime, and which handler caught it. The whole point is that the maintainer receives it as
+    // runtime, and which handler caught it. The whole point is that the project owner receives it as
     // a file rather than as a description of what the user thinks they saw.
     // ###########################################################################################
     public static class CrashLogger

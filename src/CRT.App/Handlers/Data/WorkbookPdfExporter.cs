@@ -482,7 +482,7 @@ namespace Handlers.DataHandling
 
                 if (!string.IsNullOrWhiteSpace(document.Note))
                 {
-                    // The workbook Note is free text that regularly carries a link (the maintainer's
+                    // The workbook Note is free text that regularly carries a link (the project owner's
                     // own weblog entry for the repair, in the reported case) - linkified for the
                     // same reason the sub-lists are.
                     column.Item().Element(e => ComposeLinkedText(e, document.Note, 10, HeadingColor));

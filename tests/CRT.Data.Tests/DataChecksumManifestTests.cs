@@ -10,7 +10,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Building dataChecksums.json - the file every CRT client syncs against (maintainer request,
+// Building dataChecksums.json - the file every CRT client syncs against (owner request,
 // 2026-09-23).
 //
 // *** WHY THIS IS WORTH REAL COVERAGE. *** Every installed copy of CRT reads this file, including
@@ -207,7 +207,7 @@ public sealed class DataChecksumManifestTests : IDisposable
     [Fact]
     public void The_manifest_is_written_BESIDE_the_data_root_not_inside_it()
     {
-        // The maintainer's own words: one folder up from "Data". It is configured separately
+        // The project owner's own words: one folder up from "Data". It is configured separately
         // precisely because it cannot be derived from the data root.
         this.Write("a.txt", "x");
 
@@ -244,7 +244,7 @@ public sealed class DataChecksumManifestTests : IDisposable
         this.Write("a.txt", "x");
 
         // Runs after a publish that has already succeeded, so a misconfiguration must be reported
-        // by the caller rather than thrown at a reviewer.
+        // by the caller rather than thrown at a maintainer.
         Assert.Equal(-1, DataChecksumManifest.Write(
             this.DataRoot, DataChecksumManifestTests.BaseUrl, string.Empty));
     }

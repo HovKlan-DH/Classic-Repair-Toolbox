@@ -8,12 +8,12 @@ namespace CRT.Data.Tests;
 // *** THIS EXISTS SO CALIBRATIONS ARE NOT PUBLISHED UNREVIEWED. *** Calibrations began travelling
 // with submissions on 2026-09-22. `ReviewSummary` compares two BoardData, and BoardData has no
 // calibration section at all - so without this they would have reached the published tree with no
-// reviewer ever having seen them. That is precisely the property this whole phase exists to
+// maintainer ever having seen them. That is precisely the property this whole phase exists to
 // prevent, and wiring the submission side without this would have created it.
 //
 // A calibration is the offset/scale/mirror box mapping a schematic image onto the KiCad board's
 // coordinate space. Getting one wrong does not break anything visibly - the trace overlay simply
-// lands in the wrong place - so it is exactly the kind of change a reviewer has to be TOLD about
+// lands in the wrong place - so it is exactly the kind of change a maintainer has to be TOLD about
 // rather than expected to notice.
 public sealed class ReviewCalibrationSectionTests
 {
@@ -64,7 +64,7 @@ public sealed class ReviewCalibrationSectionTests
     [Fact]
     public void A_CHANGED_calibration_is_reported_with_the_field_that_moved()
     {
-        // *** THE CASE A REVIEWER CANNOT OTHERWISE SEE. *** The schematic looks identical; only
+        // *** THE CASE A MAINTAINER CANNOT OTHERWISE SEE. *** The schematic looks identical; only
         // the numbers behind the overlay moved. "Sheet 1 changed" is not reviewable, but
         // "ScaleX: 0.75 -> 0.9" is.
         ReviewChangeSummary summary = ReviewSummary.Compare(
@@ -150,7 +150,7 @@ public sealed class ReviewCalibrationSectionTests
     {
         // The summary always carries all of its sections; the client drops the empty ones. A
         // section that vanished entirely would make the client's filter the only thing standing
-        // between a reviewer and a missing category.
+        // between a maintainer and a missing category.
         ReviewChangeSummary summary = ReviewSummary.Compare(new BoardData(), new BoardData());
 
         Assert.Contains(summary.Sections, section =>

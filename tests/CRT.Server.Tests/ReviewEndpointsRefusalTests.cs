@@ -5,12 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // The 403 a signed-in account WITHOUT the reviewer role gets (code review, 2026-09-25).
+    // The 403 a signed-in account WITHOUT the maintainer role gets (code review, 2026-09-25).
     //
     // It used to be Results.Forbid(), which asks the authentication middleware's default scheme
     // to write the refusal. This service authenticates its own opaque bearer tokens and registers
     // no scheme, so executing it threw and the caller got a 500 - never the 403 that
-    // ReviewEndpoints documents and that the review app turns into "This account is not allowed
+    // ReviewEndpoints documents and that the maintainer app turns into "This account is not allowed
     // to review submissions".
     //
     // The result is EXECUTED here against a context set up the way this service runs - with no
@@ -20,7 +20,7 @@ namespace CRT.Server.Tests
     public class ReviewEndpointsRefusalTests
     {
         [Fact]
-        public async Task A_non_reviewer_gets_a_403_with_no_authentication_scheme_registered()
+        public async Task A_non_maintainer_gets_a_403_with_no_authentication_scheme_registered()
         {
             var context = new DefaultHttpContext
             {
@@ -29,7 +29,7 @@ namespace CRT.Server.Tests
 
             context.Response.Body = new MemoryStream();
 
-            await ReviewEndpoints.NotAReviewer().ExecuteAsync(context);
+            await ReviewEndpoints.NotAMaintainer().ExecuteAsync(context);
 
             Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
 

@@ -5,26 +5,26 @@ namespace CRT.Server.Handlers.Submissions
     // per-system authority from Phase 6, 2026-09-25).
     //
     // *** APPROVE PUBLISHES, AND PUBLISHING CANNOT BE UNDONE. *** Task 7 was struck by the
-    // maintainer, so no publish history is retained: a published file is overwritten in place and
+    // project owner, so no publish history is retained: a published file is overwritten in place and
     // a bad merge is fixed only by publishing a correction. That single fact is why these rules
     // live in their own unit-tested class rather than as a few `if`s inside an endpoint - each one
     // is the last thing between a wrong request and a data tree that cannot be restored.
     //
-    // *** ALL THREE OUTCOMES NEED THE SAME AUTHORITY NOW: a reviewer OF THIS SYSTEM, or an
+    // *** ALL THREE OUTCOMES NEED THE SAME AUTHORITY NOW: a maintainer OF THIS SYSTEM, or an
     // administrator. *** ReviewAuthority answers that, against the submission's own system and
     // whether it touches shared files. The four-role plan gave a recommend-only Reviewer the two
-    // cheap outcomes and withheld Approve; the maintainer collapsed the roles, so a reviewer
+    // cheap outcomes and withheld Approve; the project owner collapsed the roles, so a maintainer
     // assigned to a system decides everything about it. What stays true is that rejecting and
     // returning never need MORE authority than approving - if they did, the cheap outcome would be
-    // the harder one to reach and reviewers would reject things that could have been a
+    // the harder one to reach and maintainers would reject things that could have been a
     // conversation.
     //
     // *** ONE METHOD PER QUESTION, rather than one "is this allowed" taking an outcome. *** Three
     // named methods cannot be called for the wrong outcome by accident, and a later role that
     // splits the outcomes again changes one method rather than an enum switch.
     //
-    // Every refusal hands back a REASON. The review app shows it rather than silently not drawing
-    // a button: a reviewer whose account is not in this system's pool needs telling that, and a
+    // Every refusal hands back a REASON. The maintainer app shows it rather than silently not drawing
+    // a button: a maintainer whose account is not in this system's pool needs telling that, and a
     // submission somebody else already decided needs saying so rather than appearing broken.
     // ###########################################################################################
     public static class ReviewDecisionRules
@@ -89,12 +89,12 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // Is this submission still waiting for a decision?
         //
-        // *** THE DOUBLE-DECISION INTERLOCK, and it matters most for Approve. *** Two reviewers
+        // *** THE DOUBLE-DECISION INTERLOCK, and it matters most for Approve. *** Two maintainers
         // with the queue open both press it, or one presses twice over a slow link. Without this
         // the second publish rewrites the tree again - and with no revision history, re-running a
         // publish whose blobs have since been collected is not a harmless no-op.
         //
-        // `approved` IS still actionable, which is the one non-obvious case. It means a reviewer
+        // `approved` IS still actionable, which is the one non-obvious case. It means a maintainer
         // accepted the submission but publishing has not happened or did not finish; refusing it
         // would strand something already agreed to with no way forward. `merged` is the terminal
         // success state and is refused.

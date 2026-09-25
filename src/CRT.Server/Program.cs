@@ -186,7 +186,7 @@ namespace CRT.Server
         internal static void AddServerServices(IServiceCollection services, ServerOptions options)
         {
             // The JSON both ends of the review API agree on - CRT.Data's ReviewApiContract, which
-            // the review application serialises its requests with too (code review, 2026-09-25).
+            // the maintainer application serialises its requests with too (code review, 2026-09-25).
             services.ConfigureHttpJsonOptions(json =>
                 ReviewApiContract.ApplyWireSettings(json.SerializerOptions));
 
@@ -230,7 +230,7 @@ namespace CRT.Server
 
             // Reads the published board a submission is compared against (Phase 5, task 3).
             // A singleton because it holds no per-request state; BoardDataReader's own cache sits
-            // behind it and is shared deliberately, so two reviewers opening submissions for the
+            // behind it and is shared deliberately, so two maintainers opening submissions for the
             // same board do not each pay for a parse.
             services.AddSingleton<PublishedBoardReader>();
 
@@ -251,7 +251,7 @@ namespace CRT.Server
             // are set; see ServerOptions.
             services.AddSingleton<ProductionPromotionFlow>();
 
-            // Tells the contributor what a reviewer decided. A singleton for the same reason as
+            // Tells the contributor what a maintainer decided. A singleton for the same reason as
             // the two above - it holds only the mailer seam and a logger, and takes everything
             // about a particular submission as arguments.
             services.AddSingleton<SubmissionNotifier>();
@@ -265,7 +265,7 @@ namespace CRT.Server
         internal static void MapServerEndpoints(WebApplication app)
         {
             // ---------------------------------------------------------------------------------
-            // Health. Unauthenticated on purpose - it is what the maintainer and any uptime check
+            // Health. Unauthenticated on purpose - it is what the project owner and any uptime check
             // call, and it reveals nothing beyond "the process is alive" plus the deployed build.
             // See HealthReport's header for what it deliberately does not report.
             // ---------------------------------------------------------------------------------

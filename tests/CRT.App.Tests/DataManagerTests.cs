@@ -34,6 +34,7 @@ public sealed class DataManagerTests : IDisposable
     [Fact]
     public void ResolveDataRoot_uses_the_data_root_command_line_argument()
     {
+        // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\somewhere\Data",
             DataManager.ResolveDataRoot(new[] { @"--data-root=D:\somewhere\Data" }));
@@ -43,6 +44,7 @@ public sealed class DataManagerTests : IDisposable
     public void ResolveDataRoot_strips_surrounding_quotes()
     {
         // Shells and shortcuts quote paths that contain spaces.
+        // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\my data\Data",
             DataManager.ResolveDataRoot(new[] { "--data-root=\"D:\\my data\\Data\"" }));

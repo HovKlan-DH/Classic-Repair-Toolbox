@@ -9,7 +9,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // NewSystemMaintainerWindow - the agreement to become a new system's maintainer, which must be
-// accepted before "Create system" creates anything (maintainer request, 2026-09-24).
+// accepted before "Create system" creates anything (owner request, 2026-09-24).
 //
 // The keyboard tests go through the real headless input stack, the same way
 // DiscardDraftWindowTests does, because the thing they guard is the Tunnel-vs-bubbling trap: a
@@ -103,7 +103,7 @@ public sealed class NewSystemMaintainerWindowTests
                 "\n",
                 window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty));
 
-            Assert.Contains("registered as its reviewer", all, StringComparison.Ordinal);
+            Assert.Contains("registered as its maintainer", all, StringComparison.Ordinal);
             Assert.Contains("reviewing the changes other members of the community submit", all, StringComparison.Ordinal);
             Assert.Contains("can only be created if you accept this", all, StringComparison.Ordinal);
         });

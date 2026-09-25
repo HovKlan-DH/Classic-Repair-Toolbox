@@ -3,7 +3,7 @@ using System;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // The logging seam for CRT.Data. This library is shared by the desktop app, the review app
+    // The logging seam for CRT.Data. This library is shared by the desktop app, the maintainer app
     // and (from Phase 3) the server, and none of those hosts share a single logging mechanism -
     // the app's own Handlers.DataHandling.Logger is a static singleton that writes to a file path
     // resolved from Velopack's AppData folder, which makes no sense for a server process.

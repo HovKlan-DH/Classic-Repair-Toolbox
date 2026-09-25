@@ -2,16 +2,16 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
 
-// Covers ReviewSummary - what the review app opens on (Phase 5, task 3).
+// Covers ReviewSummary - what the maintainer app opens on (Phase 5, task 3).
 //
-// WHAT MAKES THIS WORTH TESTING HARD: the summary is the reviewer's whole view of a submission
-// before they drill in. A summary that misses a change means a reviewer approves something they
-// never saw, and publishing is irreversible - the maintainer ruled out retained revisions, so
+// WHAT MAKES THIS WORTH TESTING HARD: the summary is the maintainer's whole view of a submission
+// before they drill in. A summary that misses a change means a maintainer approves something they
+// never saw, and publishing is irreversible - the project owner ruled out retained revisions, so
 // there is no undo behind a wrong approval.
 //
 // The failure mode to beware of is the opposite one too: a summary that reports changes nobody
 // made (by pairing rows on position, or by comparing a retired UUID column) is noise, and a
-// reviewer who learns to scroll past noise stops reading the real entries.
+// maintainer who learns to scroll past noise stops reading the real entries.
 public sealed class ReviewSummaryTests
 {
     private static ComponentEntry Component(string label, string friendly = "PLA", string part = "906114") => new()
@@ -41,7 +41,7 @@ public sealed class ReviewSummaryTests
     [Fact]
     public void An_identical_board_reports_no_changes()
     {
-        // The commonest thing a reviewer should never be shown: a resubmission of what is already
+        // The commonest thing a maintainer should never be shown: a resubmission of what is already
         // published. If this reports changes, every real change is buried in noise.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
         BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
@@ -104,7 +104,7 @@ public sealed class ReviewSummaryTests
     {
         // *** THE CLASSIC DIFF BUG. *** Pairing rows by list position would report U8 and U9 as
         // changed simply because a row was inserted above them. On a board with hundreds of
-        // components that is a summary a reviewer cannot use at all - and it would be worst on
+        // components that is a summary a maintainer cannot use at all - and it would be worst on
         // exactly the submissions that add something, which is most of them.
         BoardData published = ReviewSummaryTests.Board(
             ReviewSummaryTests.Component("U8"),
@@ -178,7 +178,7 @@ public sealed class ReviewSummaryTests
     public void A_declared_rename_is_reported_as_a_rename_and_not_as_a_delete_plus_an_add()
     {
         // Natural keys cannot see a rename - U8 to U9 reads as a delete plus an add, which is
-        // true and tells the reviewer nothing. The client knows it was a rename and says so.
+        // true and tells the maintainer nothing. The client knows it was a rename and says so.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
         BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9"));
 
@@ -203,7 +203,7 @@ public sealed class ReviewSummaryTests
     [Fact]
     public void A_rename_that_also_edits_a_field_says_so()
     {
-        // Worth distinguishing: a reviewer who sees "renamed" assumes the rest is untouched, and
+        // Worth distinguishing: a maintainer who sees "renamed" assumes the rest is untouched, and
         // would not look further.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8", part: "906114"));
         BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9", part: "251715-01"));
@@ -221,7 +221,7 @@ public sealed class ReviewSummaryTests
     {
         // *** A DECLARED RENAME IS UNTRUSTED INPUT. *** It arrives in the submission. A client
         // declaring a rename it did not make would otherwise hide a genuine addition or deletion
-        // from the reviewer, which is the one thing this screen exists to prevent.
+        // from the maintainer, which is the one thing this screen exists to prevent.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
         BoardData submitted = ReviewSummaryTests.Board(
             ReviewSummaryTests.Component("U8"),
@@ -294,7 +294,7 @@ public sealed class ReviewSummaryTests
     public void Every_section_of_a_board_is_compared()
     {
         // A section missing from AllSections is a section whose changes are INVISIBLE to the
-        // reviewer - approved without ever being shown. This asserts each one is present and can
+        // maintainer - approved without ever being shown. This asserts each one is present and can
         // actually detect a change, rather than merely being listed.
         var published = new BoardData();
 
@@ -391,14 +391,14 @@ public sealed class ReviewSummaryTests
     }
 
     // -----------------------------------------------------------------------------------
-    // Robustness - a reviewer opens a submission to find out what is WRONG with it
+    // Robustness - a maintainer opens a submission to find out what is WRONG with it
     // -----------------------------------------------------------------------------------
 
     [Fact]
     public void A_duplicate_key_does_not_throw()
     {
         // Duplicate board labels are a validation error SubmissionValidator already reports. A
-        // reviewer opening the submission to read that report must not be met with a crash
+        // maintainer opening the submission to read that report must not be met with a crash
         // instead of the answer.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
         BoardData submitted = ReviewSummaryTests.Board(

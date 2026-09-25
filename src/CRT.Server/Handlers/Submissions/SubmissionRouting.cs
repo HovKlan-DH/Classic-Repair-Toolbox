@@ -7,9 +7,9 @@ namespace CRT.Server.Handlers.Submissions
     // WHO IS TOLD that a submission is waiting (Phase 6 tasks 2, 3 and 11; 2026-09-25).
     //
     // The rule is the mirror of ApprovalRules, stated once for the people rather than for the
-    // request: whoever must approve is told. The system's reviewers ordinarily; the reviewers AND
-    // the administrators when a shared file changes (both must approve - maintainer decision,
-    // 2026-09-25); the administrators alone when the system has no reviewers. "A new system routes
+    // request: whoever must approve is told. The system's maintainers ordinarily; the maintainers AND
+    // the administrators when a shared file changes (both must approve - owner decision,
+    // 2026-09-25); the administrators alone when the system has no maintainers. "A new system routes
     // to the administrator, always" falls out of the last case, since a system nobody has reviewed
     // yet has an empty pool.
     //
@@ -25,21 +25,21 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(submission);
             ArgumentNullException.ThrowIfNull(accounts);
 
-            // Only reviewers who can approve as reviewers - the rule the approval itself counts by
-            // (ReviewAuthority.CanGiveReviewerApproval), so who is asked and who is waited for agree.
-            IReadOnlyList<ReviewerRecord> reviewers =
-                (await accounts.GetReviewersOfSystemAsync(submission.SystemId, cancellationToken))
-                    .Where(ReviewAuthority.CanGiveReviewerApproval)
+            // Only maintainers who can approve as maintainers - the rule the approval itself counts by
+            // (ReviewAuthority.CanGiveMaintainerApproval), so who is asked and who is waited for agree.
+            IReadOnlyList<MaintainerRecord> maintainers =
+                (await accounts.GetMaintainersOfSystemAsync(submission.SystemId, cancellationToken))
+                    .Where(ReviewAuthority.CanGiveMaintainerApproval)
                     .ToList();
 
-            IReadOnlyList<ApproverRole> required = ApprovalRules.Required(submission.TouchesSharedFiles, reviewers.Count > 0);
+            IReadOnlyList<ApproverRole> required = ApprovalRules.Required(submission.TouchesSharedFiles, maintainers.Count > 0);
 
-            // Ordinary: any one approval, and the reviewers are the ones to ask - or the
+            // Ordinary: any one approval, and the maintainers are the ones to ask - or the
             // administrators when there are none.
             if (required.Count == 0)
             {
-                return reviewers.Count > 0
-                    ? reviewers.Select(reviewer => reviewer.Email).ToList()
+                return maintainers.Count > 0
+                    ? maintainers.Select(maintainer => maintainer.Email).ToList()
                     : await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken);
             }
 
@@ -63,11 +63,11 @@ namespace CRT.Server.Handlers.Submissions
 
             foreach (ApproverRole role in roles.Distinct())
             {
-                if (role == ApproverRole.Reviewer)
+                if (role == ApproverRole.Maintainer)
                 {
-                    addresses.AddRange((await accounts.GetReviewersOfSystemAsync(systemId, cancellationToken))
-                        .Where(ReviewAuthority.CanGiveReviewerApproval)
-                        .Select(reviewer => reviewer.Email));
+                    addresses.AddRange((await accounts.GetMaintainersOfSystemAsync(systemId, cancellationToken))
+                        .Where(ReviewAuthority.CanGiveMaintainerApproval)
+                        .Select(maintainer => maintainer.Email));
                 }
                 else
                 {

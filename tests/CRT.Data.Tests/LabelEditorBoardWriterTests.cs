@@ -9,7 +9,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // Saving a schematic label editor session into a draft's BOARD
-// (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+// (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
 //
 // Replaces LabelEditorDraftWriterTests, which pinned the same behaviours expressed as BoardDraft
 // row deltas. The behaviours are unchanged and are re-asserted here against the board itself;

@@ -199,7 +199,7 @@ namespace CRT.Server.Tests
             // Nothing was uploaded, so nothing counts against the sender's upload budget.
             Assert.Equal(0, store.Created[created.Negotiation.SubmissionId].BytesToUpload);
 
-            // The bytes ARE in the store - the reviewer reads them from there and the publish copies
+            // The bytes ARE in the store - the maintainer reads them from there and the publish copies
             // them from there, so a submission told "already held" must be able to finish.
             Assert.True(blobs.Contains(manifest.Files[0].Sha256));
 
@@ -284,7 +284,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // WHETHER A SUBMISSION CHANGES SHARED FILES IS DECIDED AT CREATE AND STORED ON THE ROW
         // (Phase 6 roles, 2026-09-25) - it is what routes it to the administrator rather than to
-        // the board's reviewers, and the queue reads it without loading the payload.
+        // the board's maintainers, and the queue reads it without loading the payload.
         // ###########################################################################################
         [Fact]
         public async Task A_submission_adding_a_SHARED_file_is_recorded_as_touching_shared_files()
@@ -346,7 +346,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal("Commodore/C64/250407", system.SystemId);
 
-            // The three parts are stored separately so the review app can list by manufacturer
+            // The three parts are stored separately so the maintainer app can list by manufacturer
             // without parsing the id - 0001_initial.sql says so explicitly.
             Assert.Equal("Commodore", system.Manufacturer);
             Assert.Equal("C64", system.Hardware);
@@ -439,7 +439,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Contributing_needs_NO_account()
         {
-            // The maintainer's decision (NewContributeStrategy.md, "CONTRIBUTING NEEDS NO
+            // The owner's decision (NewContributeStrategy.md, "CONTRIBUTING NEEDS NO
             // ACCOUNT"): a sign-up wall before a hobbyist can fix a typo is how a contribution
             // does not happen. An anonymous submitter with a contact address is the ordinary case,
             // not an exception.
@@ -460,7 +460,7 @@ namespace CRT.Server.Tests
         [InlineData("   ")]
         public async Task A_submission_with_no_contact_address_is_refused(string? email)
         {
-            // The ONE thing a contributor must give. Without it a reviewer cannot say "accepted"
+            // The ONE thing a contributor must give. Without it a maintainer cannot say "accepted"
             // or "this needs changing", so the contribution can only be taken or dropped.
             var store = new FakeSubmissionStore();
 
@@ -793,7 +793,7 @@ namespace CRT.Server.Tests
         public async Task A_complete_submission_is_QUEUED_not_published()
         {
             // Nothing in this pipeline publishes. Promotion to the production tree stays a manual
-            // act by the maintainer, and Phase 3's filesystem permissions make it impossible for
+            // act by the project owner, and Phase 3's filesystem permissions make it impossible for
             // this service to do otherwise.
             var store = new FakeSubmissionStore();
             BlobStore blobs = this.Blobs();
@@ -836,7 +836,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Without_the_right_token_nobody_can_FINALISE_a_submission()
         {
-            // Finalising is what puts work in front of a reviewer. A stranger finalising somebody
+            // Finalising is what puts work in front of a maintainer. A stranger finalising somebody
             // else's half-uploaded submission would queue an incomplete contribution in their name.
             var store = new FakeSubmissionStore();
             BlobStore blobs = this.Blobs();
@@ -977,10 +977,10 @@ namespace CRT.Server.Tests
             Assert.True(other.IsAccepted);
         }
 
-        // A reviewer or administrator is trusted by the database row, and checking things often is
+        // A maintainer or administrator is trusted by the database row, and checking things often is
         // their job. An ordinary signed-in account is NOT exempt - anybody may register one.
         [Fact]
-        public async Task A_trusted_reviewer_is_not_limited_but_an_ordinary_account_is()
+        public async Task A_trusted_maintainer_is_not_limited_but_an_ordinary_account_is()
         {
             var store = new FakeSubmissionStore();
             BlobStore blobs = this.Blobs();
@@ -992,7 +992,7 @@ namespace CRT.Server.Tests
                     store, blobs, SubmissionFlowTests.Now);
             }
 
-            SubmissionCreationOutcome reviewer = await SubmissionFlows.CreateAsync(
+            SubmissionCreationOutcome maintainer = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.SignedIn(7, "192.0.2.1", isTrusted: true),
                 this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
 
@@ -1000,7 +1000,7 @@ namespace CRT.Server.Tests
                 SubmissionFlowTests.Manifest(), Submitter.SignedIn(8, "192.0.2.1"),
                 this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
 
-            Assert.True(reviewer.IsAccepted);
+            Assert.True(maintainer.IsAccepted);
             Assert.True(ordinary.IsRateLimited);
         }
 
@@ -1135,7 +1135,7 @@ namespace CRT.Server.Tests
         }
 
         // The bytes are checked against the name once they are all here. A ".png" that is not an
-        // image is rejected before any reviewer sees it.
+        // image is rejected before any maintainer sees it.
         [Fact]
         public async Task A_file_whose_BYTES_do_not_match_its_name_is_rejected_at_finalise()
         {

@@ -7,13 +7,13 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Telling the contributor what a reviewer decided (maintainer request, 2026-09-23).
+    // Telling the contributor what a maintainer decided (owner request, 2026-09-23).
     //
     // *** WHY THIS IS WORTH TESTING RATHER THAN EYEBALLING. *** The contributor has no account, so
     // the mail and the "My submissions" window are the only two channels that exist - and the mail
     // is the only one that reaches somebody who is not sitting in front of CRT. Sending the wrong
     // outcome, or sending nothing, is invisible from the server's own side: the decision is
-    // recorded either way and the reviewer sees a success.
+    // recorded either way and the maintainer sees a success.
     //
     // Three properties are pinned throughout:
     //   1. WHICH mail a state produces, because sending "not accepted" to somebody whose work was
@@ -47,7 +47,7 @@ namespace CRT.Server.Tests
 
             return (EmailMessage?)method!.Invoke(
                 null,
-                // The last argument is amendedByReviewer (2026-09-25) - false, a submission nobody changed.
+                // The last argument is amendedByMaintainer (2026-09-25) - false, a submission nobody changed.
                 [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment, false]);
         }
 
@@ -68,7 +68,7 @@ namespace CRT.Server.Tests
                 SubmissionNotifierTests.Contributor,
                 SubmissionNotifierTests.SystemName,
                 "merged",
-                reviewerComment: null);
+                maintainerComment: null);
 
             EmailMessage message = Assert.Single(mailer.Sent);
 
@@ -90,7 +90,7 @@ namespace CRT.Server.Tests
                 SubmissionNotifierTests.Contributor,
                 SubmissionNotifierTests.SystemName,
                 "published",
-                reviewerComment: null);
+                maintainerComment: null);
 
             EmailMessage message = Assert.Single(mailer.Sent);
 
@@ -100,9 +100,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task The_administrators_are_told_when_a_reviewer_publishes_to_production()
+        public async Task The_administrators_are_told_when_a_maintainer_publishes_to_production()
         {
-            // The stand-in for the administrator feed: with no second factor on a reviewer's
+            // The stand-in for the administrator feed: with no second factor on a maintainer's
             // account, an unexpected production publish must be noticed.
             var mailer = new FakeEmailSender();
 
@@ -121,7 +121,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_rejection_carries_the_reason_the_reviewer_gave()
+        public async Task A_rejection_carries_the_reason_the_maintainer_gave()
         {
             var mailer = new FakeEmailSender();
 
@@ -165,15 +165,15 @@ namespace CRT.Server.Tests
             Assert.Contains("Drafts tab", message.Body, StringComparison.OrdinalIgnoreCase);
         }
 
-        // ---------------------------------------------------------------- telling the reviewers
+        // ---------------------------------------------------------------- telling the maintainers
 
         [Fact]
-        public async Task Every_reviewer_is_told_once_and_a_blank_or_repeated_address_is_dropped()
+        public async Task Every_maintainer_is_told_once_and_a_blank_or_repeated_address_is_dropped()
         {
-            // A reviewer who is also listed twice - or an administrator who is both - hears once.
+            // A maintainer who is also listed twice - or an administrator who is both - hears once.
             var mailer = new FakeEmailSender();
 
-            await SubmissionNotifierTests.Notifier(mailer).NotifyReviewersAsync(
+            await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
                 ["anna@example.com", " ", null, "Anna@Example.com", "bob@example.com"],
                 SubmissionNotifierTests.SystemName,
                 42,
@@ -188,13 +188,13 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_mailer_that_throws_does_not_stop_the_other_reviewers_being_told()
+        public async Task A_mailer_that_throws_does_not_stop_the_other_maintainers_being_told()
         {
             // The submission is already queued; one dead address must not silence the rest, and
             // nothing may escape to the contributor's finalise request.
             var mailer = new ThrowingOnceEmailSender();
 
-            await SubmissionNotifierTests.Notifier(mailer).NotifyReviewersAsync(
+            await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
                 ["first@example.com", "second@example.com"],
                 SubmissionNotifierTests.SystemName,
                 7,
@@ -238,7 +238,7 @@ namespace CRT.Server.Tests
         [InlineData("abandoned")]
         [InlineData("some_future_state")]
         [InlineData("")]
-        public async Task A_state_that_is_not_a_reviewer_decision_sends_nothing(string state)
+        public async Task A_state_that_is_not_a_maintainer_decision_sends_nothing(string state)
         {
             var mailer = new FakeEmailSender();
 
@@ -246,7 +246,7 @@ namespace CRT.Server.Tests
                 SubmissionNotifierTests.Contributor,
                 SubmissionNotifierTests.SystemName,
                 state,
-                reviewerComment: "ignored");
+                maintainerComment: "ignored");
 
             Assert.Empty(mailer.Sent);
         }
@@ -267,7 +267,7 @@ namespace CRT.Server.Tests
                 address,
                 SubmissionNotifierTests.SystemName,
                 "published",
-                reviewerComment: null);
+                maintainerComment: null);
 
             Assert.Empty(mailer.Sent);
         }
@@ -279,7 +279,7 @@ namespace CRT.Server.Tests
         //
         // By the time this runs the decision is recorded, and for a publish the board has already
         // been overwritten - the one irreversible operation in the system. An exception escaping
-        // would be shown to the reviewer as a failure, and they would quite reasonably repeat a
+        // would be shown to the maintainer as a failure, and they would quite reasonably repeat a
         // decision that has in fact already been made.
         //
         // Proved with a mailer that throws, which is what an unreachable SMTP host looks like.
@@ -294,7 +294,7 @@ namespace CRT.Server.Tests
                 SubmissionNotifierTests.Contributor,
                 SubmissionNotifierTests.SystemName,
                 "published",
-                reviewerComment: null);
+                maintainerComment: null);
         }
 
         // ---------------------------------------------------------------- the mapping itself

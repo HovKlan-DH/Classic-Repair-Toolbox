@@ -838,7 +838,7 @@ namespace CRT
         // ###########################################################################################
         // Adds every supported raw KiCad file at or below one folder.
         //
-        // *** SUB-FOLDERS ARE READ, which they were not before (maintainer report, 2026-09-24). ***
+        // *** SUB-FOLDERS ARE READ, which they were not before (owner report, 2026-09-24). ***
         //
         // This was top level only, and the shipped Commodore C128 "310378 Open128" board keeps 22 of
         // its 25 sheets under Pages/ - so the app read the root sheet, which only REFERENCES the
@@ -858,7 +858,7 @@ namespace CRT
         // Reloads the currently selected board from disk and restores the given schematic selection.
         //
         // *** IT ALSO RE-EVALUATES THE DRAFTS TAB, because every LOCAL EDIT arrives here
-        // (maintainer report, 2026-09-23). *** Both paths that write a draft call this - the
+        // (owner report, 2026-09-23). *** Both paths that write a draft call this - the
         // Contribute window's component save and the label editor's - and a save is very often the
         // moment a system gains its FIRST draft. Without this the tab simply did not appear:
         // "I need to restart the app for it to show".

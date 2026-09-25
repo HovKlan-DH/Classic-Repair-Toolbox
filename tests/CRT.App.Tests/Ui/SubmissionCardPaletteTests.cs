@@ -7,7 +7,7 @@ using System.Linq;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The two theme keys the "My submissions" cards added (maintainer request, 2026-09-22):
+// The two theme keys the "My submissions" cards added (owner request, 2026-09-22):
 // Card_Bg and Text_Waiting_Fg.
 //
 // *** PINNED FOR THE REASON WorkbooksPaletteTests SPELLS OUT: A MISSING KEY IS SILENT. *** The
@@ -96,7 +96,7 @@ public class SubmissionCardPaletteTests
     }
 
     // ###########################################################################################
-    // *** THE REPORTED BUG - AND TWO WRONG TESTS FOR IT BEFORE THIS ONE (maintainer request,
+    // *** THE REPORTED BUG - AND TWO WRONG TESTS FOR IT BEFORE THIS ONE (owner request,
     // 2026-09-23, reported twice). ***
     //
     // The bug: "Changes requested" and "Not accepted" both painted themselves Text_Fail_Fg, so a

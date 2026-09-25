@@ -280,7 +280,7 @@ public class DeleteComponentContributionTests
 
     // ---------------------------------------------------------------- submitting
 
-    // The one field a deletion still has to carry. Without it the reviewer has a component
+    // The one field a deletion still has to carry. Without it the maintainer has a component
     // A component image row that would refuse an ordinary contribution must not refuse a deletion:
     // broken image data is a reason to delete the component, not a reason the deletion is invalid.
     //

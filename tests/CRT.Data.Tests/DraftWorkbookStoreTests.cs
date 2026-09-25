@@ -8,9 +8,9 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // Persisting an edit to a draft, now that a draft is a board workbook rather than a delta list
-// (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+// (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
 //
-// *** THE TEST THAT MATTERS MOST IS THE STALENESS ONE. *** The maintainer's requirement is that
+// *** THE TEST THAT MATTERS MOST IS THE STALENESS ONE. *** The project owner's requirement is that
 // editing in the app and editing in Excel be interchangeable, which means the application can
 // never assume the board it last read is still what is on disk. Every write here is
 // read-modify-write against the FILE, and the test proving it is the one that edits the workbook

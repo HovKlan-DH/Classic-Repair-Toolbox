@@ -12,7 +12,7 @@ namespace Handlers.DataHandling
     //
     //   HashOf         - the SHA-256 of the file published at this path, or null when there is
     //                    none. Lets a submission cite another board's file UNCHANGED (see
-    //                    SubmissionFileScope) and lets the reviewer be told a file already exists.
+    //                    SubmissionFileScope) and lets the maintainer be told a file already exists.
     //   ListDirectory  - the names of the entries in a folder ("" is the data root), or null when
     //                    the folder does not exist. Lets a case-only variant be caught.
     //

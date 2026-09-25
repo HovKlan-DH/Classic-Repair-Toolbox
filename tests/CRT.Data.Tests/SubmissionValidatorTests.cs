@@ -10,8 +10,8 @@ namespace CRT.Data.Tests
     // Covers the automated validation that runs before any human sees a submission.
     //
     // The strategy document calls this the highest-leverage work in the whole plan, and the reason
-    // is arithmetic: the maintainer is one volunteer. Every submission rejected automatically with
-    // a clear explanation is reviewer time not spent - and it is faster for the contributor too
+    // is arithmetic: the project owner is one volunteer. Every submission rejected automatically with
+    // a clear explanation is maintainer time not spent - and it is faster for the contributor too
     // than waiting in a queue to be told the same thing.
     //
     // TWO PROPERTIES ARE TESTED THROUGHOUT, not just the detection:
@@ -303,7 +303,7 @@ namespace CRT.Data.Tests
         //
         // Keying the duplicate check on the label alone therefore rejected six rows of correct,
         // already-published data and made the board impossible to submit at all. Found on the
-        // maintainer's first real submission.
+        // project owner's first real submission.
         // ###########################################################################################
         [Fact]
         public void The_same_label_in_two_different_regions_is_NOT_a_duplicate()
@@ -750,7 +750,7 @@ namespace CRT.Data.Tests
         // *** EITHER NAME IN EITHER POSITION (code review, 2026-09-25). *** Only "Generic shared
         // files" as manufacturer and "Shared files" as hardware used to be refused, while
         // DataTreeUsage and PublishedSystemLister skip BOTH names in BOTH positions. A board
-        // published as "Shared files/<hw>/<board>" was then never listed for reviewers, and its
+        // published as "Shared files/<hw>/<board>" was then never listed for maintainers, and its
         // workbook and every file it cites were reported as unused - and removable.
         [Theory]
         [InlineData("Generic shared files", "C64", "250407")]
@@ -776,7 +776,7 @@ namespace CRT.Data.Tests
         //
         // The summary and the revision each land in a bounded column. The revision date reaches its
         // column only AFTER a publish has written the tree - so an over-long one used to turn a
-        // successful, irreversible publish into a 500 the reviewer would retry.
+        // successful, irreversible publish into a 500 the maintainer would retry.
         // ###########################################################################################
         [Fact]
         public void An_over_long_summary_is_refused()

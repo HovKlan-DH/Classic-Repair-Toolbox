@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // READING AND WRITING THE BOARD A DRAFT HOLDS
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS IS WHAT REPLACED DraftDataStore. *** That class read and wrote draft.json - a list
     // of row deltas recorded at edit time. A draft is now a real board folder, so persisting an
@@ -14,7 +14,7 @@ namespace Handlers.DataHandling
     //
     // *** EVERY EDIT IS READ-MODIFY-WRITE AGAINST THE FILE ON DISK, NEVER AGAINST A CACHED COPY.
     // *** That is the rule this class exists to enforce, and it follows directly from the
-    // maintainer's requirement that editing in the app and editing in Excel be interchangeable.
+    // project owner's requirement that editing in the app and editing in Excel be interchangeable.
     // The contributor may have changed the workbook since the application last read it; writing
     // back something built on a stale copy would silently discard that. So a caller hands over a
     // function that transforms the CURRENT board, and this class is the one that decides what

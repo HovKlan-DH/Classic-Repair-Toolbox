@@ -244,7 +244,7 @@ namespace Handlers.DataHandling
         // *** "Credits" IS LAST, AS IN EVERY PUBLISHED WORKBOOK (2026-09-24). *** All thirteen
         // published boards with an "Important signals" sheet put it before "Credits"; this list had
         // them the other way round, so every workbook the app wrote ended in "Important signals"
-        // and the table's sheet tabs disagreed with the file the maintainer knows (reported).
+        // and the table's sheet tabs disagreed with the file the project owner knows (reported).
         public static readonly IReadOnlyList<SheetDefinition> AllSheets =
         [
             BoardWorkbookSchema.BoardSchematics,

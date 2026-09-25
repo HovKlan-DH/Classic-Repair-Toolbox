@@ -6,7 +6,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// When a local draft has done its job and can be deleted without asking (maintainer request,
+// When a local draft has done its job and can be deleted without asking (owner request,
 // 2026-09-23).
 //
 // *** THIS DECIDES WHETHER TO DESTROY A FOLDER, WITH NO CONFIRMATION, so every test here is
@@ -55,7 +55,7 @@ public sealed class DraftRetirementTests : IDisposable
     // ###########################################################################################
     // *** "approved" AND "accepted" MUST NOT COUNT, and this is the test that keeps it that way. ***
     //
-    // Both are past the reviewer's decision and both render as a cheerful green row, so treating
+    // Both are past the maintainer's decision and both render as a cheerful green row, so treating
     // them as "published" is an easy and very damaging mistake: an approved submission has NOT
     // been written to the data tree yet. Retiring the draft at that point deletes the work before
     // anything carries it, and the next sync brings down a board that still lacks the change.
@@ -346,7 +346,7 @@ public sealed class DraftRetirementTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE REPORTED BUG (maintainer, 2026-09-25): published to BETA, the synced board matched
+    // *** THE REPORTED BUG (owner, 2026-09-25): published to BETA, the synced board matched
     // the draft, and the draft stayed in the list. *** The application looked a receipt's system
     // id up as though it were a workbook path, found no draft, and so never retired one. This is
     // the search the application runs, with a receipt shaped as a real one is.
@@ -367,7 +367,7 @@ public sealed class DraftRetirementTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM'S DRAFT IS RETIRED ONCE ITS PUBLISHED BOARD IS HERE (maintainer request,
+    // *** A NEW SYSTEM'S DRAFT IS RETIRED ONCE ITS PUBLISHED BOARD IS HERE (owner request,
     // 2026-09-25): "People will either not know they can/should remove this or they forget, so
     // better clean-up when we can." ***
     //
@@ -425,7 +425,7 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.Equal(DraftRetirementTests.NewDraftKey, found.ExcelDataFile);
     }
 
-    // Changed after it was sent, or changed by a reviewer before publishing: the draft still holds
+    // Changed after it was sent, or changed by a maintainer before publishing: the draft still holds
     // something the published board does not say.
     [Fact]
     public void A_NEW_systems_draft_that_differs_from_the_published_board_is_kept()

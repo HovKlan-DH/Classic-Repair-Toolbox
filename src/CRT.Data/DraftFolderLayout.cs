@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // WHAT A DRAFT FOLDER CONTAINS, now that a draft IS a board folder
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // A draft folder is deliberately INDISTINGUISHABLE from a published one:
     //

@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     // DataManager.cs in CRT.App), so centralising it changes nothing about WHEN or HOW OFTEN it
     // runs - only that the licence holder name is written once.
     //
-    // NOTE for the maintainer, carried over from the strategy document: the Community licence
+    // NOTE for the project owner, carried over from the strategy document: the Community licence
     // this uses is chosen for a desktop application used by an individual. Whether it also covers
     // running EPPlus inside a server process (from Phase 3 onward) is a licence question, not a
     // technical one, and must be confirmed before CRT.Server ships anything that reads or writes

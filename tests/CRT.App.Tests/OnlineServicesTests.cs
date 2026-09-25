@@ -196,6 +196,7 @@ public class OnlineServicesTests
         if (!OperatingSystem.IsWindows())
             return;
 
+        // windows-path-literal: a hostile input, in a test that returns early off Windows.
         Assert.False(TryResolveValidatedLocalPath(
             DataRoot, @"C:\Windows\System32\evil.dll", out _, out string driveFailure));
         Assert.Equal("manifest file path must be relative", driveFailure);
@@ -370,7 +371,7 @@ public class OnlineServicesTests
         // file:// URI (rejected a check later, for not being HTTPS) while elsewhere it may not
         // parse as absolute at all (rejected immediately). Either route is correct and the message
         // differs, so pinning one of them here would just be a test that fails on the Linux CI
-        // runner or on the maintainer's machine depending on who wrote it. What must hold on every
+        // runner or on the project owner's machine depending on who wrote it. What must hold on every
         // platform is that nothing slash-prefixed ever becomes a download URI.
         Assert.False(TryCreateTrustedDownloadUri(url, out Uri? downloadUri, out _));
         Assert.Null(downloadUri);

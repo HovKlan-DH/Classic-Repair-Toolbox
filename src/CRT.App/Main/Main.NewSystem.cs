@@ -56,7 +56,7 @@ namespace CRT
             this.SelectBoardForNewSystem(registration);
 
             // ###########################################################################################
-            // *** AND LAND ON THE DRAFTS TAB, because that is where the next step is (maintainer
+            // *** AND LAND ON THE DRAFTS TAB, because that is where the next step is (owner
             // request, 2026-09-24). ***
             //
             // Creating a system is never the end of a task: the contributor now has to add schematic

@@ -7,7 +7,7 @@ namespace Handlers.Geometry
 {
     // ###########################################################################################
     // Following one net across a SHEET BOUNDARY, so selecting a component lights its wires on the
-    // sheet the user is actually looking at (maintainer report, 2026-09-24).
+    // sheet the user is actually looking at (owner report, 2026-09-24).
     //
     // *** THE BUG THIS EXISTS FOR. *** A hierarchical KiCad design renames a net at every boundary.
     // On the C128 Open128 board, CN9 pad 4 is the userport's CNT1 line:
@@ -22,7 +22,7 @@ namespace Handlers.Geometry
     // Selecting a component reads net names off the PCB pads and looks them up in a per-sheet index
     // keyed by that sheet's own label text. For CNT1/SP1 the lookup missed, so nothing highlighted -
     // while hovering the same wire still worked, because hover hit-tests geometry and never does
-    // this lookup. That asymmetry is what the maintainer noticed.
+    // this lookup. That asymmetry is what the project owner noticed.
     //
     // *** WHY THIS IS AN ALIAS TABLE RATHER THAN A RE-KEYING. *** The obvious fix is to key the
     // index by the full hierarchical path instead of the leaf. That fails for the sheet's OWN

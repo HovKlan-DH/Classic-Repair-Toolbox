@@ -139,7 +139,7 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // Every file is CITED by a row (security review, 2026-09-25): the plan now refuses a file no
-        // row uses, since nothing would show it and no reviewer could have seen it.
+        // row uses, since nothing would show it and no maintainer could have seen it.
         // ###########################################################################################
         private static SubmissionManifest Manifest(params SubmissionFile[] files)
         {
@@ -238,7 +238,7 @@ namespace CRT.Server.Tests
 
             // ###########################################################################################
             // *** THE REVISION DATE IS NOW THE PUBLISH DATE, NOT THE SUBMITTED ONE (corrected
-            // 2026-09-23, maintainer request). ***
+            // 2026-09-23, owner request). ***
             //
             // This used to assert the submitted "2026-August-21" survived untouched. It did, and
             // that was the defect: the line means "when this board was last published", so carrying
@@ -427,7 +427,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** system.json IS RETIRED (maintainer decision, 2026-09-25). *** It was written beside
+        // *** system.json IS RETIRED (owner decision, 2026-09-25). *** It was written beside
         // every published board and so downloaded by every user, who had no use for it. A publish
         // writes none, and removes one an earlier build left behind. What it recorded - revision
         // and content hash - still reaches the database, and the outcome still reports it.
@@ -558,7 +558,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_publish_with_no_submission_behind_it_is_allowed()
         {
-            // The maintainer correcting their own data publishes without a submission. The
+            // The project owner correcting their own data publishes without a submission. The
             // system's revision still has to be recorded.
             FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
@@ -603,7 +603,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A DESTINATION THAT CANNOT BE WRITTEN IS A REPORTED FAILURE, NOT A 500 (maintainer
+        // *** A DESTINATION THAT CANNOT BE WRITTEN IS A REPORTED FAILURE, NOT A 500 (owner
         // report, 2026-09-23). ***
         //
         // TryCopyToAsync returns false for a MISSING blob - covered above - but THROWS when the
@@ -832,7 +832,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Publishing_writes_the_newest_generation_and_leaves_an_older_one_untouched()
         {
-            // *** THE MAINTAINER'S RULE, PROVED ON DISK. *** An older generation is a frozen
+            // *** THE PROJECT OWNER'S RULE, PROVED ON DISK. *** An older generation is a frozen
             // compatibility target still serving older application builds. Writing it is silent
             // damage, so this asserts the older file is byte-identical afterwards rather than
             // merely that the newer one was written.

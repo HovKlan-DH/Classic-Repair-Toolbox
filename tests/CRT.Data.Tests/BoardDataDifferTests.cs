@@ -387,7 +387,7 @@ public sealed class BoardDataDifferTests
     // *** FORMATTED INVARIANTLY, OR THE SAME BOARD DIFFERS BY MACHINE. *** On a comma-decimal
     // machine a culture-formatted 1.5 is "1,5", so a draft created on one and compared on another
     // would report every calibration as modified. Danish is used here because it is the
-    // maintainer's own locale, and this class of bug is documented three times elsewhere in this
+    // project owner's own locale, and this class of bug is documented three times elsewhere in this
     // codebase.
     // ###########################################################################################
     [Fact]

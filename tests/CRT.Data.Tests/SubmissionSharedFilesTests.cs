@@ -6,10 +6,10 @@ namespace CRT.Data.Tests
 {
     // ###########################################################################################
     // Covers SubmissionSharedFiles - whether a submission changes a shared file, which is what
-    // sends it to the administrator rather than to the system's reviewers (Phase 6 roles).
+    // sends it to the administrator rather than to the system's maintainers (Phase 6 roles).
     //
     // The property that matters most is the NEGATIVE one: a board that merely USES a shared image
-    // unchanged must not count, or nearly every submission would bypass its reviewers.
+    // unchanged must not count, or nearly every submission would bypass its maintainers.
     // ###########################################################################################
     public sealed class SubmissionSharedFilesTests
     {
@@ -85,7 +85,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void Without_a_view_of_the_tree_a_shared_file_counts_as_changed()
         {
-            // "Could not check" must fall on the administrator-only side, never the reviewer side.
+            // "Could not check" must fall on the administrator-only side, never the maintainer side.
             SubmissionManifest manifest = SubmissionSharedFilesTests.Manifest(
                 ("Commodore/Shared files/74LS08.png", SubmissionSharedFilesTests.Hash));
 

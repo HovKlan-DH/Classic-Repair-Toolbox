@@ -6,18 +6,18 @@ using System.Text.Json.Serialization;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHO MUST APPROVE before something is published (maintainer decision, 2026-09-25): "in case of
-    // changes to any shared file, then both the reviewer and the admin should approve before
-    // publishing to BETA or production. If there is no shared files changed, then normal reviewer
+    // WHO MUST APPROVE before something is published (owner decision, 2026-09-25): "in case of
+    // changes to any shared file, then both the maintainer and the admin should approve before
+    // publishing to BETA or production. If there is no shared files changed, then normal maintainer
     // is sufficient."
     //
-    //   - Nothing shared changes     -> ONE approval, from a reviewer of the board or an
+    //   - Nothing shared changes     -> ONE approval, from a maintainer of the board or an
     //                                   administrator. The publish happens on that approval.
-    //   - A shared file changes      -> a reviewer of the board AND an administrator, in either
+    //   - A shared file changes      -> a maintainer of the board AND an administrator, in either
     //                                   order. The first approval is recorded and the item waits;
     //                                   the second one publishes.
     //   - ...and the board has no
-    //     reviewers yet              -> the administrator alone: there is nobody to ask for the
+    //     maintainers yet              -> the administrator alone: there is nobody to ask for the
     //                                   other half, and the administrator is in every pool anyway.
     //
     // The same rule for BOTH publishes: a submission to BETA, and a board's promotion to
@@ -30,13 +30,13 @@ namespace Handlers.DataHandling
     public static class ApprovalRules
     {
         // An empty list means "any one approval": the ordinary case.
-        public static IReadOnlyList<ApproverRole> Required(bool touchesSharedFiles, bool systemHasReviewers)
+        public static IReadOnlyList<ApproverRole> Required(bool touchesSharedFiles, bool systemHasMaintainers)
         {
             if (!touchesSharedFiles)
                 return [];
 
-            return systemHasReviewers
-                ? [ApproverRole.Reviewer, ApproverRole.Administrator]
+            return systemHasMaintainers
+                ? [ApproverRole.Maintainer, ApproverRole.Administrator]
                 : [ApproverRole.Administrator];
         }
 
@@ -45,8 +45,8 @@ namespace Handlers.DataHandling
         // this account's approval would be the one that publishes.
         //
         // `yourAccountId` says whether THIS account gave an approval already, as opposed to someone
-        // else in the same role (code review, 2026-09-25). A board's second reviewer cannot add a
-        // second reviewer approval either way, but was told "You have already approved this" for
+        // else in the same role (code review, 2026-09-25). A board's second maintainer cannot add a
+        // second maintainer approval either way, but was told "You have already approved this" for
         // an approval a colleague gave.
         // ###########################################################################################
         public static ApprovalStatus Status(
@@ -69,7 +69,7 @@ namespace Handlers.DataHandling
 
             // *** EVERY REQUIRED APPROVAL ALREADY GIVEN, yet nothing published (code review,
             // 2026-09-25). *** Only possible when the requirement SHRANK after an approval - the
-            // board's last reviewer left its pool, so a shared change needs the administrator
+            // board's last maintainer left its pool, so a shared change needs the administrator
             // alone, and the administrator approved first. Nothing is waited for, so the next
             // approval by a role the item needs completes it; refusing it as "already approved"
             // left the item waiting for nobody, for ever.
@@ -89,14 +89,14 @@ namespace Handlers.DataHandling
     [JsonConverter(typeof(JsonStringEnumConverter<ApproverRole>))]
     public enum ApproverRole
     {
-        Reviewer,
+        Maintainer,
         Administrator
     }
 
     // One approval already recorded. By is a readable label (name and address), stored with the
     // approval so it survives the account being renamed or removed - the audit table's rule.
     // AccountId is who gave it, for "did YOU approve this"; null once the account is deleted. It
-    // stays on the server - every reviewer is sent the list, and the label says enough.
+    // stays on the server - every maintainer is sent the list, and the label says enough.
     public sealed record GivenApproval(
         ApproverRole Role,
         string By,

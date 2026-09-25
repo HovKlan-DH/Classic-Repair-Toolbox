@@ -4,10 +4,10 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers PublishedSystemLister - the boards in the data tree a reviewer can be assigned to.
+    // Covers PublishedSystemLister - the boards in the data tree a maintainer can be assigned to.
     //
     // A real temp folder, because the thing under test IS the folder walk: which folders count as
-    // a board, and which are the shared-file folders that must never get a reviewer.
+    // a board, and which are the shared-file folders that must never get a maintainer.
     // ###########################################################################################
     public sealed class PublishedSystemListerTests : IDisposable
     {
@@ -61,7 +61,7 @@ namespace CRT.Server.Tests
         public void The_SHARED_FILE_folders_are_never_systems()
         {
             // "Generic shared files" at the top and "Shared files" beside a manufacturer's boards
-            // are not boards, and a reviewer assigned to one would review nothing. Both carry
+            // are not boards, and a maintainer assigned to one would review nothing. Both carry
             // sub-folders deep enough to look like a board to a naive walk.
             this.Board("Commodore", "C64", "250407");
             this.Board("Commodore", "Shared files", "Images");

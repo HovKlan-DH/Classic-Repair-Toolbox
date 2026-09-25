@@ -3,7 +3,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// DraftBadgeSet - which Hardware and Board drop-down entries carry the "Draft" chip (maintainer
+// DraftBadgeSet - which Hardware and Board drop-down entries carry the "Draft" chip (owner
 // request, 2026-09-24). A board carries it when it has a local draft; a hardware when ANY of its
 // boards does.
 // ###########################################################################################

@@ -6,7 +6,7 @@ namespace CRT
 {
     // ###########################################################################################
     // The maintainer agreement shown when "Create system" is clicked in NewSystemWindow
-    // (maintainer request, 2026-09-24). A system submitted to the community needs someone to
+    // (owner request, 2026-09-24). A system submitted to the community needs someone to
     // review the changes others later submit for it, and the person who created it is the one who
     // knows it - so creating a new system requires accepting that role up front. Returns true via
     // ShowDialog when accepted, null when declined.

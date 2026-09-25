@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // HOW A BOARD WORKBOOK LOOKS WHEN THE APPLICATION CREATES ONE (maintainer request,
+    // HOW A BOARD WORKBOOK LOOKS WHEN THE APPLICATION CREATES ONE (owner request,
     // 2026-09-23).
     //
     // *** WHY THIS EXISTS. *** BoardWorkbookWriter used to build an empty package and write bare
     // rows into it, so a published or newly created board lost the preamble, the documentation
     // links, the coloured headers and the column widths that every hand-maintained board carries.
     // Nothing was DELETED - it was simply never written - but the first publish of the C64 250407
-    // turned a 190 KB maintainer-authored workbook into an 81 KB stripped one, and the header
+    // turned a 190 KB owner-authored workbook into an 81 KB stripped one, and the header
     // block linking to the project's own documentation disappeared with it.
     //
     // *** THE VALUES ARE READ OFF THE REFERENCE BOARD, NOT INVENTED. *** Everything here was taken
@@ -20,7 +20,7 @@ namespace Handlers.DataHandling
     // hand-made ones rather than being a second house style.
     //
     // *** THE UUID COLUMN IS DELIBERATELY NOT REPRODUCED. *** Every sheet in that reference still
-    // carries a "UUID v4" column, and it is retired (maintainer instruction, 2026-09-23): nothing
+    // carries a "UUID v4" column, and it is retired (owner instruction, 2026-09-23): nothing
     // generates one and nothing reads one. Copying the reference faithfully would resurrect a dead
     // column in every board published from now on, so the layout is copied and that column is not.
     // ###########################################################################################
@@ -52,7 +52,7 @@ namespace Handlers.DataHandling
         public const int PreambleHardwareRow = 1;
         public const int PreambleBoardRow = 2;
 
-        // The typo is the maintainer's own and is reproduced verbatim: the reference workbooks all
+        // The typo is the project owner's own and is reproduced verbatim: the reference workbooks all
         // say "availble", and silently correcting it here would make every generated sheet differ
         // from every hand-made one for no benefit to anybody.
         public const string DocumentationLeadIn =
@@ -132,7 +132,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // THE BOARD SCHEMATICS SHEET IS BANDED BY MEANING, not painted in one colour
-        // (maintainer report, 2026-09-24).
+        // (owner report, 2026-09-24).
         //
         // Its title row groups the columns into three bands, and the header row picks the CAD-name
         // column out in blue:
@@ -163,12 +163,12 @@ namespace Handlers.DataHandling
         public const string HighlightsBandTitle = "Highlights in Main or Thumbnail";
 
         // ###########################################################################################
-        // THE HEADER ROW'S HEIGHT, and why it is set explicitly (maintainer report, 2026-09-24).
+        // THE HEADER ROW'S HEIGHT, and why it is set explicitly (owner report, 2026-09-24).
         //
         // The reference wraps its column headers - "Schematic highlight opacity" over three lines -
         // and fixes the row at 57.6 points to fit them. Without the wrap those headers force their
         // columns wide enough to hold the whole phrase on one line, which is exactly what the
-        // maintainer's screenshot showed: a sheet three times wider than the reference with the
+        // project owner's screenshot showed: a sheet three times wider than the reference with the
         // same data in it.
         //
         // Set rather than left to autofit because Excel does not re-measure a wrapped row's height
@@ -180,7 +180,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // THE FONT. Calibri 11 throughout, which is what the reference's default font is - and
         // stating it explicitly matters because a generated package does NOT inherit it
-        // (maintainer report, 2026-09-24).
+        // (owner report, 2026-09-24).
         //
         // EPPlus creates a workbook whose default font depends on its own defaults rather than on
         // Excel's, so a file written without setting it comes out in something else entirely and

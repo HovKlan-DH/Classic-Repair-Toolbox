@@ -7,7 +7,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // One sitting in the Drafts tab's table editor: open a draft as a table, save it back
-// (maintainer request, 2026-09-24).
+// (owner request, 2026-09-24).
 //
 // *** THE TEST THAT MATTERS MOST is the one that edits the workbook BEHIND the table's back and
 // then saves. *** The table holds every sheet and a save replaces all of them, so a save built on

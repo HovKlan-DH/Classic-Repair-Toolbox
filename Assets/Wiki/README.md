@@ -6,7 +6,7 @@ one Wiki page of the **same name**, and its content is what that page should con
 > [!IMPORTANT]
 > The Wiki itself is updated **by hand**. Nothing here publishes automatically — GitHub gives no
 > way to push a folder in this repository to the Wiki. Editing a file here changes what the page
-> *should* say; the page only changes when the maintainer copies it across.
+> *should* say; the page only changes when the project owner copies it across.
 
 The published documentation lives at
 [the Wiki](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki).
@@ -16,7 +16,7 @@ The published documentation lives at
 The Wiki is a separate git repository with no pull requests, no review and no link to the code it
 describes. Keeping the text here means a documentation change travels with the commit that made it
 necessary, and can be reviewed like any other change — while the Wiki keeps the integrated,
-easy-to-read presentation the maintainer wants for readers.
+easy-to-read presentation the project owner wants for readers.
 
 The cost of that split is one manual step, described below.
 

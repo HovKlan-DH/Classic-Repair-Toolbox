@@ -665,7 +665,7 @@ namespace CRT
             window.SetRefreshBoardAfterSave(() => this.ReloadCurrentBoardFromDisk(
                 this.TabSchematicsControl.GetCurrentSchematicName()));
 
-            // A save takes the contributor to the Drafts tab, where the next step is (maintainer
+            // A save takes the contributor to the Drafts tab, where the next step is (owner
             // request, 2026-09-24). The window is maximized over this one, so it closes first -
             // switching the tab behind it would change nothing that can be seen. The refresh above
             // has already shown the Drafts tab if this save created the system's first draft.

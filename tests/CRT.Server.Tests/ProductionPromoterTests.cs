@@ -70,7 +70,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_file_that_CHANGED_in_BETA_since_the_plan_is_not_copied_and_nothing_after_it_is()
         {
-            // The reviewer checked one set of bytes; different ones must not reach every user under
+            // The maintainer checked one set of bytes; different ones must not reach every user under
             // the same name.
             PromotionFile first = this.PutInBeta("Commodore/C64/250407/a.png", "checked");
             PromotionFile board = this.PutInBeta("Commodore/C64/250407/Data.xlsx", "workbook", PromotionStage.Board);

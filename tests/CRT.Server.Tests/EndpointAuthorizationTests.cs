@@ -109,7 +109,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_account_flagged_administrator_is_reported_as_one()
         {
-            // The flag the review app will authorise against from Phase 6. Asserted here so the
+            // The flag the maintainer app will authorise against from Phase 6. Asserted here so the
             // plumbing is known good before anything depends on it.
             (FakeAccountStore store, _, string token) = await EndpointAuthorizationTests.SignedInAsync();
 
@@ -122,7 +122,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task An_ordinary_account_is_neither_administrator_nor_in_any_reviewer_pool()
+        public async Task An_ordinary_account_is_neither_administrator_nor_in_any_maintainer_pool()
         {
             // Privilege is never the default. A new account gets nothing - no flag, no rows.
             (FakeAccountStore store, _, string token) = await EndpointAuthorizationTests.SignedInAsync();

@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <!--
-    CRT.UI - Avalonia controls shared by the desktop app (CRT.App) and the review application
-    (CRT.Review).
+    CRT.UI - Avalonia controls shared by the desktop app (CRT.App) and the maintainer application
+    (CRT.Maintainer).
 
-    It exists for the TABLE EDITOR (maintainer request, 2026-09-25): the Drafts tab's "Edit in table
-    format" and the review application's table are the same control, so a fix or a colour change
+    It exists for the TABLE EDITOR (owner request, 2026-09-25): the Drafts tab's "Edit in table
+    format" and the maintainer application's table are the same control, so a fix or a colour change
     reaches both. Its rules are in CRT.Data (BoardTableDocument and friends); this library only
     paints them.
 
@@ -40,9 +40,9 @@
     -->
     <ItemGroup>
         <InternalsVisibleTo Include="Classic-Repair-Toolbox" />
-        <InternalsVisibleTo Include="Classic-Repair-Toolbox-Review" />
+        <InternalsVisibleTo Include="Classic-Repair-Toolbox-Maintainer" />
         <InternalsVisibleTo Include="CRT.App.Tests" />
-        <InternalsVisibleTo Include="CRT.Review.Tests" />
+        <InternalsVisibleTo Include="CRT.Maintainer.Tests" />
     </ItemGroup>
 
 </Project>

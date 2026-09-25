@@ -7,15 +7,15 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers ReviewAuthority - who may review, and who may publish, PER SYSTEM (Phase 6 roles as
-    // the maintainer decided them on 2026-09-25: Administrator, and Reviewer assigned to systems).
+    // the project owner decided them on 2026-09-25: Administrator, and Maintainer assigned to systems).
     //
     // *** THIS IS A SECURITY BOUNDARY, NOT A UI CONVENIENCE. *** Phase 6 task 6 is explicit that
     // the desktop app hiding a button is not enforcement, because the app is public source and an
     // attacker calls the API directly. These tests are the enforcement's own proof.
     //
-    // THE ONES THAT MATTER MOST: a reviewer of one system gets NOTHING on another (threat 3's
+    // THE ONES THAT MATTER MOST: a maintainer of one system gets NOTHING on another (threat 3's
     // "check the object, not just the verb"), and a submission changing SHARED FILES is refused to
-    // every reviewer, because those files reach every board. The negative cases are deliberately
+    // every maintainer, because those files reach every board. The negative cases are deliberately
     // as thorough as the positive ones: an authority check is only worth what it REFUSES.
     // ###########################################################################################
     public sealed class ReviewAuthorityTests
@@ -42,7 +42,7 @@ namespace CRT.Server.Tests
         private static ReviewAccess Admin(bool verified = true, bool locked = false) =>
             ReviewAccess.For(ReviewAuthorityTests.Account(isAdministrator: true, isVerified: verified, isLocked: locked));
 
-        private static ReviewAccess ReviewerOf(params string[] systems) =>
+        private static ReviewAccess MaintainerOf(params string[] systems) =>
             ReviewAccess.For(ReviewAuthorityTests.Account(), systems);
 
         private static ReviewAccess Ordinary() => ReviewAccess.For(ReviewAuthorityTests.Account());
@@ -59,34 +59,34 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_reviewer_of_a_system_may_review_and_publish_THAT_system()
+        public void A_maintainer_of_a_system_may_review_and_publish_THAT_system()
         {
-            ReviewAccess reviewer = ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64);
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
 
-            Assert.True(ReviewAuthority.CanReview(reviewer, ReviewAuthorityTests.Submission()));
-            Assert.True(ReviewAuthority.CanPublish(reviewer, ReviewAuthorityTests.Submission()));
+            Assert.True(ReviewAuthority.CanReview(maintainer, ReviewAuthorityTests.Submission()));
+            Assert.True(ReviewAuthority.CanPublish(maintainer, ReviewAuthorityTests.Submission()));
         }
 
         [Fact]
-        public void A_reviewer_of_ONE_system_gets_NOTHING_on_ANOTHER()
+        public void A_maintainer_of_ONE_system_gets_NOTHING_on_ANOTHER()
         {
-            // *** THE MOST IMPORTANT ASSERTION IN THIS FILE. *** A reviewer's token must be
+            // *** THE MOST IMPORTANT ASSERTION IN THIS FILE. *** A maintainer's token must be
             // useless against systems they do not review - threat 2's "keep authority narrow".
             // Not seeing it, not rejecting it, not publishing it.
-            ReviewAccess reviewer = ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64);
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
             SubmissionRecord other = ReviewAuthorityTests.Submission(ReviewAuthorityTests.C128);
 
-            Assert.False(ReviewAuthority.CanReview(reviewer, other));
-            Assert.False(ReviewAuthority.CanPublish(reviewer, other));
+            Assert.False(ReviewAuthority.CanReview(maintainer, other));
+            Assert.False(ReviewAuthority.CanPublish(maintainer, other));
         }
 
         [Fact]
-        public void A_reviewer_of_SEVERAL_systems_may_act_on_each_of_them()
+        public void A_maintainer_of_SEVERAL_systems_may_act_on_each_of_them()
         {
-            ReviewAccess reviewer = ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64, ReviewAuthorityTests.C128);
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64, ReviewAuthorityTests.C128);
 
-            Assert.True(ReviewAuthority.CanPublish(reviewer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64)));
-            Assert.True(ReviewAuthority.CanPublish(reviewer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C128)));
+            Assert.True(ReviewAuthority.CanPublish(maintainer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64)));
+            Assert.True(ReviewAuthority.CanPublish(maintainer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C128)));
         }
 
         [Fact]
@@ -94,36 +94,36 @@ namespace CRT.Server.Tests
         {
             // utf8mb4_bin since migration 0005: "commodore/c64/250407" is a different system,
             // and a case-folding comparison here would grant what the database refuses.
-            ReviewAccess reviewer = ReviewAuthorityTests.ReviewerOf("commodore/c64/250407");
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf("commodore/c64/250407");
 
-            Assert.False(ReviewAuthority.CanReview(reviewer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64)));
+            Assert.False(ReviewAuthority.CanReview(maintainer, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64)));
         }
 
         // -----------------------------------------------------------------------------------
-        // Shared files - the board's reviewer AND the administrator (2026-09-25)
+        // Shared files - the board's maintainer AND the administrator (2026-09-25)
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_shared_files_submission_is_OPEN_to_the_boards_reviewer_as_well_as_the_administrator()
+        public void A_shared_files_submission_is_OPEN_to_the_boards_maintainer_as_well_as_the_administrator()
         {
-            // The maintainer: "in case of changes to any shared file, then both the reviewer and
-            // the admin should approve". So the reviewer takes part - it used to be hidden from
+            // The project owner: "in case of changes to any shared file, then both the maintainer and
+            // the admin should approve". So the maintainer takes part - it used to be hidden from
             // them. Whether one approval PUBLISHES is ApprovalRules', not this class's.
             SubmissionRecord shared = ReviewAuthorityTests.Submission(touchesShared: true);
 
-            Assert.True(ReviewAuthority.CanReview(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64), shared));
+            Assert.True(ReviewAuthority.CanReview(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64), shared));
             Assert.True(ReviewAuthority.CanReview(ReviewAuthorityTests.Admin(), shared));
 
-            // ...and still not to a reviewer of another board.
-            Assert.False(ReviewAuthority.CanReview(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C128), shared));
+            // ...and still not to a maintainer of another board.
+            Assert.False(ReviewAuthority.CanReview(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128), shared));
         }
 
         [Fact]
-        public void The_role_an_account_approves_as_is_Administrator_Reviewer_or_none()
+        public void The_role_an_account_approves_as_is_Administrator_Maintainer_or_none()
         {
             Assert.Equal(ApproverRole.Administrator, ReviewAuthority.RoleIn(ReviewAuthorityTests.Admin(), ReviewAuthorityTests.C64));
-            Assert.Equal(ApproverRole.Reviewer, ReviewAuthority.RoleIn(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64), ReviewAuthorityTests.C64));
-            Assert.Null(ReviewAuthority.RoleIn(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C128), ReviewAuthorityTests.C64));
+            Assert.Equal(ApproverRole.Maintainer, ReviewAuthority.RoleIn(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64), ReviewAuthorityTests.C64));
+            Assert.Null(ReviewAuthority.RoleIn(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128), ReviewAuthorityTests.C64));
             Assert.Null(ReviewAuthority.RoleIn(ReviewAuthorityTests.Admin(locked: true), ReviewAuthorityTests.C64));
         }
 
@@ -134,35 +134,35 @@ namespace CRT.Server.Tests
         [Fact]
         public void An_administrator_may_review_and_publish_EVERY_system_without_being_in_any_pool()
         {
-            // No "override" path and no rows: the administrator is a reviewer of every system by
+            // No "override" path and no rows: the administrator is a maintainer of every system by
             // definition, which is what Phase 6's traps mean by "compute authority once".
             ReviewAccess admin = ReviewAuthorityTests.Admin();
 
-            Assert.Empty(admin.ReviewerOf);
+            Assert.Empty(admin.MaintainerOf);
             Assert.True(ReviewAuthority.CanPublish(admin, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64)));
             Assert.True(ReviewAuthority.CanPublish(admin, ReviewAuthorityTests.Submission(ReviewAuthorityTests.C128)));
         }
 
         [Fact]
-        public void Only_a_verified_unlocked_non_administrator_pool_member_gives_the_REVIEWER_half()
+        public void Only_a_verified_unlocked_non_administrator_pool_member_gives_the_MAINTAINER_half()
         {
             // An administrator in a pool approves AS the administrator (RoleIn), and a locked or
-            // unverified account cannot approve at all - so none of them is "the board's reviewer"
+            // unverified account cannot approve at all - so none of them is "the board's maintainer"
             // a shared-file change waits for (code review, 2026-09-25).
-            var reviewer = new ReviewerRecord(ReviewAuthorityTests.C64, 1, "Anna", "anna@example.com");
+            var maintainer = new MaintainerRecord(ReviewAuthorityTests.C64, 1, "Anna", "anna@example.com");
 
-            Assert.True(ReviewAuthority.CanGiveReviewerApproval(reviewer));
-            Assert.False(ReviewAuthority.CanGiveReviewerApproval(reviewer with { IsAdministrator = true }));
-            Assert.False(ReviewAuthority.CanGiveReviewerApproval(reviewer with { IsLocked = true }));
-            Assert.False(ReviewAuthority.CanGiveReviewerApproval(reviewer with { IsVerified = false }));
-            Assert.False(ReviewAuthority.CanGiveReviewerApproval(null));
+            Assert.True(ReviewAuthority.CanGiveMaintainerApproval(maintainer));
+            Assert.False(ReviewAuthority.CanGiveMaintainerApproval(maintainer with { IsAdministrator = true }));
+            Assert.False(ReviewAuthority.CanGiveMaintainerApproval(maintainer with { IsLocked = true }));
+            Assert.False(ReviewAuthority.CanGiveMaintainerApproval(maintainer with { IsVerified = false }));
+            Assert.False(ReviewAuthority.CanGiveMaintainerApproval(null));
         }
 
         [Fact]
         public void Only_an_administrator_may_administer()
         {
             Assert.True(ReviewAuthority.CanAdminister(ReviewAuthorityTests.Admin()));
-            Assert.False(ReviewAuthority.CanAdminister(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64)));
+            Assert.False(ReviewAuthority.CanAdminister(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64)));
             Assert.False(ReviewAuthority.CanAdminister(ReviewAuthorityTests.Ordinary()));
             Assert.False(ReviewAuthority.CanAdminister(null));
         }
@@ -174,7 +174,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void An_ordinary_account_may_NOT_review_anything()
         {
-            // Having an account does not make somebody a reviewer. Being in a pool does.
+            // Having an account does not make somebody a maintainer. Being in a pool does.
             ReviewAccess ordinary = ReviewAuthorityTests.Ordinary();
 
             Assert.False(ReviewAuthority.CanReviewAnything(ordinary));
@@ -200,8 +200,8 @@ namespace CRT.Server.Tests
         public void CanReviewAnything_is_true_for_anyone_in_at_least_one_pool()
         {
             // What lets the queue answer 403 to an account with no role, and an empty list to a
-            // reviewer whose systems simply have nothing waiting.
-            Assert.True(ReviewAuthority.CanReviewAnything(ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C128)));
+            // maintainer whose systems simply have nothing waiting.
+            Assert.True(ReviewAuthority.CanReviewAnything(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128)));
             Assert.True(ReviewAuthority.CanReviewAnything(ReviewAuthorityTests.Admin()));
         }
 
@@ -223,7 +223,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_LOCKED_reviewer_may_not_review_their_own_system()
+        public void A_LOCKED_maintainer_may_not_review_their_own_system()
         {
             ReviewAccess locked = ReviewAccess.For(
                 ReviewAuthorityTests.Account(isLocked: true), [ReviewAuthorityTests.C64]);
@@ -250,14 +250,14 @@ namespace CRT.Server.Tests
         [Fact]
         public void Reviewing_and_publishing_are_the_same_authority()
         {
-            // The maintainer's model: whoever may review a system may publish to it. Stated as a
+            // The project owner's model: whoever may review a system may publish to it. Stated as a
             // property over every kind of caller and submission, so that a later change that
             // split them again does so deliberately.
             ReviewAccess?[] callers =
             [
                 null,
                 ReviewAuthorityTests.Ordinary(),
-                ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C64),
+                ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64),
                 ReviewAuthorityTests.Admin(),
                 ReviewAuthorityTests.Admin(locked: true)
             ];
@@ -279,14 +279,14 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // The sentence a refused reviewer reads
+        // The sentence a refused maintainer reads
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void The_refusal_names_the_system_for_a_reviewer_of_another_one()
+        public void The_refusal_names_the_system_for_a_maintainer_of_another_one()
         {
             string why = ReviewAuthority.DescribeRefusal(
-                ReviewAuthorityTests.ReviewerOf(ReviewAuthorityTests.C128), ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64));
+                ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128), ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64));
 
             Assert.Contains(ReviewAuthorityTests.C64, why, StringComparison.Ordinal);
         }

@@ -3,7 +3,7 @@
   <!--
   Shared, Avalonia-free data layer: board Excel/JSON read-write, the shared cache they use, board
   data validation and a handful of pure text helpers. Referenced by CRT.App today; from Phase 3
-  onward, CRT.Server and the review app reference it too, so the board-reading and merging rules
+  onward, CRT.Server and the maintainer app reference it too, so the board-reading and merging rules
   exist exactly once rather than being re-implemented per host (or, as before Phase 1, once in C#
   and once in PHP). See ".claude/CLAUDE.md"'s "Why this is being done" for the duplication this
   removes.
@@ -14,7 +14,7 @@
   were deliberately left in CRT.App: all three are built on Avalonia's Point/Rect/Matrix and are
   called from 21 files across the Schematics/Worklog rendering pipeline, so converting them to a
   portable representation is a real refactor of its own, not a file move, and belongs in whichever
-  phase actually needs a portable geometry library (most likely when the review app is built).
+  phase actually needs a portable geometry library (most likely when the maintainer app is built).
   -->
 
   <PropertyGroup>
@@ -41,7 +41,7 @@
   Handlers/Geometry/ note on the same "internal costs no coverage" pattern), and the app's own
   Schematics tab (TabSchematics.LabelEditor.cs) constructs BoardDataWriter's internal
   LabelEditorSaveRow rows directly to save label-editor changes. From Phase 3 onward CRT.Server
-  and the review app will need the same grant for the same reason - add each one here as it is
+  and the maintainer app will need the same grant for the same reason - add each one here as it is
   created, rather than widening a type to public just because a new caller needs it.
   -->
   <ItemGroup>
@@ -59,12 +59,12 @@
 
     <!--
     CRT.Server itself needs BoardDataReader from Phase 5 task 3: computing a change summary for a
-    reviewer means comparing the SUBMITTED board (which the manifest carries whole) against the
+    maintainer means comparing the SUBMITTED board (which the manifest carries whole) against the
     PUBLISHED one, and only the server has the data tree to read that second half from.
 
     *** THIS IS WHERE EPPlus BEGINS EXECUTING SERVER-SIDE. *** Open question 8 predicted it would
     happen at Phase 4 task 3 and was wrong - the submission diff works on the manifest and opens
-    no workbook. It arrives HERE instead, and at Phase 5 task 6's publish writer. The maintainer
+    no workbook. It arrives HERE instead, and at Phase 5 task 6's publish writer. The project owner
     has decided to proceed on the current licence and settle it separately; see that question.
     -->
     <InternalsVisibleTo Include="CRT.Server" />

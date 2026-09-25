@@ -384,7 +384,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     [Fact]
     public async Task Writing_over_an_existing_workbook_replaces_it_entirely()
     {
-        // Publishing overwrites in place (no revision history - maintainer's decision). The old
+        // Publishing overwrites in place (no revision history - owner's decision). The old
         // contents must not survive as trailing rows below the new ones.
         string path = Path.Combine(this.thisWorkspace.Root, "replace.xlsx");
 
@@ -427,7 +427,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     // which pinned the transition behaviour: Phase 4 retired UuidV4 as an identity but kept
     // READING it, so the writer carried whatever a row held through verbatim.
     //
-    // The maintainer has since dropped the column from the data outright - nothing generated
+    // The project owner has since dropped the column from the data outright - nothing generated
     // one, nothing compared one, and the only remaining consumer was a validator warning that a
     // dead field needed fixing. The old test is gone because the behaviour it described is gone,
     // and this one is here because "the column is absent" is now the thing worth pinning: a
@@ -713,10 +713,10 @@ public sealed class BoardWorkbookWriterTests : IDisposable
 
     // ###########################################################################################
     // *** A GENERATED WORKBOOK CARRIES THE SAME HEADER BLOCK AS A HAND-MAINTAINED ONE
-    // (maintainer request, 2026-09-23). ***
+    // (owner request, 2026-09-23). ***
     //
     // The writer used to emit data and nothing else, so the first publish of the C64 250407 turned
-    // a 190 KB maintainer-authored workbook into an 81 KB one: no identity lines, no documentation
+    // a 190 KB owner-authored workbook into an 81 KB one: no identity lines, no documentation
     // link, no shaded header, no column widths. Nothing was deleted - it was never written - but
     // the result is a file nobody wants to open by hand.
     //
@@ -754,7 +754,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     // ###########################################################################################
     // *** THE REVISION DATE IS RICH TEXT: a plain label and a BOLD date. ***
     //
-    // The maintainer asked for the date itself to stay bold, which is how the shipped boards store
+    // The project owner asked for the date itself to stay bold, which is how the shipped boards store
     // it - two runs in one cell rather than one bolded cell. A single run would be visibly wrong
     // whichever weight it took.
     //
@@ -839,7 +839,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
 
     // ###########################################################################################
     // *** THE COLOURED BANDS, which a screenshot comparison showed were missing
-    // (maintainer report, 2026-09-24). ***
+    // (owner report, 2026-09-24). ***
     //
     // A generated workbook had the preamble but was otherwise unshaded, while the reference bands
     // its schematics sheet by MEANING: a black title strip, a grey strip over the five highlight
@@ -907,10 +907,10 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     }
 
     // ###########################################################################################
-    // A BRAND-NEW SYSTEM CARRIES ITS OWN NAME (maintainer report, 2026-09-24).
+    // A BRAND-NEW SYSTEM CARRIES ITS OWN NAME (owner report, 2026-09-24).
     //
     // DraftSeeder.CreateNewSystem wrote `new BoardData()`, so the identity lines came out blank and
-    // a new board opened in Excel with no caption at all - visible in the maintainer's screenshot
+    // a new board opened in Excel with no caption at all - visible in the project owner's screenshot
     // as an empty row 1 and 2 where every published board names its hardware.
     // ###########################################################################################
     [Fact]
@@ -938,7 +938,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** NOTHING ON THE HEADER ROWS IS BOLD, AND THE HEADERS WRAP (maintainer report,
+    // *** NOTHING ON THE HEADER ROWS IS BOLD, AND THE HEADERS WRAP (owner report,
     // 2026-09-24). ***
     //
     // The first version bolded both bands and left the headers unwrapped. Side by side with the
@@ -1011,7 +1011,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
 
     // ###########################################################################################
     // *** ALL THREE IDENTITY LINES CARRY A BOLD VALUE, not just the revision date
-    // (maintainer report, 2026-09-24). ***
+    // (owner report, 2026-09-24). ***
     //
     // The reference stores "# Hardware: " plus the name in bold as two runs, and the same for the
     // board. Only the revision date was written that way, because it had its own copy of the
@@ -1069,7 +1069,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
             sheet.MergedCells.Select(range => range ?? string.Empty));
     }
 
-    // The maintainer asked for the reference's own widths rather than fitted ones.
+    // The project owner asked for the reference's own widths rather than fitted ones.
     [Fact]
     public void Column_widths_come_from_the_reference_board()
     {

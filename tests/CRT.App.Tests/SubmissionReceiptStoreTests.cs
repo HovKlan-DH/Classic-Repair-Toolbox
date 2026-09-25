@@ -62,6 +62,52 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A RECEIPTS FILE FROM BEFORE THE RENAME KEEPS ITS MAINTAINER'S WORDS (code review,
+    // 2026-09-25). *** The role was "reviewer" until then, and an earlier build wrote
+    // ReviewerComment and AmendedByReviewer. A DECIDED submission is never asked about again, so a
+    // comment lost on load was gone from "My submissions" for good.
+    // ###########################################################################################
+    [Fact]
+    public void A_receipt_written_with_the_old_reviewer_names_loads_its_comment_and_amendment()
+    {
+        File.WriteAllText(this.thisPath, """
+            [
+              {
+                "SubmissionId": 42,
+                "UploadToken": "tok",
+                "SystemId": "Commodore/C64/250407/Data.xlsx",
+                "Summary": "Fixed U8 pinout",
+                "LastKnownState": "rejected",
+                "ReviewerComment": "Wrong pin on U8",
+                "AmendedByReviewer": true
+              }
+            ]
+            """);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
+        Assert.Equal("Wrong pin on U8", stored.MaintainerComment);
+        Assert.True(stored.AmendedByMaintainer);
+    }
+
+    // ...and the next save writes only the new names, so the old ones leave the file for good.
+    [Fact]
+    public void Saving_again_writes_only_the_new_maintainer_names()
+    {
+        File.WriteAllText(this.thisPath, """
+            [ { "SubmissionId": 42, "UploadToken": "tok", "ReviewerComment": "Wrong pin on U8", "AmendedByReviewer": true } ]
+            """);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        string written = File.ReadAllText(this.thisPath);
+        Assert.DoesNotContain("Reviewer", written, StringComparison.Ordinal);
+        Assert.Contains("\"MaintainerComment\": \"Wrong pin on U8\"", written, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
     // THE TOKEN IS THE WHOLE POINT OF THE FILE, so a receipt without one is refused.
     //
     // With no account, the capability token is the only thing that can prove this machine owns a
@@ -118,7 +164,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
 
         Assert.Equal("pending", stored.LastKnownState);
-        Assert.Equal("Looks good, one question about C7.", stored.ReviewerComment);
+        Assert.Equal("Looks good, one question about C7.", stored.MaintainerComment);
         Assert.Equal(checkedAt, stored.LastCheckedUtc);
 
         // The parts the server's reply says nothing about must survive the write-back. Losing the
@@ -221,7 +267,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
     }
 
     // -----------------------------------------------------------------------------------
-    // ACKNOWLEDGING REVIEWER FEEDBACK - what clears the badge on the Drafts tab.
+    // ACKNOWLEDGING MAINTAINER FEEDBACK - what clears the badge on the Drafts tab.
     // -----------------------------------------------------------------------------------
 
     [Fact]
@@ -284,7 +330,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
 
         Assert.Equal(
             "Check the U8 highlight.",
-            SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 42).ReviewerComment);
+            SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 42).MaintainerComment);
     }
 
     [Fact]
@@ -345,25 +391,25 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         Assert.Equal(decided, SubmissionReceiptStore.All.Single().DecidedUtc);
     }
     // ###########################################################################################
-    // "A reviewer changed it" (2026-09-25) is cached like the state: set when the server says so,
+    // "A maintainer changed it" (2026-09-25) is cached like the state: set when the server says so,
     // and never lost by a refresh that does not say, or by marking a comment read.
     // ###########################################################################################
     [Fact]
-    public void The_reviewer_changed_flag_is_stored_and_kept_by_a_refresh_that_does_not_say()
+    public void The_maintainer_changed_flag_is_stored_and_kept_by_a_refresh_that_does_not_say()
     {
         SubmissionReceiptStore.Record(Receipt(42));
 
-        SubmissionReceiptStore.UpdateState(42, "merged", "Thanks.", DateTimeOffset.UtcNow, amendedByReviewer: true);
-        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+        SubmissionReceiptStore.UpdateState(42, "merged", "Thanks.", DateTimeOffset.UtcNow, amendedByMaintainer: true);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByMaintainer);
 
         SubmissionReceiptStore.UpdateState(42, "merged", "Thanks.", DateTimeOffset.UtcNow);
-        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByMaintainer);
 
         SubmissionReceiptStore.AcknowledgeComment(42);
-        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByMaintainer);
 
         // And it survives the file.
         SubmissionReceiptStore.LoadFrom(this.thisPath);
-        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByReviewer);
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByMaintainer);
     }
 }

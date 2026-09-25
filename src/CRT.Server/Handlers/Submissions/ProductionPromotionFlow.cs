@@ -5,8 +5,8 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // PUBLISHING A SYSTEM FROM BETA TO PRODUCTION (maintainer request, 2026-09-25): "first
-    // published to BETA and then it is published to the real production. The reviewer is still
+    // PUBLISHING A SYSTEM FROM BETA TO PRODUCTION (owner request, 2026-09-25): "first
+    // published to BETA and then it is published to the real production. The maintainer is still
     // allowed to do this, but only after he has checked that the data looks correct in BETA."
     //
     // A COORDINATOR, like ApprovePublishFlow: ProductionPromotionPlan decides what is copied,
@@ -16,19 +16,19 @@ namespace CRT.Server.Handlers.Submissions
     //   1. CONFIGURED    - is publishing to production switched on at all?
     //   2. AUTHORITY     - may this account publish anything?
     //   3. EXISTENCE     - is there such a system, and is its BETA state ahead of production?
-    //   4. WHAT WAS SEEN - is BETA still exactly what the reviewer checked? (the content hash)
+    //   4. WHAT WAS SEEN - is BETA still exactly what the maintainer checked? (the content hash)
     //   5. PLAN          - what would be copied, and is anything refused?
     //   6. APPROVAL      - does this account's approval publish it? A plan that changes a shared
-    //                      file needs a reviewer of the board AND the administrator (maintainer
+    //                      file needs a maintainer of the board AND the administrator (owner
     //                      decision, 2026-09-25): the first is recorded against this BETA state
     //                      and nothing is copied until the second arrives. See ApprovalRules.
     //   7. COPY, then record it.
     //
-    // *** "CHECKED IN BETA" IS MADE CONCRETE BY STEP 4. *** A reviewer cannot be proved to have
+    // *** "CHECKED IN BETA" IS MADE CONCRETE BY STEP 4. *** A maintainer cannot be proved to have
     // looked, but they can be held to promoting exactly what they could have looked at: the
-    // request names the BETA content hash the review application showed them, and a publish that
-    // has landed in BETA since changes that hash and refuses the promotion. The review application
-    // adds the human half - a box the reviewer ticks to say they checked it in CRT.
+    // request names the BETA content hash the maintainer application showed them, and a publish that
+    // has landed in BETA since changes that hash and refuses the promotion. The maintainer application
+    // adds the human half - a box the maintainer ticks to say they checked it in CRT.
     //
     // Steps 3 to 7 run under PublishLock, so no publish can land in BETA between the check in
     // step 4 and the copy in step 7.
@@ -79,7 +79,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // What promoting this system would copy - shown to the reviewer before they press the
+        // What promoting this system would copy - shown to the maintainer before they press the
         // button, from the same code that performs it.
         // ###########################################################################################
         public async Task<PromotionPlanOutcome> PlanAsync(
@@ -104,7 +104,7 @@ namespace CRT.Server.Handlers.Submissions
                 return PromotionPlanOutcome.NotFound("No such system.");
 
             if (!ReviewAuthority.CanPublish(access, system.SystemId))
-                return PromotionPlanOutcome.Forbidden($"This account is not a reviewer of {system.SystemId}.");
+                return PromotionPlanOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
 
             ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
             ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
@@ -129,7 +129,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default) =>
             this.PromoteAsync(access, systemId, expectedBetaContentHash, options, nowUtc, shownRemovals: null, cancellationToken);
 
-        // `shownRemovals`: the files the reviewer was shown this would remove from production. The
+        // `shownRemovals`: the files the maintainer was shown this would remove from production. The
         // publishing approval is refused when the list differs now - the same rule as a BETA
         // publish (ApprovePublishFlow step 5b).
         public async Task<PromotionOutcome> PromoteAsync(
@@ -162,12 +162,12 @@ namespace CRT.Server.Handlers.Submissions
                 return PromotionOutcome.NotFound();
 
             if (!ReviewAuthority.CanPublish(access, system.SystemId))
-                return PromotionOutcome.Forbidden($"This account is not a reviewer of {system.SystemId}.");
+                return PromotionOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
 
             if (!ProductionPromotionRules.IsAwaitingProduction(system))
                 return PromotionOutcome.Conflict("Production already has this system as it is in BETA. There is nothing to publish.");
 
-            // ---- 4. What the reviewer checked ------------------------------------------------
+            // ---- 4. What the maintainer checked ------------------------------------------------
             if (!string.Equals(system.ContentHash, expectedBetaContentHash?.Trim(), StringComparison.Ordinal))
             {
                 return PromotionOutcome.Conflict(
@@ -207,11 +207,11 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             // ---- 7. Copy, then record ---------------------------------------------------------
-            // What this removes from production, and is it what the reviewer was shown?
+            // What this removes from production, and is it what the maintainer was shown?
             FileRemovalPreview removals = ProductionPromotionFlow.PreviewRemovals(
                 options.DataTreeRoot!, options.ProductionDataTreeRoot!, system);
 
-            // No list at all is an older review application, not a changed list - see
+            // No list at all is an older maintainer application, not a changed list - see
             // ApprovePublishFlow.RemovalsNotSentMessage.
             if (!removals.Matches(shownRemovals))
             {
@@ -366,16 +366,16 @@ namespace CRT.Server.Handlers.Submissions
             ProductionPromotionResult plan,
             CancellationToken cancellationToken)
         {
-            bool hasReviewers = plan.TouchesSharedFiles &&
-                (await this.thisAccounts.GetReviewersOfSystemAsync(system.SystemId, cancellationToken))
-                    .Any(ReviewAuthority.CanGiveReviewerApproval);
+            bool hasMaintainers = plan.TouchesSharedFiles &&
+                (await this.thisAccounts.GetMaintainersOfSystemAsync(system.SystemId, cancellationToken))
+                    .Any(ReviewAuthority.CanGiveMaintainerApproval);
 
             IReadOnlyList<GivenApproval> given = string.IsNullOrWhiteSpace(system.ContentHash)
                 ? []
                 : await this.thisStore.GetProductionApprovalsAsync(system.SystemId, system.ContentHash, cancellationToken);
 
             return ApprovalRules.Status(
-                ApprovalRules.Required(plan.TouchesSharedFiles, hasReviewers),
+                ApprovalRules.Required(plan.TouchesSharedFiles, hasMaintainers),
                 given,
                 ReviewAuthority.RoleIn(access, system.SystemId),
                 access?.Account.Id);

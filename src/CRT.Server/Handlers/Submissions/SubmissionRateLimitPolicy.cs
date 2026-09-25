@@ -15,7 +15,7 @@ namespace CRT.Server.Handlers.Submissions
     // TWO BUCKETS, both over the same window:
     //
     //   COUNT - how many submissions. A real contributor sends a handful in a day: the work, then
-    //           a correction after a reviewer asks for one. Twenty is generous for that and small
+    //           a correction after a maintainer asks for one. Twenty is generous for that and small
     //           for a script.
     //   BYTES - how much they asked to upload, as the server counted it at create (only the files
     //           it did not already hold). A whole new board is tens of megabytes; the largest
@@ -27,7 +27,7 @@ namespace CRT.Server.Handlers.Submissions
     // blob store also refuses work while the disk is below its reserve (BlobStore.HasRoomFor):
     // these limits stop the casual case, the reserve stops the determined one.
     //
-    // A signed-in REVIEWER or ADMINISTRATOR is not limited - they are trusted by the database, not
+    // A signed-in MAINTAINER or ADMINISTRATOR is not limited - they are trusted by the database, not
     // by a claim, and are the people most likely to submit many times while checking something.
     // An ordinary signed-in account is limited like anybody else, because anybody may register.
     // ###########################################################################################

@@ -6,7 +6,7 @@ using Xunit;
 // Covers DataGenerationRules - which workbook GENERATION the tree is on and what a file of that
 // generation is called.
 //
-// The rule these tests exist to protect is the maintainer's: publishing writes ONLY the newest
+// The rule these tests exist to protect is the project owner's: publishing writes ONLY the newest
 // generation and never touches an older one, because older generations still serve older
 // application builds. Writing into a frozen generation fails silently - the write succeeds and a
 // compatibility target is quietly edited - so the ordering and naming rules below are the only
@@ -226,7 +226,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_unversioned_original_is_older_than_every_real_generation()
         {
-            // This is the case the maintainer named outright: "the no-version one, which is the
+            // This is the case the project owner named outright: "the no-version one, which is the
             // first file, which still works for an older application version". Publishing must
             // never write it.
             Assert.True(DataGenerationRules.IsOlderGeneration(null, Version.Parse("2.0.0")));

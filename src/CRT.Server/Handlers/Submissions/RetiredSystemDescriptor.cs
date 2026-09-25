@@ -3,13 +3,13 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // system.json IS RETIRED (maintainer decision, 2026-09-25): "I do not want this file visible in
+    // system.json IS RETIRED (owner decision, 2026-09-25): "I do not want this file visible in
     // the source ... it should not be something downloaded by all users, as this file is not
     // relevant for them."
     //
     // It was written into every published board's folder (Phase 4 task 7) and so synced to every
     // user, while nothing in CRT showed anything from it. Every fact it held is in the database
-    // already - the revision and content hash on `systems`, the reviewers in `reviewers`, the
+    // already - the revision and content hash on `systems`, the maintainers in `maintainers`, the
     // origin on `systems.origin` - so it is not moved anywhere: it is simply no longer written.
     //
     // Builds before this one DID write it, so one can still be sitting in a board folder in BETA,

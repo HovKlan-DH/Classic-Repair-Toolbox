@@ -10,14 +10,14 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // BUILDS dataChecksums.json - THE FILE EVERY CRT CLIENT SYNCS AGAINST
-    // (maintainer request, 2026-09-23).
+    // (owner request, 2026-09-23).
     //
     // *** WITHOUT THIS, PUBLISHING IS INVISIBLE TO EVERY USER. *** CRT decides what to download by
     // comparing this manifest's checksums against what it already holds. ApprovePublishFlow wrote
     // the board into the data tree and never touched the manifest, so the manifest went on
     // advertising the OLD checksum - and every client, correctly, concluded there was nothing to
     // fetch. Reported after the first real publish: the board on the server was right, the
-    // maintainer's sync completed successfully, and the change never arrived.
+    // project owner's sync completed successfully, and the change never arrived.
     //
     // The manifest sits ONE FOLDER UP from the data root (beside `Data/`, not inside it), so it is
     // configured separately and cannot be derived - see ServerOptions.ManifestPath.
@@ -174,14 +174,14 @@ namespace Handlers.DataHandling
         //
         // ###########################################################################################
         // *** IT THROWS NOTHING, AND THE SCAN IS INSIDE THE GUARD - which it was not at first, and
-        // that shipped a 500 (maintainer report, 2026-09-23). ***
+        // that shipped a 500 (owner report, 2026-09-23). ***
         //
         // The first version wrapped only the WRITE, while the scan ran outside it, under a comment
         // claiming the method could not throw. Walking a real tree of ~11,000 files can throw
         // plenty that has nothing to do with writing: a folder deleted mid-enumeration
         // (DirectoryNotFoundException), a path the service cannot traverse, a file locked while it
         // is being hashed. Every one of those escaped into the endpoint and answered 500 - AFTER
-        // the board had already been published, so the reviewer was told the publish failed when
+        // the board had already been published, so the maintainer was told the publish failed when
         // it had in fact succeeded. That is the exact failure the "must not fail the publish"
         // reasoning existed to prevent, defeated by putting the try in the wrong place.
         //
@@ -224,7 +224,7 @@ namespace Handlers.DataHandling
             catch (Exception ex)
             {
                 // Deliberately every exception - see the header. This runs after an irreversible
-                // publish, so there is no fault whose right answer is "throw at the reviewer".
+                // publish, so there is no fault whose right answer is "throw at the maintainer".
                 // Logged with the full exception rather than just its message, because a stale
                 // manifest is diagnosed from this line and the type is usually the whole answer.
                 CrtLog.Warning($"Could not write the checksum manifest [{manifestPath}] - [{ex}]");

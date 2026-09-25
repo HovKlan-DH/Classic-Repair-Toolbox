@@ -6,7 +6,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// ONE EMAIL ADDRESS FOR THE WHOLE APPLICATION (maintainer request, 2026-09-22).
+// ONE EMAIL ADDRESS FOR THE WHOLE APPLICATION (owner request, 2026-09-22).
 //
 // *** THE SETTING ALREADY EXISTED; THIS SCREEN JUST DID NOT READ IT. *** UserSettings.ContactEmail
 // has been written by the Feedback tab since long before submissions existed, so a contributor who

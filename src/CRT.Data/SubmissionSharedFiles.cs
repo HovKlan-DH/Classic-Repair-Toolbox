@@ -9,11 +9,11 @@ namespace Handlers.DataHandling
     // *** SHARED FILES ARE ADMINISTRATOR-OWNED. *** "Commodore/Shared files" and "Generic shared
     // files" are cited by many boards, so a change there reaches every one of them - which is why
     // NewContributeStrategy.md's Phase 6 traps say a submission touching them "must not be
-    // approvable by a system maintainer". A reviewer is assigned to a SYSTEM; a shared file belongs
+    // approvable by a system maintainer". A maintainer is assigned to a SYSTEM; a shared file belongs
     // to none.
     //
     // A shared file cited UNCHANGED does not count: that is the ordinary shape of a board that uses
-    // a shared component image, and refusing it to reviewers would send nearly every submission to
+    // a shared component image, and refusing it to maintainers would send nearly every submission to
     // the administrator. Only bytes that would be written matter - a path with nothing published at
     // it, or a hash that differs from what is.
     //

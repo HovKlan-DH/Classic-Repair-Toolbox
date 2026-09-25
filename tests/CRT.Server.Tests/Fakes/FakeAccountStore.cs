@@ -39,9 +39,9 @@ namespace CRT.Server.Tests.Fakes
 
         public List<(string? Email, string? Ip, DateTimeOffset When)> AuthFailures { get; } = [];
 
-        // The reviewer pools: (system id, account id), exactly the `reviewers` table's key. A
+        // The maintainer pools: (system id, account id), exactly the `maintainers` table's key. A
         // test puts an account in a pool by adding to this directly.
-        public HashSet<(string SystemId, long AccountId)> Reviewers { get; } = [];
+        public HashSet<(string SystemId, long AccountId)> Maintainers { get; } = [];
 
         // -----------------------------------------------------------------------------------
         // Accounts.
@@ -300,12 +300,12 @@ namespace CRT.Server.Tests.Fakes
         }
 
         // -----------------------------------------------------------------------------------
-        // Reviewer pools (Phase 6 roles).
+        // Maintainer pools (Phase 6 roles).
         // -----------------------------------------------------------------------------------
 
         public Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
         {
-            IReadOnlySet<string> ids = this.Reviewers
+            IReadOnlySet<string> ids = this.Maintainers
                 .Where(row => row.AccountId == accountId)
                 .Select(row => row.SystemId)
                 .ToHashSet(StringComparer.Ordinal);
@@ -313,24 +313,24 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(ids);
         }
 
-        public Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(this.ReviewerRows(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal)));
+            return Task.FromResult(this.MaintainerRows(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal)));
         }
 
-        public Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<MaintainerRecord>> ListMaintainersAsync(CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(this.ReviewerRows(_ => true));
+            return Task.FromResult(this.MaintainerRows(_ => true));
         }
 
         // Joined to the account the way the real query is, and an orphan pair (no such account)
         // is dropped the way an inner join drops it.
-        private IReadOnlyList<ReviewerRecord> ReviewerRows(Func<(string SystemId, long AccountId), bool> where)
+        private IReadOnlyList<MaintainerRecord> MaintainerRows(Func<(string SystemId, long AccountId), bool> where)
         {
-            return this.Reviewers
+            return this.Maintainers
                 .Where(where)
                 .Where(row => this.Accounts.ContainsKey(row.AccountId))
-                .Select(row => new ReviewerRecord(
+                .Select(row => new MaintainerRecord(
                     row.SystemId,
                     row.AccountId,
                     this.Accounts[row.AccountId].DisplayName,
@@ -344,15 +344,15 @@ namespace CRT.Server.Tests.Fakes
                 .ToList();
         }
 
-        public Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        public Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
-            this.Reviewers.Add((systemId, accountId));
+            this.Maintainers.Add((systemId, accountId));
             return Task.CompletedTask;
         }
 
-        public Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        public Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
         {
-            this.Reviewers.Remove((systemId, accountId));
+            this.Maintainers.Remove((systemId, accountId));
             return Task.CompletedTask;
         }
 

@@ -14,7 +14,7 @@ namespace Handlers.DataHandling
     //
     //   1. name ANOTHER BOARD'S file ("Commodore/C64/250407/..." inside a submission to the
     //      Amstrad CPC), which the publish then overwrote - see SubmissionFileScope;
-    //   2. be a file NO ROW USES, which the review screen had no way to show, so a reviewer
+    //   2. be a file NO ROW USES, which the review screen had no way to show, so a maintainer
     //      approved it without ever seeing it;
     //   3. be any type at all - a dot-file such as ".htaccess", which the web server hosting the
     //      data tree honours, or an executable that syncs to every user's disk;

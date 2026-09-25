@@ -5,11 +5,11 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // THE ADMINISTRATOR'S "UNUSED FILES" SCREEN (maintainer decision, 2026-09-25: "there must be
+    // THE ADMINISTRATOR'S "UNUSED FILES" SCREEN (owner decision, 2026-09-25: "there must be
     // no orphan files").
     //
     // A publish removes only what IT made unused. Files that were orphans before any of this
-    // existed - the maintainer reviewed and approved a list of 50 in the shipped data - are shown
+    // existed - the project owner reviewed and approved a list of 50 in the shipped data - are shown
     // here, per tree, and removed only when the administrator presses the button, so the first
     // clean-up is looked at before anything goes.
     //

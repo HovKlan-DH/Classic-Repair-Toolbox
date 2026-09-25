@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // ONE SHEET OF THE BOARD TABLE EDITOR - its rows, and how each compares with the published
-    // data (maintainer request, 2026-09-24).
+    // data (owner request, 2026-09-24).
     //
     // *** THE PAIRING RULE IS BoardDataDiffer'S, AND IT MUST STAY THAT WAY. *** The Drafts tab
     // row already says "N rows changed", counted by BoardDataDiffer. This table shows the same
@@ -24,7 +24,7 @@ namespace Handlers.DataHandling
     //
     // *** A KEY EDIT IS A DELETE PLUS AN ADD, deliberately. *** Changing a Board label from U8 to
     // U9 shows U9 as added and the old U8 as a deleted ghost. That is how BoardDataDiffer, the
-    // submission and the reviewer all see it, and the table showing anything friendlier would be
+    // submission and the maintainer all see it, and the table showing anything friendlier would be
     // describing a change nobody downstream agrees happened.
     //
     // *** DELETED ROWS ARE SHOWN WHERE THEY WERE. *** Each ghost is placed straight after the
@@ -149,7 +149,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // "Insert row above" (maintainer request, 2026-09-24): the empty row goes straight BEFORE
+        // "Insert row above" (owner request, 2026-09-24): the empty row goes straight BEFORE
         // `before`, or at the very top when that is null or not in this sheet.
         //
         // Next to a red deleted row the new row can land on the far side of it: ghosts are placed
@@ -288,7 +288,7 @@ namespace Handlers.DataHandling
         // Removes a live row. A row that was published comes straight back as a red ghost in its
         // place; one that was added simply goes. Returns false for a ghost, which is already gone.
         //
-        // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (maintainer request,
+        // *** A DELETED COMPONENT TAKES EVERYTHING OF ITS OWN WITH IT (owner request,
         // 2026-09-25): "if a component really is deleted, then it should remove EVERYTHING related
         // to this component." *** On the Components sheet, the component's rows on the image, local
         // file and link sheets are deleted too - shown red on their own sheets, and all of it ONE
@@ -499,7 +499,7 @@ namespace Handlers.DataHandling
         // The live rows as the schema's mappers want them, for saving: ghosts and blank rows left
         // out, exactly as the reader skips an empty row.
         //
-        // *** ON THE COMPONENTS SHEET, NEW ROWS ARE PLACED (maintainer request, 2026-09-24). *** A
+        // *** ON THE COMPONENTS SHEET, NEW ROWS ARE PLACED (owner request, 2026-09-24). *** A
         // row added with "Insert row" in this sitting, and not moved by hand since, goes into its
         // category in label order - the same rule the Contribute window and the label editor
         // follow (ComponentPlacement), so a component lands in the same place however it was

@@ -8,7 +8,7 @@ using System.Text;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHEN A LOCAL DRAFT HAS DONE ITS JOB AND SHOULD GO (maintainer request, 2026-09-23).
+    // WHEN A LOCAL DRAFT HAS DONE ITS JOB AND SHOULD GO (owner request, 2026-09-23).
     //
     // *** THE HALF THAT WAS DESCRIBED BUT NEVER BUILT. *** TabDrafts' own header says a draft is
     // left alone on submit and "goes away when the work is actually published and the synced data
@@ -25,7 +25,7 @@ namespace Handlers.DataHandling
     //     "published" copy can still be the OLD one;
     //   - the contributor may have kept working in the draft after submitting, and those edits
     //     have been published by nobody;
-    //   - a partially-applied publish, or a reviewer who edited the submission before merging,
+    //   - a partially-applied publish, or a maintainer who edited the submission before merging,
     //     means what shipped is not what was sent.
     //
     // In every one of those cases the draft still holds work that exists nowhere else. So the
@@ -35,7 +35,7 @@ namespace Handlers.DataHandling
     // draft stays and the contributor deals with it.
     //
     // *** A NEW SYSTEM'S DRAFT IS RETIRED LIKE ANY OTHER, ONCE CRT CAN SHOW THE PUBLISHED ONE
-    // (maintainer request, 2026-09-25): "People will either not know they can/should remove this
+    // (owner request, 2026-09-25): "People will either not know they can/should remove this
     // or they forget, so better clean-up when we can." *** It used to be refused outright. What
     // protects it is the published copy: until the system is published, listed in the master
     // workbook and synced, there is no published workbook on this machine, IsRetirable answers no,
@@ -137,7 +137,7 @@ namespace Handlers.DataHandling
             }
 
             // The calibrations, which live only in the sidecar - compared through ReviewSummary,
-            // the same comparison a reviewer is shown, so "unchanged" means one thing everywhere.
+            // the same comparison a maintainer is shown, so "unchanged" means one thing everywhere.
             if (!DraftRetirement.CalibrationsMatch(status, draft, published))
             {
                 return false;

@@ -5,7 +5,7 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers ReviewAssetLocator - which bytes a reviewer is allowed to fetch (Phase 5, task 4).
+    // Covers ReviewAssetLocator - which bytes a maintainer is allowed to fetch (Phase 5, task 4).
     //
     // *** THIS IS THE FILE-DISCLOSURE BOUNDARY, so read the anti-vacuity note before adding a
     // test here. *** Two traversal tests in this project have already been caught proving nothing
@@ -19,7 +19,7 @@ namespace CRT.Server.Tests
     // because they take different input:
     //
     //   SUBMITTED - addressed by HASH. A hash cannot carry a traversal, so containment is not the
-    //               risk; the risk is a reviewer fetching a blob belonging to some OTHER
+    //               risk; the risk is a maintainer fetching a blob belonging to some OTHER
     //               submission. Guarded by requiring the manifest to reference that hash.
     //   PUBLISHED - addressed by a caller-supplied PATH into the data tree. Guarded by
     //               SubmissionPathRules, the same containment the write paths use.
@@ -123,9 +123,9 @@ namespace CRT.Server.Tests
         public void A_hash_the_manifest_does_NOT_reference_is_refused()
         {
             // *** THE CONFINEMENT THAT MATTERS ON THIS SIDE. *** The blob store is shared across
-            // every submission and is content-addressed, so without this a reviewer holding one
+            // every submission and is content-addressed, so without this a maintainer holding one
             // submission id could fetch any blob in the store whose hash they could obtain - and
-            // hashes travel in manifests, which reviewers routinely see. Scoping the fetch to the
+            // hashes travel in manifests, which maintainers routinely see. Scoping the fetch to the
             // submission being reviewed keeps "may review submission 7" from meaning "may read
             // every file anyone has ever uploaded".
             Assert.False(ReviewAssetLocator.IsSubmittedBlobAllowed(
@@ -160,7 +160,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_null_manifest_allows_NOTHING()
         {
-            // A submission whose payload could not be loaded must not fall open. The reviewer sees
+            // A submission whose payload could not be loaded must not fall open. The maintainer sees
             // the findings explaining why instead.
             Assert.False(ReviewAssetLocator.IsSubmittedBlobAllowed(
                 null, ReviewAssetLocatorTests.Hash('a')));
@@ -178,7 +178,7 @@ namespace CRT.Server.Tests
         // folder. That was wrong about the real data: a board stores its references relative to
         // the DATA ROOT ("Commodore/C64/250407/Schematics/board.png"), which is how the desktop
         // app resolves them. The old base doubled the system segments, so every published image
-        // answered 404 and the reviewer was told "No published file at this path" about files that
+        // answered 404 and the maintainer was told "No published file at this path" about files that
         // are in fact published.
         //
         // The expectation is corrected rather than the code bent to it - see the locator header
@@ -206,7 +206,7 @@ namespace CRT.Server.Tests
         // A shared component image is stored as "Commodore/Shared files/Component images/6526.png"
         // - outside the system folder by design, and cited by boards across a manufacturer. Under
         // the old base this was unreachable, so an entire legitimate category of board reference
-        // could not be shown to a reviewer at all.
+        // could not be shown to a maintainer at all.
         // ###########################################################################################
         [Fact]
         public void A_SHARED_file_outside_the_system_folder_is_found()
@@ -328,7 +328,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_file_in_ANOTHER_systems_folder_is_refused()
         {
-            // Containment is to THIS system, not merely to the data tree. A reviewer opening a
+            // Containment is to THIS system, not merely to the data tree. A maintainer opening a
             // C64 submission has no business reading an Amstrad board's files through it, and
             // "inside the tree" would permit exactly that.
             string other = Path.Combine(this.thisDataTree, "Amstrad", "CPC464", "Z70200");
@@ -359,7 +359,7 @@ namespace CRT.Server.Tests
         public void A_file_that_simply_does_not_exist_is_refused_WITHOUT_throwing()
         {
             // An ordinary miss: the published board references an image that is not on disk. The
-            // reviewer gets "not found" and the rest of the screen still draws.
+            // maintainer gets "not found" and the rest of the screen still draws.
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
                 ReviewAssetLocatorTests.Manifest(),
@@ -435,12 +435,12 @@ namespace CRT.Server.Tests
         {
             // *** NEVER text/html, AND NEVER A TYPE GUESSED FROM THE FILE NAME. *** These bytes
             // are contributor-supplied and are served from the server's own origin. A file served
-            // as text/html would run script in that origin against a reviewer's session; an
+            // as text/html would run script in that origin against a maintainer's session; an
             // allowlist of image types with octet-stream underneath means an attacker cannot
             // choose the type by choosing the extension.
             //
-            // The review app renders images. Everything else downloads, which is also the correct
-            // behaviour for the datasheet a reviewer wants to open.
+            // The maintainer app renders images. Everything else downloads, which is also the correct
+            // behaviour for the datasheet a maintainer wants to open.
             Assert.Equal("application/octet-stream", ReviewAssetLocator.ContentTypeFor(name));
         }
 

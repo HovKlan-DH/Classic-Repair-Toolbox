@@ -73,9 +73,9 @@ namespace CRT.Server.Handlers.Submissions
             // account, but its absence is the ordinary case and not an error.
             AccountRecord? account = await SubmissionEndpoints.AuthenticateAsync(context, accounts, cancellationToken);
 
-            // A reviewer or administrator is exempt from the per-address submission limit - trusted
+            // A maintainer or administrator is exempt from the per-address submission limit - trusted
             // by the database rows, not by anything the request says. See SubmissionRateLimitPolicy.
-            // "Reviewer" means in at least one system's pool (Phase 6 roles), read here per request
+            // "Maintainer" means in at least one system's pool (Phase 6 roles), read here per request
             // like everywhere else.
             Submitter submitter = account is null
                 ? Submitter.Anonymous(manifest.ContactEmail, SubmissionEndpoints.ClientAddress(context))
@@ -230,10 +230,10 @@ namespace CRT.Server.Handlers.Submissions
                 return Results.NotFound();
 
             // ###########################################################################################
-            // *** THE REVIEWERS ARE TOLD, AFTER THE SUBMISSION IS DURABLY QUEUED (Phase 6 task 11,
+            // *** THE MAINTAINERS ARE TOLD, AFTER THE SUBMISSION IS DURABLY QUEUED (Phase 6 task 11,
             // 2026-09-25). *** Nothing here may fail the request: the contributor's upload is
             // complete and recorded, and a mail problem is the server's to log, not theirs to
-            // retry. Who is told is SubmissionRouting's decision - the system's reviewers, or the
+            // retry. Who is told is SubmissionRouting's decision - the system's maintainers, or the
             // administrators when there are none or the submission changes shared files.
             // ###########################################################################################
             if (result.IsAccepted)
@@ -247,7 +247,7 @@ namespace CRT.Server.Handlers.Submissions
                         IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
                             record, accounts, cancellationToken);
 
-                        await notifier.NotifyReviewersAsync(
+                        await notifier.NotifyMaintainersAsync(
                             recipients, record.SystemId, record.Id, record.Summary, cancellationToken);
                     }
                 }
@@ -255,7 +255,7 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     context.RequestServices
                         .GetRequiredService<ILogger<SubmissionNotifier>>()
-                        .LogWarning(ex, "Submission {SubmissionId} was queued but its reviewers could not be told.", submissionId);
+                        .LogWarning(ex, "Submission {SubmissionId} was queued but its maintainers could not be told.", submissionId);
                 }
             }
 
@@ -296,34 +296,44 @@ namespace CRT.Server.Handlers.Submissions
                 ? await store.FindSystemAsync(submission.SystemId, cancellationToken)
                 : null;
 
-            return Results.Ok(new
-            {
-                id = submission.Id,
-                systemId = submission.SystemId,
-                state = ProductionPromotionRules.ContributorFacingState(
+            return Results.Ok(SubmissionEndpoints.BuildStatus(
+                submission,
+                ProductionPromotionRules.ContributorFacingState(
                     submission.State, submission.DecidedUtc, system?.ProductionPublishedUtc),
-                summary = submission.Summary,
-                createdUtc = submission.CreatedUtc,
-                decidedUtc = submission.DecidedUtc,
-
-                // ###########################################################################################
-                // *** THE CONTRIBUTOR'S ONLY FEEDBACK. *** Contributing needs no account, so there
-                // is no inbox and no thread - the contact email and this sentence are the whole
-                // channel back to the person who did the work.
-                //
-                // Reserved from the start as "always present, always empty for now", on the
-                // reasoning that filling it in later would be a server change alone with nothing
-                // to update on contributors' machines. That is exactly what happened: the review
-                // decisions landed 2026-09-22 and this needed only to stop returning empty.
-                // ###########################################################################################
-                reviewerComment = submission.DecisionComment ?? string.Empty,
-
-                // A reviewer changed rows before deciding it - SubmissionStatus.AmendedByReviewer.
-                amendedByReviewer = await store.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
-
-                findings
-            });
+                amendedByMaintainer: await store.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
+                findings));
         }
+
+        // ###########################################################################################
+        // The status answer - CRT.Data's SubmissionStatus, which CRT reads back as the SAME type
+        // (SubmissionClient.GetStatusAsync), so no field can be renamed at one end only (code review,
+        // 2026-09-25: it was an anonymous object with hand-typed names, renamed at both ends with
+        // nothing to notice if only one had moved). SubmissionStatusWireTests puts this through the
+        // server's JSON settings and CRT's.
+        //
+        // *** MAINTAINERCOMMENT IS THE CONTRIBUTOR'S ONLY FEEDBACK. *** Contributing needs no account,
+        // so there is no inbox and no thread - the contact email and this sentence are the whole
+        // channel back to the person who did the work. Reserved from the start as "always present,
+        // always empty for now", so filling it in later was a server change alone with nothing to
+        // update on contributors' machines - which is what happened when the review decisions landed
+        // on 2026-09-22.
+        // ###########################################################################################
+        internal static SubmissionStatus BuildStatus(
+            SubmissionRecord submission,
+            string contributorFacingState,
+            bool amendedByMaintainer,
+            IReadOnlyList<ValidationFinding> findings) => new()
+        {
+            Id = submission.Id,
+            SystemId = submission.SystemId,
+            State = contributorFacingState,
+            Summary = submission.Summary ?? string.Empty,
+            CreatedUtc = submission.CreatedUtc,
+            DecidedUtc = submission.DecidedUtc,
+            MaintainerComment = submission.DecisionComment ?? string.Empty,
+            AmendedByMaintainer = amendedByMaintainer,
+            Findings = [.. findings]
+        };
 
         // -------------------------------------------------------------------------------------
         // Helpers.
@@ -401,7 +411,7 @@ namespace CRT.Server.Handlers.Submissions
         // "../.." would otherwise relocate the whole system folder.
         //
         // The folder is NOT created here and nothing is written to it: a submission is queued, and
-        // publication remains a manual act by the maintainer.
+        // publication remains a manual act by the project owner.
         // ###########################################################################################
         // ###########################################################################################
         // The root a submission's file paths are contained to.

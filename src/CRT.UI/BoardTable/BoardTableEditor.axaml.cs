@@ -21,13 +21,13 @@ namespace CRT
 {
     // ###########################################################################################
     // "EDIT IN TABLE FORMAT" - a draft's workbook as editable sheets, inline on the Drafts tab
-    // (maintainer request, 2026-09-24).
+    // (owner request, 2026-09-24).
     //
     // *** THIS CONTROL ONLY PAINTS. *** What a cell is, whether it differs from the published data,
     // where a deleted row goes and what a save writes are all decided in CRT.Data -
-    // BoardTableDocument, BoardTableSheet and DraftTableSession - because the maintainer wants the
-    // same table in the review application later. Keep it that way: logic added here is logic the
-    // reviewer's copy would have to duplicate, and logic no test without a display can reach.
+    // BoardTableDocument, BoardTableSheet and DraftTableSession - because the project owner wants the
+    // same table in the maintainer application later. Keep it that way: logic added here is logic the
+    // maintainer's copy would have to duplicate, and logic no test without a display can reach.
     //
     // It deliberately knows nothing of Main or DataManager either: it is handed a drafts folder, a
     // system and the published board to compare with, and raises Saved. TabDrafts does the wiring.
@@ -43,7 +43,7 @@ namespace CRT
     // itself - anything that set a cell's colour directly would paint the wrong row the moment a
     // container was reused.
     //
-    // Deliberately simple for now, as the maintainer asked: one cell at a time. Copy and paste
+    // Deliberately simple for now, as the project owner asked: one cell at a time. Copy and paste
     // work inside a cell being edited (it is an ordinary text box) and on a selected cell via
     // Ctrl+C / Ctrl+V (BoardTableClipboard). Pasting blocks of cells is a later feature. Ctrl+Z and
     // Ctrl+Y undo and redo through the model's own history (BoardTableHistory).
@@ -55,7 +55,7 @@ namespace CRT
     public partial class BoardTableEditor : UserControl
     {
         // The table on screen, and - in the Drafts tab only - the draft FILE behind it. In document
-        // mode (the review application, Open(BoardTableDocument)) there is no session: Save raises
+        // mode (the maintainer application, Open(BoardTableDocument)) there is no session: Save raises
         // SaveRequested for the host to save, and Reload and the file notices do not apply.
         private BoardTableDocument? thisDocument;
         private DraftTableSession? thisSession;
@@ -65,7 +65,7 @@ namespace CRT
         private string thisExcelDataFile = string.Empty;
 
         // The table's text size - smaller than the grid's default so a sheet shows more rows at
-        // once (maintainer request, 2026-09-24). The grid, its headers and every column use it.
+        // once (owner request, 2026-09-24). The grid, its headers and every column use it.
         internal const double CellFontSize = 12;
 
         // Coalesces a burst of cell edits (a paste, a fast typist) into one refresh.
@@ -133,9 +133,9 @@ namespace CRT
         public bool HasTable => this.thisDocument is not null;
 
         // ###########################################################################################
-        // DOCUMENT MODE - the review application's table (2026-09-25). Shows `document` with no
+        // DOCUMENT MODE - the maintainer application's table (2026-09-25). Shows `document` with no
         // draft file behind it: "Save changes" raises SaveRequested, and the host saves it however
-        // it saves (the review application sends it to the server as an amendment), then calls
+        // it saves (the maintainer application sends it to the server as an amendment), then calls
         // Open again with the saved state, or ShowMessage to say why not. Reload and the notices
         // about a draft file being changed or open in Excel do not apply and stay hidden.
         // ###########################################################################################
@@ -144,7 +144,7 @@ namespace CRT
             ArgumentNullException.ThrowIfNull(document);
 
             // The sheet already on screen when the host re-opens after a save; otherwise the FIRST
-            // SHEET WITH A CHANGE - a reviewer opening a submission wants what changed, not
+            // SHEET WITH A CHANGE - a maintainer opening a submission wants what changed, not
             // "Board schematics" every time.
             string? keepSheet = this.thisCurrentSheet?.Name
                 ?? document.Sheets.FirstOrDefault(sheet => sheet.ChangeCount > 0)?.Name;
@@ -372,7 +372,7 @@ namespace CRT
         // ###########################################################################################
         // Toolbar actions. Each is a thin call into BoardTableSheet, which owns the rule.
         // ###########################################################################################
-        // "Insert row below" and "Insert row above" (maintainer request, 2026-09-24): an empty row
+        // "Insert row below" and "Insert row above" (owner request, 2026-09-24): an empty row
         // beside the selected one, with the cursor on it ready for typing.
         internal void InsertRowBelow() => this.InsertRowBeside(above: false);
 
@@ -486,7 +486,7 @@ namespace CRT
             this.thisView?.Cast<BoardTableRow>().ToList() ?? this.thisCurrentSheet?.Rows.ToList() ?? [];
 
         // ###########################################################################################
-        // "Show changes only": hide every plainly unchanged row (maintainer request, 2026-09-24).
+        // "Show changes only": hide every plainly unchanged row (owner request, 2026-09-24).
         // Moving rows is switched off meanwhile - a position among rows that cannot be seen means
         // nothing.
         // ###########################################################################################
@@ -596,7 +596,7 @@ namespace CRT
 
         private async void OnGridKeyDown(object? sender, KeyEventArgs e)
         {
-            // *** TAB MOVES ACROSS THE ROW, AS IN EXCEL (maintainer request, 2026-09-24). *** Left
+            // *** TAB MOVES ACROSS THE ROW, AS IN EXCEL (owner request, 2026-09-24). *** Left
             // alone it is the window's focus navigation, which took the cursor out of the table to
             // the hardware drop-down. Handled here on the TUNNEL route, before that happens, and
             // whether or not a cell is being edited - the edit is committed first.
@@ -672,7 +672,7 @@ namespace CRT
 
         // ###########################################################################################
         // Ctrl+Z / Ctrl+Y - and Ctrl+Shift+Z, and Cmd on macOS: the platform's own undo and redo
-        // gestures (maintainer request, 2026-09-24). Tunnel, so the grid never sees them first.
+        // gestures (owner request, 2026-09-24). Tunnel, so the grid never sees them first.
         //
         // NOT while a cell is being edited: there the cell's own text box undoes the typing inside
         // it, as Excel does, and the table's history takes over once the cell is committed.
@@ -1113,7 +1113,7 @@ namespace CRT
             this.DeletedCountText.Text = (this.thisCurrentSheet?.DeletedCount ?? 0).ToString(CultureInfo.InvariantCulture);
             this.FlaggedCountText.Text = (this.thisCurrentSheet?.FlaggedCount ?? 0).ToString(CultureInfo.InvariantCulture);
 
-            // A pill with nothing to count fades back, like a disabled control (maintainer request,
+            // A pill with nothing to count fades back, like a disabled control (owner request,
             // 2026-09-24), so the eye goes to the kinds that are actually there.
             this.AddedPill.Classes.Set("Empty", (this.thisCurrentSheet?.AddedCount ?? 0) == 0);
             this.ModifiedPill.Classes.Set("Empty", (this.thisCurrentSheet?.ModifiedCount ?? 0) == 0);
@@ -1208,7 +1208,7 @@ namespace CRT
                 DataGridCell.BackgroundProperty,
                 new Binding($"Cells[{columnIndex}].State") { Converter = this.thisStateToBrush }));
 
-            // *** A SELECTED CELL KEEPS ITS OWN COLOUR (maintainer request, 2026-09-24). *** The
+            // *** A SELECTED CELL KEEPS ITS OWN COLOUR (owner request, 2026-09-24). *** The
             // grid theme fills a selected cell with the accent colour, which read as one more
             // state - a green that could be taken for "added" - and hid the orange, green or red
             // of the cell underneath. The current cell is marked by its dashed frame instead (see

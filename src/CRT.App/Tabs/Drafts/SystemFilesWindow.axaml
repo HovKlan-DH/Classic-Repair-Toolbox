@@ -183,7 +183,7 @@
 					     be capped at 150px inside its own ScrollViewer, which put a scroll area
 					     inside the window's scroll area - the wheel scrolled whichever one the
 					     pointer happened to be over, and the list's own bar sat hard against the
-					     window's (maintainer report, 2026-09-24). The window's ScrollViewer already
+					     window's (owner report, 2026-09-24). The window's ScrollViewer already
 					     carries anything that does not fit, so a long list only means scrolling
 					     the window further. -->
 					<Border x:Name="KiCadFilesPanel"

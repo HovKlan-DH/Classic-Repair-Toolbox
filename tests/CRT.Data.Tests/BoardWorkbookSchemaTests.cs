@@ -204,7 +204,7 @@ public sealed class BoardWorkbookSchemaTests
     // *** THE SHEETS COME IN THE PUBLISHED WORKBOOKS' OWN ORDER, "Credits" LAST (2026-09-24). ***
     // Every published board workbook that has an "Important signals" sheet - thirteen of them when
     // this was checked - puts it BEFORE "Credits". This list had them the other way round, so the
-    // table editor's sheet tabs disagreed with the workbook the maintainer knows (reported), and
+    // table editor's sheet tabs disagreed with the workbook the project owner knows (reported), and
     // every workbook the app wrote ended in "Important signals". AllSheets is also the WRITE order
     // (BoardWorkbookWriter), which is what this pins for the file side.
     // ###########################################################################################

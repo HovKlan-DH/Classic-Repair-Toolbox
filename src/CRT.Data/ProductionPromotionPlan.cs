@@ -6,18 +6,18 @@ using System.Text.Json.Serialization;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT PUBLISHING ONE SYSTEM FROM BETA TO PRODUCTION WILL COPY (maintainer request,
+    // WHAT PUBLISHING ONE SYSTEM FROM BETA TO PRODUCTION WILL COPY (owner request,
     // 2026-09-25: "it should be a two-fold process, where it is first published to BETA and then it
     // is published to the real production").
     //
     // Pure, like PublishPlan: the facts about both trees go in as delegates, and a list of copies or
     // a list of refusals comes out. The server's ProductionPromoter performs the list; the review
-    // application shows the SAME records to the reviewer before they press the button, which is why
+    // application shows the SAME records to the maintainer before they press the button, which is why
     // they live here in CRT.Data - one type on both ends of the wire, the SubmittedFileFact rule.
     //
     // *** ONLY BYTES THAT ARE ALREADY IN BETA. *** Nothing reaches Production except a file the
-    // BETA tree holds right now, so the most a promotion can publish is what a reviewer could
-    // already look at there. That is the whole of the argument for letting a reviewer do it.
+    // BETA tree holds right now, so the most a promotion can publish is what a maintainer could
+    // already look at there. That is the whole of the argument for letting a maintainer do it.
     //
     // *** PER SYSTEM, NOT PER SUBMISSION. *** BETA is one tree: two submissions merged into one
     // board cannot be promoted separately, because the board's workbook already holds both.
@@ -294,7 +294,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // One file a promotion will copy. On the wire to the review application as this very record,
+    // One file a promotion will copy. On the wire to the maintainer application as this very record,
     // so the two cannot disagree about its fields. The enums travel as NAMES for the reason
     // SubmissionFileScope gives.
     // ###########################################################################################

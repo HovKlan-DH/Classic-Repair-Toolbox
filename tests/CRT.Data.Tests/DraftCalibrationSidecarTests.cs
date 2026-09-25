@@ -7,7 +7,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // KiCad calibrations, now that a draft carries an ORDINARY JSON sidecar
-// (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+// (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
 //
 // *** THIS IS WHERE BoardDraft's "ELEVENTH SECTION" RETIRED. *** Calibrations used to live in
 // BoardDraft.KiCadCalibrations, a section added purely because a draft was a delta list and

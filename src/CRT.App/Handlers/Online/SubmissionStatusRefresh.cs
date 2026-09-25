@@ -9,11 +9,11 @@ namespace Handlers.Online
 {
     // ###########################################################################################
     // ASKS THE SERVER WHAT HAS HAPPENED TO THIS MACHINE'S SUBMISSIONS, and writes the answers
-    // into the local receipts (maintainer report, 2026-09-22).
+    // into the local receipts (owner report, 2026-09-22).
     //
     // *** WHY THIS EXISTS AS ITS OWN CLASS: THE CHECK ONLY EVER RAN FROM A BUTTON. *** Receipts
     // were loaded from disk at startup, but nothing asked the server until somebody opened "My
-    // submissions" and pressed Refresh. So a reviewer could request changes and the contributor
+    // submissions" and pressed Refresh. So a maintainer could request changes and the contributor
     // would launch CRT to a stale cache, with no badge and no comment, until they happened to
     // press a button they had no reason to think was necessary. The feedback was invisible in
     // exactly the situation it was written for.
@@ -106,17 +106,17 @@ namespace Handlers.Online
                     StringComparison.Ordinal);
 
                 bool commentMoved = !string.Equals(
-                    (status.ReviewerComment ?? string.Empty).Trim(),
-                    (receipt.ReviewerComment ?? string.Empty).Trim(),
+                    (status.MaintainerComment ?? string.Empty).Trim(),
+                    (receipt.MaintainerComment ?? string.Empty).Trim(),
                     StringComparison.Ordinal);
 
                 SubmissionReceiptStore.UpdateState(
                     receipt.SubmissionId,
                     status.State ?? string.Empty,
-                    status.ReviewerComment ?? string.Empty,
+                    status.MaintainerComment ?? string.Empty,
                     now,
                     status.DecidedUtc,
-                    status.AmendedByReviewer);
+                    status.AmendedByMaintainer);
 
                 if (stateMoved || commentMoved)
                 {

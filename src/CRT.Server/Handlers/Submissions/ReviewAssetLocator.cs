@@ -3,7 +3,7 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // WHICH bytes a reviewer may fetch, and what they are served as
+    // WHICH bytes a maintainer may fetch, and what they are served as
     // (NewContributeStrategy.md Phase 5, task 4).
     //
     // Task 4's remaining sub-parts - a moved highlight drawn on the schematic, images side by
@@ -11,7 +11,7 @@ namespace CRT.Server.Handlers.Submissions
     // This decides what may be handed over. ReviewAssetEndpoints is the rim that sends it.
     //
     // *** PURE, AND SPLIT OUT FOR EXACTLY THAT REASON. *** This is a file-disclosure boundary: a
-    // path arriving in a request that reaches the data tree hands a reviewer any file the service
+    // path arriving in a request that reaches the data tree hands a maintainer any file the service
     // can read, including appsettings.Production.json. That decision is unit tested here rather
     // than verified by reading an endpoint.
     //
@@ -21,13 +21,13 @@ namespace CRT.Server.Handlers.Submissions
     //   traversal, so containment is not the risk here. The risk is CROSS-SUBMISSION READING: the
     //   blob store is shared and content-addressed, so without a scope check "may review
     //   submission 7" would mean "may read any blob anyone has ever uploaded", given a hash - and
-    //   hashes travel in manifests, which reviewers see. So the hash must be one the named
+    //   hashes travel in manifests, which maintainers see. So the hash must be one the named
     //   submission's own manifest references.
     //
     //   PUBLISHED bytes are addressed by a caller-supplied PATH into the data tree. That IS the
     //   traversal risk, and it goes through SubmissionPathRules - the same containment the write
     //   paths use, resolved against this system's own folder rather than against the tree, so a
-    //   reviewer opening a C64 submission cannot read an Amstrad board through it.
+    //   maintainer opening a C64 submission cannot read an Amstrad board through it.
     //
     // *** THE IDENTITY IS UNTRUSTED TOO. *** Manufacturer/Hardware/Board arrive inside the
     // submission, so the system folder is resolved through the same rules before anything is
@@ -42,10 +42,10 @@ namespace CRT.Server.Handlers.Submissions
         //
         // *** AN ALLOWLIST, AND IT MUST STAY ONE. *** These files are contributor-supplied and are
         // served from the server's own origin. A file served as text/html would run script in that
-        // origin against a signed-in reviewer's session, and a type inferred from the extension
+        // origin against a signed-in maintainer's session, and a type inferred from the extension
         // lets the attacker pick the type by picking the name. Everything not on this list is
         // octet-stream, which downloads instead of rendering - which also happens to be the right
-        // behaviour for the datasheet a reviewer wants to open.
+        // behaviour for the datasheet a maintainer wants to open.
         //
         // SVG is deliberately ABSENT despite being an image: it is an XML document that can carry
         // script, and browsers execute it when it is navigated to directly. No shipped board uses
@@ -106,7 +106,7 @@ namespace CRT.Server.Handlers.Submissions
         // (Main.BoardSelection.cs combines DataManager.DataRoot with the stored value). Resolving
         // against the system folder therefore looked for
         // "<root>/Commodore/C64/250407/Commodore/C64/250407/Board Layout 250407 NTSC.png",
-        // which never exists, and every published image answered 404. The reviewer saw "No
+        // which never exists, and every published image answered 404. The maintainer saw "No
         // published file at this path" beside a picture that is in fact published.
         //
         // It also could not have worked for SHARED files: "Commodore/Shared files/Component
@@ -161,7 +161,7 @@ namespace CRT.Server.Handlers.Submissions
         // board does not actually name.
         //
         // The submitted rows are used rather than the published board because they are what the
-        // manifest carries, and the two agree on every file the comparison offers - the review app
+        // manifest carries, and the two agree on every file the comparison offers - the maintainer app
         // only ever asks for a path that appeared in one of the two lists it was given.
         // ###########################################################################################
         private static bool IsReferencedByBoard(SubmissionManifest manifest, string relativePath)
@@ -186,7 +186,7 @@ namespace CRT.Server.Handlers.Submissions
         private static IEnumerable<string> BoardFilePaths(SubmissionManifest manifest)
         {
             // Built against no published board, so the result is the submission's OWN rows -
-            // exactly the set the review app was handed and can ask about.
+            // exactly the set the maintainer app was handed and can ask about.
             BoardData board = PublishMerge.Build(manifest, published: null);
 
             return SubmissionManifestBuilder.CollectReferencedFiles(board);

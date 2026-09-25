@@ -177,7 +177,7 @@ public sealed class SubmissionFileLocatorTests : IDisposable
             System.IO.Path.GetFullPath(locatedAt));
     }
     // ###########################################################################################
-    // *** THE REPORTED BUG (maintainer, 2026-09-25): "Some files are missing ... HotCPU.png". ***
+    // *** THE REPORTED BUG (owner, 2026-09-25): "Some files are missing ... HotCPU.png". ***
     // A new image filed in a SHARED folder is written inside the draft under its whole path, and
     // the locator only looked in the draft for the board's own files - so the contributor's
     // attachment was on disk and the submission called it missing.

@@ -3,7 +3,7 @@ using System;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // ONE ROW BEING DRAGGED IN THE BOARD TABLE EDITOR (maintainer request, 2026-09-24): "insert a
+    // ONE ROW BEING DRAGGED IN THE BOARD TABLE EDITOR (owner request, 2026-09-24): "insert a
     // placeholder when I drag a row, like when moving an image in the worklog".
     //
     // The row moves LIVE while it is dragged - into the place of the row under the pointer - so
@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     // row as an empty dashed slot: what is seen is the space the row will take, exactly as the
     // worklog's photo and file lists do it.
     //
-    // THE RULES, here rather than in the UI so the review application's table gets them too:
+    // THE RULES, here rather than in the UI so the maintainer application's table gets them too:
     //
     //   - A red deleted row is never a place to drop onto. Where a ghost shows is worked out from
     //     the published order after every move (BoardTableSheet.PlaceGhosts), so "dropping onto" one

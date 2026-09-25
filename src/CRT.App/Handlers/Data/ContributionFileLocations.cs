@@ -10,7 +10,7 @@ namespace Handlers.DataHandling
     // (one with no sub-folders) of the data tree AND of the drafts tree, as "/"-separated paths
     // relative to their own root ("Commodore/C64/250407/Scope baseline").
     //
-    // *** THE DRAFTS TREE IS INCLUDED, AND THAT IS THE FIX (maintainer report, 2026-09-24). ***
+    // *** THE DRAFTS TREE IS INCLUDED, AND THAT IS THE FIX (owner report, 2026-09-24). ***
     // The list used to be built from the data root alone. A system created with "Add a new system"
     // exists ONLY under the drafts root, so its folders - the "Scope baseline" folder DraftSeeder
     // creates for it in particular - were never offered, and a file could not be filed there.

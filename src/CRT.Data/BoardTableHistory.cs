@@ -5,7 +5,7 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // UNDO AND REDO FOR THE BOARD TABLE EDITOR (maintainer request, 2026-09-24) - Ctrl+Z and
+    // UNDO AND REDO FOR THE BOARD TABLE EDITOR (owner request, 2026-09-24) - Ctrl+Z and
     // Ctrl+Y in the Drafts tab's "Edit in table format".
     //
     // *** EACH STEP IS A SNAPSHOT OF ONE SHEET, NOT A RECIPE FOR REVERSING ONE OPERATION. *** A
@@ -32,7 +32,7 @@ namespace Handlers.DataHandling
     // the group's one step; undo and redo restore every sheet in it. The step's FIRST sheet is the
     // one the gesture was made on, and is where the cursor goes.
     //
-    // Avalonia-free, like the rest of the model, so the review application gets it too.
+    // Avalonia-free, like the rest of the model, so the maintainer application gets it too.
     // ###########################################################################################
     public sealed class BoardTableHistory
     {

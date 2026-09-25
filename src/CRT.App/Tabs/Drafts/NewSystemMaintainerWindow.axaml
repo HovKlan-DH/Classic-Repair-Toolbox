@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="CRT.NewSystemMaintainerWindow"
-        Title="System reviewer"
+        Title="System maintainer"
         Width="480"
         MinWidth="420"
         CanResize="False"
@@ -13,7 +13,7 @@
         Foreground="{DynamicResource Fg}">
 
 	<StackPanel Margin="18" Spacing="4">
-		<TextBlock Text="Becoming the system's reviewer" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+		<TextBlock Text="Becoming the system's maintainer" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
 
 		<TextBlock TextWrapping="Wrap" Text="You are about to create a new system:" />
 
@@ -25,11 +25,11 @@
 				   Margin="0,8,0,8" />
 
 		<TextBlock TextWrapping="Wrap"
-				   Text="If you submit this system to Classic Repair Toolbox for general use by the community, you agree to be registered as its reviewer." />
+				   Text="If you submit this system to Classic Repair Toolbox for general use by the community, you agree to be registered as its maintainer." />
 
 		<TextBlock TextWrapping="Wrap"
 				   Margin="0,8,0,0"
-				   Text="As its reviewer, you are responsible for reviewing the changes other members of the community submit for this system, and for publishing the ones that are right." />
+				   Text="As its maintainer, you are responsible for reviewing the changes other members of the community submit for this system, and for publishing the ones that are right." />
 
 		<TextBlock TextWrapping="Wrap"
 				   Margin="0,8,0,0"

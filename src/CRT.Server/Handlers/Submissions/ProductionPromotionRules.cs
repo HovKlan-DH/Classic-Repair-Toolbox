@@ -31,7 +31,7 @@ namespace CRT.Server.Handlers.Submissions
         // which CRT shows as "Published to source". Before that they are told "merged", which CRT
         // shows as "Published to BETA source".
         //
-        // The database state is NOT changed: "merged" stays the record of what the reviewer did,
+        // The database state is NOT changed: "merged" stays the record of what the maintainer did,
         // and this is only how it reads from the outside.
         // ###########################################################################################
         public static string ContributorFacingState(

@@ -6,8 +6,8 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // A DRAFT'S BOARD AS EDITABLE SHEETS - the model behind the Drafts tab's "Edit in table
-    // format" (maintainer request, 2026-09-24). Avalonia-free, so the review application can put
-    // the same table in front of a reviewer later; see BoardTableRow.cs for why it sits here.
+    // format" (owner request, 2026-09-24). Avalonia-free, so the maintainer application can put
+    // the same table in front of a maintainer later; see BoardTableRow.cs for why it sits here.
     //
     // *** IT SHOWS THE SCHEMA'S SHEETS, NOT THE RAW WORKBOOK. *** One sheet per
     // BoardWorkbookSchema.AllSheets entry, one column per ColumnOrder entry - which is exactly what
@@ -19,7 +19,7 @@ namespace Handlers.DataHandling
     // WHAT IS NOT HERE: the component highlights and KiCad calibrations. They live in the JSON
     // beside the workbook rather than in any sheet, are edited by the label editor, and ApplyTo
     // carries them across untouched - EXCEPT the highlights of a component deleted in the table,
-    // which go with it (maintainer request, 2026-09-25; see ApplyTo). The revision date and the
+    // which go with it (owner request, 2026-09-25; see ApplyTo). The revision date and the
     // preamble names ride along untouched.
     // ###########################################################################################
     public sealed class BoardTableDocument

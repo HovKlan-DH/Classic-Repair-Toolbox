@@ -72,7 +72,7 @@ namespace CRT.Server.Handlers.Accounts
         Task RevokeSessionAsync(long sessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // Pushes a live session's expiry forward WITHOUT issuing a new token - sliding expiry, so
-        // a desktop reviewer signs in once rather than on a schedule. Deliberately NOT rotation:
+        // a desktop maintainer signs in once rather than on a schedule. Deliberately NOT rotation:
         // see SessionExtensionRules' header for why rotating a file-backed token can lock an
         // account out of every session after nothing worse than a power cut.
         Task ExtendSessionAsync(long sessionId, DateTimeOffset newExpiresUtc, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
@@ -82,8 +82,8 @@ namespace CRT.Server.Handlers.Accounts
         Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // -----------------------------------------------------------------------------------
-        // Reviewer pools (Phase 6 roles, 2026-09-25). One row per (system, account) in the
-        // `reviewers` table; being in a pool is the whole of what makes an account a reviewer.
+        // Maintainer pools (Phase 6 roles, 2026-09-25). One row per (system, account) in the
+        // `maintainers` table; being in a pool is the whole of what makes an account a maintainer.
         // Read on EVERY review request (ReviewEndpoints.AuthoriseAsync), which is what makes
         // removal take effect on the next call rather than at next login.
         // -----------------------------------------------------------------------------------
@@ -95,23 +95,23 @@ namespace CRT.Server.Handlers.Accounts
 
         // Who reviews this system, with the display names system.json mirrors and the addresses a
         // new-submission mail goes to.
-        Task<IReadOnlyList<ReviewerRecord>> GetReviewersOfSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default);
 
         // Every pool row there is, for the administrator's overview. Small by nature - a handful
         // of people across a few dozen systems.
-        Task<IReadOnlyList<ReviewerRecord>> ListReviewersAsync(CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<MaintainerRecord>> ListMaintainersAsync(CancellationToken cancellationToken = default);
 
         // Idempotent: adding somebody already in the pool changes nothing.
-        Task AddReviewerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+        Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // Idempotent: removing somebody not in the pool changes nothing.
-        Task RemoveReviewerAsync(string systemId, long accountId, CancellationToken cancellationToken = default);
+        Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default);
 
-        // Every account, for the administrator to pick a reviewer from. Bounded, because a table
+        // Every account, for the administrator to pick a maintainer from. Bounded, because a table
         // that has somehow grown large is a sign of abuse to look into, not a list to page.
         Task<IReadOnlyList<AccountRecord>> ListAccountsAsync(int limit, CancellationToken cancellationToken = default);
 
-        // Where a submission goes when no reviewer is assigned to its system, or it changes
+        // Where a submission goes when no maintainer is assigned to its system, or it changes
         // shared files.
         Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default);
 
@@ -176,10 +176,10 @@ namespace CRT.Server.Handlers.Accounts
     //
     // The account's three flags travel with it (code review, 2026-09-25): a pool row can outlive
     // the account's fitness to review - the account made administrator by hand, locked, or never
-    // verified - and "does this board have a reviewer who can approve?" has to see that
-    // (ReviewAuthority.CanGiveReviewerApproval).
+    // verified - and "does this board have a maintainer who can approve?" has to see that
+    // (ReviewAuthority.CanGiveMaintainerApproval).
     // ###########################################################################################
-    public sealed record ReviewerRecord(
+    public sealed record MaintainerRecord(
         string SystemId,
         long AccountId,
         string DisplayName,

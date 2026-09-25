@@ -4,7 +4,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // WHAT THE "WHAT CHANGED" WINDOW SHOWS for one drafted system
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS REPLACES DraftDriftReport, AND IT ANSWERS A NARROWER QUESTION. *** The old report
     // classified each DRAFTED row against the official data as it stands now, and could say two

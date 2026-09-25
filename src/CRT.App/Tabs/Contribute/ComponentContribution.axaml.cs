@@ -419,7 +419,7 @@ namespace CRT
         // component-scoped sections below are then sent present-but-empty, which the server's
         // buildDiffSections already reads as "remove every server row in this section" - so the
         // flag adds no new merge behaviour. What it adds is that the review page can say what it
-        // is looking at, instead of the reviewer inferring a deletion from five empty lists.
+        // is looking at, instead of the maintainer inferring a deletion from five empty lists.
         public bool DeleteComponent { get; set; }
 
         public List<ContributionComponentRow> Components { get; set; } = new();
@@ -491,7 +491,7 @@ namespace CRT
 
         // ###########################################################################################
         // What the application does once "Save to draft" has landed: Main closes this window and
-        // shows the Drafts tab (maintainer request, 2026-09-24), because that is where the next
+        // shows the Drafts tab (owner request, 2026-09-24), because that is where the next
         // step is - reviewing the draft, then submitting it. Staying on a maximized window saying
         // "Saved" left the contributor to find the Drafts tab on their own.
         //
@@ -602,7 +602,7 @@ namespace CRT
             // entirely - so there is nothing to read here. The field is kept on the payload
             // because it is part of the LEGACY PHP's wire contract, and that contract is not
             // being changed: the PHP is being retired with this pipeline rather than migrated
-            // (maintainer decision, 2026-09-23), so touching its format now would be work spent
+            // (owner decision, 2026-09-23), so touching its format now would be work spent
             // on something about to be deleted.
             //
             // Sending it empty is SAFE rather than merely tolerable: review/function_board-context.php
@@ -1239,7 +1239,7 @@ namespace CRT
         // an async void click handler cannot offer.
         private async Task SubmitAsync()
         {
-            // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (maintainer
+            // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (owner
             // request, 2026-09-24). *** Both write the same draft: saving here would make the table's
             // own save refused, and its edits lost. So nothing is saved and a notice sends the
             // contributor to the Drafts tab first - this window stays open exactly as it is.
@@ -1775,7 +1775,7 @@ namespace CRT
         // ###########################################################################################
         // Marks every component image row that cannot be submitted and returns the first of them
         // together with the message for the status line, or null when all rows are fine. Marking
-        // happens on every row, not just the first, so one pass shows the reviewer every problem;
+        // happens on every row, not just the first, so one pass shows the maintainer every problem;
         // rows that are fine get their mark cleared here too.
         // ###########################################################################################
         private (ContributionComponentImageRow Row, string Message)? ValidateComponentImageRows()

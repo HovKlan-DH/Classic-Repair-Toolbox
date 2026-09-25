@@ -5,21 +5,21 @@ using CRT.Server.Handlers.Accounts;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // The REVIEWER's side of the API (NewContributeStrategy.md Phase 5, task 2) - the queue and
+    // The MAINTAINER's side of the API (NewContributeStrategy.md Phase 5, task 2) - the queue and
     // one submission's detail. A rim and nothing else, the same rule AccountEndpoints and
     // SubmissionEndpoints follow.
     //
     // *** SEPARATE FROM SubmissionEndpoints BECAUSE THE AUTHORISATION MODEL IS THE OPPOSITE. ***
     // Those endpoints are for CONTRIBUTORS: no account, ownership proved by a capability token,
     // and "not found" and "not yours" deliberately indistinguishable so the id space cannot be
-    // walked. These are for REVIEWERS: an account is required, a role is required, and there is
+    // walked. These are for MAINTAINERS: an account is required, a role is required, and there is
     // no token. Mixing the two in one file is how a route eventually gets mapped into the wrong
     // group and inherits the wrong rule - the kind of mistake that reads as a one-line diff.
     //
     // *** EVERY ROUTE HERE CHECKS AUTHORITY SERVER-SIDE, ON EVERY REQUEST, AGAINST THE
     // SUBMISSION'S OWN SYSTEM. *** Phase 6 task 6 states it: the desktop app hiding a button is
     // not enforcement, because the app is public source and an attacker calls the API directly.
-    // Since 2026-09-25 a reviewer is somebody in a system's pool, so every route that names a
+    // Since 2026-09-25 a maintainer is somebody in a system's pool, so every route that names a
     // submission loads it and asks ReviewAuthority about THAT system - threat 3's "check the
     // object, not just the verb". The queue is filtered by the same rule. No route makes its own
     // judgement.
@@ -28,11 +28,11 @@ namespace CRT.Server.Handlers.Submissions
     //   200 OK       - here is the queue, or the submission.
     //   401          - no usable credentials.
     //   403          - authenticated, but this account may not review - at all, or not THIS
-    //                  system. DISTINCT from 401 on purpose: a reviewer whose account lacks the
+    //                  system. DISTINCT from 401 on purpose: a maintainer whose account lacks the
     //                  role needs to be told that, not handed a login prompt that will not help.
     //                  Not 404 either: the caller is a named, trusted account, and learning that
     //                  a submission id exists for a system they do not review tells them nothing
-    //                  worth hiding - while an honest reviewer on a stale link needs the reason.
+    //                  worth hiding - while an honest maintainer on a stale link needs the reason.
     //   404          - no such submission.
     // ###########################################################################################
     public static class ReviewEndpoints
@@ -66,13 +66,13 @@ namespace CRT.Server.Handlers.Submissions
             // is a correction. ApprovePublishFlow refuses early and often, and every refusal
             // before its final step leaves the tree untouched.
             //
-            // All three need the same authority: a reviewer of the submission's system, or an
+            // All three need the same authority: a maintainer of the submission's system, or an
             // administrator (ReviewDecisionRules).
             // ###########################################################################################
             review.MapPost("/submissions/{submissionId:long}/approve", ReviewEndpoints.ApproveAsync)
                 .WithBodyLimit(RequestBodyLimits.PathListBytes);
 
-            // The reviewer's table (2026-09-25): both boards to open it on, and saving a change.
+            // The maintainer's table (2026-09-25): both boards to open it on, and saving a change.
             review.MapGet("/submissions/{submissionId:long}/table", ReviewEndpoints.GetTableAsync);
             review.MapPost("/submissions/{submissionId:long}/amend", ReviewEndpoints.AmendAsync)
                 .WithBodyLimit(RequestBodyLimits.ManifestBytes);
@@ -120,11 +120,11 @@ namespace CRT.Server.Handlers.Submissions
             {
                 // ###########################################################################################
                 // *** EVERYTHING FROM HERE ON IS AFTER-THE-FACT, AND NONE OF IT MAY FAIL THE
-                // REQUEST (maintainer report, 2026-09-23). ***
+                // REQUEST (owner report, 2026-09-23). ***
                 //
                 // The board is on disk and the state is Merged. Publishing is the one irreversible
                 // operation in the system, so an exception escaping this block is the worst
-                // possible answer: the reviewer is told 500, reads it as "the publish failed", and
+                // possible answer: the maintainer is told 500, reads it as "the publish failed", and
                 // tries again against a tree that has already been overwritten.
                 //
                 // That is not hypothetical - it is exactly what happened. DataChecksumManifest.Write
@@ -160,8 +160,8 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             // ###########################################################################################
-            // *** THE FIRST OF TWO APPROVALS (maintainer decision, 2026-09-25). *** A submission
-            // changing a shared file needs a reviewer AND the administrator; this approval was
+            // *** THE FIRST OF TWO APPROVALS (owner decision, 2026-09-25). *** A submission
+            // changing a shared file needs a maintainer AND the administrator; this approval was
             // recorded and nothing was published. The other side is told - after the fact, and
             // unable to fail the request, like every notification here.
             // ###########################################################################################
@@ -196,7 +196,7 @@ namespace CRT.Server.Handlers.Submissions
                 return Results.NotFound();
 
             // 403 for "your account may not", 409 for "somebody else already decided", 400 for
-            // everything else. They send a reviewer to completely different places, which is the
+            // everything else. They send a maintainer to completely different places, which is the
             // whole reason ApproveOutcome distinguishes them rather than returning a bare bool.
             if (outcome.IsForbidden)
                 return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
@@ -212,7 +212,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // Split out of ApproveAsync so the "none of this may fail the request" guard has one thing
         // to wrap and cannot accidentally cover the publish itself. Runs synchronously to
-        // completion - the reviewer's 200 waits for it - because a manifest that lags the tree is
+        // completion - the maintainer's 200 waits for it - because a manifest that lags the tree is
         // the very bug this exists to fix, and fire-and-forget would reintroduce a window where a
         // client syncs against a stale one. AWAITED, never blocked on: this is an ASP.NET request
         // thread, and GetAwaiter().GetResult() here is how a server deadlocks under load.
@@ -226,7 +226,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken)
         {
             // ###########################################################################################
-            // *** REGENERATE dataChecksums.json, OR THE PUBLISH REACHES NOBODY (maintainer
+            // *** REGENERATE dataChecksums.json, OR THE PUBLISH REACHES NOBODY (owner
             // report, 2026-09-23). ***
             //
             // CRT decides what to download by comparing that manifest against what it already
@@ -273,7 +273,7 @@ namespace CRT.Server.Handlers.Submissions
             // *** THE MAIL COMES LAST, AFTER THE ONE IRREVERSIBLE OPERATION IN THE SYSTEM. ***
             //
             // The board is already written and the state already Merged. Nothing here may throw
-            // back to the reviewer - they would read the error as "the publish failed" and try
+            // back to the maintainer - they would read the error as "the publish failed" and try
             // again, against a tree that has already been overwritten. SubmissionNotifier
             // swallows and logs; see its header.
             //
@@ -282,7 +282,7 @@ namespace CRT.Server.Handlers.Submissions
             // are nothing to do with whether a publish succeeded. A read here costs one query
             // on the rarest operation the service performs.
             //
-            // An approval usually carries no reviewer comment, which is exactly why the
+            // An approval usually carries no maintainer comment, which is exactly why the
             // published template takes one as optional.
             // ###########################################################################################
             SubmissionRecord? published =
@@ -295,7 +295,7 @@ namespace CRT.Server.Handlers.Submissions
                     published.SystemId,
                     SubmissionState.Merged,
                     published.DecisionComment,
-                    amendedByReviewer: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
+                    amendedByMaintainer: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
                     cancellationToken: cancellationToken);
             }
         }
@@ -365,7 +365,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // *** THE STATE IS RE-READ AND RE-CHECKED SERVER-SIDE, EVERY TIME. *** The app disables a
         // button on a submission it believes is still pending, and that belief can be seconds out
-        // of date - another reviewer may have decided it in the meantime. The check here is the
+        // of date - another maintainer may have decided it in the meantime. The check here is the
         // one that counts, and it is why ReviewDecisionRules takes the state rather than trusting
         // the caller to have looked.
         // ###########################################################################################
@@ -395,7 +395,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 // 409, not 403: the account may well be allowed to review THIS system, and what
                 // is wrong is the SUBMISSION's state - somebody else decided it first. A 403
-                // would send the reviewer looking at their own permissions for a conflict that is
+                // would send the maintainer looking at their own permissions for a conflict that is
                 // about timing.
                 return ReviewAuthority.CanReview(access, record)
                     ? Results.Conflict(new { error = why })
@@ -419,7 +419,7 @@ namespace CRT.Server.Handlers.Submissions
             // ###########################################################################################
             // *** AFTER the decision is recorded, and it cannot fail this request. ***
             //
-            // The reviewer's verdict is already durable at this point, so a mail problem must not
+            // The maintainer's verdict is already durable at this point, so a mail problem must not
             // surface as an error - they would try the decision again and find it already made.
             // SubmissionNotifier swallows and logs; see its header.
             //
@@ -440,12 +440,12 @@ namespace CRT.Server.Handlers.Submissions
         // The shape of "may this account do this to this submission".
         private delegate bool DecisionRule(ReviewAccess? access, SubmissionRecord? submission, out string reason);
 
-        // What a reviewer sends with a decision, and with an amendment, are CRT.Data's
+        // What a maintainer sends with a decision, and with an amendment, are CRT.Data's
         // ReviewDecisionRequest and AmendRequest (ReviewApiContract) - built by the review
         // application from the same records, so a renamed field cannot reach one end only.
 
         // ###########################################################################################
-        // GET /api/review/submissions/{id}/table - what the review application's table opens on:
+        // GET /api/review/submissions/{id}/table - what the maintainer application's table opens on:
         // the published board and the submission's current rows, as CRT.Data's ReviewTableData.
         // ###########################################################################################
         private static async Task<IResult> GetTableAsync(
@@ -469,7 +469,7 @@ namespace CRT.Server.Handlers.Submissions
                 return Results.NotFound();
 
             if (!ReviewAuthority.CanReview(access, record))
-                return ReviewEndpoints.NotReviewerOf(access, record);
+                return ReviewEndpoints.NotMaintainerOf(access, record);
 
             SubmissionManifest? manifest = await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
@@ -486,7 +486,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // POST /api/review/submissions/{id}/amend  { expectedVersion, rows } - a reviewer's change,
+        // POST /api/review/submissions/{id}/amend  { expectedVersion, rows } - a maintainer's change,
         // saved as the submission's new content. A rim over AmendSubmissionFlow.
         // ###########################################################################################
         private static async Task<IResult> AmendAsync(
@@ -537,11 +537,11 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/submitted/{hash}
         //
-        // The bytes a contributor UPLOADED, so the review app can draw the "after" side - task 4's
+        // The bytes a contributor UPLOADED, so the maintainer app can draw the "after" side - task 4's
         // images side by side, the moved highlight on its schematic, a scope baseline plotted.
         //
         // *** THE HASH MUST BE ONE THIS SUBMISSION REFERENCES. *** The blob store is shared and
-        // content-addressed, so without that scope check a reviewer holding any hash could read
+        // content-addressed, so without that scope check a maintainer holding any hash could read
         // any upload in the store. ReviewAssetLocator decides; this route only obeys.
         // ###########################################################################################
         private static async Task<IResult> GetSubmittedAssetAsync(
@@ -559,10 +559,10 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            // The bytes of a submission are for its system's reviewers alone - the store is shared
-            // across every submission, so this is where a reviewer of one board would otherwise
+            // The bytes of a submission are for its system's maintainers alone - the store is shared
+            // across every submission, so this is where a maintainer of one board would otherwise
             // read another board's uploads.
-            IResult? notMine = await ReviewEndpoints.RefuseUnlessReviewerOfAsync(
+            IResult? notMine = await ReviewEndpoints.RefuseUnlessMaintainerOfAsync(
                 access, submissionId, submissions, cancellationToken);
 
             if (notMine is not null)
@@ -590,8 +590,8 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/published/{path}
         //
-        // The bytes CURRENTLY PUBLISHED for this system, so the review app can draw the "before"
-        // side. Without it every comparison is one-sided: a reviewer can see the new image but not
+        // The bytes CURRENTLY PUBLISHED for this system, so the maintainer app can draw the "before"
+        // side. Without it every comparison is one-sided: a maintainer can see the new image but not
         // what it replaces, which is the whole question for a replaced schematic.
         //
         // *** THE PATH IS UNTRUSTED AND REACHES THE DATA TREE. *** This is the file-disclosure
@@ -617,14 +617,14 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            IResult? notMine = await ReviewEndpoints.RefuseUnlessReviewerOfAsync(
+            IResult? notMine = await ReviewEndpoints.RefuseUnlessMaintainerOfAsync(
                 access, submissionId, submissions, cancellationToken);
 
             if (notMine is not null)
                 return notMine;
 
             // Scoped to the submission being reviewed rather than taking a system id directly:
-            // the reviewer is looking at a submission, and deriving the system from it means the
+            // the maintainer is looking at a submission, and deriving the system from it means the
             // route cannot be pointed at a system the caller simply named.
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
@@ -645,10 +645,10 @@ namespace CRT.Server.Handlers.Submissions
         //
         // *** THE CONTENT TYPE COMES FROM AN ALLOWLIST, NEVER FROM THE REQUEST. *** These bytes are
         // contributor-supplied and are served from the server's own origin, so a file served as
-        // text/html would run script there against a signed-in reviewer. See ReviewAssetLocator.
+        // text/html would run script there against a signed-in maintainer. See ReviewAssetLocator.
         //
         // `enableRangeProcessing` because a scope baseline or a full board scan is megabytes and a
-        // reviewer may scrub through one; the framework answers the range, this file does not
+        // maintainer may scrub through one; the framework answers the range, this file does not
         // reimplement it.
         // ###########################################################################################
         private static IResult FileResult(string resolvedPath, string? nameForType)
@@ -678,7 +678,7 @@ namespace CRT.Server.Handlers.Submissions
                 return refusal;
 
             // *** FILTERED TO WHAT THIS ACCOUNT MAY DECIDE. *** An administrator sees everything; a
-            // reviewer sees their systems' submissions, minus any that change shared files. The
+            // maintainer sees their systems' submissions, minus any that change shared files. The
             // rule is ReviewAuthority's, applied here row by row - the queue is small, and one rule
             // in one place beats a second copy of it in SQL.
             IReadOnlyList<SubmissionRecord> queue =
@@ -692,7 +692,7 @@ namespace CRT.Server.Handlers.Submissions
                 // apps built when the answer could be false.
                 canPublish = true,
 
-                // So the review app can show the administrator's "Reviewers" screen to the one
+                // So the maintainer app can show the administrator's "Maintainers" screen to the one
                 // person who may use it. The server refuses everyone else regardless.
                 isAdministrator = access!.Account.IsAdministrator,
                 count = queue.Count,
@@ -703,7 +703,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}
         //
-        // One submission, with the manifest and the findings a reviewer needs to decide. The
+        // One submission, with the manifest and the findings a maintainer needs to decide. The
         // manifest is the ROWS - what the board would become - which is what ReviewSummary
         // compares against the published board.
         // ###########################################################################################
@@ -728,7 +728,7 @@ namespace CRT.Server.Handlers.Submissions
                 return Results.NotFound();
 
             if (!ReviewAuthority.CanReview(access, record))
-                return ReviewEndpoints.NotReviewerOf(access, record);
+                return ReviewEndpoints.NotMaintainerOf(access, record);
 
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
@@ -749,14 +749,14 @@ namespace CRT.Server.Handlers.Submissions
                 canPublish = ReviewAuthority.CanPublish(access, record),
 
                 // Who must approve, who has, and what THIS account's approval would do - CRT.Data's
-                // ApprovalStatus, read by the review application as the same record.
+                // ApprovalStatus, read by the maintainer application as the same record.
                 approval = await ApprovePublishFlow.ApprovalStatusAsync(access, record, touchesSharedFiles, submissions, accounts, cancellationToken),
                 submission = ReviewEndpoints.ToQueueRow(record with { TouchesSharedFiles = touchesSharedFiles }),
                 manifest,
                 findings = await submissions.GetFindingsAsync(submissionId, cancellationToken),
                 changes = comparison.Changes,
 
-                // The files the PUBLISHED board references - what the review app compares the
+                // The files the PUBLISHED board references - what the maintainer app compares the
                 // submission's own files against. See PublishedFilePaths for why this cannot be
                 // derived client-side from `changes`.
                 publishedFiles = comparison.PublishedFiles,
@@ -771,9 +771,9 @@ namespace CRT.Server.Handlers.Submissions
                 schematicImages = comparison.SchematicImages,
 
                 // One entry per submitted file: its scope, whether a row uses it, and the hash of
-                // what is published at its path now. The review app lists every file that would
+                // what is published at its path now. The maintainer app lists every file that would
                 // change the tree from this - including the ones it cannot draw. The record type is
-                // CRT.Data's SubmittedFileFact, shared with the review app, so the field names on
+                // CRT.Data's SubmittedFileFact, shared with the maintainer app, so the field names on
                 // the wire cannot drift apart. (security review, 2026-09-25)
                 submittedFiles = comparison.SubmittedFiles,
 
@@ -782,7 +782,7 @@ namespace CRT.Server.Handlers.Submissions
                 // shown before approving and sent back with the approval (2026-09-25).
                 removals = comparison.Removals,
 
-                // Whether a reviewer changed it in the review application, and who last did.
+                // Whether a maintainer changed it in the maintainer application, and who last did.
                 amendment = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
                     ? new { version = latest.Version, by = latest.By, atUtc = latest.AtUtc }
                     : null
@@ -790,7 +790,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The change summary a reviewer opens on (task 3), computed HERE rather than in the app.
+        // The change summary a maintainer opens on (task 3), computed HERE rather than in the app.
         //
         // *** THE SERVER IS THE ONLY PLACE BOTH HALVES EXIST. *** The submitted board travels in
         // the manifest; the published one is a workbook in the data tree that only the server can
@@ -800,7 +800,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // A MISSING MANIFEST YIELDS NULL rather than an empty summary. A submission whose payload
         // could not be loaded has nothing to compare, and reporting "no changes" for it would
-        // invite a reviewer to approve something they have not seen. The client shows the
+        // invite a maintainer to approve something they have not seen. The client shows the
         // findings instead, which is where the reason will be.
         // ###########################################################################################
         private static async Task<ReviewComparison> SummariseAsync(
@@ -840,7 +840,7 @@ namespace CRT.Server.Handlers.Submissions
 
             // *** THE REVISION DATE IS NOW COMPARED PROPERLY. *** It used to be a real gap:
             // SubmissionRows carried no revision date, so the published board's was used for BOTH
-            // sides and a revision-date change was invisible to the reviewer. The field was added
+            // sides and a revision-date change was invisible to the maintainer. The field was added
             // 2026-09-22, and PublishMerge resolves it the same way the publish itself will -
             // submitted if present, otherwise the published one, which is what an older client
             // that omits the field must produce.
@@ -853,7 +853,7 @@ namespace CRT.Server.Handlers.Submissions
             // *** THE CALIBRATIONS ARE COMPARED TOO, and they cannot ride inside either board. ***
             // BoardData has no calibration section; they live in the JSON sidecar. Omitting them
             // here would let a contributor's calibration change reach the published tree with no
-            // reviewer having seen it - which is the one thing this screen exists to prevent.
+            // maintainer having seen it - which is the one thing this screen exists to prevent.
             //
             // The PUBLISHED side comes from the sidecar beside the published workbook; a system
             // with none yields an empty list, which correctly reports every submitted calibration
@@ -873,16 +873,16 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Which IMAGE FILE each schematic is drawn from, so the review app can put a moved
+        // Which IMAGE FILE each schematic is drawn from, so the maintainer app can put a moved
         // highlight back on the board it belongs to (task 4).
         //
         // *** A HIGHLIGHT NAMES A SCHEMATIC, NOT A FILE. *** Its natural key is
         // SchematicName|BoardLabel, and the picture lives on a BoardSchematicEntry. Without this
-        // mapping the review app knows a rectangle moved on "Sheet 1" and has no way to find the
+        // mapping the maintainer app knows a rectangle moved on "Sheet 1" and has no way to find the
         // image of Sheet 1 to draw it on.
         //
         // *** THE SUBMITTED BOARD WINS, and that ordering is the point. *** A submission may ADD a
-        // schematic, or repoint an existing one at a new image, and in both cases the reviewer must
+        // schematic, or repoint an existing one at a new image, and in both cases the maintainer must
         // see the board as the submission proposes it. The published board fills in only what the
         // submission does not mention, so a highlight on an untouched schematic still draws.
         // ###########################################################################################
@@ -909,7 +909,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Every FILE the published board references, so the review app can tell an added image
+        // Every FILE the published board references, so the maintainer app can tell an added image
         // from a replaced one and spot a deletion (task 4).
         //
         // *** THE CLIENT CANNOT DERIVE THIS FROM THE CHANGE SUMMARY, and the first version of the
@@ -934,7 +934,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // A system with no sidecar, or no calibrations in it, yields an EMPTY list, which
         // correctly reports every submitted calibration as an addition. Never throws: an
-        // unreadable sidecar must not make a submission impossible to open, and the reviewer sees
+        // unreadable sidecar must not make a submission impossible to open, and the maintainer sees
         // the findings instead.
         // ###########################################################################################
         private static IReadOnlyList<KiCadCalibrationEntry> PublishedCalibrations(
@@ -995,11 +995,11 @@ namespace CRT.Server.Handlers.Submissions
         //
         // This used to read ComponentImages ALONE, while SubmissionManifestBuilder.CollectReferencedFiles
         // collects four sources: schematic images, component images, component local files and
-        // board local files. The review app compares one list against the other, so every file
+        // board local files. The maintainer app compares one list against the other, so every file
         // from the three missing sources was present on the submitted side and absent on the
-        // published side - and was reported to the reviewer as ADDED.
+        // published side - and was reported to the maintainer as ADDED.
         //
-        // Reported by the maintainer: a submission that changed one component's short description
+        // Reported by the project owner: a submission that changed one component's short description
         // listed every schematic image as "Added / Not in the published board". Nothing was
         // actually being added; the published list simply did not know those files existed.
         //
@@ -1037,7 +1037,7 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyDictionary<string, string> SchematicImages,
 
             // Every submitted file with whose it is, whether a row uses it and what is published
-            // at its path now - so the review app can list EVERY file that would change the tree,
+            // at its path now - so the maintainer app can list EVERY file that would change the tree,
             // not only the images it can draw. See SubmittedFileFacts.
             IReadOnlyList<SubmittedFileFact> SubmittedFiles,
 
@@ -1048,11 +1048,11 @@ namespace CRT.Server.Handlers.Submissions
         // Who is asking, and what they review - or the refusal to answer them with.
         //
         // *** THE POOL IS READ HERE, ON EVERY REQUEST. *** That single lookup is what makes
-        // removing a reviewer bite on their very next call rather than at next login (Phase 6's
+        // removing a maintainer bite on their very next call rather than at next login (Phase 6's
         // definition of done), and what lets every rule downstream be pure.
         //
         // Refuses an account with no role at all - not an administrator and in no pool - so the
-        // review app can say "this account is not allowed to review" rather than show an empty
+        // maintainer app can say "this account is not allowed to review" rather than show an empty
         // queue. Whether the account may act on a PARTICULAR submission is asked per route.
         // ###########################################################################################
         private static async Task<(ReviewAccess? Access, IResult? Refusal)> AuthoriseAsync(
@@ -1067,7 +1067,7 @@ namespace CRT.Server.Handlers.Submissions
                 return (null, refusal);
 
             if (!ReviewAuthority.CanReviewAnything(access))
-                return (null, ReviewEndpoints.NotAReviewer());
+                return (null, ReviewEndpoints.NotAMaintainer());
 
             return (access, null);
         }
@@ -1075,7 +1075,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // The authentication half alone: the account behind the bearer token plus its pool, or a
         // 401. Shared with AdminEndpoints, which puts the administrator rule on top instead of the
-        // reviewer one.
+        // maintainer one.
         // ###########################################################################################
         internal static async Task<(ReviewAccess? Access, IResult? Refusal)> AuthenticateAsync(
             HttpContext context,
@@ -1104,16 +1104,16 @@ namespace CRT.Server.Handlers.Submissions
             if (account is null)
                 return (null, Results.Unauthorized());
 
-            IReadOnlySet<string> reviewerOf = await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
+            IReadOnlySet<string> maintainerOf = await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
 
-            return (new ReviewAccess(account, reviewerOf), null);
+            return (new ReviewAccess(account, maintainerOf), null);
         }
 
         // ###########################################################################################
         // The per-submission check the two asset routes make: the submission must exist and be one
         // this account reviews. Null when it may proceed.
         // ###########################################################################################
-        private static async Task<IResult?> RefuseUnlessReviewerOfAsync(
+        private static async Task<IResult?> RefuseUnlessMaintainerOfAsync(
             ReviewAccess? access,
             long submissionId,
             ISubmissionStore submissions,
@@ -1126,12 +1126,12 @@ namespace CRT.Server.Handlers.Submissions
 
             return ReviewAuthority.CanReview(access, record)
                 ? null
-                : ReviewEndpoints.NotReviewerOf(access, record);
+                : ReviewEndpoints.NotMaintainerOf(access, record);
         }
 
-        // The 403 for a reviewer asking about a submission on a system they do not review, or a
+        // The 403 for a maintainer asking about a submission on a system they do not review, or a
         // shared-files submission that is the administrator's. The sentence is ReviewAuthority's.
-        internal static IResult NotReviewerOf(ReviewAccess? access, SubmissionRecord? submission) =>
+        internal static IResult NotMaintainerOf(ReviewAccess? access, SubmissionRecord? submission) =>
             Results.Json(
                 new { error = ReviewAuthority.DescribeRefusal(access, submission) },
                 statusCode: StatusCodes.Status403Forbidden);
@@ -1143,22 +1143,22 @@ namespace CRT.Server.Handlers.Submissions
         // Forbid() is a challenge to the AUTHENTICATION middleware: it asks the registered default
         // scheme to write the refusal. This service authenticates its own opaque bearer tokens and
         // registers no scheme at all, so executing Forbid() threw InvalidOperationException and the
-        // reviewer got a 500 - never the 403 this header documents and the review app's "this
+        // maintainer got a 500 - never the 403 this header documents and the maintainer app's "this
         // account is not allowed to review" message depends on. ApproveAsync's own refusal already
-        // wrote its 403 directly; this now does the same. The sentence matches the review app's.
+        // wrote its 403 directly; this now does the same. The sentence matches the maintainer app's.
         // ###########################################################################################
-        internal static IResult NotAReviewer() =>
+        internal static IResult NotAMaintainer() =>
             Results.Json(
                 new { error = "This account is not allowed to review submissions." },
                 statusCode: StatusCodes.Status403Forbidden);
 
         // ###########################################################################################
-        // One row as a reviewer sees it.
+        // One row as a maintainer sees it.
         //
         // *** THE UPLOAD TOKEN HASH IS NOT HERE, AND MUST NEVER BE. *** SubmissionRecord carries
         // it because the store needs it to check ownership; it is the contributor's capability for
-        // that submission, and echoing it to any other caller would hand a reviewer the ability to
-        // act as the contributor. The contact email is included because a reviewer has to be able
+        // that submission, and echoing it to any other caller would hand a maintainer the ability to
+        // act as the contributor. The contact email is included because a maintainer has to be able
         // to reply to the person - that is the whole channel, since contributors have no account.
         // ###########################################################################################
         private static object ToQueueRow(SubmissionRecord record) => new
@@ -1172,7 +1172,7 @@ namespace CRT.Server.Handlers.Submissions
             createdUtc = record.CreatedUtc,
             decidedUtc = record.DecidedUtc,
 
-            // So the administrator can see WHY a submission is theirs rather than a reviewer's.
+            // So the administrator can see WHY a submission is theirs rather than a maintainer's.
             touchesSharedFiles = record.TouchesSharedFiles
         };
 

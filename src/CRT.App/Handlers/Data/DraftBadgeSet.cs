@@ -5,7 +5,7 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // Which Hardware and Board drop-down entries carry the amber "Draft" chip (maintainer request,
+    // Which Hardware and Board drop-down entries carry the amber "Draft" chip (owner request,
     // 2026-09-24) - the same chip a drafted component row already carries in the component list.
     //
     // A BOARD carries it when it has a local draft. A HARDWARE carries it when ANY of its boards

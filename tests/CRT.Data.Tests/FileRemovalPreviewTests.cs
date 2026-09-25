@@ -7,8 +7,8 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // FileRemovalPreview - the list of files a publish will remove, shown to the reviewer before
-    // they approve and checked again when they do (maintainer, 2026-09-25: "It must be, so it is
+    // FileRemovalPreview - the list of files a publish will remove, shown to the maintainer before
+    // they approve and checked again when they do (owner, 2026-09-25: "It must be, so it is
     // clear what will happen").
     // ###########################################################################################
     public sealed class FileRemovalPreviewTests
@@ -47,7 +47,7 @@ namespace CRT.Data.Tests
             Assert.False(preview.Matches(["a/one.png"]));
             Assert.False(preview.Matches(["a/one.png", "a/two.png", "a/three.png"]));
 
-            // Exact spelling: the reviewer was shown one path, and that path is what goes.
+            // Exact spelling: the maintainer was shown one path, and that path is what goes.
             Assert.False(preview.Matches(["a/ONE.png", "a/two.png"]));
         }
 

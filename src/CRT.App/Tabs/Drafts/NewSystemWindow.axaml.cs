@@ -27,7 +27,7 @@ namespace CRT
     // Tunnel-both-cancel handling DiscardDraftWindow and DeleteWorkbookWindow use: that exists
     // because their submit button performs a permanent delete, and this one creates something.
     //
-    // *** CREATING REQUIRES ACCEPTING THE MAINTAINER ROLE (maintainer request, 2026-09-24). ***
+    // *** CREATING REQUIRES ACCEPTING THE MAINTAINER ROLE (owner request, 2026-09-24). ***
     // "Create system" first shows NewSystemMaintainerWindow, and the registration is handed back
     // ONLY when that is accepted. Declining returns to this form with nothing created and every
     // field still filled in - so a mis-click costs one more click, not the typing. The gate lives

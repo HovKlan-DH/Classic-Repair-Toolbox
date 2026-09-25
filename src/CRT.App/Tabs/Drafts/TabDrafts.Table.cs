@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // TABLE MODE on the Drafts tab - "Edit in table format" (maintainer request, 2026-09-24).
+    // TABLE MODE on the Drafts tab - "Edit in table format" (owner request, 2026-09-24).
     //
     // Owns: which draft's table is open, switching the tab between its list layout and its table
     // layout, and every prompt about unsaved table edits. The table itself is BoardTableEditor;
@@ -31,7 +31,7 @@ namespace CRT
         // ###########################################################################################
         // Whether the table is open on THIS board's draft and holds edits not saved yet - the
         // question the Contribute tab's component editor and the label editor ask before they write
-        // the same draft (maintainer request, 2026-09-24). A save of theirs would make the table's
+        // the same draft (owner request, 2026-09-24). A save of theirs would make the table's
         // own save refused, and its edits lost; so they hold back and say why instead. A table open
         // on another board, or with nothing unsaved (it catches up by itself), is no obstacle.
         // ###########################################################################################

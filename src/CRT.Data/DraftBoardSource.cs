@@ -7,7 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // WHICH FOLDER A SYSTEM'S BOARD DATA IS READ FROM, now that a draft is a real board folder
-    // (NewContributeStrategy.md Phase 6 - maintainer request, 2026-09-23).
+    // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS REPLACES AN OVERLAY WITH A CHOICE, and that is the whole shape of the change. ***
     //
@@ -18,7 +18,7 @@ namespace Handlers.DataHandling
     // Now: a draft IS a board folder, so loading a drafted system means reading THAT folder's
     // workbook instead of the published one. No merge, no deltas, nothing to keep in step. The
     // file on disk is the truth - which is what makes editing in the app and editing in Excel
-    // interchangeable, the maintainer's actual requirement.
+    // interchangeable, the project owner's actual requirement.
     //
     // PURE apart from File.Exists, so the rule is unit tested rather than trusted. It resolves
     // paths and answers "which one"; it opens nothing and parses nothing.

@@ -117,7 +117,7 @@ public sealed class UnsavedTableEditsWindowTests
     [Fact]
     public void Saving_elsewhere_is_a_notice_with_Cancel_alone_that_sends_you_to_the_Drafts_tab()
     {
-        // Maintainer's design (2026-09-24): from another tab you may not remember what you did in
+        // Owner's design (2026-09-24): from another tab you may not remember what you did in
         // the table, so nothing about it is decided here - no Save, no Discard.
         UiTest.Run(() =>
         {
