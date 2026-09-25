@@ -31,7 +31,7 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-        <InformationalVersion>1.0.0-alpha.3</InformationalVersion>
+        <InformationalVersion>1.0.0-alpha.4</InformationalVersion>
         <FileVersion>$(AssemblyVersion)</FileVersion>
         <Version>$(InformationalVersion)</Version>
 
