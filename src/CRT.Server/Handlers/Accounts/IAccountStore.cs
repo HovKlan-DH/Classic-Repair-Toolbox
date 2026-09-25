@@ -1,0 +1,209 @@
+namespace CRT.Server.Handlers.Accounts
+{
+    // ###########################################################################################
+    // The "talk to the accounts database" seam. Exactly the same idea as IMiniproRunner and
+    // IScopeClient in CRT.App: the flow logic depends on this interface, a MySQL implementation
+    // sits behind it as an untested I/O boundary, and an in-memory fake stands in under test.
+    //
+    // WHY THIS EXISTS. CLAUDE.md test rule 6 forbids a test that needs a network call, and a
+    // database is one. Without this seam, "registering with an existing address sends the
+    // already-registered mail rather than creating a second account" could not be tested at all -
+    // and that is precisely the logic most worth pinning down, because getting it wrong either
+    // leaks who has an account or lets one person register twice.
+    //
+    // WHAT BELONGS HERE AND WHAT DOES NOT. These methods are deliberately dumb: find a row, insert
+    // a row, mark a row consumed. Not one of them decides anything. Every rule - whether a token
+    // has expired, whether a password is acceptable, which mail to send, whether a session may be
+    // refreshed - lives in a pure class that takes this interface as an argument. If a decision
+    // ends up inside an implementation of this interface, it is a decision no test can reach.
+    //
+    // NULLABLE RETURNS RATHER THAN EXCEPTIONS. "No account with that address" is the ordinary
+    // case on every registration, not an exceptional one.
+    // ###########################################################################################
+    public interface IAccountStore
+    {
+        // -----------------------------------------------------------------------------------
+        // Accounts.
+        // -----------------------------------------------------------------------------------
+
+        // Looked up by the NORMALISED address - see AccountRules.NormaliseEmail. Passing a raw
+        // address here would miss an account registered with different capitalisation.
+        Task<AccountRecord?> FindByNormalisedEmailAsync(string normalisedEmail, CancellationToken cancellationToken = default);
+
+        Task<AccountRecord?> FindByIdAsync(long accountId, CancellationToken cancellationToken = default);
+
+        // Returns the new account's id. The caller has already validated everything; this inserts.
+        Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default);
+
+        Task SetPasswordHashAsync(long accountId, string passwordHash, CancellationToken cancellationToken = default);
+
+        Task SetVerifiedAsync(long accountId, CancellationToken cancellationToken = default);
+
+        Task SetLastLoginAsync(long accountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // -----------------------------------------------------------------------------------
+        // One-shot tokens (verification, password reset).
+        // -----------------------------------------------------------------------------------
+
+        Task CreateTokenAsync(NewAccountToken token, CancellationToken cancellationToken = default);
+
+        // Found by HASH, never by the token itself - only the hash is stored. See SecureToken.
+        Task<AccountTokenRecord?> FindTokenByHashAsync(string tokenHash, CancellationToken cancellationToken = default);
+
+        Task ConsumeTokenAsync(long tokenId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // Invalidates every outstanding token of one purpose for one account. Used when a password
+        // is reset: any other reset link already in flight must stop working, or an attacker who
+        // triggered one earlier still holds a way in.
+        Task ConsumeOutstandingTokensAsync(long accountId, string purpose, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // -----------------------------------------------------------------------------------
+        // Sessions (refresh tokens).
+        // -----------------------------------------------------------------------------------
+
+        Task<long> CreateSessionAsync(NewSession session, CancellationToken cancellationToken = default);
+
+        Task<SessionRecord?> FindSessionByHashAsync(string refreshTokenHash, CancellationToken cancellationToken = default);
+
+        // Marks a session rotated and points it at its successor - see SessionRecord.ReplacedById
+        // for why that chain matters.
+        Task RotateSessionAsync(long sessionId, long replacedBySessionId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        Task RevokeSessionAsync(long sessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // Pushes a live session's expiry forward WITHOUT issuing a new token - sliding expiry, so
+        // a desktop reviewer signs in once rather than on a schedule. Deliberately NOT rotation:
+        // see SessionExtensionRules' header for why rotating a file-backed token can lock an
+        // account out of every session after nothing worse than a power cut.
+        Task ExtendSessionAsync(long sessionId, DateTimeOffset newExpiresUtc, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // Revokes every live session for an account. Used on reuse detection and on password
+        // change - both cases where every outstanding credential must stop working at once.
+        Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // -----------------------------------------------------------------------------------
+        // Rate limiting and audit.
+        // -----------------------------------------------------------------------------------
+
+        // The times of recent failed attempts, for AuthRateLimitPolicy. Either key may be null,
+        // meaning "do not filter on this".
+        Task<IReadOnlyList<DateTimeOffset>> GetRecentAuthFailuresAsync(
+            string? normalisedEmail,
+            string? ipAddress,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default);
+
+        Task RecordAuthFailureAsync(string? normalisedEmail, string? ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        Task ClearAuthFailuresAsync(string normalisedEmail, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // The times of recent MAIL-SENDING requests from one address, for
+        // AuthRateLimitPolicy.CheckMailRequest.
+        //
+        // SEPARATE FROM THE AUTH-FAILURE BUCKET, because it counts a different thing. An auth
+        // failure is a FAILED attempt; here a SUCCESS is the thing being abused - registration and
+        // "forgot my password" both send mail to an address the caller names, so an unlimited rate
+        // is a way to use this service to flood somebody else's inbox, and every one of those
+        // requests succeeds.
+        //
+        // Counted per IP only. There is deliberately no per-address bucket: the address belongs to
+        // the VICTIM rather than to the caller, so limiting on it would let anyone lock a specific
+        // person out of their own password-reset by spending the budget on their behalf.
+        // ###########################################################################################
+        Task<IReadOnlyList<DateTimeOffset>> GetRecentMailRequestsAsync(
+            string ipAddress,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default);
+
+        Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default);
+    }
+
+    // ###########################################################################################
+    // An account as stored. PasswordHash is the full PHC string - see PasswordHashEncoding.
+    // ###########################################################################################
+    public sealed record AccountRecord(
+        long Id,
+        string Email,
+        string NormalisedEmail,
+        string PasswordHash,
+        string DisplayName,
+        bool IsVerified,
+        bool IsAdministrator,
+        bool IsReviewer,
+        bool IsLocked,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset? LastLoginUtc);
+
+    public sealed record NewAccount(
+        string Email,
+        string NormalisedEmail,
+        string PasswordHash,
+        string DisplayName,
+        DateTimeOffset CreatedUtc);
+
+    // ###########################################################################################
+    // The two purposes a one-shot token can have. Strings rather than an enum because they are
+    // stored as text and read in a log line; the constants stop them being mistyped.
+    // ###########################################################################################
+    public static class TokenPurpose
+    {
+        public const string EmailVerification = "email_verification";
+        public const string PasswordReset = "password_reset";
+    }
+
+    public sealed record NewAccountToken(
+        long AccountId,
+        string Purpose,
+        string TokenHash,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc);
+
+    public sealed record AccountTokenRecord(
+        long Id,
+        long AccountId,
+        string Purpose,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc,
+        DateTimeOffset? ConsumedUtc);
+
+    public sealed record NewSession(
+        long AccountId,
+        string RefreshTokenHash,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc,
+        string? UserAgent,
+        string? CreatedIp);
+
+    // ###########################################################################################
+    // A session as stored.
+    //
+    // ReplacedById is what makes REUSE DETECTION possible. Each refresh issues a new session and
+    // points the old one at it. A refresh token that has already been rotated being presented
+    // again means two parties hold it - the legitimate client and a thief - and the correct
+    // response is to revoke the whole chain rather than guess which is which.
+    // ###########################################################################################
+    public sealed record SessionRecord(
+        long Id,
+        long AccountId,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc,
+        DateTimeOffset? LastUsedUtc,
+        DateTimeOffset? RevokedUtc,
+        string? RevokedReason,
+        long? ReplacedById);
+
+    // ###########################################################################################
+    // One audit row. ActorLabel carries a text copy of the identity because the account may later
+    // be deleted, and an audit trail that loses its actor attributes nothing.
+    // ###########################################################################################
+    public sealed record AuditEntry(
+        long? ActorAccountId,
+        string ActorLabel,
+        string Action,
+        string? Subject,
+        string? Detail,
+        DateTimeOffset AtUtc);
+}

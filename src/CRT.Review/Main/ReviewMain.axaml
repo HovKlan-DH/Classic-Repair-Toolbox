@@ -1,0 +1,304 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.Review.ReviewMain"
+        Width="1100" Height="720"
+        MinWidth="820" MinHeight="520"
+        Title="Classic Repair Toolbox - Review">
+
+    <!--
+    TWO PANELS, ONE AT A TIME: sign in, then the queue.
+
+    The sign-in panel is a PANEL rather than a modal dialog, deliberately. A modal would have to be
+    dismissed and re-shown on every expiry and every "not permitted" answer, and a reviewer whose
+    session lapsed mid-session would get a dialog over a window still showing stale rows. Swapping
+    the whole surface means what is on screen is always the thing that is actually true.
+    -->
+    <Grid Margin="12">
+
+        <!-- ================= Sign in ================= -->
+        <StackPanel x:Name="SignInPanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Width="360"
+                    Spacing="8">
+
+            <TextBlock Text="Classic Repair Toolbox - Review"
+                       FontSize="20"
+                       FontWeight="SemiBold" />
+
+            <!--
+            *** WHAT THIS APP IS, said before anything is asked of the reader. ***
+
+            This is not the application most people mean by "Classic Repair Toolbox", and somebody
+            who installed it expecting that finds a sign-in screen for an account they do not have
+            and cannot create. Saying so here costs four lines and saves that person guessing.
+
+            It sits ABOVE the fields rather than below them, because an explanation under a form is
+            read after the reader has already decided they are in the wrong place.
+            -->
+            <Border Background="#20808080"
+                    CornerRadius="4"
+                    Padding="10"
+                    Margin="0,4,0,8">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="For hardware and board maintainers only."
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.85"
+                               Text="This tool reviews and publishes contributions to the shared hardware data. It needs a maintainer account and does nothing without one." />
+
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.85"
+                               Text="If you are here to repair a machine, use the ordinary Classic Repair Toolbox application instead - this is not it." />
+                </StackPanel>
+            </Border>
+
+            <!--
+            NO SERVER FIELD. The review app talks to exactly one service and always will, so asking
+            for it on every launch was a question whose answer never changes - and one that broke
+            the moment somebody typed a trailing slash or omitted the scheme. The address is
+            ReviewApiRoutes.DefaultBaseAddress.
+            -->
+
+            <TextBlock Text="Email"
+                       Opacity="0.7"
+                       Margin="0,4,0,0" />
+            <TextBox x:Name="EmailTextBox" />
+
+            <TextBlock Text="Password"
+                       Opacity="0.7"
+                       Margin="0,4,0,0" />
+            <!--
+            PasswordChar, so a shoulder-surfer at a bench cannot read a maintainer credential -
+            this account can publish to every user of a system.
+            -->
+            <TextBox x:Name="PasswordTextBox"
+                     PasswordChar="*"
+                     KeyDown="OnPasswordKeyDown" />
+
+            <Button x:Name="SignInButton"
+                    Content="Sign in"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Margin="0,8,0,0"
+                    Click="OnSignInClick" />
+
+            <!--
+            FORGOT PASSWORD. A plain text button rather than a second screen: the whole interaction
+            is one request and one sentence, and a maintainer locked out of the only tool that can
+            publish should not have to go looking for how to get back in.
+            -->
+            <Button x:Name="ForgotPasswordButton"
+                    Content="I forgot my password"
+                    HorizontalAlignment="Left"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Foreground="SteelBlue"
+                    Click="OnForgotPasswordClick" />
+
+            <!--
+            The failure message. Its own block rather than a dialog, so a wrong password does not
+            cost a click to dismiss before trying again.
+
+            NOT always red: the password-reset answer is good news, and colouring it as an error
+            would read as a failure to somebody who has just asked for help.
+            -->
+            <TextBlock x:Name="SignInMessageText"
+                       Foreground="IndianRed"
+                       TextWrapping="Wrap"
+                       IsVisible="False" />
+
+            <!--
+            ================= Completing a password reset =================
+
+            HIDDEN UNTIL A CODE HAS BEEN ASKED FOR, so the ordinary sign-in screen stays two
+            fields and a button. It is revealed by "I forgot my password" - the moment the code
+            is on its way and the next thing the person needs is somewhere to put it.
+
+            *** THE MAIL CARRIES A CODE, NOT A LINK, AND THIS PANEL IS WHY. *** Completing a reset
+            needs the new PASSWORD, so it cannot be a click: the URL the mail used to print
+            ("/api/accounts/reset?token=...") was mapped to nothing and 404'd for every user who
+            clicked it. A pasted code is also the safer shape, since a prefetching mail client
+            cannot burn a single-use token by following a link.
+            -->
+            <StackPanel x:Name="ResetPanel"
+                        IsVisible="False"
+                        Spacing="4"
+                        Margin="0,12,0,0">
+
+                <Border Background="#1F4F7FBF"
+                        BorderBrush="#4F7FBF"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Check your email for a reset code"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap" />
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Opacity="0.85"
+                                   Text="Paste the code below and choose the password you want. The code works for 2 hours and can only be used once." />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="Reset code"
+                           Opacity="0.7"
+                           Margin="0,4,0,0" />
+                <TextBox x:Name="ResetCodeTextBox" />
+
+                <TextBlock Text="New password"
+                           Opacity="0.7"
+                           Margin="0,4,0,0" />
+                <TextBox x:Name="NewPasswordTextBox"
+                         PasswordChar="*"
+                         KeyDown="OnNewPasswordKeyDown" />
+
+                <Button x:Name="SetPasswordButton"
+                        Content="Set password"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Margin="0,8,0,0"
+                        Click="OnSetPasswordClick" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- ================= The queue ================= -->
+        <Grid x:Name="QueuePanel"
+              IsVisible="False"
+              ColumnDefinitions="340,4,*">
+
+            <DockPanel Grid.Column="0">
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                    <TextBlock Text="Queue"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+
+                    <Button Grid.Column="1"
+                            x:Name="RefreshButton"
+                            Content="Refresh"
+                            Click="OnRefreshClick" />
+                </Grid>
+
+                <!--
+                Who is signed in, and the way out.
+
+                SIGN OUT IS A REAL BUTTON RATHER THAN A MENU ITEM because it is the only way to
+                clear a remembered session deliberately, and the maintainer named it as the thing
+                that must forget the login. A credential that can be stored but not cleared from
+                the UI would be the wrong half of the feature.
+
+                It sits at the BOTTOM of the queue panel, well away from the decision buttons:
+                nothing here is destructive, but a reviewer reaching for "Reject" must never find
+                this under the pointer instead.
+                -->
+                <Grid DockPanel.Dock="Bottom"
+                      ColumnDefinitions="*,Auto"
+                      Margin="0,8,0,0">
+
+                    <TextBlock x:Name="SignedInAsText"
+                               Opacity="0.6"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+
+                    <Button Grid.Column="1"
+                            x:Name="SignOutButton"
+                            Content="Sign out"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Click="OnSignOutClick" />
+                </Grid>
+
+                <!--
+                The empty/error state sits ABOVE the list rather than below it, because an empty
+                list leaves the bottom of the panel far from where the reviewer is looking.
+                -->
+                <TextBlock DockPanel.Dock="Top"
+                           x:Name="QueueMessageText"
+                           TextWrapping="Wrap"
+                           IsVisible="False"
+                           Margin="0,0,0,8" />
+
+                <ListBox x:Name="QueueList"
+                         SelectionChanged="OnQueueSelectionChanged" />
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+            <DockPanel Grid.Column="2" Margin="12,0,0,0">
+                <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
+                    <TextBlock x:Name="SubmissionTitleText"
+                               Text="Select a submission"
+                               FontSize="18"
+                               FontWeight="SemiBold" />
+
+                    <TextBlock x:Name="SubmissionSubtitleText"
+                               Opacity="0.7"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock x:Name="SummaryLineText"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+
+                <!--
+                THE DECISION BAR (task 5), docked to the BOTTOM so it cannot scroll away. A
+                reviewer scrolls through the changes and then decides; a bar that scrolled with
+                them would mean scrolling back to a button whose context they have just left.
+
+                The COMMENT box comes first and is always visible, because it is required for two
+                of the three outcomes and a box that appeared only after pressing a button would
+                make the reviewer press, read a refusal, type, and press again.
+                -->
+                <StackPanel DockPanel.Dock="Bottom"
+                            x:Name="DecisionPanel"
+                            IsVisible="False"
+                            Spacing="6"
+                            Margin="0,12,0,0">
+
+                    <TextBlock x:Name="DecisionMessageText"
+                               TextWrapping="Wrap"
+                               IsVisible="False" />
+
+                    <TextBox x:Name="DecisionCommentTextBox"
+                             AcceptsReturn="True"
+                             MinHeight="60"
+                             MaxHeight="120"
+                             TextWrapping="Wrap"
+                             PlaceholderText="Why? The contributor sees this - it is the only message they get." />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!--
+                        APPROVE IS LAST AND SEPARATED. It is the only irreversible action on this
+                        screen: it publishes, and with no retained revision the only way back is a
+                        correction. Putting it first, where a reflexive click lands, would be the
+                        wrong default for the one button that cannot be undone.
+                        -->
+                        <Button x:Name="RequestChangesButton"
+                                Content="Request changes"
+                                Click="OnRequestChangesClick" />
+
+                        <Button x:Name="RejectButton"
+                                Content="Reject"
+                                Click="OnRejectClick" />
+
+                        <Border Width="24" />
+
+                        <Button x:Name="ApproveButton"
+                                Content="Approve and publish"
+                                Click="OnApproveClick" />
+                    </StackPanel>
+                </StackPanel>
+
+                <ScrollViewer>
+                    <StackPanel x:Name="SummarySectionsPanel" Spacing="8" />
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </Grid>
+</Window>

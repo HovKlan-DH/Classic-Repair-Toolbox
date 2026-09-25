@@ -1,0 +1,304 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.SystemFilesWindow"
+        Title="Schematic images"
+        Width="760"
+        Height="640"
+        MinWidth="620"
+        MinHeight="480"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<Window.Styles>
+		<Style Selector="Border.DropTarget">
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="Padding" Value="12" />
+		</Style>
+
+		<!-- One component reference in the match report. Each reference is its own badge rather
+		     than a run in a comma-separated sentence: a board runs to hundreds of them, and in
+		     prose "C1, C10, C100, C101" blurs into one line of text where no single reference
+		     can be picked out by eye. -->
+		<Style Selector="Border.ReferenceBadge">
+			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="3" />
+			<Setter Property="Padding" Value="6,1" />
+		</Style>
+	</Window.Styles>
+
+	<Window.Resources>
+		<!-- Shared by the three component lists (not labelled / will not light up / match), so
+		     the three cannot drift into looking different. -->
+		<DataTemplate x:Key="ReferenceBadgeTemplate">
+			<Border Classes="ReferenceBadge">
+				<TextBlock Text="{Binding}" FontSize="12" />
+			</Border>
+		</DataTemplate>
+
+		<ItemsPanelTemplate x:Key="ReferenceBadgePanel">
+			<WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4" />
+		</ItemsPanelTemplate>
+	</Window.Resources>
+
+	<Grid RowDefinitions="Auto,*,Auto" Margin="18">
+
+		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
+			<TextBlock x:Name="HeaderText"
+					   FontSize="16"
+					   FontWeight="Bold" />
+			<!-- Worded per section in code (Initialize) - the window shows ONE of the two. -->
+			<TextBlock x:Name="IntroText" TextWrapping="Wrap" />
+		</StackPanel>
+
+		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+			<StackPanel Spacing="18">
+
+				<!-- Schematic images - shown for SystemFilesSection.SchematicImages only -->
+				<StackPanel x:Name="SchematicsSection" Spacing="6">
+					<TextBlock Text="Schematic images" FontWeight="Bold" FontSize="14" />
+					<TextBlock TextWrapping="Wrap"
+							   FontSize="12"
+							   Opacity="0.8"
+							   Text="A photo, a scan or a PCB render - one per view you want to look at. The KiCad traces are drawn on top of these, so no image means no overlay." />
+
+					<Border Classes="DropTarget" x:Name="SchematicDropTarget">
+						<StackPanel Spacing="8">
+							<TextBlock Text="Drag image files here, or use the button below."
+									   HorizontalAlignment="Center"
+									   Opacity="0.75"
+									   FontSize="12" />
+							<Button x:Name="AddSchematicsButton"
+									Content="Choose image files..."
+									HorizontalAlignment="Center"
+									Click="OnAddSchematicsClick" />
+						</StackPanel>
+					</Border>
+
+					<ItemsControl x:Name="SchematicsItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate DataType="local:SystemSchematicRow">
+								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+										BorderThickness="0,0,0,1"
+										Padding="4,6">
+									<Grid ColumnDefinitions="Auto,*,Auto">
+										<!-- The preview. A fixed 80x60 box whichever way the image is
+										     shaped, so the names beside it line up down the list
+										     instead of stepping in and out with each aspect ratio.
+										     Uniform keeps the picture undistorted inside it. -->
+										<Border Grid.Column="0"
+												Width="80"
+												Height="60"
+												Margin="0,0,10,0"
+												VerticalAlignment="Center"
+												BorderBrush="{DynamicResource Table_BorderRowLine}"
+												BorderThickness="1"
+												Background="{DynamicResource Form_Bg}">
+											<Panel>
+												<Image Source="{Binding Thumbnail}"
+													   Stretch="Uniform"
+													   Margin="2"
+													   IsVisible="{Binding HasThumbnail}" />
+
+												<!-- A draft can name an image whose file was moved or
+												     deleted by hand. Saying so is more use than an
+												     empty box. -->
+												<TextBlock Text="No preview"
+														   FontSize="10"
+														   Opacity="0.6"
+														   TextWrapping="Wrap"
+														   TextAlignment="Center"
+														   HorizontalAlignment="Center"
+														   VerticalAlignment="Center"
+														   IsVisible="{Binding IsMissing}" />
+											</Panel>
+										</Border>
+
+										<StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+											<TextBlock Text="{Binding SchematicName}" FontWeight="SemiBold" />
+											<TextBlock Text="{Binding DetailText}"
+													   FontSize="11"
+													   Opacity="0.75"
+													   TextWrapping="Wrap" />
+										</StackPanel>
+										<Button Grid.Column="2"
+												Content="Remove"
+												VerticalAlignment="Center"
+												Foreground="{DynamicResource Button_Cancel_Fg}"
+												Background="{DynamicResource Button_Cancel_Bg}"
+												BorderBrush="{DynamicResource Button_Cancel_Border}"
+												Tag="{Binding}"
+												Click="OnRemoveSchematicClick" />
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+
+					<TextBlock x:Name="NoSchematicsText"
+							   Text="No schematic images yet."
+							   FontSize="12"
+							   Opacity="0.75" />
+				</StackPanel>
+
+				<!-- KiCad data - shown for SystemFilesSection.KiCadData only, together with the match
+				     report below it -->
+				<StackPanel x:Name="KiCadSection" Spacing="6">
+					<TextBlock Text="KiCad data" FontWeight="Bold" FontSize="14" />
+					<TextBlock TextWrapping="Wrap"
+							   FontSize="12"
+							   Opacity="0.8"
+							   Text="Optional. Pick the folder holding the project's .kicad_pcb and .kicad_sch files. Sub-folders are searched too, so a multi-sheet project keeps its pages - footprint libraries, 3D models and gerbers are left behind." />
+
+					<Border Classes="DropTarget" x:Name="KiCadDropTarget">
+						<StackPanel Spacing="8">
+							<TextBlock Text="Drag the KiCad folder here, or use the button below."
+									   HorizontalAlignment="Center"
+									   Opacity="0.75"
+									   FontSize="12" />
+							<Button x:Name="ImportKiCadButton"
+									Content="Choose KiCad folder..."
+									HorizontalAlignment="Center"
+									Click="OnImportKiCadClick" />
+						</StackPanel>
+					</Border>
+
+					<TextBlock x:Name="KiCadStateText"
+							   FontSize="12"
+							   TextWrapping="Wrap"
+							   Opacity="0.75" />
+
+					<!-- The files themselves. A count alone ("25 KiCad files imported") said nothing
+					     about WHICH project had been imported, so a contributor reopening this
+					     window could not tell the right folder from the wrong one.
+
+					     Every file is shown, at full height, with NO scroller of its own. It used to
+					     be capped at 150px inside its own ScrollViewer, which put a scroll area
+					     inside the window's scroll area - the wheel scrolled whichever one the
+					     pointer happened to be over, and the list's own bar sat hard against the
+					     window's (maintainer report, 2026-09-24). The window's ScrollViewer already
+					     carries anything that does not fit, so a long list only means scrolling
+					     the window further. -->
+					<Border x:Name="KiCadFilesPanel"
+							IsVisible="False"
+							BorderBrush="{DynamicResource Form_Border}"
+							BorderThickness="1"
+							Background="{DynamicResource Form_Bg}"
+							Padding="8,6">
+						<ItemsControl x:Name="KiCadFilesItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate DataType="local:SystemKiCadFileRow">
+									<!-- Remove is per file, like a schematic image's - but compact, since a
+									     multi-sheet project lists 25+ of these and a full-size button on
+									     every line would crowd out the file names. Same destructive
+									     colours as the schematic Remove, so the two read as one action. -->
+									<Grid ColumnDefinitions="*,Auto,Auto" Margin="0,1">
+										<TextBlock Grid.Column="0"
+												   Text="{Binding RelativePath}"
+												   FontSize="11"
+												   FontFamily="Consolas,Menlo,monospace"
+												   TextWrapping="NoWrap"
+												   VerticalAlignment="Center" />
+										<TextBlock Grid.Column="1"
+												   Text="{Binding SizeText}"
+												   FontSize="11"
+												   Opacity="0.6"
+												   Margin="12,0,0,0"
+												   VerticalAlignment="Center" />
+										<Button Grid.Column="2"
+												Content="Remove"
+												FontSize="11"
+												Padding="8,1"
+												Margin="12,0,0,0"
+												VerticalAlignment="Center"
+												Foreground="{DynamicResource Button_Cancel_Fg}"
+												Background="{DynamicResource Button_Cancel_Bg}"
+												BorderBrush="{DynamicResource Button_Cancel_Border}"
+												Tag="{Binding}"
+												Click="OnRemoveKiCadFileClick" />
+									</Grid>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</Border>
+				</StackPanel>
+
+				<!-- The matched/unmatched report -->
+				<Border x:Name="ReportPanel"
+						BorderBrush="{DynamicResource Form_Border}"
+						BorderThickness="1"
+						Background="{DynamicResource Form_Bg}"
+						Padding="12"
+						IsVisible="False">
+					<StackPanel Spacing="8">
+						<TextBlock Text="What the KiCad data lines up with" FontWeight="Bold" />
+
+						<TextBlock x:Name="ReportSummaryText"
+								   TextWrapping="Wrap"
+								   FontWeight="SemiBold" />
+
+						<!-- The headline. Shown first and on its own, because a component in this
+						     list highlights on the image and lights up no copper, with nothing
+						     anywhere else in the app to say so. -->
+						<StackPanel x:Name="UnmatchedPanel" Spacing="3" IsVisible="False">
+							<TextBlock x:Name="UnmatchedHeaderText" FontWeight="SemiBold" />
+							<TextBlock TextWrapping="Wrap"
+									   FontSize="11"
+									   Opacity="0.8"
+									   Text="These component labels have no component of the same name in the KiCad data. Rename them to match the KiCad reference (U17, not PLA/U17) or the traces will never appear." />
+							<ItemsControl x:Name="UnmatchedList"
+										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
+										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+						</StackPanel>
+
+						<StackPanel x:Name="MatchedPanel" Spacing="3" IsVisible="False">
+							<TextBlock x:Name="MatchedHeaderText" FontWeight="SemiBold" />
+							<ItemsControl x:Name="MatchedList"
+										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
+										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+						</StackPanel>
+
+						<StackPanel x:Name="UnusedPanel" Spacing="3" IsVisible="False">
+							<TextBlock x:Name="UnusedHeaderText" FontWeight="SemiBold" />
+							<TextBlock TextWrapping="Wrap"
+									   FontSize="11"
+									   Opacity="0.8"
+									   Text="Components the KiCad data knows about that this board has no label for yet - in other words, what is left to label." />
+							<ItemsControl x:Name="UnusedList"
+										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
+										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+						</StackPanel>
+
+						<StackPanel x:Name="ViewNamesPanel" Spacing="3" IsVisible="False">
+							<TextBlock Text="CAD names you can use" FontWeight="SemiBold" />
+							<TextBlock TextWrapping="Wrap"
+									   FontSize="11"
+									   Opacity="0.8"
+									   Text="Put one of these in a schematic image's CAD name to back it with the KiCad data." />
+							<TextBlock x:Name="ViewNamesListText" TextWrapping="Wrap" FontSize="12" />
+						</StackPanel>
+					</StackPanel>
+				</Border>
+
+			</StackPanel>
+		</ScrollViewer>
+
+		<Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+			<TextBlock x:Name="StatusText"
+					   Grid.Column="0"
+					   VerticalAlignment="Center"
+					   TextWrapping="Wrap"
+					   FontSize="12" />
+			<Button Grid.Column="1"
+					Content="Close"
+					Click="OnCloseClick" />
+		</Grid>
+	</Grid>
+</Window>

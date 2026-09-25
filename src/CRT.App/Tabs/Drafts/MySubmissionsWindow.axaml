@@ -1,0 +1,277 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.MySubmissionsWindow"
+        Title="My submissions"
+        Width="720"
+        Height="520"
+        MinWidth="520"
+        MinHeight="360"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<Grid Margin="18" RowDefinitions="Auto,Auto,*,Auto">
+
+		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,10">
+			<TextBlock Text="My submissions" FontSize="16" FontWeight="Bold" />
+
+			<!-- The per-machine limitation is stated plainly rather than hidden. With no account
+			     there is nothing that could make this list follow someone to another computer, and
+			     a user who sent something from a different machine should learn why it is absent
+			     here rather than concluding the submission was lost. -->
+			<TextBlock TextWrapping="Wrap"
+					   Opacity="0.75"
+					   Text="Contributions sent from this computer. Contributing needs no account, so this list is kept locally - submissions sent from another computer will not appear here. This window is where the outcome of a contribution is reported, so check back here after sending one." />
+		</StackPanel>
+
+		<TextBlock Grid.Row="1"
+				   x:Name="StatusText"
+				   TextWrapping="Wrap"
+				   Margin="0,0,0,8"
+				   IsVisible="False" />
+
+		<ScrollViewer Grid.Row="2" x:Name="ListScrollViewer">
+			<ItemsControl x:Name="SubmissionsItemsControl">
+				<ItemsControl.ItemTemplate>
+					<DataTemplate DataType="local:SubmissionListItem">
+						<!--
+						EACH SUBMISSION IS ITS OWN PANEL (maintainer request, 2026-09-22). A single
+						bottom rule per row made a list of five read as one continuous block, with
+						nothing saying where one submission ended and the next began - especially
+						once a reviewer comment box appeared inside some of them and not others.
+
+						A full 1px border and a margin between cards is the same "one card per
+						thing" language the Workbooks tab already uses for its entry cards.
+						-->
+						<!--
+						THE CARD: a faint fill plus a 4px STATUS-COLOURED LEFT EDGE.
+
+						The border alone was reported as not noticeable enough - against a white
+						window a 1px #EEEEEE outline is nearly invisible, so the cards did not read
+						as panels. The fill separates them; the coloured edge says what each one IS
+						without the reader having to parse the state line on every row.
+
+						Colour comes from the row model (StatusAccentBrush), which resolves it from
+						the SAME SubmissionReceiptPresenter switch that produces the words - so a
+						card can never be green while its own text says "Changes requested".
+						-->
+						<Border Background="{Binding CardBackgroundBrush}"
+								BorderBrush="{Binding StatusAccentBrush}"
+								BorderThickness="4,0,0,0"
+								CornerRadius="4"
+								Margin="0,0,0,10">
+							<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+									BorderThickness="0,1,1,1"
+									CornerRadius="0,4,4,0"
+									Padding="10">
+							<Grid ColumnDefinitions="*,Auto">
+								<StackPanel Grid.Column="0" Spacing="3">
+									<TextBlock Text="{Binding SystemName}"
+											   FontWeight="SemiBold"
+											   TextWrapping="Wrap" />
+
+									<!--
+									*** "SENT" SITS DIRECTLY UNDER THE HEADLINE *** (maintainer
+									request, 2026-09-23). It is the one fact that never changes
+									about a submission, so it belongs with the thing it identifies
+									- which board, and when it went. Below the summary and the
+									state it was just another line in a block of them.
+									-->
+									<TextBlock Text="{Binding SentText}"
+											   FontSize="11"
+											   Opacity="0.75" />
+
+									<TextBlock Text="{Binding Summary}"
+											   IsVisible="{Binding HasSummary}"
+											   TextWrapping="Wrap"
+											   FontSize="11"
+											   Opacity="0.75" />
+
+									<!-- In the SAME colour as the left edge, so the stripe and the
+									     words read as one statement rather than as decoration
+									     beside some text. -->
+									<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+										<TextBlock Text="{Binding StateText}"
+												   Foreground="{Binding StatusTextBrush}"
+												   FontSize="11"
+												   FontWeight="SemiBold"
+												   VerticalAlignment="Center" />
+
+										<!--
+										*** "New" ON THE OUTCOME ITSELF, for a decision that arrived with
+										no comment (maintainer report, 2026-09-23). ***
+
+										A reviewer approving good work usually writes nothing, so that row
+										has no reviewer panel - and the existing "New" badge and "Mark as
+										read" button both live INSIDE that panel. The badge in the tab
+										counted the row, correctly, and the window then offered no way at
+										all to say it had been seen.
+
+										Shown only when the comment panel is NOT already saying it
+										(HasUnreadDecisionOnly), so a row with unread feedback does not
+										carry two "New" badges making the same claim.
+										-->
+										<Border IsVisible="{Binding HasUnreadDecisionOnly}"
+												Background="{Binding StatusAccentBrush}"
+												CornerRadius="3"
+												Padding="5,1"
+												VerticalAlignment="Center">
+											<TextBlock Text="New"
+													   Foreground="White"
+													   FontSize="9"
+													   FontWeight="SemiBold" />
+										</Border>
+
+										<!-- Same EXPLICIT DISMISS rule the reviewer panel's own button
+										     follows: opening this window marks nothing read, so each row
+										     is tracked individually. -->
+										<Button Content="Mark as read"
+												IsVisible="{Binding HasUnreadDecisionOnly}"
+												Command="{Binding MarkReadCommand}"
+												VerticalAlignment="Center"
+												FontSize="10"
+												Padding="6,2" />
+									</StackPanel>
+
+									<!--
+									*** "Last checked" IS GONE (maintainer request, 2026-09-23). ***
+									It was this computer's own bookkeeping - when CRT last asked the
+									server - and said nothing about the submission itself. Asked what it
+									meant and then told to remove it, which is the right call: beside
+									"Sent" and "Replied", both of which are facts about the contribution,
+									a third date invited the reader to look for a meaning that was not
+									there.
+
+									The presenter still exposes DescribeLastChecked and the receipt still
+									records LastCheckedUtc - the value is genuinely useful for diagnosing
+									a stale list, it just does not earn a line on every card.
+
+									"Replied ..." lives INSIDE the reviewer panel below - a date about the
+									comment belongs with the comment.
+									-->
+
+									<!-- What a reviewer said, once Phase 5 gives them somewhere to
+									     say it. Collapsed entirely until then, rather than showing
+									     an empty labelled box on every row. -->
+									<!--
+									UNREAD FEEDBACK IS OUTLINED IN THE SAME IndianRed AS THE BADGE
+									that brought the contributor here, so the row the badge was
+									counting is obvious at a glance on a list of several. Once
+									acknowledged it falls back to the ordinary form border and
+									stays readable - marking it read must not hide what was said.
+									-->
+									<Border IsVisible="{Binding HasReviewerComment}"
+											Background="{DynamicResource Form_Bg}"
+											BorderBrush="{Binding CommentBorderBrush}"
+											BorderThickness="{Binding CommentBorderThickness}"
+											CornerRadius="3"
+											Padding="8,6"
+											Margin="0,4,0,0">
+										<StackPanel Spacing="2">
+											<!--
+											THE HEADER: who, when, and whether it is new - STACKED ON TWO LINES,
+											with a blank line before the comment itself (maintainer request,
+											2026-09-23). Label and date used to sit side by side, which read as a
+											caption strip rather than as the heading of something to be read.
+
+											*** THE DATE LIVES HERE, not up with "Sent". *** It describes THIS
+											comment, so it belongs with it.
+											-->
+											<StackPanel Orientation="Horizontal" Spacing="8">
+												<TextBlock Text="Feedback from reviewer" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+
+												<!-- The badge takes the row's own status colour
+												     rather than a literal IndianRed, so it matches
+												     the edge it belongs to in both themes. -->
+												<Border IsVisible="{Binding HasUnreadComment}"
+														Background="{Binding StatusAccentBrush}"
+														CornerRadius="3"
+														Padding="5,1"
+														VerticalAlignment="Center">
+													<TextBlock Text="New"
+															   Foreground="White"
+															   FontSize="9"
+															   FontWeight="SemiBold" />
+												</Border>
+											</StackPanel>
+
+											<TextBlock Text="{Binding DecidedText}"
+													   IsVisible="{Binding HasDecidedText}"
+													   FontSize="10"
+													   Opacity="0.75" />
+
+											<!-- The blank line the maintainer asked for, as a MARGIN rather than
+											     an empty TextBlock: an empty block still claims a line box whose
+											     height depends on the font, where a margin is exactly the gap
+											     that was asked for. -->
+											<TextBlock Text="{Binding ReviewerComment}"
+													   TextWrapping="Wrap"
+													   FontSize="11"
+													   Margin="0,8,0,0" />
+
+											<!--
+											EXPLICIT DISMISS, not "cleared by opening this window"
+											(maintainer's choice). Opening the list to check on a
+											different submission must not silently mark feedback
+											read that was never actually looked at.
+											-->
+											<Button Content="Mark as read"
+													IsVisible="{Binding HasUnreadComment}"
+													Command="{Binding MarkReadCommand}"
+													HorizontalAlignment="Left"
+													FontSize="10"
+													Padding="6,2"
+													Margin="0,4,0,0" />
+										</StackPanel>
+									</Border>
+
+									<ItemsControl ItemsSource="{Binding Findings}"
+												  IsVisible="{Binding HasFindings}"
+												  Margin="0,4,0,0">
+										<ItemsControl.ItemTemplate>
+											<DataTemplate>
+												<TextBlock Text="{Binding}"
+														   TextWrapping="Wrap"
+														   FontSize="11"
+														   Opacity="0.85" />
+											</DataTemplate>
+										</ItemsControl.ItemTemplate>
+									</ItemsControl>
+								</StackPanel>
+
+								<!-- "Remove from this list" and nothing more. It deletes the local
+								     receipt, which is the only copy of the token; it does NOT
+								     withdraw the contribution, and the confirmation says so. -->
+								<Button Grid.Column="1"
+										Content="Remove"
+										VerticalAlignment="Top"
+										ToolTip.Tip="Remove this from the list on this computer. It does not withdraw the contribution."
+										Command="{Binding ForgetCommand}" />
+							</Grid>
+							</Border>
+						</Border>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</ScrollViewer>
+
+		<TextBlock Grid.Row="2"
+				   x:Name="EmptyStateText"
+				   TextWrapping="Wrap"
+				   VerticalAlignment="Top"
+				   IsVisible="False"
+				   Text="Nothing has been sent from this computer yet. When you submit a draft from the Drafts tab, it appears here so you can see how it is getting on." />
+
+		<StackPanel Grid.Row="3"
+					Orientation="Horizontal"
+					Spacing="8"
+					HorizontalAlignment="Right"
+					Margin="0,14,0,0">
+			<Button x:Name="RefreshButton" Content="Check for updates" Click="OnRefreshClick" />
+			<Button x:Name="CloseButton" Content="Close" Click="OnCloseClick" />
+		</StackPanel>
+	</Grid>
+</Window>

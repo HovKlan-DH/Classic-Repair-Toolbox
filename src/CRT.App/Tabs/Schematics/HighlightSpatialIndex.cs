@@ -1,0 +1,131 @@
+﻿using Avalonia;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Tabs.TabSchematics
+{
+    // ###########################################################################################
+    // Spatial index for fast "visible rect" queries of many component highlight rectangles.
+    // Uses a fixed-size grid in bitmap pixel coordinates and a stamp-based de-dupe per query.
+    // ###########################################################################################
+    public sealed class HighlightSpatialIndex
+    {
+        private readonly int _cellSize;
+        private readonly Rect[] _rects;
+
+        // Parallel to _rects, one flag per highlight rect - which one is a local, unpublished
+        // draft edit (NewContributeStrategy.md Phase 2, session 2b), so SchematicHighlightsOverlay
+        // can tint it differently. Null when the caller passed none, which every pre-existing
+        // caller does (thumbnails, hover overlay) - those never need the distinction, so they pay
+        // nothing for it rather than carrying an all-false array.
+        private readonly bool[]? _isDrafted;
+
+        private readonly Dictionary<long, List<int>> _cells;
+        private readonly int[] _seenStamp;
+        private int _stamp;
+
+        public int Count => this._rects.Length;
+
+        public HighlightSpatialIndex(IReadOnlyList<Rect> rects, int cellSize = 512, IReadOnlyList<bool>? isDrafted = null)
+        {
+            this._cellSize = Math.Max(32, cellSize);
+            this._rects = rects is Rect[] arr ? arr : rects.ToArray();
+            this._isDrafted = isDrafted == null ? null : (isDrafted as bool[] ?? isDrafted.ToArray());
+            this._cells = new Dictionary<long, List<int>>(capacity: Math.Max(16, this._rects.Length / 4));
+            this._seenStamp = new int[this._rects.Length];
+            this._stamp = 1;
+
+            for (int i = 0; i < this._rects.Length; i++)
+                this.AddToCells(i, this._rects[i]);
+        }
+
+        public Rect GetRect(int index) => this._rects[index];
+
+        // False when this index was built with no drafted information at all, or for a specific
+        // rect the caller did not mark - the safe default for anything that is not a known draft.
+        public bool GetIsDrafted(int index) => this._isDrafted != null && index < this._isDrafted.Length && this._isDrafted[index];
+
+        // ###########################################################################################
+        // Queries all highlight indices that intersect the given pixelRect (bitmap pixel coordinates).
+        // Results are appended to the provided list (which is cleared first).
+        // ###########################################################################################
+        public void Query(in Rect pixelRect, List<int> results)
+        {
+            results.Clear();
+
+            if (this._rects.Length == 0 || pixelRect.Width <= 0 || pixelRect.Height <= 0)
+                return;
+
+            int stamp = this.NextStamp();
+
+            int minCx = (int)Math.Floor(pixelRect.Left / this._cellSize);
+            int maxCx = (int)Math.Floor(pixelRect.Right / this._cellSize);
+            int minCy = (int)Math.Floor(pixelRect.Top / this._cellSize);
+            int maxCy = (int)Math.Floor(pixelRect.Bottom / this._cellSize);
+
+            for (int cy = minCy; cy <= maxCy; cy++)
+            {
+                for (int cx = minCx; cx <= maxCx; cx++)
+                {
+                    var key = MakeKey(cx, cy);
+
+                    if (!this._cells.TryGetValue(key, out var bucket))
+                        continue;
+
+                    for (int b = 0; b < bucket.Count; b++)
+                    {
+                        int idx = bucket[b];
+
+                        if (this._seenStamp[idx] == stamp)
+                            continue;
+
+                        this._seenStamp[idx] = stamp;
+
+                        if (this._rects[idx].Intersects(pixelRect))
+                            results.Add(idx);
+                    }
+                }
+            }
+        }
+
+        private void AddToCells(int index, Rect rect)
+        {
+            int minCx = (int)Math.Floor(rect.Left / this._cellSize);
+            int maxCx = (int)Math.Floor(rect.Right / this._cellSize);
+            int minCy = (int)Math.Floor(rect.Top / this._cellSize);
+            int maxCy = (int)Math.Floor(rect.Bottom / this._cellSize);
+
+            for (int cy = minCy; cy <= maxCy; cy++)
+            {
+                for (int cx = minCx; cx <= maxCx; cx++)
+                {
+                    var key = MakeKey(cx, cy);
+                    if (!this._cells.TryGetValue(key, out var list))
+                    {
+                        list = new List<int>(8);
+                        this._cells[key] = list;
+                    }
+
+                    list.Add(index);
+                }
+            }
+        }
+
+        private int NextStamp()
+        {
+            this._stamp++;
+
+            if (this._stamp == int.MaxValue)
+            {
+                Array.Clear(this._seenStamp);
+                this._stamp = 1;
+            }
+
+            return this._stamp;
+        }
+
+        private static long MakeKey(int cx, int cy)
+            => (unchecked((long)cx) << 32) | unchecked((uint)cy);
+    }
+}

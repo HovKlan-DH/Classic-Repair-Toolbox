@@ -76,6 +76,21 @@ jobs:
       # "always()" so the figures still appear when the suite is red: a run that fails a test is
       # precisely when knowing what was and was not exercised is useful.
       #
+      # ONE REPORT PER TEST PROJECT, SO THEY ARE MERGED FIRST (code review, 2026-09-25). The
+      # solution has four test projects and "dotnet test" writes a separate
+      # coverage.cobertura.xml for each, under its own GUID folder. This step used to take
+      # "find | head -1" - whichever folder happened to enumerate first - and render that ONE
+      # project's figure as the total: a wrong number quoted as fact, the very failure the summary
+      # script exists to prevent. Adding the four up would be just as wrong, because CRT.Data is
+      # exercised by all four and its lines would be counted four times. ReportGenerator merges
+      # them line by line - a line is covered when ANY project covers it - which is the only
+      # honest total.
+      #
+      # Pinned, like jscpd below and for the same reason: the summary reads attributes off the
+      # merged file's root element, a shape a major version is free to change. If the tool
+      # cannot be fetched or the merge fails, the summary is SKIPPED with a message rather than
+      # falling back to a single project's figure.
+      #
       - name: Coverage summary
         if: always()
         run: |
@@ -83,13 +98,25 @@ jobs:
           # TestResults folder (dotnet test crashed before writing anything) would make find exit
           # non-zero and fail THIS step - masking the real failure with a second red one, which is
           # the exact case the always() above exists to report on. The script already handles an
-          # empty or missing path by skipping.
-          REPORT=$(find "${{ github.workspace }}/TestResults" -name 'coverage.cobertura.xml' 2>/dev/null | head -1 || true)
-          bash .github/workflows/coverage-summary.sh "$REPORT"
+          # empty or missing path by skipping. The "if" around the merge keeps a registry blip
+          # from failing the step for the same reason.
+          REPORTS=$(find "${{ github.workspace }}/TestResults" -name 'coverage.cobertura.xml' 2>/dev/null | paste -sd ';' - || true)
+          MERGED=""
+          if [ -n "$REPORTS" ]; then
+            echo "Merging $(printf '%s' "$REPORTS" | tr ';' '\n' | wc -l) coverage report(s)."
+            if dotnet tool install --tool-path "${{ runner.temp }}/reportgenerator" dotnet-reportgenerator-globaltool --version 5.5.11 \
+              && "${{ runner.temp }}/reportgenerator/reportgenerator" "-reports:$REPORTS" "-targetdir:${{ github.workspace }}/CoverageMerged" "-reporttypes:Cobertura"; then
+              MERGED="${{ github.workspace }}/CoverageMerged/Cobertura.xml"
+            else
+              echo "Could not merge the coverage reports - skipping the summary rather than quoting one project's figure as the total."
+            fi
+          fi
+          bash .github/workflows/coverage-summary.sh "$MERGED"
 
       #
       # The raw Cobertura XML, kept so a specific run's per-file numbers can be inspected later
-      # (the job summary only carries the totals). Short retention: this is a health check that
+      # (the job summary only carries the totals) - each test project's own report plus the
+      # merged one the summary was computed from. Short retention: this is a health check that
       # runs on every push, and the report is only interesting while the run is recent.
       #
       - name: Upload coverage report
@@ -97,7 +124,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
+          path: |
+            ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
+            ${{ github.workspace }}/CoverageMerged/Cobertura.xml
           retention-days: 7
           if-no-files-found: ignore
 
@@ -127,7 +156,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: >
-          npx --yes jscpd@5.1.2 Handlers Main Tabs
+          npx --yes jscpd@5.1.2 src/CRT.App/Handlers src/CRT.App/Main src/CRT.App/Tabs src/CRT.Data
           --format csharp
           --min-lines 10
           --reporters json

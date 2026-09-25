@@ -45,12 +45,12 @@ dotnet build   Classic-Repair-Toolbox.slnx -c Release
 dotnet test    Classic-Repair-Toolbox.slnx -c Release
 ```
 
-The application executable lands in `bin/Release/net10.0/`; `Classic-Repair-Toolbox.exe` on Windows and
+The application executable lands in `src/CRT.App/bin/Release/net10.0/`; `Classic-Repair-Toolbox.exe` on Windows and
 `Classic-Repair-Toolbox` on Linux and macOS.\
 To run from the source tree:
 
 ```
-dotnet run --project Classic-Repair-Toolbox.csproj -c Release
+dotnet run --project src/CRT.App/CRT.App.csproj -c Release
 ```
 
 > `build` and `test` target the **solution** (`.slnx`) so the tests come along. `run` and `publish`
@@ -72,7 +72,7 @@ Build `Release` for anything you intend to use or measure; `Debug` is JIT-only a
 
 ```
 dotnet build Classic-Repair-Toolbox.slnx -c Release
-bin\Release\net10.0\Classic-Repair-Toolbox.exe
+src\CRT.App\bin\Release\net10.0\Classic-Repair-Toolbox.exe
 ```
 
 ## Linux
@@ -101,7 +101,7 @@ Verify with `dotnet --list-sdks` that you got `10.x`, then:
 
 ```
 dotnet build Classic-Repair-Toolbox.slnx -c Release
-./bin/Release/net10.0/Classic-Repair-Toolbox
+./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox
 ```
 
 ## macOS
@@ -112,7 +112,7 @@ Install the SDK with the `.pkg` from
 
 ```
 dotnet build Classic-Repair-Toolbox.slnx -c Release
-./bin/Release/net10.0/Classic-Repair-Toolbox
+./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox
 ```
 
 Two quirks:
@@ -120,7 +120,7 @@ Two quirks:
 - You get a **bare executable, not a `.app` bundle** — the `.app` in official releases is made by
   Velopack during packaging. Running from Terminal works fine.
 - Local builds are **not signed or notarised**. If macOS refuses to start it:
-  `xattr -dr com.apple.quarantine ./bin/Release/net10.0/Classic-Repair-Toolbox`
+  `xattr -dr com.apple.quarantine ./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox`
 
 Use `osx-arm64` for Apple Silicon and `osx-x64` for Intel when publishing.
 
@@ -130,15 +130,15 @@ Bundles the .NET runtime so it runs without .NET installed. Note this is `publis
 file, and `--self-contained` requires `-r`:
 
 ```
-dotnet publish Classic-Repair-Toolbox.csproj -c Release -f net10.0 -r <rid> --self-contained
+dotnet publish src/CRT.App/CRT.App.csproj -c Release -f net10.0 -r <rid> --self-contained
 ```
 
 | Target | `<rid>` | Output |
 | --- | --- | --- |
-| Windows x64 | `win-x64` | `bin/Release/net10.0/win-x64/publish/` |
-| Linux x64 | `linux-x64` | `bin/Release/net10.0/linux-x64/publish/` |
-| macOS Apple Silicon | `osx-arm64` | `bin/Release/net10.0/osx-arm64/publish/` |
-| macOS Intel | `osx-x64` | `bin/Release/net10.0/osx-x64/publish/` |
+| Windows x64 | `win-x64` | `src/CRT.App/bin/Release/net10.0/win-x64/publish/` |
+| Linux x64 | `linux-x64` | `src/CRT.App/bin/Release/net10.0/linux-x64/publish/` |
+| macOS Apple Silicon | `osx-arm64` | `src/CRT.App/bin/Release/net10.0/osx-arm64/publish/` |
+| macOS Intel | `osx-x64` | `src/CRT.App/bin/Release/net10.0/osx-x64/publish/` |
 
 Add `-o <folder>` to choose the output folder. Passing `-r` also enables **ReadyToRun** — bigger and
 slower to build, noticeably quicker to launch. Cross-compiling works; only the macOS packaging step

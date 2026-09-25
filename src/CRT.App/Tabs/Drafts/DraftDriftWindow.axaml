@@ -1,0 +1,125 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.DraftDriftWindow"
+        Title="What changed officially"
+        Width="680"
+        Height="600"
+        MinWidth="560"
+        MinHeight="420"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<Grid RowDefinitions="Auto,*,Auto" Margin="18">
+
+		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
+			<TextBlock x:Name="HeaderText" FontSize="16" FontWeight="Bold" />
+
+			<TextBlock x:Name="SummaryText"
+					   TextWrapping="Wrap"
+					   Margin="0,4,0,0" />
+
+			<!-- The two revisions, side by side and verbatim - a contributor comparing these
+			     against the board's own revision line needs to see the same text the workbook
+			     says, not a reformatted version of it. -->
+			<Border Margin="0,10,0,0"
+					Padding="10,8"
+					Background="{DynamicResource Form_Bg}"
+					BorderBrush="{DynamicResource Form_Border}"
+					BorderThickness="1">
+				<Grid ColumnDefinitions="Auto,12,*" RowDefinitions="Auto,4,Auto">
+					<TextBlock Grid.Row="0" Grid.Column="0" Text="You started from:" Opacity="0.8" />
+					<TextBlock Grid.Row="0" Grid.Column="2" x:Name="BaseRevisionText" FontWeight="SemiBold" />
+
+					<TextBlock Grid.Row="2" Grid.Column="0" Text="Officially now:" Opacity="0.8" />
+					<TextBlock Grid.Row="2" Grid.Column="2" x:Name="OfficialRevisionText" FontWeight="SemiBold" />
+				</Grid>
+			</Border>
+
+			<!-- Said once, plainly, and not apologised for twice. -->
+			<TextBlock Margin="0,10,0,0"
+					   TextWrapping="Wrap"
+					   FontSize="11"
+					   Opacity="0.75"
+					   Text="This shows how your own edits line up with the official data as it stands now. CRT cannot show you the official data as it was when you started - that copy is replaced when the data syncs." />
+		</StackPanel>
+
+		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+			<StackPanel Spacing="14">
+
+				<!-- The rows that carry a consequence, first and on their own. -->
+				<StackPanel x:Name="AttentionPanel" Spacing="6" IsVisible="False">
+					<TextBlock x:Name="AttentionHeaderText" FontWeight="Bold" />
+					<ItemsControl x:Name="AttentionItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate DataType="local:DriftRowItem">
+								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+										BorderThickness="0,0,0,1"
+										Padding="4,6">
+									<StackPanel Spacing="2">
+										<TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+										<TextBlock Text="{Binding Explanation}"
+												   TextWrapping="Wrap"
+												   FontSize="11"
+												   Opacity="0.8" />
+									</StackPanel>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</StackPanel>
+
+				<!-- Everything else, for completeness rather than for action. -->
+				<StackPanel x:Name="OtherPanel" Spacing="6" IsVisible="False">
+					<TextBlock x:Name="OtherHeaderText" FontWeight="Bold" />
+					<ItemsControl x:Name="OtherItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate DataType="local:DriftRowItem">
+								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+										BorderThickness="0,0,0,1"
+										Padding="4,6">
+									<StackPanel Spacing="2">
+										<TextBlock Text="{Binding Title}" />
+										<TextBlock Text="{Binding Explanation}"
+												   TextWrapping="Wrap"
+												   FontSize="11"
+												   Opacity="0.8" />
+									</StackPanel>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</StackPanel>
+
+				<TextBlock x:Name="NoRowsText"
+						   IsVisible="False"
+						   TextWrapping="Wrap"
+						   Opacity="0.8"
+						   Text="You have no drafted rows on this board, so nothing of yours is affected." />
+
+			</StackPanel>
+		</ScrollViewer>
+
+		<Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" Margin="0,14,0,0">
+			<TextBlock x:Name="StatusText"
+					   Grid.Column="0"
+					   VerticalAlignment="Center"
+					   TextWrapping="Wrap"
+					   FontSize="12" />
+
+			<Button Grid.Column="1"
+					x:Name="RebaseButton"
+					Content="I have looked at this"
+					Margin="0,0,8,0"
+					ToolTip.Tip="Stop warning about this change. Your drafted rows are not touched."
+					Click="OnRebaseClick" />
+
+			<Button Grid.Column="2"
+					Content="Close"
+					Click="OnCloseClick" />
+		</Grid>
+	</Grid>
+</Window>

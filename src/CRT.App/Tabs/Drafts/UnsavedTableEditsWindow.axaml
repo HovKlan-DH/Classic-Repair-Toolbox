@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.UnsavedTableEditsWindow"
+        Title="Unsaved edits"
+        Width="440"
+        MinWidth="380"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeadingText" Text="Unsaved edits" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" Margin="0,0,0,10" />
+
+		<!-- Set from code (Initialize) - it differs between "leaving the table" and "reloading". -->
+		<TextBlock x:Name="MessageText" TextWrapping="Wrap" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="DiscardButton"
+					Content="Discard edits"
+					Foreground="{DynamicResource Button_Cancel_Fg}"
+					Background="{DynamicResource Button_Cancel_Bg}"
+					BorderBrush="{DynamicResource Button_Cancel_Border}"
+					Click="OnDiscardClick" />
+			<Button x:Name="SaveButton" Content="Save changes" Click="OnSaveClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

@@ -185,24 +185,39 @@ it is very easy to produce something that is valid JSON and still wrong.
 
 1. "Schematics" tab → in the settings panel, tick **Enable contributor mode**.
 2. **Right-click** the schematic image (a click, not a drag) to open the floating menu.
-3. Choose **Enable component label editor** (or **Calibrate KiCad traces** for the KiCad root).
+3. Choose **Enable component label editor**, or **Calibrate KiCad traces** for the KiCad root.
+
+**Component label editor:**
+
 4. Drag to draw a rectangle; drag the handles to resize; drag the middle to move; right-click a rectangle
    to delete it. A brand-new rectangle asks you for a board label and a category.
 5. Press **Apply all editor changes**.
 
 What that save actually does:
 
-* Writes the highlights for the **currently selected schematic only** — every other schematic already in
-  the file is preserved untouched.
-* Appends a row to the Excel `Components` sheet for any board label that did not exist yet. If you
-  introduced no new labels, the workbook is not touched at all.
+* Saves into your own local **draft** for this board, not into the board's Excel file or JSON directly —
+  nothing you edit here changes what anyone else sees until you submit it, and the "Drafts" tab lists
+  every board you have local changes on. See [Command-line parameters](Commandline-parameters) for where
+  drafts are stored, and the Configuration tab's "View boards as officially published" option to check
+  what your edit looks like before it exists.
+* Replaces the highlights for the **currently selected schematic only** — every other schematic keeps
+  whatever is officially published, untouched.
+* Drafts a new component entry for any board label that did not exist yet. If you introduced no new
+  labels, nothing is drafted for the `Components` sheet at all.
 * Refuses to save, with a message, if a rectangle has no label, no category, or zero size, or if the same
   label was given two different categories.
 
-If the board's Excel file is open in another program the workbook half of the save can fail — close it
-and try again.
-
 > 🎬 There is a walkthrough video: [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
+
+**Calibrate KiCad traces:**
+
+4. Drag the box (or its handles) until the KiCad copper lines up with the image; drag across an edge to
+   flip the board.
+5. Press **Apply** to save, or **Esc** to cancel without saving.
+
+Saving writes one calibration entry into your local **draft** for this board, the same as the label
+editor above — not into the board JSON directly. It replaces only the calibration for the currently
+selected schematic view; every other view's calibration, official or already drafted, is untouched.
 
 ---
 

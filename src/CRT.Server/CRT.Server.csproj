@@ -1,0 +1,84 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+  The contribution API service (Phase 3 of Assets/NewContributeStrategy.md). Runs on the
+  maintainer's AlmaLinux box behind Apache, bound to 127.0.0.1 only, and is reached at /api/.
+
+  It references CRT.Data so the board-reading and merging rules exist exactly once across the
+  desktop app, this service and the future review app - that shared-library goal is the whole
+  reason CRT.Data was extracted in Phase 1.
+
+  WHAT MUST NOT LAND HERE:
+  - No Avalonia. Same rule as CRT.Data, for the same reason: a server has no business depending on
+    a desktop UI framework.
+  - No business rule inside Program.cs or inside an endpoint body. Endpoints are a thin rim that
+    reads the request into plain values, calls a pure decision function under Handlers/, and maps
+    the verdict onto a status code. That split is what lets the decisions be unit tested with no
+    server, no database and no network - the same reasoning CLAUDE.md gives for Handlers/Geometry/
+    in CRT.App, where ~2000 lines of pure logic were once trapped inside a UserControl.
+
+  PUBLISHING: the release workflow publishes src/CRT.App/CRT.App.csproj by name, never the
+  solution, so adding this project cannot affect the signed per-RID release builds. It is deployed
+  separately and by hand - see DEPLOYMENT.md.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Same rule as every other project here: no new warning sneaks into Release. -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+    <!--
+    The service is published framework-dependent onto a box that has the ASP.NET Core runtime
+    installed (DEPLOYMENT.md installs it), so a solution-wide self-contained publish must not try
+    to drag this project along for a desktop RID. Same defensive reasoning as the
+    SelfContained=false block in CRT.Data.Tests.csproj, which exists because a solution-wide
+    publish otherwise fails on a project that cannot be RID-targeted.
+    -->
+    <SelfContained>false</SelfContained>
+    <RootNamespace>CRT.Server</RootNamespace>
+    <AssemblyName>CRT.Server</AssemblyName>
+    <!--
+    Generated assembly attributes would collide with nothing today, but the app project sets its
+    own version explicitly and this one deliberately does not carry a release version: the service
+    is not shipped to users and has no Velopack update identity. The health endpoint reports the
+    informational version so a deployment can be identified.
+    -->
+    <InformationalVersion>0.1.0-phase3</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
+  </ItemGroup>
+
+  <!--
+  The test project reaches a few internal seams - ReviewEndpoints.NotAReviewer, so the 403 a
+  non-reviewer gets is proved to EXECUTE with no authentication scheme registered, which is how
+  this service runs. The same "internal plus InternalsVisibleTo rather than public" rule CRT.Data
+  follows.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CRT.Server.Tests" />
+  </ItemGroup>
+
+  <!--
+  The migration scripts must travel with the binaries: the runner reads them from a directory
+  beside the assembly at startup, and a publish that left them behind would produce a service
+  that refuses to start with "the migrations directory does not exist". CopyToPublishDirectory
+  is what makes "dotnet publish" carry them, which CopyToOutputDirectory alone does not
+  guarantee for a framework-dependent publish.
+  -->
+  <ItemGroup>
+    <None Update="Migrations\*.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+  </ItemGroup>
+
+</Project>

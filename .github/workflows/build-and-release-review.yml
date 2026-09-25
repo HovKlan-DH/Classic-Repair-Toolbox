@@ -1,0 +1,293 @@
+name: Build, Test and Release the Review app
+
+#
+# THE REVIEW APP'S OWN RELEASE, deliberately SEPARATE from CRT's
+# (NewContributeStrategy.md Phase 5, task 8: "as a separate workflow with its own version - do not
+# entangle it with CRT's release").
+#
+# WHY SEPARATE, rather than another job inside build-and-release.yml:
+#
+#   - The AUDIENCES barely overlap. CRT ships to every hobbyist using the app; this ships to a
+#     handful of maintainers. Releasing them together would push a review-app fix at thousands of
+#     people who cannot sign in to it, and would hold a review-app fix back behind whatever CRT
+#     happens to be mid-way through.
+#   - The VERSIONS are independent. This app is at 0.1.0-alpha.1 while CRT is at 2.6.x, and a
+#     shared workflow reads ONE InformationalVersion - so one of the two would be released under a
+#     version that means nothing for it.
+#   - A FAILURE here must not stop a CRT release, and vice versa.
+#
+# Releases are made by hand from the Actions tab, never by pushing a tag - the same rule CRT's own
+# workflow follows, and for the same reason: the tag is created by the final step, so it only
+# exists for a release that actually passed. A failed run leaves nothing to clean up and the same
+# version can be re-run once fixed.
+#
+# The version is read from InformationalVersion in CRT.Review.csproj. Bumping that property before
+# running this is the only place a review-app release version is entered.
+#
+# *** THE TAG AND PACK ID ARE PREFIXED so the two products cannot collide. *** They share one
+# GitHub repository and therefore one tag namespace and one Releases page; an unprefixed "v0.1.0"
+# from this app would sit next to CRT's own tags with nothing saying which product it belongs to.
+# Velopack's packId is what an installed client checks for updates, so a collision there would
+# offer review-app updates to CRT installs.
+#
+on:
+  workflow_dispatch:
+
+env:
+  # Prefixed - see the header. This is what installed clients check for updates.
+  PACK_ID: Classic-Repair-Toolbox-Review
+  EXE_WINDOWS: Classic-Repair-Toolbox-Review.exe
+  EXE_UNIX: Classic-Repair-Toolbox-Review
+  PROJECT: src/CRT.Review/CRT.Review.csproj
+  SOLUTION: Classic-Repair-Toolbox.slnx
+  TFM_MODERN: net10.0
+
+jobs:
+  ###############################################################
+  # DETERMINE VERSION
+  ###############################################################
+  determine-version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      is_prerelease: ${{ steps.ver.outputs.is_prerelease }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Read version from project
+        id: ver
+        run: |
+          VERSION=$(dotnet msbuild ${{ env.PROJECT }} -getProperty:InformationalVersion -nologo)
+          echo "Read version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Semver: a version containing "-" is a pre-release. This app starts at
+          # 0.1.0-alpha.1, so every release is a pre-release until that is deliberately
+          # changed - which is correct for a tool with no stable release yet.
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+  ###############################################################
+  # BUILD AND UNIT TEST GATE
+  ###############################################################
+  # *** THE WHOLE SOLUTION, NOT JUST THIS APP. *** The review app depends on CRT.Data, which CRT
+  # and the server also depend on - so a change that breaks either of them breaks this release's
+  # foundation too. Testing only CRT.Review.Tests would ship a review app built on a library whose
+  # own tests are red.
+  test:
+    name: Build and unit test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION }}
+
+      - name: Build
+        run: dotnet build ${{ env.SOLUTION }} -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ${{ env.SOLUTION }} -c Release --no-build --logger "console;verbosity=normal"
+
+  ###############################################################
+  # WINDOWS BUILD (x64 with self-contained .NET10)
+  ###############################################################
+  build-windows:
+    needs: [test, determine-version]
+    name: Build Windows (x64 with self-contained .NET10)
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Windows (x64)
+        shell: powershell
+        run: |
+          dotnet publish ${{ env.PROJECT }} `
+            -c Release `
+            -f ${{ env.TFM_MODERN }} `
+            -r win-x64 `
+            --self-contained `
+            -p:Version=${{ needs.determine-version.outputs.version }} `
+            -o publish/windows-x64
+
+      - name: Sign executable
+        shell: powershell
+        env:
+          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
+        run: |
+          java -jar C:\tools\jsign-6.0.jar `
+            --storetype YUBIKEY `
+            --storepass "$env:YUBIKEY_PIN" `
+            --tsaurl http://timestamp.digicert.com `
+            --alg SHA-256 `
+            publish/windows-x64/${{ env.EXE_WINDOWS }}
+
+      # *** NO DATA PACK, unlike CRT. *** CRT ships Assets/Data so a fresh install has boards to
+      # show before its first sync. The review app reads everything from the server and has no
+      # local data of its own, so copying it here would add tens of megabytes a reviewer never uses.
+
+      - name: Install vpk
+        shell: powershell
+        run: dotnet tool install -g vpk
+
+      - name: Pack with Velopack
+        shell: powershell
+        run: |
+          vpk pack `
+            --packId ${{ env.PACK_ID }} `
+            --packVersion ${{ needs.determine-version.outputs.version }} `
+            --packDir publish/windows-x64 `
+            --mainExe ${{ env.EXE_WINDOWS }} `
+            --noPortable `
+            --icon "Assets/CRT_icon.ico" `
+            --packTitle "Classic Repair Toolbox Review" `
+            --outputDir velopack-output
+
+      - name: Sign Velopack installer
+        shell: powershell
+        env:
+          YUBIKEY_PIN: ${{ secrets.YUBIKEY_PIN }}
+        run: |
+          $installer = Get-ChildItem velopack-output\*-Setup.exe | Select-Object -First 1
+          java -jar C:\tools\jsign-6.0.jar `
+            --storetype YUBIKEY `
+            --storepass "$env:YUBIKEY_PIN" `
+            --tsaurl http://timestamp.digicert.com `
+            --alg SHA-256 `
+            $installer.FullName
+
+      - name: Upload Velopack artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: review-velopack-windows-x64
+          path: velopack-output/*
+
+  ###############################################################
+  # LINUX BUILD (x64 with self-contained .NET10)
+  ###############################################################
+  build-linux:
+    needs: [test, determine-version]
+    name: Build Linux (x64 with self-contained .NET10)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Linux (x64)
+        run: |
+          dotnet publish ${{ env.PROJECT }} \
+            -c Release \
+            -f ${{ env.TFM_MODERN }} \
+            -r linux-x64 \
+            --self-contained \
+            -p:Version=${{ needs.determine-version.outputs.version }} \
+            -o publish/linux-x64
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      - name: Pack with Velopack
+        run: |
+          ~/.dotnet/tools/vpk pack \
+            --packId ${{ env.PACK_ID }} \
+            --packVersion ${{ needs.determine-version.outputs.version }} \
+            --packDir publish/linux-x64 \
+            --mainExe ${{ env.EXE_UNIX }} \
+            --icon "Assets/CRT_icon.ico" \
+            --packTitle "Classic Repair Toolbox Review" \
+            --outputDir velopack-output
+
+      - name: Upload Velopack artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: review-velopack-linux-x64
+          path: velopack-output/*
+
+  ###############################################################
+  # CREATE THE GITHUB RELEASE
+  ###############################################################
+  create-release:
+    needs: [determine-version, build-windows, build-linux]
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -la release/
+
+      # ###########################################################################################
+      # *** THE RELEASE BODY IS GENERATED, NOT TAKEN FROM CHANGELOG.md. ***
+      #
+      # CHANGELOG.md is CRT's, written by hand by the maintainer, and is the body of every CRT
+      # release. Reading it here would put CRT's release notes on a review-app release - describing
+      # changes that are not in it - and any attempt to "share" it would mean editing a file that
+      # is explicitly off-limits.
+      #
+      # So this body says what it can say truthfully and no more: the version, and where to look
+      # for what changed. If the review app ever wants real notes it gets its OWN changelog file;
+      # it must never borrow CRT's.
+      # ###########################################################################################
+      - name: Build release body
+        id: body
+        run: |
+          {
+            echo 'text<<RELEASE_BODY_EOF'
+            echo "Review application ${{ needs.determine-version.outputs.version }}."
+            echo ""
+            echo "The maintainer tool for reviewing and publishing contributions. It is not the"
+            echo "Classic Repair Toolbox application itself and is of no use without a review account."
+            echo ""
+            echo "See the commit history for what changed in this build."
+            echo 'RELEASE_BODY_EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # PREFIXED, so this app's tags cannot be mistaken for CRT's in a repository the two
+          # share - see the header.
+          tag_name: review-v${{ needs.determine-version.outputs.version }}
+          name: Review app ${{ needs.determine-version.outputs.version }}
+          body: ${{ steps.body.outputs.text }}
+          prerelease: ${{ needs.determine-version.outputs.is_prerelease }}
+          files: release/*
+          fail_on_unmatched_files: true

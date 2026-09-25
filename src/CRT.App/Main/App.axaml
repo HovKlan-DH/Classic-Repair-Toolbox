@@ -1,0 +1,617 @@
+﻿<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.App"
+             RequestedThemeVariant="Default">
+
+	<Application.Resources>
+		<ResourceDictionary>
+
+			<FontFamily x:Key="FontAwesomeSolid">
+				avares://Classic-Repair-Toolbox/Assets/Fonts/Font Awesome 7 Free-Solid-900.otf#Font Awesome 7 Free Solid
+			</FontFamily>
+
+			<FontFamily x:Key="FontAwesomeRegular">
+				avares://Classic-Repair-Toolbox/Assets/Fonts/Font Awesome 7 Free-Regular-400.otf#Font Awesome 7 Free Regular
+			</FontFamily>
+
+			<ResourceDictionary.ThemeDictionaries>
+
+				<!-- ########################################################################### -->
+				<!-- LIGHT                                                                       -->
+				<!-- ########################################################################### -->
+
+				<ResourceDictionary x:Key="Light">
+
+					<!-- Light, Generic colors -->
+					<SolidColorBrush x:Key="Bg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Bg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Border">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Selected_Bg">LightBlue</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Selected_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Form_Selected_Hover_Bg">SkyBlue</SolidColorBrush>
+					<SolidColorBrush x:Key="Splitter">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Bg">LightGray</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Border">DarkGray</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Ok_Bg">#4F8A5B</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Ok_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Ok_Border">#3E6E48</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Highlighted_Border">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Panel_Border">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Link_Fg">Blue</SolidColorBrush>
+					<SolidColorBrush x:Key="LinkHover_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_Header_Bg">LightGray</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_Header_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_Bg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_BorderRowLine">#EEEEEE</SolidColorBrush>
+					<SolidColorBrush x:Key="Table_RowHover_Bg">#E1F0FA</SolidColorBrush>
+					<SolidColorBrush x:Key="Text_Success_Fg">#547131</SolidColorBrush>
+					<SolidColorBrush x:Key="Text_Fail_Fg">IndianRed</SolidColorBrush>
+
+					<!-- A surface ONE STEP off the window background, for cards that must read as
+					     their own panel. Table_Bg is plain White here, so a card using it is
+					     invisible against the window - which is exactly what was reported for the
+					     "My submissions" list. -->
+					<SolidColorBrush x:Key="Card_Bg">#F7F7F7</SolidColorBrush>
+
+					<!-- "Waiting on somebody else" - neither good nor bad. Amber rather than grey
+					     so a pending row still reads as a STATUS rather than as disabled text. -->
+					<SolidColorBrush x:Key="Text_Waiting_Fg">#B07A1E</SolidColorBrush>
+
+					<!-- "THIS ONE IS WAITING ON YOU" - a warning, not a failure (maintainer
+					     request, 2026-09-23). "Changes requested" used to share Text_Fail_Fg with
+					     "Not accepted", which made a submission that is still very much alive look
+					     identical to one that had been turned down - reported as exactly that.
+
+					     ORANGE, and deliberately not the amber above: a genuinely waiting row is
+					     passive and this one is a call to act, so the two must not be confusable
+					     either.
+
+					     *** THE FIRST ATTEMPT AT THIS COLOUR WAS STILL TOO RED *** and was
+					     reported again. It was #C2570A, and the reason it read as red beside
+					     IndianRed is worth writing down, because hue does NOT explain it: the two
+					     were 25 degrees apart and still looked the same.
+
+					     What actually matched was the RED AND GREEN CHANNELS - IndianRed is
+					     205,92,92 and that orange was 194,87,10. Practically identical in R and G,
+					     differing only in blue. The eye reads "the same colour, less washed out",
+					     not "a different hue". So the axis that matters here is the GREEN-TO-RED
+					     RATIO, and both colours sat at 0.45.
+
+					     This one is 200,120,0 - a ratio of 0.60, between IndianRed's 0.45 and the
+					     waiting amber's 0.69, and clear of both. -->
+					<SolidColorBrush x:Key="Text_Warning_Fg">#C87800</SolidColorBrush>
+
+					<!-- Light, Main -->
+					<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_Banner_Bg">#4C1515</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_Banner_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_BannerButtonsHover_Bg">#4F3528</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_BannerButtonsHover_Fg">#DDE0DA</SolidColorBrush>
+
+					<!-- Light, Schematics tab -->
+					<SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Name_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Name_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_PAL_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_NTSC_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Region_NTSC_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentHover_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Panels_Bg">#F2F2F2</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Panels_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Panels_Border">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_ComponentLabel_Border">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_Panel_TracesVisible_Trace_Border">Gray</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_FirstPin">Orange</SolidColorBrush>
+					<Color x:Key="Schematics_TracePalette_Color1">#F40000</Color>
+					<Color x:Key="Schematics_TracePalette_Color2">#1564F4</Color>
+					<Color x:Key="Schematics_TracePalette_Color3">#0BC419</Color>
+					<Color x:Key="Schematics_TracePalette_Color4">#E6E600</Color>
+
+					<!-- Light, Worklog -->
+					<SolidColorBrush x:Key="Worklog_Category_Note">#2F6FB5</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Category_Cosmetic">#C8880E</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Category_Issue">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Status_Open">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Status_Closed">#4C8C31</SolidColorBrush>
+
+					<!-- Light, Drafts (NewContributeStrategy.md Phase 2) - a local, unpublished edit.
+					     Deliberately its own amber, not Worklog_Category_Cosmetic (that key names a
+					     worklog category, a different concept that happens to share a similar hue) and
+					     not IndianRed (already means "selected" or "fail" everywhere else). -->
+					<SolidColorBrush x:Key="Draft_Chip_Bg">#F2D98A</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_Chip_Fg">#5A4300</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_Chip_Border">#C8960E</SolidColorBrush>
+					<Color x:Key="Draft_Highlight_Tint">#E0A800</Color>
+
+					<!-- One component reference in SystemFilesWindow's KiCad match report. A plain
+					     light grey, not the amber above: a reference there is a LIST ITEM, not a
+					     draft edit, and amber would mark every one of several hundred as "changed". -->
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#E6E6E6</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
+
+					<!-- Light, the Drafts tab's table editor (BoardTableEditor): what a cell is compared
+					     with the published data. The maintainer's colours - green added, orange
+					     modified, red deleted - as pale washes, so black text stays readable on all
+					     three. Not Draft_Chip_Bg's amber: that marks "a draft exists", which every
+					     row in this table already is. -->
+					<SolidColorBrush x:Key="BoardTable_Added_Bg">#CDEFCF</SolidColorBrush>
+					<SolidColorBrush x:Key="BoardTable_Modified_Bg">#FFD9A8</SolidColorBrush>
+					<SolidColorBrush x:Key="BoardTable_Deleted_Bg">#F6C4C4</SolidColorBrush>
+					<!-- A row marked "!" (a duplicate, or incomplete). Violet because it is the one
+					     hue nowhere near the other three - yellow would sit beside the orange. -->
+					<SolidColorBrush x:Key="BoardTable_Flagged_Bg">#E3D5F6</SolidColorBrush>
+					<!-- The current cell's dashed frame. A strong red, so it still stands out on the
+					     pale red of a deleted row. -->
+					<SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#D32F2F</SolidColorBrush>
+					<!-- The table's notices about its draft FILE (changed in Excel, open in Excel):
+					     a pale amber, the colour of "take note" rather than of any row state. -->
+					<SolidColorBrush x:Key="BoardTable_Notice_Bg">#FFF4D6</SolidColorBrush>
+					<SolidColorBrush x:Key="BoardTable_Notice_Border">#E0B040</SolidColorBrush>
+
+					<!-- Light, Workbooks tab: the surfaces the tab actually paints.
+
+					     There used to be sixteen more keys here - a Workbooks_Category_* /
+					     Workbooks_State_* set plus badge, chip, placeholder, scope-capture and pin
+					     colours - carried over from the mockup and referenced by nothing but the
+					     palette test asserting they resolved. They encoded the mockup's
+					     Note/Cosmetic/Suspected/Confirmed and Pending/Fixed/Ruled-out vocabulary,
+					     which is NOT the shipped WorklogManager model (Note/Cosmetic/Issue,
+					     Open/Closed); the real tab resolves its category and state colours through
+					     the Worklog_Category_* and Worklog_Status_* keys above, shared with the
+					     Schematics tab and the entry editor so an entry looks the same everywhere.
+					     Adding a category here would have produced a wrong-coloured chip that the
+					     palette test could not catch. Add new worklog colours to Worklog_*. -->
+					<SolidColorBrush x:Key="Workbooks_SelectedCard_Bg">#EAF3F8</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Panel_Bg">#FAFAFA</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Separator">#C8C8C8</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_RowSeparator">#E6E6E6</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Muted_Fg">#5A5A5A</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Faint_Fg">#7A7A7A</SolidColorBrush>
+
+					<!-- The summary strip's ZERO-count category/state pills (WorklogInfoPillBuilder's
+					     MutedPillBrush) - deliberately its OWN, lighter token rather than reusing
+					     Muted_Fg or Faint_Fg above: both of those are body-text greys, tuned to stay
+					     readable as PROSE (a card's meta line, an empty-state message), and both were
+					     tried here and reported as "still looks black" on a small bold pill. A zero
+					     count needs to look closer to disabled/washed-out than to muted body text. -->
+					<SolidColorBrush x:Key="Workbooks_ZeroCount_Fg">#BBBBBB</SolidColorBrush>
+
+					<!-- The run of text matched by the "Find a previous repair" search box. A
+					     background wash rather than a foreground colour, so it reads as a marker pen
+					     over the text and stays legible on the muted/faint greys above as well as on
+					     ordinary body text - a recoloured foreground would fight those. -->
+					<SolidColorBrush x:Key="Workbooks_SearchHit_Bg">#FFE58A</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_SearchHit_Fg">#1A1A1A</SolidColorBrush>
+
+					<!-- Light, Thumbnail -->
+					<SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Thumbnail_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Thumbnail_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+					<SolidColorBrush x:Key="Thumbnail_Selection_Fg">White</SolidColorBrush>
+
+					<!-- Light, Component info popup -->
+					<SolidColorBrush x:Key="ComponentPopup_Name_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_Name_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_Name_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_Pin_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_Pin_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_Pin_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Bg">#B0D8EC</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Bg">LightGray</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Bg">#BB000000</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">#778461</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Border">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Red</SolidColorBrush>
+
+					<!-- Light, Feedback tab -->
+					<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+
+				</ResourceDictionary>
+
+			<!-- ########################################################################### -->
+			<!-- DARK                                                                        -->
+			<!-- ########################################################################### -->
+
+			<ResourceDictionary x:Key="Dark">
+
+				<!-- Dark, Generic colors -->
+				<SolidColorBrush x:Key="Bg">#201C1A</SolidColorBrush>
+				<SolidColorBrush x:Key="Fg">#E8E0DA</SolidColorBrush>
+				<SolidColorBrush x:Key="Border">LightGray</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Bg">#2A2421</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Fg">#E8DDCF</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Selected_Bg">#735443</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Selected_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Form_Selected_Hover_Bg">#5E4334</SolidColorBrush>
+				<SolidColorBrush x:Key="Splitter">Gray</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Bg">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Fg">#E8E0D4</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Ok_Bg">#4F8A5B</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Ok_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Ok_Border">#3E6E48</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Highlighted_Bg">#B87352</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Highlighted_Border">#B87352</SolidColorBrush>
+				<SolidColorBrush x:Key="Panel_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Link_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="LinkHover_Fg">#E8DDCF</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_Header_Bg">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_Header_Fg">#E8DDCF</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_Bg">#2A2421</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_Fg">#E8DDCF</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_BorderRowLine">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Table_RowHover_Bg">#3C2F28</SolidColorBrush>
+				<SolidColorBrush x:Key="Text_Success_Fg">#4ADE80</SolidColorBrush>
+				<SolidColorBrush x:Key="Text_Fail_Fg">#EF4444</SolidColorBrush>
+
+				<!-- The dark theme's twin of Card_Bg: one step LIGHTER than this theme's
+				     background, where the light theme steps darker. Same intent, opposite
+				     direction - a hardcoded grey would work in one theme and glare in the other. -->
+				<SolidColorBrush x:Key="Card_Bg">#332B27</SolidColorBrush>
+
+				<SolidColorBrush x:Key="Text_Waiting_Fg">#E0B050</SolidColorBrush>
+
+				<!-- The dark theme's twin of Text_Warning_Fg, moved with it for the same reason
+				     and measured the same way: a green-to-red ratio of 0.67, between this theme's
+				     failure red (0.28) and its waiting amber (0.79). A matching pair has to move
+				     together or the two themes stop agreeing about what "warning" looks like. -->
+				<SolidColorBrush x:Key="Text_Warning_Fg">#FFAA40</SolidColorBrush>
+
+				<!-- Dark, Main, banners -->
+				<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_Banner_Bg">#38241A</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_Banner_Fg">#E8E0DA</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_BannerButtonsHover_Bg">#4F3528</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_BannerButtonsHover_Fg">#DDE0DA</SolidColorBrush>
+
+				<!-- Dark, Schematics tab -->
+				<SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Name_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Name_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_PAL_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_NTSC_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_NTSC_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentHover_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentHover_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentHover_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Panels_Bg">#46403E</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Panels_Fg">#E8E0DA</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Panels_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_ComponentLabel_Border">Gray</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Panel_TracesVisible_Trace_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_FirstPin">Orange</SolidColorBrush>
+				<Color x:Key="Schematics_TracePalette_Color1">#F40000</Color>
+				<Color x:Key="Schematics_TracePalette_Color2">#1564F4</Color>
+				<Color x:Key="Schematics_TracePalette_Color3">#0BC419</Color>
+				<Color x:Key="Schematics_TracePalette_Color4">#E6E600</Color>
+
+				<!-- Dark, Worklog -->
+				<SolidColorBrush x:Key="Worklog_Category_Note">#2F6FB5</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Category_Cosmetic">#C8880E</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Category_Issue">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Status_Open">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Status_Closed">#4C8C31</SolidColorBrush>
+
+				<!-- Dark, Drafts - see the Light block above for why this is its own key set. -->
+				<SolidColorBrush x:Key="Draft_Chip_Bg">#4A3B12</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_Chip_Fg">#F2D98A</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_Chip_Border">#C8960E</SolidColorBrush>
+				<Color x:Key="Draft_Highlight_Tint">#E0A800</Color>
+
+				<!-- The dark twin of the light theme's reference badge: one step LIGHTER than the
+				     Form_Bg the report sits on, where the light one steps darker. -->
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#524842</SolidColorBrush>
+
+				<!-- Dark, the table editor - the same three meanings as the Light block, as deep
+				     tints the light foreground stays readable on. -->
+				<SolidColorBrush x:Key="BoardTable_Added_Bg">#1F4A26</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_Modified_Bg">#5A3A10</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_Deleted_Bg">#5A2222</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_Flagged_Bg">#44305F</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#FF6B6B</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_Notice_Bg">#3D3214</SolidColorBrush>
+				<SolidColorBrush x:Key="BoardTable_Notice_Border">#8A6D1F</SolidColorBrush>
+
+				<!-- Dark, Workbooks tab. Surfaces only - see the light block above for why the
+				     category and state colours are not here. -->
+
+				<SolidColorBrush x:Key="Workbooks_SelectedCard_Bg">#33403F</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Panel_Bg">#241F1C</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Separator">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_RowSeparator">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Muted_Fg">#B5A896</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Faint_Fg">#8F8578</SolidColorBrush>
+
+				<!-- See the light block's own comment on Workbooks_ZeroCount_Fg - a dedicated,
+				     dimmer tone for a zero-count pill rather than either body-text grey above.
+				     Darker than both of them here (the dark surfaces run the opposite direction
+				     from light: Faint_Fg is already darker than Muted_Fg on this side), so a
+				     zero-count pill still reads as washed-out against the panel background rather
+				     than as bright, attention-grabbing text. -->
+				<SolidColorBrush x:Key="Workbooks_ZeroCount_Fg">#5E5850</SolidColorBrush>
+
+				<!-- Search hit. A muted amber rather than the light theme's brighter one: on the
+				     dark ground a saturated wash glares, and the dark foreground below is what keeps
+				     the marked text readable against it. -->
+				<SolidColorBrush x:Key="Workbooks_SearchHit_Bg">#B98A2E</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_SearchHit_Fg">#12100E</SolidColorBrush>
+
+				<!-- Dark, Thumbnail -->
+				<SolidColorBrush x:Key="Thumbnail_Border">LightGray</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_Bg">#3D302A</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_Fg">LightGray</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_Selection_Fg">White</SolidColorBrush>
+
+				<!-- Dark, Component info popup -->
+				<SolidColorBrush x:Key="ComponentPopup_Name_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_Name_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_Name_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_Pin_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_Pin_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_Pin_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Bg">#B0D8EC</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeExpected_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Bg">#735443</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Fg">#E8DDCF</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_OscilloscopeSyncData_Border">#B87352</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Bg">#BB000000</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">DarkOliveGreen</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Border">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">#A99F99</SolidColorBrush>
+				<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Blue</SolidColorBrush>
+
+				<!-- Dark, Feedback tab -->
+				<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+
+			</ResourceDictionary>
+		</ResourceDictionary.ThemeDictionaries>
+	</ResourceDictionary>
+</Application.Resources>
+
+	<Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <!-- Native Avalonia controls themed towards brown/copper -->
+                <ColorPaletteResources x:Key="Dark"
+                                       RegionColor="#201C1A"
+                                       BaseHigh="#E8E0DA"
+                                       BaseLow="#3E342F"
+                                       BaseMedium="#A3938A"
+                                       ChromeLow="#1E1815"
+                                       ChromeMedium="#261E1A"
+                                       ChromeWhite="White"
+                                       Accent="#B87352" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+
+		<!-- ### -->
+
+		<!-- Tab, Hover -->
+		<Style Selector="TabItem:pointerover /template/ Border#PART_SelectedPipe">
+			<Setter Property="Background" Value="{DynamicResource Main_TabUnderline_Hover}" />
+		</Style>
+
+		<!-- Tab, Selected -->
+		<Style Selector="TabItem:selected /template/ Border#PART_SelectedPipe">
+			<Setter Property="Background" Value="{DynamicResource Main_TabUnderline_Selected}" />
+		</Style>
+
+		<!-- Banner install button: explicit hover/pressed backgrounds -->
+		<Style Selector="Button.BannerInstallButton">
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		</Style>
+		<Style Selector="Button.BannerInstallButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		</Style>
+		<Style Selector="Button.BannerInstallButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		</Style>
+
+		<!-- Banner dismiss button: subtle hover on dark background -->
+		<Style Selector="Button.BannerDismissButton">
+			<Setter Property="Foreground" Value="{DynamicResource Main_Banner_Fg}" />
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.BannerDismissButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Main_BannerButtonsHover_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Main_BannerButtonsHover_Fg}" />
+		</Style>
+
+		<Style Selector="ListBox">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+		</Style>
+
+		<Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<Style Selector="ListBoxItem">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+
+		<!-- Selected state -->
+		<Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<!-- Selected hover state -->
+		<Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+		<Style Selector="ListBoxItem:selected:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<!-- This is INPUT field -->
+		<Style Selector="TextBox">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<!-- Prevent Background and Border changes on Hover -->
+		<Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+		</Style>
+
+		<!-- Prevent Background changes on Click/Focus -->
+		<Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+		</Style>
+
+		<!-- Prevent Foreground changes on Hover and Focus -->
+		<Style Selector="TextBox:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<Style Selector="TextBox:focus">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<Style Selector="ComboBox">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<Style Selector="GridSplitter">
+			<Setter Property="Background" Value="{DynamicResource Splitter}" />
+		</Style>
+
+		<Style Selector="TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Fg}" />
+		</Style>
+
+		<Style Selector="Button">
+			<Setter Property="Background" Value="{DynamicResource Button_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
+		</Style>
+
+		<!-- ### -->
+
+		<!-- Give the ColorPicker in "Schematics" tab its visual layout -->
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+
+		<!-- Give the Drafts tab's table editor (ProDataGrid, an MIT fork of Avalonia's own
+		     DataGrid, whose assembly keeps the original name) its visual layout. -->
+		<StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml" />
+
+		<!-- ### -->
+
+		<!-- The amber "Draft" chip - ONE definition for every place that marks something as a local,
+		     unpublished draft: the component list's rows (Main.axaml) and the Hardware and Board
+		     drop-downs (Main.DraftBadges.cs, which builds it in code). It used to be spelled out
+		     inline on the component list; the drop-downs asking for "the same badge" is what made a
+		     shared style worth having, since two hand-copied chips drift apart one setter at a time.
+
+		     Kept LAST: Avalonia applies matching styles in declaration order rather than by
+		     specificity, and the global "TextBlock" style above would otherwise repaint the chip's
+		     text in the ordinary foreground colour. -->
+		<Style Selector="Border.DraftChip">
+			<Setter Property="Background" Value="{DynamicResource Draft_Chip_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Draft_Chip_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="8" />
+			<Setter Property="Padding" Value="5,0" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.DraftChip > TextBlock">
+			<Setter Property="FontSize" Value="9" />
+			<Setter Property="Foreground" Value="{DynamicResource Draft_Chip_Fg}" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+    </Application.Styles>
+</Application>

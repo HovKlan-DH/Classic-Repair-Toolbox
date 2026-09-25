@@ -1,0 +1,61 @@
+<!--
+TreatAsLocalProperty lets this project override SelfContained even when it arrives as a
+command-line (global) property - see the comment on SelfContained below, and the identical note
+in CRT.Data.Tests.csproj.
+-->
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="SelfContained;PublishSelfContained">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!--
+    A self-contained "dotnet publish" run from the repo root with no "-r <rid>" targets the
+    SOLUTION, so SelfContained=true lands on this project too. A VSTest project is RID-agnostic
+    by SDK design, so the SDK will not infer a RID for it and the whole publish dies with
+    NETSDK1191 - even though nothing here is ever published.
+    -->
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>false</PublishSelfContained>
+    <IsPublishable>false</IsPublishable>
+    <RootNamespace>CRT.Review.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    <!--
+    xUnit1051 ("pass TestContext.Current.CancellationToken to every call that takes a token") is
+    switched off, deliberately. It arrived with xunit v3 and fired 208 times on the move from v2,
+    nearly all of them CRT.Server.Tests calling a flow against an in-memory fake. The token exists
+    so that a test stuck on real I/O can be cancelled, and test rule 6 in CLAUDE.md already rules
+    that I/O out (no network, no hardware, no spawned process) - so threading it through every call
+    would add noise to tests meant to read as specifications, and cancel nothing. Set in all four
+    test projects alike, so the first async call added to any of them does not break Release.
+    -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+  No Avalonia.Headless package here. If this project ever needs to construct a control, copy
+  CRT.App.Tests' UiTest.Run harness rather than adding Avalonia.Headless.XUnit: at 12.1.3 that
+  adapter is built against xunit v3's 3.2 extensibility API, which the xunit 4.0 this suite runs
+  on has changed (see CRT.App.Tests.csproj, which also explains why the xunit package here is
+  xunit.v3.mtp-off).
+
+  For now nothing here needs one: what is under test is ReviewSummaryPresenter, which is pure -
+  that being true is the point of keeping the review window's logic in Handlers/.
+  -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CRT.Review\CRT.Review.csproj" />
+  </ItemGroup>
+
+</Project>

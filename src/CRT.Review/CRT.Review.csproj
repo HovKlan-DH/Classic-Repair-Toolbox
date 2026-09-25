@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+    The review application (NewContributeStrategy.md Phase 5) - a SEPARATE Avalonia desktop app
+    where the maintainer reviews and merges submissions.
+
+    IT SHIPS ON ITS OWN VERSION AND ITS OWN WORKFLOW, deliberately (task 8). Entangling it with
+    CRT's release would mean every reviewer-side fix forces a release of the app every hobbyist
+    runs, and vice versa. The two have different audiences and completely different release
+    cadences - CRT is shipped to everyone, this is shipped to a handful of maintainers.
+
+    IT FOLLOWS CRT'S OWN CONVENTIONS, per task 1: no MVVM, logic in code-behind, large controls
+    split into partial files by area with a header comment each, and PURE LOGIC IN Handlers/ so it
+    can be unit tested. The board-data layer comes from CRT.Data rather than being reimplemented -
+    that library exists precisely so the app, the server and this app agree about what a board is.
+    -->
+    <PropertyGroup>
+        <Title>Classic Repair Toolbox Review</Title>
+        <Product>Classic Repair Toolbox Review</Product>
+        <AssemblyTitle>Classic Repair Toolbox Review</AssemblyTitle>
+        <Authors>Dennis Helligsø</Authors>
+        <Copyright>©2025-2026</Copyright>
+        <AssemblyName>Classic-Repair-Toolbox-Review</AssemblyName>
+
+        <!--
+        ITS OWN VERSION, not CRT's. See the header above - this is the whole point of task 8's
+        "separate workflow with its own version", and the first thing that would quietly get
+        entangled if the two were kept in step by hand.
+        -->
+        <AssemblyVersion>0.1.0</AssemblyVersion>
+        <InformationalVersion>0.1.0-alpha.1</InformationalVersion>
+        <FileVersion>$(AssemblyVersion)</FileVersion>
+        <Version>$(InformationalVersion)</Version>
+
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <RollForward>LatestMajor</RollForward>
+        <Nullable>enable</Nullable>
+        <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+        <!-- Matches CRT.App: Release is what CI, the release gate and the Stop hook all build. -->
+        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.1.3" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
+
+        <!--
+        DPAPI, for encrypting the remembered session token to the logged-in Windows user
+        (ReviewSessionProtection). Windows-only by nature: the package restores and builds
+        everywhere, and throws PlatformNotSupportedException if called off Windows - which is why
+        every call site is guarded by OperatingSystem.IsWindows() and the app simply declines to
+        remember a session on other platforms rather than storing one in the clear.
+        -->
+        <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
+    </ItemGroup>
+
+    <!--
+    The test project sees internal types the same way CRT.App.Tests does, so logic extracted into
+    Handlers/ does not have to be made public purely to be tested. See CRT.Data.csproj's own note
+    on why that trade is preferred to widening a type.
+    -->
+    <ItemGroup>
+        <InternalsVisibleTo Include="CRT.Review.Tests" />
+    </ItemGroup>
+
+</Project>

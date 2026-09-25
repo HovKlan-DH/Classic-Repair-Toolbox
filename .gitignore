@@ -75,6 +75,34 @@ Assets/Webserver/
 .claude/.tests-green
 .claude/.wiki-reminded
 
+# Server configuration that can hold credentials (Phase 3 onward).
+#
+# The deployed service reads appsettings.Production.json from its own directory on the server
+# (see DEPLOYMENT.md), which lives OUTSIDE this repository and is never copied into it. These
+# patterns exist for the local-development
+# case: a file created here by accident, or an appsettings.Development.json written while
+# testing against a tunnelled database, would otherwise be a connection string in git history.
+#
+# "appsettings.Example.json" is deliberately NOT ignored - it is committed, with placeholder
+# values only, so the shape of the real file is documented. Keep real values out of it.
+#
+# Local development uses "dotnet user-secrets", which stores outside the repository tree
+# entirely; see src/CRT.Server/DEPLOYMENT.md.
+src/CRT.Server/appsettings.Production.json
+src/CRT.Server/appsettings.Development.json
+src/CRT.Server/appsettings.Local.json
+**/appsettings.Production.json
+**/appsettings.Local.json
+*.pfx
+
+# The framework-dependent publish output for the server, produced by the dotnet publish line in
+# DEPLOYMENT.md step 4 and copied to the box by hand. Build output, not source - and it carries a
+# copy of whatever appsettings files were present when it ran.
+publish-server/
+*.pem
+*.key
+secrets.json
+
 # Scratch folders holding a lone "p.csx", created by an editor "run this snippet"
 # action rather than by anything in this project. Two of them ("aggfield", "castchk")
 # were created a day apart under unpredictable names, and one had already been

@@ -1,0 +1,365 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.TabConfiguration">
+
+	<UserControl.Resources>
+		<local:BooleanToFontAwesomeSyncIconConverter x:Key="BooleanToFontAwesomeSyncIconConverter" />
+	</UserControl.Resources>
+
+	<UserControl.Styles>
+		<Style Selector="ComboBox">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+
+		<Style Selector="ComboBoxItem:selected:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<!-- "Circle-question" (fa-regular fa-circle-question) help icon that links to an external help
+		     page. Same fixed-box + ClipToBounds icon-font recipe as ComponentInfoWindow's button of the
+		     same name, except the foreground follows the theme rather than being hardcoded black:
+		     this tab sits on the themed window background, where a black glyph vanishes in dark mode. -->
+		<Style Selector="Button.HelpIconButton">
+			<Setter Property="Width" Value="22" />
+			<Setter Property="Height" Value="22" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="ClipToBounds" Value="True" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="HorizontalContentAlignment" Value="Center" />
+			<Setter Property="VerticalContentAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Button.HelpIconButton /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="ClipToBounds" Value="True" />
+		</Style>
+
+		<Style Selector="Button.HelpIconButton:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Button.HelpIconButton:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid x:Name="RootSplitGrid"
+          Margin="16">
+
+		<!--
+		The two MinWidths plus the splitter have to FIT inside the narrowest this tab can get,
+		or the catalogue panel is simply clipped: nothing here scrolls horizontally, and the
+		window's own MinWidth="800" leaves this tab about 530 DIP once Main's 200 DIP sidebar,
+		its splitter and this Grid's own 16 DIP margins are taken off. 300 + 4 + 200 fits that
+		with room to spare; 360 + 4 + 260 did not. 300 still clears the widest fixed content on
+		the left (the three 260-wide folder buttons), and every other row wraps.
+		-->
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="*" MinWidth="300" />
+			<ColumnDefinition Width="4" />
+			<ColumnDefinition Width="320" MinWidth="200" />
+		</Grid.ColumnDefinitions>
+
+		<Grid Grid.Column="0"
+              RowDefinitions="*,Auto">
+
+		<ScrollViewer Grid.Row="0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      AllowAutoHide="False">
+
+		<StackPanel Spacing="8"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top">
+
+			<TextBlock Text="Appearance"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,4" />
+
+			<TextBlock Text="Theme" />
+
+			<ComboBox x:Name="ThemeVariantComboBox"
+                      MinWidth="180">
+				<ComboBoxItem Content="Light" />
+				<ComboBoxItem Content="Dark" />
+				<ComboBoxItem Content="User preference" />
+			</ComboBox>
+
+			<Button x:Name="ReloadUserPreferenceThemeButton"
+                    Content="Reload user preference colors"
+                    HorizontalAlignment="Left"
+                    Click="OnReloadUserPreferenceThemeClick" />
+
+			<TextBlock Text="Behaviour"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<CheckBox x:Name="MultipleInstancesForComponentPopupCheckBox"
+					  Content="Open multiple component info windows" />
+
+			<CheckBox x:Name="DetachSchematicsThumbnailsCheckBox"
+					  Content="Detach thumbnails into their own window" />
+
+			<CheckBox x:Name="RememberThumbnailWindowSettingsPerBoardCheckBox"
+					  Content="Remember thumbnail window settings per board"
+					  IsEnabled="False" />
+
+			<TextBlock Text="Application Update"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<CheckBox x:Name="CheckDataOnLaunchCheckBox"
+                      Content="Check for new or updated data at application launch" />
+
+			<CheckBox x:Name="DownloadDataFromTestSourceCheckBox"
+					  Content="Download data from BETA source (only use in agreement with developer or use on your own risk)"
+					  Foreground="{DynamicResource Text_Fail_Fg}" />
+
+			<CheckBox x:Name="AllowDeletionOfOrphanAndNonUsedFilesCheckBox"
+					  Content="Delete orphan and non-used files"
+					  IsEnabled="False" />
+
+			<CheckBox x:Name="CheckVersionOnLaunchCheckBox"
+                      Content="Check for new version at application launch" />
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="ShowDevelopmentVersionNotificationCheckBox"
+						  Content="Allow notification for BETA versions"
+						  VerticalAlignment="Center" />
+				<Button x:Name="ShowDevelopmentVersionNotificationHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="A BETA version is when development has reached a mature level, and everything should work as intended. However, it is for TEST purposes only, and should only be used in agreement with the developer.">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="AllowAlphaVersionNotificationCheckBox"
+						  Content="Allow notification for ALPHA versions"
+						  VerticalAlignment="Center" />
+				<Button x:Name="AllowAlphaVersionNotificationHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="An ALPHA version is a development version, meaning almost anything could be broken. Do not download it unless agreed with the developer.">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<TextBlock Text="External tooling availability"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<CheckBox x:Name="EnableNetworkConnectedOscilloscopeTabCheckBox"
+                      Content="Enable network connected oscilloscope tab" />
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="EnableMiniproExperimentalModeCheckBox"
+						  Content="Enable MiniPro programmer functionality"
+						  VerticalAlignment="Center" />
+				<Button x:Name="EnableMiniproExperimentalModeHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Open help page for MiniPro programmer"
+						Click="OnEnableMiniproExperimentalModeHelpClick">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<CheckBox x:Name="EnableMiniproExperimentalDemoModeCheckBox"
+                      Content="Enable MiniPro programmer simulated demo mode (only required for CRT development)" />
+
+			<TextBlock Text="Workbooks"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="EnableWorklogCheckBox"
+						  Content="Enable Workbooks tab"
+						  VerticalAlignment="Center" />
+				<Button x:Name="EnableWorklogHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Open help page for Workbooks"
+						Click="OnEnableWorklogHelpClick">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<TextBlock Text="Scope in Workbooks tab:"
+                       Margin="0,8,0,0" />
+
+			<StackPanel Orientation="Vertical"
+						Spacing="4"
+						Margin="16,4,0,0">
+				<RadioButton x:Name="WorkbooksScopeAllBoardsRadioButton"
+							 GroupName="WorkbooksScope"
+							 Content="Show all workbooks" />
+				<RadioButton x:Name="WorkbooksScopeCurrentBoardRadioButton"
+							 GroupName="WorkbooksScope"
+							 Content="Show only workbooks for selected board" />
+			</StackPanel>
+
+			<TextBlock Text="Currency used for worklog costs:"
+                       Margin="0,12,0,0" />
+
+			<ComboBox x:Name="WorklogCurrencyComboBox"
+                      MinWidth="280"
+                      HorizontalAlignment="Left"
+                      Margin="0,4,0,0"
+                      ToolTip.Tip="Pick the country you live in; its currency is shown beside every cost in a workbook, and in exported PDF and ZIP documents" />
+
+			<TextBlock Text="Drafts"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
+                      Content="View boards as officially published (hide my own local drafts)"
+                      ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a system where you have unpublished local edits" />
+
+			<!-- Three separate buttons rather than one, because these are three different folders
+			     and two of them can be moved elsewhere by the data-root and workbooks-root
+			     command-line switches. Each opens the path the app is ACTUALLY using, so a
+			     relocated folder still opens where it really is. Equal Width so they read as one
+			     group rather than a ragged stack. -->
+			<Button x:Name="OpenDataFolderButton"
+                    Content="Open data folder"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="The hardware reference data - schematics, component images and board files"
+                    Click="OnOpenDataFolderClick" />
+
+			<Button x:Name="OpenWorkbooksFolderButton"
+                    Content="Open workbooks folder"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="Your own workbooks - worklogs, photos and attached files"
+                    Click="OnOpenWorkbooksFolderClick" />
+
+			<Button x:Name="OpenLogsFolderButton"
+                    Content="Open logs and settings folder"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="The log file, the crash log and your settings file - the files to attach when reporting a problem"
+                    Click="OnOpenLogsFolderClick" />
+		</StackPanel>
+
+		</ScrollViewer>
+
+		</Grid>
+
+		<GridSplitter x:Name="CatalogueSplitter"
+                      Grid.Column="1" />
+
+		<Border x:Name="CataloguePanelBorder"
+                Grid.Column="2"
+                Background="{DynamicResource Form_Bg}"
+                BorderBrush="{DynamicResource Form_Border}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="12">
+
+			<Grid RowDefinitions="Auto,Auto,*">
+
+				<TextBlock Grid.Row="0"
+                           Text="Visible hardware, boards and schematics"
+                           FontSize="12"
+                           FontWeight="SemiBold" />
+
+				<TextBlock Grid.Row="1"
+                           Text="Uncheck anything you want hidden from the hardware, board and schematic selections."
+                           TextWrapping="Wrap"
+                           Opacity="0.75"
+                           FontSize="11"
+                           Margin="0,4,0,10" />
+
+				<ScrollViewer Grid.Row="2"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              AllowAutoHide="False">
+
+					<StackPanel x:Name="CatalogueTreePanel"
+                                Spacing="0" />
+
+				</ScrollViewer>
+
+			</Grid>
+
+		</Border>
+
+	</Grid>
+</UserControl>
