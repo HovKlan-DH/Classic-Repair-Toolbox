@@ -131,6 +131,10 @@ namespace Handlers.DataHandling
         public static bool IsChangeRow(BoardTableRow row) =>
             row is not null && row.State != BoardTableRowState.Unchanged;
 
+        // Whether "Show changes only" shows anything of this sheet - and so whether its tab shows
+        // (BoardTableDocument.SheetsShown). Read live: an edit can add or remove the last such row.
+        public bool HasChangeRows => this.Rows.Any(BoardTableSheet.IsChangeRow);
+
         // True between a cell edit and the Refresh that re-pairs the sheet.
         public bool NeedsRefresh { get; private set; }
 

@@ -267,7 +267,10 @@ public sealed class ReviewFieldDiffTests
     public void Every_section_can_produce_a_field_diff()
     {
         // A section whose rows changed but which reports no field detail would leave a maintainer
-        // back at "something changed". This walks one edit through each of the ten.
+        // back at "something changed". This walks one edit through each of the ten - nine of which
+        // CHANGE a row. Important signals cannot: since 2026-09-26 both of their columns are the
+        // row's key (one display name covers several nets), so a new net is a removal plus an
+        // addition - pinned at the end.
         var published = new BoardData
         {
             Schematics = [new BoardSchematicEntry { SchematicName = "S", SchematicImageFile = "a.png", CadName = "before" }],
@@ -300,11 +303,16 @@ public sealed class ReviewFieldDiffTests
 
         Assert.Equal(10, summary.ChangedSections.Count);
 
-        foreach (ReviewSectionChange section in summary.ChangedSections)
+        foreach (ReviewSectionChange section in summary.ChangedSections.Where(section => section.Section != BoardWorkbookSchema.SheetKiCadImportantSignals))
         {
             Assert.Single(section.Changed);
             Assert.NotEmpty(section.FieldChanges);
             Assert.Single(section.FieldChanges.Values.Single());
         }
+
+        ReviewSectionChange signals = summary.ChangedSections.Single(section => section.Section == BoardWorkbookSchema.SheetKiCadImportantSignals);
+        Assert.Empty(signals.Changed);
+        Assert.Single(signals.Removed);
+        Assert.Single(signals.Added);
     }
 }

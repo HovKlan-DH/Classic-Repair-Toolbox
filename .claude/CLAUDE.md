@@ -37,7 +37,7 @@ exactly why the dangerous surfaces are the ones it CANNOT see:
   the server mapped nothing at, and the tests asserted the dead URL, so nothing caught it until
   a real reset was attempted. **The review API's bodies are CRT.Data's `ReviewApiContract`
   records** (2026-09-25): a request is one record both ends use, an answer is a record the server
-  returns and the maintainer app parses, and CRT.Maintainer.Tests' `ReviewWireContractTests` puts each
+  returns and the maintainer app parses (the queue too, since 2026-09-26: `ReviewQueueAnswer`), and CRT.Maintainer.Tests' `ReviewWireContractTests` puts each
   answer through the server's JSON settings and the real parser. A new route gets its records
   there and a case in that test.
 - **The workbook schema.** `BoardWorkbookSchema` names the columns the reader reads and the
@@ -734,6 +734,25 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   after it was read (typically "Save to draft" in the Contribute tab). That one offers NO Save: the
   save would be refused, and offering it made "Close table" a loop (reported). Asked from
   `TabDrafts.AskAboutUnsavedTableEditsAsync`, which checks `BoardTableEditor.HasDraftChangedOnDisk`.
+- **Pointing at a FILE cell opens a hover card AT ONCE** (owner requests, 2026-09-26,
+  `BoardTableEditor.FilePreview.cs`): the picture, the published and the new one side by side when
+  it changed (by BYTES too - a picture replaced under its own name is not coloured), or a link
+  that opens a PDF. It follows the pointer from file cell to file cell and closes the moment the
+  pointer is on neither its cell nor the card. It is a `Popup` in the window's OVERLAY layer with
+  light dismiss OFF, beside the cell: a flyout closed only ~100 px away from itself (read as a
+  delay), a light-dismissed popup spent the next grid click on closing, and a card UNDER the cell
+  covered the next row's file. `BoardTableFilePreviewTests` drives all of it with a real pointer.
+  A side is labelled ("Published" / "Your draft", "Before (published)" / "After (submitted)", and
+  for a new system in the maintainer app "As submitted" / "Your change" - both of whose sides are
+  read from the SUBMISSION, `ReviewTableFiles.HashToRead`, since nothing of it is published) only
+  beside another one, where it says which is which - a picture on its own is unlabelled (owner
+  request, 2026-09-26).
+  **Every cell's TEXT tooltip is instant too** ("Published value: ...", a flagged row's reason, the
+  marker's meaning): `ToolTip.ShowDelay` is `BoardTableEditor.CellToolTipDelay` (0) in both cell
+  themes, pinned by `BoardTableEditorTests.A_cells_text_tooltip_opens_the_moment_the_pointer_is_on_it`. Which cells are files is
+  CRT.Data's `BoardTableFileCells`; the bytes are the HOST's `IBoardTableFileSource`
+  (`DraftTableFileSource` here, `ReviewTableFileSource` in the maintainer app) - a host that sets
+  none gets no card. A file column's text tooltip gives way to the card.
 - **"Insert row above" / "Insert row below"** (`BoardTableSheet.InsertRowAbove` / `InsertRow`), and
   a legend pill counting nothing fades to 0.4 opacity (the `Empty` class) so the kinds present stand
   out.
@@ -756,7 +775,11 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   an added U1/NTSC beside U1/PAL was flagged a duplicate in the table, counted nowhere, and never
   shown to a maintainer. Rows with no region key exactly as before. The price, pinned by
   `ReviewFieldDiffTests`: giving a component a region is now a removal plus an addition, like a
-  label change. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
+  label change. **An IMPORTANT SIGNAL's identity is its display name PLUS its KiCad net**
+  (`ForKiCadImportantSignal`, 2026-09-26): one display name covers several nets ("9VAC" is the 9VAC
+  and the 9VAC~ net - the KiCad Wiki page says rows may share a display name), and keyed on the
+  name alone every second one was flagged a duplicate (reported from the maintainer's table). A
+  signal therefore has no non-key field: a new net is a removal plus an addition. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
   `ComponentPlacement` puts a new regional variant straight after its twin (a blank category used
   to send it to the end of the sheet, where the project owner thought it had vanished).
 - **Excel keys:** Tab / Shift+Tab move right/left and wrap rows (handled on the tunnel route, since
@@ -768,7 +791,24 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   on every MAIN tab switch (both reported). A draft with nothing published turns the filter OFF
   when it opens: the box is hidden there and every row is unchanged, so a filter left on from
   another draft (the editor is reused) hid every row - reported as an "empty" Board schematics
-  sheet. The text size is set on EVERY column (`CellFontSize`) - a text column carries
+  sheet. **The user's CHOICE is kept apart from the filter** (`thisOnlyChangesWanted`, 2026-09-26),
+  so the next table with something published has it back on; `ApplyOnlyChanges` changes the
+  filter without touching the choice. **Ticked, it also HIDES the tabs of sheets it would show
+  nothing of** (owner request, 2026-09-26) - `BoardTableDocument.SheetsShown` (the current sheet
+  keeps its tab while on screen; nothing to show anywhere keeps every tab) and `SheetToShow` (the
+  sheet to open on when the wanted one's tab is hidden). The grid's scroll bars stay FULL SIZE (`ScrollViewer.AllowAutoHide="False"` on it - it scrolls
+  through a ScrollViewer of its own; owner request, 2026-09-26): the theme's hairline hid that a
+  wide sheet has columns past the right edge. The header row is set apart WITHOUT weight (owner:
+  a black band "steals way too much focus"): semi-bold names on a soft band and a firm 2px line
+  under the row (`BoardTable_Header_*`, the table's own keys - not CRT's `Table_Header_Bg`, which
+  also colours the Contribute window's and About tab's tables). **A value the grid's TEMPLATE sets
+  outranks a plain style** (Template priority is above Style), so the line under the header is
+  styled through the grid's `HeaderStyled` class (a class makes the style a trigger), and the
+  column separators through the header's `SeparatorBrush`. Also: the corner above the grips draws
+  its own `TopLeftHeaderRoot` Grid, and CRT's app-wide `TextBlock` style outranks the header's
+  inherited text colour. All pinned by `The_header_row_is_set_apart_from_corner_to_corner`.
+  **Every key the table's markup names must resolve in BOTH applications** - `SharedTableColourKeysTests`, in both test
+  projects, fails on a key only one side defines. The text size is set on EVERY column (`CellFontSize`) - a text column carries
   its own size, so the grid's `FontSize` alone shrank only the headers - and cells get `MinHeight` 0
   so the denser rows do not clip the current cell's frame.
 - **Order is NOT a change `BoardDataDiffer` counts** (it pairs by key). A reorder is saved into the
@@ -808,7 +848,10 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   and a fourth pill in the colour key. Flagged is NOT a change - `ChangeCount` and the tab's number
   leave it out, so they keep agreeing with `BoardDataDiffer` - and it is coloured even with nothing
   published. Each pill holds its count AND its word ("[ 2 Added ]"): a count badge beside a
-  separate word read as belonging to either neighbour (reported).
+  separate word read as belonging to either neighbour (reported). The TAB shows flagged rows in a
+  violet pill of their own beside the bracketed change count ("[ 6 flagged ]",
+  `BoardTableSheetTabHeader`, owner request 2026-09-26: "these will be important to address");
+  tab headers are that record, so a test reads a tab's text through `Header.ToString()`.
 
 Two tabs are conditional, both hidden by a Configuration checkbox and both shown from `Main.axaml.cs`:
 `Oscilloscope` (`ApplyOscilloscopeTabVisibility`) and `Workbooks` (`ApplyWorklogBarVisibility`, which
@@ -1767,6 +1810,22 @@ Things that are load-bearing and easy to undo by accident:
   `DataFoldersReadByNameTests` guards it. The PREVIEWS read workbooks through `WorkbookReadCache`
   (once per file version, 2026-09-25); the removal never does. Details: NewContributeStrategy.md,
   "Orphan files".
+- **A newer submission from the same contributor REPLACES the older one** (owner decision,
+  2026-09-26), when it is queued: the same contributor's older submissions of the same system are
+  `withdrawn` with a comment - only if still `pending` and never amended (a maintainer's edits or a
+  first approval keep it), checked in the withdrawing transaction (`SubmissionReplacementRules`,
+  `ISubmissionStore.WithdrawReplacedAsync`). Same contributor = same account, or the same contact
+  email - UNVERIFIED, an accepted risk. `withdrawn` has no other producer, so CRT reads it as
+  "Replaced by a newer submission" (neutral, not refused); a contributor-initiated withdraw would
+  need a state of its own.
+- **A board's KiCad data travels in its submission** (owner decision, 2026-09-26).
+  `SubmissionKiCadFiles` is the ONE rule: only the types CRT reads, only inside the board's own
+  "KiCad data" folder, exempt from "every file is cited by a row" at create AND in PublishPlan -
+  and an AMENDMENT must carry them over, since its file list is rebuilt from rows, which cite no
+  KiCad file. The client sends the union of the draft's and the synced official folder
+  (draft wins); the maintainer reads "KiCad data included: [N] files" above the table
+  (`ReviewNotInTable.KiCadLine`). A new file type in a submission needs a signature in
+  `SubmissionContentRules` (its default arm fails closed).
 - **"Already held" is the blob store OR the published tree at the same path** (2026-09-25). A file
   published unchanged is IMPORTED into the store at create (`BlobStore.TryImportAsync`, hashed as
   it copies) instead of being asked for. Without it, the first submission to every board
@@ -1793,9 +1852,55 @@ over HTTP and holds its session token **in memory only** — see `ReviewSession`
 explains the API's `refreshToken` naming trap: that field IS the bearer token, and there is no
 access-token exchange to go looking for.
 
-**"View in table format" (2026-09-25) is the Drafts tab's table editor**, from the shared
+**The submission view IS the table** - the Drafts tab's table editor, from the shared
 `src/CRT.UI/` library, in DOCUMENT mode (`BoardTableEditor.Open(BoardTableDocument)`: no draft file,
-Save raises `SaveRequested`, the host saves). `ReviewTableWindow` sends the table as an AMENDMENT,
+Save raises `SaveRequested`, the host saves). **Choosing a submission opens its table in the panel**
+(`MaintainerMain.Table.cs`). **The queue is GROUPED BY BOARD** (`MaintainerMain.QueueItems.cs`,
+words and grouping from `ReviewQueueDisplay`): a heading per board ("Commodore / C64 / 250407",
+"New system" when nothing of it is published), and each submission as its comment and one grey
+line. A submission NOT waiting for this account is dimmed and says it is "with the other
+approver" - only the exception is marked. **Headings are DISABLED `ListBoxItem`s, so the list is
+read by ITEM (`SelectedQueueRow` / `SelectQueueRow`), never by index** - a heading shifts every
+position. **There is no Refresh button: the queue checks itself** (`MaintainerMain.QueueRefresh.cs`,
+`QueueRefreshRules`, 2026-09-26) every minute while the window is in FRONT and on coming back to
+it - not in the background, since each check extends the session. A check updates the LIST only:
+it never reloads the open submission's table, re-reads its detail only when its queue row changed,
+and an open submission decided elsewhere stays on screen with its decisions off
+(`ReviewDecisionWording.DecidedElsewhere`) instead of closing. A NEW SYSTEM's table is compared with
+the SUBMISSION ITSELF as it was opened (owner decision, 2026-09-26): its rows start white and only
+the maintainer's own inserts, edits and deletions are coloured; "Show changes only" shows nothing
+until there is one. (Compared with nothing it showed a lone "0 Flagged"; compared with an empty
+board everything was green - tried and turned down.) A save makes the edits the submission, so the
+reopened table is white again.
+The window's place (maximized or not) and "Show changes only" are remembered between runs
+(`MaintainerSettings`, a JSON file beside the session, applied by `MaintainerMain.UseSettings` -
+which only `MaintainerApp` calls, so no test touches the real file).
+The badges are the SERVER's answers, in the queue's `ReviewQueueEntry` (`ReviewQueueFlow`:
+`PublishedBoardLocator.LocateSystem`, and `ApprovalStatus.CanApprove`); the opened row takes the
+detail's answers, which judge shared files against the tree as it is now. **There is no change
+summary any more** (owner request, 2026-09-26: "just
+scrap that information") and no "View in table format" button. **What the table cannot show -
+highlight and calibration-point changes, the automatic checks' findings - is listed in a few lines
+above it** (`ReviewNotInTable`); both are published by an approval, so do not drop those lines.
+Above them, **who sent it and how their OTHER submissions went** ("From dh@hinet.dk - [5] other
+submissions: [3] published, ..."; owner request 2026-09-26): the server's `ContributorHistory`
+builds CRT.Data's `ReviewContributorFacts` (the detail's `contributor`, pinned by
+`ReviewWireContractTests`), `ReviewContributorLine` words it. Same contributor = same account or
+same email, as `SubmissionReplacementRules`; a rejection counts only when a maintainer made it,
+and replaced or never-finished submissions not at all.
+**A FILE REPLACED UNDER ITS OWN PATH COLOURS NOTHING**, so the lines also count what the approval
+would write ("Files: [12] included ([2] new, [1] replaced under the same name)") - without it a
+replaced PDF or scan was approved unseen, the blind spot the retired change summary's file list
+used to close. They do not say "(not in the table)" - that read as if the COMPONENTS were missing - and each
+count is "[2]" with the number bold, so a line comes as `ReviewNoteRun` pieces; a new system's
+lines count ("Highlights included for [2] components") instead of naming every row. Its file card reads
+both sides from the submission and says no "Unchanged" (`IBoardTableFileSource.SaysUnchanged`).
+Each submission's table reopens on the sheet last looked at IN IT (`thisSheetBySubmission`,
+passed as `Open`'s `preferredSheet`; one not opened yet starts on its first sheet with a change). Every way of leaving the table asks about unsaved changes (choosing
+another submission, signing out, closing the window), a decision is refused until the table is saved, and the queue keeps its
+selection across a refresh. **Never `Show()` `MaintainerMain` in a test or render** - its `OnOpened`
+restores the real session and calls the live server; move its `Content` into a plain window, as
+`MaintainerMainQueueTests` does. It sends the table as an AMENDMENT,
 which the server decides (`AmendSubmissionFlow`): authority over the board, still undecided, still
 at the version the maintainer opened, only the table's nine sheets
 (`SubmissionRowsBoard.WithTableSections`), files rebuilt from the rows (kept, or taken from the

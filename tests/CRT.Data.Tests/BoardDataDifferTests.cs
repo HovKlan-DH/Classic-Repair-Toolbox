@@ -459,7 +459,7 @@ public sealed class BoardDataDifferTests
             nameof(BoardLocalFileEntry) => ["Category", "Name"],
             nameof(BoardLinkEntry) => ["Category", "Name"],
             nameof(CreditEntry) => ["Category", "SubCategory", "NameOrHandle"],
-            nameof(KiCadImportantSignalEntry) => ["DisplayName"],
+            nameof(KiCadImportantSignalEntry) => ["DisplayName", "KiCadNetName"],
             _ => [],
         };
 

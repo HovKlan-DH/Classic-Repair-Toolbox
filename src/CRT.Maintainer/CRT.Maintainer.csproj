@@ -35,6 +35,13 @@
         <FileVersion>$(AssemblyVersion)</FileVersion>
         <Version>$(InformationalVersion)</Version>
 
+        <!--
+        CRT's own icon (owner request, 2026-09-26), the one the release workflow already gives the
+        installer. In the program file itself, it is also what Windows shows in the title bar and
+        the taskbar - no window here sets an Icon of its own, as none in CRT does.
+        -->
+        <ApplicationIcon>..\..\Assets\CRT_icon.ico</ApplicationIcon>
+
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <RollForward>LatestMajor</RollForward>

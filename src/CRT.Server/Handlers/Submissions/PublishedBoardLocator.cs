@@ -33,11 +33,31 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
+            return PublishedBoardLocator.Locate(dataTreeRoot, manifest.Manufacturer, manifest.Hardware, manifest.Board);
+        }
+
+        // ###########################################################################################
+        // The same, from a system ID ("Commodore/C64/250407") - what the review QUEUE holds, which
+        // loads no manifest (2026-09-26: the queue's "New system" badge). An id that is not a
+        // well-formed one locates nothing.
+        // ###########################################################################################
+        public static PublishedBoardLocation LocateSystem(string? dataTreeRoot, string? systemId)
+        {
+            if (!SystemDescriptorRules.IsValidSystemId(systemId))
+                return PublishedBoardLocation.None;
+
+            string[] parts = systemId!.Split('/');
+
+            return PublishedBoardLocator.Locate(dataTreeRoot, parts[0], parts[1], parts[2]);
+        }
+
+        private static PublishedBoardLocation Locate(string? dataTreeRoot, string? manufacturer, string? hardware, string? board)
+        {
             if (string.IsNullOrWhiteSpace(dataTreeRoot))
                 return PublishedBoardLocation.None;
 
             string relative = string.Join('/',
-                new[] { manifest.Manufacturer, manifest.Hardware, manifest.Board }
+                new[] { manufacturer, hardware, board }
                     .Where(part => !string.IsNullOrWhiteSpace(part)));
 
             if (string.IsNullOrWhiteSpace(relative))

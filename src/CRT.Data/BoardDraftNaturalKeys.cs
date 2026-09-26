@@ -76,8 +76,19 @@ namespace Handlers.DataHandling
         public static string ForCredit(string category, string subCategory, string nameOrHandle) =>
             Join(category, subCategory, nameOrHandle);
 
-        public static string ForKiCadImportantSignal(string displayName) =>
-            Normalize(displayName);
+        // ###########################################################################################
+        // An important signal is its display name PLUS ITS KICAD NET (changed 2026-09-26).
+        //
+        // One display name routinely covers several nets - "9VAC" is both the 9VAC and the 9VAC~
+        // net, "RESET" is RESET and ~{RESET} - which is the whole point of the sheet: the name a
+        // person knows, mapped to every net KiCad gave it. Keyed on the name alone, those rows were
+        // ONE row to every comparison, so the table flagged every second one as a duplicate
+        // (reported by the project owner from the maintainer's table: "these are not problematic,
+        // and the uniqueness here is both columns"). The consequence worth knowing: changing a
+        // row's net is now a removal plus an addition, as changing a component's region is.
+        // ###########################################################################################
+        public static string ForKiCadImportantSignal(string displayName, string kiCadNetName) =>
+            Join(displayName, kiCadNetName);
 
         // ###########################################################################################
         // The key for one OFFICIAL BoardData row, dispatched on its type - the other side of the
@@ -104,7 +115,7 @@ namespace Handlers.DataHandling
             BoardLocalFileEntry boardFile => ForBoardLocalFile(boardFile.Category, boardFile.Name),
             BoardLinkEntry boardLink => ForBoardLink(boardLink.Category, boardLink.Name),
             CreditEntry credit => ForCredit(credit.Category, credit.SubCategory, credit.NameOrHandle),
-            KiCadImportantSignalEntry signal => ForKiCadImportantSignal(signal.DisplayName),
+            KiCadImportantSignalEntry signal => ForKiCadImportantSignal(signal.DisplayName, signal.KiCadNetName),
 
             // ONE calibration per schematic, so the schematic name alone is the key - which is
             // also what KiCadCalibrationDraftWriter builds when it saves one, via ForSchematic.

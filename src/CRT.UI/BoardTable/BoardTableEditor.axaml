@@ -18,6 +18,22 @@
 			<Setter Property="Padding" Value="12,4" />
 		</Style>
 
+		<!-- A sheet tab's flagged rows, in a violet pill beside its name (BoardTableSheetTabHeader,
+		     owner request 2026-09-26) - the rows' own colour, so the tab points at them. -->
+		<Style Selector="Border.SheetTabFlagged">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Flagged_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="9" />
+			<Setter Property="Padding" Value="7,0" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.SheetTabFlagged TextBlock">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
+
 		<Style Selector="TabControl#SheetTabs TabItem:pointerover /template/ Border#PART_SelectedPipe">
 			<Setter Property="IsVisible" Value="True" />
 		</Style>
@@ -155,6 +171,50 @@
 			<Setter Property="IsHitTestVisible" Value="False" />
 		</Style>
 
+		<!-- THE HEADER ROW STANDS APART WITHOUT SHOUTING (owner requests, 2026-09-26). A light grey
+		     band was not enough, and a black one "steals way too much focus"; so the header is set
+		     apart the way a printed table is: SEMI-BOLD names, a soft band, and a FIRM 2px line
+		     under the whole row. BoardTable_Header_* in BoardTableColors.axaml - the table's own
+		     keys, the same in both applications.
+
+		     Four places, each found the hard way (pinned by BoardTableEditorTests'
+		     The_header_row_is_set_apart_from_corner_to_corner):
+		       - the top-left corner above the drag grips draws a Grid of its own that ignores
+		         Background, and the presenter behind the headers shows past the last column;
+		       - the TEXT is styled on the TextBlock itself: CRT's App.axaml gives every TextBlock the
+		         theme's Fg, which outranks a colour inherited from the header;
+		       - the lines between column names go through the header's SeparatorBrush: the template
+		         sets the line's own colour, which outranks a plain style;
+		       - the line under the row is the grid's own PART_ColumnHeadersAndRowsSeparator, set by
+		         the template too - see its style below. -->
+		<Style Selector="DataGrid#TableGrid DataGridColumnHeader">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Header_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource BoardTable_Header_Fg}" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="SeparatorBrush" Value="{DynamicResource BoardTable_Header_Separator}" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridColumnHeader /template/ Grid#TopLeftHeaderRoot">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Header_Bg}" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid /template/ DataGridColumnHeadersPresenter#PART_ColumnHeadersPresenter">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Header_Bg}" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridColumnHeader TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource BoardTable_Header_Fg}" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
+
+		<!-- The template sets this line's colour and height ITSELF, and a value set in a template
+		     outranks a plain style - so the selector carries the grid's HeaderStyled class, which
+		     makes the style a trigger, and a trigger outranks the template (the grip's trick). -->
+		<Style Selector="DataGrid#TableGrid.HeaderStyled /template/ Rectangle#PART_ColumnHeadersAndRowsSeparator">
+			<Setter Property="Fill" Value="{DynamicResource BoardTable_Header_Line}" />
+			<Setter Property="Height" Value="2" />
+		</Style>
+
 		<!-- A deleted row cannot be dragged (BoardTableSheet.BeginRowDrag refuses it), so it offers
 		     no grip. Kept AFTER the grip styles above, which it must outrank. -->
 		<Style Selector="DataGridRow.BoardTableDeleted DataGridRowHeader /template/ Border#DragGrip">
@@ -169,78 +229,14 @@
 					Padding="0"
 					Margin="0,0,0,6" />
 
-		<Grid Grid.Row="1" ColumnDefinitions="Auto,16,Auto,*,Auto" Margin="0,0,0,6">
-			<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-				<Button x:Name="InsertRowAboveButton"
-						Content="Insert row above"
-						ToolTip.Tip="Add an empty row above the selected one"
-						Click="OnInsertRowAboveClick" />
-				<Button x:Name="InsertRowBelowButton"
-						Content="Insert row below"
-						ToolTip.Tip="Add an empty row below the selected one"
-						Click="OnInsertRowBelowClick" />
-				<Button x:Name="DeleteRowButton"
-						Content="Delete row"
-						ToolTip.Tip="Remove the selected row. A published row stays visible in red, where it was. Ctrl+Z undoes it."
-						Click="OnDeleteRowClick" />
-				<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
-				     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
-			</StackPanel>
-
-			<!-- For a system with nothing published, only the Flagged pill shows (Attach): there is
-			     nothing to be added, changed or deleted against, but a duplicate is still one. -->
-			<StackPanel Grid.Column="2" x:Name="LegendPanel" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-				<Border x:Name="AddedPill"
-						Classes="LegendPill"
-						Background="{DynamicResource BoardTable_Added_Bg}"
-						ToolTip.Tip="Rows that are not in the published data (marked +)">
-					<StackPanel Orientation="Horizontal" Spacing="4">
-						<TextBlock x:Name="AddedCountText" Classes="LegendCount" Text="0" />
-						<TextBlock Text="Added" />
-					</StackPanel>
-				</Border>
-				<Border x:Name="ModifiedPill"
-						Classes="LegendPill"
-						Background="{DynamicResource BoardTable_Modified_Bg}"
-						ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value.">
-					<StackPanel Orientation="Horizontal" Spacing="4">
-						<TextBlock x:Name="ModifiedCountText" Classes="LegendCount" Text="0" />
-						<TextBlock Text="Modified" />
-					</StackPanel>
-				</Border>
-				<Border x:Name="DeletedPill"
-						Classes="LegendPill"
-						Background="{DynamicResource BoardTable_Deleted_Bg}"
-						ToolTip.Tip="Published rows your draft no longer has (marked -)">
-					<StackPanel Orientation="Horizontal" Spacing="4">
-						<TextBlock x:Name="DeletedCountText" Classes="LegendCount" Text="0" />
-						<TextBlock Text="Deleted" />
-					</StackPanel>
-				</Border>
-				<!-- Rows marked "!": not a change, and not in the tab's number - worth a second look. -->
-				<Border x:Name="FlaggedPill"
-						Classes="LegendPill"
-						Background="{DynamicResource BoardTable_Flagged_Bg}"
-						ToolTip.Tip="Rows marked ! - a duplicate of a row above, or missing a value it needs and so left out when saving. Hover a row to see which.">
-					<StackPanel Orientation="Horizontal" Spacing="4">
-						<TextBlock x:Name="FlaggedCountText" Classes="LegendCount" Text="0" />
-						<TextBlock Text="Flagged" />
-					</StackPanel>
-				</Border>
-
-				<!-- Hides every unchanged row, leaving what was added, changed or deleted - and any
-				     row still needing a second look (flagged, or new and still empty). Moving rows is
-				     off while it is on: a position among hidden rows means nothing. -->
-				<CheckBox x:Name="OnlyChangesCheckBox"
-						  Content="Show changes only"
-						  FontSize="12"
-						  Margin="6,0,0,0"
-						  VerticalAlignment="Center"
-						  ToolTip.Tip="Hide the rows you have not touched, leaving what you added, changed or deleted and any flagged row"
-						  IsCheckedChanged="OnOnlyChangesChanged" />
-			</StackPanel>
-
-			<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+		<!-- THE TOOLBAR WRAPS rather than running off the edge (2026-09-26). In the maintainer
+		     application the table sits in the submission panel beside the queue, and at the window's
+		     default width a single row pushed "Save changes" out of sight entirely (seen in a
+		     render). Save and Reload are docked right, so they always keep their place; the row
+		     buttons and the colour key wrap onto a second line when there is no room. At the
+		     widths the Drafts tab is used at, it is one row, as before. -->
+		<DockPanel Grid.Row="1" Margin="0,0,0,6">
+			<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="16,0,0,0">
 				<Button x:Name="ReloadButton"
 						Content="Reload"
 						ToolTip.Tip="Read the draft again from its file, for example after editing it in Excel"
@@ -256,7 +252,80 @@
 						ToolTip.Tip="Write your edits into the draft"
 						Click="OnSaveClick" />
 			</StackPanel>
-		</Grid>
+
+			<WrapPanel x:Name="ToolbarWrap" Orientation="Horizontal" ItemSpacing="16" LineSpacing="6">
+				<StackPanel Orientation="Horizontal" Spacing="6">
+					<Button x:Name="InsertRowAboveButton"
+							Content="Insert row above"
+							ToolTip.Tip="Add an empty row above the selected one"
+							Click="OnInsertRowAboveClick" />
+					<Button x:Name="InsertRowBelowButton"
+							Content="Insert row below"
+							ToolTip.Tip="Add an empty row below the selected one"
+							Click="OnInsertRowBelowClick" />
+					<Button x:Name="DeleteRowButton"
+							Content="Delete row"
+							ToolTip.Tip="Remove the selected row. A published row stays visible in red, where it was. Ctrl+Z undoes it."
+							Click="OnDeleteRowClick" />
+					<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
+					     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
+				</StackPanel>
+
+				<!-- For a system with nothing published, only the Flagged pill shows (Attach): there is
+				     nothing to be added, changed or deleted against, but a duplicate is still one. -->
+				<StackPanel x:Name="LegendPanel" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+					<Border x:Name="AddedPill"
+							Classes="LegendPill"
+							Background="{DynamicResource BoardTable_Added_Bg}"
+							ToolTip.Tip="Rows that are not in the published data (marked +)">
+						<StackPanel Orientation="Horizontal" Spacing="4">
+							<TextBlock x:Name="AddedCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Added" />
+						</StackPanel>
+					</Border>
+					<Border x:Name="ModifiedPill"
+							Classes="LegendPill"
+							Background="{DynamicResource BoardTable_Modified_Bg}"
+							ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value.">
+						<StackPanel Orientation="Horizontal" Spacing="4">
+							<TextBlock x:Name="ModifiedCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Modified" />
+						</StackPanel>
+					</Border>
+					<Border x:Name="DeletedPill"
+							Classes="LegendPill"
+							Background="{DynamicResource BoardTable_Deleted_Bg}"
+							ToolTip.Tip="Published rows your draft no longer has (marked -)">
+						<StackPanel Orientation="Horizontal" Spacing="4">
+							<TextBlock x:Name="DeletedCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Deleted" />
+						</StackPanel>
+					</Border>
+					<!-- Rows marked "!": not a change, and not in the tab's number - worth a second look. -->
+					<Border x:Name="FlaggedPill"
+							Classes="LegendPill"
+							Background="{DynamicResource BoardTable_Flagged_Bg}"
+							ToolTip.Tip="Rows marked ! - a duplicate of a row above, or missing a value it needs and so left out when saving. Hover a row to see which.">
+						<StackPanel Orientation="Horizontal" Spacing="4">
+							<TextBlock x:Name="FlaggedCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Flagged" />
+						</StackPanel>
+					</Border>
+
+					<!-- Hides every unchanged row, leaving what was added, changed or deleted - and any
+					     row still needing a second look (flagged, or new and still empty). Moving rows is
+					     off while it is on: a position among hidden rows means nothing. -->
+					<CheckBox x:Name="OnlyChangesCheckBox"
+							  Content="Show changes only"
+							  FontSize="12"
+							  Margin="6,0,0,0"
+							  VerticalAlignment="Center"
+							  ToolTip.Tip="Hide the rows you have not touched, leaving what you added, changed or deleted and any flagged row"
+							  IsCheckedChanged="OnOnlyChangesChanged" />
+				</StackPanel>
+
+			</WrapPanel>
+		</DockPanel>
 
 		<StackPanel Grid.Row="2">
 			<!-- The draft file changed underneath a table with unsaved edits - in Excel, most
@@ -297,9 +366,15 @@
 		     means something in the sheet's own order.
 
 		     A smaller font and fixed row height than the grid's defaults (2026-09-24, owner
-		     request), so a sheet shows more rows at once - closer to how dense Excel is. -->
+		     request), so a sheet shows more rows at once - closer to how dense Excel is.
+
+		     The scroll bars stay FULL SIZE (ScrollViewer.AllowAutoHide off, owner request,
+		     2026-09-26): the theme shrank them to a hairline until pointed at, so the columns past
+		     the right edge of a wide sheet were easy to miss. The grid scrolls through a
+		     ScrollViewer of its own, which takes the setting from here. -->
 		<DataGrid Grid.Row="3"
 				  x:Name="TableGrid"
+				  Classes="HeaderStyled"
 				  FontSize="12"
 				  RowHeight="26"
 				  ColumnHeaderHeight="28"
@@ -313,8 +388,35 @@
 				  RowHeaderWidth="22"
 				  GridLinesVisibility="All"
 				  FrozenColumnCount="1"
+				  ScrollViewer.AllowAutoHide="False"
 				  BorderThickness="1"
 				  BorderBrush="{DynamicResource Table_BorderRowLine}"
 				  Background="{DynamicResource Table_Bg}" />
+
+		<!-- THE FILE HOVER CARD (BoardTableEditor.FilePreview.cs): the picture, or both pictures, or
+		     a link to a PDF, shown the moment the pointer is on a file cell and gone the moment it is
+		     on neither that cell nor the card (owner request, 2026-09-26).
+
+		     A POPUP IN THE WINDOW'S OWN OVERLAY LAYER, not a flyout: a flyout closes only once the
+		     pointer is about 100px away from it, which read as a delay. In the overlay layer the card
+		     is part of the window, so "is the pointer on it" is known exactly. Light dismiss is OFF, or
+		     the first click in the grid would be spent closing the card instead of selecting a cell.
+
+		     BESIDE the cell, not below it: below, the card covered the next rows of the same column,
+		     so moving down from one file to the next landed on the card. The colours are the Fluent
+		     flyout's own, so it looks as the card always did, in both themes. -->
+		<Popup Grid.Row="3"
+			   x:Name="FilePreviewPopup"
+			   IsLightDismissEnabled="False"
+			   ShouldUseOverlayLayer="True"
+			   Placement="RightEdgeAlignedTop">
+			<Border x:Name="FilePreviewFrame"
+					Background="{DynamicResource FlyoutPresenterBackground}"
+					BorderBrush="{DynamicResource FlyoutBorderThemeBrush}"
+					BorderThickness="1"
+					CornerRadius="4"
+					Padding="12"
+					BoxShadow="0 4 12 0 #40000000" />
+		</Popup>
 	</Grid>
 </UserControl>

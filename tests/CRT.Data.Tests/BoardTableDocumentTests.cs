@@ -287,6 +287,58 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(1, sheet.FlaggedCount);
     }
 
+    // ###########################################################################################
+    // *** A BOARD COMPARED WITH ITSELF MARKS NOTHING - its duplicates included (2026-09-26). *** The
+    // maintainer's table compares a NEW system's submission with itself as it was opened, so only
+    // the maintainer's own edits are coloured. A duplicate in it is still flagged - it is one - but
+    // its twin on the compared side must not come back as a red "deleted" ghost.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_compared_with_itself_marks_nothing_but_its_duplicates()
+    {
+        BoardData board = Board(Component("U1", "CPU"), Component("U1", "CPU again"), Component("U2", "VIC"));
+
+        BoardTableSheet sheet = Components(BoardTableDocument.Create(board, Board(Component("U1", "CPU"), Component("U1", "CPU again"), Component("U2", "VIC"))));
+
+        Assert.DoesNotContain(sheet.Rows, row => row.IsDeleted);
+        Assert.Equal(0, sheet.ChangeCount);
+        Assert.Equal(1, sheet.FlaggedCount);
+        Assert.Equal(BoardTableRowState.Duplicate, sheet.Rows[1].State);
+    }
+
+    // ###########################################################################################
+    // *** ONE DISPLAY NAME OVER SEVERAL NETS IS SEVERAL ROWS, NOT DUPLICATES (2026-09-26). ***
+    // "9VAC" maps to both the 9VAC and the 9VAC~ net - the sheet exists to say exactly that. Keyed
+    // on the name alone, every second one was flagged (reported from the maintainer's table: "the
+    // uniqueness here is both columns"). Both columns the same is still a duplicate.
+    // ###########################################################################################
+    [Fact]
+    public void Important_signals_sharing_a_display_name_but_not_a_net_are_not_flagged()
+    {
+        var board = new BoardData
+        {
+            KiCadImportantSignals =
+            [
+                new() { DisplayName = "9VAC", KiCadNetName = "9VAC" },
+                new() { DisplayName = "9VAC", KiCadNetName = "9VAC~" },
+                new() { DisplayName = "RESET", KiCadNetName = "~{RESET}" },
+            ],
+        };
+
+        BoardTableSheet sheet = BoardTableDocument.Create(board, board).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
+
+        Assert.All(sheet.Rows, row => Assert.Equal(BoardTableRowState.Unchanged, row.State));
+        Assert.Equal(0, sheet.FlaggedCount);
+        Assert.False(sheet.HasChangeRows);
+
+        BoardTableSheet doubled = BoardTableDocument.Create(
+                board,
+                new BoardData { KiCadImportantSignals = [.. board.KiCadImportantSignals, new() { DisplayName = "9VAC", KiCadNetName = "9VAC~" }] })
+            .FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
+
+        Assert.Equal(BoardTableRowState.Duplicate, doubled.Rows.Last().State);
+    }
+
     [Fact]
     public void An_important_signal_missing_half_is_flagged_incomplete_and_its_published_row_shows_as_deleted()
     {
@@ -1088,5 +1140,74 @@ public sealed class BoardTableDocumentTests
         Assert.Null(deletedWith);
         Assert.Equal(["U8", "U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
         Assert.Equal(3, document.ApplyTo(draft).ComponentHighlights.Count);
+    }
+
+    // ------------------------------------------------------------------ Which sheet tabs show (2026-09-26)
+
+    // A board whose Components sheet has a change and whose Credits sheet has none.
+    private static BoardTableDocument ComponentsChanged() =>
+        BoardTableDocument.Create(Board(Component("U1", "CPU")), Board(Component("U1", "CPU 6510")));
+
+    // ###########################################################################################
+    // "Show changes only" hides the sheets it would show nothing of (owner request, 2026-09-26) -
+    // and without it every sheet shows.
+    // ###########################################################################################
+    [Fact]
+    public void With_show_changes_only_only_the_sheets_with_something_to_show_have_tabs()
+    {
+        BoardTableDocument document = ComponentsChanged();
+
+        Assert.Equal(document.Sheets, document.SheetsShown(onlyChanges: false, current: null));
+        Assert.Equal([BoardWorkbookSchema.SheetComponents], document.SheetsShown(onlyChanges: true, current: null).Select(sheet => sheet.Name));
+    }
+
+    // A flagged row (a duplicate, say) is not a change but IS shown by the filter - so its sheet keeps
+    // its tab, or the one thing needing a second look would be out of reach.
+    [Fact]
+    public void A_sheet_with_only_a_flagged_row_keeps_its_tab()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1")),
+            Board(Component("U1"), Component("U1")));
+
+        Assert.Equal(0, Components(document).ChangeCount);
+        Assert.True(Components(document).HasChangeRows);
+        Assert.Contains(Components(document), document.SheetsShown(onlyChanges: true, current: null));
+    }
+
+    // The sheet being worked on keeps its tab when its last change is undone - it is not pulled
+    // away mid-work; it goes once another sheet is chosen.
+    [Fact]
+    public void The_current_sheet_keeps_its_tab_while_it_is_on_screen()
+    {
+        BoardTableDocument document = ComponentsChanged();
+        BoardTableSheet credits = document.FindSheet(BoardWorkbookSchema.SheetCredits)!;
+
+        Assert.Contains(credits, document.SheetsShown(onlyChanges: true, current: credits));
+        Assert.DoesNotContain(credits, document.SheetsShown(onlyChanges: true, current: null));
+    }
+
+    // Nothing to show anywhere: every tab stays, rather than all but one vanishing.
+    [Fact]
+    public void A_table_with_nothing_to_show_keeps_every_tab()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(Board(Component("U1")), Board(Component("U1")));
+
+        Assert.Equal(document.Sheets, document.SheetsShown(onlyChanges: true, current: null));
+    }
+
+    // ###########################################################################################
+    // The sheet a table opens on: the one wanted (the sheet last looked at) while its tab shows,
+    // else the first that shows.
+    // ###########################################################################################
+    [Fact]
+    public void A_table_opens_on_the_wanted_sheet_while_its_tab_shows()
+    {
+        BoardTableDocument document = ComponentsChanged();
+
+        Assert.Equal(BoardWorkbookSchema.SheetCredits, document.SheetToShow(BoardWorkbookSchema.SheetCredits, onlyChanges: false).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetComponents, document.SheetToShow(BoardWorkbookSchema.SheetCredits, onlyChanges: true).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow(null, onlyChanges: false).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow("No such sheet", onlyChanges: false).Name);
     }
 }

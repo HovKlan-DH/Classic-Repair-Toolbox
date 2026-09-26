@@ -122,6 +122,94 @@ namespace CRT.Server.Tests
             };
         }
 
+        // ###########################################################################################
+        // *** THE BOARD'S KiCad DATA GOES THROUGH THE WHOLE TRANSPORT (owner decision, 2026-09-26).
+        // *** A .kicad_pcb in the board's own "KiCad data" folder - cited by no row - is accepted at
+        // create, uploaded, content-checked at finalise and queued. Before this, the rules refused
+        // the type outright and a new system was published to BETA without its traces.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_boards_KiCad_data_is_accepted_uploaded_and_queued()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            const string KiCadPath = "Commodore/C64/250407/KiCad data/board.kicad_pcb";
+            byte[] kiCadBytes = Encoding.UTF8.GetBytes("(kicad_pcb (version 20240108))");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = KiCadPath,
+                Sha256 = Convert.ToHexStringLower(SHA256.HashData(kiCadBytes)),
+                SizeBytes = kiCadBytes.Length
+            });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
+
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            using (var stream = new MemoryStream(kiCadBytes))
+            {
+                BlobUploadOutcome uploaded = await SubmissionFlows.UploadChunkAsync(
+                    created.Negotiation!.SubmissionId, manifest.Files[1].Sha256, 0, stream,
+                    created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+                Assert.Equal(BlobUploadStatus.Completed, uploaded.Status);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(result.IsAccepted, string.Join("; ", result.Findings.Select(finding => finding.Code)));
+        }
+
+        // The finalise-time content check covers KiCad files too: a program renamed .kicad_pcb is
+        // refused before any maintainer sees it.
+        [Fact]
+        public async Task A_program_renamed_as_a_KiCad_file_is_refused_at_finalise()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            byte[] notKiCad = [0x4D, 0x5A, 0x90, 0x00, .. Encoding.UTF8.GetBytes("MZ header")];
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/C64/250407/KiCad data/board.kicad_pcb",
+                Sha256 = Convert.ToHexStringLower(SHA256.HashData(notKiCad)),
+                SizeBytes = notKiCad.Length
+            });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted);
+
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            using (var stream = new MemoryStream(notKiCad))
+            {
+                await SubmissionFlows.UploadChunkAsync(
+                    created.Negotiation!.SubmissionId, manifest.Files[1].Sha256, 0, stream,
+                    created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.False(result.IsAccepted);
+            Assert.Contains(result.Findings, finding => finding.Subject.EndsWith("board.kicad_pcb", StringComparison.Ordinal));
+        }
+
         // -----------------------------------------------------------------------------------
         // Create and negotiate.
         // -----------------------------------------------------------------------------------

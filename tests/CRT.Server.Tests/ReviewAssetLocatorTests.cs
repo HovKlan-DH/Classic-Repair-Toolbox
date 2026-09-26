@@ -229,6 +229,72 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** THE OLD PICTURE OF A CHANGED OR DELETED ROW (2026-09-26). *** The submission no
+        // longer cites it - only the published board does - and it is the "before" side of the
+        // comparison. It used to answer 404, so every removed image read "No published file at this
+        // path" in the change summary.
+        // ###########################################################################################
+        [Fact]
+        public void A_file_only_the_PUBLISHED_board_cites_is_found()
+        {
+            const string Old = "Commodore/C64/250407/old board.png";
+
+            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "old board.png"), "bytes");
+
+            Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
+                this.thisDataTree,
+                ReviewAssetLocatorTests.ManifestReferencing(["Commodore/C64/250407/new board.png"]),
+                Old,
+                out string resolved,
+                publishedBoardFiles: () => [Old]));
+
+            Assert.True(File.Exists(resolved));
+        }
+
+        // Neither board cites it: still refused, whatever sits on disk beside the board.
+        [Fact]
+        public void A_file_NEITHER_board_cites_is_still_refused()
+        {
+            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "unrelated.png"), "bytes");
+
+            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
+                this.thisDataTree,
+                ReviewAssetLocatorTests.ManifestReferencing(["Commodore/C64/250407/new board.png"]),
+                "Commodore/C64/250407/unrelated.png",
+                out _,
+                publishedBoardFiles: () => ["Commodore/C64/250407/old board.png"]));
+        }
+
+        // The published board is read only when the submission does not cite the path itself - the
+        // ordinary request (a file the submission names) never pays for a workbook read.
+        [Fact]
+        public void The_published_board_is_not_read_for_a_file_the_submission_cites()
+        {
+            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Schematics");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "board.png"), "bytes");
+
+            bool asked = false;
+
+            Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
+                this.thisDataTree,
+                ReviewAssetLocatorTests.Manifest(),
+                "Commodore/C64/250407/Schematics/board.png",
+                out _,
+                publishedBoardFiles: () =>
+                {
+                    asked = true;
+                    return [];
+                }));
+
+            Assert.False(asked);
+        }
+
+        // ###########################################################################################
         // *** THE SCOPE LIMIT THAT REPLACED THE SYSTEM FOLDER, and it is STRICTER. ***
         //
         // The old base confined reads to the system own folder. The new one confines them to the

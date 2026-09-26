@@ -30,6 +30,12 @@
                     <SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
                     <SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
                     <SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+
+                    <!-- The queue's "New system" badge and the line between its boards (MaintainerMain.axaml, 2026-09-26). -->
+                    <SolidColorBrush x:Key="Badge_NewSystem_Bg">#FFF1D6</SolidColorBrush>
+                    <SolidColorBrush x:Key="Badge_NewSystem_Fg">#8A5200</SolidColorBrush>
+                    <SolidColorBrush x:Key="Badge_NewSystem_Border">#E8B866</SolidColorBrush>
+                    <SolidColorBrush x:Key="Queue_Divider">#D0D0D0</SolidColorBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="Bg">#1F1F1F</SolidColorBrush>
@@ -40,6 +46,11 @@
                     <SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
                     <SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
                     <SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+
+                    <SolidColorBrush x:Key="Badge_NewSystem_Bg">#3D2E10</SolidColorBrush>
+                    <SolidColorBrush x:Key="Badge_NewSystem_Fg">#F7C873</SolidColorBrush>
+                    <SolidColorBrush x:Key="Badge_NewSystem_Border">#7A5A1E</SolidColorBrush>
+                    <SolidColorBrush x:Key="Queue_Divider">#4A4A4A</SolidColorBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

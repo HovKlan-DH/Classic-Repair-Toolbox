@@ -416,7 +416,8 @@ namespace CRT.Maintainer.Handlers
                 ReviewApiParser.ParseSubmittedFiles(root),
                 ReviewApiParser.ParseApproval(root),
                 ReviewApiParser.ParseRemovals(root),
-                ReviewApiParser.ParseAmendment(root));
+                ReviewApiParser.ParseAmendment(root),
+                ReviewApiParser.ParseContributor(root));
         }
 
         // ###########################################################################################
@@ -698,6 +699,23 @@ namespace CRT.Maintainer.Handlers
         // record the server wrote; null when absent or unreadable, never a failure of the answer
         // around it.
         // ###########################################################################################
+        // Who sent the submission and how their other submissions went - CRT.Data's
+        // ReviewContributorFacts, as the server wrote it. Null from an older server.
+        private static ReviewContributorFacts? ParseContributor(JsonElement root)
+        {
+            if (!root.TryGetProperty("contributor", out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                return raw.Deserialize<ReviewContributorFacts>(ReviewApiParser.FactOptions);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
         private static ApprovalStatus? ParseApproval(JsonElement root)
         {
             if (!root.TryGetProperty("approval", out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
@@ -1067,7 +1085,12 @@ namespace CRT.Maintainer.Handlers
                 ReviewApiParser.String(element, "summary") ?? string.Empty,
                 ReviewApiParser.String(element, "contactEmail") ?? string.Empty,
                 ReviewApiParser.Time(element, "createdUtc"),
-                ReviewApiParser.Bool(element, "touchesSharedFiles") ?? false);
+                ReviewApiParser.Bool(element, "touchesSharedFiles") ?? false,
+
+                // The queue list's two badges (2026-09-26). Absent from an older server - null, so
+                // no badge is shown rather than a wrong one.
+                ReviewApiParser.Bool(element, "isNewSystem"),
+                ReviewApiParser.Bool(element, "awaitsYou"));
         }
 
         // -----------------------------------------------------------------------------------
@@ -1254,7 +1277,10 @@ namespace CRT.Maintainer.Handlers
         FileRemovalPreview? Removals = null,
 
         // Who last changed it in the maintainer application's table (2026-09-25), or null.
-        ReviewAmendmentView? Amendment = null);
+        ReviewAmendmentView? Amendment = null,
+
+        // Who sent it and how their other submissions went (2026-09-26). Null from an older server.
+        ReviewContributorFacts? Contributor = null);
 
     // A maintainer's change to a submission, as the submission view names it.
     public sealed record ReviewAmendmentView(int Version, string By, DateTimeOffset? AtUtc);
@@ -1340,5 +1366,10 @@ namespace CRT.Maintainer.Handlers
 
         // Whether it adds or changes a shared file - which is why it is in an administrator's
         // queue rather than a maintainer's. Trailing with a default for an older server.
-        bool TouchesSharedFiles = false);
+        bool TouchesSharedFiles = false,
+
+        // Whether its system has no published board yet, and whether it waits for THIS account's
+        // approval - CRT.Data's ReviewQueueEntry. Null when the server did not say.
+        bool? IsNewSystem = null,
+        bool? AwaitsYou = null);
 }

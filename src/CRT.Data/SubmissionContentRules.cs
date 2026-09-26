@@ -75,6 +75,16 @@ namespace Handlers.DataHandling
                 ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp" => SubmissionContentRules.IsImage(head),
                 ".pdf" => head[..Math.Min(head.Length, SubmissionContentRules.PdfHeaderWindow)].IndexOf("%PDF-"u8) >= 0,
                 ".txt" or ".html" or ".htm" => SubmissionContentRules.LooksLikeText(head),
+
+                // A board's KiCad data (2026-09-26). The board and schematic files are s-expression
+                // text ("(kicad_pcb ..."), the project file is JSON - so each must be text AND open
+                // with its format's own first character, which refuses a renamed executable and a
+                // file of the wrong KiCad kind alike.
+                ".kicad_pcb" or ".kicad_sch" =>
+                    SubmissionContentRules.LooksLikeText(head) && SubmissionContentRules.OpensWith(head, (byte)'('),
+                ".kicad_pro" =>
+                    SubmissionContentRules.LooksLikeText(head) && SubmissionContentRules.OpensWith(head, (byte)'{'),
+
                 _ => false
             };
 
@@ -82,6 +92,9 @@ namespace Handlers.DataHandling
             {
                 reason = extension switch
                 {
+                    ".kicad_pcb" or ".kicad_sch" or ".kicad_pro" =>
+                        "It does not look like a KiCad file of that kind. KiCad saves these as plain " +
+                        "text; export the project again from KiCad rather than renaming a file.",
                     ".txt" or ".html" or ".htm" =>
                         "It does not look like a text file. Text files must be saved as plain text " +
                         "(UTF-8), not as a document or program.",
@@ -104,6 +117,28 @@ namespace Handlers.DataHandling
             head.StartsWith("GIF89a"u8) ||
             (head.Length >= 26 && head.StartsWith("BM"u8)) ||
             (head.Length >= 12 && head.StartsWith("RIFF"u8) && head.Slice(8, 4).SequenceEqual("WEBP"u8));
+
+        // ###########################################################################################
+        // Does the text open with this character - after any whitespace and an optional UTF-8 BOM,
+        // both of which a KiCad file saved through another editor can legitimately start with?
+        // ###########################################################################################
+        private static bool OpensWith(ReadOnlySpan<byte> head, byte opener)
+        {
+            ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
+
+            if (head.StartsWith(bom))
+                head = head[bom.Length..];
+
+            foreach (byte value in head)
+            {
+                if (value is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+                    continue;
+
+                return value == opener;
+            }
+
+            return false;
+        }
 
         // ###########################################################################################
         // Text is text: no NUL byte anywhere in the sample. Every executable, archive, image and

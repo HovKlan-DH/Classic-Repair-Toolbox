@@ -49,6 +49,24 @@ namespace CRT
 
         private CancellationTokenSource? thisCancellation;
 
+        // ###########################################################################################
+        // The board's KiCad data - the "KiCad data" folder's files, which no row cites and
+        // CollectReferencedFiles therefore cannot find (owner decision, 2026-09-26). The union of
+        // the draft's folder and the synced official one, the draft winning, which is the same
+        // draft-first rule the upload's own file resolution applies.
+        // ###########################################################################################
+        private IReadOnlyList<string> CollectKiCadFiles()
+        {
+            if (this.thisIdentity is null)
+                return [];
+
+            string officialFolder = string.IsNullOrWhiteSpace(this.thisDataRoot)
+                ? string.Empty
+                : Path.Combine(this.thisDataRoot, this.thisIdentity.SystemId.Replace('/', Path.DirectorySeparatorChar));
+
+            return SubmissionKiCadFiles.Collect(this.thisIdentity.SystemId, this.thisSystemFolder, officialFolder);
+        }
+
         // Set once the submission has been sent, so the caller can tell whether the draft should
         // be left alone (always, for now - see the Drafts tab) and what to show afterwards.
         public SubmissionResult? Result { get; private set; }
@@ -139,6 +157,13 @@ namespace CRT
             this.AddSummaryLine("Components", this.thisMergedData.Components.Count.ToString(CultureInfo.InvariantCulture));
             this.AddSummaryLine("Highlights", this.thisMergedData.ComponentHighlights.Count.ToString(CultureInfo.InvariantCulture));
             this.AddSummaryLine("Files referenced", files.Count.ToString(CultureInfo.InvariantCulture));
+
+            // The board's KiCad data travels too (2026-09-26) - only said when there is any, since
+            // most boards have none and a permanent "KiCad files: 0" would read as something missing.
+            int kiCadFiles = this.CollectKiCadFiles().Count;
+
+            if (kiCadFiles > 0)
+                this.AddSummaryLine("KiCad files", kiCadFiles.ToString(CultureInfo.InvariantCulture));
 
             // How much actually uploads is not known until the server has been asked, so this says
             // so rather than guessing - an estimate that turns out wrong is worse than no estimate.
@@ -241,7 +266,17 @@ namespace CRT
             IProgress<SubmissionProgress> progress,
             CancellationToken token)
         {
-            IReadOnlyList<string> paths = SubmissionManifestBuilder.CollectReferencedFiles(this.thisMergedData!);
+            // What the rows cite, plus the board's KiCad data - the folder no row cites, which the
+            // rows-only list silently left behind until 2026-09-26 (a new system published without
+            // its traces). Both are hashed the same way; SubmissionFileLocator resolves each path
+            // against the draft first, then the synced data.
+            IReadOnlyList<string> kiCadFiles = this.CollectKiCadFiles();
+
+            List<string> paths =
+            [
+                .. SubmissionManifestBuilder.CollectReferencedFiles(this.thisMergedData!),
+                .. kiCadFiles
+            ];
 
             FileHashResult hashed = await SubmissionClient.HashFilesAsync(
                 this.thisDataRoot, this.thisSystemFolder, paths, progress, token);
@@ -265,7 +300,8 @@ namespace CRT
                 },
                 hashed.Hashes,
                 renames: null,
-                calibrations: this.thisCalibrations);
+                calibrations: this.thisCalibrations,
+                kiCadFiles: kiCadFiles);
 
             manifest.Manifest.ContactEmail = this.EmailText;
 

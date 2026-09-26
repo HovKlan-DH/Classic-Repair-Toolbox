@@ -86,6 +86,35 @@ namespace CRT.Server.Tests
             Assert.Equal(Version.Parse("2.0.0"), location.Generation);
         }
 
+        // ###########################################################################################
+        // From a system ID - what the review QUEUE holds, which loads no manifest (2026-09-26: the
+        // "New system" badge). The same workbook as from the manifest, and nothing at all for an id
+        // that is not three well-formed parts - a traversal included.
+        // ###########################################################################################
+        [Fact]
+        public void A_system_id_finds_the_same_board_as_its_manifest()
+        {
+            this.SystemFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
+
+            PublishedBoardLocation byId = PublishedBoardLocator.LocateSystem(this.thisRoot, "Commodore/C64/250407");
+
+            Assert.Equal(PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest()), byId);
+            Assert.True(byId.Exists);
+        }
+
+        [Theory]
+        [InlineData("Commodore/C64")]
+        [InlineData("Commodore/C64/250407/extra")]
+        [InlineData("../C64/250407")]
+        [InlineData("")]
+        [InlineData(null)]
+        public void A_malformed_system_id_locates_nothing(string? systemId)
+        {
+            this.SystemFolder("Data C64 250407.xlsx");
+
+            Assert.False(PublishedBoardLocator.LocateSystem(this.thisRoot, systemId).Exists);
+        }
+
         [Fact]
         public void A_tree_with_only_the_unversioned_original_finds_it()
         {

@@ -330,7 +330,8 @@ namespace Handlers.DataHandling
                 BoardLocalFileEntry file => BoardDataDiffer.Join(file.Category, file.Name),
                 BoardLinkEntry link => BoardDataDiffer.Join(link.Category, link.Name),
                 CreditEntry credit => BoardDataDiffer.Join(credit.Category, credit.NameOrHandle),
-                KiCadImportantSignalEntry signal => signal.DisplayName,
+                // With its net: "9VAC" names both the 9VAC and the 9VAC~ net, two rows.
+                KiCadImportantSignalEntry signal => BoardDataDiffer.Join(signal.DisplayName, signal.KiCadNetName),
                 KiCadCalibrationEntry calibration => calibration.SchematicName,
                 _ => string.Empty,
             };

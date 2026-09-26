@@ -77,6 +77,11 @@ namespace CRT
                 ? this.PublishedBoardOverrideForTests(entry)
                 : await TabDrafts.LoadPublishedBoardAsync(entry, status);
 
+            // Resting on a file cell shows the file - the published copy and the draft's.
+            this.TableEditor.FileSource = new DraftTableFileSource(
+                DataManager.DataRoot,
+                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+
             if (!this.TableEditor.Load(DraftManager.DraftsRoot, entry.ExcelDataFile, published))
             {
                 Logger.Warning($"Could not open the table for the draft of [{entry.ExcelDataFile}] - its workbook could not be read");

@@ -265,6 +265,78 @@ public sealed class ReviewWireContractTests
         Assert.Equal(published, row.ProductionPublishedUtc);
     }
 
+    // ###########################################################################################
+    // The queue (2026-09-26 - an anonymous object until then), with the two badges the queue list
+    // shows: whether the system is published, and whether it waits for this account.
+    // ###########################################################################################
+    [Fact]
+    public void The_queue_reads_back_field_for_field_with_its_badges()
+    {
+        var created = new DateTimeOffset(2026, 9, 26, 8, 0, 0, TimeSpan.Zero);
+
+        ReviewQueueResponse? queue = ReviewApiParser.ParseQueue(ReviewWireContractTests.Answer(
+            new ReviewQueueAnswer(
+                CanPublish: true,
+                IsAdministrator: true,
+                Count: 2,
+                Submissions:
+                [
+                    new ReviewQueueEntry(4, "Commodore/C64/250407", "approved", "Corrected U8.", "c@example.com", "r1", created, null, TouchesSharedFiles: true, IsNewSystem: false, AwaitsYou: true),
+                    new ReviewQueueEntry(5, "Amstrad/CPC464/Z70200", "pending", null, null, "", created, null, TouchesSharedFiles: false, IsNewSystem: true, AwaitsYou: false)
+                ])));
+
+        Assert.True(queue!.CanPublish);
+        Assert.True(queue.IsAdministrator);
+        Assert.Equal(2, queue.Submissions.Count);
+
+        ReviewQueueRow first = queue.Submissions[0];
+        Assert.Equal(4, first.Id);
+        Assert.Equal("Commodore/C64/250407", first.SystemId);
+        Assert.Equal("approved", first.State);
+        Assert.Equal("Corrected U8.", first.Summary);
+        Assert.Equal("c@example.com", first.ContactEmail);
+        Assert.Equal(created, first.CreatedUtc);
+        Assert.True(first.TouchesSharedFiles);
+        Assert.False(first.IsNewSystem);
+        Assert.True(first.AwaitsYou);
+
+        ReviewQueueRow second = queue.Submissions[1];
+        Assert.True(second.IsNewSystem);
+        Assert.False(second.AwaitsYou);
+        Assert.Equal(string.Empty, second.Summary);
+    }
+
+    // ###########################################################################################
+    // The contributor facts (2026-09-26): the server's record, under the detail's "contributor",
+    // through the server's own settings and back out of the real parser - every field.
+    // ###########################################################################################
+    [Fact]
+    public void A_details_contributor_reads_back_field_for_field()
+    {
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(new
+        {
+            canPublish = true,
+            submission = new ReviewQueueEntry(4, "Manu1/Hardware1/Board1", "pending", "New stuff", "dh@hinet.dk", "", null, null, false),
+            contributor = new ReviewContributorFacts("dh@hinet.dk", "Dennis", Published: 3, Waiting: 2, ChangesRequested: 1, Rejected: 4)
+        }));
+
+        Assert.Equal(new ReviewContributorFacts("dh@hinet.dk", "Dennis", 3, 2, 1, 4), detail!.Contributor);
+    }
+
+    // A server that does not know sends no badges - read as "not said", never as "published" or
+    // "not yours", so the list shows no badge rather than a wrong one.
+    [Fact]
+    public void A_queue_entry_without_badges_reads_back_as_not_said()
+    {
+        ReviewQueueResponse? queue = ReviewApiParser.ParseQueue(ReviewWireContractTests.Answer(
+            new ReviewQueueAnswer(true, false, 1,
+                [new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "x", "c@example.com", "r1", null, null, false)])));
+
+        ReviewQueueRow row = Assert.Single(queue!.Submissions);
+        Assert.Null(row.IsNewSystem);
+        Assert.Null(row.AwaitsYou);
+    }
+
     // "Switched off" must stay distinguishable from "nothing waiting", with nulls left out.
     [Fact]
     public void A_production_list_from_a_server_that_cannot_publish_reads_back_as_switched_off()

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Handlers.DataHandling;
 
 namespace CRT.Maintainer.Handlers
 {
@@ -24,19 +25,6 @@ namespace CRT.Maintainer.Handlers
     // ###########################################################################################
     public static class ReviewImageComparison
     {
-        // ###########################################################################################
-        // What the maintainer app will try to draw as a picture.
-        //
-        // *** A CONTRACT WITH ReviewAssetLocator's OWN ALLOWLIST on the server. *** Offering a
-        // comparison for a type the server refuses to serve as an image produces a panel that
-        // cannot decode what comes back. SVG is absent from both for the same reason: it is a
-        // scriptable XML document, not a picture.
-        // ###########################################################################################
-        private static readonly HashSet<string> ImageExtensions =
-            new(StringComparer.OrdinalIgnoreCase)
-            {
-                ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"
-            };
 
         // ###########################################################################################
         // The image comparisons worth showing, removals first.
@@ -120,16 +108,15 @@ namespace CRT.Maintainer.Handlers
             return pairs;
         }
 
-        private static bool IsImage(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-                return false;
-
-            // The LAST extension, which is what the filesystem and the server both read.
-            string extension = System.IO.Path.GetExtension(path);
-
-            return extension.Length > 0 && ReviewImageComparison.ImageExtensions.Contains(extension);
-        }
+        // ###########################################################################################
+        // What the maintainer app will try to draw as a picture - CRT.Data's one list.
+        //
+        // *** A CONTRACT WITH ReviewAssetLocator's OWN ALLOWLIST on the server. *** Offering a
+        // comparison for a type the server refuses to serve as an image produces a panel that
+        // cannot decode what comes back. SVG is absent from both for the same reason: it is a
+        // scriptable XML document, not a picture.
+        // ###########################################################################################
+        private static bool IsImage(string? path) => ImageFileTypes.IsDisplayable(path);
     }
 
     // ###########################################################################################

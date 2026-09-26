@@ -259,7 +259,14 @@ namespace Handlers.DataHandling
                 // same submission as "published" (ProductionPromotionRules.ContributorFacingState)
                 // - which is the row that says "Published to source".
                 "merged" => "Published to BETA source",
-                "withdrawn" => "Withdrawn",
+
+                // *** "withdrawn" IS A SUBMISSION REPLACED BY THE CONTRIBUTOR'S NEWER ONE (owner
+                // decision, 2026-09-26). *** Nothing else sets it: the server withdraws an older,
+                // untouched submission of the same board when a newer one from the same
+                // contributor arrives (CRT.Server's SubmissionReplacementRules), and its comment
+                // says so. If a contributor could ever withdraw one by hand, that needs a state of
+                // its own - these words would then be wrong.
+                "withdrawn" => "Replaced by a newer submission",
 
                 // A state this build has never heard of. Reported honestly rather than guessed at -
                 // a future server value rendered as something plausible-but-wrong is worse than an
@@ -300,7 +307,12 @@ namespace Handlers.DataHandling
                 // Finished, and it is not going in. "uploading" belongs here rather than in
                 // Waiting: nothing is uploading any more, the send failed partway, and the row is
                 // as dead as a rejection until the contributor sends again.
-                "rejected" or "abandoned" or "withdrawn" or "uploading" => SubmissionOutcomeKind.Bad,
+                "rejected" or "abandoned" or "uploading" => SubmissionOutcomeKind.Bad,
+
+                // Replaced by the contributor's own newer submission (see DescribeState): its work
+                // goes on in that one, so it is NOT painted as refused - red there read as "your
+                // contribution was turned down". Neutral, like anything else not decided on merit.
+                "withdrawn" => SubmissionOutcomeKind.Waiting,
 
                 // Includes "pending" and anything this build has never heard of. Neutral is the
                 // safe direction: colouring an unknown state as good or bad would state something

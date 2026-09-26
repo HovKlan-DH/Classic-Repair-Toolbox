@@ -1,71 +1,156 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using Handlers.DataHandling;
 
 namespace CRT.Maintainer.Handlers
 {
     // ###########################################################################################
     // How a queue row reads on screen (NewContributeStrategy.md Phase 5, task 2).
     //
-    // *** WHY A QUEUE ROW CARRIES NO CHANGE SUMMARY. *** The window's first design gave each
-    // queued item a ReviewChangeSummary, which cannot work and is worth recording rather than
-    // quietly fixing: computing that summary needs BOTH the published board and the submitted
-    // manifest, and the queue endpoint returns neither - it answers ids, system names and
-    // summaries, which is kilobytes. Making it return enough to summarise every row would mean
-    // loading two full BoardData per queued submission on the server, for a list the maintainer
-    // scrolls past. So the summary belongs to OPENING a submission, and the queue shows what the
-    // contributor themselves said about it.
+    // *** THE QUEUE IS GROUPED BY BOARD (2026-09-26). *** Each row was two joined lines at first -
+    // "#4 Commodore/C64/250407" over the comment, the wait and the shared-file note run together -
+    // then six lines with labelled Manufacturer / Hardware / Board and two badges on every row,
+    // which the project owner still found "quite hard to overview". Now one heading per board, and
+    // two short lines per submission under it:
     //
-    // That is also the better reviewing experience, not merely the cheaper one: the contributor's
-    // own sentence ("Corrected R12.") is what a maintainer scans for, and a row reading "3
-    // components changed" tells them nothing about whether it is worth opening next.
+    //     Commodore / C64 / 250407             [New system]
+    //        Corrected the pinout pictures for U8 and added U10.
+    //        Waiting 10 hours - changes shared files
+    //        Added the missing CIA pictures.
+    //        Waiting 2 days - with the other approver             (dimmed)
+    //
+    // Submissions for one board are reviewed together, and the board is said once. Only what is
+    // UNUSUAL is marked: "New system" on the heading (a published system is the ordinary case), and
+    // a submission that does NOT wait for this account is dimmed and says so - where "Awaiting your
+    // review" used to sit on nearly every row. Both answers are the SERVER's (ReviewQueueEntry).
+    //
+    // *** WHY A QUEUE ROW CARRIES NO CHANGE SUMMARY. *** Computing one needs BOTH the published board
+    // and the submitted manifest, and the queue endpoint returns neither - making it do so would mean
+    // loading two full BoardData per queued submission on the server, for a list the maintainer
+    // scrolls past. So the queue shows what the contributor themselves said about it, which is also
+    // what a maintainer scans for: "Corrected R12." says more than "3 components changed".
     //
     // Pure, so the wording is tested rather than eyeballed.
     // ###########################################################################################
     public static class ReviewQueueDisplay
     {
+        public const string NewSystemBadge = "New system";
+
         // ###########################################################################################
-        // The line naming the submission. The SYSTEM leads, because a maintainer works by system -
-        // several submissions against one board are reviewed together, and the id alone means
-        // nothing to a human.
+        // The queue as board groups: each board once, in the order its OLDEST submission waits
+        // (the queue arrives oldest first, and a group is placed by its first row), with its own
+        // submissions under it in queue order. The queue's order is a decision - the longest-waiting
+        // submission leads - and grouping keeps it: the board holding it comes first.
         // ###########################################################################################
-        public static string Title(ReviewQueueRow row)
+        public static IReadOnlyList<ReviewQueueGroup> Group(IEnumerable<ReviewQueueRow> rows)
         {
-            ArgumentNullException.ThrowIfNull(row);
+            ArgumentNullException.ThrowIfNull(rows);
 
-            string system = string.IsNullOrWhiteSpace(row.SystemId) ? "(unknown system)" : row.SystemId;
+            var groups = new List<ReviewQueueGroup>();
+            var bySystem = new Dictionary<string, List<ReviewQueueRow>>(StringComparer.Ordinal);
 
-            return $"#{row.Id} {system}";
+            foreach (ReviewQueueRow row in rows)
+            {
+                string system = row.SystemId ?? string.Empty;
+
+                if (!bySystem.TryGetValue(system, out List<ReviewQueueRow>? members))
+                {
+                    members = [];
+                    bySystem[system] = members;
+                    groups.Add(new ReviewQueueGroup(system, members));
+                }
+
+                members.Add(row);
+            }
+
+            return groups;
+        }
+
+        // "Commodore / C64 / 250407" - or the id whole when it is not three parts, and a missing one
+        // said to be missing rather than left as a gap that looks like a rendering fault.
+        public static string SystemHeading(string? systemId)
+        {
+            if (SystemParts(systemId) is { } parts)
+                return $"{parts.Manufacturer} / {parts.Hardware} / {parts.Board}";
+
+            return string.IsNullOrWhiteSpace(systemId) ? "(unknown system)" : systemId;
         }
 
         // ###########################################################################################
-        // The line under it: what the contributor said, and how long it has been waiting.
-        //
-        // *** A SUBMISSION WITH NO SUMMARY SAYS SO. *** Blank is a real possibility - the field is
-        // optional - and an empty second line reads as a rendering fault rather than as missing
+        // The system's three parts, or null when the id is not a well-formed one - the row then
+        // shows the id whole (SystemWhole) rather than inventing parts.
+        // ###########################################################################################
+        public static (string Manufacturer, string Hardware, string Board)? SystemParts(string? systemId)
+        {
+            if (!SystemDescriptorRules.IsValidSystemId(systemId))
+                return null;
+
+            string[] parts = systemId!.Split('/');
+
+            return (parts[0], parts[1], parts[2]);
+        }
+
+        // ###########################################################################################
+        // What the contributor wrote about it. *** A SUBMISSION WITH NO SUMMARY SAYS SO. *** The
+        // field is optional, and an empty line reads as a rendering fault rather than as missing
         // information.
         // ###########################################################################################
-        public static string Subtitle(ReviewQueueRow row, DateTimeOffset now)
+        public static string Comment(ReviewQueueRow row)
         {
             ArgumentNullException.ThrowIfNull(row);
 
-            string summary = string.IsNullOrWhiteSpace(row.Summary)
-                ? "(no description given)"
-                : row.Summary.Trim();
+            return string.IsNullOrWhiteSpace(row.Summary) ? "(no description given)" : row.Summary.Trim();
+        }
+
+        // ###########################################################################################
+        // "New system" when the server says the system has no published board - the highest-risk
+        // submission there is. Nothing otherwise: a published system is the ordinary case, and
+        // marking it on every heading only drowned the one that matters.
+        // ###########################################################################################
+        public static string? SystemBadge(bool? isNewSystem) =>
+            isNewSystem == true ? ReviewQueueDisplay.NewSystemBadge : null;
+
+        // ###########################################################################################
+        // Whether a submission OPENED waits for this account: it may decide it, and its approval is
+        // still needed - the answer that leaves the Approve button on. The row on screen follows it,
+        // since the detail judges shared files against the tree as it is now.
+        // ###########################################################################################
+        public static bool AwaitsYou(bool canPublish, ApprovalStatus? approval) =>
+            canPublish && ApprovalWording.CanApprove(approval);
+
+        // ###########################################################################################
+        // A submission's second line: how long it has waited, and the two-approval notes.
+        //
+        // A shared-file change reaches every board citing the file and needs TWO approvals - the
+        // board's maintainer and the administrator (2026-09-25); 'approved' in the queue is the first
+        // of the two, given and waiting for the other. When it does NOT wait for this account (the
+        // server's AwaitsYou), that is the reason: this account's side is done, and the other
+        // approver's is not - said, since the row is dimmed for it.
+        // ###########################################################################################
+        public static string Footer(ReviewQueueRow row, DateTimeOffset now)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            var parts = new List<string>();
 
             string waiting = ReviewQueueDisplay.Waiting(row.CreatedUtc, now);
 
-            string line = string.IsNullOrEmpty(waiting) ? summary : $"{summary}  -  {waiting}";
+            if (waiting.Length > 0)
+                parts.Add(waiting == "just now" ? "arrived just now" : waiting);
 
-            // Said in the row, because a shared-file change reaches every board citing the file and
-            // needs TWO approvals - the board's maintainer and the administrator (2026-09-25).
             if (row.TouchesSharedFiles)
-                line += "  -  changes shared files";
+                parts.Add("changes shared files");
 
-            // 'approved' in the queue is the first of those two, given and waiting for the other.
-            if (string.Equals(row.State, "approved", StringComparison.Ordinal))
-                line += "  -  one of two approvals given";
+            if (row.AwaitsYou == false)
+                parts.Add("with the other approver");
+            else if (string.Equals(row.State, "approved", StringComparison.Ordinal))
+                parts.Add("one of two approvals given");
 
-            return line;
+            string footer = string.Join(" - ", parts);
+
+            return footer.Length == 0 ? footer : char.ToUpperInvariant(footer[0]) + footer[1..];
         }
 
         // ###########################################################################################
@@ -108,5 +193,12 @@ namespace CRT.Maintainer.Handlers
             count == 1
                 ? $"waiting 1 {unit}"
                 : $"waiting {count.ToString(CultureInfo.InvariantCulture)} {unit}s";
+    }
+
+    // One board's submissions in the queue. IsNewSystem is the server's answer for the board -
+    // every submission to one system gets the same one.
+    public sealed record ReviewQueueGroup(string SystemId, IReadOnlyList<ReviewQueueRow> Rows)
+    {
+        public bool? IsNewSystem => this.Rows.Select(row => row.IsNewSystem).FirstOrDefault(isNew => isNew is not null);
     }
 }

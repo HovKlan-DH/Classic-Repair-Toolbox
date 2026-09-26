@@ -99,7 +99,8 @@ public sealed class SubmissionReceiptPresenterTests
     // "merged" is the BETA data since the two-stage publish (2026-09-25); "published" is everyone's.
     [InlineData("merged", "Published to BETA source")]
     [InlineData("published", "Published to source")]
-    [InlineData("withdrawn", "Withdrawn")]
+    // The server's word for a submission its contributor's newer one replaced (2026-09-26).
+    [InlineData("withdrawn", "Replaced by a newer submission")]
     public void Each_REVIEW_state_is_described_in_the_contributors_own_terms(string state, string expected)
     {
         Assert.Equal(expected, SubmissionReceiptPresenter.DescribeState(state));
@@ -148,7 +149,6 @@ public sealed class SubmissionReceiptPresenterTests
     [Theory]
     [InlineData("rejected")]
     [InlineData("abandoned")]
-    [InlineData("withdrawn")]
     // "uploading" belongs here rather than in Waiting: nothing is uploading any more, the send
     // failed partway, and the row is as dead as a rejection until it is sent again. Colouring it
     // as "waiting" would have the contributor waiting for a transfer that stopped days ago - the
@@ -157,6 +157,17 @@ public sealed class SubmissionReceiptPresenterTests
     public void A_submission_that_did_NOT_get_in_is_classified_as_bad(string state)
     {
         Assert.Equal(SubmissionOutcomeKind.Bad, SubmissionReceiptPresenter.ClassifyState(state));
+    }
+
+    // ###########################################################################################
+    // *** REPLACED IS NOT REFUSED (2026-09-26). *** A submission the contributor's own newer one
+    // replaced ("withdrawn" on the server) carries on in that one - painted as bad, the card read
+    // as "your contribution was turned down". Neutral instead.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_replaced_by_a_newer_one_is_not_painted_as_refused()
+    {
+        Assert.Equal(SubmissionOutcomeKind.Waiting, SubmissionReceiptPresenter.ClassifyState("withdrawn"));
     }
 
     [Fact]

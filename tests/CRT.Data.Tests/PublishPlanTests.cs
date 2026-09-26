@@ -73,6 +73,40 @@ public sealed class PublishPlanTests
     private static bool HasCode(PublishPlanResult result, string code) =>
         result.Problems.Any(problem => problem.Code == code);
 
+    // ###########################################################################################
+    // *** THE BOARD'S KiCad DATA IS PLANNED FOR WRITING (2026-09-26). *** PublishPlan re-runs the
+    // create-time file rules as the last gate before the tree, so the same exemption must hold
+    // here: a KiCad file in the board's own folder is written although no row cites it, and one
+    // anywhere else is refused - a rule loosened at create only would let a queued submission
+    // publish what create no longer accepts, or the other way round.
+    // ###########################################################################################
+    [Fact]
+    public void The_boards_own_KiCad_data_is_planned_although_no_row_cites_it()
+    {
+        SubmissionManifest manifest = PublishPlanTests.Manifest(
+            PublishPlanTests.File("Commodore/C64/250407/Sheet1.png"));
+
+        manifest.Files.Add(PublishPlanTests.File("Commodore/C64/250407/KiCad data/board.kicad_pcb", new string('b', 64)));
+
+        PublishPlanResult result = PublishPlanTests.Build(manifest);
+
+        Assert.True(result.IsPlanned, string.Join("; ", result.Problems.Select(problem => problem.Code)));
+        Assert.Contains(result.Plan!.Files, file => file.RelativePath == "Commodore/C64/250407/KiCad data/board.kicad_pcb");
+    }
+
+    [Fact]
+    public void A_KiCad_file_outside_its_folder_is_refused_at_the_last_gate_too()
+    {
+        SubmissionManifest manifest = PublishPlanTests.Manifest(
+            PublishPlanTests.File("Commodore/C64/250407/Sheet1.png"));
+
+        manifest.Files.Add(PublishPlanTests.File("Commodore/C64/250407/board.kicad_pcb", new string('b', 64)));
+
+        PublishPlanResult result = PublishPlanTests.Build(manifest);
+
+        Assert.Contains(result.Problems, problem => problem.Code == "file.type-refused");
+    }
+
     // -----------------------------------------------------------------------------------
     // The generation guard
     // -----------------------------------------------------------------------------------

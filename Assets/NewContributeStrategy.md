@@ -3783,6 +3783,8 @@ the owner's decision, not yet taken.
 The project owner: *"make the same 'Edit in table format' (maybe call it 'View in table format')
 available in the maintainer app ... The maintainer should be able to also edit whatever, if he chooses to
 publish it afterwards."* The button is **"View in table format"**, beside the decision buttons.
+(Since 2026-09-26 there is no button: the table IS the submission view - see "The table is the
+submission view" below.)
 
 - **The editor is shared, not copied.** `BoardTableEditor` and `UnsavedTableEditsWindow` moved from
   CRT.App into a new Avalonia library, **`src/CRT.UI/`**, referenced by both applications, with
@@ -3796,7 +3798,9 @@ publish it afterwards."* The button is **"View in table format"**, beside the de
   notices are hidden; it opens on the first sheet with a change. The review window
   (`ReviewTableWindow`) builds the document from the published board and the submission
   (`BoardTableDocument.Create`, the Drafts tab's own rule), and asks before unsaved changes are lost
-  (the prompt's `LeavingSubmission` wording).
+  (the prompt's `LeavingSubmission` wording). **Since 2026-09-26 there is no separate window**: the
+  table opens in the submission panel in the summary's place (`MaintainerMain.Table.cs`), and every
+  way of leaving it asks the same question - see the follow-up below.
 - **An amendment is the server's decision, not the client's** (`AmendSubmissionFlow`,
   `POST /api/review/submissions/{id}/amend`; the table is `GET .../table`, CRT.Data's
   `ReviewTableData`). In order: authority over THIS board; still undecided (pending or waiting for
@@ -3926,6 +3930,188 @@ A second review found twelve more; all were fixed the same day. The ones that ch
 - Smaller: one shared-folder-name rule (`SubmissionFileScopes.IsSharedFolderName`) for the
   validator, `DataTreeUsage` and the maintainer list; the blob store's import uses
   `VerifiedFileCopy`; the Maintainer app's windows share `WindowMessage`.
+
+### The table in the submission panel, and files in the table [DONE 2026-09-26]
+
+The project owner: *"could it instead open in the existing right-side panel, just alike it does in
+the CRT app?"* and *"whenever it is a file column, and it is an image, then it should show a
+hover-helper with the image ... both the removed and the new image side-by-side ... If the file is
+something else, e.g. PDF, then there should be a link that will open the PDF"* - the second for the
+CRT app's Drafts table too.
+
+- **No `ReviewTableWindow` any more.** "View in table format" swaps the summary for the table in
+  the submission panel (`MaintainerMain.Table.cs`) and reads "Close table" while it is open. The
+  modal window guaranteed nothing unsaved was left behind by being modal; the panel asks instead,
+  on every way out - closing it, choosing another submission (Cancel puts the selection back),
+  signing out, closing the window. A decision is refused while the table has unsaved changes
+  (`ReviewTableWording.SaveTableBeforeDeciding`): it would decide the SAVED version. A save reloads
+  the table and the detail, so the decision bar beside it acts on the amended content. The queue
+  now KEEPS its selection across a refresh (`ApplyQueue`), where it used to blank the panel - which
+  would have thrown the table away.
+- **The hover card is CRT.UI's** (`BoardTableEditor.FilePreview.cs`, content `BoardTableFilePreview`),
+  so both tables have it. Which cells are files and which file each side is, is CRT.Data's
+  `BoardTableFileCells`; the bytes come from each host's `IBoardTableFileSource` -
+  `DraftTableFileSource` (the local data folder, and the draft's own copy first) and
+  `ReviewTableFileSource` (the server's published and submitted asset routes). Not a tooltip,
+  because a tooltip closes before its link can be clicked (a flyout at first; an overlay popup since
+  - see the next section). The same path on both sides is still compared, by bytes - a picture
+  replaced under its own name is not coloured in the table and is the change most worth seeing.
+- **The server now serves a published file the PUBLISHED board cites** as well as one the
+  submission cites (`ReviewAssetLocator.TryLocatePublishedFile`'s `publishedBoardFiles`, read
+  through `ApprovePublishFlow.PreviewReads` only when the submission does not cite the path). The
+  old picture of a changed or deleted row is cited by the published board alone, so it answered
+  404 - which had also been making every REMOVED image in the change summary read "No published
+  file at this path".
+- **The maintainer app opens a contributor's file by saving it to the temp folder**, and only a
+  type a submission may carry (`ReviewTableFiles.TryGetOpenName`); a web page is saved as `.txt`,
+  so its script never runs in the maintainer's browser.
+- **One list of drawable image types** (`ImageFileTypes`, CRT.Data), where the component editor and
+  the maintainer's image comparison each kept a copy.
+
+### The table is the submission view, and the hover card is instant [DONE 2026-09-26]
+
+The project owner: *"make the table the default first view, as this is the most helpful one. I am
+not sure if I can use the other view anymore, as it is confusing to look at, so just scrap that
+information"*; *"can it then show image/tooltip instantly, instead of the small delay? And likewise
+instantly NOT show the helper when moving mouse outside the helper area"*; the top-left buttons
+overlapped the headline; and a smaller header - *"[New system] [Awaiting your review] {ID}"*, then
+Manufacturer, Hardware and Board, then the contributor's comment.
+
+- **No change summary in the maintainer app.** Choosing a submission opens its table straight
+  away; "View in table format" / "Close table" are gone. Leaving a table with unsaved changes still
+  asks - on choosing another submission, signing out and closing the window. A refresh reloads the
+  table too unless it has unsaved changes.
+- **What the table cannot show stays, as short lines above it** (`ReviewNotInTable`): component
+  highlight and KiCad calibration-point changes (both in the `.json` beside the workbook, both
+  published by an approval - the summary's calibration section was added precisely so they are not
+  approved unseen), and the automatic checks' warnings and errors. The picture of a moved highlight
+  on its schematic went with the summary.
+- **Now unused by the app, left in place for an owner decision**: `ReviewImageComparison` (its
+  file also holds the `ReviewSubmissionAssets` records the parser uses), `ReviewFileComparison`,
+  `ReviewHighlightGeometry`, `ReviewHighlightCanvas`, and most of `ReviewSummaryPresenter` and
+  `ReviewScopeBaseline` - each still tested. The server still sends what they read.
+- **The details are in the QUEUE ROWS, not over the table** (owner, same day: *"I actually meant
+  for the [Awaiting...] info and so on to be shown in the left-side menu/list"*). Each row
+  (`MaintainerMain.QueueItems.cs`, words from `ReviewQueueDisplay`) shows "New system" /
+  "Published system" and "Awaiting your review" badges with the id, Manufacturer / Hardware /
+  Board, the contributor's comment and the wait. **The queue answer is now a contract record**
+  (`ReviewApiContract.ReviewQueueAnswer` / `ReviewQueueEntry`, built by the server's
+  `ReviewQueueFlow`, pinned both ends by `ReviewWireContractTests`), carrying `isNewSystem`
+  (`PublishedBoardLocator.LocateSystem` - no manifest loaded) and `awaitsYou`
+  (`ApprovalStatus.CanApprove` with the stored shared-files flag; one approvals read per row). Both
+  are null from an older server, which shows no badge. The opened row takes the detail's own
+  answers, judged against the tree as it is now, so it never says "awaiting" beside an Approve that
+  is off. The queue's buttons wrap under the title, and Maintainers / Unused files stay
+  administrator-only (`ApplyQueueResponse`, pinned).
+- **Every table cell's text tooltip is instant as well** (*"The instant-show should also work for
+  texts"*): `ToolTip.ShowDelay` 0 in both cell themes (`BoardTableEditor.CellToolTipDelay`).
+- **Then, the same day:** "Show changes only" also hides the tabs of sheets with nothing to show
+  (`BoardTableDocument.SheetsShown` / `SheetToShow`, both tables), and the user's choice of it
+  survives a table with nothing published; the maintainer's next submission opens on the sheet
+  last looked at; a file card's side is labelled only beside another one; and the queue rows lost
+  the "#4" (*"I do not see any value in showing the #3 and #4 data"*).
+- **And then:** the **queue is grouped by board** (a heading per board, "New system" on it when
+  nothing is published; each submission two lines; one not waiting for this account dimmed, "with
+  the other approver" - `ReviewQueueDisplay.Group`); the **sheet is remembered per submission**;
+  **flagged rows show on their sheet's tab** in a violet pill beside the change count
+  (`BoardTableSheetTabHeader`); and an **important signal is keyed on display name AND net**
+  (`BoardDraftNaturalKeys.ForKiCadImportantSignal`) - one display name covers several nets, so
+  every second one was being flagged a duplicate. That key is shared by the table, the differ and
+  the server's review summary, so all three changed together; a changed net now reads as a removal
+  plus an addition.
+- **Last round of the day:** no Refresh button - the queue checks itself every minute while the
+  window is in front and on returning to it, updating only the list (`MaintainerMain.QueueRefresh.cs`;
+  an open submission decided elsewhere stays, undecidable); a new system's table is compared with
+  the submission itself as opened, so only the maintainer's own edits are coloured (compared with
+  nothing it showed a lone "0 Flagged"; an all-green version was turned down); Approve sits at the
+  far right; the window's place
+  and "Show changes only" are remembered (`MaintainerSettings`); the footer names the account
+  without "Signed in as"; and the three decision buttons wear CRT's red (`Button_Cancel_*`).
+- **Then, for a new system:** its file card reads both sides from the SUBMISSION
+  (`ReviewTableFiles.HashToRead`) - read from the published tree, every picture sat beside "There
+  is no file at this path" under "Before (published)" - so it shows one picture, and two only when
+  the maintainer names another file ("As submitted" / "Your change"). Its lines above the table
+  count instead of naming ("Highlights included for [2] components", "KiCad calibration points included for [1]
+  schematic"). The maintainer application's program file now carries CRT's icon (`ApplicationIcon`),
+  which is what Windows shows in its title bar and taskbar.
+- **And then:** no line says "(not in the table)" any more (it read as if the components were
+  missing from the table), each count reads "[2]" with the number bold (`ReviewNoteRun`), a new
+  system's file card drops "Unchanged" (`IBoardTableFileSource.SaysUnchanged`), and the table's
+  scroll bars stay full size in both applications (`ScrollViewer.AllowAutoHide` off), so a sheet
+  wider than the window visibly has more columns. A "fit the table to the window" button with
+  wrapped cells was considered and not built: a sheet of ten columns squeezed into one screen
+  wraps paths and descriptions into tall rows that are harder to read than a scroll.
+- **The contributor, above the submission's table** (owner request, 2026-09-26: "It should be
+  possible to see who it is (email) and how many contributions the contributor has done, and some
+  statics about accepted and rejected"): "From dh@hinet.dk - [5] other submissions: [3] published,
+  [1] waiting, [1] rejected", or "- no other submissions" for a first contribution. The server's
+  `ContributorHistory` counts the contributor's OTHER submissions
+  (`ISubmissionStore.GetContributorSubmissionsAsync` - by account, or by email, any case, among
+  those sent without one) into CRT.Data's `ReviewContributorFacts`, sent as the detail's `contributor`; the
+  maintainer app words it (`ReviewContributorLine`). Published = `merged`; a rejection counts only
+  when a maintainer made it (`decided_by` set); a replaced (`withdrawn`) or never-finished
+  submission is not counted.
+- **Code review of the day's work (2026-09-26), ten findings, all fixed.** The ones worth
+  remembering: the submission lines now count **what the approval would write** (`FilesLine` -
+  a file replaced under its own path colours no cell, so it was approved unseen); the previous
+  submission's detail is dropped on SELECTION, not when the next arrives, or the file card read the
+  old submission's hashes while the table waited; signing out clears the queue, selection and
+  detail, or the next sign-in re-selected the old one with the old account's badges; a window
+  restored maximized no longer overwrites its remembered NORMAL position with the placement's own
+  synthetic point (`thisRestoring`); `SubmissionKiCadFiles.Collect` keeps the PUBLISHED spelling of
+  a case-variant KiCad file, so a publish replaces it instead of writing a second file beside it on
+  the case-sensitive server; a conflict message is re-shown in the QUEUE's message when the refresh
+  hid the decision panel; a dead session under unsaved table edits stops the checks and says the
+  edits cannot be saved, rather than repainting the same dead end every minute; and files opened
+  from the table are swept from the temp folder a day later (`ReviewTableFiles.OpenedFileLifetime`).
+- **A board's KiCad data travels in its submission** (owner decision, 2026-09-26: "when a person
+  submitting anything from his local PC, then I expect that it will send everything the server does
+  not already have"). The `KiCad data` folder is the one part of a board no row cites - CRT reads it
+  by name - so the rows-only manifest silently left it behind: a NEW system was published to BETA
+  without its traces. `SubmissionKiCadFiles` is the one rule for it: only the types CRT reads
+  (`ComponentListBuilder.IsSupportedKiCadRawFile`: .kicad_pcb/.kicad_sch/.kicad_pro - the shipped
+  trees' stray KiCad-traces.json report and one legacy .sch are read by nothing and stay behind),
+  only inside the board's OWN folder, exempt from "every file is cited by a row" at create AND in
+  `PublishPlan` (`TryCheckName`'s `kiCadProjectFile`). Content signatures: s-expression text opening
+  "(" for pcb/sch, JSON text opening "{" for pro (`SubmissionContentRules.OpensWith`). The client
+  collects the UNION of the draft's and the synced official folder, draft winning
+  (`SubmissionKiCadFiles.Collect`, `SubmissionManifestBuilder.Build`'s `kiCadFiles`), so a published
+  board's untouched KiCad files travel as already-held (imported server-side, zero upload) and the
+  manifest stays the complete intended state. *** An AMENDMENT carries them over ***
+  (`AmendSubmissionFlow`): its file list is rebuilt from rows, which would silently strip them. The
+  maintainer sees "KiCad data included: [3] files" (new/changed counts against the tree for a
+  published board) above the table (`ReviewNotInTable.KiCadLine`, from the detail's
+  `submittedFiles`). Publish writes them like any file; removals stay out (the folder is kept whole,
+  the known limit above). With this, EVERYTHING in a draft the app reads now travels: rows, the
+  sidecar's highlights and calibrations, every cited file (scope baselines included - rows cite
+  them), and the KiCad folder; the draft marker and lock files are local bookkeeping, and an uncited
+  stray file deliberately never travels.
+- **A newer submission from the same contributor REPLACES the older one** (owner decision,
+  2026-09-26: "if it is from same person, then the newest one always wins"). Every submission is
+  the contributor's whole draft, and the draft stays after sending, so the newer one holds
+  everything the older one did; left in the queue, the older one approved after the newer would
+  publish the older content back over it. When a submission is QUEUED (finalise - never at create,
+  so a send that never finishes replaces nothing), the server withdraws the same contributor's
+  older submissions of the same system (`SubmissionReplacementRules`,
+  `SubmissionFlows.WithdrawReplacedAsync`) - only those still `pending` and never amended: a
+  maintainer's table edits
+  or a first approval keep it ("IF this is the case, it is valid and it should probably stay").
+  The amendment is checked inside the withdrawing transaction, under the row lock `AmendAsync`
+  takes first (`ISubmissionStore.WithdrawReplacedAsync`). "Same contributor" is the same signed-in
+  account, or the same contact email (any case). **The email is not verified**: anyone who knows a
+  contributor's address and board can replace their waiting submission with their own - accepted
+  by the project owner; the replacing one still has to pass review. No new state and no
+  migration: the older one is `withdrawn` (nothing else sets that state) with a decision comment
+  for the contributor, and CRT reads `withdrawn` as "Replaced by a newer submission", painted
+  neutral rather than as refused. The maintainer app's "no longer in the queue" line names both
+  causes. Pinned by `SubmissionReplacementTests`, one of which holds the server's state and CRT's
+  wording together.
+- **The hover card opens and closes AT ONCE, and sits beside its cell.** It is a `Popup` in the
+  window's overlay layer (`ShouldUseOverlayLayer`), light dismiss off: the flyout in
+  `TransientWithDismissOnPointerMoveAway` mode closed only ~100 px away from itself, and a
+  light-dismissed popup spends the next click in the grid on closing. The card follows the pointer
+  from file cell to file cell; beside the cell (not under it) it no longer covers the next row's
+  file. A card the pointer has left decodes nothing, and decoding runs off the UI thread.
 
 ### Next in this phase
 

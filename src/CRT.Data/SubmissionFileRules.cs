@@ -38,9 +38,11 @@ namespace Handlers.DataHandling
         //
         // Derived from what board rows actually reference: every shipped board, read in full,
         // cites only .png, .jpg, .jpeg, .gif, .pdf, .txt and one shared .html page. .bmp and .webp
-        // are images the review screen and the app already draw. KiCad projects, scope captures
-        // and the MiniPro catalogue are found by scanning folders rather than through rows, so they
-        // never travel in a submission and are deliberately absent.
+        // are images the review screen and the app already draw. The MiniPro catalogue is found by
+        // scanning folders rather than through rows, so it never travels in a submission. *** The
+        // board's own KiCad DATA travels since 2026-09-26, but NOT through this list: the KiCad
+        // types CRT reads are admitted only inside the board's own "KiCad data" folder
+        // (SubmissionKiCadFiles.IsSubmittable), never anywhere a row could cite one. ***
         //
         // *** NOT .svg, .json, .xml or .xlsx. *** SVG can carry script. A .json is the board's own
         // highlight sidecar or its system.json, both generated at publish and never uploaded - an
@@ -62,8 +64,12 @@ namespace Handlers.DataHandling
         // and ".well-known/y" are folders the web server and tooling treat specially, and a
         // dot-file such as ".htaccess" is read by Apache as configuration for the folder it sits
         // in. The checksum manifest already skips every dot-path, so nothing legitimate is lost.
+        //
+        // `kiCadProjectFile` widens the allowlist to the KiCad types CRT reads - passed true ONLY
+        // for a file SubmissionKiCadFiles.IsSubmittable already said yes to (2026-09-26), so a
+        // .kicad_pcb outside the board's own "KiCad data" folder is refused like any other type.
         // ###########################################################################################
-        public static bool TryCheckName(string? path, out string code, out string reason)
+        public static bool TryCheckName(string? path, out string code, out string reason, bool kiCadProjectFile = false)
         {
             code = string.Empty;
             reason = string.Empty;
@@ -94,12 +100,16 @@ namespace Handlers.DataHandling
                 return false;
             }
 
+            if (kiCadProjectFile && ComponentListBuilder.IsSupportedKiCadRawFile(path))
+                return true;
+
             if (!SubmissionFileRules.AllowedExtensions.Contains(extension))
             {
                 code = "file.type_not_allowed";
                 reason =
                     $"[{path}] is a {extension} file, which cannot be submitted. Board data may carry " +
-                    $"these types: {string.Join(", ", SubmissionFileRules.AllowedExtensions.Order(StringComparer.Ordinal))}.";
+                    $"these types: {string.Join(", ", SubmissionFileRules.AllowedExtensions.Order(StringComparer.Ordinal))}, " +
+                    "plus KiCad project files inside the board's own \"KiCad data\" folder.";
                 return false;
             }
 
@@ -150,13 +160,17 @@ namespace Handlers.DataHandling
                 if (!SubmissionPathRules.IsSafelyShaped(file.Path, out _))
                     continue;
 
-                if (!SubmissionFileRules.TryCheckName(file.Path, out string nameCode, out string nameReason))
+                // The board's own KiCad data (2026-09-26): a type of its own, and cited by no row -
+                // CRT reads the folder by name - so it is exempt from the citation rule below.
+                bool kiCadProjectFile = SubmissionKiCadFiles.IsSubmittable(manifest, file.Path);
+
+                if (!SubmissionFileRules.TryCheckName(file.Path, out string nameCode, out string nameReason, kiCadProjectFile))
                 {
                     findings.Add(SubmissionFileRules.Error(nameCode, file.Path, nameReason));
                     continue;
                 }
 
-                if (!referenced.Contains(file.Path))
+                if (!kiCadProjectFile && !referenced.Contains(file.Path))
                 {
                     findings.Add(SubmissionFileRules.Error(
                         "file.not_used",

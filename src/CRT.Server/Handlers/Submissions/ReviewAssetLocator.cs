@@ -119,11 +119,20 @@ namespace CRT.Server.Handlers.Submissions
         // serving as a crude scope limit; naming the referenced files is the real one, and unlike
         // the folder it cannot be satisfied by an unrelated file that happens to sit nearby.
         // ###########################################################################################
+        //
+        // *** OR A FILE THE PUBLISHED BOARD CITES (owner request, 2026-09-26). *** A row changed to
+        // another picture, or deleted, leaves its OLD file cited by the published board alone - and
+        // the old picture is exactly the "before" side of the comparison, in the change summary and
+        // in the table's hover card. Scoped to this submission's own system still: the published
+        // board is the one the submission would replace. `publishedBoardFiles` is asked only when
+        // the submission does not cite the path itself, so the ordinary request never reads it.
+        // ###########################################################################################
         public static bool TryLocatePublishedFile(
             string? dataTreeRoot,
             SubmissionManifest? manifest,
             string? relativePath,
-            out string resolvedPath)
+            out string resolvedPath,
+            Func<IReadOnlyCollection<string>>? publishedBoardFiles = null)
         {
             resolvedPath = string.Empty;
 
@@ -136,10 +145,14 @@ namespace CRT.Server.Handlers.Submissions
             if (string.IsNullOrWhiteSpace(relativePath))
                 return false;
 
-            // THE SCOPE. Only a file this submission's board actually references may be fetched,
-            // so the route cannot be used to read arbitrary files out of the data tree.
-            if (!ReviewAssetLocator.IsReferencedByBoard(manifest, relativePath))
+            // THE SCOPE. Only a file this submission's board - or the published board it would
+            // replace - actually references may be fetched, so the route cannot be used to read
+            // arbitrary files out of the data tree.
+            if (!ReviewAssetLocator.IsReferencedByBoard(manifest, relativePath) &&
+                !ReviewAssetLocator.IsListed(publishedBoardFiles?.Invoke(), relativePath))
+            {
                 return false;
+            }
 
             // THE CONTAINMENT. Resolved against the data tree root, which is the base the stored
             // paths are written against; escaping the root is still refused.
@@ -178,6 +191,17 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             return false;
+        }
+
+        // Whether a path is in a list of board file paths. Ordinal, for the reason IsReferencedByBoard
+        // gives.
+        private static bool IsListed(IReadOnlyCollection<string>? paths, string relativePath)
+        {
+            string wanted = relativePath.Replace('\\', '/').Trim();
+
+            return wanted.Length > 0 &&
+                   paths is not null &&
+                   paths.Any(candidate => string.Equals(candidate, wanted, StringComparison.Ordinal));
         }
 
         // Every file path the submitted rows name, through the SHARED collector - the same one the
