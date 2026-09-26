@@ -142,6 +142,22 @@ namespace CRT.Server.Handlers.Submissions
                 });
             }
 
+            // ###########################################################################################
+            // *** THE SUBMISSION'S KiCad DATA SURVIVES AN AMENDMENT (2026-09-26). *** The loop above
+            // rebuilds the file list from what the rows cite, and no row cites a KiCad file - so a
+            // maintainer's table edit would silently strip the contributor's KiCad data from the
+            // submission, and approving it would publish the board without its traces. Carried over
+            // as they are: an amendment changes rows, never the KiCad folder.
+            // ###########################################################################################
+            foreach (SubmissionFile file in current.Files)
+            {
+                if (SubmissionKiCadFiles.IsSubmittable(current, file.Path) &&
+                    !files.Any(kept => string.Equals(kept.Path, file.Path, StringComparison.Ordinal)))
+                {
+                    files.Add(file);
+                }
+            }
+
             var amended = new SubmissionManifest
             {
                 FormatVersion = current.FormatVersion,

@@ -88,6 +88,13 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
 		</Style>
 
+		<!-- The "File location" box of a row whose newly picked file has no folder, or one outside
+		     this board and the shared folders - "Save to draft" refuses it (ValidateNewFileLocations).
+		     Only the colour changes, never the thickness, so marking a row never moves the layout. -->
+		<Style Selector="ComboBox.LocationError">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+
 		<!-- Compact "browse" button sitting beside a read-only file box -->
 		<Style Selector="Button.BrowseFileButton">
 			<Setter Property="Padding" Value="10,0" />
@@ -386,6 +393,7 @@
 																					  Grid.ColumnSpan="3"
 																					  ItemsSource="{Binding AvailableFileLocations}"
 																					  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+																					  Classes.LocationError="{Binding HasLocationError}"
 																					  HorizontalAlignment="Stretch"
 																					  MinWidth="0" />
 
@@ -456,7 +464,7 @@
 		BorderThickness="1"
 		CornerRadius="6"
 		Padding="12">
-					<Expander IsExpanded="False">
+					<Expander x:Name="ComponentLocalFilesExpander" IsExpanded="False">
 						<Expander.Header>
 							<StackPanel Orientation="Horizontal" Spacing="4">
 								<TextBlock Text="Component local files"
@@ -510,6 +518,7 @@
 												<ComboBox Grid.Column="4"
 														  ItemsSource="{Binding AvailableFileLocations}"
 														  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+														  Classes.LocationError="{Binding HasLocationError}"
 														  HorizontalAlignment="Stretch"
 														  MinWidth="0" />
 												<Grid Grid.Column="6" ColumnDefinitions="*,4,Auto">
@@ -613,7 +622,7 @@
 		BorderThickness="1"
 		CornerRadius="6"
 		Padding="12">
-					<Expander IsExpanded="False">
+					<Expander x:Name="BoardLocalFilesExpander" IsExpanded="False">
 						<Expander.Header>
 							<StackPanel Orientation="Horizontal" Spacing="4">
 								<TextBlock Text="Board local files"
@@ -667,6 +676,7 @@
 												<ComboBox Grid.Column="4"
 														  ItemsSource="{Binding AvailableFileLocations}"
 														  SelectedItem="{Binding FileLocation, Mode=TwoWay}"
+														  Classes.LocationError="{Binding HasLocationError}"
 														  HorizontalAlignment="Stretch"
 														  MinWidth="0" />
 												<Grid Grid.Column="6" ColumnDefinitions="*,4,Auto">

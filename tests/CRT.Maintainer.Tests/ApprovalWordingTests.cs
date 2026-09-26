@@ -166,9 +166,10 @@ public sealed class ApprovalWordingTests
     {
         var row = new ReviewQueueRow(42, "Commodore/C64/250407", "approved", "Corrected R12.", "c@example.com", null, TouchesSharedFiles: true);
 
-        string subtitle = ReviewQueueDisplay.Subtitle(row, ApprovalWordingTests.Now);
-
-        Assert.Contains("changes shared files", subtitle, StringComparison.Ordinal);
-        Assert.EndsWith("one of two approvals given", subtitle, StringComparison.Ordinal);
+        // No wait is known here, so the footer begins with the shared-file note - its own line in
+        // the queue row since 2026-09-26, and capitalised as one.
+        Assert.Equal(
+            "Changes shared files - one of two approvals given",
+            ReviewQueueDisplay.Footer(row, ApprovalWordingTests.Now));
     }
 }

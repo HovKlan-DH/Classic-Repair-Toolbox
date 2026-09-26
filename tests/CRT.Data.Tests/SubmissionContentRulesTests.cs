@@ -153,6 +153,36 @@ namespace CRT.Data.Tests
             }
         }
 
+        // ---------------------------------------------------------------------- KiCad data (2026-09-26)
+
+        // ###########################################################################################
+        // A KiCad file is plain text opening with its format's own first character - "(kicad_pcb"
+        // for the s-expression board and schematic, "{" for the JSON project file. A BOM or leading
+        // whitespace from another editor is fine; a renamed program, an image, or the wrong KiCad
+        // kind is not.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("board.kicad_pcb", "(kicad_pcb (version 20240108))", true)]
+        [InlineData("board.kicad_sch", "(kicad_sch (version 20240108))", true)]
+        [InlineData("board.kicad_pro", "{ \"board\": {} }", true)]
+        [InlineData("board.kicad_pcb", "{ \"board\": {} }", false)]
+        [InlineData("board.kicad_pro", "(kicad_pcb)", false)]
+        [InlineData("board.kicad_sch", "just some text", false)]
+        public void A_KiCad_file_opens_with_its_formats_own_character(string path, string content, bool accepted)
+        {
+            Assert.Equal(accepted, SubmissionContentRulesTests.Matches(path, Encoding.UTF8.GetBytes(content)));
+        }
+
+        [Fact]
+        public void A_KiCad_file_may_open_with_a_BOM_and_whitespace_but_never_carry_a_NUL()
+        {
+            byte[] withBom = [0xEF, 0xBB, 0xBF, (byte)' ', (byte)'\r', (byte)'\n', .. Encoding.UTF8.GetBytes("(kicad_sch)")];
+            Assert.True(SubmissionContentRulesTests.Matches("a.kicad_sch", withBom));
+
+            byte[] binary = [.. Encoding.UTF8.GetBytes("(kicad_pcb"), 0, 0x4D, 0x5A];
+            Assert.False(SubmissionContentRulesTests.Matches("a.kicad_pcb", binary));
+        }
+
         // Images need only their signature; text needs the whole sample. Reading 64 KB of every one
         // of a board's thousand images would be waste, reading 32 bytes of a text file a blind spot.
         [Fact]

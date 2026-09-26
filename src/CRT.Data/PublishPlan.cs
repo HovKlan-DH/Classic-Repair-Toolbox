@@ -286,13 +286,17 @@ namespace Handlers.DataHandling
                 // submission queued by an older build - or a rule changed since - must not reach the
                 // tree on the strength of a check that ran weeks ago.
                 // ###########################################################################################
-                if (!SubmissionFileRules.TryCheckName(file.Path, out _, out string nameReason))
+                // The board's own KiCad data (2026-09-26): its own types, cited by no row - the
+                // same exemption ValidateManifestFiles grants, from the same rule.
+                bool kiCadProjectFile = SubmissionKiCadFiles.IsSubmittable(manifest, file.Path);
+
+                if (!SubmissionFileRules.TryCheckName(file.Path, out _, out string nameReason, kiCadProjectFile))
                 {
                     problems.Add(PublishPlan.Error("file.type-refused", file.Path, nameReason));
                     continue;
                 }
 
-                if (!referenced.Contains(file.Path))
+                if (!kiCadProjectFile && !referenced.Contains(file.Path))
                 {
                     problems.Add(PublishPlan.Error(
                         "file.not-used",

@@ -125,4 +125,204 @@ public sealed class ContributionFileLocationsTests : IDisposable
 
         Assert.Empty(ContributionFileLocations.FindEndFolders(this.DataRoot));
     }
+
+    // ---------------------------------------------------------------------- which folders are offered
+
+    private const string System = "Commodore/C64/250407";
+
+    // What the data tree and a draft together list for the C64 250407 before narrowing: the board's
+    // own folders, other boards of the same maker, another maker, both kinds of shared folder, the
+    // MiniPro IC tests, and a draft's copy of a shared folder (a new file filed in a shared folder is
+    // kept in the draft under its whole path, so the drafts-tree scan lists that copy as the board's).
+    private static readonly string[] EveryFolder =
+    {
+        "Amstrad/CPC 664/MC0005A/Scope baseline",
+        "Amstrad/Shared files/Component images",
+        "Commodore/C128/250477",
+        "Commodore/C128/310378/Scope baseline",
+        "Commodore/C64/250407/Commodore/Shared files/Component images",
+        "Commodore/C64/250407/KiCad data",
+        "Commodore/C64/250407/Scope baseline",
+        "Commodore/C64/250425/Scope baseline",
+        "Commodore/Shared files/Board local files",
+        "Commodore/Shared files/Component images",
+        "Commodore/Shared files/Component local files",
+        "Generic shared files/Component images",
+        "Generic shared files/Component local files",
+        "Generic shared files/MiniPro/IC tests/Catalogue",
+        "Generic shared files/MiniPro/IC tests/Vectors",
+    };
+
+    // ###########################################################################################
+    // *** THE OWNER'S LIST (2026-09-25): "only show folders within the same board + the parent
+    // folders Shared files and Generic shared files". *** The drop-down listed every folder of every
+    // board, and a new file filed in almost any of them was refused by the server at submit. The
+    // board's own folder is offered too although it is not an end folder - its schematic images
+    // live directly in it.
+    // ###########################################################################################
+    [Fact]
+    public void Only_this_boards_folders_and_the_shared_ones_are_offered()
+    {
+        Assert.Equal(
+            new[]
+            {
+                "Commodore/C64/250407",
+                "Commodore/C64/250407/KiCad data",
+                "Commodore/C64/250407/Scope baseline",
+                "Commodore/Shared files/Board local files",
+                "Commodore/Shared files/Component images",
+                "Commodore/Shared files/Component local files",
+                "Generic shared files/Component images",
+                "Generic shared files/Component local files",
+            },
+            ContributionFileLocations.WritableBy(ContributionFileLocationsTests.System, ContributionFileLocationsTests.EveryFolder));
+    }
+
+    // ###########################################################################################
+    // *** THE SERVER AGREES. *** Whose folder a path is, is decided on the server by
+    // SubmissionFileScopes, and a submission is refused by SubmissionFileRules. Every folder offered
+    // here must take a new file the server accepts - a drop-down offering a folder the server refuses
+    // is the report all over again. Put through the server's own rule rather than restated.
+    // ###########################################################################################
+    [Fact]
+    public void Every_offered_folder_takes_a_new_file_the_server_accepts_and_other_boards_are_refused()
+    {
+        foreach (string folder in ContributionFileLocationsTests.EveryFolder)
+        {
+            bool offered = ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.System, folder);
+            IReadOnlyList<string> refusals = ContributionFileLocationsTests.ServerRefusals(folder + "/New.png");
+
+            if (offered)
+            {
+                Assert.True(refusals.Count == 0, $"[{folder}] is offered, but the server refuses a new file in it: {string.Join(", ", refusals)}");
+            }
+        }
+
+        // And the refusal the report was about is real, so the loop above is not vacuous.
+        Assert.Contains("file.other_board", ContributionFileLocationsTests.ServerRefusals("Commodore/C128/310378/Scope baseline/New.png"));
+        Assert.Contains("file.other_board", ContributionFileLocationsTests.ServerRefusals("Amstrad/Shared files/Component images/New.png"));
+    }
+
+    // The report itself: a bare file name. The server refuses it, and so does "Save to draft" now.
+    [Fact]
+    public void A_file_with_no_folder_is_refused_here_as_the_server_refuses_it()
+    {
+        Assert.Contains("file.other_board", ContributionFileLocationsTests.ServerRefusals("HotCPU.png"));
+
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.NoFolder,
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, string.Empty, usedInPlace: false));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_new_file_with_no_folder_is_refused(string? location)
+    {
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.NoFolder,
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+    }
+
+    // A file at the very top of the data folder is outside every board too - being picked from
+    // there does not make it a board's file.
+    [Fact]
+    public void A_file_picked_from_the_top_of_the_data_folder_is_still_refused()
+    {
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.NoFolder,
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, string.Empty, usedInPlace: true));
+    }
+
+    [Theory]
+    [InlineData("Commodore/C64/250407")]
+    [InlineData("Commodore/C64/250407/Scope baseline")]
+    [InlineData("Commodore/Shared files/Component images")]
+    [InlineData("Generic shared files/Component local files")]
+    public void A_new_file_in_this_boards_folders_or_a_shared_one_is_accepted(string location)
+    {
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.None,
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+    }
+
+    [Theory]
+    [InlineData("Commodore/C128/310378/Scope baseline")]
+    [InlineData("Commodore/C64/250425/Scope baseline")]
+    [InlineData("Amstrad/Shared files/Component images")]
+    [InlineData("Generic shared files/MiniPro/IC tests/Catalogue")]
+    public void A_new_file_in_another_boards_folder_is_refused(string location)
+    {
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.FolderNotWritable,
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+    }
+
+    // ###########################################################################################
+    // A file picked FROM another board's folder and left there is the published copy itself, and
+    // citing it unchanged is how real data is shaped - the C128DCR cites the C128's scope baselines,
+    // and the server allows a foreign file that matches what is published.
+    // ###########################################################################################
+    [Fact]
+    public void Another_boards_file_used_where_it_already_is_is_accepted()
+    {
+        Assert.Equal(
+            ContributionFileLocations.NewFileProblem.None,
+            ContributionFileLocations.CheckNewFile(
+                ContributionFileLocationsTests.System,
+                "Commodore/C128/310378/Scope baseline",
+                usedInPlace: true));
+    }
+
+    // Whose folder is decided case-sensitively, as on the server's Linux tree.
+    [Fact]
+    public void A_folder_differing_only_by_capitalisation_is_not_this_boards()
+    {
+        Assert.False(ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.System, "commodore/C64/250407/Scope baseline"));
+    }
+
+    // An unrecognisable system filters nothing: the save refuses such a window anyway, and an empty
+    // drop-down would only hide why.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Commodore/C64")]
+    public void With_no_recognisable_system_nothing_is_filtered(string? systemId)
+    {
+        Assert.Equal(
+            ContributionFileLocationsTests.EveryFolder,
+            ContributionFileLocations.WritableBy(systemId, ContributionFileLocationsTests.EveryFolder));
+    }
+
+    // A system that exists only as a draft offers its own folders the same way.
+    [Fact]
+    public void A_new_systems_own_folders_are_offered()
+    {
+        Assert.Equal(
+            new[] { "Generic shared files/Component images", "Test Manu4/HW4/Board4", "Test Manu4/HW4/Board4/Scope baseline" },
+            ContributionFileLocations.WritableBy(
+                "Test Manu4/HW4/Board4",
+                new[] { "Test Manu4/HW4/Board4/Scope baseline", "Generic shared files/Component images", "Commodore/C64/250407/Scope baseline" }));
+    }
+
+    // The codes the server's file rules give a submission for C64 250407 carrying one new file at
+    // this path, with nothing published yet.
+    private static IReadOnlyList<string> ServerRefusals(string path)
+    {
+        var manifest = new SubmissionManifest
+        {
+            SystemId = ContributionFileLocationsTests.System,
+            Manufacturer = "Commodore",
+            Hardware = "C64",
+            Board = "250407",
+        };
+
+        manifest.Files.Add(new SubmissionFile { Path = path, Sha256 = new string('a', 64), SizeBytes = 10 });
+        manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = path });
+
+        return SubmissionFileRules.ValidateManifestFiles(manifest, PublishedTreeView.Empty)
+            .Select(finding => finding.Code)
+            .ToList();
+    }
 }

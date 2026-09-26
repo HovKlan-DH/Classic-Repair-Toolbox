@@ -28,6 +28,14 @@
                  amber, the colour of "take note" rather than of any row state. -->
             <SolidColorBrush x:Key="BoardTable_Notice_Bg">#FFF4D6</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Notice_Border">#E0B040</SolidColorBrush>
+            <!-- The header row (owner requests, 2026-09-26): a soft band under semi-bold names, the
+                 lines between them, and a firm line under the whole row - set apart without the
+                 weight of the black band tried first. The table's own keys, not CRT's
+                 Table_Header_Bg, which also colours the Contribute window's and About tab's tables. -->
+            <SolidColorBrush x:Key="BoardTable_Header_Bg">#EFEFEF</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Fg">#1F1F1F</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Separator">#CFCFCF</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Line">#8A8A8A</SolidColorBrush>
         </ResourceDictionary>
 
         <!-- The same meanings as deep tints the light foreground stays readable on. -->
@@ -39,6 +47,10 @@
             <SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#FF6B6B</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Notice_Bg">#3D3214</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Notice_Border">#8A6D1F</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Bg">#333333</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Fg">#EDEDED</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Separator">#4A4A4A</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Header_Line">#8A8A8A</SolidColorBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

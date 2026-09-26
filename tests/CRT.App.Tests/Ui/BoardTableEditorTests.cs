@@ -94,7 +94,7 @@ public sealed class BoardTableEditorTests : IDisposable
     private static TabControl SheetTabs(BoardTableEditor editor) => editor.GetControl<TabControl>("SheetTabs");
 
     private static TabItem SheetTab(BoardTableEditor editor, string header) =>
-        SheetTabs(editor).Items.OfType<TabItem>().Single(tab => (tab.Header as string) == header);
+        SheetTabs(editor).Items.OfType<TabItem>().Single(tab => tab.Header?.ToString() == header);
 
     [Fact]
     public void Every_workbook_sheet_gets_a_real_TAB_and_a_changed_sheet_names_its_count()
@@ -110,8 +110,8 @@ public sealed class BoardTableEditorTests : IDisposable
             var tabs = SheetTabs(editor).Items.OfType<TabItem>().ToList();
 
             Assert.Equal(BoardWorkbookSchema.AllSheets.Count, tabs.Count);
-            Assert.Contains(tabs, tab => (tab.Header as string) == "Components (2)");
-            Assert.Contains(tabs, tab => (tab.Header as string) == "Credits");
+            Assert.Contains(tabs, tab => tab.Header?.ToString() == "Components (2)");
+            Assert.Contains(tabs, tab => tab.Header?.ToString() == "Credits");
 
             // The shown sheet's tab is the selected one, and the tabs carry no content of their
             // own - the one grid below shows the selected sheet.
@@ -208,6 +208,39 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal(ThemeColor("BoardTable_Modified_Bg"), (changed.Background as ISolidColorBrush)?.Color);
             Assert.NotEqual(ThemeColor("BoardTable_Modified_Bg"), (unchanged.Background as ISolidColorBrush)?.Color);
             Assert.Equal("Published value: CPU", ToolTip.GetTip(changed));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A cell's text tooltip opens AT ONCE, as the file hover card does (owner request, 2026-09-26:
+    // "the instant-show should also work for texts - not only images") - open straight after the
+    // pointer arrives, with no timer run, and closed straight after it leaves. The marker column's
+    // too ("Changed", "Added", ...).
+    // ###########################################################################################
+    [Fact]
+    public void A_cells_text_tooltip_opens_the_moment_the_pointer_is_on_it()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(
+                Board(Component("U1", "CPU 6510")),
+                published: Board(Component("U1", "CPU")));
+            Window window = Show(editor);
+
+            BoardTableRow row = Row(editor, "U1");
+            DataGridCell changed = CellOnScreen(window, row, Column(BoardWorkbookSchema.ColFriendlyName));
+            DataGridCell marker = CellOnScreen(window, row, -1);
+
+            window.MouseMove(CentreOf(window, changed));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(ToolTip.GetIsOpen(changed));
+
+            window.MouseMove(CentreOf(window, marker));
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(ToolTip.GetIsOpen(changed));
+            Assert.True(ToolTip.GetIsOpen(marker));
 
             window.Close();
         });
@@ -720,6 +753,10 @@ public sealed class BoardTableEditorTests : IDisposable
     [InlineData("BoardTable_CurrentCell_Border")]
     [InlineData("BoardTable_Notice_Bg")]
     [InlineData("BoardTable_Notice_Border")]
+    [InlineData("BoardTable_Header_Bg")]
+    [InlineData("BoardTable_Header_Fg")]
+    [InlineData("BoardTable_Header_Separator")]
+    [InlineData("BoardTable_Header_Line")]
     public void Every_table_colour_is_defined_in_BOTH_themes(string key)
     {
         // A key missing from one theme renders the converter's hardcoded fallback there, which
@@ -1377,7 +1414,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal("1", editor.GetControl<TextBlock>("AddedCountText").Text);
 
             // The tab says one change (U9), exactly as the draft row's own count does.
-            Assert.Equal("Components (1)", SheetTab(editor, "Components (1)").Header);
+            Assert.Equal("Components (1)", SheetTab(editor, "Components (1)").Header?.ToString());
 
             // And "Show changes only" keeps it - it is the contributor's to look at.
             editor.OnlyChanges = true;
@@ -1757,6 +1794,163 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ------------------------------------------------------------------ Sheet tabs and the filter (2026-09-26)
+
+    private static List<string> ShownSheetTabs(BoardTableEditor editor) =>
+        SheetTabs(editor).Items.OfType<TabItem>()
+            .Where(tab => tab.IsVisible)
+            .Select(tab => ((BoardTableSheet)tab.Tag!).Name)
+            .ToList();
+
+    // Components changed; every other sheet has nothing the filter shows.
+    private static BoardTableDocument ComponentsChanged() =>
+        BoardTableDocument.Create(Board(Component("U1", "CPU")), Board(Component("U1", "CPU 6510")));
+
+    // ###########################################################################################
+    // *** "SHOW CHANGES ONLY" HIDES THE SHEETS WITH NOTHING TO SHOW (owner request, 2026-09-26). ***
+    // Ticked while on one of them, the table moves to the first sheet that still has a tab;
+    // unticked, every tab is back.
+    // ###########################################################################################
+    [Fact]
+    public void Show_changes_only_hides_the_tabs_of_sheets_with_nothing_to_show()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            BoardTableDocument document = ComponentsChanged();
+            editor.Open(document);
+            editor.SelectSheet(document.FindSheet(BoardWorkbookSchema.SheetCredits)!);
+
+            Assert.Equal(BoardWorkbookSchema.AllSheets.Count, ShownSheetTabs(editor).Count);
+
+            editor.OnlyChanges = true;
+
+            Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+            Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
+
+            editor.OnlyChanges = false;
+
+            Assert.Equal(BoardWorkbookSchema.AllSheets.Count, ShownSheetTabs(editor).Count);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A TAB SHOWS ITS FLAGGED ROWS (owner request, 2026-09-26: "the flagged counters should get
+    // visualized also in the tabs headline, as these will be important to address"). *** In a
+    // violet pill of their own - the bracketed number stays the change count, which agrees with
+    // BoardDataDiffer; a duplicate is not a change. A tab with nothing flagged has no pill.
+    // ###########################################################################################
+    [Fact]
+    public void A_sheet_tab_shows_its_flagged_rows_in_a_violet_pill_apart_from_its_change_count()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(BoardTableDocument.Create(
+                Board(Component("U1", "CPU")),
+                Board(Component("U1", "CPU 6510"), Component("U1", "Again"))));
+            Window window = Show(editor);
+
+            TabItem Tab(string sheet) =>
+                SheetTabs(editor).Items.OfType<TabItem>().Single(tab => ((BoardTableSheet)tab.Tag!).Name == sheet);
+
+            static IEnumerable<Border> Pills(TabItem tab) =>
+                tab.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("SheetTabFlagged"));
+
+            TabItem components = Tab(BoardWorkbookSchema.SheetComponents);
+            Assert.Equal("Components (1)", components.Header?.ToString());
+
+            Border pill = Assert.Single(Pills(components));
+            Assert.Equal("1 flagged", ((TextBlock)pill.Child!).Text);
+            Assert.Equal(ThemeColor("BoardTable_Flagged_Bg"), (pill.Background as ISolidColorBrush)?.Color);
+
+            Assert.Empty(Pills(Tab(BoardWorkbookSchema.SheetCredits)));
+
+            window.Close();
+        });
+    }
+
+    // The same when it is the BOX that is ticked - the way it really happens.
+    [Fact]
+    public void Ticking_the_box_hides_the_tabs_too()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(ComponentsChanged());
+
+            editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked = true;
+
+            Assert.True(editor.OnlyChanges);
+            Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE CHOICE OUTLIVES A TABLE WITH NOTHING PUBLISHED. *** The filter is off there (the box
+    // is hidden and every row is unchanged) - and on again for the next table with something to
+    // compare against, as a maintainer moves through the queue past a new system.
+    // ###########################################################################################
+    [Fact]
+    public void Show_changes_only_comes_back_after_a_table_with_nothing_published()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(ComponentsChanged());
+            editor.OnlyChanges = true;
+
+            editor.Clear();
+            editor.Open(BoardTableDocument.Create(null, Board(Component("U1"))));
+            Assert.False(editor.OnlyChanges);
+            Assert.False(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
+
+            editor.Clear();
+            editor.Open(ComponentsChanged());
+            Assert.True(editor.OnlyChanges);
+            Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+        });
+    }
+
+    // Unticked by the user, it stays off - the kept choice is the user's, not "on".
+    [Fact]
+    public void Show_changes_only_unticked_by_the_user_stays_off_for_the_next_table()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(ComponentsChanged());
+            editor.OnlyChanges = true;
+            editor.OnlyChanges = false;
+
+            editor.Clear();
+            editor.Open(ComponentsChanged());
+
+            Assert.False(editor.OnlyChanges);
+        });
+    }
+
+    // ###########################################################################################
+    // The host may ask for the sheet to open on - the maintainer application's last-visited sheet -
+    // and gets it, unless the filter hides its tab.
+    // ###########################################################################################
+    [Fact]
+    public void A_table_opens_on_the_sheet_the_host_asks_for_unless_the_filter_hides_it()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+
+            editor.Open(ComponentsChanged(), preferredSheet: BoardWorkbookSchema.SheetCredits);
+            Assert.Equal(BoardWorkbookSchema.SheetCredits, editor.CurrentSheet!.Name);
+
+            editor.OnlyChanges = true;
+            editor.Clear();
+            editor.Open(ComponentsChanged(), preferredSheet: BoardWorkbookSchema.SheetCredits);
+            Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
+        });
+    }
+
     [Fact]
     public void A_draft_with_nothing_published_never_inherits_a_hidden_show_changes_only()
     {
@@ -1827,7 +2021,7 @@ public sealed class BoardTableEditorTests : IDisposable
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            List<string> headers = SheetTabs(editor).Items.OfType<TabItem>().Select(tab => (string)tab.Header!).ToList();
+            List<string> headers = SheetTabs(editor).Items.OfType<TabItem>().Select(tab => tab.Header!.ToString()!).ToList();
 
             Assert.Equal(BoardWorkbookSchema.SheetCredits, headers[^1]);
             Assert.Equal(BoardWorkbookSchema.SheetKiCadImportantSignals, headers[^2]);
@@ -1884,7 +2078,10 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             ComponentEntry[] many = Enumerable.Range(1, 40).Select(i => Component($"C{i}")).ToArray();
             BoardTableEditor editor = this.OpenEditor(Board(many), published: Board(many));
-            var window = new Window { Content = editor, Width = 1200, Height = 432 };
+            // 1800 wide so the toolbar is ONE line: the height below is tuned to where the rows
+            // start, and under the headless test font the toolbar needs about 1700 pixels - at 1200
+            // it wraps onto a second line since 2026-09-26 (it used to overflow, Save clipped).
+            var window = new Window { Content = editor, Width = 1800, Height = 432 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
@@ -2153,6 +2350,89 @@ public sealed class BoardTableEditorTests : IDisposable
         return editor;
     }
 
+    // ###########################################################################################
+    // *** THE SCROLL BARS ARE ALWAYS FULL SIZE (owner request, 2026-09-26). *** The theme shrank
+    // them to a hairline, full size only under the pointer - so a sheet wider than the window could
+    // hide its last columns from a reader who never thought to scroll. With auto-hide off the bar
+    // that says "there is more to the right" is always there, as in Excel. The Components sheet in
+    // a narrow window has columns off to the right.
+    // ###########################################################################################
+    [Fact]
+    public void A_sheet_wider_than_the_window_always_shows_a_full_size_scroll_bar()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
+            editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!);
+
+            var window = new Window { Content = editor, Width = 700, Height = 500 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Avalonia.Controls.Primitives.ScrollBar bar = editor.GetControl<DataGrid>("TableGrid")
+                .GetVisualDescendants()
+                .OfType<Avalonia.Controls.Primitives.ScrollBar>()
+                .Single(candidate => candidate.Orientation == Avalonia.Layout.Orientation.Horizontal);
+
+            Assert.True(bar.IsVisible);
+            Assert.True(bar.Maximum > 0, "the sheet should be wider than the window");
+            Assert.False(bar.AllowAutoHide);
+            Assert.True(bar.IsExpanded);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE HEADER ROW STANDS APART WITHOUT SHOUTING (owner requests, 2026-09-26). *** A black
+    // band "steals way too much focus", so: semi-bold names on a soft band, and a firm 2px line
+    // under the whole row. Checked piece by piece, because each was wrong once:
+    //   - the corner above the drag grips draws a Grid of its own that ignored Background, and left
+    //     a gap at the row's start;
+    //   - CRT gives every TextBlock the theme's text colour, which outranks the header's own (these
+    //     tests run under CRT's App, where it bites);
+    //   - the lines between column names only take their colour through SeparatorBrush;
+    //   - the line under the row is the grid's own separator, 1px and see-through until styled.
+    // ###########################################################################################
+    [Fact]
+    public void The_header_row_is_set_apart_from_corner_to_corner()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
+            Window window = Show(editor);
+
+            Color header = ThemeColor("BoardTable_Header_Bg")!.Value;
+            Assert.NotEqual(ThemeColor("Table_Bg"), header);
+
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+            List<DataGridColumnHeader> headers = grid.GetVisualDescendants()
+                .OfType<DataGridColumnHeader>()
+                .Where(candidate => candidate.IsVisible && candidate.Bounds.Width > 0)
+                .ToList();
+
+            Assert.Contains(headers, candidate => candidate.Name == "PART_TopLeftCornerHeader");
+            Assert.All(headers, candidate => Assert.Equal(header, ((ISolidColorBrush)candidate.Background!).Color));
+
+            Grid corner = TemplatePart<Grid>(headers.Single(candidate => candidate.Name == "PART_TopLeftCornerHeader"), "TopLeftHeaderRoot");
+            Assert.Equal(header, ((ISolidColorBrush)corner.Background!).Color);
+
+            DataGridColumnHeader named = headers.First(candidate => candidate.Content is string text && text.Length > 0);
+            TextBlock text = named.GetVisualDescendants().OfType<TextBlock>().First();
+            Assert.Equal(ThemeColor("BoardTable_Header_Fg"), ((ISolidColorBrush)text.Foreground!).Color);
+            Assert.Equal(FontWeight.SemiBold, text.FontWeight);
+
+            Avalonia.Controls.Shapes.Rectangle separator = TemplatePart<Avalonia.Controls.Shapes.Rectangle>(named, "VerticalSeparator");
+            Assert.Equal(ThemeColor("BoardTable_Header_Separator"), ((ISolidColorBrush)separator.Fill!).Color);
+
+            Avalonia.Controls.Shapes.Rectangle underline = TemplatePart<Avalonia.Controls.Shapes.Rectangle>(grid, "PART_ColumnHeadersAndRowsSeparator");
+            Assert.Equal(ThemeColor("BoardTable_Header_Line"), ((ISolidColorBrush)underline.Fill!).Color);
+            Assert.Equal(2, underline.Bounds.Height);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_document_opens_with_no_file_behind_it_and_no_Reload()
     {
@@ -2232,6 +2512,43 @@ public sealed class BoardTableEditorTests : IDisposable
             BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU 6510")), published: Board(Component("U1")));
 
             Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
+        });
+    }
+
+    // ###########################################################################################
+    // *** "SAVE CHANGES" STAYS ON SCREEN IN A NARROW TABLE (2026-09-26). *** In the maintainer
+    // application the table sits in the submission panel beside the queue, and the toolbar - one
+    // row that could not wrap - pushed Save out of sight at the window's default width (seen in a
+    // render; nothing failed). Save is now docked right and the rest wraps: at 720 wide, Save lies
+    // wholly inside the table, and the toolbar has taken a second line to make room.
+    // ###########################################################################################
+    [Fact]
+    public void Save_changes_stays_inside_a_narrow_table()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU 6510")), published: Board(Component("U1")));
+
+            var window = new Window { Content = editor, Width = 720, Height = 500 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Button save = editor.GetControl<Button>("SaveButton");
+            Avalonia.Point? topLeft = save.TranslatePoint(new Avalonia.Point(0, 0), editor);
+
+            Assert.NotNull(topLeft);
+            Assert.True(save.Bounds.Width > 0, "Save was laid out with no width");
+            Assert.True(
+                topLeft.Value.X + save.Bounds.Width <= editor.Bounds.Width + 0.5,
+                $"Save ends at {topLeft.Value.X + save.Bounds.Width:0}, past the table's right edge at {editor.Bounds.Width:0}");
+
+            WrapPanel wrap = editor.GetControl<WrapPanel>("ToolbarWrap");
+            Button insertAbove = editor.GetControl<Button>("InsertRowAboveButton");
+            Assert.True(
+                wrap.Bounds.Height > insertAbove.Bounds.Height * 1.5,
+                "the toolbar did not wrap onto a second line at 720 wide");
+
+            window.Close();
         });
     }
 }

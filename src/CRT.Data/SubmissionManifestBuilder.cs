@@ -55,7 +55,17 @@ namespace Handlers.DataHandling
             //
             // KiCadCalibrationDraftWriter.CollectForSubmission is what a caller passes here.
             // ###########################################################################################
-            IReadOnlyList<KiCadCalibrationEntry>? calibrations = null)
+            IReadOnlyList<KiCadCalibrationEntry>? calibrations = null,
+
+            // ###########################################################################################
+            // The board's KiCad DATA - the "KiCad data" folder's files, which no row cites and the
+            // rows-only collection below therefore cannot find (owner decision, 2026-09-26; before
+            // it, a submission silently left them behind and a publish wrote a board without its
+            // traces). SubmissionKiCadFiles.Collect is what a caller passes here, and each path
+            // must be in fileHashes like any referenced file. Optional and trailing, as
+            // calibrations are, so every existing caller keeps working.
+            // ###########################################################################################
+            IReadOnlyList<string>? kiCadFiles = null)
         {
             ArgumentNullException.ThrowIfNull(merged);
             ArgumentNullException.ThrowIfNull(identity);
@@ -63,11 +73,20 @@ namespace Handlers.DataHandling
 
             var problems = new List<string>();
 
-            IReadOnlyList<string> referenced = SubmissionManifestBuilder.CollectReferencedFiles(merged);
+            // Referenced first, then the KiCad data, each path once - a row that (oddly) cites a
+            // file inside "KiCad data" must not put it in the manifest twice.
+            var paths = new List<string>(SubmissionManifestBuilder.CollectReferencedFiles(merged));
+            var seen = new HashSet<string>(paths, StringComparer.Ordinal);
+
+            foreach (string path in kiCadFiles ?? [])
+            {
+                if (seen.Add(path))
+                    paths.Add(path);
+            }
 
             var files = new List<SubmissionFile>();
 
-            foreach (string path in referenced)
+            foreach (string path in paths)
             {
                 if (!fileHashes.TryGetValue(path, out SubmissionFileInfo info))
                 {

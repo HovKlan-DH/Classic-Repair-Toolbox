@@ -161,6 +161,10 @@ namespace CRT
 
             this.thisIsOnScreen = false;
             this.UpdateFileWatching();
+
+            // A card left open over a table that has left the screen would float over whatever
+            // replaced it.
+            this.HideFilePreview();
         }
     }
 }

@@ -441,6 +441,63 @@ namespace CRT.Server.Tests.Fakes
             return new AmendStoreResult(AmendStoreOutcome.Amended, version);
         }
 
+        // Pending only, this system only (exact, as the BINARY column compares), oldest first.
+        public Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<SubmissionRecord> records = this.Submissions.Values
+                .Where(record => record.State == SubmissionState.Pending && string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .OrderBy(record => record.Id)
+                .ToList();
+
+            return Task.FromResult(records);
+        }
+
+        // The real query's two shapes: by account, or by email (trimmed, any case) among the
+        // submissions sent without one. A maintainer decided it when SetDecisionAsync recorded it -
+        // the automatic checks' rejection goes through SetStateAsync, as in the real store.
+        public Task<IReadOnlyList<ContributorSubmission>> GetContributorSubmissionsAsync(
+            long? accountId,
+            string? contactEmail,
+            CancellationToken cancellationToken = default)
+        {
+            string email = contactEmail?.Trim() ?? string.Empty;
+
+            IReadOnlyList<ContributorSubmission> submissions = this.Submissions.Values
+                .Where(record => accountId is not null
+                    ? record.AccountId == accountId
+                    : record.AccountId is null && email.Length > 0 &&
+                      string.Equals(record.ContactEmail?.Trim(), email, StringComparison.OrdinalIgnoreCase))
+                .Select(record => new ContributorSubmission(record.Id, record.State, this.Decisions.ContainsKey(record.Id)))
+                .ToList();
+
+            return Task.FromResult(submissions);
+        }
+
+        // The real store's two checks - still pending, never amended - and its write: withdrawn,
+        // decided now by nobody, with the comment on the row for the contributor to read.
+        public Task<bool> WithdrawReplacedAsync(
+            long submissionId,
+            string comment,
+            DateTimeOffset whenUtc,
+            CancellationToken cancellationToken = default)
+        {
+            if (!this.Submissions.TryGetValue(submissionId, out SubmissionRecord? row) ||
+                row.State != SubmissionState.Pending ||
+                this.Amendments.Any(amendment => amendment.SubmissionId == submissionId))
+            {
+                return Task.FromResult(false);
+            }
+
+            this.Submissions[submissionId] = row with
+            {
+                State = SubmissionState.Withdrawn,
+                DecidedUtc = whenUtc,
+                DecisionComment = comment
+            };
+
+            return Task.FromResult(true);
+        }
+
         public Task<SubmissionAmendment?> GetLatestAmendmentAsync(long submissionId, CancellationToken cancellationToken = default)
         {
             var latest = this.Amendments

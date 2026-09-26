@@ -11,18 +11,19 @@ namespace CRT.Maintainer.Handlers
     // format' (maybe call it 'View in table format') available in the maintainer app ... The maintainer
     // should be able to also edit whatever, if he chooses to publish it afterwards").
     //
+    // It opens with the submission since 2026-09-26 - there is no button for it any more.
+    //
     // Pure, so the words - and the one decision here, what a save sends - are tested.
     // ###########################################################################################
     public static class ReviewTableWording
     {
-        // The project owner's own name for it: a maintainer mostly LOOKS, and may also change.
-        public const string ButtonText = "View in table format";
-
-        public static string WindowTitle(ReviewQueueRow row)
-        {
-            ArgumentNullException.ThrowIfNull(row);
-            return $"Submission #{row.Id} - {row.SystemId} - table";
-        }
+        // ###########################################################################################
+        // Why a decision waits while the table holds unsaved changes. A decision is about what the
+        // SERVER holds, and approving with changes still on screen would publish the version
+        // without them - the opposite of what the maintainer is looking at.
+        // ###########################################################################################
+        public const string SaveTableBeforeDeciding =
+            "The table has changes that are not saved. Save them (or undo them) first - a decision is about the submission as it is saved.";
 
         // What the table is coloured against, under the toolbar when it opens.
         public static string OpenedMessage(ReviewTableData table)
@@ -30,7 +31,7 @@ namespace CRT.Maintainer.Handlers
             ArgumentNullException.ThrowIfNull(table);
 
             return table.Published is null
-                ? "Nothing of this system is published yet, so no row is marked as added, changed or deleted - every row is the contributor's."
+                ? "Nothing of this system is published yet, so only a change you make here is marked. A change you save becomes the submission's content before you decide on it."
                 : "Coloured against the published board. A change you save here becomes the submission's content before you decide on it.";
         }
 

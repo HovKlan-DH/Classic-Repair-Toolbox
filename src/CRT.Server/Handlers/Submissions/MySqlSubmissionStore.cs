@@ -629,6 +629,138 @@ namespace CRT.Server.Handlers.Submissions
             return records;
         }
 
+        // system_id is BINARY (0005), so this is the exact comparison the rest of the store makes;
+        // ix_submissions_system (system_id, state) serves it.
+        public async Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                       state, summary, format_version, created_utc, expires_utc, decided_utc,
+                       decision_comment, touches_shared_files
+                FROM submissions WHERE system_id = @system AND state = @state
+                ORDER BY id ASC;
+                """;
+
+            command.Parameters.AddWithValue("@system", systemId);
+            command.Parameters.AddWithValue("@state", SubmissionState.Pending);
+
+            var records = new List<SubmissionRecord>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                records.Add(MySqlSubmissionStore.ReadSubmission(reader));
+
+            return records;
+        }
+
+        // The contributor's submissions: by account, or by email among those sent without one.
+        // LOWER(TRIM()) on both sides, so a stored " Dennis@Example.com" is the same contributor -
+        // the rule SubmissionReplacementRules.IsSameContributor states. A contributor has a few
+        // submissions, not thousands, so the unindexed email comparison costs nothing.
+        public async Task<IReadOnlyList<ContributorSubmission>> GetContributorSubmissionsAsync(
+            long? accountId,
+            string? contactEmail,
+            CancellationToken cancellationToken = default)
+        {
+            string email = contactEmail?.Trim() ?? string.Empty;
+
+            if (accountId is null && email.Length == 0)
+                return [];
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            if (accountId is not null)
+            {
+                command.CommandText = "SELECT id, state, decided_by IS NOT NULL FROM submissions WHERE account_id = @account;";
+                command.Parameters.AddWithValue("@account", accountId.Value);
+            }
+            else
+            {
+                command.CommandText = """
+                    SELECT id, state, decided_by IS NOT NULL FROM submissions
+                    WHERE account_id IS NULL AND LOWER(TRIM(contact_email)) = LOWER(@email);
+                    """;
+                command.Parameters.AddWithValue("@email", email);
+            }
+
+            var submissions = new List<ContributorSubmission>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                submissions.Add(new ContributorSubmission(
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture) != 0));
+            }
+
+            return submissions;
+        }
+
+        // ###########################################################################################
+        // The submission row is read FOR UPDATE first - the lock AmendAsync takes first too - so a
+        // maintainer's amendment being saved right now finishes before this reads, and its
+        // amendment row is then seen (a locking read sees what was committed). Leaving without
+        // committing rolls back, so a refusal changes nothing. decided_by stays NULL: no account
+        // decided this, the contributor's own newer submission did.
+        // ###########################################################################################
+        public async Task<bool> WithdrawReplacedAsync(
+            long submissionId,
+            string comment,
+            DateTimeOffset whenUtc,
+            CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            MySqlCommand Command(string sql)
+            {
+                MySqlCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                command.Parameters.AddWithValue("@id", submissionId);
+                return command;
+            }
+
+            await using (MySqlCommand read = Command("SELECT state FROM submissions WHERE id = @id FOR UPDATE;"))
+            {
+                if (await read.ExecuteScalarAsync(cancellationToken) as string != SubmissionState.Pending)
+                    return false;
+            }
+
+            await using (MySqlCommand read = Command("SELECT COUNT(*) FROM submission_amendments WHERE submission_id = @id LOCK IN SHARE MODE;"))
+            {
+                if (Convert.ToInt64(await read.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0)
+                    return false;
+            }
+
+            await using (MySqlCommand write = Command(
+                """
+                UPDATE submissions
+                   SET state = @state,
+                       decided_utc = @when,
+                       decided_by = NULL,
+                       decision_comment = @comment
+                 WHERE id = @id;
+                """))
+            {
+                write.Parameters.AddWithValue("@state", SubmissionState.Withdrawn);
+                write.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
+                write.Parameters.AddWithValue("@comment", comment);
+
+                await write.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+
         // ###########################################################################################
         // The per-address history SubmissionRateLimitPolicy counts (security review, 2026-09-25).
         // ix_submissions_ip (created_ip, created_utc) covers it. Bounded so a flooded address cannot

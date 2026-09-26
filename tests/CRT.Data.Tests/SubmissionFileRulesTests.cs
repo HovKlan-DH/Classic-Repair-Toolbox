@@ -76,6 +76,81 @@ namespace CRT.Data.Tests
             Assert.Contains(code, SubmissionFileRulesTests.Codes(manifest));
         }
 
+        // ---------------------------------------------------------------------- KiCad data (2026-09-26)
+
+        // ###########################################################################################
+        // *** THE BOARD'S OWN KiCad DATA IS THE ONE EXEMPTION FROM THE CITATION RULE. *** No row
+        // cites it - CRT reads the folder by name - so before this, a submission could not carry it
+        // at all and a new system was published without its traces.
+        // ###########################################################################################
+        [Fact]
+        public void Own_KiCad_data_is_accepted_although_no_row_cites_it()
+        {
+            SubmissionManifest manifest = SubmissionFileRulesTests.Manifest(
+                (SubmissionFileRulesTests.Own + "Sheet1.png", SubmissionFileRulesTests.Hash('1')));
+
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = SubmissionFileRulesTests.Own + "KiCad data/board.kicad_pcb",
+                Sha256 = SubmissionFileRulesTests.Hash('2'),
+                SizeBytes = 10
+            });
+
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = SubmissionFileRulesTests.Own + "KiCad data/Pages/vic.kicad_sch",
+                Sha256 = SubmissionFileRulesTests.Hash('3'),
+                SizeBytes = 10
+            });
+
+            Assert.Empty(SubmissionFileRulesTests.Codes(manifest, PublishedTreeView.Empty));
+        }
+
+        // The exemption is exactly as wide as SubmissionKiCadFiles.IsSubmittable: a KiCad type
+        // anywhere else, or any other type inside the folder, is refused as before.
+        [Theory]
+        [InlineData("Commodore/C64/250407/board.kicad_pcb", "file.type_not_allowed")]
+        [InlineData("Amstrad/CPC464/Z70200/KiCad data/board.kicad_pcb", "file.type_not_allowed")]
+        [InlineData("Commodore/Shared files/KiCad data/board.kicad_pcb", "file.type_not_allowed")]
+        [InlineData("Commodore/C64/250407/KiCad data/KiCad-traces.json", "file.type_not_allowed")]
+        public void A_KiCad_type_outside_its_own_boards_KiCad_folder_is_refused(string path, string code)
+        {
+            var manifest = new SubmissionManifest
+            {
+                SystemId = "Commodore/C64/250407",
+                Manufacturer = "Commodore",
+                Hardware = "C64",
+                Board = "250407"
+            };
+
+            manifest.Files.Add(new SubmissionFile { Path = path, Sha256 = SubmissionFileRulesTests.Hash('1'), SizeBytes = 10 });
+
+            Assert.Contains(code, SubmissionFileRulesTests.Codes(manifest, PublishedTreeView.Empty));
+        }
+
+        // An allowed ORDINARY type inside the KiCad folder gets no exemption: uncited, it is a file
+        // no maintainer would ever see.
+        [Fact]
+        public void An_uncited_image_inside_the_KiCad_folder_is_still_refused()
+        {
+            var manifest = new SubmissionManifest
+            {
+                SystemId = "Commodore/C64/250407",
+                Manufacturer = "Commodore",
+                Hardware = "C64",
+                Board = "250407"
+            };
+
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = SubmissionFileRulesTests.Own + "KiCad data/photo.png",
+                Sha256 = SubmissionFileRulesTests.Hash('1'),
+                SizeBytes = 10
+            });
+
+            Assert.Contains("file.not_used", SubmissionFileRulesTests.Codes(manifest, PublishedTreeView.Empty));
+        }
+
         // ###########################################################################################
         // *** ONE BAD PATH, ONE FINDING (code review, 2026-09-25). *** A path the path rules refuse
         // used to be reported again here under another code - "Commodore/../etc/x.png" as a hidden

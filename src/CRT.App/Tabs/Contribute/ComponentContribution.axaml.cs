@@ -163,6 +163,21 @@ namespace CRT
         string File { get; set; }
         string? OriginalFilePath { get; set; }
         ObservableCollection<string> AvailableFileLocations { get; }
+
+        // The "File location" box is marked red - see ContributionComponentImageRow.HasLocationError.
+        bool HasLocationError { get; set; }
+
+        // ###########################################################################################
+        // Tells the bound drop-down to read FileLocation again, WITHOUT changing it (code review,
+        // 2026-09-26). The list of available folders is rebuilt underneath it, and a ComboBox whose
+        // ItemsSource has just been repopulated drops a selection it no longer recognises.
+        //
+        // This used to be done by assigning string.Empty and the value back. That goes through the
+        // setter, whose non-blank arm answers the row's location mark - so browsing for a new file
+        // silently cleared a still-unfixed "this folder cannot be written to" mark and its message,
+        // and the red only came back after another refused save.
+        // ###########################################################################################
+        void NotifyFileLocationChanged();
     }
 
     public sealed class ContributionComponentImageRow : INotifyPropertyChanged, IContributionFileRow
@@ -194,9 +209,23 @@ namespace CRT
                 {
                     this.thisFileLocation = value;
                     this.OnPropertyChanged();
+
+                    // Choosing a folder answers the location mark, and the row's own mark and text
+                    // were that same problem - see HasLocationError.
+                    if (this.HasLocationError && !string.IsNullOrWhiteSpace(value))
+                    {
+                        this.HasLocationError = false;
+                        this.HasFileError = false;
+                        this.FileErrorText = string.Empty;
+                    }
                 }
             }
         }
+
+        // Re-raises FileLocation's change notification without touching the value - see the
+        // interface. Named for the property rather than using [CallerMemberName], which would
+        // report this method's own name.
+        public void NotifyFileLocationChanged() => this.OnPropertyChanged(nameof(this.FileLocation));
 
         private string thisFile = string.Empty;
         public string File
@@ -274,6 +303,26 @@ namespace CRT
                 }
             }
         }
+
+        // ###########################################################################################
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
+        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
+        // ###########################################################################################
+        private bool thisHasLocationError;
+        [JsonIgnore]
+        public bool HasLocationError
+        {
+            get => this.thisHasLocationError;
+            set
+            {
+                if (this.thisHasLocationError != value)
+                {
+                    this.thisHasLocationError = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
     }
 
     public sealed class ContributionComponentLocalFileRow : INotifyPropertyChanged, IContributionFileRow
@@ -299,9 +348,20 @@ namespace CRT
                 {
                     this.thisFileLocation = value;
                     this.OnPropertyChanged();
+
+                    // Choosing a folder answers the location mark - see HasLocationError.
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        this.HasLocationError = false;
+                    }
                 }
             }
         }
+
+        // Re-raises FileLocation's change notification without touching the value - see the
+        // interface. Named for the property rather than using [CallerMemberName], which would
+        // report this method's own name.
+        public void NotifyFileLocationChanged() => this.OnPropertyChanged(nameof(this.FileLocation));
 
         private string thisFile = string.Empty;
         public string File
@@ -326,6 +386,26 @@ namespace CRT
 
         [JsonIgnore]
         public string? OriginalFilePath { get; set; }
+
+        // ###########################################################################################
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
+        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
+        // ###########################################################################################
+        private bool thisHasLocationError;
+        [JsonIgnore]
+        public bool HasLocationError
+        {
+            get => this.thisHasLocationError;
+            set
+            {
+                if (this.thisHasLocationError != value)
+                {
+                    this.thisHasLocationError = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
     }
 
     public sealed class ContributionComponentLinkRow
@@ -359,9 +439,20 @@ namespace CRT
                 {
                     this.thisFileLocation = value;
                     this.OnPropertyChanged();
+
+                    // Choosing a folder answers the location mark - see HasLocationError.
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        this.HasLocationError = false;
+                    }
                 }
             }
         }
+
+        // Re-raises FileLocation's change notification without touching the value - see the
+        // interface. Named for the property rather than using [CallerMemberName], which would
+        // report this method's own name.
+        public void NotifyFileLocationChanged() => this.OnPropertyChanged(nameof(this.FileLocation));
 
         private string thisFile = string.Empty;
         public string File
@@ -386,6 +477,26 @@ namespace CRT
 
         [JsonIgnore]
         public string? OriginalFilePath { get; set; }
+
+        // ###########################################################################################
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
+        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
+        // ###########################################################################################
+        private bool thisHasLocationError;
+        [JsonIgnore]
+        public bool HasLocationError
+        {
+            get => this.thisHasLocationError;
+            set
+            {
+                if (this.thisHasLocationError != value)
+                {
+                    this.thisHasLocationError = value;
+                    this.OnPropertyChanged();
+                }
+            }
+        }
     }
 
     public sealed class ContributionBoardLinkRow
@@ -717,13 +828,22 @@ namespace CRT
         // tree's, so a system that exists only as a draft offers its own folders too. See
         // ContributionFileLocations for why both, and why that needed nothing else to change.
         //
-        // Rebuilt on every open, so a system created a moment ago is already in the list.
+        // *** ONLY THIS BOARD'S FOLDERS AND THE SHARED ONES (owner request, 2026-09-25) - see
+        // ContributionFileLocations.WritableBy. *** A row whose file already sits elsewhere keeps
+        // its own folder in its list regardless (SetAvailableFileLocations adds it back).
+        //
+        // Rebuilt on every open, so a system created a moment ago is already in the list. Needs
+        // thisBoardExcelFile, which names the system - ApplyBoardContext sets it first.
         // ###########################################################################################
         private void PopulateEndFolders(string dataRoot)
         {
             this.AvailableEndFolders.Clear();
 
-            foreach (string folder in ContributionFileLocations.FindEndFolders(dataRoot, DraftManager.DraftsRoot))
+            IEnumerable<string> writable = ContributionFileLocations.WritableBy(
+                SystemDescriptorRules.SystemIdFromExcelDataFile(this.thisBoardExcelFile),
+                ContributionFileLocations.FindEndFolders(dataRoot, DraftManager.DraftsRoot));
+
+            foreach (string folder in writable)
             {
                 this.AvailableEndFolders.Add(folder);
             }
@@ -1264,6 +1384,15 @@ namespace CRT
                 {
                     this.RevealComponentImageRow(componentImageProblem.Value.Row);
                     this.ShowStatus(componentImageProblem.Value.Message, true);
+                    return;
+                }
+
+                // After the image check, which first clears the mark of every image row it passes.
+                var locationProblem = this.ValidateNewFileLocations();
+                if (locationProblem != null)
+                {
+                    locationProblem.Value.Reveal();
+                    this.ShowStatus(locationProblem.Value.Message, true);
                     return;
                 }
             }
@@ -1819,17 +1948,130 @@ namespace CRT
         // ###########################################################################################
         private void RevealComponentImageRow(ContributionComponentImageRow row)
         {
-            this.ComponentImagesExpander.IsExpanded = true;
+            // Through the general one (code review, 2026-09-26): this used to carry its own copy of
+            // the expand-post-BringIntoView dance, so a later fix to the reveal timing would have
+            // had to be made twice. The index is read BEFORE posting, as RevealRow's own callers do
+            // - a row no longer in the list reveals nothing.
+            int index = this.thisComponentImageRows.IndexOf(row);
+
+            if (index >= 0)
+                ComponentContributionWindow.RevealRow(this.ComponentImagesExpander, this.ComponentImageRowsItemsControl, index);
+        }
+
+        // ###########################################################################################
+        // *** EVERY NEWLY PICKED FILE MUST BE FILED IN THIS BOARD'S FOLDERS OR A SHARED ONE (owner
+        // report, 2026-09-25). *** A file picked from outside the data folder keeps the row's
+        // "File location", which starts empty - and a row saved like that stored the bare file name
+        // ("HotCPU.png"), outside every board. The draft took it; the server refused the submission
+        // much later ("[HotCPU.png] belongs to another board"). The rule is
+        // ContributionFileLocations.CheckNewFile; this marks every row it refuses (the "File
+        // location" box, and an image row's own frame and text too) and returns the first, in
+        // section order, with its message.
+        // ###########################################################################################
+        private (Action Reveal, string Message)? ValidateNewFileLocations()
+        {
+            string systemId = SystemDescriptorRules.SystemIdFromExcelDataFile(this.thisBoardExcelFile);
+            (Action Reveal, string Message)? firstProblem = null;
+
+            void CheckSection(IReadOnlyList<IContributionFileRow> rows, string rowName, Expander section, ItemsControl list)
+            {
+                for (int index = 0; index < rows.Count; index++)
+                {
+                    IContributionFileRow row = rows[index];
+                    ContributionFileLocations.NewFileProblem problem = this.CheckNewFileLocation(systemId, row);
+                    bool noFolder = problem == ContributionFileLocations.NewFileProblem.NoFolder;
+
+                    row.HasLocationError = problem != ContributionFileLocations.NewFileProblem.None;
+
+                    if (!row.HasLocationError)
+                    {
+                        continue;
+                    }
+
+                    if (row is ContributionComponentImageRow imageRow)
+                    {
+                        imageRow.HasFileError = true;
+                        imageRow.FileErrorText = noFolder
+                            ? "Choose a file location"
+                            : "Choose one of this board's folders or a shared folder";
+                    }
+
+                    if (firstProblem == null)
+                    {
+                        int rowIndex = index;
+                        string rowLabel = $"{rowName} #{index + 1} [{row.File}]";
+
+                        string message = noFolder
+                            ? $"{rowLabel} has no file location - choose the folder it goes in: one of this board's folders, or a shared folder"
+                            : $"{rowLabel} is filed in [{row.FileLocation}], which is not one of this board's folders or a shared folder - choose one of those";
+
+                        firstProblem = (() => ComponentContributionWindow.RevealRow(section, list, rowIndex), message);
+                    }
+                }
+            }
+
+            CheckSection(
+                this.thisComponentImageRows.Cast<IContributionFileRow>().ToList(),
+                "Component image",
+                this.ComponentImagesExpander,
+                this.ComponentImageRowsItemsControl);
+
+            CheckSection(
+                this.thisComponentLocalFileRows.Cast<IContributionFileRow>().ToList(),
+                "Component file",
+                this.ComponentLocalFilesExpander,
+                this.ComponentLocalFileRowsItemsControl);
+
+            CheckSection(
+                this.thisBoardLocalFileRows.Cast<IContributionFileRow>().ToList(),
+                "Board file",
+                this.BoardLocalFilesExpander,
+                this.BoardLocalFileRowsItemsControl);
+
+            return firstProblem;
+        }
+
+        // ###########################################################################################
+        // One row's answer. Only a file picked HERE is checked - its source is a full path. A row
+        // loaded from the board keeps the path it is stored under, and this window does not move a
+        // stored file, so there is nothing for its location to decide.
+        //
+        // A file picked from the data folder and left in the folder it came from is "used in
+        // place": it IS the published copy, so citing it is fine even from another board's folder.
+        // Compared exactly - a different capitalisation would name a different file on the server.
+        // ###########################################################################################
+        private ContributionFileLocations.NewFileProblem CheckNewFileLocation(string systemId, IContributionFileRow row)
+        {
+            if (string.IsNullOrWhiteSpace(row.File) ||
+                string.IsNullOrWhiteSpace(row.OriginalFilePath) ||
+                !Path.IsPathRooted(row.OriginalFilePath))
+            {
+                return ContributionFileLocations.NewFileProblem.None;
+            }
+
+            string location = row.FileLocation?.Trim().Replace('\\', '/').Trim('/') ?? string.Empty;
+
+            string? pickedFrom = ContributionPackaging.TryGetDataRootRelativeFolder(
+                this.thisDataRoot,
+                Path.GetDirectoryName(row.OriginalFilePath));
+
+            bool usedInPlace = !string.IsNullOrEmpty(pickedFrom) &&
+                               string.Equals(pickedFrom, location, StringComparison.Ordinal);
+
+            return ContributionFileLocations.CheckNewFile(systemId, location, usedInPlace);
+        }
+
+        // ###########################################################################################
+        // Opens a section and brings one of its rows on screen - RevealComponentImageRow's reasoning,
+        // for any section: the row's container does not exist until the expander has laid it out.
+        // ###########################################################################################
+        private static void RevealRow(Expander section, ItemsControl list, int index)
+        {
+            section.IsExpanded = true;
 
             Dispatcher.UIThread.Post(() =>
             {
-                int index = this.thisComponentImageRows.IndexOf(row);
-                if (index < 0)
-                {
-                    return;
-                }
-
-                if (this.ComponentImageRowsItemsControl.ContainerFromIndex(index) is Control container)
+                if (list.ContainerFromIndex(index) is Control container)
                 {
                     container.BringIntoView();
                 }
@@ -2209,9 +2451,10 @@ namespace CRT
 
             this.SetAvailableFileLocations(row);
 
-            string updatedLocation = row.FileLocation;
-            row.FileLocation = string.Empty;
-            row.FileLocation = updatedLocation;
+            // The folder list was just rebuilt, so the bound drop-down is told to read the
+            // unchanged value again - see IContributionFileRow.NotifyFileLocationChanged for why
+            // this is not an assignment.
+            row.NotifyFileLocationChanged();
         }
 
         // ###########################################################################################

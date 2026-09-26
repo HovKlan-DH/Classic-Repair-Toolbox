@@ -34,16 +34,17 @@ in CRT.Data.Tests.csproj.
   </PropertyGroup>
 
   <!--
-  No Avalonia.Headless package here. If this project ever needs to construct a control, copy
-  CRT.App.Tests' UiTest.Run harness rather than adding Avalonia.Headless.XUnit: at 12.1.3 that
-  adapter is built against xunit v3's 3.2 extensibility API, which the xunit 4.0 this suite runs
-  on has changed (see CRT.App.Tests.csproj, which also explains why the xunit package here is
-  xunit.v3.mtp-off).
+  Avalonia.Headless only, driven by Ui/UiTest - CRT.App.Tests' harness, copied here (2026-09-26)
+  once a test had to build the maintainer window: it failed to START when the table moved into it,
+  and nothing built it. NOT Avalonia.Headless.XUnit: at 12.1.3 that adapter is built against xunit
+  v3's 3.2 extensibility API, which the xunit 4.0 this suite runs on has changed (see
+  CRT.App.Tests.csproj, which also explains why the xunit package here is xunit.v3.mtp-off).
 
-  For now nothing here needs one: what is under test is ReviewSummaryPresenter, which is pure -
-  that being true is the point of keeping the review window's logic in Handlers/.
+  Most of what is under test is still pure (Handlers/) - that being true is the point of keeping
+  the window's logic there. The UI tests only prove the window builds and its panels switch.
   -->
   <ItemGroup>
+    <PackageReference Include="Avalonia.Headless" Version="12.1.3" />
     <PackageReference Include="coverlet.collector" Version="10.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />

@@ -86,36 +86,14 @@ namespace Handlers.DataHandling
         // image outside this set uploads perfectly happily and then shows as an empty frame, so the
         // contribution editor refuses one up front instead.
         // ###########################################################################################
-        public static readonly IReadOnlyList<string> DisplayableImageExtensions = new[]
-        {
-            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"
-        };
-
-        private static readonly HashSet<string> DisplayableImageExtensionSet =
-            new(DisplayableImageExtensions, StringComparer.OrdinalIgnoreCase);
+        public static readonly IReadOnlyList<string> DisplayableImageExtensions = ImageFileTypes.DisplayableExtensions;
 
         // ###########################################################################################
         // True when the given file name or path carries an extension the application can display as
         // a component image. Blank input, a name with no extension at all, and every non-image type
         // are false (fail closed) - the caller is deciding whether to accept a contributed file.
         // ###########################################################################################
-        public static bool IsDisplayableImageFile(string? pathValue)
-        {
-            string trimmed = pathValue?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                return false;
-            }
-
-            try
-            {
-                return DisplayableImageExtensionSet.Contains(Path.GetExtension(trimmed));
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        public static bool IsDisplayableImageFile(string? pathValue) => ImageFileTypes.IsDisplayable(pathValue);
 
         // ###########################################################################################
         // What is wrong with the file on a component image row, if anything. A row is allowed to sit

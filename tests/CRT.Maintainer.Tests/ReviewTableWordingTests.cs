@@ -72,7 +72,7 @@ public sealed class ReviewTableWordingTests
     [Fact]
     public void The_table_says_what_it_is_coloured_against()
     {
-        Assert.StartsWith("Nothing of this system is published yet",
+        Assert.StartsWith("Nothing of this system is published yet, so only a change you make here is marked.",
             ReviewTableWording.OpenedMessage(new ReviewTableData(0, null, ReviewTableWordingTests.Submitted())));
 
         Assert.StartsWith("Coloured against the published board",
@@ -111,13 +111,13 @@ public sealed class ReviewTableWordingTests
         Assert.Contains("the contributor is told", line, StringComparison.Ordinal);
     }
 
+    // A decision with unsaved table changes on screen would decide the saved version - the one the
+    // maintainer is NOT looking at. The refusal says so and says what to do.
     [Fact]
-    public void The_window_names_the_submission_and_its_board()
+    public void Deciding_with_unsaved_table_changes_is_explained()
     {
-        var row = new ReviewQueueRow(42, "Commodore/C64/250407", "pending", "x", "c@example.com", null);
-
-        Assert.Equal("Submission #42 - Commodore/C64/250407 - table", ReviewTableWording.WindowTitle(row));
-        Assert.Equal("View in table format", ReviewTableWording.ButtonText);
+        Assert.Contains("not saved", ReviewTableWording.SaveTableBeforeDeciding, StringComparison.Ordinal);
+        Assert.Contains("Save them", ReviewTableWording.SaveTableBeforeDeciding, StringComparison.Ordinal);
     }
 
     // ---- reading it off the server -------------------------------------------------------

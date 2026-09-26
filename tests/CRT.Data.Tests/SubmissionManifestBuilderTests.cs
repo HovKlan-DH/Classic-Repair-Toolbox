@@ -87,6 +87,39 @@ namespace CRT.Data.Tests
             Assert.Contains(result.Manifest.Files, file => file.Path == "Images/U8-pin3.png");
         }
 
+        // ###########################################################################################
+        // *** THE BOARD'S KiCad DATA TRAVELS TOO (owner decision, 2026-09-26). *** No row cites the
+        // "KiCad data" folder, so the rows-only list left it behind: a new system was published
+        // without its traces. The caller collects the paths (SubmissionKiCadFiles.Collect) and each
+        // is hashed and listed like any referenced file - and one that is missing on disk is a named
+        // problem, not a silent omission.
+        // ###########################################################################################
+        [Fact]
+        public void The_boards_KiCad_data_is_included_beside_the_referenced_files()
+        {
+            SubmissionManifestBuildResult result = SubmissionManifestBuilder.Build(
+                SubmissionManifestBuilderTests.Board(),
+                SubmissionManifestBuilderTests.Identity(),
+                SubmissionManifestBuilderTests.Hashes("main.png", "Images/U8-pin3.png", "KiCad data/board.kicad_pcb"),
+                kiCadFiles: ["KiCad data/board.kicad_pcb"]);
+
+            Assert.True(result.IsComplete);
+            Assert.Contains(result.Manifest.Files, file => file.Path == "KiCad data/board.kicad_pcb");
+        }
+
+        [Fact]
+        public void A_KiCad_file_missing_on_disk_is_reported_by_name()
+        {
+            SubmissionManifestBuildResult result = SubmissionManifestBuilder.Build(
+                SubmissionManifestBuilderTests.Board(),
+                SubmissionManifestBuilderTests.Identity(),
+                SubmissionManifestBuilderTests.Hashes("main.png", "Images/U8-pin3.png"),
+                kiCadFiles: ["KiCad data/board.kicad_pcb"]);
+
+            Assert.False(result.IsComplete);
+            Assert.Contains(result.Problems, problem => problem.Contains("KiCad data/board.kicad_pcb"));
+        }
+
         [Fact]
         public void A_file_the_rows_do_NOT_reference_is_never_sent()
         {

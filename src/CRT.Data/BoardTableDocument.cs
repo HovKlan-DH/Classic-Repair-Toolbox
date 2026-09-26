@@ -102,6 +102,37 @@ namespace Handlers.DataHandling
             this.Sheets.FirstOrDefault(sheet => string.Equals(sheet.Name, sheetName, StringComparison.Ordinal));
 
         // ###########################################################################################
+        // WHICH SHEET TABS SHOW (owner request, 2026-09-26: with "Show changes only" ticked, "it
+        // should also hide the sheets/tabs having no changes"). Every sheet without the filter; with
+        // it, the sheets with a row the filter shows (BoardTableSheet.HasChangeRows) - and always
+        // `current`, so undoing the last change of the sheet being worked on does not pull its tab
+        // away. A table with nothing to show anywhere keeps every tab: hiding them all but one would
+        // look broken, and there is nothing to narrow down to.
+        // ###########################################################################################
+        public IReadOnlyList<BoardTableSheet> SheetsShown(bool onlyChanges, BoardTableSheet? current)
+        {
+            if (!onlyChanges || !this.Sheets.Any(sheet => sheet.HasChangeRows))
+                return this.Sheets;
+
+            return this.Sheets
+                .Where(sheet => sheet.HasChangeRows || ReferenceEquals(sheet, current))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // The sheet to show: `wanted` (by name - the sheet on screen before, or the one last looked
+        // at in another table) while its tab shows, else the first sheet whose tab shows.
+        // ###########################################################################################
+        public BoardTableSheet SheetToShow(string? wanted, bool onlyChanges)
+        {
+            IReadOnlyList<BoardTableSheet> shown = this.SheetsShown(onlyChanges, current: null);
+
+            return shown.FirstOrDefault(sheet => string.Equals(sheet.Name, wanted, StringComparison.Ordinal))
+                ?? shown.FirstOrDefault()
+                ?? this.Sheets[0];
+        }
+
+        // ###########################################################################################
         // The board to save: `current` - the board as it is on disk right now, handed over by
         // DraftWorkbookStore.Edit - with every sheet replaced by this table's rows.
         //

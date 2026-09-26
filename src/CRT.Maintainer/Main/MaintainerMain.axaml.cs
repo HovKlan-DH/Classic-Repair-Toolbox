@@ -13,23 +13,33 @@ using Handlers.DataHandling;
 namespace CRT.Maintainer
 {
     // ###########################################################################################
-    // The review window: sign in, then the queue on the left and a submission's SUMMARY on the
-    // right (NewContributeStrategy.md Phase 5, tasks 2 and 3).
+    // The review window: sign in, then the queue on the left and the selected submission's TABLE
+    // on the right (NewContributeStrategy.md Phase 5, tasks 2 and 3).
     //
-    // FILE MAP - one file for now. When it outgrows ~1,500 lines, split into MaintainerMain.<Area>.cs
-    // partials and list them here, as TabSchematics and Main do in CRT.App.
+    // *** THE TABLE IS THE SUBMISSION VIEW (owner request, 2026-09-26). *** A change summary -
+    // section lines, field diffs, the file list, pictures side by side, moved highlights drawn on
+    // their schematic - filled this panel until then, with the table a button away. The project
+    // owner found it "confusing to look at" and asked for it to go. What the table cannot show
+    // (highlights, calibration points, the automatic checks' warnings) stays as a few lines above
+    // it - ReviewNotInTable.
     //
-    // *** THE LOGIC IS IN Handlers/, NOT HERE. *** What the summary says is
-    // ReviewSummaryPresenter's decision; how a queue row reads is ReviewQueueDisplay's; what the
-    // server answered is ReviewApiParser's. All three are unit tested. This file resolves
+    // FILE MAP - this file (sign in, the queue, the decisions), MaintainerMain.QueueItems.cs (the
+    // queue list grouped by board), MaintainerMain.QueueRefresh.cs (the queue checking itself - no
+    // Refresh button), MaintainerMain.Table.cs (the table, and asking before unsaved changes in it
+    // are left), and MaintainerMain.Settings.cs (the window's place and "Show changes only",
+    // remembered between runs).
+    //
+    // *** THE LOGIC IS IN Handlers/, NOT HERE. *** How a queue row reads is ReviewQueueDisplay's;
+    // what the table cannot show is ReviewNotInTable's;
+    // what the server answered is ReviewApiParser's. All are unit tested. This file resolves
     // controls, calls one of them, and shows the result - which is why the screens that decide
     // whether a change gets looked at have real coverage rather than being verified by eye.
     //
-    // *** THE CHANGE SUMMARY IS NOT SHOWN IN THE QUEUE, AND CANNOT BE. *** Computing it needs the
+    // *** WHAT CHANGED IS NOT SHOWN IN THE QUEUE, AND CANNOT BE. *** Working it out needs the
     // published board AND the submitted manifest; the queue endpoint returns neither, because
     // doing so would mean loading two full BoardData per queued row on the server for a list the
-    // maintainer scrolls past. So the queue shows what the CONTRIBUTOR said, and the summary
-    // arrives when a submission is opened. See ReviewQueueDisplay's header.
+    // maintainer scrolls past. So the queue shows what the CONTRIBUTOR said, and the rest arrives
+    // when a submission is opened. See ReviewQueueDisplay's header.
     // ###########################################################################################
     public partial class MaintainerMain : Window
     {
@@ -43,9 +53,15 @@ namespace CRT.Maintainer
         // request was in flight.
         private long? thisSelectedId;
 
+        // True while code - not the maintainer - is moving the queue's selection (keeping it across a
+        // refresh, or putting it back on the table's submission), so the handler does not treat it
+        // as a new choice.
+        private bool thisSuppressQueueSelection;
+
         public MaintainerMain()
         {
             this.InitializeComponent();
+            this.WireTable();
         }
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
@@ -67,6 +83,8 @@ namespace CRT.Maintainer
         protected override async void OnOpened(EventArgs e)
         {
             base.OnOpened(e);
+
+            this.SettleRestoredPlacement();
 
             ReviewSessionStore.Initialise();
 
@@ -362,21 +380,28 @@ namespace CRT.Maintainer
             {
                 // Named, because somebody with both a maintainer and an administrator account
                 // needs to know which one they are acting as before they publish anything.
-                signedInAs.Text = $"Signed in as {this.thisSession.DisplayName} ({this.thisSession.Email})";
+                signedInAs.Text = $"{this.thisSession.DisplayName} ({this.thisSession.Email})";
             }
+
+            this.StartQueueChecks();
         }
 
         // -----------------------------------------------------------------------------------
         // The queue
         // -----------------------------------------------------------------------------------
 
-        private async void OnRefreshClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.RefreshQueueAsync();
-
-        private async Task RefreshQueueAsync()
+        // ###########################################################################################
+        // Asks for the queue and shows it. `background` is the queue's own check
+        // (MaintainerMain.QueueRefresh.cs): it updates the list and leaves the open submission alone.
+        // Without it - after a decision here, a changed pool - the open submission is read again,
+        // table included unless it holds unsaved changes.
+        // ###########################################################################################
+        private async Task RefreshQueueAsync(bool background = false)
         {
             if (this.thisClient is null || this.thisSession is null)
                 return;
+
+            this.thisQueueAskedUtc = DateTimeOffset.UtcNow;
 
             // *** AN EXPIRED SESSION IS CAUGHT BEFORE THE REQUEST, not after the 401. *** The
             // server would refuse it anyway, but "your session has expired" is a better answer
@@ -384,10 +409,36 @@ namespace CRT.Maintainer
             // true one.
             if (!this.thisSession.IsUsableAt(DateTimeOffset.UtcNow))
             {
+                // ###########################################################################################
+                // *** A DEAD SESSION UNDER UNSAVED EDITS STOPS THE CHECKS AND SAYS WHAT WILL HAPPEN
+                // TO THEM (code review, 2026-09-26). *** The panel is not switched while a table
+                // has unsaved changes a check nobody asked for would throw away - but the timer
+                // used to keep firing, repainting the same message every minute with no route that
+                // kept the edits: saving needs the dead session too. So the checks stop, and the
+                // message says the edits cannot be saved and what signing in again would cost.
+                // Signing in again is the maintainer's own decision, taken from the Sign out button.
+                // ###########################################################################################
+                if (background && this.WouldLoseTableChanges)
+                {
+                    this.StopQueueChecks();
+
+                    this.ShowQueueMessage(
+                        "Your session has expired, so the changes in the table below can no longer be saved. " +
+                        "Copy anything you need, then sign out and in again to carry on.",
+                        isError: true);
+
+                    return;
+                }
+
                 this.ShowQueueMessage("Your session has expired. Sign in again.", isError: true);
                 this.ShowSignInPanel();
+
                 return;
             }
+
+            ReviewQueueRow? before = this.thisSelectedId is long selected
+                ? this.thisQueue.FirstOrDefault(row => row.Id == selected)
+                : null;
 
             ReviewApiResult<ReviewQueueResponse> result =
                 await this.thisClient.GetQueueAsync(this.thisSession);
@@ -399,25 +450,53 @@ namespace CRT.Maintainer
                 // must never give - a backlog would go unnoticed for as long as nobody checked.
                 this.ShowQueueMessage(result.Message, isError: true);
 
-                if (result.Failure == ReviewApiFailure.NotSignedIn)
+                if (result.Failure == ReviewApiFailure.NotSignedIn && !(background && this.WouldLoseTableChanges))
                     this.ShowSignInPanel();
 
                 return;
             }
 
+            if (this.ApplyQueueResponse(result.Value!, background) is not ReviewQueueRow kept)
+                return;
+
+            if (background)
+            {
+                // Its detail only, and only when its row changed - never its table.
+                if (!Equals(before, kept))
+                    await this.LoadSubmissionAsync(kept);
+
+                return;
+            }
+
+            // Still selected: read again, since whatever prompted the refresh (a changed pool, a
+            // refused decision, another maintainer's change) may have changed what it says. Its
+            // table too - unless it holds unsaved changes, which a reload would throw away.
+            await Task.WhenAll(
+                this.LoadSubmissionAsync(kept),
+                this.WouldLoseTableChanges ? Task.CompletedTask : this.LoadTableAsync(message: null));
+        }
+
+        // ###########################################################################################
+        // Puts the server's queue answer on screen, and returns the submission still selected.
+        //
+        // *** THE ADMINISTRATOR'S SCREENS ARE OFFERED ONLY WHEN THE SERVER SAYS THIS ACCOUNT IS ONE ***
+        // (Maintainers, Unused files). The server refuses everyone else regardless; a button that
+        // could only ever be refused would be clutter.
+        // ###########################################################################################
+        internal ReviewQueueRow? ApplyQueueResponse(ReviewQueueResponse response, bool background = false)
+        {
+            ArgumentNullException.ThrowIfNull(response);
+
             this.thisQueue.Clear();
-            this.thisQueue.AddRange(result.Value!.Submissions);
+            this.thisQueue.AddRange(response.Submissions);
 
-            // The administrator's screen is offered only when the SERVER says this account is one.
-            var maintainers = this.FindControl<Button>("MaintainersButton");
-
-            if (maintainers is not null)
-                maintainers.IsVisible = result.Value.IsAdministrator;
+            if (this.FindControl<Button>("MaintainersButton") is Button maintainers)
+                maintainers.IsVisible = response.IsAdministrator;
 
             if (this.FindControl<Button>("UnusedFilesButton") is Button unused)
-                unused.IsVisible = result.Value.IsAdministrator;
+                unused.IsVisible = response.IsAdministrator;
 
-            this.ApplyQueue();
+            return this.ApplyQueue(background);
         }
 
         // ###########################################################################################
@@ -490,6 +569,22 @@ namespace CRT.Maintainer
             this.thisSession = null;
             ReviewSessionStore.Forget();
 
+            // The session is over, so an open table could not be saved any more.
+            this.CloseTableNow();
+            this.StopQueueChecks();
+
+            // ###########################################################################################
+            // *** THE PREVIOUS SESSION'S QUEUE AND SELECTION GO WITH IT (code review, 2026-09-26). ***
+            // Left standing, the next sign-in - possibly as a DIFFERENT account on the same machine -
+            // found the old `thisSelectedId` in the fresh queue and silently re-selected it, then
+            // re-applied the old detail's badges, which were judged for the old account. Nothing
+            // opened its table, because only a real selection change does that, so the panel showed
+            // a decision bar for a submission the screen said was not selected.
+            // ###########################################################################################
+            this.thisQueue.Clear();
+            this.thisSelectedId = null;
+            this.thisShownDetail = null;
+
             if (signIn is null || queue is null)
                 return;
 
@@ -510,6 +605,10 @@ namespace CRT.Maintainer
         // ###########################################################################################
         private async void OnSignOutClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
+            // Unsaved table changes are asked about first - after signing out nothing can save them.
+            if (!await this.CloseTableAsync())
+                return;
+
             if (this.thisClient is not null && this.thisSession is not null)
                 await this.thisClient.LogoutAsync(this.thisSession);
 
@@ -519,18 +618,37 @@ namespace CRT.Maintainer
             this.ShowSignInMessage("You are signed out.", isError: false);
         }
 
-        private void ApplyQueue()
+        // ###########################################################################################
+        // Puts the queue on screen, KEEPING the selected submission selected when it is still in it
+        // (2026-09-26). Replacing the list used to drop the selection and blank the panel on every
+        // refresh - which, with the table open in that panel, would have thrown away the table and
+        // any unsaved change in it. Returns the submission still selected, or null when it left the
+        // queue (decided, here or by somebody else) - the panel, and a table on it, then close.
+        // ###########################################################################################
+        private ReviewQueueRow? ApplyQueue(bool background = false)
         {
             var list = this.FindControl<ListBox>("QueueList");
 
             if (list is null)
-                return;
+                return null;
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
-            list.ItemsSource = this.thisQueue
-                .Select(row => $"{ReviewQueueDisplay.Title(row)}\n{ReviewQueueDisplay.Subtitle(row, now)}")
-                .ToList();
+            long? keep = this.thisSelectedId;
+            ReviewQueueRow? kept = keep is null ? null : this.thisQueue.FirstOrDefault(row => row.Id == keep.Value);
+
+            this.thisSuppressQueueSelection = true;
+
+            try
+            {
+                // Grouped by board, with a heading per board - see MaintainerMain.QueueItems.cs.
+                list.ItemsSource = this.BuildQueueItems(this.thisQueue, now);
+                this.SelectQueueRow(kept?.Id);
+            }
+            finally
+            {
+                this.thisSuppressQueueSelection = false;
+            }
 
             // An empty queue is a perfectly good answer and says so plainly - distinct from the
             // error wording used above, which the maintainer must be able to tell apart.
@@ -538,8 +656,30 @@ namespace CRT.Maintainer
                 this.thisQueue.Count == 0 ? "Nothing waiting for review." : null,
                 isError: false);
 
-            if (this.thisQueue.Count == 0)
+            if (kept is null)
+            {
+                // Decided by someone else while open, found by the queue's own check: it stays on
+                // screen, undecidable - see MaintainerMain.QueueRefresh.cs.
+                if (background && this.thisSelectedId is not null)
+                {
+                    this.ShowDecidedElsewhere();
+                    return null;
+                }
+
                 this.ShowSubmission(null);
+                return null;
+            }
+
+            // The rebuilt entry says what the opened submission itself said.
+            if (this.thisShownDetail is { } detail && detail.Submission.Id == kept.Id)
+            {
+                this.UpdateQueueEntry(
+                    kept,
+                    detail.Changes?.IsNewSystem ?? kept.IsNewSystem,
+                    ReviewQueueDisplay.AwaitsYou(detail.CanPublish, detail.Approval));
+            }
+
+            return kept;
         }
 
         private void ShowQueueMessage(string? message, bool isError)
@@ -556,32 +696,42 @@ namespace CRT.Maintainer
 
         private async void OnQueueSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            var list = this.FindControl<ListBox>("QueueList");
-
-            if (list is null)
+            if (this.thisSuppressQueueSelection)
                 return;
 
-            int index = list.SelectedIndex;
+            // By ITEM: a board's heading sits before its submissions, so a position in the list is
+            // not a position in the queue.
+            ReviewQueueRow? chosen = this.SelectedQueueRow;
 
-            if (index < 0 || index >= this.thisQueue.Count)
+            // *** LEAVING A TABLE WITH UNSAVED CHANGES ASKS FIRST. *** It sits in this panel, so
+            // choosing another submission replaces it. Cancel puts the selection back on it.
+            if (this.IsTableOpen && chosen?.Id != this.thisTableRow!.Id && !await this.CloseTableAsync())
+            {
+                this.ReselectTableRow();
+                return;
+            }
+
+            if (chosen is null)
             {
                 this.ShowSubmission(null);
                 return;
             }
 
-            ReviewQueueRow row = this.thisQueue[index];
+            ReviewQueueRow row = chosen;
 
-            // The row is shown IMMEDIATELY from what the queue already knows, and the summary
-            // fills in when it arrives. Waiting for the request before drawing anything would
-            // leave the panel blank on every click over a slow link, which reads as the app
-            // having lost the selection.
+            // The header is shown IMMEDIATELY from what the queue already knows, and the rest fills
+            // in when it arrives. Waiting for the requests before drawing anything would leave the
+            // panel blank on every click over a slow link, which reads as the app having lost the
+            // selection.
             this.ShowSubmission(row);
 
-            await this.LoadSubmissionAsync(row);
+            // The submission (who must approve, what approving removes, what the table cannot show)
+            // and its table, side by side.
+            await Task.WhenAll(this.LoadSubmissionAsync(row), this.OpenTableAsync(row));
         }
 
         // ###########################################################################################
-        // Fetches one submission and draws its change summary.
+        // Fetches one submission and shows what the server says about it.
         //
         // *** THE ANSWER IS DISCARDED IF THE SELECTION MOVED WHILE IT WAS IN FLIGHT. *** A maintainer
         // arrowing down the queue starts a request per row, and they can finish out of order.
@@ -597,19 +747,13 @@ namespace CRT.Maintainer
             ReviewApiResult<ReviewSubmissionDetail> result =
                 await this.thisClient.GetSubmissionAsync(this.thisSession, row.Id);
 
-            var list = this.FindControl<ListBox>("QueueList");
-
-            if (list is null)
-                return;
-
-            int index = list.SelectedIndex;
-
-            if (index < 0 || index >= this.thisQueue.Count || this.thisQueue[index].Id != row.Id)
+            if (this.SelectedQueueRow?.Id != row.Id)
                 return;
 
             if (!result.IsOk)
             {
-                this.ShowHeadline(result.Message);
+                this.ShowContributor(null);
+                this.ShowNotInTable([new ReviewNoteLine(result.Message, ReviewNoteKind.Error)]);
                 return;
             }
 
@@ -621,70 +765,72 @@ namespace CRT.Maintainer
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // Shows the selected submission.
-        //
-        // THE CHANGE SUMMARY IS NOT FILLED IN YET - that needs GET /api/review/submissions/{id}
-        // plus the published board to compare against, which is the next piece of task 4. The
-        // headline says so ROUNDLY rather than sitting blank, because a blank line where a summary
-        // belongs reads as "no changes", which would be a lie about a submission nobody has
-        // examined.
+        // Makes the selected submission the one the panel is about - its details are in its queue
+        // row. Null empties the panel.
         // ###########################################################################################
         private void ShowSubmission(ReviewQueueRow? row)
         {
-            var title = this.FindControl<TextBlock>("SubmissionTitleText");
-            var subtitle = this.FindControl<TextBlock>("SubmissionSubtitleText");
-            var headline = this.FindControl<TextBlock>("SummaryLineText");
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
+            if (this.FindControl<TextBlock>("NoSubmissionText") is TextBlock none)
+                none.IsVisible = row is null;
 
-            if (title is null || subtitle is null || headline is null || sections is null)
-                return;
-
-            sections.Children.Clear();
+            this.ShowContributor(null);
+            this.ShowNotInTable([]);
 
             if (row is null)
             {
-                title.Text = "Select a submission";
-                subtitle.Text = string.Empty;
-                headline.Text = string.Empty;
-
                 this.thisSelectedId = null;
+                this.thisShownDetail = null;
                 this.ShowDecisionPanel(visible: false, canPublish: false, approval: null);
                 this.ShowRemovalNote(null);
+
+                // Nothing selected: the submission a table was open on has left the queue, or the
+                // queue is empty. Its changes could not be saved now, so it closes.
+                this.CloseTableNow();
                 return;
             }
 
             this.thisSelectedId = row.Id;
 
-            title.Text = ReviewQueueDisplay.Title(row);
-            subtitle.Text = ReviewQueueDisplay.Subtitle(row, DateTimeOffset.UtcNow);
-
-            // Says it is LOADING rather than sitting blank. A blank line where a summary belongs
-            // reads as "no changes" about something nobody has examined yet.
-            headline.Text = "Loading changes...";
+            // ###########################################################################################
+            // *** THE PREVIOUS SUBMISSION'S DETAIL IS DROPPED HERE, NOT WHEN THE NEW ONE ARRIVES
+            // (code review, 2026-09-26). *** The table's file card reads `thisShownDetail` for the
+            // submitted files' hashes, and the table usually opens before the detail answer comes
+            // back - so between the two, hovering a file cell resolved it against the PREVIOUS
+            // submission's files and showed its bytes labelled as this one's, then cached them.
+            // Two submissions of the same board sit next to each other in the queue, which is
+            // exactly when that is easiest to do and hardest to notice.
+            //
+            // The source treats "no detail yet" as "no submitted file at this path" and falls back
+            // to the published side, which is the safe reading while the answer is in flight.
+            // ###########################################################################################
+            if (this.thisShownDetail is { } shown && shown.Submission.Id != row.Id)
+                this.thisShownDetail = null;
         }
 
         // ###########################################################################################
-        // Draws a change summary. Not reachable from the UI yet - see ShowSubmission - but kept
-        // and exercised by tests, because it is the rendering half of task 3 and the piece the
-        // next step plugs into rather than replaces.
+        // Shows what the server says about the submission: the badges, who must approve, what
+        // approving removes, and what the table cannot show.
         // ###########################################################################################
         internal void ShowDetail(ReviewSubmissionDetail detail)
         {
             ArgumentNullException.ThrowIfNull(detail);
 
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
-
-            if (sections is null)
-                return;
-
-            sections.Children.Clear();
+            // The table's file preview reads the submitted files' hashes from it.
+            this.thisShownDetail = detail;
 
             // *** canPublish COMES FROM THE SERVER, never from anything this app worked out. ***
             // It is the same answer the server will enforce when the button is pressed, so the
             // screen cannot promise something the API then refuses.
             this.ShowDecisionPanel(visible: true, canPublish: detail.CanPublish, approval: detail.Approval);
+            this.SetDecisionButtonsEnabled(true);
             this.ShowDecisionMessage(null, isError: false);
             this.ShowRemovalNote(detail.Removals);
+
+            // The list says what the submission itself says - see MaintainerMain.QueueItems.cs.
+            this.UpdateQueueEntry(
+                detail.Submission,
+                detail.Changes?.IsNewSystem ?? detail.Submission.IsNewSystem,
+                ReviewQueueDisplay.AwaitsYou(detail.CanPublish, detail.Approval));
 
             if (this.FindControl<TextBlock>("AmendmentText") is TextBlock amended)
             {
@@ -693,614 +839,82 @@ namespace CRT.Maintainer
                 amended.IsVisible = line is not null;
             }
 
-            if (detail.Changes is null)
-            {
-                // The server could not build a summary - an unloadable payload. Saying so beats a
-                // blank panel, and the findings below are where the reason will be.
-                this.ShowHeadline("The changes in this submission could not be compared.");
-            }
-            else
-            {
-                this.ShowHeadline(ReviewSummaryPresenter.BuildHeadline(detail.Changes));
-
-                foreach (ReviewSummaryLine line in ReviewSummaryPresenter.BuildLines(detail.Changes))
-                {
-                    sections.Children.Add(MaintainerMain.BuildSectionLine(line));
-
-                    // *** THE FIELD-LEVEL DIFF (task 4). *** "U8 changed" is not something a
-                    // maintainer can act on; "Part-number: 906114 -> 251715-01" is the whole
-                    // decision. Without it they would have to open the board in CRT and hunt for
-                    // what moved.
-                    foreach (Control field in MaintainerMain.BuildFieldLines(detail.Changes, line.Section))
-                    {
-                        sections.Children.Add(field);
-                    }
-                }
-            }
-
-            // *** FINDINGS COME AFTER THE CHANGES BUT ARE NOT OPTIONAL. *** They are why automated
-            // validation flagged this submission, and a maintainer who never scrolls to them is
-            // deciding without the one thing the machine already worked out.
-            foreach (ReviewFindingView finding in detail.Findings)
-            {
-                sections.Children.Add(MaintainerMain.BuildFindingLine(finding));
-            }
-
-            // The pictures go LAST because they are the tallest thing on the panel; a maintainer
-            // scrolling past a screen of images to reach a one-line finding would miss it. They
-            // arrive asynchronously - see LoadImageAsync.
-            // EVERY file that would change on the server, written out, BEFORE any picture - the
-            // pictures cover images only, and a file that cannot be drawn must still be seen.
-            // (security review, 2026-09-25)
-            this.ShowFileChanges(detail);
-            this.ShowScopeSettingChanges(detail);
-            this.ShowMovedHighlights(detail);
-            this.ShowImagePairs(detail);
+            // *** WHAT THE TABLE CANNOT SHOW IS NOT OPTIONAL. *** Highlights and calibration points
+            // publish with the approval, and the automatic checks' warnings are what the machine
+            // already worked out - see ReviewNotInTable.
+            this.ShowContributor(detail.Contributor);
+            this.ShowNotInTable(ReviewNotInTable.Lines(detail.Changes, detail.Findings, detail.SubmittedFiles));
         }
 
-        // ###########################################################################################
-        // The complete written list of files this submission changes on the server.
-        //
-        // *** NOT ONLY IMAGES. *** The picture panel below draws what it can decode; a PDF, a text
-        // file or anything else used to appear nowhere at all, so it was approved unseen. What each
-        // line says, and which warnings it carries, is ReviewFileComparison's decision - tested
-        // there. This only lays the lines out.
-        // ###########################################################################################
-        private void ShowFileChanges(ReviewSubmissionDetail detail)
+        // The short lines above the table - nothing at all when there is nothing to say.
+        private void ShowNotInTable(IReadOnlyList<ReviewNoteLine> lines)
         {
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
-
-            if (sections is null)
+            if (this.FindControl<StackPanel>("NotInTablePanel") is not StackPanel panel)
                 return;
 
-            IReadOnlyList<ReviewFileLine> lines = ReviewFileComparison.Plan(detail.SubmittedFiles, detail.PublishedFiles, detail.Removals);
+            panel.Children.Clear();
 
-            if (lines.Count == 0)
-                return;
-
-            sections.Children.Add(new TextBlock
+            foreach (ReviewNoteLine line in lines)
             {
-                Text = lines.Count == 1 ? "1 file changes on the server" : $"{lines.Count} files change on the server",
-                FontWeight = FontWeight.SemiBold,
-                Margin = new Avalonia.Thickness(0, 16, 0, 0)
-            });
-
-            // What publishing removes - or that it removes nothing, or why it cannot tell. From the
-            // server's own list, the one the approval sends back. (2026-09-25)
-            string? removals = Handlers.FileRemovalWording.Headline(detail.Removals, "the BETA data");
-
-            if (removals is not null)
-            {
-                bool any = detail.Removals!.Files.Count > 0;
-
-                var headline = new TextBlock
+                var block = new TextBlock
                 {
-                    Text = removals,
+                    FontSize = 12,
                     TextWrapping = TextWrapping.Wrap,
-                    Margin = new Avalonia.Thickness(12, 4, 0, 0),
-                    FontWeight = any ? FontWeight.SemiBold : FontWeight.Normal
-                };
-
-                if (any)
-                    headline.Foreground = Brushes.IndianRed;
-
-                sections.Children.Add(headline);
-            }
-
-            foreach (ReviewFileLine line in lines)
-            {
-                sections.Children.Add(new TextBlock
-                {
-                    Text = ReviewFileComparison.Describe(line),
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Avalonia.Thickness(12, 4, 0, 0),
-                    FontWeight = line.Change == ReviewFileChange.Removed ? FontWeight.SemiBold : FontWeight.Normal,
-                    Foreground = line.Change switch
+                    FontWeight = line.Kind == ReviewNoteKind.Change ? FontWeight.Normal : FontWeight.SemiBold,
+                    Foreground = line.Kind switch
                     {
-                        ReviewFileChange.Removed => Brushes.IndianRed,
-                        ReviewFileChange.NoLongerUsed => Brushes.Gray,
-                        ReviewFileChange.Added => Brushes.SeaGreen,
+                        ReviewNoteKind.Error => Brushes.IndianRed,
+                        ReviewNoteKind.Warning => Brushes.DarkOrange,
                         _ => Brushes.SteelBlue
                     }
-                });
-
-                foreach (string warning in ReviewFileComparison.Warnings(line))
-                {
-                    sections.Children.Add(new TextBlock
-                    {
-                        Text = warning,
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Avalonia.Thickness(28, 0, 0, 0),
-                        Foreground = Brushes.DarkOrange,
-                        FontWeight = FontWeight.SemiBold
-                    });
-                }
-            }
-        }
-
-        // ###########################################################################################
-        // Task 4's SCOPE BASELINES - specifically, that the settings under them moved.
-        //
-        // *** THE PICTURE DOES NOT SHOW THIS, WHICH IS THE ENTIRE REASON IT IS HERE. *** A baseline
-        // is stored as an image, so the side-by-side comparison below already shows both waveforms.
-        // What it cannot show is that one was captured at 2 V/div and the other at 5 - the same
-        // signal at a different scale, which reads as a change in the circuit.
-        //
-        // *** LISTED BY COMPONENT RATHER THAN PINNED TO ITS IMAGE PANEL, deliberately. *** A
-        // component image's row key is BoardLabel|Region|Pin|Name and carries no file name, so
-        // matching a row to the picture it produced is not something this can do RELIABLY - and a
-        // warning attached to the wrong trace is worse than one listed separately. It sits
-        // immediately above the pictures instead, where it is read before them.
-        // ###########################################################################################
-        private void ShowScopeSettingChanges(ReviewSubmissionDetail detail)
-        {
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
-
-            if (sections is null || detail.Changes is null)
-                return;
-
-            ReviewSectionView? images = detail.Changes.Sections
-                .FirstOrDefault(section => section.Section == ReviewScopeBaseline.SectionName);
-
-            if (images is null)
-                return;
-
-            var changed = new List<(string Key, ReviewScopeSettingsChange Change)>();
-
-            foreach (string key in images.Changed)
-            {
-                if (ReviewScopeBaseline.TryReadChange(images, key, out ReviewScopeSettingsChange change))
-                    changed.Add((key, change));
-            }
-
-            if (changed.Count == 0)
-                return;
-
-            sections.Children.Add(new TextBlock
-            {
-                Text = changed.Count == 1
-                    ? "1 scope baseline was recaptured at different settings"
-                    : $"{changed.Count} scope baselines were recaptured at different settings",
-                FontWeight = FontWeight.SemiBold,
-                Margin = new Avalonia.Thickness(0, 16, 0, 0),
-
-                // Amber rather than red: this is not necessarily wrong, it is something the
-                // maintainer has to take into account when looking at the traces below.
-                Foreground = Brushes.DarkOrange
-            });
-
-            foreach ((string key, ReviewScopeSettingsChange change) in changed)
-            {
-                var row = new StackPanel
-                {
-                    Spacing = 2,
-                    Margin = new Avalonia.Thickness(24, 4, 0, 0)
                 };
 
-                row.Children.Add(new TextBlock
+                MaintainerMain.ShowLine(block, line);
+                panel.Children.Add(block);
+            }
+
+            panel.IsVisible = lines.Count > 0;
+        }
+
+        // Who sent the submission and how their other submissions went - above the lines the
+        // table cannot show. Null hides it (nothing selected, or an older server).
+        private void ShowContributor(ReviewContributorFacts? facts)
+        {
+            if (this.FindControl<TextBlock>("ContributorText") is not TextBlock block)
+                return;
+
+            ReviewNoteLine? line = ReviewContributorLine.For(facts);
+
+            if (line is not null)
+                MaintainerMain.ShowLine(block, line);
+
+            block.IsVisible = line is not null;
+        }
+
+        // ###########################################################################################
+        // Puts one line into a TextBlock. A count's number is bold ("[2]"), so a line with one is
+        // built of runs - its Text is then null (a TextBlock cannot mix weights within one Text).
+        // Whatever the block showed before is replaced.
+        // ###########################################################################################
+        private static void ShowLine(TextBlock block, ReviewNoteLine line)
+        {
+            block.Inlines?.Clear();
+            block.Text = null;
+
+            if (!line.Runs.Any(run => run.IsCount))
+            {
+                block.Text = line.Text;
+                return;
+            }
+
+            block.Inlines ??= new Avalonia.Controls.Documents.InlineCollection();
+
+            foreach (ReviewNoteRun run in line.Runs)
+            {
+                block.Inlines.Add(new Avalonia.Controls.Documents.Run(run.Text)
                 {
-                    // The raw key joins its parts with U+241F, which renders as a box or as
-                    // nothing - so it is spelled out readably.
-                    Text = ReviewScopeBaseline.DescribeRowKey(key),
-                    FontWeight = FontWeight.SemiBold,
-                    TextWrapping = TextWrapping.Wrap
+                    FontWeight = run.IsCount ? FontWeight.Bold : block.FontWeight
                 });
-
-                row.Children.Add(new TextBlock
-                {
-                    Text = ReviewScopeBaseline.Describe(change),
-                    Opacity = 0.8,
-                    TextWrapping = TextWrapping.Wrap
-                });
-
-                sections.Children.Add(row);
-            }
-        }
-
-        // ###########################################################################################
-        // Task 4's MOVED HIGHLIGHT, drawn on the schematic before and after.
-        //
-        // *** THIS IS THE CHANGE A ROW DIFF CANNOT ANSWER. *** "X: 100 -> 400" is the same
-        // information and tells nobody whether the new position is right - which is the only
-        // question a maintainer actually has. Seeing the old and new rectangles on the board itself
-        // answers it in a glance.
-        //
-        // A highlight's key is SchematicName|BoardLabel, so X/Y/Width/Height are compared FIELDS -
-        // a move arrives as an ordinary changed row with a field diff, and the work here is
-        // finding the right schematic image and putting the rectangles back on it.
-        // ###########################################################################################
-        private void ShowMovedHighlights(ReviewSubmissionDetail detail)
-        {
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
-
-            if (sections is null || detail.Changes is null)
-                return;
-
-            ReviewSectionView? highlights = detail.Changes.Sections
-                .FirstOrDefault(section => section.Section == ReviewHighlightGeometry.SectionName);
-
-            if (highlights is null)
-                return;
-
-            var moves = new List<(string Key, ReviewHighlightMove Move)>();
-
-            foreach (string key in highlights.Changed)
-            {
-                if (ReviewHighlightGeometry.TryReadMove(highlights, key, out ReviewHighlightMove move))
-                    moves.Add((key, move));
-            }
-
-            if (moves.Count == 0)
-                return;
-
-            sections.Children.Add(new TextBlock
-            {
-                Text = moves.Count == 1 ? "1 highlight moved" : $"{moves.Count} highlights moved",
-                FontWeight = FontWeight.SemiBold,
-                Margin = new Avalonia.Thickness(0, 16, 0, 0)
-            });
-
-            foreach ((string key, ReviewHighlightMove move) in moves)
-            {
-                sections.Children.Add(this.BuildMovedHighlightPanel(detail, key, move));
-            }
-        }
-
-        // ###########################################################################################
-        // One moved highlight: which component on which schematic, and the board with both
-        // rectangles drawn on it.
-        //
-        // *** BOTH RECTANGLES GO ON ONE COPY OF THE BOARD, not two side by side. *** A move is
-        // small relative to a board scan, and two images a few hundred pixels apart require the
-        // maintainer to hold one in their head while looking at the other. Overlaying them makes the
-        // distance itself the thing on screen.
-        // ###########################################################################################
-        private Control BuildMovedHighlightPanel(
-            ReviewSubmissionDetail detail,
-            string rowKey,
-            ReviewHighlightMove move)
-        {
-            var panel = new StackPanel
-            {
-                Spacing = 4,
-                Margin = new Avalonia.Thickness(0, 12, 0, 0)
-            };
-
-            bool named = ReviewHighlightGeometry.TryReadKeyParts(
-                rowKey, out string schematicName, out string boardLabel);
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = named ? $"{boardLabel} on {schematicName}" : rowKey,
-                FontWeight = FontWeight.SemiBold,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = Brushes.SteelBlue
-            });
-
-            // The numbers are shown as well as the picture. The drawing answers "is the new
-            // position right"; the numbers are what a maintainer needs if they go and look at the
-            // board file by hand afterwards.
-            panel.Children.Add(new TextBlock
-            {
-                Text = MaintainerMain.DescribeMove(move),
-                Opacity = 0.7,
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            if (!named || !detail.SchematicImages.TryGetValue(schematicName, out string? imageFile))
-            {
-                // The schematic's picture is not known - a submission can move a highlight on a
-                // schematic whose own row it did not touch and which is not published either.
-                // Said plainly, because a silently absent picture reads as the app failing.
-                panel.Children.Add(new TextBlock
-                {
-                    Text = "The schematic image for this board is not available to draw on.",
-                    Opacity = 0.6,
-                    FontStyle = FontStyle.Italic,
-                    TextWrapping = TextWrapping.Wrap
-                });
-
-                return panel;
-            }
-
-            var canvas = new ReviewHighlightCanvas { Move = move, MaxHeight = 320 };
-
-            var status = new TextBlock
-            {
-                Text = "Loading...",
-                Opacity = 0.6,
-                TextWrapping = TextWrapping.Wrap
-            };
-
-            panel.Children.Add(canvas);
-            panel.Children.Add(status);
-
-            // Deliberately not awaited - the panel is being built and the picture fills itself in.
-            _ = this.LoadHighlightBoardAsync(detail, imageFile, canvas, status);
-
-            return panel;
-        }
-
-        // ###########################################################################################
-        // Fetches the schematic a highlight moved on.
-        //
-        // *** THE PUBLISHED IMAGE IS TRIED FIRST, THEN THE SUBMITTED ONE. *** The "before"
-        // rectangle only means anything against the board as it is TODAY. But a submission can add
-        // a schematic and place highlights on it in one go, and there is no published copy of that
-        // board at all - so the submitted image is the fallback rather than the first choice.
-        // ###########################################################################################
-        private async Task LoadHighlightBoardAsync(
-            ReviewSubmissionDetail detail,
-            string imageFile,
-            ReviewHighlightCanvas canvas,
-            TextBlock status)
-        {
-            if (this.thisClient is null || this.thisSession is null)
-            {
-                status.Text = "Not signed in.";
-                return;
-            }
-
-            long submissionId = detail.Submission.Id;
-
-            ReviewApiResult<byte[]> result =
-                await this.thisClient.GetPublishedAssetAsync(this.thisSession, submissionId, imageFile);
-
-            if (!result.IsOk && result.Failure == ReviewApiFailure.NotFound)
-            {
-                // Not published - a schematic this submission is adding. Fall back to the
-                // submitted copy, which is the only board this highlight has ever sat on.
-                string? hash = detail.Assets.Files
-                    .FirstOrDefault(file => string.Equals(file.Path, imageFile, StringComparison.Ordinal))
-                    ?.Sha256;
-
-                if (!string.IsNullOrEmpty(hash))
-                {
-                    result = await this.thisClient.GetSubmittedAssetAsync(
-                        this.thisSession, submissionId, hash);
-                }
-            }
-
-            if (!result.IsOk)
-            {
-                status.Text = result.Failure == ReviewApiFailure.NotFound
-                    ? "The schematic image could not be found."
-                    : result.Message;
-
-                return;
-            }
-
-            try
-            {
-                using var stream = new System.IO.MemoryStream(result.Value!);
-
-                canvas.Board = new Avalonia.Media.Imaging.Bitmap(stream);
-                status.Text = string.Empty;
-                status.IsVisible = false;
-            }
-            catch (Exception exception)
-            {
-                // Caught broadly for the same reason LoadImageAsync does - a malformed upload
-                // must be reported in the panel rather than ending the review session.
-                status.Text = $"The schematic could not be shown ({exception.GetType().Name}).";
-            }
-        }
-
-        // ###########################################################################################
-        // The move in words, beside the drawing.
-        //
-        // Only the parts that actually changed are named. A field diff omits what did not move, so
-        // listing all four would print "Y: -> " for a purely horizontal slide.
-        // ###########################################################################################
-        private static string DescribeMove(ReviewHighlightMove move)
-        {
-            var parts = new List<string>();
-
-            void Add(string name, string before, string after)
-            {
-                if (before.Length > 0 || after.Length > 0)
-                    parts.Add($"{name} {before} -> {after}");
-            }
-
-            Add("X", move.BeforeX, move.AfterX);
-            Add("Y", move.BeforeY, move.AfterY);
-            Add("Width", move.BeforeWidth, move.AfterWidth);
-            Add("Height", move.BeforeHeight, move.AfterHeight);
-
-            return string.Join("   ", parts);
-        }
-
-        // ###########################################################################################
-        // Task 4's IMAGES SIDE BY SIDE.
-        //
-        // *** THE PLAN IS DRAWN FIRST AND THE PICTURES FILL IN. *** Each pair is one or two HTTP
-        // fetches of a full-resolution board scan, so waiting for them all before drawing anything
-        // would leave the panel empty for seconds on exactly the submissions worth looking at. The
-        // captions are the part that says what happened, and they need no bytes at all.
-        //
-        // *** A PAIR WITH NO PUBLISHED COUNTERPART IS CAPTIONED, NOT LEFT BLANK. *** An empty
-        // panel beside a full one reads as an image that failed to load.
-        // ###########################################################################################
-        private void ShowImagePairs(ReviewSubmissionDetail detail)
-        {
-            var sections = this.FindControl<StackPanel>("SummarySectionsPanel");
-
-            if (sections is null)
-                return;
-
-            // The published side's paths come from the SERVER, which holds the published board.
-            // They are deliberately not derived from `detail.Changes` - a summary's row keys are
-            // natural keys, not file paths, and pairing against those matches nothing while
-            // drawing perfectly. See ReviewApiParser.ParsePublishedFiles.
-            // The hashes are what let identical files drop out. Without them every file the
-            // submission carries is drawn as replaced, which for a rows-only change is the entire
-            // board (reported as "1178 images to compare" for a one-line description edit).
-            IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
-                detail.Assets,
-                detail.PublishedFiles,
-                detail.PublishedHashes);
-
-            if (pairs.Count == 0)
-                return;
-
-            sections.Children.Add(new TextBlock
-            {
-                Text = pairs.Count == 1 ? "1 image to compare" : $"{pairs.Count} images to compare",
-                FontWeight = FontWeight.SemiBold,
-                Margin = new Avalonia.Thickness(0, 16, 0, 0)
-            });
-
-            foreach (ReviewImagePair pair in pairs)
-            {
-                sections.Children.Add(this.BuildImagePairPanel(detail.Submission.Id, pair));
-            }
-        }
-
-        // ###########################################################################################
-        // One comparison: the caption, then the two pictures beside each other.
-        //
-        // The fetch is started and NOT awaited - this is called while building a panel, and each
-        // picture fills itself in when it arrives. A failure replaces that side's picture with the
-        // reason rather than leaving a hole.
-        // ###########################################################################################
-        private Control BuildImagePairPanel(long submissionId, ReviewImagePair pair)
-        {
-            var panel = new StackPanel
-            {
-                Spacing = 4,
-                Margin = new Avalonia.Thickness(0, 12, 0, 0)
-            };
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = ReviewSummaryPresenter.DescribeImagePair(pair),
-                FontWeight = FontWeight.SemiBold,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = pair.Change switch
-                {
-                    ReviewImageChange.Removed => Brushes.IndianRed,
-                    ReviewImageChange.Added => Brushes.SeaGreen,
-                    _ => Brushes.SteelBlue
-                }
-            });
-
-            var side = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-
-            side.Children.Add(this.BuildImageSide(submissionId, pair, isBeforeSide: true));
-            side.Children.Add(this.BuildImageSide(submissionId, pair, isBeforeSide: false));
-
-            panel.Children.Add(side);
-
-            return panel;
-        }
-
-        // ###########################################################################################
-        // One side of a comparison - "Before" (published) or "After" (submitted).
-        //
-        // *** THE SIDES ARE ALWAYS LABELLED, EVEN WHEN BOTH CARRY A PICTURE. *** Two board scans
-        // side by side are near-identical by definition; without a label a maintainer has no way to
-        // tell which one is the proposal, and half of them would guess the wrong way round.
-        // ###########################################################################################
-        private Control BuildImageSide(long submissionId, ReviewImagePair pair, bool isBeforeSide)
-        {
-            var column = new StackPanel { Spacing = 4, Width = 320 };
-
-            column.Children.Add(new TextBlock
-            {
-                Text = isBeforeSide ? "Before (published)" : "After (submitted)",
-                Opacity = 0.7
-            });
-
-            bool hasPicture = isBeforeSide ? pair.HasBefore : pair.HasAfter;
-
-            if (!hasPicture)
-            {
-                column.Children.Add(new TextBlock
-                {
-                    Text = ReviewSummaryPresenter.DescribeMissingSide(pair.Change, isBeforeSide),
-                    Opacity = 0.6,
-                    FontStyle = FontStyle.Italic,
-                    TextWrapping = TextWrapping.Wrap
-                });
-
-                return column;
-            }
-
-            var image = new Image
-            {
-                // Uniform so a board scan is never distorted - a stretched schematic would make a
-                // highlight appear to have moved when it has not.
-                Stretch = Stretch.Uniform,
-                MaxHeight = 240
-            };
-
-            var status = new TextBlock
-            {
-                Text = "Loading...",
-                Opacity = 0.6,
-                TextWrapping = TextWrapping.Wrap
-            };
-
-            column.Children.Add(image);
-            column.Children.Add(status);
-
-            // Deliberately not awaited: the panel is being built, and each picture fills itself in.
-            _ = this.LoadImageAsync(submissionId, pair, isBeforeSide, image, status);
-
-            return column;
-        }
-
-        // ###########################################################################################
-        // Fetches one side's bytes and decodes them.
-        //
-        // *** A DECODE FAILURE MUST NOT CRASH THE WINDOW. *** These bytes are contributor-supplied
-        // and may be a truncated upload or something that is not an image at all despite its name.
-        // Avalonia's Bitmap constructor throws on both, and this runs on the UI thread from a
-        // panel build - an unhandled exception here takes the maintainer app down mid-review.
-        // ###########################################################################################
-        private async Task LoadImageAsync(
-            long submissionId,
-            ReviewImagePair pair,
-            bool isBeforeSide,
-            Image target,
-            TextBlock status)
-        {
-            if (this.thisClient is null || this.thisSession is null)
-            {
-                status.Text = "Not signed in.";
-                return;
-            }
-
-            ReviewApiResult<byte[]> result = isBeforeSide
-                ? await this.thisClient.GetPublishedAssetAsync(this.thisSession, submissionId, pair.Path)
-                : await this.thisClient.GetSubmittedAssetAsync(this.thisSession, submissionId, pair.SubmittedHash);
-
-            if (!result.IsOk)
-            {
-                // A 404 on the published side is ORDINARY - the comparison expected a file that is
-                // not there - and is worded as a fact rather than as an error.
-                status.Text = result.Failure == ReviewApiFailure.NotFound
-                    ? "No published file at this path."
-                    : result.Message;
-
-                return;
-            }
-
-            try
-            {
-                using var stream = new System.IO.MemoryStream(result.Value!);
-
-                target.Source = new Avalonia.Media.Imaging.Bitmap(stream);
-                status.Text = string.Empty;
-                status.IsVisible = false;
-            }
-            catch (Exception exception)
-            {
-                // Caught broadly on purpose: Avalonia's decoder reports a malformed image through
-                // more than one exception type depending on the platform's imaging backend, and
-                // which ones is not part of its contract. What matters is that a bad upload is
-                // reported in the panel rather than ending the session.
-                status.Text = $"This file could not be shown as an image ({exception.GetType().Name}).";
             }
         }
 
@@ -1310,34 +924,6 @@ namespace CRT.Maintainer
 
         private async void OnApproveClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
             await this.DecideAsync(ReviewDecisionKind.Approve);
-
-        // ###########################################################################################
-        // "View in table format" (2026-09-25): the submission's rows in the shared table editor.
-        // Modal, so the decision buttons cannot act on a submission while it is being changed; when
-        // a change was saved the submission is loaded again - its summary, the files it removes and
-        // who must still approve all follow the changed content.
-        // ###########################################################################################
-        private async void OnViewTableClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-        {
-            if (this.thisClient is null || this.thisSession is null || this.thisSelectedId is null)
-                return;
-
-            ReviewQueueRow? row = this.thisQueue.FirstOrDefault(candidate => candidate.Id == this.thisSelectedId.Value);
-
-            if (row is null)
-                return;
-
-            var window = new ReviewTableWindow();
-            window.Initialize(this.thisClient, this.thisSession, row);
-
-            await window.ShowDialog(this);
-
-            if (window.WasAmended)
-            {
-                await this.RefreshQueueAsync();
-                await this.LoadSubmissionAsync(row);
-            }
-        }
 
         private async void OnRejectClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
             await this.DecideAsync(ReviewDecisionKind.Reject);
@@ -1360,6 +946,13 @@ namespace CRT.Maintainer
         // ###########################################################################################
         private async Task DecideAsync(ReviewDecisionKind kind)
         {
+            // A decision is about what the server holds; unsaved table changes would not be in it.
+            if (this.IsTableOpen && this.TableEditor.HasUnsavedChanges)
+            {
+                this.ShowDecisionMessage(Handlers.ReviewTableWording.SaveTableBeforeDeciding, isError: true);
+                return;
+            }
+
             if (this.thisClient is null || this.thisSession is null || this.thisSelectedId is null)
                 return;
 
@@ -1395,11 +988,27 @@ namespace CRT.Maintainer
                 {
                     this.ShowDecisionMessage(result.Message, isError: true);
 
+                    // ###########################################################################################
                     // A CONFLICT means somebody else decided it first, so the queue on screen is
                     // already stale. Refreshing is the only useful next step and doing it for them
                     // beats telling them to.
+                    //
+                    // *** WHERE THE REASON IS RE-SHOWN DEPENDS ON WHAT SURVIVED THE REFRESH (code
+                    // review, 2026-09-26). *** The submission has usually left the queue, and then
+                    // the refresh selects nothing and HIDES the decision panel - which is where
+                    // DecisionMessageText lives, so writing the reason back into it left the
+                    // maintainer looking at "Select a submission" with no explanation at all. It
+                    // goes to the queue's own message instead, which stays on screen.
+                    // ###########################################################################################
                     if (result.Failure == ReviewApiFailure.Conflict)
+                    {
                         await this.RefreshQueueAsync();
+
+                        if (this.thisSelectedId is null)
+                            this.ShowQueueMessage(result.Message, isError: true);
+                        else
+                            this.ShowDecisionMessage(result.Message, isError: true);
+                    }
 
                     return;
                 }
@@ -1510,142 +1119,5 @@ namespace CRT.Maintainer
         // decision re-enables the buttons, so it never comes back on for an account whose part of
         // a two-person approval is already done.
         private bool thisApproveAllowed;
-
-        private void ShowHeadline(string text)
-        {
-            var headline = this.FindControl<TextBlock>("SummaryLineText");
-
-            if (headline is not null)
-                headline.Text = text;
-        }
-
-        // ###########################################################################################
-        // The per-row field diffs for one section, indented under its line.
-        //
-        // Rows are drawn in the order the section reports them, which is already sorted, so two
-        // maintainers looking at the same submission see the same list in the same order.
-        // ###########################################################################################
-        private static IEnumerable<Control> BuildFieldLines(ReviewChangeSummaryView summary, string sectionName)
-        {
-            ReviewSectionView? section = summary.Sections
-                .FirstOrDefault(candidate => candidate.Section == sectionName);
-
-            if (section is null)
-                yield break;
-
-            foreach (string key in section.Changed)
-            {
-                if (!section.FieldChanges.TryGetValue(key, out IReadOnlyList<ReviewFieldChangeView>? fields))
-                    continue;
-
-                foreach (ReviewFieldChangeView field in fields)
-                {
-                    var row = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-
-                        // Indented so the detail reads as belonging to the section above it rather
-                        // than as another section.
-                        Margin = new Avalonia.Thickness(24, 0, 0, 0)
-                    };
-
-                    row.Children.Add(new TextBlock
-                    {
-                        // Spelled out readably: a natural key joins its parts with U+241F, which
-                        // renders as a box or as nothing at all. This has been drawing raw keys
-                        // since the field diff landed.
-                        Text = ReviewScopeBaseline.DescribeRowKey(key),
-                        Width = 176,
-                        Opacity = 0.7,
-                        TextWrapping = TextWrapping.Wrap
-                    });
-
-                    row.Children.Add(new TextBlock
-                    {
-                        Text = ReviewSummaryPresenter.DescribeFieldChange(field),
-                        TextWrapping = TextWrapping.Wrap
-                    });
-
-                    yield return row;
-                }
-            }
-        }
-
-        private static Control BuildFindingLine(ReviewFindingView finding)
-        {
-            var row = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                Margin = new Avalonia.Thickness(0, 4, 0, 0)
-            };
-
-            row.Children.Add(new TextBlock
-            {
-                Text = finding.IsError ? "Error" : "Warning",
-                FontWeight = FontWeight.SemiBold,
-                Width = 200,
-                Foreground = finding.IsError ? Brushes.IndianRed : Brushes.DarkOrange
-            });
-
-            row.Children.Add(new TextBlock
-            {
-                // The message is written for the contributor and reads for a maintainer too; the
-                // subject is appended only when it adds something the message does not already say.
-                Text = string.IsNullOrWhiteSpace(finding.Subject)
-                    ? finding.Message
-                    : $"{finding.Message} [{finding.Subject}]",
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            return row;
-        }
-
-        private static Control BuildSectionLine(ReviewSummaryLine line)
-        {
-            var row = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8
-            };
-
-            row.Children.Add(new TextBlock
-            {
-                Text = line.Section,
-                FontWeight = FontWeight.SemiBold,
-                Width = 200,
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            foreach (ReviewSummaryPart part in line.Parts)
-            {
-                row.Children.Add(new TextBlock
-                {
-                    Text = part.Describe(),
-                    Foreground = MaintainerMain.BrushFor(part.Kind)
-                });
-            }
-
-            return row;
-        }
-
-        // ###########################################################################################
-        // The colour per change kind.
-        //
-        // Hardcoded FOR NOW, deliberately: CRT resolves its colours through a two-step
-        // Application.Current + ThemeVariant lookup against keys in App.axaml, and this app has no
-        // palette yet. When it gets one, these move there - do not grow more hardcoded colours in
-        // the meantime.
-        //
-        // Removals are red because they are the least recoverable change a submission can make.
-        // ###########################################################################################
-        private static IBrush BrushFor(ReviewChangeKind kind) => kind switch
-        {
-            ReviewChangeKind.Removed => Brushes.IndianRed,
-            ReviewChangeKind.Added => Brushes.SeaGreen,
-            ReviewChangeKind.Renamed => Brushes.DarkOrange,
-            _ => Brushes.SteelBlue
-        };
     }
 }

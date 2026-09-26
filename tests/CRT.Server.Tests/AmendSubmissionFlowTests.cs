@@ -114,6 +114,32 @@ namespace CRT.Server.Tests
                 id, expectedVersion, rows, this.thisData, store, accounts ?? new FakeAccountStore(), this.Blobs(),
                 publishLock ?? new PublishLock(), AmendSubmissionFlowTests.Now, CancellationToken.None);
 
+        // ###########################################################################################
+        // *** THE SUBMISSION'S KiCad DATA SURVIVES AN AMENDMENT (2026-09-26). *** The amended file
+        // list is rebuilt from what the rows cite, and no row cites a KiCad file - so without the
+        // carry-over, a maintainer fixing one part number would silently strip the contributor's
+        // KiCad data from the submission, and approving it would publish the board without its
+        // traces.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_maintainers_table_edit_keeps_the_submissions_KiCad_data()
+        {
+            (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
+
+            const string KiCadPath = AmendSubmissionFlowTests.SystemId + "/KiCad data/board.kicad_pcb";
+
+            // Into the submission's FILE RECORDS, where the store rebuilds a payload's files from -
+            // the fake's LoadPayloadAsync models the real store's join, not the saved object.
+            store.Files[id].Add(new SubmissionFileRecord(99, KiCadPath, new string('c', 64), 10, IsUploaded: true));
+
+            AmendOutcome outcome = await this.AmendAsync(store, id, await AmendSubmissionFlowTests.EditedRowsAsync(store, id));
+
+            Assert.True(outcome.IsAmended, outcome.FullError);
+
+            SubmissionManifest after = (await store.LoadPayloadAsync(id, CancellationToken.None))!;
+            Assert.Contains(after.Files, file => file.Path == KiCadPath);
+        }
+
         // ---- who, and when --------------------------------------------------------------------
 
         [Fact]

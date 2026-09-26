@@ -78,6 +78,39 @@ namespace CRT.Server.Handlers.Submissions
         Task<IReadOnlyList<SubmissionRecord>> GetQueueAsync(int limit, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // One system's submissions still 'pending', oldest first - the ones a newly queued
+        // submission from the same contributor may replace (SubmissionReplacementRules). By system
+        // rather than through GetQueueAsync, whose limit could leave an older one out.
+        // ###########################################################################################
+        Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Every submission from one contributor - `accountId` when they were signed in, otherwise
+        // `contactEmail` (trimmed, any case) among the submissions sent WITHOUT an account - with
+        // its state and whether a maintainer decided it. For ContributorHistory (2026-09-26).
+        // ###########################################################################################
+        Task<IReadOnlyList<ContributorSubmission>> GetContributorSubmissionsAsync(
+            long? accountId,
+            string? contactEmail,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Withdraws a submission a newer one from the same contributor replaces, with `comment`
+        // for the contributor - ONLY while nobody has worked on it: still 'pending' and never
+        // amended. Returns whether it was withdrawn.
+        //
+        // *** BOTH ARE CHECKED INSIDE THE TRANSACTION THAT WITHDRAWS IT. *** A maintainer may be
+        // saving table edits to it at this moment: AmendAsync takes the submission row's lock
+        // first, so this waits for it and then sees its amendment - and refuses. Checked outside,
+        // the edits could land on a submission that is withdrawn a moment later.
+        // ###########################################################################################
+        Task<bool> WithdrawReplacedAsync(
+            long submissionId,
+            string comment,
+            DateTimeOffset whenUtc,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // Records that a system has been published: its new revision and the content hash of the
         // published tree (Phase 5, task 6).
         //
@@ -455,6 +488,10 @@ namespace CRT.Server.Handlers.Submissions
         // to decide whichever board it names - see ReviewAuthority. Stored on the row so the
         // queue filters without loading the payload.
         bool TouchesSharedFiles = false);
+
+    // One of a contributor's submissions, as ContributorHistory counts it. DecidedByMaintainer
+    // tells a maintainer's rejection from the automatic checks' - decided_by is set only by a person.
+    public sealed record ContributorSubmission(long Id, string State, bool DecidedByMaintainer);
 
     // One maintainer's amendment: its version (1, 2, ...), who made it, and when.
     public sealed record SubmissionAmendment(int Version, string By, DateTimeOffset AtUtc);

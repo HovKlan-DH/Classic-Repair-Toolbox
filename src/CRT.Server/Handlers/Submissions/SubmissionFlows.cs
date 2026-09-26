@@ -576,6 +576,12 @@ namespace CRT.Server.Handlers.Submissions
 
             await store.SetStateAsync(submissionId, state, now, cancellationToken);
 
+            // Queued: it replaces the same contributor's older, untouched submissions of this
+            // system (owner decision, 2026-09-26) - see SubmissionReplacementRules. Only once it is
+            // queued: an upload that never finishes must not have taken the older one's place.
+            if (accepted)
+                await SubmissionFlows.WithdrawReplacedAsync(submission with { State = SubmissionState.Pending }, store, now, cancellationToken);
+
             // Partial uploads are cleared either way: a rejected submission's bytes are no longer
             // needed, and a queued one's have already been moved into the content-addressed store.
             blobs.ClearPartials(submissionId);
@@ -587,6 +593,32 @@ namespace CRT.Server.Handlers.Submissions
                 State = state,
                 Findings = findings.ToList()
             };
+        }
+
+        // ###########################################################################################
+        // Withdraws what a newly queued submission replaces, and returns the ids withdrawn. The
+        // rules pick the candidates; the store withdraws each only if it is still untouched when
+        // it gets there, so one a maintainer amended meanwhile stays.
+        // ###########################################################################################
+        public static async Task<IReadOnlyList<long>> WithdrawReplacedAsync(
+            SubmissionRecord arrived,
+            ISubmissionStore store,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(arrived);
+            ArgumentNullException.ThrowIfNull(store);
+
+            IReadOnlyList<SubmissionRecord> waiting = await store.GetPendingForSystemAsync(arrived.SystemId, cancellationToken);
+            var withdrawn = new List<long>();
+
+            foreach (SubmissionRecord older in SubmissionReplacementRules.ReplacedBy(arrived, waiting))
+            {
+                if (await store.WithdrawReplacedAsync(older.Id, SubmissionReplacementRules.ReplacedComment, now, cancellationToken))
+                    withdrawn.Add(older.Id);
+            }
+
+            return withdrawn;
         }
 
         // ###########################################################################################

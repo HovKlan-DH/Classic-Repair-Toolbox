@@ -127,6 +127,62 @@ namespace Handlers.DataHandling
         IReadOnlyList<ApproverRole>? WaitingFor = null,
         IReadOnlyList<string>? RemovedFiles = null);
 
+    // ###########################################################################################
+    // The review queue (2026-09-26 - an anonymous object until then, parsed by hand), oldest first.
+    //
+    // Beside the submission's own row, each entry carries what the queue list shows as badges
+    // (owner request, 2026-09-26): whether its system has a published board at all (IsNewSystem -
+    // the "no published board" answer the detail's comparison gives), and whether it waits for THIS
+    // account's approval (AwaitsYou - ApprovalStatus.CanApprove, which the Approve button follows).
+    // Null from a server that does not send them: the app shows no badge rather than a guess.
+    //
+    // *** NO UPLOAD TOKEN HASH, EVER. *** It is the contributor's capability for the submission;
+    // echoing it to a maintainer would let them act as the contributor. The contact email is here
+    // because it is the only way to reply - contributors have no account.
+    // ###########################################################################################
+    public sealed record ReviewQueueAnswer(
+        bool CanPublish,
+        bool IsAdministrator,
+        int Count,
+        IReadOnlyList<ReviewQueueEntry> Submissions);
+
+    public sealed record ReviewQueueEntry(
+        long Id,
+        string SystemId,
+        string State,
+        string? Summary,
+        string? ContactEmail,
+        string? BaseRevision,
+        DateTimeOffset? CreatedUtc,
+        DateTimeOffset? DecidedUtc,
+        bool TouchesSharedFiles,
+        bool? IsNewSystem = null,
+        bool? AwaitsYou = null);
+
+    // ###########################################################################################
+    // WHO SENT A SUBMISSION, AND HOW THEIR OTHER SUBMISSIONS WENT (owner request, 2026-09-26: "It
+    // should be possible to see who it is (email) and how many contributions the contributor has
+    // done, and some statics about accepted and rejected"). The submission detail's `contributor`.
+    //
+    // The same person as SubmissionReplacementRules means it: the same signed-in account, or the
+    // same contact email (any case). Name is the account's display name, and null for the ordinary
+    // contributor, who has no account.
+    //
+    // The counts are over the contributor's OTHER submissions, not this one:
+    //   - Published: in the BETA or production data;
+    //   - Waiting: for a decision, or for a second approval;
+    //   - ChangesRequested / Rejected: sent back, or turned down, BY A MAINTAINER. A submission the
+    //     automatic checks refused never reached anyone, and one replaced by the contributor's own
+    //     newer submission is an earlier copy of the same work - neither is counted.
+    // ###########################################################################################
+    public sealed record ReviewContributorFacts(
+        string? Email,
+        string? Name,
+        int Published,
+        int Waiting,
+        int ChangesRequested,
+        int Rejected);
+
     public sealed record UnusedFilesRemoveAnswer(
         string Tree,
         IReadOnlyList<string> Removed,

@@ -60,7 +60,15 @@ file from anywhere on your computer — a photo, a datasheet, a screenshot. The 
 in the box, images show a small preview, and a copy of the file is stored inside your local draft.
 
 The **File location** dropdown next to it says which folder the file should end up in once
-published. Leave it as it is unless you have a reason to change it.
+published. It only lists the folders a file for this board may go in:
+
+- the board's own folder and the folders inside it
+- `Shared files` under the board's manufacturer - files all of that manufacturer's boards can use
+- `Generic shared files` - files every board can use
+
+A file you pick from elsewhere on your computer starts with **no folder chosen, so pick one**.
+Until you do, **Save to draft** will not save, and the **File location** box turns red. A file
+you pick from CRT's own data folder keeps the folder it is already in.
 
 A system you added yourself is in that list too. Its `Scope baseline` folder is where scope
 images from a known good board go.
@@ -179,13 +187,28 @@ Everything that differs from the official data is coloured:
 
 The colour key above the table counts each kind for the sheet you are looking at - "2 Added",
 "1 Modified" and so on, with a kind that has none shown faded - and ticking **"Show changes only"** hides every row you have not touched,
-so you can check exactly what you did. Violet rows stay visible when it is ticked.
+so you can check exactly what you did. It also hides the tabs of sheets where you changed nothing,
+so the tabs left are the places to look. Violet rows stay visible when it is ticked.
 
 Each row also starts with a small sign that says the same thing without relying on colour: `+`
 added, `~` changed, `-` deleted, `!` worth a second look. The number on each sheet's tab is how
 many rows were added, changed or deleted on that sheet; violet rows are not counted there, because
-they are not changes. For a board you created yourself nothing is marked as added, changed or
+they are not changes - a sheet with violet rows says how many in a small violet mark of its own on
+its tab ("2 flagged"), so you can see where to look. For a board you created yourself nothing is marked as added, changed or
 deleted, since all of it is your own - but violet rows are still shown.
+
+**You can look at a file without leaving the table.** Point at a file name - the *Schematic
+image file* column, or *File* on the Component images, Component local files and Board local files
+sheets - and a small card opens beside it straight away:
+
+* a **picture** is shown in it. If you changed it, the official picture and yours are shown side by
+  side, labelled so you can tell which is which, and that includes a picture you replaced under the
+  same file name;
+* a **PDF** or other document gets a link that opens it in your usual program for that kind of
+  file.
+
+Move the pointer down the column and the card follows it from file to file. To click the card's
+link, move the pointer across onto the card; move it anywhere else and the card closes at once.
 
 **Editing works much as it does in Excel.** Click a cell to select it - it gets a dashed red
 frame - then just start typing, double-click it, or press F2. **Tab** moves to the next cell to the right (and on to the next row
@@ -286,6 +309,20 @@ and you can carry on using the board as normal while the contribution waits to b
 is deliberate: review takes time, and you should not lose the use of your own work while it
 happens.
 
+**The board's KiCad data travels with the submission.** If the board has a "KiCad data" folder -
+imported through the Drafts tab, or synced with a published board - its KiCad project files
+(.kicad_pcb, .kicad_sch, .kicad_pro) are sent along with everything else, and publishing the
+contribution publishes them. The maintainer sees how many KiCad files are included and, for a
+published board, how many are new or changed. Files the server already has are not uploaded again,
+so an untouched KiCad folder costs nothing to send.
+
+**Submitting the same board again replaces what you sent before**, as long as nobody has started
+on it yet. Your draft still holds everything, so the newer submission carries all of the earlier
+one too. The earlier one leaves the review queue, and "My submissions" shows it as *Replaced by a
+newer submission*. If a maintainer has already started on the earlier one - corrected something in
+it, or given it a first approval - both are kept and looked at separately. The server knows the two
+came from you by the email address you gave (or your account, if you are signed in).
+
 **Once your contribution is published, the draft tidies itself away.** When the application has
 downloaded the updated data and your draft holds nothing the published board does not - no other
 rows, no other KiCad calibration and no other files - the draft is removed on its own, the next time
@@ -302,15 +339,16 @@ and your draft is unchanged.
 and why:
 
 * **Only the kinds of file boards actually use can be sent** - pictures (PNG, JPG, GIF, BMP,
-  WebP), PDF documents, plain text and web pages (HTML). A file of any other kind, or a hidden file
-  whose name starts with a dot, is refused.
+  WebP), PDF documents, plain text and web pages (HTML), plus KiCad project files (.kicad_pcb,
+  .kicad_sch, .kicad_pro) inside the board's own "KiCad data" folder. A file of any other kind, or
+  a hidden file whose name starts with a dot, is refused.
 * **A file must really be what its name says.** A ".png" has to contain a picture and a ".pdf" a
   PDF document; a text file has to be plain text, saved as UTF-8.
 * **A board can only change its own files and the shared folders.** You can use a file that belongs
   to another board, exactly as it is, but you cannot change it from here - change it through that
   board's own draft instead.
 * **Every file sent must be used by the board.** CRT only ever sends the files your board refers
-  to, so this only matters if a file was added by hand.
+  to, plus the "KiCad data" folder, so this only matters if a file was added by hand.
 * **There is a daily limit per internet connection**, generous enough that it only stops something
   going badly wrong. If you reach it, the message says when you can try again, and your draft is
   kept.

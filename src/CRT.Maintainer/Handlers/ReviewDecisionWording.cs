@@ -22,6 +22,13 @@ namespace CRT.Maintainer.Handlers
         // rejects thoughtlessness ("no"), not brevity.
         public const int MinimumCommentLength = 10;
 
+        // The open submission left the queue while it was on screen - decided by another maintainer
+        // or the administrator, or replaced by the contributor's newer submission of the same board
+        // (the server's SubmissionReplacementRules, 2026-09-26) - see MaintainerMain.QueueRefresh.cs.
+        // Its decision buttons are off. The queue check cannot tell which, so both are named.
+        public const string DecidedElsewhere =
+            "No longer in the queue - decided by someone else, or replaced by a newer submission from the same contributor.";
+
         // ###########################################################################################
         // Is this comment worth sending to the person who did the work?
         //

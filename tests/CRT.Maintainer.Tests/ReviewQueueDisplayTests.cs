@@ -1,8 +1,10 @@
 using CRT.Maintainer.Handlers;
+using Handlers.DataHandling;
 
 namespace CRT.Maintainer.Tests;
 
-// Covers ReviewQueueDisplay - how a queue row reads.
+// Covers ReviewQueueDisplay - how a queue row reads: the badges, the system part by part, the
+// contributor's comment and the footer (owner request, 2026-09-26).
 //
 // The wording is tested rather than eyeballed because the queue is the screen a maintainer decides
 // from: which submission to open next, and whether anything has been waiting too long. Two of the
@@ -17,66 +19,187 @@ public sealed class ReviewQueueDisplayTests
         string systemId = "Commodore/C64/250407",
         string summary = "Corrected R12.",
         DateTimeOffset? createdUtc = null,
-        bool touchesSharedFiles = false) =>
-        new(id, systemId, "pending", summary, "someone@example.com", createdUtc, touchesSharedFiles);
-
-    [Fact]
-    public void A_submission_changing_SHARED_FILES_says_so_in_its_subtitle()
-    {
-        // It is why the row is in the administrator's queue rather than a maintainer's, and the one
-        // kind of change that reaches every board citing the file.
-        string subtitle = ReviewQueueDisplay.Subtitle(
-            ReviewQueueDisplayTests.Row(touchesSharedFiles: true), ReviewQueueDisplayTests.Now);
-
-        Assert.EndsWith("changes shared files", subtitle);
-        Assert.DoesNotContain("shared files", ReviewQueueDisplay.Subtitle(ReviewQueueDisplayTests.Row(), ReviewQueueDisplayTests.Now));
-    }
+        bool touchesSharedFiles = false,
+        bool? isNewSystem = null,
+        bool? awaitsYou = null,
+        string state = "pending") =>
+        new(id, systemId, state, summary, "someone@example.com", createdUtc, touchesSharedFiles, isNewSystem, awaitsYou);
 
     // -----------------------------------------------------------------------------------
-    // The title
+    // Grouped by board (2026-09-26)
     // -----------------------------------------------------------------------------------
 
+    // ###########################################################################################
+    // *** EACH BOARD ONCE, AND THE QUEUE'S ORDER KEPT. *** The queue arrives oldest first - the
+    // longest wait leads, a decision (ReviewQueueTests). Grouping must not undo it: the board
+    // holding the oldest submission comes first, and each board's submissions stay in queue order.
+    // ###########################################################################################
     [Fact]
-    public void The_title_leads_with_the_id_and_names_the_system()
+    public void The_queue_is_grouped_by_board_in_the_order_the_oldest_submission_waits()
     {
-        // A maintainer works BY SYSTEM - several submissions against one board are reviewed
-        // together - so the system has to be readable at a glance. The id is there because it is
-        // what every other surface calls this submission.
-        Assert.Equal("#42 Commodore/C64/250407", ReviewQueueDisplay.Title(ReviewQueueDisplayTests.Row()));
-    }
+        IReadOnlyList<ReviewQueueGroup> groups = ReviewQueueDisplay.Group(
+        [
+            ReviewQueueDisplayTests.Row(id: 1, systemId: "Commodore/C64/250407"),
+            ReviewQueueDisplayTests.Row(id: 2, systemId: "Commodore/C65/Prototype"),
+            ReviewQueueDisplayTests.Row(id: 3, systemId: "Commodore/C64/250407"),
+            ReviewQueueDisplayTests.Row(id: 4, systemId: "Amstrad/CPC464/Z70200")
+        ]);
 
-    [Fact]
-    public void A_missing_system_says_so_rather_than_leaving_a_gap()
-    {
-        // A row reading "#42 " with nothing after it looks like a rendering fault.
-        Assert.Equal("#42 (unknown system)", ReviewQueueDisplay.Title(ReviewQueueDisplayTests.Row(systemId: "")));
-    }
-
-    // -----------------------------------------------------------------------------------
-    // The subtitle
-    // -----------------------------------------------------------------------------------
-
-    [Fact]
-    public void The_subtitle_shows_what_the_contributor_said()
-    {
-        string subtitle = ReviewQueueDisplay.Subtitle(
-            ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now.AddHours(-3)),
-            ReviewQueueDisplayTests.Now);
-
-        Assert.Contains("Corrected R12.", subtitle);
-        Assert.Contains("waiting 3 hours", subtitle);
+        Assert.Equal(["Commodore/C64/250407", "Commodore/C65/Prototype", "Amstrad/CPC464/Z70200"], groups.Select(group => group.SystemId));
+        Assert.Equal([1L, 3L], groups[0].Rows.Select(row => row.Id));
+        Assert.Equal([2L], groups[1].Rows.Select(row => row.Id));
     }
 
     [Fact]
-    public void A_submission_with_no_description_SAYS_SO()
+    public void An_empty_queue_has_no_groups()
     {
-        // The summary field is optional, so blank is a real possibility - and an empty second
-        // line reads as a rendering fault rather than as missing information.
-        string subtitle = ReviewQueueDisplay.Subtitle(
-            ReviewQueueDisplayTests.Row(summary: "   "),
-            ReviewQueueDisplayTests.Now);
+        Assert.Empty(ReviewQueueDisplay.Group([]));
+    }
 
-        Assert.Contains("(no description given)", subtitle);
+    // A board is new or not as a whole - the server's answer, from whichever row carries one.
+    [Fact]
+    public void A_group_is_a_new_system_when_the_server_says_so()
+    {
+        Assert.True(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewSystem: true)])[0].IsNewSystem);
+        Assert.False(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewSystem: false)])[0].IsNewSystem);
+        Assert.Null(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row()])[0].IsNewSystem);
+    }
+
+    [Fact]
+    public void A_heading_names_the_board_part_by_part()
+    {
+        Assert.Equal("Commodore / C64 / 250407", ReviewQueueDisplay.SystemHeading("Commodore/C64/250407"));
+    }
+
+    // Not three parts: shown whole - and a missing one said to be missing, not left as a gap that
+    // looks like a rendering fault.
+    [Fact]
+    public void A_malformed_or_missing_system_is_headed_as_it_is()
+    {
+        Assert.Equal("Commodore/C64", ReviewQueueDisplay.SystemHeading("Commodore/C64"));
+        Assert.Equal("(unknown system)", ReviewQueueDisplay.SystemHeading(""));
+        Assert.Equal("(unknown system)", ReviewQueueDisplay.SystemHeading(null));
+    }
+
+    // -----------------------------------------------------------------------------------
+    // The parts of a row
+    // -----------------------------------------------------------------------------------
+
+    [Fact]
+    public void A_system_is_named_part_by_part()
+    {
+        Assert.Equal(("Commodore", "C64", "250407"), ReviewQueueDisplay.SystemParts("Commodore/C64/250407"));
+    }
+
+    // Not three well-formed parts: no parts at all - the row then shows the id whole rather than
+    // naming, say, "C64" as the manufacturer.
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("Commodore/C64")]
+    [InlineData("Commodore/C64/250407/extra")]
+    [InlineData("Commodore//250407")]
+    public void A_malformed_system_id_has_no_parts(string? systemId)
+    {
+        Assert.Null(ReviewQueueDisplay.SystemParts(systemId));
+    }
+
+    [Fact]
+    public void The_comment_is_trimmed_and_a_missing_one_SAYS_SO()
+    {
+        // The summary field is optional, so blank is a real possibility - and an empty line reads
+        // as a rendering fault rather than as missing information.
+        Assert.Equal("Corrected R12.", ReviewQueueDisplay.Comment(ReviewQueueDisplayTests.Row(summary: "  Corrected R12.\n")));
+        Assert.Equal("(no description given)", ReviewQueueDisplay.Comment(ReviewQueueDisplayTests.Row(summary: "   ")));
+    }
+
+    // "New system" is the one badge a maintainer must never miss - the highest-risk submission
+    // there is. It is the server's to say; a server that did not say gets no badge, not a guess.
+    // A published system - the ordinary case - is not marked at all (2026-09-26).
+    [Fact]
+    public void Only_a_new_system_is_badged()
+    {
+        Assert.Equal("New system", ReviewQueueDisplay.SystemBadge(true));
+        Assert.Null(ReviewQueueDisplay.SystemBadge(false));
+        Assert.Null(ReviewQueueDisplay.SystemBadge(null));
+    }
+
+    // ###########################################################################################
+    // An opened submission awaits you while this account may decide it and its approval is still
+    // needed - the same answer that leaves Approve on. An older server sends no approval status;
+    // one approval then publishes, so it awaits whoever may publish.
+    // ###########################################################################################
+    [Fact]
+    public void An_opened_submission_awaits_you_only_while_your_approval_is_still_needed()
+    {
+        static ApprovalStatus Status(bool canApprove, bool youApproved = false) =>
+            new(
+                Required: [ApproverRole.Maintainer, ApproverRole.Administrator],
+                Given: [],
+                WaitingFor: [ApproverRole.Maintainer, ApproverRole.Administrator],
+                YourRole: ApproverRole.Administrator,
+                CanApprove: canApprove,
+                ApprovalPublishes: false,
+                YouApproved: youApproved);
+
+        Assert.True(ReviewQueueDisplay.AwaitsYou(canPublish: true, approval: null));
+        Assert.True(ReviewQueueDisplay.AwaitsYou(canPublish: true, approval: Status(canApprove: true)));
+
+        Assert.False(ReviewQueueDisplay.AwaitsYou(canPublish: true, approval: Status(canApprove: false, youApproved: true)));
+        Assert.False(ReviewQueueDisplay.AwaitsYou(canPublish: false, approval: Status(canApprove: true)));
+    }
+
+    // -----------------------------------------------------------------------------------
+    // The footer - the wait, and the two-approval notes
+    // -----------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_footer_says_how_long_it_has_waited()
+    {
+        Assert.Equal(
+            "Waiting 3 hours",
+            ReviewQueueDisplay.Footer(ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now.AddHours(-3)), ReviewQueueDisplayTests.Now));
+
+        // "Just now" alone would not say what happened just now.
+        Assert.Equal(
+            "Arrived just now",
+            ReviewQueueDisplay.Footer(ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now), ReviewQueueDisplayTests.Now));
+    }
+
+    [Fact]
+    public void A_submission_changing_SHARED_FILES_says_so_in_its_footer()
+    {
+        // The one kind of change that reaches every board citing the file, and why it needs the
+        // administrator's approval as well.
+        Assert.Equal(
+            "Waiting 2 days - changes shared files",
+            ReviewQueueDisplay.Footer(
+                ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now.AddDays(-2), touchesSharedFiles: true),
+                ReviewQueueDisplayTests.Now));
+
+        Assert.DoesNotContain("shared files", ReviewQueueDisplay.Footer(ReviewQueueDisplayTests.Row(), ReviewQueueDisplayTests.Now));
+    }
+
+    // ###########################################################################################
+    // A submission NOT waiting for this account is dimmed in the list, and its footer says why:
+    // this account's approval is given, the other approver's is not. It replaces "one of two
+    // approvals given", which says the same from the other side.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_not_waiting_for_you_says_it_is_with_the_other_approver()
+    {
+        Assert.Equal(
+            "Waiting 2 days - changes shared files - with the other approver",
+            ReviewQueueDisplay.Footer(
+                ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now.AddDays(-2), touchesSharedFiles: true, awaitsYou: false, state: "approved"),
+                ReviewQueueDisplayTests.Now));
+
+        // Waiting for YOU as the second approver: the first approval is the news.
+        Assert.Equal(
+            "Waiting 2 days - changes shared files - one of two approvals given",
+            ReviewQueueDisplay.Footer(
+                ReviewQueueDisplayTests.Row(createdUtc: ReviewQueueDisplayTests.Now.AddDays(-2), touchesSharedFiles: true, awaitsYou: true, state: "approved"),
+                ReviewQueueDisplayTests.Now));
     }
 
     // -----------------------------------------------------------------------------------
@@ -129,11 +252,7 @@ public sealed class ReviewQueueDisplayTests
         // a default as "waiting 20000 days" would be a spectacular lie on a screen whose whole
         // job is telling the truth about a backlog.
         Assert.Equal(string.Empty, ReviewQueueDisplay.Waiting(null, ReviewQueueDisplayTests.Now));
-
-        string subtitle = ReviewQueueDisplay.Subtitle(ReviewQueueDisplayTests.Row(), ReviewQueueDisplayTests.Now);
-
-        Assert.Equal("Corrected R12.", subtitle);
-        Assert.DoesNotContain("waiting", subtitle);
+        Assert.Equal(string.Empty, ReviewQueueDisplay.Footer(ReviewQueueDisplayTests.Row(), ReviewQueueDisplayTests.Now));
     }
 
     [Fact]
@@ -149,7 +268,7 @@ public sealed class ReviewQueueDisplayTests
     [Fact]
     public void A_null_row_is_refused_rather_than_drawn_blank()
     {
-        Assert.Throws<ArgumentNullException>(() => ReviewQueueDisplay.Title(null!));
-        Assert.Throws<ArgumentNullException>(() => ReviewQueueDisplay.Subtitle(null!, ReviewQueueDisplayTests.Now));
+        Assert.Throws<ArgumentNullException>(() => ReviewQueueDisplay.Comment(null!));
+        Assert.Throws<ArgumentNullException>(() => ReviewQueueDisplay.Footer(null!, ReviewQueueDisplayTests.Now));
     }
 }

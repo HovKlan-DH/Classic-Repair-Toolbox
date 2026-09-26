@@ -630,7 +630,11 @@ namespace CRT.Server.Handlers.Submissions
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
             if (!ReviewAssetLocator.TryLocatePublishedFile(
-                    options.DataTreeRoot, manifest, path, out string resolved))
+                    options.DataTreeRoot,
+                    manifest,
+                    path,
+                    out string resolved,
+                    publishedBoardFiles: () => ReviewEndpoints.PublishedBoardCitations(options.DataTreeRoot, manifest)))
             {
                 // One 404 for unsafe, absent and out-of-scope alike. Distinguishing them would let
                 // the tree be probed for what exists.
@@ -638,6 +642,25 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             return ReviewEndpoints.FileResult(resolved, path);
+        }
+
+        // ###########################################################################################
+        // What the PUBLISHED board of a submission's system cites - so the old picture of a changed
+        // or deleted row can be shown beside the new one (2026-09-26). Read through the preview
+        // cache (WorkbookReadCache), since this only decides what may be SHOWN; a workbook that
+        // cannot be read cites nothing here, which only means that file is not served.
+        // ###########################################################################################
+        private static IReadOnlyCollection<string> PublishedBoardCitations(string? dataTreeRoot, SubmissionManifest? manifest)
+        {
+            if (manifest is null)
+                return [];
+
+            PublishedBoardLocation location = PublishedBoardLocator.Locate(dataTreeRoot, manifest);
+
+            return location.Exists &&
+                   ApprovePublishFlow.PreviewReads.TryGetCitations(location.WorkbookPath, out IReadOnlyCollection<string> cites)
+                ? cites
+                : [];
         }
 
         // ###########################################################################################
@@ -662,13 +685,16 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/queue
         //
-        // Everything waiting for a decision, oldest first - see ISubmissionStore.GetQueueAsync for
-        // why that ordering rather than newest-first.
+        // Everything waiting for a decision that this account may decide, oldest first - see
+        // ISubmissionStore.GetQueueAsync for why that ordering rather than newest-first, and
+        // ReviewQueueFlow for the filter and what each row says. The answer is CRT.Data's
+        // ReviewQueueAnswer, read by the maintainer application.
         // ###########################################################################################
         private static async Task<IResult> GetQueueAsync(
             HttpContext context,
             IAccountStore accounts,
             ISubmissionStore submissions,
+            ServerOptions options,
             CancellationToken cancellationToken)
         {
             (ReviewAccess? access, IResult? refusal) =
@@ -677,27 +703,11 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            // *** FILTERED TO WHAT THIS ACCOUNT MAY DECIDE. *** An administrator sees everything; a
-            // maintainer sees their systems' submissions, minus any that change shared files. The
-            // rule is ReviewAuthority's, applied here row by row - the queue is small, and one rule
-            // in one place beats a second copy of it in SQL.
-            IReadOnlyList<SubmissionRecord> queue =
-                (await submissions.GetQueueAsync(ReviewEndpoints.DefaultQueueLimit, cancellationToken))
-                .Where(record => ReviewAuthority.CanReview(access, record))
-                .ToList();
+            IReadOnlyList<SubmissionRecord> queued =
+                await submissions.GetQueueAsync(ReviewEndpoints.DefaultQueueLimit, cancellationToken);
 
-            return Results.Ok(new
-            {
-                // Everything in a filtered queue is publishable by the caller - kept for review
-                // apps built when the answer could be false.
-                canPublish = true,
-
-                // So the maintainer app can show the administrator's "Maintainers" screen to the one
-                // person who may use it. The server refuses everyone else regardless.
-                isAdministrator = access!.Account.IsAdministrator,
-                count = queue.Count,
-                submissions = queue.Select(ReviewEndpoints.ToQueueRow).ToList()
-            });
+            return Results.Ok(await ReviewQueueFlow.BuildAsync(
+                access!, queued, options.DataTreeRoot, submissions, accounts, cancellationToken));
         }
 
         // ###########################################################################################
@@ -744,15 +754,31 @@ namespace CRT.Server.Handlers.Submissions
             // of two. Not stored here: this is a read; the approval stores it.
             bool touchesSharedFiles = ApprovePublishFlow.TouchesSharedFilesNow(record, manifest, options.DataTreeRoot);
 
+            bool canPublish = ReviewAuthority.CanPublish(access, record);
+
+            ApprovalStatus approval = await ApprovePublishFlow.ApprovalStatusAsync(
+                access, record, touchesSharedFiles, submissions, accounts, cancellationToken);
+
             return Results.Ok(new
             {
-                canPublish = ReviewAuthority.CanPublish(access, record),
+                canPublish,
 
                 // Who must approve, who has, and what THIS account's approval would do - CRT.Data's
                 // ApprovalStatus, read by the maintainer application as the same record.
-                approval = await ApprovePublishFlow.ApprovalStatusAsync(access, record, touchesSharedFiles, submissions, accounts, cancellationToken),
-                submission = ReviewEndpoints.ToQueueRow(record with { TouchesSharedFiles = touchesSharedFiles }),
+                approval,
+
+                // The queue row, with the detail's own answers for the queue's two badges - which
+                // are judged against the tree as it is now.
+                submission = ReviewQueueFlow.Entry(
+                    record with { TouchesSharedFiles = touchesSharedFiles },
+                    isNewSystem: comparison.Changes?.IsNewSystem,
+                    awaitsYou: canPublish && approval.CanApprove),
                 manifest,
+
+                // Who sent it, and how their other submissions went - CRT.Data's
+                // ReviewContributorFacts, read by the maintainer application as the same record.
+                contributor = await ContributorHistory.BuildAsync(record, submissions, accounts, cancellationToken),
+
                 findings = await submissions.GetFindingsAsync(submissionId, cancellationToken),
                 changes = comparison.Changes,
 
@@ -1151,30 +1177,6 @@ namespace CRT.Server.Handlers.Submissions
             Results.Json(
                 new { error = "This account is not allowed to review submissions." },
                 statusCode: StatusCodes.Status403Forbidden);
-
-        // ###########################################################################################
-        // One row as a maintainer sees it.
-        //
-        // *** THE UPLOAD TOKEN HASH IS NOT HERE, AND MUST NEVER BE. *** SubmissionRecord carries
-        // it because the store needs it to check ownership; it is the contributor's capability for
-        // that submission, and echoing it to any other caller would hand a maintainer the ability to
-        // act as the contributor. The contact email is included because a maintainer has to be able
-        // to reply to the person - that is the whole channel, since contributors have no account.
-        // ###########################################################################################
-        private static object ToQueueRow(SubmissionRecord record) => new
-        {
-            id = record.Id,
-            systemId = record.SystemId,
-            state = record.State,
-            summary = record.Summary,
-            contactEmail = record.ContactEmail,
-            baseRevision = record.BaseRevision,
-            createdUtc = record.CreatedUtc,
-            decidedUtc = record.DecidedUtc,
-
-            // So the administrator can see WHY a submission is theirs rather than a maintainer's.
-            touchesSharedFiles = record.TouchesSharedFiles
-        };
 
         // ###########################################################################################
         // The bearer token, or null.

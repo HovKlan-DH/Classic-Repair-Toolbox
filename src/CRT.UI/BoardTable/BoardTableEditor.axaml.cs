@@ -49,8 +49,10 @@ namespace CRT
     // Ctrl+Y undo and redo through the model's own history (BoardTableHistory).
     //
     // FILE MAP: this file (loading, sheets, toolbar, keys, colours, the filter),
-    // BoardTableEditor.RowDrag.cs (dragging a row by its grip, with the worklog-style placeholder) and
-    // BoardTableEditor.FileWatch.cs (noticing the draft being changed, or open, in Excel).
+    // BoardTableEditor.RowDrag.cs (dragging a row by its grip, with the worklog-style placeholder),
+    // BoardTableEditor.FileWatch.cs (noticing the draft being changed, or open, in Excel) and
+    // BoardTableEditor.FilePreview.cs (the hover card on a file cell - its content is
+    // BoardTableFilePreview, its bytes the host's IBoardTableFileSource).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {
@@ -77,6 +79,12 @@ namespace CRT
 
         private bool thisOnlyChanges;
 
+        // What the user chose for "Show changes only". The filter itself is OFF for a table with
+        // nothing published (every row is unchanged there, and the box is hidden) - and comes back
+        // on for the next table that has something to compare against, rather than staying off
+        // because one new system was looked at in between (2026-09-26).
+        private bool thisOnlyChangesWanted;
+
         // True while code - not the user - is moving the sheet tabs' selection, so the selection
         // handler does not treat it as a click and steal keyboard focus into the grid.
         private bool thisSyncingSheetTabs;
@@ -102,6 +110,9 @@ namespace CRT
             // start from a click meant to select a cell. See BoardTableEditor.RowDrag.cs - the
             // grid's own row drag is left OFF, since it cannot show the travelling placeholder.
             this.WireRowDragging();
+
+            // Resting on a file cell shows the file - see BoardTableEditor.FilePreview.cs.
+            this.WireFilePreview();
 
             this.TableGrid.LoadingRow += this.OnLoadingRow;
             this.TableGrid.BeginningEdit += BoardTableEditor.OnBeginningEdit;
@@ -139,14 +150,17 @@ namespace CRT
         // Open again with the saved state, or ShowMessage to say why not. Reload and the notices
         // about a draft file being changed or open in Excel do not apply and stay hidden.
         // ###########################################################################################
-        public void Open(BoardTableDocument document, string? message = null)
+        public void Open(BoardTableDocument document, string? message = null, string? preferredSheet = null)
         {
             ArgumentNullException.ThrowIfNull(document);
 
-            // The sheet already on screen when the host re-opens after a save; otherwise the FIRST
-            // SHEET WITH A CHANGE - a maintainer opening a submission wants what changed, not
-            // "Board schematics" every time.
+            // The sheet already on screen when the host re-opens after a save; otherwise the one the
+            // host asks for - the maintainer application's last-visited sheet, so moving through the
+            // queue stays on it (owner request, 2026-09-26) - and failing that the FIRST SHEET WITH A
+            // CHANGE: a maintainer opening a submission wants what changed, not "Board schematics"
+            // every time. A sheet whose tab "Show changes only" hides gives way - see Attach.
             string? keepSheet = this.thisCurrentSheet?.Name
+                ?? preferredSheet
                 ?? document.Sheets.FirstOrDefault(sheet => sheet.ChangeCount > 0)?.Name;
 
             this.thisSession = null;
@@ -313,6 +327,7 @@ namespace CRT
 
             this.TableGrid.CommitEdit();
             this.EndRowDrag();
+            this.HideFilePreview();
 
             this.thisCurrentSheet = sheet;
             this.RebuildColumns();
@@ -490,25 +505,54 @@ namespace CRT
         // Moving rows is switched off meanwhile - a position among rows that cannot be seen means
         // nothing.
         // ###########################################################################################
+        // The user's own choice of "Show changes only", which the filter follows wherever there is
+        // something published - what a host remembers between runs (the maintainer application).
+        internal bool OnlyChangesWanted => this.thisOnlyChangesWanted;
+
         internal bool OnlyChanges
         {
             get => this.thisOnlyChanges;
             set
             {
-                if (this.thisOnlyChanges == value)
-                {
-                    return;
-                }
-
-                this.thisOnlyChanges = value;
-                this.OnlyChangesCheckBox.IsChecked = value;
-                this.TableGrid.CommitEdit();
-                this.UpdateRowsDraggable();
-
-                this.ApplyOnlyChangesFilter();
-
-                this.UpdateToolbar();
+                this.thisOnlyChangesWanted = value;
+                this.ApplyOnlyChanges(value);
             }
+        }
+
+        // ###########################################################################################
+        // Turns the filter on or off without touching the user's choice (thisOnlyChangesWanted).
+        //
+        // *** IT ALSO HIDES THE TABS OF SHEETS IT WOULD SHOW NOTHING OF *** (owner request,
+        // 2026-09-26) - BoardTableDocument.SheetsShown. Ticked while on such a sheet, the table moves
+        // to the first sheet that still has a tab.
+        // ###########################################################################################
+        private void ApplyOnlyChanges(bool value)
+        {
+            if (this.thisOnlyChanges == value)
+            {
+                return;
+            }
+
+            this.thisOnlyChanges = value;
+            this.OnlyChangesCheckBox.IsChecked = value;
+            this.TableGrid.CommitEdit();
+            this.UpdateRowsDraggable();
+
+            this.ApplyOnlyChangesFilter();
+
+            // Only a sheet of the document on screen - Attach calls this before the new document's
+            // sheet is chosen.
+            if (value &&
+                this.thisDocument is not null &&
+                this.thisCurrentSheet is not null &&
+                this.thisDocument.Sheets.Contains(this.thisCurrentSheet) &&
+                !this.thisDocument.SheetsShown(onlyChanges: true, current: null).Contains(this.thisCurrentSheet))
+            {
+                this.SelectSheet(this.thisDocument.SheetToShow(this.thisCurrentSheet.Name, onlyChanges: true));
+            }
+
+            this.UpdateSheetTabs();
+            this.UpdateToolbar();
         }
 
         // ###########################################################################################
@@ -532,8 +576,17 @@ namespace CRT
             }
         }
 
-        private void OnOnlyChangesChanged(object? sender, RoutedEventArgs e) =>
-            this.OnlyChanges = this.OnlyChangesCheckBox.IsChecked == true;
+        // Only a real change of the box counts as the user's choice - ApplyOnlyChanges setting it to
+        // match the filter must not overwrite the choice it is keeping.
+        private void OnOnlyChangesChanged(object? sender, RoutedEventArgs e)
+        {
+            bool isChecked = this.OnlyChangesCheckBox.IsChecked == true;
+
+            if (isChecked != this.thisOnlyChanges)
+            {
+                this.OnlyChanges = isChecked;
+            }
+        }
 
         private static bool ShowsInOnlyChanges(object item) =>
             item is BoardTableRow row && BoardTableSheet.IsChangeRow(row);
@@ -822,21 +875,18 @@ namespace CRT
                 sheet.CellEdited += this.OnCellEdited;
             }
 
-            this.BuildSheetTabs();
-
-            BoardTableSheet first = (keepSheet is null ? null : document.FindSheet(keepSheet))
-                ?? document.Sheets[0];
-
             // *** NOTHING PUBLISHED, NO FILTER. *** The box is hidden then, and every row is
             // "unchanged" - so a filter left on from another draft's table (this editor is reused)
             // hid EVERY row with no visible reason: reported as a "Board schematics" sheet showing
-            // empty although the draft had three schematic images.
-            if (!document.HasBaseline)
-            {
-                this.OnlyChanges = false;
-            }
+            // empty although the draft had three schematic images. The CHOICE is kept, and applies
+            // again to the next table with something published.
+            bool onlyChanges = document.HasBaseline && this.thisOnlyChangesWanted;
 
-            this.SelectSheet(first);
+            this.ApplyOnlyChanges(onlyChanges);
+            this.BuildSheetTabs();
+
+            // The sheet asked for, unless the filter hides its tab (BoardTableDocument.SheetToShow).
+            this.SelectSheet(document.SheetToShow(keepSheet, onlyChanges));
 
             // A fresh read of the file: whatever the warning bar said is no longer true.
             this.SetChangedOnDisk(false);
@@ -864,6 +914,7 @@ namespace CRT
         private void Detach()
         {
             this.EndRowDrag();
+            this.HideFilePreview();
 
             if (this.thisDocument is null)
             {
@@ -984,7 +1035,7 @@ namespace CRT
             {
                 foreach (BoardTableSheet sheet in this.thisDocument.Sheets)
                 {
-                    this.SheetTabs.Items.Add(new TabItem { Tag = sheet });
+                    this.SheetTabs.Items.Add(new TabItem { Tag = sheet, HeaderTemplate = BoardTableSheetTabHeader.Template });
                 }
             }
             finally
@@ -1015,6 +1066,9 @@ namespace CRT
 
             try
             {
+                IReadOnlyList<BoardTableSheet> shown =
+                    this.thisDocument?.SheetsShown(this.thisOnlyChanges, this.thisCurrentSheet) ?? [];
+
                 foreach (TabItem tab in this.SheetTabs.Items.OfType<TabItem>())
                 {
                     if (tab.Tag is not BoardTableSheet sheet)
@@ -1022,7 +1076,8 @@ namespace CRT
                         continue;
                     }
 
-                    tab.Header = BoardTableEditor.SheetTabText(sheet);
+                    tab.Header = new BoardTableSheetTabHeader(BoardTableEditor.SheetTabText(sheet), sheet.FlaggedCount);
+                    tab.IsVisible = shown.Contains(sheet);
 
                     if (ReferenceEquals(sheet, this.thisCurrentSheet) && !ReferenceEquals(this.SheetTabs.SelectedItem, tab))
                     {
@@ -1149,6 +1204,7 @@ namespace CRT
             var markerTheme = new ControlTheme(typeof(DataGridCell)) { BasedOn = BoardTableEditor.DefaultCellTheme() };
             markerTheme.Setters.Add(new Setter(DataGridCell.MinHeightProperty, 0d));
             markerTheme.Setters.Add(new Setter(ToolTip.TipProperty, new Binding(nameof(BoardTableRow.MarkerToolTip))));
+            markerTheme.Setters.Add(new Setter(ToolTip.ShowDelayProperty, BoardTableEditor.CellToolTipDelay));
 
             var markerSelected = new Style(selector => selector.Nesting().Class(":selected"));
             markerSelected.Setters.Add(new Setter(DataGridCell.BackgroundProperty, Brushes.Transparent));
@@ -1219,12 +1275,27 @@ namespace CRT
                 new Binding($"Cells[{columnIndex}].State") { Converter = this.thisStateToBrush }));
             theme.Children.Add(selected);
 
-            theme.Setters.Add(new Setter(
-                ToolTip.TipProperty,
-                new Binding($"Cells[{columnIndex}].ToolTip")));
+            // A file column shows the hover card instead, which says everything the text did - see
+            // BoardTableEditor.FilePreview.cs. Two popups over one cell would cover each other.
+            if (!this.PreviewsFilesIn(columnIndex))
+            {
+                theme.Setters.Add(new Setter(
+                    ToolTip.TipProperty,
+                    new Binding($"Cells[{columnIndex}].ToolTip")));
+
+                theme.Setters.Add(new Setter(ToolTip.ShowDelayProperty, BoardTableEditor.CellToolTipDelay));
+            }
 
             return theme;
         }
+
+        // ###########################################################################################
+        // A cell's text tooltip - "Published value: ...", a flagged row's reason, what a marker
+        // means - shows AT ONCE (owner request, 2026-09-26: "the instant-show should also work for
+        // texts - not only images"), as the file hover card does. The theme's default waits 400 ms.
+        // It closes the moment the pointer leaves the cell, as every tooltip does.
+        // ###########################################################################################
+        internal const int CellToolTipDelay = 0;
 
         // The grid theme's own cell theme, so ours only ADDS the background and tooltip rather than
         // replacing the cell's whole template.
