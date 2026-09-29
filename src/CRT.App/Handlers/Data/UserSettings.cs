@@ -68,6 +68,16 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? ViewOfficialPublishedOnly { get; set; }
 
+        // The Maintainer tab (2026-09-29, the maintainer application merged into CRT): whether it is
+        // shown, and its table's "Show changes only".
+        [JsonPropertyName("enableMaintainerTab")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? EnableMaintainerTab { get; set; }
+
+        [JsonPropertyName("maintainerShowChangesOnly")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? MaintainerShowChangesOnly { get; set; }
+
         [JsonPropertyName("workbooksScope")] public string WorkbooksScope { get; set; } = "CurrentBoard";
 
         [JsonPropertyName("worklogCurrencyCode")] public string WorklogCurrencyCode { get; set; } = WorklogCurrency.DefaultCode;
@@ -732,6 +742,43 @@ namespace Handlers.DataHandling
             {
                 _data.ViewOfficialPublishedOnly = value;
                 Logger.Info($"Setting changed: [ViewOfficialPublishedOnly] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // Whether the Maintainer tab is shown (2026-09-29: CRT Maintainer became a tab in CRT). OFF
+        // by default: it needs a maintainer account, which almost nobody running CRT has, and a tab
+        // opening on a sign-in screen for an account they cannot get would only confuse them. A
+        // maintainer ticks it once in the Configuration tab.
+        // ###########################################################################################
+        public static bool EnableMaintainerTab
+        {
+            get => _data.EnableMaintainerTab ?? false; // Default is false
+            set
+            {
+                _data.EnableMaintainerTab = value;
+                Logger.Info($"Setting changed: [EnableMaintainerTab] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The Maintainer tab's table: "Show changes only", as the maintainer last chose it (the
+        // CHOICE, BoardTableEditor.OnlyChangesWanted - not whether the filter happens to be on for
+        // the table open now). Carried over once from the separate application's own settings file
+        // by MaintainerSettingsMigration.
+        // ###########################################################################################
+        public static bool MaintainerShowChangesOnly
+        {
+            get => _data.MaintainerShowChangesOnly ?? false; // Default is false
+            set
+            {
+                if (_data.MaintainerShowChangesOnly == value)
+                    return;
+
+                _data.MaintainerShowChangesOnly = value;
+                Logger.Info($"Setting changed: [MaintainerShowChangesOnly] [{value}]");
                 Save();
             }
         }
@@ -1461,6 +1508,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [EnableNetworkConnectedOscilloscopeTab] [{EnableNetworkConnectedOscilloscopeTab}]");
                     Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
                     Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
+                    Logger.Info($"        [EnableMaintainerTab] [{EnableMaintainerTab}]");
                     Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
                     Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
                     Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");

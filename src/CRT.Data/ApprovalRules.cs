@@ -73,7 +73,13 @@ namespace Handlers.DataHandling
             // alone, and the administrator approved first. Nothing is waited for, so the next
             // approval by a role the item needs completes it; refusing it as "already approved"
             // left the item waiting for nobody, for ever.
-            bool satisfied = required.Count > 0 && waitingFor.Count == 0;
+            //
+            // The same when it shrank to "any one approval" (2026-09-27): a submission given the
+            // first of two approvals for ADDING a shared file - which now needs one - already has
+            // its approval. Whoever approves next in a role it needs, its first approver included,
+            // publishes it; otherwise that maintainer was told "already approved" of an item only
+            // the administrator could then finish. The approvals table ignores a repeat in a role.
+            bool satisfied = given.Count > 0 && waitingFor.Count == 0;
 
             bool canApprove = needed && (!alreadyGiven || satisfied);
 

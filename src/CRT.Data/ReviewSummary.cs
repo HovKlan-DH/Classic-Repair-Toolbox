@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
     // What CHANGED between the published board and a submitted one, counted per section
     // (NewContributeStrategy.md Phase 5, task 3).
     //
-    // *** THE MAINTAINER APP OPENS ON THIS, NEVER ON A WHOLE BOARD. *** That is task 3's instruction
+    // *** THE MAINTAINER TAB OPENS ON THIS, NEVER ON A WHOLE BOARD. *** That is task 3's instruction
     // and it is the difference between reviewing and reading: a C64 board carries hundreds of
     // components and over a thousand files, and a maintainer shown all of it has to find the change
     // themselves. "3 components changed, 1 added, 2 images added, 1 highlight moved" is a
@@ -25,7 +25,7 @@ namespace Handlers.DataHandling
     // The client knows it was a rename and says so in the manifest, and this honours that.
     //
     // Pure, so the whole thing is unit tested with no UI, no database and no files - which is the
-    // point of putting the maintainer app's central screen in CRT.Data rather than in its code-behind.
+    // point of putting the Maintainer tab's central screen in CRT.Data rather than in its code-behind.
     // ###########################################################################################
     public static class ReviewSummary
     {
@@ -481,12 +481,12 @@ namespace Handlers.DataHandling
         // someone opens by hand agree about what it is called.
         // ###########################################################################################
         // ###########################################################################################
-        // The highlights section's name, as a constant because the MAINTAINER APP matches on it.
+        // The highlights section's name, as a constant because the MAINTAINER TAB matches on it.
         //
         // Every other section is named by a BoardWorkbookSchema sheet constant, but highlights do
         // not live in the workbook at all - they are in the `.json` sidecar beside it
         // (BoardComponentHighlightStorage), whose own property name this matches exactly. So there
-        // is no sheet constant to borrow, and it was a bare literal until the maintainer app needed to
+        // is no sheet constant to borrow, and it was a bare literal until the Maintainer tab needed to
         // find this section to draw a moved highlight. A literal on both sides of a process
         // boundary is a rename waiting to break the one screen that renders geometry.
         // ###########################################################################################

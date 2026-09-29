@@ -56,6 +56,39 @@ public sealed class ConfigurationHelpIconTests
         });
     }
 
+    // ###########################################################################################
+    // The Maintainer tab's setting (2026-09-29) - the same "?" beside the same kind of check box,
+    // opening the Maintainer-tab Wiki page (AppConfig.WikiPageMaintainer, which
+    // WikiHelpPageNamesTests holds to a real page).
+    // ###########################################################################################
+    [Fact]
+    public void The_maintainer_setting_has_a_help_icon_beside_it()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButton = tab.GetControl<Button>("EnableMaintainerTabHelpButton");
+
+            Assert.Contains("HelpIconButton", helpButton.Classes);
+            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+        });
+    }
+
+    [Fact]
+    public void The_maintainer_help_icon_shares_a_row_with_its_checkbox()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButton = tab.GetControl<Button>("EnableMaintainerTabHelpButton");
+            var checkBox = tab.GetControl<CheckBox>("EnableMaintainerTabCheckBox");
+
+            Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
+        });
+    }
+
     // The pattern this one was copied from, asserted alongside it so a change to either is made to
     // both rather than leaving the two help icons looking different.
     [Fact]

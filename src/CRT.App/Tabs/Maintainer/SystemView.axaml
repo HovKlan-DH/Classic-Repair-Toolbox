@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.SystemView">
+
+    <!--
+    ONE SYSTEM, ON THE "SYSTEMS" SCREEN (owner request, 2026-09-27: "Right-side will show data per
+    system - e.g. who has contributed to it and who is set as maintainer etc.").
+
+    Read-only, and in the order a maintainer asks: where its data is, who maintains it, how often
+    CRT users look at it, who has contributed and how that went, then its recent submissions - each
+    in the words CRT uses for it
+    (SystemsDisplay). The server decides who may see it - every maintainer, every system (owner
+    decision) - and SystemOverviewFlow says why.
+    -->
+    <DockPanel>
+
+        <!-- The system's name - or, with nothing chosen, what to do (the other screens' look). -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SystemTitleText"
+                   Text="Select a system"
+                   FontSize="16"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,2" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SystemStateText"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SystemRevisionsText"
+                   FontSize="12"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <!-- Where CRT's drop-down lists show it - once it is in them. -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SystemListingText"
+                   FontSize="12"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,6,0,0" />
+
+        <ScrollViewer Margin="0,12,0,0">
+            <StackPanel Spacing="16">
+                <!-- A system not in CRT's drop-down lists yet is placed first (2026-09-27): it
+                     cannot be published to BETA until it has a place. -->
+                <local:SystemPlacementView x:Name="PlacementView" />
+
+                <!--
+                Who maintains it - and, for the ADMINISTRATOR, where that is changed (owner request,
+                2026-09-27: "As admin I should be allowed to set a system maintainer in the 'Systems'
+                list ... either select an existing maintainer or invite a new maintainer via email").
+                The per-person Remove and Withdraw buttons are built with the lines
+                (SystemView.Maintainers.cs); the two ways of adding somebody are below them.
+                -->
+                <StackPanel Spacing="8">
+                    <StackPanel x:Name="MaintainersSection" Spacing="4" />
+
+                    <StackPanel x:Name="MaintainerAdminPanel" Spacing="6" IsVisible="False">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ComboBox Grid.Column="0"
+                                      x:Name="AddAccountCombo"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="Choose somebody who has an account" />
+                            <Button Grid.Column="1"
+                                    x:Name="AddAccountButton"
+                                    Content="Add as maintainer"
+                                    Margin="8,0,0,0"
+                                    Click="OnAddAccountClick" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0"
+                                     x:Name="InviteEmailBox"
+                                     PlaceholderText="Or invite somebody new - their email address" />
+                            <Button Grid.Column="1"
+                                    x:Name="InviteButton"
+                                    Content="Send invitation"
+                                    Margin="8,0,0,0"
+                                    Click="OnInviteClick" />
+                        </Grid>
+
+                        <TextBlock x:Name="PoolMessageText" TextWrapping="Wrap" IsVisible="False" />
+
+                        <!-- Said, because the list shows one line per person and nothing else hints at
+                             it (owner request, 2026-09-27: "I should be able to attach more than one
+                             maintainer per system"). -->
+                        <TextBlock x:Name="SeveralMaintainersHint"
+                                   Text="A system can have as many maintainers as you like - add them one at a time. Any one of them can approve its submissions (replacing a shared file other boards use also needs you)."
+                                   FontSize="11"
+                                   Opacity="0.7"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+                <!-- How often CRT users look at the board (owner request, 2026-09-27) - left out
+                     entirely when the server sends no counts (SystemsDisplay words it). -->
+                <StackPanel x:Name="ViewsSection" Spacing="2" IsVisible="False" />
+                <StackPanel x:Name="ContributorsSection" Spacing="6" />
+                <StackPanel x:Name="SubmissionsSection" Spacing="8" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

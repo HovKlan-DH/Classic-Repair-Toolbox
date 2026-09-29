@@ -93,6 +93,148 @@ public sealed class BoardSidecarWriterTests : IDisposable
         Assert.Equal("20", entry.Height);
     }
 
+    // ###########################################################################################
+    // *** A SIDECAR COPIED IN BY HAND IS REPLACED (owner report, 2026-09-28). *** Production's
+    // files were copied into BETA as root, and the next approval was refused at exactly this file:
+    // it was OPENED for writing, which a root-owned file refuses, while REPLACING it needs only the
+    // folder. Made here as a file its owner may not write. Not on Windows (no such mode) or as root
+    // (which ignores it). Fails against the File.WriteAllText writer.
+    // ###########################################################################################
+    [Fact]
+    public void A_sidecar_that_may_not_be_opened_for_writing_is_still_replaced()
+    {
+        // The return is for the platform analyzer, which cannot see that Skip throws.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix permissions only.");
+            return;
+        }
+        Assert.SkipWhen(Environment.UserName == "root", "root may write anything.");
+
+        File.WriteAllText(this.SidecarPath, "{}");
+        File.SetUnixFileMode(this.SidecarPath, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        BoardSidecarWriter.Write(
+            this.thisWorkbookPath,
+            [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")],
+            []);
+
+        Assert.Equal("U8", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath)).BoardLabel);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Written only when its content changes (owner request, 2026-09-28)
+    // -----------------------------------------------------------------------------------------
+
+    private static string ShippedC128Sidecar()
+    {
+        string? folder = AppContext.BaseDirectory;
+
+        while (folder is not null && !File.Exists(Path.Combine(folder, "Classic-Repair-Toolbox.slnx")))
+            folder = Path.GetDirectoryName(folder);
+
+        Assert.NotNull(folder);
+
+        return Path.Combine(folder!, "Assets", "Data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.json");
+    }
+
+    // ###########################################################################################
+    // *** THE CASE THAT WAS REPORTED. *** C128's shipped highlight file - written by CRT on
+    // Windows: CRLF, labels in natural order (C2, C3, C10), an empty schematic, no calibration
+    // section - published again with the SAME highlights. It used to be rewritten in the server's
+    // format, and "Publish to production" then listed it as a file to copy though nothing in it had
+    // changed. Now it keeps every byte.
+    // ###########################################################################################
+    [Fact]
+    public void The_shipped_C128_highlights_published_again_unchanged_keep_every_byte()
+    {
+        File.Copy(BoardSidecarWriterTests.ShippedC128Sidecar(), this.SidecarPath);
+        byte[] before = File.ReadAllBytes(this.SidecarPath);
+
+        List<ComponentHighlightEntry> same = BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath);
+        Assert.NotEmpty(same);
+
+        Assert.False(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, same, []));
+        Assert.Equal(before, File.ReadAllBytes(this.SidecarPath));
+    }
+
+    // Order, line endings and formatting are not content: the same highlights given in another
+    // order, against a hand-written CRLF file, still count as the same.
+    [Fact]
+    public void Order_line_endings_and_layout_are_not_a_change()
+    {
+        File.WriteAllText(
+            this.SidecarPath,
+            "{\r\n  \"Component highlights\": { \"Sheet 1\": { \"C2\": [ { \"X\": 1, \"Y\": 2, \"Width\": 3, \"Height\": 4 } ],\r\n" +
+            "  \"C10\": [ { \"X\": 5, \"Y\": 6, \"Width\": 7, \"Height\": 8 } ] } }\r\n}");
+
+        Assert.True(BoardSidecarWriter.HoldsTheSameContent(
+            this.thisWorkbookPath,
+            [
+                BoardSidecarWriterTests.Highlight("Sheet 1", "C10", "5", "6", "7", "8"),
+                BoardSidecarWriterTests.Highlight("Sheet 1", "C2", "1", "2", "3", "4")
+            ],
+            []));
+    }
+
+    [Fact]
+    public void A_moved_highlight_is_a_change_and_is_written()
+    {
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], []);
+
+        Assert.True(BoardSidecarWriter.WriteIfChanged(
+            this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "101", "200")], []));
+
+        Assert.Equal("101", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath)).X);
+    }
+
+    // Every highlight removed is a change too - the empty board must be written, or the old
+    // rectangles stay published.
+    [Fact]
+    public void Removing_every_highlight_is_a_change()
+    {
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], []);
+
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.Empty(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
+    }
+
+    [Fact]
+    public void A_changed_calibration_is_a_change()
+    {
+        var calibration = new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "pcb", OffsetX = 1.5, ScaleX = 2 };
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [calibration]);
+
+        Assert.True(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [calibration]));
+        Assert.False(BoardSidecarWriter.HoldsTheSameContent(
+            this.thisWorkbookPath, [], [new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "pcb", OffsetX = 1.5, ScaleX = 2, MirrorX = true }]));
+    }
+
+    // ###########################################################################################
+    // *** ONLY A FILE IT CAN VOUCH FOR IS KEPT. *** A root nothing here reads could hold data no
+    // maintainer saw, so a file carrying one is rewritten (and loses it) - as is one that does not
+    // parse, or none at all.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_with_an_unknown_section_is_rewritten_without_it()
+    {
+        File.WriteAllText(this.SidecarPath, "{ \"Component highlights\": {}, \"Something else\": { \"a\": 1 } }");
+
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.DoesNotContain("Something else", File.ReadAllText(this.SidecarPath), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_file_that_does_not_parse_or_is_missing_is_written()
+    {
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.True(File.Exists(this.SidecarPath));
+
+        File.WriteAllText(this.SidecarPath, "{ not json");
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.Contains(BoardSidecarWriter.HighlightsRoot, File.ReadAllText(this.SidecarPath), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void SEVERAL_schematics_and_labels_all_survive()
     {

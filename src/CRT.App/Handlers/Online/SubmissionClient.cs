@@ -291,6 +291,43 @@ namespace Handlers.Online
         }
 
         // ###########################################################################################
+        // THE CONTRIBUTOR DISCARDED THEIR DRAFT (owner request, 2026-09-28) - tells the server, for
+        // one submission, proving ownership with its token exactly as the status check does. See
+        // CRT.Data's DraftDiscardContract for the route and for what each answer means.
+        //
+        // Returns the HTTP status, or null when no answer came at all (no network, a timeout) - the
+        // caller asks DraftDiscardContract.DeliveryFor whether that finishes the notice.
+        // ###########################################################################################
+        public async Task<int?> ReportDraftDiscardedAsync(
+            long submissionId,
+            string uploadToken,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.ApiTimeout);
+
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Post, $"{this.thisBaseUrl}/{DraftDiscardContract.PathUnderApi(submissionId)}");
+
+                request.Headers.Add(SubmissionClient.TokenHeader, uploadToken);
+
+                using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
+
+                return (int)response.StatusCode;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
+            {
+                // No answer: tried again at the next launch.
+                return null;
+            }
+        }
+
+        // ###########################################################################################
         // What the server currently says about one already-sent submission (Phase 4, task 6).
         //
         // Returns null rather than throwing when the answer cannot be had - offline, a timeout, a

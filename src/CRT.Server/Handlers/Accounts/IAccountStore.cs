@@ -153,6 +153,57 @@ namespace CRT.Server.Handlers.Accounts
         Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default);
+
+        // The audit rows naming any of `subjects`, newest first - a system's history on the Systems
+        // screen (2026-09-27): its id, and "#{id}" for each of its submissions.
+        Task<IReadOnlyList<AuditEntry>> GetAuditForSubjectsAsync(IReadOnlyCollection<string> subjects, int limit, CancellationToken cancellationToken = default);
+
+        // ---------------------------------------------------------------------------------------
+        // Maintainer invitations (2026-09-27, migration 0012) - see MaintainerInvitationFlows.
+        // ---------------------------------------------------------------------------------------
+
+        Task<long> CreateInvitationAsync(NewMaintainerInvitation invitation, CancellationToken cancellationToken = default);
+
+        Task<MaintainerInvitationRecord?> FindInvitationByHashAsync(string tokenHash, CancellationToken cancellationToken = default);
+
+        Task<MaintainerInvitationRecord?> FindInvitationByIdAsync(long invitationId, CancellationToken cancellationToken = default);
+
+        // Every invitation still OPEN at `nowUtc` - not accepted, not withdrawn, not expired.
+        Task<IReadOnlyList<MaintainerInvitationRecord>> ListOpenInvitationsAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken = default);
+
+        Task WithdrawInvitationAsync(long invitationId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Accepting: in ONE transaction, creates the account VERIFIED (the code proved the mailbox),
+        // puts it in the pool of every system its address has an open invitation to, and marks
+        // those invitations accepted. Null - and nothing written - when the address has an account
+        // already (taken between the flow's check and this write).
+        // ###########################################################################################
+        Task<long?> AcceptInvitationsAsync(NewAccount account, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+    }
+
+    public sealed record NewMaintainerInvitation(
+        string SystemId,
+        string Email,
+        string NormalisedEmail,
+        string TokenHash,
+        long InvitedByAccountId,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc);
+
+    public sealed record MaintainerInvitationRecord(
+        long Id,
+        string SystemId,
+        string Email,
+        string NormalisedEmail,
+        long? InvitedByAccountId,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset ExpiresUtc,
+        DateTimeOffset? AcceptedUtc,
+        DateTimeOffset? WithdrawnUtc)
+    {
+        public bool IsOpenAt(DateTimeOffset nowUtc) =>
+            this.AcceptedUtc is null && this.WithdrawnUtc is null && this.ExpiresUtc > nowUtc;
     }
 
     // ###########################################################################################

@@ -12,7 +12,7 @@ namespace CRT
     // ###########################################################################################
     // HOVERING A FILE CELL SHOWS THE FILE (owner request, 2026-09-26) - the picture, the published
     // and the new picture side by side when it changed, or a link that opens a PDF. The same in the
-    // Drafts tab and in the maintainer application, which is why it is here and not in either.
+    // Drafts tab and in the Maintainer tab, which is why it is here and not in either.
     //
     // *** AT ONCE, BOTH WAYS (owner request, 2026-09-26: "show image/tooltip instantly, instead of
     // the small delay ... and likewise instantly NOT show the helper when moving mouse outside"). ***

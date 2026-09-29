@@ -42,7 +42,13 @@ namespace Handlers.DataHandling
     // user's own settings, never in the synced Data tree and never inside a draft that could be
     // submitted. See SubmissionReceiptStore for where it actually goes.
     // ###########################################################################################
-    public sealed class SubmissionReceipt
+    //
+    // *** A RECORD, SO A CHANGE IS `existing with { ... }` (code review, 2026-09-29). *** It was a
+    // class, and SubmissionReceiptStore rebuilt it field by field in four places - each of which had
+    // to be edited whenever a field was added, and a field left out of one was silently ERASED by
+    // that change (the defect class that dropped a workbook's caption three times). `with` carries
+    // every field it does not name. ToString is overridden so the token never reaches a log.
+    public sealed record SubmissionReceipt
     {
         // The server's own id for the submission. Small and sequential, which is exactly why the
         // token below is needed - an id alone would let anyone walk the range.
@@ -82,7 +88,7 @@ namespace Handlers.DataHandling
         // so that adding it server-side does not need a format change on every contributor's disk.
         public string MaintainerComment { get; init; } = string.Empty;
 
-        // A maintainer changed some of the rows in the maintainer application before deciding
+        // A maintainer changed some of the rows in the Maintainer tab before deciding
         // (2026-09-25) - SubmissionStatus.AmendedByMaintainer, cached like the state.
         public bool AmendedByMaintainer { get; init; }
 
@@ -176,6 +182,28 @@ namespace Handlers.DataHandling
         // Null while nothing has been decided, which is every submission still waiting for review.
         // ###########################################################################################
         public DateTimeOffset? DecidedUtc { get; init; }
+
+        // ###########################################################################################
+        // Whether the contributor has closed the "now in the online source - switch back from
+        // BETA" notice for this submission (owner request, 2026-09-27). Set only by dismissing it,
+        // and only meaningful once the submission is "published" - which never changes again, so
+        // unlike the two Acknowledged texts above a plain flag cannot go stale.
+        // ###########################################################################################
+        public bool SourceNoticeDismissed { get; init; }
+
+        // ###########################################################################################
+        // THE CONTRIBUTOR DISCARDED THEIR DRAFT of this board after sending this (owner request,
+        // 2026-09-28) - see DraftDiscardContract. When, by this machine's clock, and whether the
+        // server has been told. Kept until it has, so a discard made offline is reported at the
+        // next launch rather than lost.
+        // ###########################################################################################
+        public DateTimeOffset? DraftDiscardedUtc { get; init; }
+
+        public bool DraftDiscardReported { get; init; }
+
+        // Never the generated ToString, which would print UploadToken - a secret - into any log line
+        // that formats a receipt.
+        public override string ToString() => $"Submission #{this.SubmissionId} ({this.SystemId})";
     }
 
     // ###########################################################################################
@@ -218,13 +246,17 @@ namespace Handlers.DataHandling
         // Each mapping exists because the raw value would mislead:
         //   - "uploading" means the send never completed, which to the user is a failed attempt,
         //     not work in progress - nothing is uploading any more;
-        //   - "pending" means QUEUED, waiting for a person - not "pending" as in unfinished;
+        //   - "pending" means QUEUED, waiting for a person - not "pending" as in unfinished. It
+        //     says "Submitted - awaiting feedback from a maintainer" (owner wording, 2026-09-27):
+        //     it is the first thing a contributor sees after sending, and it names who acts next;
         //   - "abandoned" is the server's word for an upload window that expired, which sounds
         //     like the contributor gave up rather than that time ran out;
         //   - an unknown value is reported as unknown rather than guessed at, because a future
         //     server state rendered as something plausible-but-wrong is worse than an honest
         //     "the server said something this version does not recognise".
         // ###########################################################################################
+        public const string PendingWording = "Submitted - awaiting feedback from a maintainer";
+
         public static string DescribeState(string? state)
         {
             if (string.IsNullOrWhiteSpace(state))
@@ -233,7 +265,7 @@ namespace Handlers.DataHandling
             return state.Trim().ToLowerInvariant() switch
             {
                 "uploading" => "Never finished sending",
-                "pending" => "Waiting for review",
+                "pending" => SubmissionReceiptPresenter.PendingWording,
                 "accepted" => "Accepted",
                 // *** "BETA source" AND "source" (owner wording, 2026-09-25). *** The two
                 // stages are named for where the data went, in the words CRT's own Configuration
@@ -243,7 +275,7 @@ namespace Handlers.DataHandling
                 "abandoned" => "Expired before it was finished",
 
                 // *** THE FOUR PHASE 5 REVIEW STATES, MISSING UNTIL 2026-09-22. *** They were added
-                // to the server's own vocabulary when the maintainer application was built and never
+                // to the server's own vocabulary when the Maintainer tab was built and never
                 // taught to this method, so the first real review round trip showed a contributor
                 // "Reported as [changes_requested]" - a raw database value, complete with its
                 // underscore, in the one place this class exists to prevent exactly that.
@@ -267,6 +299,15 @@ namespace Handlers.DataHandling
                 // says so. If a contributor could ever withdraw one by hand, that needs a state of
                 // its own - these words would then be wrong.
                 "withdrawn" => "Replaced by a newer submission",
+
+                // *** "returned" IS A SUBMISSION TAKEN BACK OUT OF BETA (code review, 2026-09-27). ***
+                // Not a database state: the server reports it for a `pending` submission carrying a
+                // maintainer's reason, which only a BETA rollback produces
+                // (ProductionPromotionRules.ContributorFacingState). The contributor had already
+                // been shown "Published to BETA source" and mailed so; a bare "Waiting for review"
+                // afterwards said nothing about what had happened. The reason is the maintainer
+                // comment beside it.
+                "returned" => "Taken back out of BETA - waiting for review again",
 
                 // A state this build has never heard of. Reported honestly rather than guessed at -
                 // a future server value rendered as something plausible-but-wrong is worse than an
@@ -303,6 +344,11 @@ namespace Handlers.DataHandling
                 // reader rather than about the submission, and the reason this classification
                 // exists at all - it is what the coloured edge is for.
                 "changes_requested" => SubmissionOutcomeKind.NeedsAction,
+
+                // Taken back out of BETA because something needs attention - the owner's own words
+                // for why the button exists: "so I can inform contributor if something is missing".
+                // The maintainer's note says what; this is the colour that makes it read.
+                "returned" => SubmissionOutcomeKind.NeedsAction,
 
                 // Finished, and it is not going in. "uploading" belongs here rather than in
                 // Waiting: nothing is uploading any more, the send failed partway, and the row is
@@ -346,6 +392,9 @@ namespace Handlers.DataHandling
                 // merged row per launch, for the few days between the two publishes - and no
                 // longer than MergedRecheckWindow: see the receipt overload below.
 
+                // "returned" (taken back out of BETA) is waiting for review again, so it is open too -
+                // it falls to the default arm below, deliberately.
+
                 // *** "changes_requested" AND "approved" ARE DELIBERATELY STILL OPEN. *** Neither
                 // is the end: a submission with changes requested can be re-reviewed after the
                 // contributor acts, and an approved one is still waiting to be published. Treating
@@ -356,21 +405,32 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // How long after its decision a "merged" (in BETA) submission is still asked about.
+        // How long after its decision a "merged" (in BETA) submission is asked about at EVERY
+        // launch.
         //
         // *** A BOUND, BECAUSE THE SECOND PUBLISH MAY NEVER COME (code review, 2026-09-25). ***
         // Publishing to production is off until the server is set up for it, and a maintainer may
         // never promote a board. Without a bound, every merged receipt was asked about on every
         // launch for ever - the very re-check "withdrawn" once caused. Thirty days is far longer
-        // than BETA to production is meant to take; after it the row keeps its last answer.
+        // than BETA to production is meant to take.
+        //
+        // *** BUT NO LONGER A POINT AFTER WHICH IT IS NEVER ASKED AGAIN (code review, 2026-09-27). ***
+        // A merged submission can now CHANGE after any length of time: a BETA rollback puts it back
+        // in the queue ("returned"). With the old hard stop, a rollback more than thirty days after
+        // the merge never reached "My submissions", which said "Published to BETA source" for good
+        // while the server said otherwise. Past the window it is asked about once every
+        // MergedLateRecheckInterval instead - still cheap, never silent.
         // ###########################################################################################
         public static readonly TimeSpan MergedRecheckWindow = TimeSpan.FromDays(30);
+
+        public static readonly TimeSpan MergedLateRecheckInterval = TimeSpan.FromDays(7);
 
         // ###########################################################################################
         // Whether this RECEIPT is worth asking the server about AT LAUNCH: its state is still open,
         // and a "merged" one was decided less than MergedRecheckWindow ago (or sent, for a receipt
-        // that never recorded its decision date). "Check for updates" in My submissions uses the
-        // state alone - somebody pressed it to ask.
+        // that never recorded its decision date) - or, past that, was last checked at least
+        // MergedLateRecheckInterval ago. "Check for updates" in My submissions uses the state alone
+        // - somebody pressed it to ask.
         // ###########################################################################################
         public static bool IsStillOpen(SubmissionReceipt receipt, DateTimeOffset nowUtc)
         {
@@ -384,7 +444,12 @@ namespace Handlers.DataHandling
 
             DateTimeOffset since = receipt.DecidedUtc ?? receipt.SentUtc;
 
-            return nowUtc - since < SubmissionReceiptPresenter.MergedRecheckWindow;
+            if (nowUtc - since < SubmissionReceiptPresenter.MergedRecheckWindow)
+                return true;
+
+            // Past the window: now and then, so a late rollback still arrives.
+            return receipt.LastCheckedUtc is not DateTimeOffset checkedUtc ||
+                nowUtc - checkedUtc >= SubmissionReceiptPresenter.MergedLateRecheckInterval;
         }
 
         // ###########################################################################################
@@ -409,6 +474,132 @@ namespace Handlers.DataHandling
         public static string FormatDate(DateTimeOffset value)
         {
             return value.ToLocalTime().ToString("yyyy-MMMM-d", CultureInfo.InvariantCulture);
+        }
+
+        // ###########################################################################################
+        // A system's name as a contributor reads it: "Commodore/C128/310378 Open128" ->
+        // "Commodore C128 310378 Open128".
+        //
+        // *** A RECEIPT HOLDS THE SYSTEM ID ITSELF, with no file name on the end (2026-09-27). ***
+        // "My submissions" used to drop the last segment as though it were the workbook's file
+        // name, so a real receipt read "Commodore C128" with the board missing. A workbook path
+        // (the shape older fixtures used) still loses only its ".xlsx" file.
+        // ###########################################################################################
+        public static string DescribeSystem(string? systemId)
+        {
+            if (string.IsNullOrWhiteSpace(systemId))
+            {
+                return "(unknown system)";
+            }
+
+            List<string> segments = systemId.Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(segment => segment.Trim())
+                .Where(segment => segment.Length > 0)
+                .ToList();
+
+            if (segments.Count > 1 && segments[^1].EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                segments.RemoveAt(segments.Count - 1);
+            }
+
+            return segments.Count == 0 ? systemId.Trim() : string.Join(' ', segments);
+        }
+
+        // ###########################################################################################
+        // *** THE "SWITCH BACK FROM BETA" NOTICE (owner request, 2026-09-27). *** A contributor
+        // checks their submission in the BETA data - "I do think the user must do that to confirm it
+        // works" - and then needs telling when it has reached the normal online source, so they
+        // stop downloading BETA. Which submissions that notice is about: published to production,
+        // not yet dismissed, and only while this machine downloads from BETA at all - someone on the
+        // normal source has nothing to switch.
+        //
+        // Derived from the receipts every time rather than raised once when a state changes, so it
+        // cannot be missed: a notice raised as the app closed would otherwise be gone for good,
+        // since a published submission is never asked about again.
+        // ###########################################################################################
+        public static IReadOnlyList<SubmissionReceipt> NeedingSourceSwitchNotice(
+            IEnumerable<SubmissionReceipt>? receipts,
+            bool downloadingFromBeta)
+        {
+            if (!downloadingFromBeta)
+            {
+                return [];
+            }
+
+            return (receipts ?? [])
+                .Where(receipt => string.Equals(receipt.LastKnownState?.Trim(), "published", StringComparison.OrdinalIgnoreCase))
+                .Where(receipt => !receipt.SourceNoticeDismissed)
+                .OrderBy(receipt => receipt.SentUtc)
+                .ToList();
+        }
+
+        // The notice's words, naming each system once.
+        public static string DescribeSourceSwitchNotice(IReadOnlyList<SubmissionReceipt> receipts)
+        {
+            ArgumentNullException.ThrowIfNull(receipts);
+
+            List<string> systems = receipts
+                .Select(receipt => SubmissionReceiptPresenter.DescribeSystem(receipt.SystemId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            string named = systems.Count switch
+            {
+                0 => "Your submission",
+                1 => $"Your submission for {systems[0]}",
+                _ => $"Your submissions for {string.Join(", ", systems.Take(systems.Count - 1))} and {systems[^1]}",
+            };
+
+            string verb = systems.Count > 1 ? "are" : "is";
+
+            return $"{named} {verb} now published to the online source. You are downloading data from the BETA source - " +
+                   "you can switch back to the online source on the Configuration tab.";
+        }
+
+        // ###########################################################################################
+        // The LATEST submission of one system, or null when it was never sent - for the badge on
+        // its Drafts tab row (owner request, 2026-09-27: "When I have submitted ... I need to see
+        // that somehow").
+        //
+        // Matched on the system id, the one a submission is sent under
+        // (SystemDescriptorRules.SystemIdFromExcelDataFile) - never on a display name. Latest by
+        // the time it was sent; a newer one replaces an older one on the server too.
+        //
+        // *** ONLY SUBMISSIONS SENT FROM THIS DRAFT (code review, 2026-09-27). *** A contributor
+        // whose first submission reached production has that draft retired, and starts a new one of
+        // the same board - which then carried "Published to source", in green, beside changes that
+        // had not been sent at all. draftCreatedUtc (the marker's) leaves out anything sent before
+        // the draft existed; null, from a marker that does not say, leaves nothing out.
+        // ###########################################################################################
+        public static SubmissionReceipt? LatestForSystem(
+            IEnumerable<SubmissionReceipt>? receipts,
+            string? systemId,
+            DateTimeOffset? draftCreatedUtc = null)
+        {
+            string id = systemId?.Trim() ?? string.Empty;
+            if (id.Length == 0)
+            {
+                return null;
+            }
+
+            return (receipts ?? [])
+                .Where(receipt => string.Equals(receipt.SystemId?.Trim(), id, StringComparison.OrdinalIgnoreCase))
+                .Where(receipt => draftCreatedUtc is null || receipt.SentUtc >= draftCreatedUtc.Value)
+                .OrderByDescending(receipt => receipt.SentUtc)
+                .ThenByDescending(receipt => receipt.SubmissionId)
+                .FirstOrDefault();
+        }
+
+        // ###########################################################################################
+        // The badge's tooltip: which submission it is about and where the rest is. The badge itself
+        // is DescribeState's words, so it cannot say anything "My submissions" does not.
+        // ###########################################################################################
+        public static string DescribeLastSubmission(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return $"Your last submission of this system, sent {SubmissionReceiptPresenter.FormatDate(receipt.SentUtc)}. " +
+                   "Open \"My submissions\" above for the details.";
         }
 
         // ###########################################################################################

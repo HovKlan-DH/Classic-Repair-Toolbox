@@ -39,14 +39,18 @@ namespace CRT.Server.Tests
             Assert.Contains("Commodore/C64/250407", message.Body, StringComparison.Ordinal);
             Assert.Contains("#42", message.Body, StringComparison.Ordinal);
             Assert.Contains("Corrected R12.", message.Body, StringComparison.Ordinal);
-            Assert.Contains("CRT Maintainer", message.Body, StringComparison.Ordinal);
+
+            // Where to look: CRT's Maintainer tab since 2026-09-29, when the separate CRT Maintainer
+            // application was folded into CRT - and never the application that no longer exists.
+            Assert.Contains("the Maintainer tab", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
         public void The_waiting_mail_says_so_when_the_contributor_gave_no_description()
         {
             // A blank quote reads as a rendering fault; the ordinary "(no description given)"
-            // the maintainer app's queue also shows is used instead.
+            // the Maintainer tab's queue also shows is used instead.
             EmailMessage message = EmailTemplates.SubmissionWaiting("anna@example.com", "X/Y/Z", 1, "  ");
 
             Assert.Contains("(no description given)", message.Body, StringComparison.Ordinal);
@@ -78,7 +82,7 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
         }
 
-        // A maintainer changed rows in the maintainer application before publishing (2026-09-25): the
+        // A maintainer changed rows in the Maintainer tab before publishing (2026-09-25): the
         // contributor is told, and only then - and through the notifier's mapping too.
         [Fact]
         public void The_first_mail_says_when_a_maintainer_changed_the_submission()
@@ -238,8 +242,9 @@ namespace CRT.Server.Tests
             EmailMessage message = EmailTemplates.PasswordReset(
                 "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
 
-            Assert.Contains("CRT Maintainer", message.Body, StringComparison.Ordinal);
+            Assert.Contains("the Maintainer tab", message.Body, StringComparison.Ordinal);
             Assert.Contains("I forgot my password", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]

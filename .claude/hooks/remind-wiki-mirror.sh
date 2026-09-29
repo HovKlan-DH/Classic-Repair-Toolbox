@@ -69,9 +69,13 @@ src/CRT.App/Tabs/Drafts/|src/CRT.App/Main/Main\.NewSystem|src/CRT.Data/NewSystem
 src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession=Contribute-data-via-CRT
 src/CRT.Data/DraftDrift|src/CRT.Data/DraftRevisionComparer|src/CRT.Data/DraftBaseRevision|src/CRT.App/Main/Main\.DraftDrift=Contribute-data-via-CRT Contribute-tab Board-Excel
 src/CRT.Data/DraftRetirement|src/CRT.App/Handlers/Data/PublishedDraftRetirer|src/CRT.Data/DraftWorkbookStore=Contribute-data-via-CRT
+src/CRT.Data/DraftFolderImport=Contribute-data-via-CRT Add-new-board-with-KiCad-data
+src/CRT.App/Main/Main\.SourceSwitchNotice|src/CRT.Data/SubmissionReceipt=Contribute-data-via-CRT Configuration-tab
 src/CRT.Data/DraftFileResolver|src/CRT.Data/DraftBoardSource=Configuration-tab
 src/CRT.App/Handlers/Online/UpdateService|src/CRT.App/Handlers/Online/UpdateChannelFilter|src/CRT.App/Handlers/Online/StageFilteredUpdateSource=Configuration-tab
 src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-from-source Development-tools-used
+src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract=Information-collected
+src/CRT.App/Tabs/Maintainer/|src/CRT.App/Main/Main\.Maintainer|src/CRT.App/Handlers/Maintainer/=Maintainer-tab
 "
 
 HITS=""

@@ -138,7 +138,8 @@ namespace CRT
             DraftStatus? status = DraftStatusReader.Resolve(
                 DataManager.DataRoot,
                 DraftManager.DraftsRoot,
-                entry.ExcelDataFile);
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
             if (status == null)
             {
@@ -151,7 +152,10 @@ namespace CRT
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
 
-            BoardData? official = await BoardDataReader.LoadAsync(publishedPath, publishedPath);
+            BoardData? official = await BusyOverlay.RunLocalAsync(
+                this,
+                CrtWaitWording.ComparingWithOfficial,
+                () => BoardDataReader.LoadAsync(publishedPath, publishedPath));
 
             var report = new DraftChangeReport
             {
@@ -171,7 +175,8 @@ namespace CRT
             DraftStatus? refreshed = DraftStatusReader.Resolve(
                 DataManager.DataRoot,
                 DraftManager.DraftsRoot,
-                entry.ExcelDataFile);
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
             this._currentBoardDriftState = DraftRevisionComparer.Compare(
                 refreshed?.BaseRevision ?? string.Empty,

@@ -9,7 +9,7 @@ namespace Handlers.DataHandling
     // 2026-09-25: "Is this list of file deletions visible BEFORE the maintainer/admin approves it to
     // either BETA or real? It must be, so it is clear what will happen").
     //
-    // One record on both ends of the wire - the server builds it, the maintainer application shows it
+    // One record on both ends of the wire - the server builds it, the Maintainer tab shows it
     // and sends the list it showed back with the approval - so what is on screen and what is
     // removed cannot drift apart. The server refuses an approval whose list no longer matches
     // (Matches): another publish can change whether a shared file is still used, and the maintainer

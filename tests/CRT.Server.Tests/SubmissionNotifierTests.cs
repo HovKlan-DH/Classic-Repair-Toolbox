@@ -99,6 +99,110 @@ namespace CRT.Server.Tests
             Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
         }
 
+        // ###########################################################################################
+        // *** A ROLLED-BACK CONTRIBUTOR IS ACTUALLY TOLD (owner decision, 2026-09-27). *** The
+        // first version of the rollback sent NotifyDecisionAsync with state "pending", which
+        // BuildMessage answers with NULL - so the rollback completed, the submission went back to
+        // the queue, and NOBODY was mailed. The suite was green because nothing asked. This asks.
+        //
+        // The mail must say the data was IN BETA and now is not: this contributor was already told
+        // "published to BETA", and a mail reading like an ordinary change request would leave them
+        // believing their work was still live.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_contributor_whose_board_was_rolled_back_is_told_it_left_BETA_and_why()
+        {
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyReturnedToQueueAsync(
+                SubmissionNotifierTests.Contributor,
+                SubmissionNotifierTests.SystemName,
+                "The U8 pinout is wrong.");
+
+            EmailMessage message = Assert.Single(mailer.Sent);
+
+            Assert.Equal(SubmissionNotifierTests.Contributor, message.ToAddress);
+            Assert.Contains("taken back out of BETA", message.Subject, StringComparison.Ordinal);
+
+            // The board is named - a contributor who sent something weeks ago cannot act on "your
+            // contribution was taken back".
+            Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+            Assert.Contains("had been published", message.Body, StringComparison.Ordinal);
+            Assert.Contains("no longer holds it", message.Body, StringComparison.Ordinal);
+            Assert.Contains("The U8 pinout is wrong.", message.Body, StringComparison.Ordinal);
+
+            // What IS true: the contribution is in the queue, and it can be corrected.
+            Assert.Contains("is not lost", message.Body, StringComparison.Ordinal);
+            Assert.Contains("send a corrected version", message.Body, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // Beta > Prod's "Reject" (owner request, 2026-09-28): the contributor gets the queue's own
+        // rejection mail, with the reason - not "back in the queue", which it is not.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_board_rejected_out_of_BETA_mails_a_rejection_and_one_pushed_back_the_queue_mail()
+        {
+            var rejectedMailer = new FakeEmailSender();
+            var returnedMailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(rejectedMailer).NotifyTakenOutOfBetaAsync(
+                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, "Not for this board.", rejected: true);
+
+            await SubmissionNotifierTests.Notifier(returnedMailer).NotifyTakenOutOfBetaAsync(
+                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, "Not ready.", rejected: false);
+
+            EmailMessage rejection = Assert.Single(rejectedMailer.Sent);
+            Assert.Contains("will not be going", rejection.Body, StringComparison.Ordinal);
+            Assert.Contains("Not for this board.", rejection.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("taken back out of BETA", rejection.Subject, StringComparison.Ordinal);
+
+            Assert.Contains("taken back out of BETA", Assert.Single(returnedMailer.Sent).Subject, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** IT PROMISES NOTHING THE SYSTEM DOES NOT GUARANTEE (code review, 2026-09-27). *** The
+        // first version told the contributor their draft was "still on your own computer, exactly
+        // as you left it" - but CRT deletes a draft once the published board matches it, which can
+        // happen while the work sits in BETA - and that a new submission "takes this one's place",
+        // which SubmissionReplacementRules does not do for one a maintainer amended.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_returned_to_queue_mail_does_not_promise_a_draft_or_a_replacement()
+        {
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyReturnedToQueueAsync(
+                SubmissionNotifierTests.Contributor,
+                SubmissionNotifierTests.SystemName,
+                "Needs a revision date.");
+
+            string body = Assert.Single(mailer.Sent).Body;
+
+            Assert.DoesNotContain("exactly as you left it", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("place in the queue", body, StringComparison.Ordinal);
+
+            // It says what to do when the draft IS gone, rather than assuming it is there.
+            Assert.Contains("If the draft is no longer there", body, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** "pending" IS NOT A DECISION MAIL, and this pins the trap. *** It is also the state a
+        // brand-new submission arrives in, so BuildMessage deliberately has no wording for it. A
+        // caller that reaches for NotifyDecisionAsync(Pending) to say "returned to the queue" gets
+        // silence - use NotifyReturnedToQueueAsync. Fails if someone adds a "pending" arm, which
+        // would make every new arrival mail its own contributor a decision.
+        // ###########################################################################################
+        [Fact]
+        public void A_pending_state_is_not_a_decision_and_builds_no_mail()
+        {
+            Assert.Null(SubmissionNotifier.BuildMessage(
+                SubmissionNotifierTests.Contributor,
+                SubmissionNotifierTests.SystemName,
+                "pending",
+                maintainerComment: "Anything."));
+        }
+
         [Fact]
         public async Task The_administrators_are_told_when_a_maintainer_publishes_to_production()
         {

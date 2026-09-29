@@ -37,10 +37,12 @@ namespace Handlers.DataHandling
     // nothing compared one, and the only code still touching it was a validator warning that a
     // dead field needed fixing. So a written workbook has no UUID column at all.
     //
-    // ATOMICITY IS THE CALLER'S JOB, and the caller is the publishing step. This writes the file
-    // it is given. Publishing into a live data tree must write to a temporary path and move it
-    // into place, or a reader mid-sync sees a half-written workbook - DataManager's own writes use
-    // AtomicJsonFile for exactly this reason.
+    // *** THE WORKBOOK IS REPLACED, NEVER WRITTEN IN PLACE (owner report, 2026-09-28). *** It is
+    // written complete beside the target and renamed over it (FileReplacer), so a reader mid-sync
+    // never sees half a workbook, and a workbook copied into the tree by hand as another user -
+    // which the service may replace but not open for writing - is no obstacle. This used to be
+    // left to the caller, and the publishing step wrote straight onto the served path; it only
+    // survived hand-copied files because EPPlus happens to delete an existing file first.
     // ###########################################################################################
     public static class BoardWorkbookWriter
     {
@@ -103,9 +105,13 @@ namespace Handlers.DataHandling
             // case, not an exception.
             file.Directory?.Create();
 
-            package.SaveAs(file);
-
-            BoardWorkbookWriter.MakeDeterministic(excelPath);
+            // Complete and deterministic at a temporary path first, then renamed into place - see
+            // the class header.
+            FileReplacer.Replace(file.FullName, temporary =>
+            {
+                package.SaveAs(new FileInfo(temporary));
+                BoardWorkbookWriter.MakeDeterministic(temporary);
+            });
 
             CrtLog.Info($"Wrote board workbook [{excelPath}]");
         }

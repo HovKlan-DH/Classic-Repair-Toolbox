@@ -119,6 +119,48 @@ public sealed class BoardTableDocumentTests
             Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).ToolTip);
     }
 
+    // ###########################################################################################
+    // *** THE CALLER NAMES WHAT THE CELL IS COMPARED WITH (owner report, 2026-09-26). *** The
+    // maintainer's NEW-SYSTEM table compares the submission with ITSELF as it arrived, so its
+    // baseline is not a published board - and the tooltip still read "Published value: (empty)",
+    // naming something that does not exist: "yes, it will always be empty, but it should state
+    // [the contributor's value] if it was changed from empty to something".
+    //
+    // Note the baseline here is a real board, so HasBaseline is TRUE - which is exactly why the
+    // label cannot be derived from it and is passed in instead.
+    // ###########################################################################################
+    [Fact]
+    public void The_caller_can_name_what_a_changed_cell_is_compared_with()
+    {
+        // The maintainer's new system: the submission is its own baseline, and the maintainer has
+        // since filled in a description that arrived empty.
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU")),
+            Board(Component("U1", "CPU", "Added by the maintainer")),
+            baselineLabel: "As submitted");
+
+        Assert.True(document.HasBaseline);
+
+        BoardTableCell filled = Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColDescription);
+
+        Assert.Equal(BoardTableCellState.Modified, filled.State);
+        Assert.Equal("As submitted: (empty)", filled.ToolTip);
+    }
+
+    // A draft names nothing, so it keeps the published wording - every existing caller is unchanged.
+    [Fact]
+    public void A_caller_that_names_nothing_still_says_published_value()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU")),
+            Board(Component("U1", "Processor")));
+
+        Assert.Equal(BoardTableDocument.DefaultBaselineLabel, document.BaselineLabel);
+        Assert.Equal(
+            "Published value: CPU",
+            Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).ToolTip);
+    }
+
     [Fact]
     public void A_row_only_in_the_draft_is_green_on_every_cell()
     {

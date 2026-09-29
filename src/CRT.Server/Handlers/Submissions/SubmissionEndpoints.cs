@@ -51,6 +51,34 @@ namespace CRT.Server.Handlers.Submissions
             submissions.MapGet("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.GetUploadStateAsync);
             submissions.MapPost("/{submissionId:long}/finalise", SubmissionEndpoints.FinaliseAsync);
             submissions.MapGet("/{submissionId:long}", SubmissionEndpoints.GetSubmissionAsync);
+
+            // The contributor discarded their own draft of this board in CRT (owner request,
+            // 2026-09-28) - see CRT.Data's DraftDiscardContract. No body.
+            submissions.MapPost("/{submissionId:long}/" + DraftDiscardContract.RouteSegment, SubmissionEndpoints.DraftDiscardedAsync);
+        }
+
+        // ###########################################################################################
+        // POST /api/submissions/{id}/draft-discarded - the contributor discarded their draft.
+        //
+        // Proved by the capability token, like the status check; 404 for a submission that does not
+        // exist and for a token that does not match, indistinguishably. 204 whether this notice was
+        // the first or a repeat - CRT only needs to know it arrived.
+        // ###########################################################################################
+        private static async Task<IResult> DraftDiscardedAsync(
+            long submissionId,
+            HttpContext context,
+            ISubmissionStore store,
+            IAccountStore accounts,
+            CancellationToken cancellationToken)
+        {
+            SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
+
+            if (!SubmissionEndpoints.HoldsToken(submission, context))
+                return Results.NotFound();
+
+            await DraftDiscardFlow.RecordAsync(submission!, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
+
+            return Results.NoContent();
         }
 
         // ###########################################################################################
@@ -296,10 +324,16 @@ namespace CRT.Server.Handlers.Submissions
                 ? await store.FindSystemAsync(submission.SystemId, cancellationToken)
                 : null;
 
+            // Whether a BETA rollback returned it (migration 0015) - only a pending row can read so.
+            DateTimeOffset? returnedUtc = submission.State == SubmissionState.Pending &&
+                (await store.GetBetaReturnsAsync([submission.Id], cancellationToken)).TryGetValue(submission.Id, out DateTimeOffset returned)
+                    ? returned
+                    : null;
+
             return Results.Ok(SubmissionEndpoints.BuildStatus(
                 submission,
                 ProductionPromotionRules.ContributorFacingState(
-                    submission.State, submission.DecidedUtc, system?.ProductionPublishedUtc),
+                    submission.State, submission.DecidedUtc, system?.ProductionPublishedUtc, returnedUtc),
                 amendedByMaintainer: await store.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
                 findings));
         }

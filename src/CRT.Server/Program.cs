@@ -6,6 +6,7 @@ using CRT.Server.Handlers.Database;
 using CRT.Server.Handlers.Email;
 using CRT.Server.Handlers.Health;
 using CRT.Server.Handlers.Submissions;
+using CRT.Server.Handlers.Usage;
 using Handlers.DataHandling;
 using CRT.Server.Handlers;
 using Microsoft.AspNetCore.Http.Features;
@@ -30,6 +31,19 @@ namespace CRT.Server
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // ---------------------------------------------------------------------------------
+            // UNDER SYSTEMD, LOG IN SYSTEMD'S FORMAT (2026-09-27). The default console format
+            // writes "crit: Category[0]" with the message on a second line and nothing the journal
+            // reads as a level, so the journal filed EVERY line as info - and
+            // "journalctl -p warning", DEPLOYMENT.md's way to read the reasons without a core dump,
+            // showed none of ours. The systemd format writes each entry on ONE line, prefixed with
+            // its syslog level, which the journal strips and records: a crit is then a crit.
+            // systemd sets JOURNAL_STREAM exactly when the output goes to the journal, so running
+            // the service by hand in a terminal keeps the readable default.
+            // ---------------------------------------------------------------------------------
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JOURNAL_STREAM")))
+                builder.Logging.AddSystemdConsole();
 
             // ---------------------------------------------------------------------------------
             // The service listens on 127.0.0.1 ONLY and is reached through the existing Apache
@@ -97,7 +111,7 @@ namespace CRT.Server
             IReadOnlyList<string> failures = ServerOptionsValidator.Validate(
                 options,
                 Directory.Exists,
-                Program.CanWriteToDirectory);
+                TreeWriteAccess.CanWrite);
 
             if (failures.Count > 0)
             {
@@ -134,15 +148,37 @@ namespace CRT.Server
             // Blocking on the task is correct in Main - there is nothing else for this thread to
             // do, and the service must not listen until the schema is right. Every rule about
             // WHICH migrations run lives in MigrationPlan, unit tested without a database.
+            //
+            // A FAILURE EXITS, IT DOES NOT THROW (2026-09-27) - the same reason a refused setting
+            // exits (ServerExitCodes): a throw out of Main aborts the process, which wrote a core
+            // dump into the journal every five seconds while systemd restarted it, and the one line
+            // saying what was wrong was never logged at crit at all. ServerExitCodes.ForStartupFailure
+            // decides the code: a failed migration is not retried, an unreachable database is.
             // ---------------------------------------------------------------------------------
             string migrationsDirectory = Path.Combine(AppContext.BaseDirectory, "Migrations");
 
-            MigrationRunner.MigrateAsync(
-                options.ConnectionString!,
-                migrationsDirectory,
-                app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("CRT.Server.Migrations"))
-                .GetAwaiter()
-                .GetResult();
+            ILogger migrationLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("CRT.Server.Migrations");
+
+            try
+            {
+                MigrationRunner.MigrateAsync(options.ConnectionString!, migrationsDirectory, migrationLogger)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch (Exception ex) when (ServerExitCodes.ForStartupFailure(ex) is int exitCode)
+            {
+                if (exitCode == ServerExitCodes.DatabaseUnreachable)
+                    migrationLogger.LogCritical("The database cannot be reached: {Reason} - the service tries again in a few seconds.", ex.Message);
+                else
+                    migrationLogger.LogCritical("{Reason} Once it is fixed: sudo systemctl restart crt-server", ex.Message);
+
+                // Disposing the app flushes the console logger, which writes on a background
+                // thread and would lose the line above at process exit.
+                ((IDisposable)app).Dispose();
+
+                Environment.ExitCode = exitCode;
+                return;
+            }
 
             app.UseForwardedHeaders();
 
@@ -172,6 +208,10 @@ namespace CRT.Server
                 await next(context);
             });
 
+            // Board views' per-address limit (BoardViewEndpoints) - after routing, which names the
+            // route's policy, and before the endpoint runs.
+            app.UseRateLimiter();
+
             Program.MapServerEndpoints(app);
 
             app.Run();
@@ -186,7 +226,7 @@ namespace CRT.Server
         internal static void AddServerServices(IServiceCollection services, ServerOptions options)
         {
             // The JSON both ends of the review API agree on - CRT.Data's ReviewApiContract, which
-            // the maintainer application serialises its requests with too (code review, 2026-09-25).
+            // the Maintainer tab serialises its requests with too (code review, 2026-09-25).
             services.ConfigureHttpJsonOptions(json =>
                 ReviewApiContract.ApplyWireSettings(json.SerializerOptions));
 
@@ -251,10 +291,29 @@ namespace CRT.Server
             // are set; see ServerOptions.
             services.AddSingleton<ProductionPromotionFlow>();
 
+            // Rolling a BETA board back to production's state, returning its submissions to the
+            // queue (owner decision, 2026-09-27) - the production promotion's mirror image.
+            services.AddSingleton<BetaRollbackFlow>();
+
+            // Placing a new system in the drop-down lists (owner request, 2026-09-27). Takes the
+            // publish lock too: placing a system already in BETA writes BETA's main Excel data file.
+            services.AddSingleton<SystemListingFlow>();
+
             // Tells the contributor what a maintainer decided. A singleton for the same reason as
             // the two above - it holds only the mailer seam and a logger, and takes everything
             // about a particular submission as arguments.
             services.AddSingleton<SubmissionNotifier>();
+
+            // ---------------------------------------------------------------------------------
+            // Board views (owner request, 2026-09-27): which boards CRT users look at, and in which
+            // country - see CRT.Data's BoardViewContract. The country lookup is the one network call
+            // the service makes on a request (ip-api.com, as the launch check-in uses); it keeps
+            // addresses in memory for an hour and writes none of them anywhere.
+            // ---------------------------------------------------------------------------------
+            services.AddSingleton<IBoardViewStore, MySqlBoardViewStore>();
+            services.AddSingleton<ICountryLookup, IpApiCountryLookup>();
+            services.AddSingleton<BoardViewNameDirectory>();
+            services.AddBoardViewRateLimit();
         }
 
         // ###########################################################################################
@@ -285,6 +344,10 @@ namespace CRT.Server
             app.MapReviewEndpoints();
             app.MapAdminEndpoints();
             app.MapProductionEndpoints();
+            app.MapSystemEndpoints();
+
+            // Board views from CRT - anonymous, rate limited per address in memory.
+            app.MapBoardViewEndpoints();
         }
 
         // ###########################################################################################
@@ -304,53 +367,6 @@ namespace CRT.Server
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 return null;
-            }
-        }
-
-        // ###########################################################################################
-        // Answers "can this process actually create a file here?" by trying, then cleaning up.
-        //
-        // Inspecting permission bits would be the obvious implementation and would be wrong: the
-        // service's ability to write depends on its group membership, on ACLs, on whether the mount
-        // is read-only, and on systemd's ProtectSystem=strict plus ReadWritePaths - none of which
-        // are visible in the mode bits. The only honest answer comes from attempting it, and this
-        // runs once at startup so the cost is irrelevant.
-        //
-        // A unique name is used rather than a fixed one so two services starting at the same moment
-        // cannot collide, and the file is removed in a finally so a probe never leaves litter in the
-        // data tree.
-        // ###########################################################################################
-        private static bool CanWriteToDirectory(string directory)
-        {
-            string probePath = Path.Combine(directory, $".crt-server-write-probe-{Guid.NewGuid():N}");
-
-            try
-            {
-                using (FileStream stream = File.Create(probePath, 1, FileOptions.DeleteOnClose))
-                {
-                    stream.WriteByte(0);
-                }
-
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-            {
-                return false;
-            }
-            finally
-            {
-                // DeleteOnClose normally handles this; the explicit delete covers the case where the
-                // handle was closed by an exception path before the flag could take effect.
-                try
-                {
-                    if (File.Exists(probePath))
-                        File.Delete(probePath);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Nothing useful to do - a stray zero-byte probe file is harmless, and throwing
-                    // from a cleanup path would mask the real result.
-                }
             }
         }
     }

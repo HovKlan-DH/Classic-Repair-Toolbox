@@ -119,8 +119,10 @@ namespace CRT
 
                 // Off the UI thread: a workbook with a board scan and a dozen photos takes real
                 // time to lay out and encode, and doing it inline freezes the window with no
-                // indication that anything is happening.
-                await Task.Run(() =>
+                // indication that anything is happening. Under the "please wait" overlay since
+                // 2026-09-28; rendering cannot be stopped halfway, so past the limit it carries on
+                // to its own end (BusyOverlay.RunLocalAsync).
+                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ExportingWorkbook(asZip), () => Task.Run(() =>
                 {
                     if (asZip)
                     {
@@ -130,7 +132,7 @@ namespace CRT
                     {
                         WorkbookPdfExporter.WritePdf(document, path);
                     }
-                });
+                }));
 
                 Logger.Info($"Exported workbook [#{workbook.Id}] to [{path}]");
 

@@ -5,7 +5,7 @@
   project owner's AlmaLinux box behind Apache, bound to 127.0.0.1 only, and is reached at /api/.
 
   It references CRT.Data so the board-reading and merging rules exist exactly once across the
-  desktop app, this service and the future maintainer app - that shared-library goal is the whole
+  desktop app (whose Maintainer tab reviews submissions) and this service - that shared-library goal is the whole
   reason CRT.Data was extracted in Phase 1.
 
   WHAT MUST NOT LAND HERE:
@@ -40,16 +40,29 @@
     <RootNamespace>CRT.Server</RootNamespace>
     <AssemblyName>CRT.Server</AssemblyName>
     <!--
-    Generated assembly attributes would collide with nothing today, but the app project sets its
-    own version explicitly and this one deliberately does not carry a release version: the service
-    is not shipped to users and has no Velopack update identity. The health endpoint reports the
-    informational version so a deployment can be identified.
+    THE VERSION. This service is not shipped to users and has no Velopack update identity, so its
+    version exists for exactly one purpose: naming which build is deployed. GET /api/health reports
+    InformationalVersion (with the SDK's "+<commit>" metadata stripped - that endpoint is public),
+    which is how a deployment is identified and how a failed copy is caught.
+
+    IT IS BUMPED BY CLAUDE, NOT BY HAND (project owner's request, 2026-09-26). The owner bumps
+    CRT.App themselves (CRT Maintainer was merged into it on 2026-09-29); this one is judged as real SemVer 2.0.0 by whoever
+    changes the server - MAJOR when a client that already works can start failing, MINOR for new
+    behaviour that breaks nobody, PATCH for a defect fix or anything unobservable.
+
+    TWO EDITS, ALWAYS TOGETHER: the literal below, and a row in VERSION.md. That file holds the
+    policy, the judgement calls and the history; read it before bumping. ServerVersionTests fails
+    if the two disagree or if the literal is not valid SemVer, and a Stop hook
+    (.claude/hooks/server-version-bump.sh) warns when server code moved and this did not.
+
+    AssemblyVersion is a plain four-part number that takes no pre-release suffix, and nothing reads
+    it. Do NOT set InformationalVersion from it (an earlier commented-out line did exactly that):
+    the two happen to read the same today, so it would look harmless and then silently peg the
+    reported version to 1.0.0 for ever, defeating everything described above. They are separate
+    fields on purpose - InformationalVersion is the one /api/health reports and the one to bump.
     -->
     <AssemblyVersion>1.0.0</AssemblyVersion>
-		<!--
-		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
-		-->
-    <InformationalVersion>1.0.0-alpha.3</InformationalVersion>
+    <InformationalVersion>3.6.0</InformationalVersion>
 
   </PropertyGroup>
 

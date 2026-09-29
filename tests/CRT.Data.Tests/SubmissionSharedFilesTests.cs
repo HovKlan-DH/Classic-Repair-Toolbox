@@ -63,13 +63,29 @@ namespace CRT.Data.Tests
                 manifest, SubmissionSharedFilesTests.Tree(("Commodore/Shared files/74LS08.png", SubmissionSharedFilesTests.Hash))));
         }
 
+        // ###########################################################################################
+        // *** A NEW SHARED FILE NO LONGER COUNTS (owner decision, 2026-09-27). *** No other board
+        // cites it yet, so adding it changes nothing anybody else sees - one approval publishes it.
+        // Only REPLACING one that exists still needs the administrator.
+        // ###########################################################################################
         [Fact]
-        public void A_shared_file_that_is_NEW_counts()
+        public void A_shared_file_that_is_NEW_does_not_count()
         {
             SubmissionManifest manifest = SubmissionSharedFilesTests.Manifest(
                 ("Generic shared files/new-chip.png", SubmissionSharedFilesTests.Hash));
 
-            Assert.True(SubmissionSharedFiles.TouchesSharedFiles(manifest, SubmissionSharedFilesTests.Tree()));
+            Assert.False(SubmissionSharedFiles.TouchesSharedFiles(manifest, SubmissionSharedFilesTests.Tree()));
+        }
+
+        // With no tree to compare against, new cannot be told from replaced - so it counts, the safe
+        // side of a rule that asks for a second pair of eyes.
+        [Fact]
+        public void With_no_tree_to_look_at_a_shared_file_counts()
+        {
+            SubmissionManifest manifest = SubmissionSharedFilesTests.Manifest(
+                ("Generic shared files/new-chip.png", SubmissionSharedFilesTests.Hash));
+
+            Assert.True(SubmissionSharedFiles.TouchesSharedFiles(manifest, null));
         }
 
         [Fact]

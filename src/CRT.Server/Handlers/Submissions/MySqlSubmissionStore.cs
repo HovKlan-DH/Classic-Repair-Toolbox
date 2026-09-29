@@ -19,8 +19,12 @@ namespace CRT.Server.Handlers.Submissions
     // 0002_submission_files.sql for why eleven tables would be worse. That means the shape is
     // validated by SubmissionValidator before it is written and by the deserialiser when it is
     // read, never by the database.
+    //
+    // FILE MAP (split 2026-09-27, past ~1,500 lines): this file - submissions, their files,
+    // payloads, findings and the queue; MySqlSubmissionStore.Systems.cs - the `systems` rows;
+    // MySqlSubmissionStore.Approvals.cs - amendments and approvals.
     // ###########################################################################################
-    public sealed class MySqlSubmissionStore : ISubmissionStore
+    public sealed partial class MySqlSubmissionStore : ISubmissionStore
     {
         // Matched to the app's own JSON conventions so a payload written by one version reads back
         // in another. Property names are case-insensitive on read for the same reason.
@@ -438,7 +442,7 @@ namespace CRT.Server.Handlers.Submissions
                 //
                 // They come from the `systems` row rather than the payload JSON because that is
                 // where they live: the schema stores them as their own columns precisely "so the
-                // maintainer app can list by manufacturer without parsing" (0001_initial.sql).
+                // Maintainer tab can list by manufacturer without parsing" (0001_initial.sql).
                 // ###########################################################################################
                 Manufacturer = manufacturer,
                 Hardware = hardware,
@@ -657,6 +661,51 @@ namespace CRT.Server.Handlers.Submissions
             return records;
         }
 
+        // ###########################################################################################
+        // One system's submissions, newest first, for the "Systems" screen. ix_submissions_system
+        // (system_id, state) serves the filter; system_id is BINARY, so the comparison is exact.
+        // decided_by is read LAST, after the fourteen columns ReadSubmission reads by ordinal - a
+        // column added in the middle would shift every field after it without failing.
+        // ###########################################################################################
+        public async Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
+            string systemId,
+            int limit,
+            CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                       state, summary, format_version, created_utc, expires_utc, decided_utc,
+                       decision_comment, touches_shared_files, decided_by
+                FROM submissions
+                WHERE system_id = @system AND state NOT IN (@uploading, @abandoned)
+                ORDER BY id DESC LIMIT @limit;
+                """;
+
+            command.Parameters.AddWithValue("@system", systemId);
+            command.Parameters.AddWithValue("@uploading", SubmissionState.Uploading);
+            command.Parameters.AddWithValue("@abandoned", SubmissionState.Abandoned);
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
+
+            var records = new List<SystemSubmissionRecord>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                long? decidedBy = reader.IsDBNull(14) ? null : Convert.ToInt64(reader.GetValue(14), CultureInfo.InvariantCulture);
+
+                records.Add(new SystemSubmissionRecord(
+                    MySqlSubmissionStore.ReadSubmission(reader),
+                    decidedBy is not null,
+                    decidedBy));
+            }
+
+            return records;
+        }
+
         // The contributor's submissions: by account, or by email among those sent without one.
         // LOWER(TRIM()) on both sides, so a stored " Dennis@Example.com" is the same contributor -
         // the rule SubmissionReplacementRules.IsSameContributor states. A contributor has a few
@@ -797,382 +846,6 @@ namespace CRT.Server.Handlers.Submissions
             return recent;
         }
 
-        public async Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText =
-                $"SELECT {MySqlSubmissionStore.SystemColumns} FROM systems ORDER BY system_id;";
-
-            var systems = new List<SystemRecord>();
-
-            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-                systems.Add(MySqlSubmissionStore.ReadSystem(reader));
-
-            return systems;
-        }
-
-        private const string SystemColumns =
-            "system_id, manufacturer, hardware, board, current_revision, is_accepting, " +
-            "content_hash, production_revision, production_content_hash, production_published_utc";
-
-        private static SystemRecord ReadSystem(MySqlDataReader reader)
-        {
-            return new SystemRecord(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4),
-                Convert.ToInt32(reader.GetValue(5), CultureInfo.InvariantCulture) != 0,
-                reader.IsDBNull(6) ? null : reader.GetString(6),
-                reader.IsDBNull(7) ? null : reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8),
-                MySqlSubmissionStore.ReadUtc(reader, 9));
-        }
-
-        public async Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText =
-                $"SELECT {MySqlSubmissionStore.SystemColumns} FROM systems WHERE system_id = @systemId LIMIT 1;";
-            command.Parameters.AddWithValue("@systemId", systemId);
-
-            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            return await reader.ReadAsync(cancellationToken) ? MySqlSubmissionStore.ReadSystem(reader) : null;
-        }
-
-        public Task SetSystemInProductionAsync(
-            string systemId,
-            string? revision,
-            string? contentHash,
-            DateTimeOffset publishedUtc,
-            CancellationToken cancellationToken = default)
-        {
-            return this.ExecuteAsync(
-                """
-                UPDATE systems
-                   SET production_revision = @revision,
-                       production_content_hash = @hash,
-                       production_published_utc = @when
-                 WHERE system_id = @systemId;
-                """,
-                command =>
-                {
-                    command.Parameters.AddWithValue("@revision", (object?)revision ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@hash", (object?)contentHash ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@when", publishedUtc.UtcDateTime);
-                    command.Parameters.AddWithValue("@systemId", systemId);
-                },
-                cancellationToken);
-        }
-
-        // -----------------------------------------------------------------------------------
-        // Approvals (migration 0008).
-        // -----------------------------------------------------------------------------------
-
-        // -----------------------------------------------------------------------------------
-        // A maintainer's amendment (migration 0009). See ISubmissionStore.AmendAsync.
-        // -----------------------------------------------------------------------------------
-
-        public async Task<AmendStoreResult> AmendAsync(
-            long submissionId,
-            int expectedVersion,
-            SubmissionManifest amended,
-            bool touchesSharedFiles,
-            long? accountId,
-            string accountLabel,
-            DateTimeOffset amendedUtc,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(amended);
-
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-            MySqlCommand Command(string sql)
-            {
-                MySqlCommand command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText = sql;
-                command.Parameters.AddWithValue("@id", submissionId);
-                return command;
-            }
-
-            // ---- Still amendable, and still at the version the maintainer opened? ------------------
-            //
-            // Both read with LOCKING reads, after which nothing another transaction commits can
-            // change the answer before this one does: the submission row first, so a second
-            // amendment - or a decision - waits here until this one is done, then reads what it
-            // left. Leaving without committing rolls the transaction back, so a refusal changes
-            // nothing. (code review, 2026-09-25)
-            string? state;
-
-            await using (MySqlCommand read = Command("SELECT state FROM submissions WHERE id = @id FOR UPDATE;"))
-            {
-                state = await read.ExecuteScalarAsync(cancellationToken) as string;
-            }
-
-            if (!SubmissionState.CanBeAmended(state))
-                return new AmendStoreResult(AmendStoreOutcome.NotAmendable, 0);
-
-            int latestVersion;
-
-            await using (MySqlCommand read = Command(
-                "SELECT version FROM submission_amendments WHERE submission_id = @id ORDER BY version DESC LIMIT 1 FOR UPDATE;"))
-            {
-                object? latest = await read.ExecuteScalarAsync(cancellationToken);
-                latestVersion = latest is null or DBNull ? 0 : Convert.ToInt32(latest, CultureInfo.InvariantCulture);
-            }
-
-            if (latestVersion != expectedVersion)
-                return new AmendStoreResult(AmendStoreOutcome.VersionChanged, latestVersion);
-
-            // What is replaced, read under a lock so two amendments cannot interleave.
-            string previousRows;
-
-            await using (MySqlCommand read = Command("SELECT rows_json FROM submission_payloads WHERE submission_id = @id FOR UPDATE;"))
-            {
-                previousRows = await read.ExecuteScalarAsync(cancellationToken) as string ?? "{}";
-            }
-
-            var previousFiles = new List<SubmissionFile>();
-
-            await using (MySqlCommand read = Command("SELECT path, sha256, size_bytes FROM submission_files WHERE submission_id = @id ORDER BY path;"))
-            await using (MySqlDataReader reader = await read.ExecuteReaderAsync(cancellationToken))
-            {
-                while (await reader.ReadAsync(cancellationToken))
-                {
-                    previousFiles.Add(new SubmissionFile
-                    {
-                        Path = reader.GetString(0),
-                        Sha256 = reader.GetString(1),
-                        SizeBytes = Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture)
-                    });
-                }
-            }
-
-            int version = latestVersion + 1;
-
-            await using (MySqlCommand keep = Command(
-                """
-                INSERT INTO submission_amendments
-                    (submission_id, version, previous_rows_json, previous_files_json, account_id, account_label, amended_utc)
-                VALUES (@id, @version, @rows, @files, @accountId, @label, @when);
-                """))
-            {
-                keep.Parameters.AddWithValue("@version", version);
-                keep.Parameters.AddWithValue("@rows", previousRows);
-                keep.Parameters.AddWithValue("@files", JsonSerializer.Serialize(previousFiles, MySqlSubmissionStore.JsonOptions));
-                keep.Parameters.AddWithValue("@accountId", (object?)accountId ?? DBNull.Value);
-                keep.Parameters.AddWithValue("@label", MySqlSubmissionStore.Cut(accountLabel, 255));
-                keep.Parameters.AddWithValue("@when", amendedUtc.UtcDateTime);
-                await keep.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using (MySqlCommand rows = Command("UPDATE submission_payloads SET rows_json = @rows WHERE submission_id = @id;"))
-            {
-                rows.Parameters.AddWithValue("@rows", JsonSerializer.Serialize(amended.Rows, MySqlSubmissionStore.JsonOptions));
-                await rows.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using (MySqlCommand clear = Command("DELETE FROM submission_files WHERE submission_id = @id;"))
-            {
-                await clear.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            // Every file is already held - the caller imported any new one - so each is uploaded.
-            foreach (SubmissionFile file in amended.Files)
-            {
-                await using MySqlCommand insert = Command(
-                    """
-                    INSERT INTO submission_files (submission_id, path, sha256, size_bytes, is_uploaded)
-                    VALUES (@id, @path, @sha, @size, 1);
-                    """);
-                insert.Parameters.AddWithValue("@path", file.Path);
-                insert.Parameters.AddWithValue("@sha", file.Sha256);
-                insert.Parameters.AddWithValue("@size", file.SizeBytes);
-                await insert.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using (MySqlCommand approvals = Command("DELETE FROM submission_approvals WHERE submission_id = @id;"))
-            {
-                await approvals.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await using (MySqlCommand row = Command(
-                """
-                UPDATE submissions
-                   SET touches_shared_files = @touches,
-                       state = CASE WHEN state = @approved THEN @pending ELSE state END
-                 WHERE id = @id;
-                """))
-            {
-                row.Parameters.AddWithValue("@touches", touchesSharedFiles);
-                row.Parameters.AddWithValue("@approved", SubmissionState.Approved);
-                row.Parameters.AddWithValue("@pending", SubmissionState.Pending);
-                await row.ExecuteNonQueryAsync(cancellationToken);
-            }
-
-            await transaction.CommitAsync(cancellationToken);
-
-            return new AmendStoreResult(AmendStoreOutcome.Amended, version);
-        }
-
-        public async Task<SubmissionAmendment?> GetLatestAmendmentAsync(long submissionId, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText = """
-                SELECT version, account_label, amended_utc
-                FROM submission_amendments
-                WHERE submission_id = @id
-                ORDER BY version DESC
-                LIMIT 1;
-                """;
-            command.Parameters.AddWithValue("@id", submissionId);
-
-            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            if (!await reader.ReadAsync(cancellationToken))
-                return null;
-
-            return new SubmissionAmendment(
-                reader.GetInt32(0),
-                reader.GetString(1),
-                MySqlSubmissionStore.ReadUtc(reader, 2)!.Value);
-        }
-
-        public Task MarkTouchesSharedFilesAsync(long submissionId, CancellationToken cancellationToken = default) =>
-            this.ExecuteAsync(
-                "UPDATE submissions SET touches_shared_files = 1 WHERE id = @id;",
-                command => command.Parameters.AddWithValue("@id", submissionId),
-                cancellationToken);
-
-        public async Task<IReadOnlyList<GivenApproval>> GetApprovalsAsync(long submissionId, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText =
-                "SELECT role, account_label, approved_utc, account_id FROM submission_approvals WHERE submission_id = @id ORDER BY approved_utc;";
-            command.Parameters.AddWithValue("@id", submissionId);
-
-            return await MySqlSubmissionStore.ReadApprovalsAsync(command, cancellationToken);
-        }
-
-        public Task AddApprovalAsync(
-            long submissionId,
-            ApproverRole role,
-            long accountId,
-            string accountLabel,
-            DateTimeOffset approvedUtc,
-            CancellationToken cancellationToken = default)
-        {
-            return this.ExecuteAsync(
-                """
-                INSERT IGNORE INTO submission_approvals (submission_id, role, account_id, account_label, approved_utc)
-                VALUES (@id, @role, @accountId, @label, @when);
-                """,
-                command =>
-                {
-                    command.Parameters.AddWithValue("@id", submissionId);
-                    command.Parameters.AddWithValue("@role", MySqlSubmissionStore.RoleText(role));
-                    command.Parameters.AddWithValue("@accountId", accountId);
-                    command.Parameters.AddWithValue("@label", MySqlSubmissionStore.Cut(accountLabel, 255));
-                    command.Parameters.AddWithValue("@when", approvedUtc.UtcDateTime);
-                },
-                cancellationToken);
-        }
-
-        public async Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
-            string systemId,
-            string betaContentHash,
-            CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText = """
-                SELECT role, account_label, approved_utc, account_id FROM production_approvals
-                WHERE system_id = @systemId AND beta_content_hash = @hash ORDER BY approved_utc;
-                """;
-            command.Parameters.AddWithValue("@systemId", systemId);
-            command.Parameters.AddWithValue("@hash", betaContentHash);
-
-            return await MySqlSubmissionStore.ReadApprovalsAsync(command, cancellationToken);
-        }
-
-        public Task AddProductionApprovalAsync(
-            string systemId,
-            string betaContentHash,
-            ApproverRole role,
-            long accountId,
-            string accountLabel,
-            DateTimeOffset approvedUtc,
-            CancellationToken cancellationToken = default)
-        {
-            return this.ExecuteAsync(
-                """
-                INSERT IGNORE INTO production_approvals
-                    (system_id, beta_content_hash, role, account_id, account_label, approved_utc)
-                VALUES (@systemId, @hash, @role, @accountId, @label, @when);
-                """,
-                command =>
-                {
-                    command.Parameters.AddWithValue("@systemId", systemId);
-                    command.Parameters.AddWithValue("@hash", betaContentHash);
-                    command.Parameters.AddWithValue("@role", MySqlSubmissionStore.RoleText(role));
-                    command.Parameters.AddWithValue("@accountId", accountId);
-                    command.Parameters.AddWithValue("@label", MySqlSubmissionStore.Cut(accountLabel, 255));
-                    command.Parameters.AddWithValue("@when", approvedUtc.UtcDateTime);
-                },
-                cancellationToken);
-        }
-
-        // The text the CHECK constraint allows. A role this build does not know reads back as
-        // nothing rather than as the wrong role.
-        private static string RoleText(ApproverRole role) =>
-            role == ApproverRole.Administrator ? "administrator" : "maintainer";
-
-        private static string Cut(string? value, int length)
-        {
-            string text = value ?? string.Empty;
-            return text.Length <= length ? text : text[..length];
-        }
-
-        private static async Task<IReadOnlyList<GivenApproval>> ReadApprovalsAsync(MySqlCommand command, CancellationToken cancellationToken)
-        {
-            var approvals = new List<GivenApproval>();
-
-            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                ApproverRole? role = reader.GetString(0) switch
-                {
-                    "administrator" => ApproverRole.Administrator,
-                    "maintainer" => ApproverRole.Maintainer,
-                    _ => null
-                };
-
-                // account_id is NULL once the account is deleted (ON DELETE SET NULL).
-                long? accountId = reader.IsDBNull(3) ? null : reader.GetInt64(3);
-
-                if (role is not null)
-                    approvals.Add(new GivenApproval(role.Value, reader.GetString(1), MySqlSubmissionStore.ReadUtc(reader, 2)!.Value, accountId));
-            }
-
-            return approvals;
-        }
-
         public async Task<IReadOnlyList<SubmissionRecord>> GetMergedSubmissionsAsync(
             string systemId,
             DateTimeOffset? decidedAfter,
@@ -1206,6 +879,139 @@ namespace CRT.Server.Handlers.Submissions
                 records.Add(MySqlSubmissionStore.ReadSubmission(reader));
 
             return records;
+        }
+
+        // INSERT IGNORE: a second notice for the same submission keeps the first time (migration 0014).
+        public async Task<bool> RecordDraftDiscardedAsync(
+            long submissionId,
+            DateTimeOffset discardedUtc,
+            CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                INSERT IGNORE INTO submission_draft_discards (submission_id, discarded_utc)
+                VALUES (@id, @utc);
+                """;
+
+            command.Parameters.AddWithValue("@id", submissionId);
+            command.Parameters.AddWithValue("@utc", discardedUtc.UtcDateTime);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        }
+
+        public async Task<IReadOnlyDictionary<long, DateTimeOffset>> GetDraftDiscardsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            var discards = new Dictionary<long, DateTimeOffset>();
+
+            if (submissionIds is null || submissionIds.Count == 0)
+                return discards;
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            // One parameter per id - never the ids written into the text.
+            List<string> names = [];
+            int index = 0;
+
+            foreach (long id in submissionIds.Distinct())
+            {
+                string name = FormattableString.Invariant($"@id{index++}");
+                names.Add(name);
+                command.Parameters.AddWithValue(name, id);
+            }
+
+            command.CommandText =
+                $"SELECT submission_id, discarded_utc FROM submission_draft_discards WHERE submission_id IN ({string.Join(", ", names)});";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                discards[reader.GetInt64(0)] = MySqlSubmissionStore.ReadUtc(reader, 1)!.Value;
+
+            return discards;
+        }
+
+        // See ISubmissionStore.GetSystemsCarryingDiscardedDraftsAsync - one query for every system on
+        // the list, with GetMergedSubmissionsAsync's bounds per system.
+        public async Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+            DateTimeOffset decidedUpTo,
+            CancellationToken cancellationToken = default)
+        {
+            var systems = new HashSet<string>(StringComparer.Ordinal);
+
+            if (windows is null || windows.Count == 0)
+                return systems;
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            List<string> conditions = [];
+            int index = 0;
+
+            foreach ((string systemId, DateTimeOffset? after) in windows)
+            {
+                string system = FormattableString.Invariant($"@s{index}");
+                string since = FormattableString.Invariant($"@a{index++}");
+                conditions.Add($"(s.system_id = {system} AND ({since} IS NULL OR s.decided_utc > {since}))");
+                command.Parameters.AddWithValue(system, systemId);
+                command.Parameters.AddWithValue(since, after is null ? DBNull.Value : after.Value.UtcDateTime);
+            }
+
+            command.Parameters.AddWithValue("@state", SubmissionState.Merged);
+            command.Parameters.AddWithValue("@upTo", decidedUpTo.UtcDateTime);
+
+            command.CommandText =
+                "SELECT DISTINCT s.system_id FROM submissions s " +
+                "JOIN submission_draft_discards d ON d.submission_id = s.id " +
+                "WHERE s.state = @state AND s.decided_utc <= @upTo " +
+                $"AND ({string.Join(" OR ", conditions)});";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                systems.Add(reader.GetString(0));
+
+            return systems;
+        }
+
+        // See ISubmissionStore.GetBetaReturnsAsync - the same one-query shape as GetDraftDiscardsAsync.
+        public async Task<IReadOnlyDictionary<long, DateTimeOffset>> GetBetaReturnsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            var returns = new Dictionary<long, DateTimeOffset>();
+
+            if (submissionIds is null || submissionIds.Count == 0)
+                return returns;
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            // One parameter per id - never the ids written into the text.
+            List<string> names = [];
+            int index = 0;
+
+            foreach (long id in submissionIds.Distinct())
+            {
+                string name = FormattableString.Invariant($"@id{index++}");
+                names.Add(name);
+                command.Parameters.AddWithValue(name, id);
+            }
+
+            command.CommandText =
+                $"SELECT submission_id, returned_utc FROM submission_beta_returns WHERE submission_id IN ({string.Join(", ", names)});";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                returns[reader.GetInt64(0)] = MySqlSubmissionStore.ReadUtc(reader, 1)!.Value;
+
+            return returns;
         }
 
         // The same INSERT IGNORE CreateAsync performs, on its own - see ISubmissionStore.

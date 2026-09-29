@@ -109,7 +109,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_account_flagged_administrator_is_reported_as_one()
         {
-            // The flag the maintainer app will authorise against from Phase 6. Asserted here so the
+            // The flag the Maintainer tab will authorise against from Phase 6. Asserted here so the
             // plumbing is known good before anything depends on it.
             (FakeAccountStore store, _, string token) = await EndpointAuthorizationTests.SignedInAsync();
 

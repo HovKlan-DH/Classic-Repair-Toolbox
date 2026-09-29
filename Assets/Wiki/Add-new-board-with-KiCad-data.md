@@ -140,6 +140,14 @@ Drag your image files onto the box, or use **Choose image files...**. PNG, JPG, 
 work. Each image becomes one board view, named after the file, and a **copy** is taken into your
 draft - your original files stay where they are.
 
+The order of this list is the board's own order - the order everyone using the board gets its views
+in. To change it, press on an image's grip (the dotted handle at its left edge, or anywhere on its
+panel but the **Remove** button) and drag it up or down. A dashed box shows where it will land, and
+letting go saves the new order. Hold it near the top or bottom of the list to scroll a long one.
+
+If you have arranged the thumbnails on the Schematics tab yourself, that arrangement is yours alone
+and is not changed by this.
+
 ---
 
 ## Step 3 - Import the KiCad data (optional)
@@ -309,6 +317,10 @@ as they always have** and are still protected from the online sync - nothing has
 
 New boards are not made that way any more, and the application will not create such a file. If you have
 a board set up the old way and it works, leave it alone.
+
+To **submit** a board made the old way, copy its board folder into your drafts folder. The next time CRT
+starts, it appears on the **Drafts** tab as a new system, ready to send - see
+[Bringing in a board you already have work on](Contribute-data-via-CRT#bringing-in-a-board-you-already-have-work-on).
 
 ---
 

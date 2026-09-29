@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Online;
 using System;
 using System.Globalization;
 using System.Collections.Generic;
@@ -61,6 +62,10 @@ namespace CRT
         // app does.
         internal List<HardwareBoardEntry>? HardwareBoardsOverrideForTests { get; set; }
 
+        // Answers the "draft discarded" notice instead of the server (2026-09-28) - a test sends
+        // nothing over the network (test rule 6).
+        internal Func<long, string, System.Threading.CancellationToken, Task<int?>>? DraftDiscardSendOverrideForTests { get; set; }
+
         public ObservableCollection<DraftListItem> Drafts { get; } = new();
 
         // The systems behind the rows above, as of the last RefreshDrafts. Main builds the Hardware
@@ -109,12 +114,16 @@ namespace CRT
             var hardwareBoards = this.HardwareBoardsOverrideForTests ?? DataManager.HardwareBoards;
             var draftedSystems = DraftManager.EnumerateDraftedSystems(hardwareBoards);
 
+            // Read once for every row - each row's badge is its system's latest submission.
+            IReadOnlyList<SubmissionReceipt> receipts = this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All;
+
             foreach (var entry in draftedSystems.OrderBy(e => e.ShortHardwareBoardLabel, StringComparer.OrdinalIgnoreCase))
             {
                 DraftStatus? status = DraftStatusReader.Resolve(
                     DataManager.DataRoot,
                     DraftManager.DraftsRoot,
-                    entry.ExcelDataFile);
+                    entry.ExcelDataFile,
+                    entry.IsPublished);
 
                 if (status == null)
                 {
@@ -146,7 +155,11 @@ namespace CRT
                     this.ViewDriftAsync,
                     this.SubmitAsync,
                     isTableOpen: this.IsTableOpenFor(entry),
-                    this.ToggleTableAsync));
+                    this.ToggleTableAsync,
+                    SubmissionReceiptPresenter.LatestForSystem(
+                        receipts,
+                        SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                        status.CreatedUtc)));
             }
 
             this.ApplyTableMode();
@@ -186,8 +199,12 @@ namespace CRT
                 return;
             }
 
+            // This board's submissions still with the maintainers - read BEFORE the draft goes, since
+            // "sent from this draft" is judged against the draft's own creation time.
+            IReadOnlyList<SubmissionReceipt> unfinished = TabDrafts.UnfinishedSubmissionsOf(entry);
+
             var confirmWindow = new DiscardDraftWindow();
-            confirmWindow.Initialize(entry.ToString());
+            confirmWindow.Initialize(entry.ToString(), unfinished);
 
             bool? confirmed = await confirmWindow.ShowDialog<bool?>(ownerWindow);
             if (confirmed != true)
@@ -195,14 +212,32 @@ namespace CRT
                 return;
             }
 
-            this.DiscardConfirmed(entry);
+            this.DiscardConfirmed(entry, unfinished);
+        }
+
+        // Which of this board's submissions a discard is reported for (DraftDiscardContract).
+        private static IReadOnlyList<SubmissionReceipt> UnfinishedSubmissionsOf(HardwareBoardEntry entry)
+        {
+            DraftStatus? status = DraftStatusReader.Resolve(
+                DataManager.DataRoot,
+                DraftManager.DraftsRoot,
+                entry.ExcelDataFile,
+                entry.IsPublished);
+
+            return DraftDiscardContract.WhichToReport(
+                SubmissionReceiptStore.All,
+                SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                status?.CreatedUtc);
         }
 
         // ###########################################################################################
         // Everything a confirmed Discard does. Split from the confirmation so a headless test can
         // drive the real path - the dialog above cannot be answered from a test.
         // ###########################################################################################
-        internal void DiscardConfirmed(HardwareBoardEntry entry)
+        //
+        // `unfinished` (owner request, 2026-09-28): this board's submissions still with the
+        // maintainers, who are told the draft was discarded - see DraftDiscardReporter.
+        internal void DiscardConfirmed(HardwareBoardEntry entry, IReadOnlyList<SubmissionReceipt>? unfinished = null)
         {
             // The whole draft is going, so the table's unsaved edits go with it - the discard
             // confirmation above already said everything local is lost. Closed first so the table
@@ -228,6 +263,17 @@ namespace CRT
             // hardware/board drop-downs until the next restart, pointing at a folder that is gone.
             // Harmless for an ordinary draft over a synced system, which this leaves in place.
             DataManager.RefreshDraftOnlySystems();
+
+            // ###########################################################################################
+            // *** THE MAINTAINERS ARE TOLD (owner request, 2026-09-28). *** Recorded on the receipts
+            // first, so a notice that cannot be sent now (no network) is sent at the next launch;
+            // then sent in the background - the discard itself never waits on the server.
+            // ###########################################################################################
+            if (unfinished is { Count: > 0 })
+            {
+                SubmissionReceiptStore.MarkDraftDiscarded(unfinished.Select(receipt => receipt.SubmissionId), DateTimeOffset.UtcNow);
+                _ = DraftDiscardReporter.ReportPendingAsync(this.DraftDiscardSendOverrideForTests ?? new SubmissionClient().ReportDraftDiscardedAsync);
+            }
 
             this.RefreshDrafts();
             this.thisMainWindow?.ApplyDraftsTabVisibility();
@@ -312,7 +358,8 @@ namespace CRT
             DraftStatus? status = DraftStatusReader.Resolve(
                 DataManager.DataRoot,
                 DraftManager.DraftsRoot,
-                entry.ExcelDataFile);
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
             if (status == null)
             {
@@ -342,7 +389,11 @@ namespace CRT
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
 
-            BoardData? official = await BoardDataReader.LoadAsync(publishedPath, publishedPath);
+            // Reading the published board of a large system is a noticeable wait (2026-09-28).
+            BoardData? official = await BusyOverlay.RunLocalAsync(
+                this,
+                CrtWaitWording.ComparingWithOfficial,
+                () => BoardDataReader.LoadAsync(publishedPath, publishedPath));
 
             var report = new DraftChangeReport
             {
@@ -441,7 +492,8 @@ namespace CRT
             DraftStatus? status = DraftStatusReader.Resolve(
                 DataManager.DataRoot,
                 DraftManager.DraftsRoot,
-                entry.ExcelDataFile);
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
             if (status == null)
             {
@@ -639,6 +691,9 @@ namespace CRT
         // HardwareBoardsOverrideForTests above.
         internal int? UnreadCommentCountOverrideForTests { get; set; }
 
+        // The same, for the rows' submission badges. null is the shipped path: the real store.
+        internal IReadOnlyList<SubmissionReceipt>? ReceiptsOverrideForTests { get; set; }
+
         private void OnAddNewSystemClick(object? sender, RoutedEventArgs e)
         {
             if (this.thisMainWindow == null)
@@ -658,6 +713,13 @@ namespace CRT
     public sealed class DraftListItem
     {
         public string DisplayName { get; }
+
+        // The badge beside the name: this system's latest submission, in "My submissions"' words
+        // and colour. Hidden when it was never sent.
+        public bool HasSubmission { get; }
+        public string SubmissionStateText { get; } = string.Empty;
+        public string SubmissionTooltip { get; } = string.Empty;
+        public Avalonia.Media.IBrush? SubmissionAccentBrush { get; }
 
         // Which system this row is - how table mode finds the open draft's row again after a
         // refresh has rebuilt every item.
@@ -684,7 +746,8 @@ namespace CRT
         public bool CanSubmit { get; }
         public string SubmitTooltip { get; }
 
-        // Whether to show the "Updated officially" chip and the "What changed" button. Only a real
+        // Whether to show the drift line and the "What changed" button (the "Updated officially"
+        // chip beside the name was removed, owner request 2026-09-28). Only a real
         // difference counts - an unrecorded base revision is not evidence of drift, so it stays
         // silent (see DraftRevisionComparer).
         public bool HasDrift { get; }
@@ -704,10 +767,30 @@ namespace CRT
             Func<HardwareBoardEntry, Task> viewDrift,
             Func<HardwareBoardEntry, Task> submit,
             bool isTableOpen,
-            Func<HardwareBoardEntry, Task> toggleTable)
+            Func<HardwareBoardEntry, Task> toggleTable,
+            SubmissionReceipt? lastSubmission)
         {
             this.DisplayName = entry.ToString();
             this.ExcelDataFile = entry.ExcelDataFile;
+
+            // ###########################################################################################
+            // *** THE SUBMISSION BADGE (owner request, 2026-09-27): "When I have submitted my
+            // submission to the server, then I need to see that somehow". ***
+            //
+            // The state words and their colour are "My submissions"' own (DescribeState,
+            // ClassifyState, AccentFor), so the badge moves with the review - "Submitted - awaiting ...",
+            // then "Published to BETA source", or "Changes requested" in orange - and can never say
+            // anything that window does not. Its tooltip says which submission and when.
+            // ###########################################################################################
+            this.HasSubmission = lastSubmission is not null;
+
+            if (lastSubmission is not null)
+            {
+                this.SubmissionStateText = SubmissionReceiptPresenter.DescribeState(lastSubmission.LastKnownState);
+                this.SubmissionTooltip = SubmissionReceiptPresenter.DescribeLastSubmission(lastSubmission);
+                this.SubmissionAccentBrush = SubmissionListItem.AccentFor(
+                    SubmissionReceiptPresenter.ClassifyState(lastSubmission.LastKnownState));
+            }
 
             this.IsTableOpen = isTableOpen;
             this.TableButtonText = isTableOpen ? "Close table" : "Edit in table format";

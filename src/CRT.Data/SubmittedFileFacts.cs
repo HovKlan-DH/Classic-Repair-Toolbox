@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     // *** THE REVIEW SCREEN USED TO SHOW IMAGES ONLY. *** Everything else - a PDF, a text file, a
     // file no row used, a file belonging to another board - was drawn nowhere, so an
     // administrator approved it without ever being shown it. This is the per-file account the
-    // server now sends alongside the change summary, and the maintainer application lists every file
+    // server now sends alongside the change summary, and the Maintainer tab lists every file
     // that would change the tree.
     //
     // *** ONE TYPE FOR BOTH ENDS OF THE WIRE. *** The server serialises this record and the review

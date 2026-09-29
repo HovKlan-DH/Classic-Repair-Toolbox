@@ -260,6 +260,29 @@ public sealed class DataChecksumManifestTests : IDisposable
         Assert.Empty(Directory.GetFiles(this.thisWorkspace.Root, "*.tmp_*"));
     }
 
+    // ###########################################################################################
+    // *** TWO REBUILDS AT ONCE BOTH SUCCEED (code review, 2026-09-27). *** A new system's placement
+    // rebuilds the manifest outside the publish lock, so it can run beside a publish's own rebuild.
+    // The temporary file was named by the Unix second, so rebuilds in the same second shared it and
+    // one of them failed its move (or wrote into the other's file). Every one must succeed, leave a
+    // whole manifest, and leave no temporary file.
+    // ###########################################################################################
+    [Fact]
+    public void Rebuilds_running_at_the_same_moment_all_succeed_and_leave_one_whole_manifest()
+    {
+        for (int index = 0; index < 20; index++)
+            this.Write($"Commodore/C64/250407/file{index}.png", $"bytes {index}");
+
+        int[] written = new int[8];
+
+        Parallel.For(0, written.Length, index =>
+            written[index] = DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath));
+
+        Assert.All(written, count => Assert.Equal(20, count));
+        Assert.Equal(20, JsonDocument.Parse(File.ReadAllText(this.ManifestPath)).RootElement.GetArrayLength());
+        Assert.Empty(Directory.GetFiles(this.thisWorkspace.Root, "*.tmp_*"));
+    }
+
     [Fact]
     public void An_existing_manifest_is_REPLACED_rather_than_appended_to()
     {

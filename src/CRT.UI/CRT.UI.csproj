@@ -1,21 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <!--
-    CRT.UI - Avalonia controls shared by the desktop app (CRT.App) and the maintainer application
-    (CRT.Maintainer).
+    CRT.UI - Avalonia controls shared by CRT's Drafts tab and its Maintainer tab. They were two
+    applications (CRT.App and the separate CRT Maintainer) until 2026-09-29, when the maintainer
+    application became CRT's Maintainer tab; the library stays, because the sharing is still real
+    and CRT.Data's rules are painted here, not in either tab.
 
     It exists for the TABLE EDITOR (owner request, 2026-09-25): the Drafts tab's "Edit in table
-    format" and the maintainer application's table are the same control, so a fix or a colour change
+    format" and the Maintainer tab's table are the same control, so a fix or a colour change
     reaches both. Its rules are in CRT.Data (BoardTableDocument and friends); this library only
     paints them.
 
-    Rules for what may live here: a control that BOTH applications show, which touches nothing of
-    either application (no Main, no DataManager, no UserSettings, no Logger - CRT.Data's CrtLog is
-    the logging seam). Anything that needs one of those stays in its application.
+    Rules for what may live here: a control BOTH tabs show, which touches nothing of CRT's own
+    orchestration (no Main, no DataManager, no UserSettings, no Logger - CRT.Data's CrtLog is the
+    logging seam). Anything that needs one of those stays in CRT.App.
 
-    Its colours are its own (BoardTable/BoardTableColors.axaml), merged by both applications, so the
-    two cannot drift apart; the few general theme keys it borrows (Bg, Table_Bg, the Cancel button's
-    colours, Text_Fail_Fg) each application defines itself.
+    Dragging/ holds the other shared piece (2026-09-27): ListRowDrag, the drag-a-row-with-a-dashed-
+    placeholder handling of the Drafts tab's schematic images, which the Maintainer tab's
+    drop-down placement uses too, and RowDragSlots, its maths (the worklog editor's lists use that).
+
+    Its colours are its own (BoardTable/BoardTableColors.axaml), merged by CRT's App.axaml; the few
+    general theme keys it borrows (Bg, Table_Bg, the Cancel button's colours, Text_Fail_Fg) CRT
+    defines itself.
     -->
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -40,9 +46,7 @@
     -->
     <ItemGroup>
         <InternalsVisibleTo Include="Classic-Repair-Toolbox" />
-        <InternalsVisibleTo Include="Classic-Repair-Toolbox-Maintainer" />
         <InternalsVisibleTo Include="CRT.App.Tests" />
-        <InternalsVisibleTo Include="CRT.Maintainer.Tests" />
     </ItemGroup>
 
 </Project>

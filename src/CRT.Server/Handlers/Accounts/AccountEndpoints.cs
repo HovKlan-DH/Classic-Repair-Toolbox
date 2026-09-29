@@ -40,6 +40,10 @@ namespace CRT.Server.Handlers.Accounts
             accounts.MapGet("/me", AccountEndpoints.MeAsync);
             accounts.MapPost("/forgot-password", AccountEndpoints.ForgotPasswordAsync);
             accounts.MapPost("/reset-password", AccountEndpoints.ResetPasswordAsync);
+
+            // Accepting an invitation to maintain a system (2026-09-27) - the one way a new
+            // maintainer's account is made. See MaintainerInvitationFlows.
+            accounts.MapPost("/accept-invitation", AccountEndpoints.AcceptInvitationAsync);
         }
 
         // ###########################################################################################
@@ -279,6 +283,30 @@ namespace CRT.Server.Handlers.Accounts
 
                 _ => Results.BadRequest(new { message = "That link is not valid." })
             };
+        }
+
+        // ###########################################################################################
+        // POST /api/accounts/accept-invitation  { code, displayName, password }
+        //
+        // Like the password reset, the failures ARE distinguished - the code is the only subject,
+        // and an expired invitation needs a different next step from a mistyped code. Nothing here
+        // reveals whether an address has an account without the code that was mailed to it.
+        // ###########################################################################################
+        private static async Task<IResult> AcceptInvitationAsync(
+            global::Handlers.DataHandling.AcceptInvitationRequest body,
+            IAccountStore store,
+            Argon2PasswordHasher hasher,
+            CancellationToken cancellationToken)
+        {
+            Submissions.InvitationAcceptOutcome outcome = await Submissions.MaintainerInvitationFlows.AcceptAsync(
+                body?.Code, body?.DisplayName, body?.Password, store, hasher, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (outcome.IsAccepted)
+                return Results.Ok(outcome.Answer);
+
+            return outcome.Errors.Count > 0
+                ? Results.BadRequest(new { errors = outcome.Errors })
+                : Results.BadRequest(new { message = outcome.Message });
         }
 
         // -------------------------------------------------------------------------------------

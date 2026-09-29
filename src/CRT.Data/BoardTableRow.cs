@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     // difference from the published data coloured in.
     //
     // *** WHY THIS LIVES IN CRT.Data AND NOT IN THE APP. *** The project owner wants the same table
-    // in the maintainer application later, so a maintainer can make the same edits. Everything that
+    // in the Maintainer tab later, so a maintainer can make the same edits. Everything that
     // decides WHAT a cell is - its text, whether it differs, what the published value was - is
     // here, Avalonia-free; the app's BoardTableEditor only paints it. INotifyPropertyChanged is
     // plain .NET, so the grid can bind straight to these without a view-model layer in between
@@ -179,14 +179,14 @@ namespace Handlers.DataHandling
             }
         }
 
-        // The hover text: on a changed cell the published value it replaced, and on a flagged
-        // row's cells why the row is flagged - the same words as its "!" marker, so the reason is
-        // under the pointer wherever it lands on the row. Null otherwise, so an unchanged cell
-        // shows no tooltip at all rather than an empty box.
+        // The hover text: on a changed cell the value it replaced, and on a flagged row's cells why
+        // the row is flagged - the same words as its "!" marker, so the reason is under the pointer
+        // wherever it lands on the row. Null otherwise, so an unchanged cell shows no tooltip at all
+        // rather than an empty box.
         public string? ToolTip => this.thisState switch
         {
             BoardTableCellState.Modified =>
-                $"Published value: {(this.thisPublishedText.Length == 0 ? "(empty)" : this.thisPublishedText)}",
+                $"{this.Row.Sheet.ReplacedValueLabel}: {(this.thisPublishedText.Length == 0 ? "(empty)" : this.thisPublishedText)}",
             BoardTableCellState.Flagged => this.Row.MarkerToolTip,
             _ => null,
         };

@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.UnusedFilesView">
+
+    <!--
+    UNUSED FILES (owner decision, 2026-09-25: "there must be no orphan files") - on the Admin screen
+    since 2026-09-27, a window of its own until then. ADMINISTRATOR ONLY - the Admin screen is
+    offered only when the server says the account is one, and the server refuses everyone else
+    regardless.
+
+    A publish removes only what IT made unused. What was already unused - files no workbook cites,
+    in either tree - is listed here, and goes only when the administrator has looked through the
+    list and ticked the box. What the lines say and when the button is on is UnusedFilesDisplay's.
+
+    Refresh STAYS, unlike on the other screens: the list reads every workbook in the tree on the
+    server and takes seconds, so it is asked for on purpose rather than every minute.
+    -->
+    <DockPanel>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <TextBlock Text="Data:" VerticalAlignment="Center" />
+
+            <ComboBox x:Name="TreeComboBox"
+                      Width="180"
+                      SelectedIndex="0"
+                      SelectionChanged="OnTreeSelectionChanged">
+                <ComboBoxItem Content="BETA" Tag="beta" />
+                <ComboBoxItem Content="Production" Tag="production" />
+            </ComboBox>
+
+            <Button x:Name="RefreshButton" Content="Refresh" Click="OnRefreshClick" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SummaryText"
+                   TextWrapping="Wrap"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,8" />
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,8,0,0">
+
+            <TextBlock x:Name="MessageText"
+                       TextWrapping="Wrap"
+                       IsVisible="False" />
+
+            <!--
+            Unticked every time a list is loaded: a tick is about the list on screen, never carried
+            over to another tree or a refreshed list.
+            -->
+            <CheckBox x:Name="LookedThroughCheckBox"
+                      IsEnabled="False"
+                      IsCheckedChanged="OnLookedThroughChanged">
+                <TextBlock TextWrapping="Wrap"
+                           Text="I have looked through this list, and every file on it can be removed from the server." />
+            </CheckBox>
+
+            <Button x:Name="RemoveButton"
+                    HorizontalAlignment="Right"
+                    Content="Remove unused files"
+                    IsEnabled="False"
+                    Click="OnRemoveClick" />
+        </StackPanel>
+
+        <ScrollViewer>
+            <StackPanel x:Name="FilesPanel" Spacing="2" />
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

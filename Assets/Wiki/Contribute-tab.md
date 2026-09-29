@@ -23,8 +23,8 @@ A small amber **Draft** badge marks where your drafts are: on each board with a 
 **Board** drop-down, on its hardware in the **Hardware** drop-down, and on each changed component in
 the component list.
 
-If the official data for a board is updated while you have a draft on it, the "Drafts" tab marks it
-**"Updated officially"** and offers a **"What changed"** view. Your edits are still applied — see
+If the official data for a board is updated while you have a draft on it, the "Drafts" tab says so
+under that board and offers a **"What changed"** view. Your edits are still applied — see
 [Contribute data via CRT](Contribute-data-via-CRT) for what that view shows.
 
 **The full walkthrough, step by step:

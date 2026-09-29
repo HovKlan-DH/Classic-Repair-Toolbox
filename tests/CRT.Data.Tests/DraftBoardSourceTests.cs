@@ -109,10 +109,10 @@ public sealed class DraftBoardSourceTests : IDisposable
     // ###########################################################################################
     // *** THE MARKER IS WHAT MAKES A FOLDER A DRAFT, NOT THE PRESENCE OF A WORKBOOK. ***
     //
-    // A folder under Drafts/ holding an .xlsx but no marker is not a draft - most likely something
-    // copied there by hand while poking around. Reading it as one would silently substitute
-    // unknown data for the published board, which is about the worst failure this class could
-    // have: the contributor would be looking at someone else's data believing it was theirs.
+    // A folder under Drafts/ holding an .xlsx but no marker is not a draft HERE. One a contributor
+    // put there on purpose is given its marker when the board list loads (DraftFolderImport,
+    // 2026-09-27) - at that one point, so this class keeps deciding from the marker alone and never
+    // reads an unmarked folder in place of the published board.
     // ###########################################################################################
     [Fact]
     public void A_workbook_under_Drafts_with_NO_marker_is_NOT_treated_as_a_draft()
@@ -215,6 +215,44 @@ public sealed class DraftBoardSourceTests : IDisposable
     // keep failing loudly rather than quietly rendering an empty board. That distinction was
     // already load-bearing in DataManager before this change, and it survives it.
     // ###########################################################################################
+    // ###########################################################################################
+    // *** THE LISTING DECIDES THE BASELINE WHEN THE CALLER KNOWS IT (code review, 2026-09-27). ***
+    // HardwareBoardEntry.IsPublished is the rule; the marker only stands in for it. A new system's
+    // draft whose system has since been published is compared with the published board, and a
+    // legacy board's draft with an ORDINARY marker ("Save to draft" seeds one) with nothing - not
+    // with the contributor's own copy in Data/, against which nothing ever counted.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_systems_draft_of_a_system_now_listed_as_published_is_compared_with_the_published_board()
+    {
+        this.WriteDraft(registration: new NewSystemRegistration { ExcelDataFile = DraftBoardSourceTests.SystemKey });
+
+        BoardSourceSelection selection = DraftBoardSource.Resolve(
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: true);
+
+        Assert.Equal(DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey), selection.PublishedWorkbookPath);
+        Assert.Equal(
+            selection.PublishedWorkbookPath,
+            DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: true)!.PublishedWorkbookPath);
+    }
+
+    [Fact]
+    public void A_draft_of_a_board_not_listed_as_published_is_compared_with_nothing_whatever_its_marker()
+    {
+        this.WritePublishedWorkbook();
+        this.WriteDraft();
+
+        Assert.Equal(string.Empty, DraftBoardSource.Resolve(
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: false).PublishedWorkbookPath);
+        Assert.Equal(string.Empty, DraftStatusReader.Resolve(
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: false)!.PublishedWorkbookPath);
+
+        // With no listing to ask, the marker decides as before.
+        Assert.Equal(
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            this.Resolve().PublishedWorkbookPath);
+    }
+
     [Fact]
     public void A_PUBLISHED_system_whose_file_is_missing_is_NOT_mistaken_for_a_new_system()
     {
@@ -240,6 +278,30 @@ public sealed class DraftBoardSourceTests : IDisposable
         Assert.False(selection.IsDraft);
         Assert.False(File.Exists(selection.WorkbookPath));
         Assert.True(selection.IsNewSystem);
+    }
+
+    // ###########################################################################################
+    // *** A NEW SYSTEM IS COMPARED AGAINST NOTHING, even with a file at its published path
+    // (2026-09-27). *** That file can only be the contributor's own - a board made the old way,
+    // listed by a _UserContribution workbook, lives in Data/ at exactly this path - and comparing a
+    // copy of it against itself marked none of its rows as drafted. The ordinary draft beside it
+    // (The_published_path_is_reported_EVEN_WHEN...) keeps its published baseline.
+    // ###########################################################################################
+    [Fact]
+    public void A_DRAFT_ONLY_system_has_NO_baseline_even_with_a_file_at_its_published_path()
+    {
+        this.WritePublishedWorkbook();
+        this.WriteDraft(registration: new NewSystemRegistration
+        {
+            HardwareName = "C64",
+            BoardName = "250407",
+            ExcelDataFile = DraftBoardSourceTests.SystemKey,
+        });
+
+        BoardSourceSelection selection = this.Resolve();
+
+        Assert.True(selection.IsDraft);
+        Assert.Equal(string.Empty, selection.PublishedWorkbookPath);
     }
 
     // ------------------------------------------------------------------ HasDraft

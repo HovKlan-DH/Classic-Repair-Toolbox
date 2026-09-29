@@ -33,7 +33,7 @@ namespace CRT.Server.Handlers.Accounts
         // ###########################################################################################
         // Only extend once the session is meaningfully used up.
         //
-        // *** WITHOUT THIS THRESHOLD, EVERY REQUEST WRITES A ROW. *** The maintainer app calls the
+        // *** WITHOUT THIS THRESHOLD, EVERY REQUEST WRITES A ROW. *** The Maintainer tab calls the
         // queue on launch, on every refresh click and after every decision, so extending on each
         // one turns a read-only screen into a steady stream of UPDATEs against the sessions table
         // for no benefit - the expiry would move by seconds.

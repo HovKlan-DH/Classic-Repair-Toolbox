@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // A DRAFT'S BOARD AS EDITABLE SHEETS - the model behind the Drafts tab's "Edit in table
-    // format" (owner request, 2026-09-24). Avalonia-free, so the maintainer application can put
+    // format" (owner request, 2026-09-24). Avalonia-free, so the Maintainer tab can put
     // the same table in front of a maintainer later; see BoardTableRow.cs for why it sits here.
     //
     // *** IT SHOWS THE SCHEMA'S SHEETS, NOT THE RAW WORKBOOK. *** One sheet per
@@ -40,6 +40,11 @@ namespace Handlers.DataHandling
         // then - see BoardTableSheet's header.
         public bool HasBaseline { get; }
 
+        // What a changed cell's tooltip calls the value it replaced - see Create.
+        public const string DefaultBaselineLabel = "Published value";
+
+        public string BaselineLabel { get; private init; } = DefaultBaselineLabel;
+
         public bool HasUnsavedChanges { get; private set; }
 
         // Undo and redo across every sheet, back to the last save - see BoardTableHistory.
@@ -59,12 +64,23 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Builds the table for one draft. `published` is null when there is nothing published to
         // compare against.
+        //
+        // `baselineLabel` is what a changed cell's tooltip CALLS the value it replaced, and it is
+        // the caller's to say because only the caller knows what it handed over as `published`. The
+        // default names the published board, which is what every draft compares against. The
+        // Maintainer tab passes its own for a NEW SYSTEM: there it compares the submission
+        // with ITSELF as it arrived (see TabMaintainer.Table.cs), so `published` is not published
+        // at all and "Published value: (empty)" named a board that does not exist - reported by the
+        // project owner, 2026-09-26. HasBaseline cannot answer this: it is true in both cases.
         // ###########################################################################################
-        public static BoardTableDocument Create(BoardData? published, BoardData draft)
+        public static BoardTableDocument Create(BoardData? published, BoardData draft, string? baselineLabel = null)
         {
             ArgumentNullException.ThrowIfNull(draft);
 
-            var document = new BoardTableDocument(published is not null);
+            var document = new BoardTableDocument(published is not null)
+            {
+                BaselineLabel = string.IsNullOrWhiteSpace(baselineLabel) ? DefaultBaselineLabel : baselineLabel,
+            };
 
             var sheets = new List<BoardTableSheet>();
             foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)

@@ -188,7 +188,18 @@ namespace Handlers.DataHandling
         // Catching Exception rather than a list of types is deliberate here, and is the same
         // judgement SubmissionNotifier makes: this runs after an irreversible operation, so the
         // only acceptable outcome for ANY fault is a logged warning and a stale manifest.
+        //
+        // *** ONE REBUILD AT A TIME, EACH WITH ITS OWN TEMPORARY FILE (code review, 2026-09-27). ***
+        // Several server paths rebuild the BETA manifest - a publish, a rollback, the unused files
+        // screen, and saving a new system's place in the lists, which runs OUTSIDE the publish lock.
+        // The temporary file used to be named by the Unix second, so two rebuilds in the same second
+        // wrote the SAME file: the writes interleaved, or one File.Move found its file already moved.
+        // Now each carries a random name, and WriteGate makes a whole scan-and-write wait for the
+        // previous one - so the rebuild that finishes last also scanned last, and the manifest never
+        // ends up describing an older tree than a rebuild that had already finished.
         // ###########################################################################################
+        private static readonly object WriteGate = new();
+
         public static int Write(string dataRoot, string publicBaseUrl, string manifestPath)
         {
             if (string.IsNullOrWhiteSpace(manifestPath))
@@ -196,7 +207,16 @@ namespace Handlers.DataHandling
                 return -1;
             }
 
-            string temporary = manifestPath + ".tmp_" + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            lock (DataChecksumManifest.WriteGate)
+            {
+                return DataChecksumManifest.WriteOnce(dataRoot, publicBaseUrl, manifestPath);
+            }
+        }
+
+        private static int WriteOnce(string dataRoot, string publicBaseUrl, string manifestPath)
+        {
+            // ".tmp_" is what Scan skips as junk, so a temporary file left by a crash is never listed.
+            string temporary = manifestPath + ".tmp_" + Guid.NewGuid().ToString("N");
 
             try
             {

@@ -337,52 +337,59 @@ public partial class TabSchematics
         // Before, the first label editor save CREATED the draft implicitly. It cannot now: a draft
         // is a complete copy of the published board, and starting an empty one here would produce
         // a draft that reads as "every published row deleted".
+        //
+        // *** UNDER THE "PLEASE WAIT" OVERLAY (2026-09-28). *** Seeding and writing a large board
+        // takes a noticeable moment, and neither can be stopped halfway - so past the limit the
+        // overlay lifts and the save carries on to its own end (BusyOverlay.RunLocalAsync).
         // ###########################################################################################
-        if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
+        string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
         {
-            BoardData? published = await BoardDataReader.LoadAsync(excelPath, excelPath);
-
-            if (published == null)
+            if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
             {
-                Logger.Warning("Label editor save failed - could not read the board to seed a draft from");
-                await this.ShowLabelEditorSaveFailedDialogAsync("Could not read the board data to save against.");
-                return;
-            }
+                BoardData? published = await BoardDataReader.LoadAsync(excelPath, excelPath);
 
-            DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublished(
-                DraftManager.DraftsRoot,
-                DataManager.DataRoot,
-                cacheKey,
-                published));
+                if (published == null)
+                {
+                    Logger.Warning("Label editor save failed - could not read the board to seed a draft from");
+                    return "Could not read the board data to save against.";
+                }
 
-            if (!seeded.Created)
-            {
-                Logger.Warning($"Label editor save failed - could not seed a draft: [{seeded.Reason}]");
-                await this.ShowLabelEditorSaveFailedDialogAsync("Could not create a draft to save into.");
-                return;
-            }
-        }
-
-        bool saveSucceeded = await Task.Run(() =>
-        {
-            try
-            {
-                return DraftWorkbookStore.Edit(
+                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublished(
                     DraftManager.DraftsRoot,
+                    DataManager.DataRoot,
                     cacheKey,
-                    board => LabelEditorBoardWriter.ApplyLabelEditorSave(
-                        board, schematicName, saveRows, region));
+                    published));
+
+                if (!seeded.Created)
+                {
+                    Logger.Warning($"Label editor save failed - could not seed a draft: [{seeded.Reason}]");
+                    return "Could not create a draft to save into.";
+                }
             }
-            catch (Exception ex)
+
+            bool saved = await Task.Run(() =>
             {
-                Logger.Warning($"Label editor draft save failed - [{ex}]");
-                return false;
-            }
+                try
+                {
+                    return DraftWorkbookStore.Edit(
+                        DraftManager.DraftsRoot,
+                        cacheKey,
+                        board => LabelEditorBoardWriter.ApplyLabelEditorSave(
+                            board, schematicName, saveRows, region));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Label editor draft save failed - [{ex}]");
+                    return false;
+                }
+            });
+
+            return saved ? null : "Could not save your draft. See the log for details.";
         });
 
-        if (!saveSucceeded)
+        if (failure is not null)
         {
-            await this.ShowLabelEditorSaveFailedDialogAsync("Could not save your draft. See the log for details.");
+            await this.ShowLabelEditorSaveFailedDialogAsync(failure);
             return;
         }
 

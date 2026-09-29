@@ -27,6 +27,24 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public bool IsDraftOnly { get; init; }
 
+        // ###########################################################################################
+        // True for a system listed only by a legacy "_UserContribution" workbook - a board made the
+        // old way, whose files sit in Data/ but were never published by anyone.
+        // ###########################################################################################
+        public bool IsUserContribution { get; init; }
+
+        // ###########################################################################################
+        // Whether the MAIN workbook lists this system - whether the file at its path in Data/ is
+        // really the published board.
+        //
+        // *** A _UserContribution BOARD IS NOT (2026-09-27). *** Its file in Data/ is the
+        // contributor's own. Draft retirement compared a draft of such a board with that file, found
+        // them identical (the draft was a copy of it), and deleted the draft three minutes after the
+        // maintainer merged it into BETA - "its changes are now in the published data", which they
+        // were not. Anything that asks "is this in the published data" must ask this.
+        // ###########################################################################################
+        public bool IsPublished => !this.IsDraftOnly && !this.IsUserContribution;
+
         public override string ToString() => $"{this.HardwareName} - {this.BoardName}";
 
         // ###########################################################################################

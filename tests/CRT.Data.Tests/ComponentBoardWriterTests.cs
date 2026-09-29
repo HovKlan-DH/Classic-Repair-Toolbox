@@ -89,7 +89,7 @@ public sealed class ComponentBoardWriterTests
     // silently dropped.
     //
     // Reported by the project owner: editing U1's short description while viewing PAL deleted all 40
-    // of U1's NTSC scope baselines. The maintainer app then correctly offered a submission that
+    // of U1's NTSC scope baselines. The Maintainer tab then correctly offered a submission that
     // removed 40 files, from a change that was meant to touch one line of text - and approving it
     // would have destroyed them on the server.
     // ###########################################################################################
@@ -749,5 +749,25 @@ public sealed class ComponentBoardWriterTests
             boardLinkRowsAtOpen: []);
 
         Assert.Equal(["Manual", "Excel"], result.BoardLocalFiles.Select(file => file.Name));
+    }
+
+    // ------------------------------------------------------------------ The caption
+
+    // ###########################################################################################
+    // *** "Save to draft" KEEPS THE "# Hardware:" / "# Board:" CAPTION (owner report, 2026-09-28).
+    // *** Both writers built the next board by listing its sections by hand and left the caption
+    // out, so a draft saved from the Contribute window lost the first two lines of every sheet.
+    // ###########################################################################################
+    [Fact]
+    public void Saving_and_deleting_a_component_keep_the_caption()
+    {
+        var board = new BoardData { HardwareName = "Commodore 128 and 128D", BoardName = "310378" };
+        board.Components.Add(new ComponentEntry { BoardLabel = "U8" });
+
+        BoardData saved = ComponentBoardWriterTests.Save(board, "U9", components: [ComponentBoardWriterTests.ComponentRow("U9")]);
+        BoardData deleted = ComponentBoardWriter.ApplyComponentDelete(board, "U8");
+
+        Assert.Equal(("Commodore 128 and 128D", "310378"), (saved.HardwareName, saved.BoardName));
+        Assert.Equal(("Commodore 128 and 128D", "310378"), (deleted.HardwareName, deleted.BoardName));
     }
 }

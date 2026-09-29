@@ -31,6 +31,7 @@ public class WikiHelpPageNamesTests
         new object[] { AppConfig.WikiPageMiniPro, "Configuration tab \"?\", and the component popup" },
         new object[] { AppConfig.WikiPageScopeKeyboard, "Component popup, numpad oscilloscope controls" },
         new object[] { AppConfig.WikiPageScopeSync, "Component popup, oscilloscope synchronization" },
+        new object[] { AppConfig.WikiPageMaintainer, "Configuration tab, \"?\" beside \"Enable Maintainer tab\"" },
     };
 
     // The whole point: a renamed or deleted page leaves the button opening a URL that resolves to

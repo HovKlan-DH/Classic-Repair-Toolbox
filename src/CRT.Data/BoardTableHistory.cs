@@ -32,7 +32,7 @@ namespace Handlers.DataHandling
     // the group's one step; undo and redo restore every sheet in it. The step's FIRST sheet is the
     // one the gesture was made on, and is where the cursor goes.
     //
-    // Avalonia-free, like the rest of the model, so the maintainer application gets it too.
+    // Avalonia-free, like the rest of the model, so the Maintainer tab gets it too.
     // ###########################################################################################
     public sealed class BoardTableHistory
     {

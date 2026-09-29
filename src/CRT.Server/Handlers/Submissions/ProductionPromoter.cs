@@ -23,11 +23,13 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class ProductionPromoter
     {
+        // `canWriteFolder` is for tests - TreeWriteAccess's real probe otherwise.
         public static async Task<PromotionCopyOutcome> CopyAsync(
             IReadOnlyList<PromotionFile> files,
             string betaRoot,
             string productionRoot,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Func<string, bool>? canWriteFolder = null)
         {
             ArgumentNullException.ThrowIfNull(files);
             ArgumentException.ThrowIfNullOrWhiteSpace(betaRoot);
@@ -60,6 +62,15 @@ namespace CRT.Server.Handlers.Submissions
 
                 resolved.Add((file, source, destination));
             }
+
+            // Every folder it copies into may be written - a folder copied into production by hand
+            // as another user refuses them all, and finding that out at file 600 leaves production
+            // half-promoted (owner report, 2026-09-28). After the link check; see TreeWriteAccess.
+            IReadOnlyList<string> refusing = TreeWriteAccess.FoldersRefusing(
+                productionRoot, resolved.Select(entry => entry.Destination), canWriteFolder);
+
+            if (refusing.Count > 0)
+                return PromotionCopyOutcome.Refused(TreeWriteAccess.RefusalMessage("production", productionRoot, refusing), refusing);
 
             // ---- 1. The copies, in the plan's order ------------------------------------------
             int copied = 0;
@@ -109,5 +120,12 @@ namespace CRT.Server.Handlers.Submissions
         public static PromotionCopyOutcome Done(int copied) => new(true, copied, null);
 
         public static PromotionCopyOutcome Failed(string error, int copied = 0) => new(false, copied, error);
+
+        // Refused before anything was copied because these folders may not be written - kept so
+        // the flow can log the command that fixes them.
+        public static PromotionCopyOutcome Refused(string error, IReadOnlyList<string> foldersRefusing) =>
+            new(false, 0, error) { FoldersRefusing = foldersRefusing };
+
+        public IReadOnlyList<string> FoldersRefusing { get; init; } = [];
     }
 }

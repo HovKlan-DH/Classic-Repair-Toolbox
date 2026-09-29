@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
 using Handlers.DataHandling;
@@ -26,8 +27,8 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** "CHECKED IN BETA" IS MADE CONCRETE BY STEP 4. *** A maintainer cannot be proved to have
     // looked, but they can be held to promoting exactly what they could have looked at: the
-    // request names the BETA content hash the maintainer application showed them, and a publish that
-    // has landed in BETA since changes that hash and refuses the promotion. The maintainer application
+    // request names the BETA content hash the Maintainer tab showed them, and a publish that
+    // has landed in BETA since changes that hash and refuses the promotion. The Maintainer tab
     // adds the human half - a box the maintainer ticks to say they checked it in CRT.
     //
     // Steps 3 to 7 run under PublishLock, so no publish can land in BETA between the check in
@@ -40,6 +41,15 @@ namespace CRT.Server.Handlers.Submissions
         private readonly PublishedBoardReader thisBoards;
         private readonly PublishLock thisLock;
         private readonly ILogger<ProductionPromotionFlow> thisLogger;
+
+        // When a system was last found NOT to be in production already, per BETA and production
+        // state (see RecordIfProductionAlreadyHoldsAsync) - so the list, read every minute by
+        // every open Maintainer tab, does not rebuild the same plan each time.
+        private readonly ConcurrentDictionary<string, DateTimeOffset> thisFoundDifferentUtc = new(StringComparer.Ordinal);
+
+        // How long a "production differs" answer is trusted by the list before the trees are
+        // compared again - a hand copy made meanwhile is noticed within this.
+        internal static readonly TimeSpan DifferentRecheck = TimeSpan.FromMinutes(10);
 
         public ProductionPromotionFlow(
             ISubmissionStore store,
@@ -63,8 +73,15 @@ namespace CRT.Server.Handlers.Submissions
         // leaving out only what the plan alone can reveal (a shared-file change), which the plan
         // step reports when the system is opened.
         // ###########################################################################################
+        //
+        // With `options` (the endpoint always passes them), a system whose record says it waits but
+        // whose production copy already matches BETA - copied there by hand - is recorded as in
+        // production and left out; see RecordIfProductionAlreadyHoldsAsync.
+        // ###########################################################################################
         public async Task<IReadOnlyList<SystemRecord>> ListAwaitingAsync(
             ReviewAccess? access,
+            ServerOptions? options = null,
+            DateTimeOffset? nowUtc = null,
             CancellationToken cancellationToken = default)
         {
             if (!ReviewAuthority.CanReviewAnything(access))
@@ -72,10 +89,170 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyList<SystemRecord> systems = await this.thisStore.ListSystemsAsync(cancellationToken);
 
+            var awaiting = new List<SystemRecord>();
+
+            foreach (SystemRecord system in systems
+                         .Where(ProductionPromotionRules.IsAwaitingProduction)
+                         .Where(system => ReviewAuthority.CanPublish(access, system.SystemId)))
+            {
+                if (options is not null &&
+                    await this.RecordIfProductionAlreadyHoldsAsync(
+                        access, system, options, nowUtc ?? DateTimeOffset.UtcNow, useCache: true, cancellationToken))
+                {
+                    continue;
+                }
+
+                awaiting.Add(system);
+            }
+
+            return awaiting;
+        }
+
+        // ###########################################################################################
+        // THE "BETA > PROD" LIST AS THE MAINTAINER TAB READS IT: each waiting system with whether it
+        // waits for THIS account and whether it carries a draft its contributor discarded.
+        //
+        // *** A FIXED NUMBER OF QUERIES, HOWEVER MANY SYSTEMS WAIT (code review, 2026-09-29). *** Every
+        // open Maintainer tab reads this every minute, and it used to ask three queries per waiting
+        // system - approvals, merged submissions and their discards - only to set two booleans. The
+        // two facts are now asked for the whole list at once (GetProductionApprovalsForAsync,
+        // GetSystemsCarryingDiscardedDraftsAsync), with the same bounds the panel and the mails use.
+        //
+        // The discard mark NEVER fails the list, as it never failed the plan: it is context.
+        // ###########################################################################################
+        public async Task<IReadOnlyList<ProductionListEntry>> ListEntriesAsync(
+            ReviewAccess? access,
+            ServerOptions options,
+            DateTimeOffset nowUtc,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<SystemRecord> systems = await this.ListAwaitingAsync(access, options, nowUtc, cancellationToken);
+
+            if (systems.Count == 0 || access is null)
+                return [];
+
+            IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>> approvals =
+                await this.thisStore.GetProductionApprovalsForAsync(
+                    systems
+                        .Where(system => !string.IsNullOrWhiteSpace(system.ContentHash))
+                        .Select(system => (system.SystemId, system.ContentHash!))
+                        .ToList(),
+                    cancellationToken);
+
+            IReadOnlySet<string> discarded;
+
+            try
+            {
+                discarded = await this.thisStore.GetSystemsCarryingDiscardedDraftsAsync(
+                    systems.Select(system => (system.SystemId, system.ProductionPublishedUtc)).ToList(),
+                    nowUtc,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                this.thisLogger.LogWarning(ex, "The Beta > Prod list could not read which systems carry a discarded draft.");
+                discarded = new HashSet<string>(StringComparer.Ordinal);
+            }
+
             return systems
-                .Where(ProductionPromotionRules.IsAwaitingProduction)
-                .Where(system => ReviewAuthority.CanPublish(access, system.SystemId))
+                .Select(system => new ProductionListEntry(
+                    system.SystemId,
+                    system.Manufacturer,
+                    system.Hardware,
+                    system.Board,
+                    BetaRevision: system.CurrentRevision,
+                    BetaContentHash: system.ContentHash,
+                    system.ProductionRevision,
+                    system.ProductionPublishedUtc,
+
+                    // Whether it waits for THIS account or for the other approver - the BETA badge
+                    // (2026-09-27).
+                    AwaitsYou: ProductionPromotionRules.AwaitsAccount(
+                        approvals.TryGetValue(system.SystemId, out IReadOnlyList<GivenApproval>? given) ? given : [],
+                        access.Account.Id),
+
+                    // A contributor whose work this carries discarded their own draft (2026-09-28) -
+                    // marked on the list itself, so it is seen before the system is even opened.
+                    CarriesDiscardedDraft: discarded.Contains(system.SystemId)))
                 .ToList();
+        }
+
+        // ###########################################################################################
+        // *** A BOARD COPIED TO PRODUCTION BY HAND IS NOT WAITING FOR PRODUCTION (code review,
+        // 2026-09-29). *** The record says a system waits while its BETA content hash differs from
+        // the one its last PROMOTION recorded - and a board the project owner copied into production
+        // by hand as root (DEPLOYMENT.md's own practice) was never promoted, so it stayed "waiting"
+        // for ever: listed in Beta > Prod, and - through the one-in-BETA rule - blocking every new
+        // approval of that system, with nothing telling the maintainer that a no-op "Publish to
+        // production" would clear it.
+        //
+        // So the TREES are asked when the record says "waiting": production already holds this
+        // BETA state when publishing it would copy nothing (every file the plan looks at is
+        // unchanged, and there is at least one), remove nothing, and add no row to production's
+        // drop-down lists. Then it is recorded as in production - the same record a promotion
+        // writes, at `nowUtc` - and audited, so the system's history says how it got there.
+        //
+        // Never a false "yes" from a half-written BETA: a publish lands new files in BETA before its
+        // record moves, and a file production lacks is a copy. A publish landing after the check
+        // moves BETA's content hash past the one recorded here, so the system waits again.
+        //
+        // `useCache`: the list's minute check trusts a "differs" answer for DifferentRecheck, keyed
+        // by both hashes, so it does not rebuild plans for systems genuinely waiting.
+        // ###########################################################################################
+        internal async Task<bool> RecordIfProductionAlreadyHoldsAsync(
+            ReviewAccess? access,
+            SystemRecord system,
+            ServerOptions options,
+            DateTimeOffset nowUtc,
+            bool useCache,
+            CancellationToken cancellationToken = default)
+        {
+            if (!options.IsProductionPublishingConfigured || !ProductionPromotionRules.IsAwaitingProduction(system))
+                return false;
+
+            string key = $"{system.SystemId}|{system.ContentHash}|{system.ProductionContentHash}";
+
+            if (useCache &&
+                this.thisFoundDifferentUtc.TryGetValue(key, out DateTimeOffset checkedUtc) &&
+                nowUtc - checkedUtc < ProductionPromotionFlow.DifferentRecheck)
+            {
+                return false;
+            }
+
+            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+
+            bool holds = plan.CanPromote &&
+                plan.Files.Count == 0 &&
+                plan.UnchangedCount > 0 &&
+                ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system).Files.Count == 0 &&
+                ProductionPromotionFlow.ListingForProduction(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId) is { IsReady: true, Insert: null };
+
+            if (!holds)
+            {
+                this.thisFoundDifferentUtc[key] = nowUtc;
+                return false;
+            }
+
+            this.thisFoundDifferentUtc.TryRemove(key, out _);
+
+            await this.thisStore.SetSystemInProductionAsync(
+                system.SystemId, system.CurrentRevision, system.ContentHash, nowUtc, cancellationToken);
+
+            await this.thisAccounts.WriteAuditAsync(
+                new AuditEntry(
+                    access?.Account.Id,
+                    access?.Account.Email ?? string.Empty,
+                    SystemHistoryEvents.FoundInProduction,
+                    system.SystemId,
+                    $"revision {system.CurrentRevision}; production already held every file ({plan.UnchangedCount})",
+                    nowUtc),
+                cancellationToken);
+
+            this.thisLogger.LogInformation(
+                "{SystemId} revision {Revision} was already in production (copied there outside CRT) - recorded as published to production.",
+                system.SystemId, system.CurrentRevision);
+
+            return true;
         }
 
         // ###########################################################################################
@@ -114,7 +291,14 @@ namespace CRT.Server.Handlers.Submissions
                 ? ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system)
                 : FileRemovalPreview.Nothing;
 
-            return PromotionPlanOutcome.Planned(system, plan, ProductionPromotionFlow.RefusalFor(plan), approval) with { Removals = removals };
+            // A system production does not list, and BETA does not list either, is refused here -
+            // before anyone presses the button - rather than published to nobody.
+            ListingForPublish listing = ProductionPromotionFlow.ListingForProduction(
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId);
+
+            string? refusal = ProductionPromotionFlow.RefusalFor(plan) ?? (listing.IsReady ? null : listing.Problem);
+
+            return PromotionPlanOutcome.Planned(system, plan, refusal, approval) with { Removals = removals };
         }
 
         // ###########################################################################################
@@ -183,6 +367,15 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return PromotionOutcome.Refused(refusal);
 
+            // ---- 5b. Its row in production's drop-down lists (owner request, 2026-09-27) --------
+            //
+            // Decided before a file is copied, like every other refusal here.
+            ListingForPublish listing = ProductionPromotionFlow.ListingForProduction(
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId);
+
+            if (!listing.IsReady)
+                return PromotionOutcome.Refused(listing.Problem);
+
             // ---- 6. Is this the approval that publishes? --------------------------------------
             ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
 
@@ -232,7 +425,36 @@ namespace CRT.Server.Handlers.Submissions
                     "Publishing {SystemId} to production stopped after {Copied} file(s): {Error}",
                     system.SystemId, copy.FilesCopied, copy.Error);
 
+                // Folders copied into production by hand: the administrator needs the command.
+                if (copy.FoldersRefusing.Count > 0)
+                {
+                    this.thisLogger.LogError(
+                        "Give the service its access to production's folders back with: {Command}",
+                        TreeWriteAccess.FixCommand(copy.FoldersRefusing));
+                }
+
                 return PromotionOutcome.Refused(copy.Error ?? "The copy did not complete.");
+            }
+
+            // ---- 7b. The row in production's main Excel data file --------------------------------
+            //
+            // After the files, so it never names a board production does not have; before the
+            // promotion is recorded, so a failure is retried by publishing again - the copy is
+            // verified and the insert updates a row already there.
+            if (listing.Insert is MasterRowInsert insert)
+            {
+                MasterListingEdit edit = MasterListing.Insert(insert.MasterPath, insert.Row, insert.AfterExcelDataFile);
+
+                if (!edit.IsDone)
+                {
+                    this.thisLogger.LogError(
+                        "Publishing {SystemId} to production: the files were copied but the row could not be added to [{Master}]: {Failure}",
+                        system.SystemId, insert.MasterPath, edit.Failure);
+
+                    return PromotionOutcome.Refused(
+                        $"The files were copied, but the system could not be added to production's drop-down lists: {edit.Failure} " +
+                        "Publish it again once that is fixed.");
+                }
             }
 
             // A system.json in production's copy of this board - retired, and possibly carried
@@ -298,9 +520,13 @@ namespace CRT.Server.Handlers.Submissions
                 return new FileRemovalPreview([], "Nothing is removed, because " + why);
             }
 
-            IReadOnlyList<string> candidates = DataTreeUsage.NoLongerCited(
-                before.Values.SelectMany(files => files),
-                after.Values.SelectMany(files => files));
+            // Only inside the system's own folder (owner decision, 2026-09-27) - see
+            // AutomaticRemovalScope.
+            IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
+                folder,
+                DataTreeUsage.NoLongerCited(
+                    before.Values.SelectMany(files => files),
+                    after.Values.SelectMany(files => files)));
 
             return FileRemovalPreview.Compute(productionRoot, candidates, after, ApprovePublishFlow.PreviewReads);
         }
@@ -348,6 +574,48 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public const string PublishedAction = "production.published";
+
+        // ###########################################################################################
+        // WHAT PRODUCTION'S DROP-DOWN LISTS NEED FROM THIS PROMOTION (owner decision, 2026-09-27:
+        // "insert at the same place"): nothing when production lists the system already; its BETA
+        // row, after the same neighbours, when only BETA does (MasterListing.TryResolvePlacement);
+        // and a refusal when neither does - it has not been placed yet.
+        //
+        // Either file missing or unreadable changes nothing and refuses nothing: promotions worked
+        // without these files before, and must not start failing on them.
+        // ###########################################################################################
+        internal static ListingForPublish ListingForProduction(string betaRoot, string productionRoot, string systemId)
+        {
+            string? betaMaster = MasterListing.NewestMasterPath(betaRoot);
+            string? productionMaster = MasterListing.NewestMasterPath(productionRoot);
+
+            if (betaMaster is null || productionMaster is null ||
+                !MasterListing.TryRead(betaMaster, out IReadOnlyList<MasterListingRow> betaRows, out _) ||
+                !MasterListing.TryRead(productionMaster, out IReadOnlyList<MasterListingRow> productionRows, out _))
+            {
+                return ListingForPublish.NothingToAdd;
+            }
+
+            if (MasterListing.IndexOfSystem(productionRows, systemId) >= 0)
+                return ListingForPublish.NothingToAdd;
+
+            int inBeta = MasterListing.IndexOfSystem(betaRows, systemId);
+
+            if (inBeta < 0)
+            {
+                return ListingForPublish.Refused(
+                    "This system is not in the drop-down lists in BETA or in production, so nobody would see it. " +
+                    "Place it in the Systems screen first.");
+            }
+
+            // Production can list another system under these names that BETA does not.
+            if (MasterListing.NamesTakenBy(productionRows, systemId, betaRows[inBeta].HardwareName, betaRows[inBeta].BoardName) is MasterListingRow taken)
+                return ListingForPublish.Refused(MasterListing.NamesTakenMessage(taken));
+
+            MasterListing.TryResolvePlacement(betaRows, systemId, productionRows, out string? after);
+
+            return ListingForPublish.Add(new MasterRowInsert(productionMaster, betaRows[inBeta], after));
+        }
 
         // ###########################################################################################
         // Why this plan cannot be carried out at all, or null when it can.

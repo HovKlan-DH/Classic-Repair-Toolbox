@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.BetaView">
+
+    <!--
+    BETA TO PRODUCTION, AS THE RIGHT-HAND SIDE OF THE "BETA" SCREEN (owner request, 2026-09-27: the
+    buttons at the top left, each showing "everything in the right-side menu"). This was the
+    "Publish to production" WINDOW until then; its list of systems is now the main window's left
+    column (TabMaintainer.Beta.cs) and this is what it showed beside that list.
+
+    Owner request, 2026-09-25: "first published to BETA and then it is published to the real
+    production. The maintainer is still allowed to do this, but only after he has checked that the
+    data looks correct in BETA." What publishing the selected system would copy comes from the same
+    code on the server that then copies it; a box the maintainer ticks says they checked it in CRT
+    with the BETA data; the button follows the server's answer AND the tick (ProductionDisplay.CanPress).
+
+    NO Refresh AND NO Close: the list keeps itself up to date with the queue's own checks, and there
+    is no window to close.
+    -->
+    <DockPanel>
+
+        <!-- The system's name - or, with nothing chosen, what to do (the Review screen's
+             "Select a submission" look). -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SelectedSystemText"
+                   Text="Select a system"
+                   FontSize="16"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,4" />
+
+        <!--
+        WHO MUST APPROVE (2026-09-25): a board whose copy list changes a shared file needs its
+        maintainer AND the administrator before it goes to production. Hidden otherwise.
+        -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="ApprovalStatusText"
+                   TextWrapping="Wrap"
+                   FontWeight="SemiBold"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <!--
+        THE CHECK AND THE BUTTONS, docked to the bottom so they stay put however long the panel
+        gets, and HIDDEN with nothing chosen - as the Review screen's decision bar is. The box is
+        unticked every time a system is shown: a tick is about ONE board as it stands, never
+        carried over to the next.
+        -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    x:Name="ActionPanel"
+                    IsVisible="False"
+                    Spacing="8"
+                    Margin="0,8,0,0">
+
+            <CheckBox x:Name="CheckedInBetaCheckBox"
+                      IsEnabled="False"
+                      IsCheckedChanged="OnCheckedInBetaChanged">
+                <TextBlock TextWrapping="Wrap"
+                           Text="I have checked this board in CRT with the BETA data (Configuration: &quot;Download data from BETA source&quot;), and it is right." />
+            </CheckBox>
+
+            <!--
+            THE TWO DIRECTIONS, side by side (owner request, 2026-09-27: "I have no possibility to
+            'push back to queue', which I think I should be able to, so I can inform contributor if
+            something is missing").
+
+            "Push back to queue" is on the LEFT and in CRT's red, "Publish to production" on the
+            right and in green - the same colour language the decision buttons use, where green is
+            the one accepting action and red sends work back. It needs no tick: the tick says "I
+            checked this and it is right", which is the opposite of what pushing back means.
+
+            "Reject" beside it (owner request, 2026-09-28: "a direct 'Reject' button also - just like
+            the normal queue"): the same roll back, with the submissions rejected instead of returned
+            to the queue. Red too, like the queue's own Reject.
+            -->
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+
+                <Button Grid.Column="0"
+                        x:Name="RollBackButton"
+                        Content="Push back to queue"
+                        Foreground="{DynamicResource Button_Cancel_Fg}"
+                        Background="{DynamicResource Button_Cancel_Bg}"
+                        BorderBrush="{DynamicResource Button_Cancel_Border}"
+                        IsEnabled="False"
+                        Click="OnRollBackClick" />
+
+                <Button Grid.Column="1"
+                        x:Name="RejectButton"
+                        Content="Reject"
+                        Margin="8,0,0,0"
+                        Foreground="{DynamicResource Button_Cancel_Fg}"
+                        Background="{DynamicResource Button_Cancel_Bg}"
+                        BorderBrush="{DynamicResource Button_Cancel_Border}"
+                        IsEnabled="False"
+                        Click="OnRejectClick" />
+
+                <Button Grid.Column="3"
+                        x:Name="PublishButton"
+                        Content="Publish to production"
+                        Foreground="{DynamicResource Button_Ok_Fg}"
+                        Background="{DynamicResource Button_Ok_Bg}"
+                        BorderBrush="{DynamicResource Button_Ok_Border}"
+                        IsEnabled="False"
+                        Click="OnPublishClick" />
+            </Grid>
+        </StackPanel>
+
+        <!--
+        What happened, OUTSIDE the button bar: a finished publish usually takes the system out of the
+        list, which empties this panel and hides the bar - and the message saying it went out must
+        still be read.
+        -->
+        <TextBlock DockPanel.Dock="Bottom"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,8,0,0" />
+
+        <!--
+        WHAT IS IN THE PANEL, AND IN WHICH ORDER (owner request, 2026-09-27: "I am not sure if the
+        shown information in the right-side panel is any helpful ... can you propose something?").
+
+        It used to be the file copy list and nothing else. That is the mechanics of a copy: a board
+        is hundreds of files, and a path cannot tell a maintainer whether the data is right.
+        Meanwhile the one thing the button actually does - push named people's accepted work to
+        every CRT user - was not on the screen at all.
+
+        So, in the order a maintainer needs them:
+
+          1. WHO. The merged submissions this carries, each with its contributor and their own
+             description. The server already knows them (it emails exactly these people once the
+             promotion succeeds); now they are shown BEFORE rather than only after.
+          2. WHAT NEEDS A SECOND LOOK - the approval requirement, removals and shared files. These
+             come before the file list instead of being buried under it.
+          3. THE FILES, as a folder tree (owner request, 2026-09-28: "a file-structure for all
+             existing files in BETA or PROD, and then a highlighting of files changed"): production
+             after the publish, only what changes shown until the box is unticked, a file opened by
+             double-clicking it. It replaced the collapsed copy list of 2026-09-27, which listed the
+             copies and nothing around them.
+
+        Deliberately NOT a diff of the data itself (components added, schematics renamed). Each
+        submission was already reviewed in the table, and the tick is the maintainer saying they
+        checked the board in BETA; re-deriving it here would re-ask a question already answered.
+        -->
+        <!--
+        The details on top, scrolling on their own when there are many (a long removal list), and the
+        tree FILLING what is left. Never the tree inside the ScrollViewer: a list measured with
+        unlimited height builds every one of a board's ~2,000 rows.
+        -->
+        <Grid RowDefinitions="Auto,*">
+            <ScrollViewer Grid.Row="0" MaxHeight="300">
+                <StackPanel Spacing="8">
+
+                    <StackPanel x:Name="CarryingPanel" Spacing="2" />
+
+                    <StackPanel x:Name="AttentionPanel" Spacing="2" />
+
+                    <!--
+                    The counts sit WITH the files they count, not at the top of the panel. They were
+                    above the contributors in the first render, which put the mechanics of the copy
+                    ahead of whose work it is - the very thing this rework moved away from.
+                    -->
+                    <TextBlock x:Name="PlanSummaryText"
+                               TextWrapping="Wrap"
+                               Opacity="0.85" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <local:FileTreeView Grid.Row="1"
+                                x:Name="FileTree"
+                                IsVisible="False"
+                                Margin="0,8,0,0" />
+        </Grid>
+    </DockPanel>
+</UserControl>

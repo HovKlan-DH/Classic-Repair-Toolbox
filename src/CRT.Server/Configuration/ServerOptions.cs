@@ -47,7 +47,7 @@ namespace CRT.Server.Configuration
         // -----------------------------------------------------------------------------------
         // Publishing to PRODUCTION (owner request, 2026-09-25). All three, or none.
         //
-        // NONE means the feature is off: the maintainer application says so, and nothing can write
+        // NONE means the feature is off: the Maintainer tab says so, and nothing can write
         // Production. That is the safe answer for a service configured before this existed, which
         // is why these three have no default and are not required.
         //
@@ -154,6 +154,19 @@ namespace CRT.Server.Configuration
         // disk this service runs on. 0 turns the reserve off.
         // -----------------------------------------------------------------------------------
         public long MinimumFreeDiskBytes { get; set; } = 5L * 1024 * 1024 * 1024;
+
+        // -----------------------------------------------------------------------------------
+        // Whether board views sent from the server's OWN network are stored (owner request,
+        // 2026-09-27: "For now I would like my own home usage also to count, as we then can check
+        // the numbers and see how it works and looks like").
+        //
+        // A request arriving from a local-network address is the project owner's own machines -
+        // see SenderAddress. ON, their views are stored like anybody's, with the country of the
+        // server's own public address, and each row is marked `fromLocalNetwork = 1` so they can be
+        // told apart or deleted later. OFF, such a batch is accepted and nothing of it is stored -
+        // the launch check-in's own rule. Tuning, not safety, so it has a default: on, "for now".
+        // -----------------------------------------------------------------------------------
+        public bool CountLocalNetworkBoardViews { get; set; } = true;
 
         // -----------------------------------------------------------------------------------
         // Argon2id parameters. Defaults are RFC 9106's second recommended profile, chosen for a

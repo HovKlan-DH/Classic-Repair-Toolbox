@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CRT"
+        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
 		xmlns:shapes="clr-namespace:Avalonia.Controls.Shapes;assembly=Avalonia.Controls"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
@@ -284,6 +285,7 @@
 					<RowDefinition Height="Auto" />
 					<RowDefinition Height="Auto" />
 					<RowDefinition Height="Auto" />
+					<RowDefinition Height="Auto" />
 					<RowDefinition Height="*" />
 				</Grid.RowDefinitions>
 
@@ -437,9 +439,49 @@
 					</Grid>
 				</Border>
 
+				<!-- "Your submission is now in the online source - switch back from BETA" (owner request,
+				     2026-09-27). See Main.SourceSwitchNotice.cs. -->
+				<Border x:Name="SourceSwitchBanner"
+						Grid.Row="3"
+						IsVisible="False"
+						Background="{DynamicResource Main_Banner_Bg}"
+						CornerRadius="0"
+						Margin="0,0,0,4"
+						Padding="12,6">
+					<Grid ColumnDefinitions="*,Auto,Auto">
+						<TextBlock x:Name="SourceSwitchBannerText"
+								   Grid.Column="0"
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource Main_Banner_Fg}"
+								   FontSize="12"
+								   TextWrapping="Wrap" />
+				
+						<Button x:Name="SourceSwitchBannerConfigurationButton"
+								Grid.Column="1"
+								Classes="BannerInstallButton"
+								Content="Open Configuration"
+								Margin="12,0,4,0"
+								Background="{DynamicResource Button_Highlighted_Bg}"
+								Foreground="{DynamicResource Button_Highlighted_Fg}"
+								BorderBrush="{DynamicResource Button_Highlighted_Border}"
+								FontSize="11"
+								Padding="10,3"
+								Click="OnSourceSwitchBannerConfigurationClick" />
+				
+						<Button x:Name="SourceSwitchBannerDismissButton"
+								Grid.Column="2"
+								Classes="BannerDismissButton"
+								Content="✕"
+								FontSize="11"
+								Padding="6,3"
+								ToolTip.Tip="Do not tell me about these submissions again"
+								Click="OnSourceSwitchBannerDismiss" />
+					</Grid>
+				</Border>
+
 				<!-- Component label editor mode banner -->
 				<Border x:Name="SchematicsLabelEditorModeBanner"
-						Grid.Row="3"
+						Grid.Row="4"
 						IsVisible="False"
 						Background="{DynamicResource Main_Banner_Bg}"
 						CornerRadius="0"
@@ -456,7 +498,7 @@
 				     visible above the tabs (toggled by "Enable Worklog" in Configuration), not a
 				     dismissible banner like the ones above it. -->
 				<Border x:Name="WorklogBar"
-						Grid.Row="4"
+						Grid.Row="5"
 						IsVisible="False"
 						Background="{DynamicResource Schematics_Panels_Bg}"
 						BorderBrush="{DynamicResource Schematics_Panels_Border}"
@@ -574,7 +616,7 @@
 					</Grid>
 				</Border>
 
-				<TabControl x:Name="MainTabControl" Grid.Row="5" Padding="0">
+				<TabControl x:Name="MainTabControl" Grid.Row="6" Padding="0">
 
 					<TabItem x:Name="SchematicsTabItem" Header="Schematics">
 						<local:TabSchematics x:Name="TabSchematicsControl" />
@@ -621,6 +663,16 @@
 						<local:TabDrafts x:Name="TabDrafts" />
 					</TabItem>
 
+					<!-- The Maintainer tab (2026-09-29: the separate CRT Maintainer application, now a tab)
+					     is hidden unless "Enable Maintainer tab" is ticked in Configuration - it needs a
+					     maintainer account, which almost nobody running CRT has. IsVisible starts False so
+					     a launch with it off never flashes the tab; ApplyMaintainerTabVisibility sets the
+					     real value in the constructor and whenever the setting is toggled. While it is
+					     selected, Main.Maintainer.cs collapses the sidebar and the worklog bar. -->
+					<TabItem x:Name="MaintainerTabItem" Header="Maintainer" IsVisible="False">
+						<local:TabMaintainer x:Name="TabMaintainer" />
+					</TabItem>
+
 					<TabItem x:Name="ConfigurationTabItem" Header="Configuration">
 						<local:TabConfiguration x:Name="TabConfiguration" />
 					</TabItem>
@@ -636,7 +688,7 @@
 				</TabControl>
 
 				<Border x:Name="DataSyncStatusIconBorder"
-						Grid.Row="5"
+						Grid.Row="6"
 						ZIndex="10"
 						HorizontalAlignment="Right"
 						VerticalAlignment="Top"
@@ -741,6 +793,16 @@
 				<Run Text="&#xf059;" FontFamily="{StaticResource FontAwesomeRegular}" /><Run Text="  Hint:" FontWeight="Bold" /><LineBreak /><LineBreak /><Run x:Name="ModeHintText" />
 			</TextBlock>
 		</Panel>
+
+		<!-- "Please wait" over the whole window - CRT.UI's BusyOverlay, the one wait of both
+		     applications (owner decision, 2026-09-28: "I want this method everywhere in the entire
+		     project where there is a Wait"). Every tab finds it through BusyOverlay.For, so a wait
+		     anywhere in this window dims all of it. Last, and above the mode hint, so it covers
+		     everything. -->
+		<ui:BusyOverlay x:Name="BusyOverlay"
+						Grid.Column="0"
+						Grid.ColumnSpan="3"
+						ZIndex="2000" />
 
 	</Grid>
 

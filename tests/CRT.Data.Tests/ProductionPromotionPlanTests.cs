@@ -75,6 +75,38 @@ namespace CRT.Data.Tests
             Assert.Equal(1, result.UnchangedCount);
         }
 
+        // ###########################################################################################
+        // *** WHAT IS ALREADY THE SAME IS NAMED, NOT ONLY COUNTED (owner request, 2026-09-28). *** The
+        // maintainer's file tree draws production after the publish from the copies, the removals
+        // and these - own files and shared ones alike - so the count and the list must agree.
+        // ###########################################################################################
+        [Fact]
+        public void The_files_already_the_same_are_listed_as_well_as_counted()
+        {
+            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
+                (P("Data C64 250407 v2.0.0.xlsx"), "new"),
+                (P("Images/b.png"), "same-b"),
+                (P("Images/a.png"), "same-a"),
+                ("Commodore/Shared files/manual.pdf", "same-manual"));
+
+            PublishedTreeView production = ProductionPromotionPlanTests.Tree(
+                (P("Data C64 250407 v2.0.0.xlsx"), "old"),
+                (P("Images/b.png"), "same-b"),
+                (P("Images/a.png"), "same-a"),
+                ("Commodore/Shared files/manual.pdf", "same-manual"));
+
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
+                [P("Data C64 250407 v2.0.0.xlsx"), P("Images/b.png"), P("Images/a.png")],
+                [P("Images/a.png"), "Commodore/Shared files/manual.pdf"],
+                beta,
+                production);
+
+            Assert.Equal(
+                ["Commodore/C64/250407/Images/a.png", "Commodore/C64/250407/Images/b.png", "Commodore/Shared files/manual.pdf"],
+                result.Unchanged);
+            Assert.Equal(result.Unchanged!.Count, result.UnchangedCount);
+        }
+
         [Fact]
         public void A_file_production_does_not_have_is_ADDED()
         {
@@ -186,6 +218,26 @@ namespace CRT.Data.Tests
             PromotionFile shared = Assert.Single(result.Files);
             Assert.True(shared.IsShared);
             Assert.Equal("Commodore/Shared files/74LS08.png", shared.Path);
+        }
+
+        // A NEW shared file is copied like any other, but reaches no board that did not ask for it -
+        // so it does not make the promotion the administrator's too (owner decision, 2026-09-27).
+        [Fact]
+        public void A_NEW_shared_file_is_copied_but_does_not_need_the_administrator()
+        {
+            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
+                (P("main.png"), "m"),
+                ("Commodore/Shared files/74LS08.png", "new"));
+
+            PublishedTreeView production = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
+
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
+                [P("main.png")], ["Commodore/Shared files/74LS08.png"], beta, production);
+
+            Assert.False(result.TouchesSharedFiles);
+            PromotionFile shared = Assert.Single(result.Files);
+            Assert.True(shared.IsShared);
+            Assert.Equal(PromotionChange.Added, shared.Change);
         }
 
         [Fact]

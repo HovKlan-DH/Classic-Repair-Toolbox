@@ -8,7 +8,7 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // AmendSubmissionFlow - a maintainer's change to a submission, made in the maintainer application's
+    // AmendSubmissionFlow - a maintainer's change to a submission, made in the Maintainer tab's
     // table (owner request, 2026-09-25: "The maintainer should be able to also edit whatever, if
     // he chooses to publish it afterwards").
     //
@@ -375,6 +375,11 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsAmended);
             Assert.Contains(outcome.Findings, finding => finding.Code == "amend.file_unknown");
+
+            // Said to the maintainer about "the Maintainer tab", not the application it replaced.
+            ValidationFinding unknown = outcome.Findings.First(finding => finding.Code == "amend.file_unknown");
+            Assert.Contains("the Maintainer tab", unknown.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("CRT Maintainer", unknown.Message, StringComparison.Ordinal);
             Assert.Empty(store.Amendments);
         }
 

@@ -1,0 +1,49 @@
+<!--
+    "Please wait" over a whole window (owner decisions, 2026-09-27 and 2026-09-28). See the header of
+    BusyOverlay.axaml.cs for how it behaves and WaitLimit.cs for when it ends.
+
+    A host places ONE of these as the LAST child of its window's root Grid, spanning every row and
+    column, so it lies over everything else in the window. Nothing else about the host changes.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.BusyOverlay"
+             IsVisible="False"
+             Cursor="Wait"
+             Background="Transparent"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+
+    <!-- Transparent until revealed - it takes every click from the first moment, but the window is
+         only dimmed once the wait has lasted long enough to notice (BusyOverlay.RevealAfter). -->
+    <Border x:Name="Scrim" Background="Transparent">
+        <Border x:Name="Card"
+                IsVisible="False"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MaxWidth="460"
+                Margin="16"
+                Padding="24,20"
+                CornerRadius="6"
+                Background="{DynamicResource Bg}"
+                BorderBrush="#4F7FBF"
+                BorderThickness="1">
+            <StackPanel Spacing="12">
+                <ProgressBar x:Name="Bar"
+                             IsIndeterminate="True"
+                             Minimum="0"
+                             Maximum="100"
+                             MinWidth="320" />
+                <TextBlock x:Name="MessageText"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center" />
+                <!-- How long it has been waiting, so a long wait visibly keeps going rather than
+                     looking frozen - and so "how long did that take" has an answer. -->
+                <TextBlock x:Name="ElapsedText"
+                           FontSize="11"
+                           Opacity="0.6"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Border>
+</UserControl>

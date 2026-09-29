@@ -32,11 +32,11 @@ namespace CRT.Server.Handlers.Submissions
     public static class ReviewAuthority
     {
         // ###########################################################################################
-        // May this account open the maintainer application at all - see the queue, and be told
+        // May this account open the Maintainer tab at all - see the queue, and be told
         // "nothing waiting" rather than "not allowed"?
         //
         // Administrators, and anyone in at least one pool. An account in no pool is refused the
-        // queue outright, which is what tells the maintainer app to say the account lacks the role.
+        // queue outright, which is what tells the Maintainer tab to say the account lacks the role.
         // ###########################################################################################
         public static bool CanReviewAnything(ReviewAccess? access) =>
             ReviewAuthority.IsUsable(access) &&

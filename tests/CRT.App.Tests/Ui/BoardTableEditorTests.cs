@@ -529,7 +529,7 @@ public sealed class BoardTableEditorTests : IDisposable
     public void There_are_no_Restore_row_or_Revert_cell_buttons_undo_does_both(string removed)
     {
         // Removed at the owner's request (2026-09-24) once Ctrl+Z existed: less clutter. The
-        // model keeps BoardTableSheet.RestoreRow / RevertCell for the maintainer application's table.
+        // model keeps BoardTableSheet.RestoreRow / RevertCell for the Maintainer tab's table.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
@@ -1912,6 +1912,41 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A HOST IS TOLD WHEN THE CHOICE CHANGES - AND ONLY THEN (2026-09-29). *** CRT's Maintainer
+    // tab remembers "Show changes only" between runs through OnlyChangesWantedChanged. A table with
+    // nothing published turns the FILTER off by itself; were that reported, the host would save
+    // "off" as the maintainer's choice every time a new system went past. The box raises it, the
+    // same value twice does not, and a table turning its own filter off does not.
+    // ###########################################################################################
+    [Fact]
+    public void The_host_is_told_when_the_choice_changes_and_not_when_a_table_turns_the_filter_off()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            var told = new List<bool>();
+            editor.OnlyChangesWantedChanged += (_, _) => told.Add(editor.OnlyChangesWanted);
+
+            editor.Open(ComponentsChanged());
+            editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked = true;
+            Assert.Equal([true], told);
+
+            editor.OnlyChanges = true;
+            Assert.Equal([true], told);
+
+            editor.Clear();
+            editor.Open(BoardTableDocument.Create(null, Board(Component("U1"))));
+            Assert.False(editor.OnlyChanges);
+            Assert.Equal([true], told);
+
+            editor.Clear();
+            editor.Open(ComponentsChanged());
+            editor.OnlyChanges = false;
+            Assert.Equal([true, false], told);
+        });
+    }
+
     // Unticked by the user, it stays off - the kept choice is the user's, not "on".
     [Fact]
     public void Show_changes_only_unticked_by_the_user_stays_off_for_the_next_table()
@@ -1931,7 +1966,7 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     // ###########################################################################################
-    // The host may ask for the sheet to open on - the maintainer application's last-visited sheet -
+    // The host may ask for the sheet to open on - the Maintainer tab's last-visited sheet -
     // and gets it, unless the filter hides its tab.
     // ###########################################################################################
     [Fact]
@@ -2339,7 +2374,7 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
     // ###########################################################################################
-    // DOCUMENT MODE - the maintainer application's table (2026-09-25). The same editor, opened on a
+    // DOCUMENT MODE - the Maintainer tab's table (2026-09-25). The same editor, opened on a
     // document with no draft file behind it: Save hands the document to the host, nothing is
     // written anywhere, and the controls that only make sense for a draft file stay out of sight.
     // ###########################################################################################
@@ -2451,7 +2486,7 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
-    // Save in document mode hands the edited document to the host - the maintainer application
+    // Save in document mode hands the edited document to the host - the Maintainer tab
     // sends it to the server - and writes nothing itself.
     [Fact]
     public void Save_in_a_document_asks_the_host_and_hands_it_the_edited_document()

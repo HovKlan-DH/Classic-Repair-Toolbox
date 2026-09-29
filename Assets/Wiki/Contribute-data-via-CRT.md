@@ -118,6 +118,36 @@ the ones that are right.
 The full walkthrough, including importing a KiCad project so that clicking a component lights up its
 real copper traces, is on [Add new board with KiCad data](Add-new-board-with-KiCad-data).
 
+## Bringing in a board you already have work on
+
+If you already have a board's files from earlier work - a board you set up the old way, or one you
+edited in Excel or on another computer - you can put its folder into your drafts folder yourself:
+
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Drafts`
+* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+
+Keep the same three folder levels the data uses - manufacturer, hardware, board - for example
+`Drafts\Commodore\C128\310378 Open128\`, with the board's Excel file and everything that belongs to
+it inside. The next time CRT starts, it takes the folder in as a draft and shows it on the
+**Drafts** tab, ready to edit and submit like any other.
+
+* A folder for a board CRT already lists becomes your draft of that board, and the Drafts tab shows
+  what you changed compared with the published version.
+* Any other folder becomes a new system, named after its folders. A board you set up the old way
+  (with a `_UserContribution` workbook) is one of these, because it has never been published - it
+  stays where it already is in the hardware and board lists.
+* The board folder should hold one Excel file. For a board CRT already lists, a file with a
+  different name is renamed, together with its `.json` file, to the name that board uses.
+* There is no need to copy a manufacturer's `Shared files` folder in as well. CRT reads shared files
+  from its own data, and a `Shared files` folder placed next to your board folders (for example
+  `Drafts\Commodore\Shared files`) is ignored. A NEW or changed shared file belongs inside the
+  board's own folder, under its full path - for example
+  `Drafts\Commodore\C128\310378 Open128\Commodore\Shared files\Component images\` - which is also
+  where CRT puts one you add through the Contribute tab.
+* A folder CRT cannot take in is left exactly as it is, and the reason is written to the log file.
+  The usual reasons are several Excel files in one board folder, or the Excel file being open in
+  Excel while CRT starts.
+
 ## Worth knowing
 
 Your edit takes effect in your own local view of the board as soon as you save it — the "Drafts"
@@ -125,6 +155,9 @@ tab lists every board you have local changes on, and you can discard a draft the
 If one of the draft's files is open in another program - its workbook in Excel, say - Discard
 cannot remove all of it and says so at the top of the tab. Close the file there and press Discard
 again.
+If you discard a draft while something you sent from it is still being reviewed, the dialog says so,
+and the board's maintainers are told that you discarded your draft - so they can check with you
+before publishing it. Your contribution itself is not withdrawn.
 Nothing changes for anyone else until you submit your draft and it is reviewed and accepted, after
 which it reaches everyone the next time the application syncs its data.
 
@@ -141,8 +174,8 @@ to empty.
 ## When the official data changes underneath your draft
 
 Board data is improved by other people too, so the official version of a board you are working on
-can be updated while your draft sits on top of it. When that happens the "Drafts" tab marks that
-board **"Updated officially"**, and the board itself shows a one-line notice.
+can be updated while your draft sits on top of it. When that happens the "Drafts" tab says so under
+that board, and the board itself shows a one-line notice.
 
 **Your edits are not lost and nothing is overwritten.** Your draft and the synced data live in
 separate folders; your changes are still applied on top of whatever the official data now says.
@@ -309,6 +342,13 @@ and you can carry on using the board as normal while the contribution waits to b
 is deliberate: review takes time, and you should not lose the use of your own work while it
 happens.
 
+**The board's row on the Drafts tab shows how your last submission is doing**, in a small badge
+beside its name - *Submitted - awaiting feedback from a maintainer* as soon as it is sent, then for example *Published to BETA source*, or
+*Changes requested* in orange when there is something for you to look at. It uses the same words and
+colours as "My submissions", and pointing at it tells you when you sent it. It only describes
+submissions sent from this draft: if you start a new draft of a board you submitted before, the badge
+stays away until you send the new one.
+
 **The board's KiCad data travels with the submission.** If the board has a "KiCad data" folder -
 imported through the Drafts tab, or synced with a published board - its KiCad project files
 (.kicad_pcb, .kicad_sch, .kicad_pro) are sent along with everything else, and publishing the
@@ -323,13 +363,18 @@ newer submission*. If a maintainer has already started on the earlier one - corr
 it, or given it a first approval - both are kept and looked at separately. The server knows the two
 came from you by the email address you gave (or your account, if you are signed in).
 
-**Once your contribution is published, the draft tidies itself away.** When the application has
-downloaded the updated data and your draft holds nothing the published board does not - no other
-rows, no other KiCad calibration and no other files - the draft is removed on its own, the next time
-the application starts or when you close "My submissions". If you kept working in the draft after
+**Once your contribution is published to the ordinary source, the draft tidies itself away.** Not
+before: while it is only on the BETA source a maintainer can still take it back out for another look,
+so your draft stays until the second step (see below). When the application has downloaded the
+updated data and your draft holds nothing the published board does not - no other rows, no other
+KiCad calibration and no other files - the draft is removed on its own, the next time the
+application starts or when you close "My submissions", along with any folders it leaves empty in the
+Drafts folder. If you kept working in the draft after
 submitting, or it is open in the table editor with unsaved edits, it stays, and nothing of yours is
 lost. **A whole new system is tidied away the same way**, once CRT lists the published system in
 its hardware and board lists. Until then your draft is the only place you can see it, so it stays.
+A board you set up the old way, with a `_UserContribution` workbook, is never counted as published
+by its own copy in your data folder - only the real published board can tidy its draft away.
 
 If the submission cannot be sent - no internet connection, or a file the data refers to has been
 moved or deleted since you added it - you are told which file and what went wrong. Nothing is lost
@@ -364,6 +409,16 @@ BETA source*. After that it is published to the ordinary **source** that everyon
 the row says *Published to source*. You get an email at each step. CRT looks for the second step
 each time it starts, for a month after the first; after that, "Check for updates" still asks.
 
+**Checking your work on the BETA source?** Ticking **Download data from BETA source** on the
+Configuration tab lets you see your contribution as it will look, before everyone else gets it. When
+it then reaches the ordinary source, CRT shows a note under its tabs saying so, as a reminder to untick
+that box again - the BETA source is for checking, not for everyday use. The note goes away when you
+untick the box, or when you close it.
+
+**A brand-new board** is added to CRT's hardware and board lists by the maintainer who accepts it:
+they choose the names it is shown under and where in the lists it goes, so it may be listed a little
+differently from how you named it.
+
 **A maintainer may correct small things before publishing** - a typo, a wrong part number - rather
 than sending the whole contribution back to you. When that happens, "My submissions" and the email
 both say that a maintainer changed some of the details, so what is published is not exactly what you
@@ -389,7 +444,7 @@ A few things worth knowing about that list:
 
 For a brand new hardware and board, the project owner may set you up as a **maintainer** of that
 system once it is published, so you can look after it from then on - reviewing what others send in
-for it, and publishing what is right. That happens after the fact and only for new systems; it is
+for it, and publishing what is right, in CRT's [Maintainer tab](Maintainer-tab). That happens after the fact and only for new systems; it is
 never something you need before contributing.
 
 ## That's it

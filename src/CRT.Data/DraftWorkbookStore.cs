@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace Handlers.DataHandling
@@ -279,6 +280,14 @@ namespace Handlers.DataHandling
         // same one WorklogManager.DeleteWorkbook uses for a workbook. It matters more now than it
         // did: the folder holds copied image bytes as well as rows, and leaving those behind would
         // strand megabytes per discarded draft.
+        //
+        // *** THE MARKER GOES LAST (code review, 2026-09-27). *** A recursive delete removed
+        // ".crt-draft.json" first - it sorts first - and then stopped at a workbook Excel had open.
+        // That left the workbook without its marker, and since hand-placed folders are imported at
+        // every start (DraftFolderImport), the next start took it in again as a fresh draft: a
+        // discarded or retired draft came back. Now everything else goes first; a delete that stops
+        // part-way leaves the marker, so the folder is still the same draft - on the Drafts tab,
+        // where discarding it again finishes the job.
         // ###########################################################################################
         public static bool Discard(string draftsRoot, string excelDataFile)
         {
@@ -291,9 +300,11 @@ namespace Handlers.DataHandling
 
             try
             {
-                Directory.Delete(folder, recursive: true);
+                DraftWorkbookStore.DeleteMarkerLast(folder);
 
                 CrtLog.Info($"Discarded draft for [{excelDataFile}]");
+
+                DraftWorkbookStore.RemoveEmptyParents(draftsRoot, folder);
 
                 return true;
             }
@@ -302,6 +313,80 @@ namespace Handlers.DataHandling
                 CrtLog.Warning($"Could not discard the draft for [{excelDataFile}] - [{ex.Message}]");
 
                 return false;
+            }
+        }
+
+        // Everything in the folder but the marker, then the marker, then the (now empty) folder.
+        private static void DeleteMarkerLast(string folder)
+        {
+            string marker = Path.Combine(folder, DraftFolderLayout.DraftMarkerFileName);
+
+            foreach (string entry in Directory.GetFileSystemEntries(folder))
+            {
+                if (string.Equals(Path.GetFileName(entry), DraftFolderLayout.DraftMarkerFileName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (Directory.Exists(entry))
+                {
+                    Directory.Delete(entry, recursive: true);
+                }
+                else
+                {
+                    File.Delete(entry);
+                }
+            }
+
+            if (File.Exists(marker))
+            {
+                File.Delete(marker);
+            }
+
+            Directory.Delete(folder, recursive: false);
+        }
+
+        // ###########################################################################################
+        // Removes the folders a discarded draft leaves EMPTY above it - "Drafts/Commodore/C128" once
+        // "310378 Open128" has gone, then "Drafts/Commodore" if that was all it held (owner report,
+        // 2026-09-27: "there are some left-over folders").
+        //
+        // Only empty folders, and never the drafts root itself: a hardware folder still holding
+        // another board, or a manufacturer folder holding anything else at all, stops the walk. An
+        // empty folder removed here is recreated by the next draft that needs it. A failure is only
+        // untidy, never a failed discard - the draft itself is already gone.
+        // ###########################################################################################
+        private static void RemoveEmptyParents(string draftsRoot, string removedFolder)
+        {
+            string root = Path.GetFullPath(draftsRoot);
+            string? parent = Path.GetDirectoryName(Path.GetFullPath(removedFolder));
+
+            while (!string.IsNullOrEmpty(parent))
+            {
+                string relative = Path.GetRelativePath(root, parent);
+
+                // At or above the root: stop, and never touch the root.
+                if (relative == "." || relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (!Directory.Exists(parent) || Directory.EnumerateFileSystemEntries(parent).Any())
+                    {
+                        return;
+                    }
+
+                    Directory.Delete(parent, recursive: false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    CrtLog.Warning($"Could not remove the empty drafts folder [{parent}] - [{ex.Message}]");
+                    return;
+                }
+
+                parent = Path.GetDirectoryName(parent);
             }
         }
 

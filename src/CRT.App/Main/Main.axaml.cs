@@ -40,6 +40,9 @@ namespace CRT
         //   Main.NewSystem.cs         - "Add a new system": the create dialog, draft creation, navigation
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
         //   Main.DraftBadges.cs       - the "Draft" chip on Hardware and Board drop-down entries
+        //   Main.SourceSwitchNotice.cs - "now in the online source - switch back from BETA" banner
+        //   Main.BoardViews.cs        - counting a board as viewed after ten seconds, sending views home
+        //   Main.Maintainer.cs        - the Maintainer tab: shown or not, and the layout while selected
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -228,6 +231,9 @@ namespace CRT
             this.TabWorkbooks.Initialize(this);
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
+            this.TabMaintainer.UseRememberedChoices(
+                UserSettings.MaintainerShowChangesOnly,
+                showChangesOnly => UserSettings.MaintainerShowChangesOnly = showChangesOnly);
 
             this.MainTabControl.SelectionChanged += this.OnMainTabControlSelectionChanged;
 
@@ -245,6 +251,11 @@ namespace CRT
             // whose workbooks could be shown. That population raises OnBoardSelectionChanged, which
             // refreshes with a real board key.
             this.ApplyWorklogBarVisibility();
+
+            // Hidden unless "Enable Maintainer tab" is ticked (Main.Maintainer.cs). Before the
+            // sidebar's width is restored below, which is fine: the Maintainer tab cannot be the
+            // selected one yet, so no layout is collapsed.
+            this.ApplyMaintainerTabVisibility();
 
             // Only collapses the inline thumbnail column here if the setting is already on -
             // opening the detached window itself is deferred to OnWindowFirstOpened, since
@@ -481,6 +492,10 @@ namespace CRT
                     new SubmissionClient().GetStatusAsync,
                     DateTimeOffset.UtcNow,
                     onFinished: changedCount => Dispatcher.UIThread.Post(() => _ = this.RetirePublishedDraftsAsync()));
+
+                // A discarded draft the server was not told about yet - discarded with no network -
+                // is reported now (owner request, 2026-09-28; see DraftDiscardReporter).
+                _ = DraftDiscardReporter.ReportPendingAsync(new SubmissionClient().ReportDraftDiscardedAsync);
             }
             catch (Exception ex)
             {
@@ -493,7 +508,13 @@ namespace CRT
         // ###########################################################################################
         private void OnMainSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
-            Dispatcher.UIThread.Post(() => UserSettings.LeftPanelWidth = this.LeftPanel.Bounds.Width);
+            // Never while the Maintainer tab has collapsed the sidebar: its width is 0 then, and the
+            // next launch would open with no sidebar at all (Main.Maintainer.cs).
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!this.IsMaintainerLayoutActive)
+                    UserSettings.LeftPanelWidth = this.LeftPanel.Bounds.Width;
+            });
         }
 
         // ###########################################################################################
@@ -502,6 +523,9 @@ namespace CRT
         private void OnWindowFirstOpened(object? sender, EventArgs e)
         {
             this.Opened -= this.OnWindowFirstOpened;
+
+            // Views a send could not deliver are tried again while the window is open.
+            this.StartBoardViewRetries();
 
             // Deferred from the constructor - see its own comment. The constructor already collapsed
             // the inline column if the GLOBAL setting was on; ApplyThumbnailsDetachedState below
@@ -655,7 +679,8 @@ namespace CRT
                 return;
 
             bool isEnabled = UserSettings.EnableWorklog;
-            this.WorklogBar.IsVisible = isEnabled;
+            // Never shown over the Maintainer tab, which hides it while selected (Main.Maintainer.cs).
+            this.WorklogBar.IsVisible = isEnabled && !this.IsMaintainerLayoutActive;
 
             if (this.WorkbooksTabItem != null)
                 this.WorkbooksTabItem.IsVisible = isEnabled;
@@ -765,6 +790,11 @@ namespace CRT
         // ###########################################################################################
         internal async Task RetirePublishedDraftsAsync()
         {
+            // The receipts have just been brought up to date (this runs after every status check),
+            // so this is where a submission reaching production is first seen. Before the retiring
+            // below, whose early return would otherwise skip it.
+            this.RefreshSourceSwitchNotice();
+
             bool refreshed = false;
 
             try
@@ -775,13 +805,11 @@ namespace CRT
 
                 // Copied here, on the UI thread: the search runs on the pool. A receipt names its
                 // system by id, and these are what that id is matched against - the PUBLISHED boards
-                // CRT lists, not draft-only systems: a draft is only retired against a published
-                // board the contributor can open instead (see DraftRetirement's header).
-                List<string> excelDataFiles = DataManager.HardwareBoards
-                    .Where(entry => !entry.IsDraftOnly)
-                    .Select(entry => entry.ExcelDataFile)
-                    .Where(file => !string.IsNullOrWhiteSpace(file))
-                    .ToList();
+                // CRT lists: a draft is only retired against a published board the contributor can
+                // open instead (see DraftRetirement's header). Neither a draft-only system nor a
+                // _UserContribution board, whose file in Data/ is the contributor's own copy - that
+                // one retired a just-submitted draft against itself (2026-09-27).
+                List<string> excelDataFiles = DataManager.PublishedExcelDataFiles();
 
                 // Which drafts are draft-only systems: retiring one removes a whole entry from the
                 // hardware and board lists, not just a draft.
@@ -979,6 +1007,15 @@ namespace CRT
                 return false;
             }
 
+            // The Maintainer tab owns the keyboard whenever it is shown, not only while its table
+            // is open: its sign-in panel has the password box, its decision bar a comment box and
+            // its Systems screen an invitation address - and the component filter it would steal
+            // focus for is hidden with the sidebar anyway (Main.Maintainer.cs).
+            if (ReferenceEquals(selectedTab, this.MaintainerTabItem))
+            {
+                return false;
+            }
+
             // Avoid stealing focus if another TextBox currently holds it naturally
             var focusedElement = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
             if (focusedElement is global::Avalonia.Controls.TextBox && focusedElement != this.ComponentSearchTextBox)
@@ -1006,22 +1043,36 @@ namespace CRT
             // and the shutdown flag after that guard must not be set for a close that did not
             // happen (see the comment on it).
             // ###########################################################################################
-            if (!this._unsavedTableEditsSettledForExit && this.TabDrafts.HasUnsavedTableEdits)
+            // The Maintainer tab's table is asked about the same way, straight after the Drafts
+            // tab's (2026-09-29) - in ONE posted continuation, so a single settled flag covers both
+            // and an answer to the first is not asked again by a second round.
+            if (!this._unsavedTableEditsSettledForExit &&
+                (this.TabDrafts.HasUnsavedTableEdits || this.TabMaintainer.HasUnsavedTableEdits))
             {
                 e.Cancel = true;
 
                 Dispatcher.UIThread.Post(async () =>
                 {
-                    if (this.DraftsTabItem != null && this.MainTabControl != null)
+                    if (this.TabDrafts.HasUnsavedTableEdits)
                     {
-                        this.MainTabControl.SelectedItem = this.DraftsTabItem;
+                        if (this.DraftsTabItem != null && this.MainTabControl != null)
+                        {
+                            this.MainTabControl.SelectedItem = this.DraftsTabItem;
+                        }
+
+                        if (!await this.TabDrafts.ConfirmLeavingTableAsync(this))
+                        {
+                            return;
+                        }
                     }
 
-                    if (await this.TabDrafts.ConfirmLeavingTableAsync(this))
+                    if (!await this.ConfirmLeavingMaintainerTableAsync())
                     {
-                        this._unsavedTableEditsSettledForExit = true;
-                        this.Close();
+                        return;
                     }
+
+                    this._unsavedTableEditsSettledForExit = true;
+                    this.Close();
                 });
 
                 return;

@@ -336,4 +336,17 @@ public sealed class LabelEditorBoardWriterTests
 
         Assert.Equal(["U1", "U2", "U3", "C1"], result.Components.Select(component => component.BoardLabel));
     }
+
+    // The label editor's save keeps the "# Hardware:" / "# Board:" caption - it rebuilt the board
+    // without it, so the draft lost the first two lines of every sheet (owner report, 2026-09-28).
+    [Fact]
+    public void A_save_keeps_the_caption()
+    {
+        var board = new BoardData { HardwareName = "Commodore 64", BoardName = "250407" };
+
+        BoardData result = LabelEditorBoardWriter.ApplyLabelEditorSave(
+            board, "Sheet 1", [LabelEditorBoardWriterTests.Row("U8")], region: "");
+
+        Assert.Equal(("Commodore 64", "250407"), (result.HardwareName, result.BoardName));
+    }
 }

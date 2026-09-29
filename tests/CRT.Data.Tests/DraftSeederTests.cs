@@ -316,6 +316,56 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A NEW SYSTEM IS SEEDED WITH NO REVISION DATE, AND THAT IS FINE - THE SERVER STAMPS IT.
+    // *** It once was not: approving a new system answered "This submission cannot be published: A
+    // publish must carry a revision" (reported by the project owner, 2026-09-26), because
+    // PublishPlan was built from the SUBMITTED date and a new system has none to give.
+    //
+    // The project owner settled it the same day: "when the maintainer publish it to BETA, the
+    // revision date gets updated from server. Same happens when it gets published to real
+    // production, so server always wins, and what is typed by user is not important." So
+    // ApprovePublishFlow.BuildPlan stamps the publish date and nothing downstream needs the draft
+    // to carry one.
+    //
+    // This test holds the CLIENT half of that: the seeded workbook deliberately carries no
+    // revision date, and the merge leaves it empty for a new system. Stamping one here instead
+    // would be wrong in its own right - PublishExecutor's header explains that a locally stamped
+    // draft immediately looks newer than the board it came from, so DraftRevisionComparer would
+    // report drift on every draft. The server half is
+    // ApprovePublishFlowTests.A_NEW_system_that_carries_no_revision_date_can_still_be_planned.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_NEW_system_is_seeded_with_no_revision_date_because_the_server_stamps_it()
+    {
+        var registration = new NewSystemRegistration
+        {
+            HardwareName = "C64",
+            BoardName = "250407",
+            ExcelDataFile = DraftSeederTests.SystemKey,
+        };
+
+        DraftSeedResult result = DraftSeeder.CreateNewSystem(this.DraftsRoot, registration);
+        Assert.True(result.Created, result.Reason);
+
+        // 1. Nothing stamped a revision date into the seeded workbook.
+        BoardData seeded = await DraftSeederTests.ReadWorkbookAsync(result.WorkbookPath);
+        Assert.True(string.IsNullOrWhiteSpace(seeded.RevisionDate));
+
+        // 2. With no published board to fall back to, the merged board carries none either.
+        var manifest = new SubmissionManifest
+        {
+            SystemId = "Commodore/C64/250407",
+            Manufacturer = "Commodore",
+            Hardware = "C64",
+            Board = "250407",
+        };
+
+        BoardData merged = PublishMerge.Build(manifest, published: null);
+
+        Assert.Equal(string.Empty, PublishMerge.RevisionOf(merged));
+    }
+
+    // ###########################################################################################
     // *** A NEW SYSTEM GETS AN EMPTY "Scope baseline" FOLDER (owner request, 2026-09-24). ***
     //
     // Beside the workbook, so the contributor can pick it straight away when referencing their

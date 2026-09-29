@@ -1,5 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
@@ -921,6 +925,586 @@ public sealed class SystemFilesWindowTests : IDisposable
             Assert.True(
                 window.GetControl<Border>("ReportPanel").IsVisible,
                 "The match report should be rebuilt when the window opens on existing KiCad data.");
+        });
+    }
+
+    // ###########################################################################################
+    // *** DRAGGING THE SCHEMATIC IMAGES INTO A NEW ORDER (owner request, 2026-09-27). ***
+    //
+    // "The same move functionality which is already present in the worklog modal": each image its
+    // own panel, dragged up or down with a dashed placeholder showing where it will land. Driven
+    // with REAL pointer input in a shown window - press, move, release - because what went wrong
+    // before (rows "rapidly switching position and cannot settle") only exists in that sequence.
+    // ###########################################################################################
+
+    private static readonly string[] FiveViews = ["PCB; Top", "PCB; Bottom", "Address Multiplexing", "Clock", "CPU 8502"];
+
+    // A drafted system holding these schematic rows, in this order. No image files: the rows are
+    // the point here, and a row with no file still draws a same-sized preview box.
+    private void SeedSystemWithSchematics(params string[] names)
+    {
+        DraftSeeder.CreateNewSystem(
+            DraftManager.DraftsRoot,
+            new NewSystemRegistration
+            {
+                HardwareName = "C64",
+                BoardName = "250407",
+                ExcelDataFile = SystemFilesWindowTests.SystemKey,
+            });
+
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            SystemFilesWindowTests.SystemKey,
+            board =>
+            {
+                foreach (string name in names)
+                {
+                    board.Schematics.Add(new BoardSchematicEntry
+                    {
+                        SchematicName = name,
+                        SchematicImageFile = SystemFilesWindowTests.StoredImagePath(name + ".png"),
+                    });
+                }
+
+                return board;
+            });
+    }
+
+    // Tall enough by default that five rows are all on screen - a press on a row scrolled out of
+    // sight lands on nothing. The auto-scroll test asks for a short window on purpose.
+    private SystemFilesWindow ShowOnSeededSystem(double height = 1000)
+    {
+        SystemFilesWindow window = this.OpenOnSeededSystem(SystemFilesSection.SchematicImages);
+        window.Height = height;
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        return window;
+    }
+
+    private static Control RowContainer(SystemFilesWindow window, int index) =>
+        window.GetControl<ItemsControl>("SchematicsItemsControl").ContainerFromIndex(index)!;
+
+    private static Grid HandleOf(SystemFilesWindow window, int index) =>
+        RowContainer(window, index).GetVisualDescendants().OfType<Grid>()
+            .Single(grid => grid.Classes.Contains("SchematicDragHandle"));
+
+    private static Point CentreOf(Window window, Control control) =>
+        control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+
+    // The centre of every row as laid out BEFORE the drag - where a hand would aim.
+    private static Point[] RowCentres(SystemFilesWindow window) =>
+        Enumerable.Range(0, window.Schematics.Count).Select(i => CentreOf(window, RowContainer(window, i))).ToArray();
+
+    private static void PressAt(Window window, Point point)
+    {
+        window.MouseDown(point, Avalonia.Input.MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static void DragTo(Window window, Point point)
+    {
+        window.MouseMove(point, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static void ReleaseAt(Window window, Point point)
+    {
+        window.MouseUp(point, Avalonia.Input.MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static List<string> Order(SystemFilesWindow window) =>
+        window.Schematics.Select(row => row.SchematicName).ToList();
+
+    private static List<string> DraftOrder() =>
+        DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, SystemFilesWindowTests.SystemKey)!
+            .Schematics.Select(entry => entry.SchematicName).ToList();
+
+    private static DateTime DraftWrittenAt() =>
+        File.GetLastWriteTimeUtc(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, SystemFilesWindowTests.SystemKey));
+
+    [Fact]
+    public void Every_schematic_image_is_its_own_panel_that_can_be_dragged_but_not_by_its_Remove_button()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+
+            for (int i = 0; i < FiveViews.Length; i++)
+            {
+                Control container = RowContainer(window, i);
+
+                Border panel = container.GetVisualDescendants().OfType<Border>()
+                    .First(border => border.CornerRadius.TopLeft == 3 && border.BorderThickness.Top == 1);
+                Assert.True(panel.IsEffectivelyVisible);
+
+                // The whole row but its Remove button is the handle, with the move cursor. Cursor
+                // has no value equality, so it is compared by name.
+                Grid handle = HandleOf(window, i);
+                Assert.Equal(
+                    new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.SizeNorthSouth).ToString(),
+                    handle.Cursor?.ToString());
+
+                Button remove = container.GetVisualDescendants().OfType<Button>().Single();
+                Assert.DoesNotContain(remove, handle.GetVisualDescendants());
+            }
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A VISIBLE MOVE ICON ON EVERY PANEL (owner request, 2026-09-27): "I need a move icon to be
+    // visible, so it is clear it can be moved". *** The cursor only says so once the pointer is on
+    // the row. The grip is Font Awesome's "grip-vertical" (U+F58E, present in the shipped font and
+    // inside its ascent, so not clipped), drawn INSIDE the handle - pressing the icon itself is the
+    // most natural place to start a drag, so it must start one.
+    // ###########################################################################################
+    [Fact]
+    public void Every_panel_shows_a_move_grip_inside_its_drag_handle()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+
+            for (int i = 0; i < FiveViews.Length; i++)
+            {
+                TextBlock grip = HandleOf(window, i).GetVisualDescendants().OfType<TextBlock>()
+                    .Single(text => text.Classes.Contains("SchematicDragGrip"));
+
+                Assert.True(grip.IsEffectivelyVisible);
+                Assert.Equal("", grip.Text);
+                Assert.True(grip.Bounds.Width > 0 && grip.Bounds.Height > 0);
+            }
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Pressing_the_grip_itself_starts_the_drag()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+
+            TextBlock grip = HandleOf(window, 0).GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Classes.Contains("SchematicDragGrip"));
+
+            // Measured before pressing: once the drag starts, this row is the placeholder and its
+            // grip is no longer drawn.
+            Point onGrip = CentreOf(window, grip);
+            Point target = new(onGrip.X, centres[2].Y + 5);
+
+            PressAt(window, onGrip);
+            DragTo(window, target);
+            ReleaseAt(window, target);
+
+            Assert.Equal(["PCB; Bottom", "Address Multiplexing", "PCB; Top", "Clock", "CPU 8502"], DraftOrder());
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Dragging_a_row_turns_it_into_a_dashed_placeholder_of_its_own_height_and_the_others_make_room()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+            double rowHeight = RowContainer(window, 0).Bounds.Height;
+
+            PressAt(window, CentreOf(window, HandleOf(window, 0)));
+            DragTo(window, centres[2] + new Point(0, 5));
+
+            SystemSchematicRow dragged = window.Schematics.Single(row => row.SchematicName == "PCB; Top");
+
+            Assert.True(dragged.IsDropPlaceholder);
+            Assert.Equal(rowHeight, dragged.PlaceholderHeight, precision: 1);
+            Assert.All(window.Schematics.Where(row => row != dragged), row => Assert.False(row.IsDropPlaceholder));
+
+            // Drawn as the dashed slot, in the place the drop will land.
+            Control slot = RowContainer(window, window.Schematics.IndexOf(dragged));
+            Avalonia.Controls.Shapes.Rectangle dashes = slot.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Rectangle>().Single();
+            Assert.True(dashes.IsEffectivelyVisible);
+            Assert.NotNull(dashes.StrokeDashArray);
+
+            Assert.Equal(["PCB; Bottom", "Address Multiplexing", "PCB; Top", "Clock", "CPU 8502"], Order(window));
+
+            ReleaseAt(window, centres[2] + new Point(0, 5));
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** WHAT ACTUALLY MADE THE WORKLOG ROWS "SWITCH POSITION AND NOT SETTLE". *** A gap drawn at
+    // any height but the row's own shifts every row below it the moment the drag starts, and again
+    // with every move - so the rows run from under a still pointer. The worklog's placeholder was
+    // drawn at a fixed height for exactly that reason once (its PlaceholderHeight did not notify).
+    // Here with a row made TALLER than the rest by a long CAD name, so a fixed default cannot pass
+    // by coincidence: the gap is the row's own height, and the row below it does not move.
+    // ###########################################################################################
+    [Fact]
+    public void A_tall_rows_placeholder_is_exactly_its_height_so_nothing_below_it_moves()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            SystemFilesWindowTests.SystemKey,
+            board =>
+            {
+                BoardSchematicEntry plain = board.Schematics[2];
+                board.Schematics[2] = new BoardSchematicEntry
+                {
+                    SchematicName = plain.SchematicName,
+                    SchematicImageFile = plain.SchematicImageFile,
+                    CadName = string.Join(" ", Enumerable.Repeat("Open128 - Address Multiplexing, both banks", 14)),
+                };
+
+                return board;
+            });
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+
+            double tall = RowContainer(window, 2).Bounds.Height;
+            Assert.True(tall > RowContainer(window, 0).Bounds.Height + 20, "The long CAD name must make the fixture row taller.");
+
+            Point[] centres = RowCentres(window);
+            Point rowBelow = centres[3];
+
+            // Pressed and moved within its own slot: it becomes the gap and nothing reorders.
+            PressAt(window, centres[2]);
+            DragTo(window, centres[2] + new Point(0, 10));
+
+            Assert.True(window.Schematics[2].IsDropPlaceholder);
+            Assert.Equal(tall, RowContainer(window, 2).Bounds.Height, precision: 1);
+            Assert.Equal(rowBelow.Y, CentreOf(window, RowContainer(window, 3)).Y, precision: 1);
+
+            ReleaseAt(window, centres[2] + new Point(0, 10));
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Releasing_saves_the_new_order_into_the_draft()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+
+            PressAt(window, CentreOf(window, HandleOf(window, 0)));
+            DragTo(window, centres[2] + new Point(0, 5));
+            ReleaseAt(window, centres[2] + new Point(0, 5));
+
+            Assert.Equal(["PCB; Bottom", "Address Multiplexing", "PCB; Top", "Clock", "CPU 8502"], DraftOrder());
+            Assert.Equal(DraftOrder(), Order(window));
+            Assert.All(window.Schematics, row => Assert.False(row.IsDropPlaceholder));
+
+            Assert.Equal("Moved [PCB; Top] to position 3 of 5.", window.StatusTextForTests);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_row_dragged_UP_lands_above_the_row_whose_middle_the_pointer_passed()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+
+            PressAt(window, CentreOf(window, HandleOf(window, 4)));
+            DragTo(window, centres[1] - new Point(0, 5));
+            ReleaseAt(window, centres[1] - new Point(0, 5));
+
+            Assert.Equal(["PCB; Top", "CPU 8502", "PCB; Bottom", "Address Multiplexing", "Clock"], DraftOrder());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE OFF-BY-ONE, SEEN IN THE WINDOW. *** Nudged a few pixels down - past its own middle,
+    // still over itself - a row must stay where it is. The worklog's first version already put it
+    // below the next row here, so a downward drag ran one row ahead of the pointer.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_nudged_down_past_its_own_middle_stays_where_it_is()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+
+            PressAt(window, centres[0]);
+            DragTo(window, centres[0] + new Point(0, 12));
+
+            Assert.True(window.Schematics[0].IsDropPlaceholder);
+            Assert.Equal(FiveViews, Order(window));
+
+            ReleaseAt(window, centres[0] + new Point(0, 12));
+            window.Close();
+        });
+    }
+
+    // A click is not a drag: nothing moves, and the draft is not even written.
+    [Fact]
+    public void A_click_without_moving_reorders_nothing_and_saves_nothing()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            DateTime before = DraftWrittenAt();
+            Point handle = CentreOf(window, HandleOf(window, 1));
+
+            PressAt(window, handle);
+            DragTo(window, handle + new Point(1, 2));    // a shaky hand, under the threshold
+            ReleaseAt(window, handle + new Point(1, 2));
+
+            Assert.Equal(FiveViews, Order(window));
+            Assert.All(window.Schematics, row => Assert.False(row.IsDropPlaceholder));
+            Assert.Equal(before, DraftWrittenAt());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE REPORTED FLICKER - "it rapidly switches position in the UI and cannot settle". ***
+    // Several moves arrive with NO layout pass between them, jiggling by a pixel the way a hand
+    // does, and then more after a redraw. Against the live layout the row moved back and forth on
+    // each; against the frozen slots it lands once and stays.
+    // ###########################################################################################
+    [Fact]
+    public void Holding_a_dragged_row_still_does_not_make_the_rows_flicker()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+            Point resting = centres[3] + new Point(0, 5);
+
+            PressAt(window, CentreOf(window, HandleOf(window, 0)));
+
+            for (int i = 0; i < 8; i++)
+            {
+                window.MouseMove(resting + new Point(0, i % 3), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+            }
+
+            Dispatcher.UIThread.RunJobs();
+            List<string> settled = Order(window);
+            Assert.Equal(["PCB; Bottom", "Address Multiplexing", "Clock", "PCB; Top", "CPU 8502"], settled);
+
+            for (int i = 0; i < 8; i++)
+            {
+                DragTo(window, resting + new Point(0, i % 3));
+                Assert.Equal(settled, Order(window));
+            }
+
+            ReleaseAt(window, resting);
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Dragging_a_row_back_to_where_it_started_saves_nothing()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+            DateTime before = DraftWrittenAt();
+
+            PressAt(window, centres[1]);
+            DragTo(window, centres[3] + new Point(0, 5));
+            DragTo(window, centres[1]);
+            ReleaseAt(window, centres[1]);
+
+            Assert.Equal(FiveViews, Order(window));
+            Assert.Equal(before, DraftWrittenAt());
+
+            window.Close();
+        });
+    }
+
+    // Flung past either end of the list, a row lands AT that end rather than being thrown away.
+    [Theory]
+    [InlineData(-400.0, new[] { "Address Multiplexing", "PCB; Top", "PCB; Bottom", "Clock", "CPU 8502" })]
+    [InlineData(2000.0, new[] { "PCB; Top", "PCB; Bottom", "Clock", "CPU 8502", "Address Multiplexing" })]
+    public void A_row_dragged_past_either_end_lands_at_that_end(double pointerY, string[] expected)
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point start = CentreOf(window, HandleOf(window, 2));
+
+            PressAt(window, start);
+            DragTo(window, new Point(start.X, pointerY));
+            ReleaseAt(window, new Point(start.X, pointerY));
+
+            Assert.Equal(expected, DraftOrder());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A drag that ends WITHOUT a release - the system taking the pointer capture away, as when the
+    // window loses focus - saves nothing and puts every row back. What is on screen must never
+    // disagree with the draft.
+    // ###########################################################################################
+    [Fact]
+    public void A_drag_that_loses_the_pointer_puts_the_rows_back_and_saves_nothing()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+            DateTime before = DraftWrittenAt();
+
+            PressAt(window, centres[0]);
+            DragTo(window, centres[3] + new Point(0, 5));
+            Assert.NotEqual(FiveViews, Order(window));
+
+            window.LoseSchematicDragCaptureForTests();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(FiveViews, Order(window));
+            Assert.All(window.Schematics, row => Assert.False(row.IsDropPlaceholder));
+            Assert.Equal(before, DraftWrittenAt());
+
+            // The release that follows finds no drag to finish.
+            ReleaseAt(window, centres[3]);
+            Assert.Equal(FiveViews, Order(window));
+            Assert.Equal(before, DraftWrittenAt());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A board has a couple of dozen views and the list scrolls. Held near the bottom of the list's
+    // viewport, the drag scrolls the list, and the placeholder keeps following the pointer down
+    // into rows that were out of sight when the drag began.
+    // ###########################################################################################
+    [Fact]
+    public void Holding_a_row_near_the_bottom_edge_scrolls_the_list_and_the_row_follows_down()
+    {
+        string[] views = Enumerable.Range(1, 14).Select(i => $"View {i:00}").ToArray();
+        this.SeedSystemWithSchematics(views);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem(height: 480);
+            ScrollViewer viewer = window.GetControl<ScrollViewer>("ContentScrollViewer");
+
+            Assert.True(viewer.Extent.Height > viewer.Viewport.Height, "The fixture must scroll.");
+
+            Point nearBottom = viewer.TranslatePoint(new Point(viewer.Bounds.Width / 2, viewer.Viewport.Height - 4), window)!.Value;
+
+            PressAt(window, CentreOf(window, HandleOf(window, 0)));
+            DragTo(window, nearBottom);
+
+            SystemSchematicRow dragged = window.Schematics.Single(row => row.SchematicName == "View 01");
+            int beforeScrolling = window.Schematics.IndexOf(dragged);
+
+            for (int tick = 0; tick < 40; tick++)
+            {
+                window.AutoScrollSchematicDragForTests();
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.True(viewer.Offset.Y > 0, "The list should have scrolled down.");
+            Assert.True(window.Schematics.IndexOf(dragged) > beforeScrolling, "The row should have followed the pointer down.");
+
+            ReleaseAt(window, nearBottom);
+
+            Assert.Equal(Order(window), DraftOrder());
+            Assert.NotEqual("View 01", DraftOrder()[0]);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE CAPTION SURVIVES EVERY CHANGE IN THIS WINDOW (2026-09-27). *** Its copy of the board
+    // dropped HardwareName and BoardName, so removing (or importing, or now reordering) an image
+    // wrote the draft back without its "# Hardware:" / "# Board:" lines. The Remove case fails
+    // against the hand-written copy that was there before.
+    // ###########################################################################################
+    [Fact]
+    public void Removing_an_image_keeps_the_boards_hardware_and_board_caption()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+
+            Button remove = RowContainer(window, 1).GetVisualDescendants().OfType<Button>().Single();
+            remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            BoardData draft = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, SystemFilesWindowTests.SystemKey)!;
+            Assert.Equal(4, draft.Schematics.Count);
+            Assert.Equal("C64", draft.HardwareName);
+            Assert.Equal("250407", draft.BoardName);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Reordering_keeps_the_boards_hardware_and_board_caption()
+    {
+        this.SeedSystemWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            SystemFilesWindow window = this.ShowOnSeededSystem();
+            Point[] centres = RowCentres(window);
+
+            PressAt(window, centres[0]);
+            DragTo(window, centres[2] + new Point(0, 5));
+            ReleaseAt(window, centres[2] + new Point(0, 5));
+
+            BoardData draft = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, SystemFilesWindowTests.SystemKey)!;
+            Assert.Equal("C64", draft.HardwareName);
+            Assert.Equal("250407", draft.BoardName);
+
+            window.Close();
         });
     }
 }

@@ -113,13 +113,14 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
     }
 
     // ###########################################################################################
-    // A submission in BETA is asked about until its board reaches production - but not for ever
-    // (code review, 2026-09-25): past SubmissionReceiptPresenter.MergedRecheckWindow the launch
-    // check leaves it alone, so a board that is never promoted does not cost a request per launch
-    // for good.
+    // A submission in BETA is asked about at every launch until its board reaches production - but
+    // not for ever (code review, 2026-09-25): past SubmissionReceiptPresenter.MergedRecheckWindow
+    // the launch check asks only when the receipt has not been checked for
+    // MergedLateRecheckInterval, so a board that is never promoted costs a request a week, not one
+    // per launch - and a late BETA rollback still arrives (code review, 2026-09-27).
     // ###########################################################################################
     [Fact]
-    public async Task A_submission_in_BETA_is_asked_about_only_within_the_window()
+    public async Task A_submission_in_BETA_is_asked_about_at_every_launch_within_the_window_and_weekly_after()
     {
         SubmissionReceiptStore.Record(new SubmissionReceipt
         {
@@ -138,7 +139,23 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
             SystemId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-90),
             DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-89),
-            LastKnownState = "merged"
+            LastKnownState = "merged",
+
+            // Past the window and checked yesterday: not due.
+            LastCheckedUtc = SubmissionStatusRefreshTests.Now.AddDays(-1)
+        });
+
+        SubmissionReceiptStore.Record(new SubmissionReceipt
+        {
+            SubmissionId = 9,
+            UploadToken = "token",
+            SystemId = "Commodore/C64/250407/Data.xlsx",
+            SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-90),
+            DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-89),
+            LastKnownState = "merged",
+
+            // Past the window and not checked for over a week: due.
+            LastCheckedUtc = SubmissionStatusRefreshTests.Now.AddDays(-8)
         });
 
         var asked = new List<long>();
@@ -147,7 +164,38 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
             SubmissionStatusRefreshTests.Answering("merged", string.Empty, asked),
             SubmissionStatusRefreshTests.Now);
 
-        Assert.Equal([7], asked);
+        Assert.Equal([7, 9], asked.Order());
+    }
+
+    // ###########################################################################################
+    // *** A BETA ROLLBACK REACHES THE CONTRIBUTOR (code review, 2026-09-27). *** The server answers
+    // "returned" for a merged submission a maintainer pushed back, and the receipt takes it - with
+    // the maintainer's reason - so "My submissions" stops saying "Published to BETA source" and the
+    // badge tells the contributor to look.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_merged_submission_the_server_reports_returned_is_updated_and_badged()
+    {
+        SubmissionReceiptStore.Record(new SubmissionReceipt
+        {
+            SubmissionId = 11,
+            UploadToken = "token",
+            SystemId = "Commodore/C64/250407/Data.xlsx",
+            SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-5),
+            DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-4),
+            LastKnownState = "merged",
+            AcknowledgedState = "merged"
+        });
+
+        await SubmissionStatusRefresh.RefreshAsync(
+            SubmissionStatusRefreshTests.Answering("returned", "The U8 pinout is wrong.", []),
+            SubmissionStatusRefreshTests.Now);
+
+        SubmissionReceipt receipt = SubmissionReceiptStore.All.Single(item => item.SubmissionId == 11);
+
+        Assert.Equal("returned", receipt.LastKnownState);
+        Assert.Equal("The U8 pinout is wrong.", receipt.MaintainerComment);
+        Assert.True(SubmissionReceiptPresenter.HasUnreadNews(receipt));
     }
 
     [Fact]

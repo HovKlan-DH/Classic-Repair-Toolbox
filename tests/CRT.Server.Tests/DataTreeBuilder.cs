@@ -21,19 +21,48 @@ namespace CRT.Server.Tests
         }
 
         // The v2.0.0 master, listing the given board workbooks in its "Excel data file" column.
-        public static void Master(string root, params string[] listed)
+        public static void Master(string root, params string[] listed) =>
+            DataTreeBuilder.ListingMaster(
+                root,
+                listed.Select(workbook => new MasterListingRow("Hardware", Path.GetFileNameWithoutExtension(workbook), workbook, string.Empty)).ToArray());
+
+        // ###########################################################################################
+        // The v2.0.0 master as CRT reads it - all four columns under the real names, a preamble above
+        // the header - listing these rows in order. What a NEW system's publish adds its row to
+        // (2026-09-27); a placeholder text file cannot take a row, and a new system is then refused.
+        // ###########################################################################################
+        public static void ListingMaster(string root, params MasterListingRow[] rows)
         {
             using var package = new ExcelPackage();
-            ExcelWorksheet sheet = package.Workbook.Worksheets.Add(DataTreeUsage.MasterSheetName);
-            sheet.Cells[1, 1].Value = "Hardware name";
-            sheet.Cells[1, 2].Value = "Board name";
-            sheet.Cells[1, 3].Value = DataTreeUsage.ExcelDataFileColumn;
-            sheet.Cells[1, 4].Value = "Hardware notes";
+            ExcelWorksheet sheet = package.Workbook.Worksheets.Add(MasterWorkbookSchema.SheetName);
 
-            for (int i = 0; i < listed.Length; i++)
-                sheet.Cells[2 + i, 3].Value = listed[i];
+            sheet.Cells[1, 1].Value = "# Commodore Repair Toolbox";
+            sheet.Cells[3, 1].Value = MasterWorkbookSchema.ColHardwareName;
+            sheet.Cells[3, 2].Value = MasterWorkbookSchema.ColBoardName;
+            sheet.Cells[3, 3].Value = MasterWorkbookSchema.ColExcelDataFile;
+            sheet.Cells[3, 4].Value = MasterWorkbookSchema.ColHardwareNotes;
+
+            for (int i = 0; i < rows.Length; i++)
+            {
+                sheet.Cells[4 + i, 1].Value = rows[i].HardwareName;
+                sheet.Cells[4 + i, 2].Value = rows[i].BoardName;
+                sheet.Cells[4 + i, 3].Value = rows[i].ExcelDataFile;
+                sheet.Cells[4 + i, 4].Value = rows[i].Notes;
+            }
+
+            package.Workbook.Worksheets.Add("Oscilloscope").Cells[1, 1].Value = "Brand";
 
             package.SaveAs(new FileInfo(DataTreeBuilder.Full(root, "Classic-Repair-Toolbox.v2.0.0.xlsx")));
+        }
+
+        // The rows of a tree's v2.0.0 master, top to bottom.
+        public static IReadOnlyList<MasterListingRow> ListedIn(string root)
+        {
+            Assert.True(
+                MasterListing.TryRead(DataTreeBuilder.Full(root, "Classic-Repair-Toolbox.v2.0.0.xlsx"), out IReadOnlyList<MasterListingRow> rows, out string why),
+                why);
+
+            return rows;
         }
 
         // A board workbook whose "Board local files" rows cite the given files, with one component.

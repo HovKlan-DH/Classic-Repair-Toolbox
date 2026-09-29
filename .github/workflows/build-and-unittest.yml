@@ -77,12 +77,12 @@ jobs:
       # precisely when knowing what was and was not exercised is useful.
       #
       # ONE REPORT PER TEST PROJECT, SO THEY ARE MERGED FIRST (code review, 2026-09-25). The
-      # solution has four test projects and "dotnet test" writes a separate
+      # solution has three test projects and "dotnet test" writes a separate
       # coverage.cobertura.xml for each, under its own GUID folder. This step used to take
       # "find | head -1" - whichever folder happened to enumerate first - and render that ONE
       # project's figure as the total: a wrong number quoted as fact, the very failure the summary
-      # script exists to prevent. Adding the four up would be just as wrong, because CRT.Data is
-      # exercised by all four and its lines would be counted four times. ReportGenerator merges
+      # script exists to prevent. Adding the three up would be just as wrong, because CRT.Data is
+      # exercised by all three and its lines would be counted three times. ReportGenerator merges
       # them line by line - a line is covered when ANY project covers it - which is the only
       # honest total.
       #

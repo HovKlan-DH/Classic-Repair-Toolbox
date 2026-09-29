@@ -25,6 +25,19 @@ namespace ClassicRepairToolbox.Tests;
 [Collection("BoardData")]
 public sealed class DraftRetirementTests : IDisposable
 {
+    // ###########################################################################################
+    // *** "returned" IS NOT PUBLISHED (code review, 2026-09-27). *** It was merged and has been
+    // taken back OUT of BETA, so its work is no longer in the published tree - and the draft may
+    // be the only copy the contributor has to correct it from. Retiring it would delete exactly
+    // the thing the rollback's mail tells them to use.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_taken_back_out_of_BETA_does_not_retire_its_draft()
+    {
+        Assert.False(DraftRetirement.IsPublishedState("returned"));
+        Assert.False(DraftRetirement.IsPublishedState("Returned"));
+    }
+
     private readonly TempWorkspace thisWorkspace = new();
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
@@ -44,12 +57,25 @@ public sealed class DraftRetirementTests : IDisposable
 
     [Theory]
     [InlineData("published")]
-    [InlineData("merged")]
     [InlineData("PUBLISHED")]
-    [InlineData("  merged  ")]
-    public void A_state_meaning_it_is_in_the_published_tree_counts(string state)
+    [InlineData("  published  ")]
+    public void A_state_meaning_it_is_in_the_PRODUCTION_data_counts(string state)
     {
         Assert.True(DraftRetirement.IsPublishedState(state));
+    }
+
+    // ###########################################################################################
+    // *** BETA DOES NOT COUNT (owner decision, 2026-09-27). *** "merged" is in the BETA data only,
+    // and a maintainer can still push it back to the queue - after which a draft retired at the
+    // BETA stage was simply gone from the contributor's machine. It used to count; it must not.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("merged")]
+    [InlineData("  MERGED  ")]
+    [InlineData("returned")]
+    public void A_submission_only_in_BETA_does_not_count(string state)
+    {
+        Assert.False(DraftRetirement.IsPublishedState(state));
     }
 
     // ###########################################################################################
@@ -337,7 +363,7 @@ public sealed class DraftRetirementTests : IDisposable
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
         RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
-            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "merged")],
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published")],
             this.ResolveStatus));
 
         // The WORKBOOK key, which everything after the check is keyed by - not the receipt's id.
@@ -358,7 +384,7 @@ public sealed class DraftRetirementTests : IDisposable
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
         RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
-            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "merged")],
+            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "published")],
             this.DataRoot,
             this.DraftsRoot,
             ["Commodore/C64/250425/Data C64 250425.xlsx", DraftRetirementTests.SystemKey]));
@@ -462,7 +488,7 @@ public sealed class DraftRetirementTests : IDisposable
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
         Assert.Empty(DraftRetirement.FindRetirableDrafts(
-            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "merged")],
+            [DraftRetirementTests.Receipt(1, "Commodore/C64/250407", "published")],
             this.DataRoot,
             this.DraftsRoot,
             ["Commodore/C64/250425/Data C64 250425.xlsx"]));
@@ -513,7 +539,7 @@ public sealed class DraftRetirementTests : IDisposable
         IReadOnlyList<string> retirable = DraftRetirement.FindRetirableSystems(
             [
                 DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published"),
-                DraftRetirementTests.Receipt(2, DraftRetirementTests.SystemId, "merged"),
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.SystemId, "published"),
             ],
             this.ResolveStatus);
 

@@ -151,6 +151,9 @@ namespace CRT.Server.Handlers.Submissions
             if (string.IsNullOrWhiteSpace(systemId))
                 return MaintainerAssignmentOutcome.NotFound("No such system.");
 
+            // The address, like a grant's, so the system's history can say who was removed.
+            AccountRecord? removed = await accounts.FindByIdAsync(accountId, cancellationToken);
+
             await accounts.RemoveMaintainerAsync(systemId, accountId, cancellationToken);
 
             await accounts.WriteAuditAsync(
@@ -159,7 +162,7 @@ namespace CRT.Server.Handlers.Submissions
                     actor.Account.Email,
                     MaintainerAssignmentFlows.RevokedAction,
                     systemId,
-                    $"account {accountId}",
+                    removed is null ? $"account {accountId}" : $"account {accountId} ({removed.Email})",
                     now),
                 cancellationToken);
 
@@ -170,7 +173,7 @@ namespace CRT.Server.Handlers.Submissions
         public const string RevokedAction = "maintainer.revoked";
 
         // A system's three name parts, from its row or from the tree; null when it is neither.
-        private static async Task<(string Manufacturer, string Hardware, string Board)?> FindSystemAsync(
+        internal static async Task<(string Manufacturer, string Hardware, string Board)?> FindSystemAsync(
             string? systemId,
             IReadOnlyList<PublishedSystemLister.KnownSystem> inTree,
             ISubmissionStore submissions,

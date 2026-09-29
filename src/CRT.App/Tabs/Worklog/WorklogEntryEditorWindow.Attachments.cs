@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 
 namespace CRT
 {
@@ -743,9 +744,15 @@ namespace CRT
 
             this.CapturePhotoRowBoundaries(context);
 
+            // Where the row stood when the boundaries were frozen - its own boundary is left out
+            // of the count (see RowDragSlots.ResolveDropIndex).
+            this.thisPhotoDragStartIndex = index;
+
             row.IsDropPlaceholder = true;
             return true;
         }
+
+        private int thisPhotoDragStartIndex = -1;
 
         // ###########################################################################################
         // The Y positions of the row boundaries as they are at the moment the drag starts, used to
@@ -767,12 +774,11 @@ namespace CRT
         {
             this.thisPhotoRowDragBoundaries.Clear();
 
-            // One entry per row, always - index i in this list means row i. Skipping a row whose
-            // container is not realized would shorten the list and shift every later boundary's
-            // meaning by one, so an unmeasurable row gets an interpolated midpoint instead and the
-            // two lists stay aligned. ResolvePhotoDropIndex relies on that 1:1 correspondence to
-            // return an index into the row collection.
-            double runningY = 0;
+            // One entry per row, always - an unmeasurable row is placed after the previous one
+            // rather than skipped (RowDragSlots.BuildMidpoints, shared with the Drafts tab's
+            // "Schematic images" window). ResolvePhotoDropIndex relies on that 1:1 correspondence
+            // to return an index into the row collection.
+            var rows = new List<(double? Top, double Height)>(context.Rows.Count);
 
             for (int i = 0; i < context.Rows.Count; i++)
             {
@@ -783,14 +789,12 @@ namespace CRT
                     ? container.Bounds.Height
                     : context.Rows[i].PlaceholderHeight;
 
-                double top = topLeft?.Y ?? runningY;
-
-                // The midpoint of each row as laid out before anything moved. The pointer being
-                // past a midpoint means the drop belongs after that row.
-                this.thisPhotoRowDragBoundaries.Add(top + (height / 2.0));
-
-                runningY = top + height;
+                rows.Add((topLeft?.Y, height));
             }
+
+            // The midpoint of each row as laid out before anything moved. The pointer being past a
+            // midpoint means the drop belongs after that row.
+            this.thisPhotoRowDragBoundaries.AddRange(RowDragSlots.BuildMidpoints(rows));
         }
 
         // ###########################################################################################
@@ -854,6 +858,7 @@ namespace CRT
 
             // Cleared so the next drag cannot resolve against the previous drag's layout.
             this.thisPhotoRowDragBoundaries.Clear();
+            this.thisPhotoDragStartIndex = -1;
 
             this.thisActiveDragContext = null;
             this.thisDraggedPhotoId = -1;
@@ -869,22 +874,15 @@ namespace CRT
         // ###########################################################################################
         private int ResolvePhotoDropIndex(DragContext context, Point pointerInList)
         {
-            if (context.Rows.Count == 0 || this.thisPhotoRowDragBoundaries.Count == 0)
+            if (context.Rows.Count == 0)
             {
                 return -1;
             }
 
-            for (int i = 0; i < this.thisPhotoRowDragBoundaries.Count; i++)
-            {
-                if (pointerInList.Y < this.thisPhotoRowDragBoundaries[i])
-                {
-                    // Also covers a pointer dragged above the list entirely.
-                    return i;
-                }
-            }
-
-            // Past the last midpoint - the drop belongs at the end.
-            return this.thisPhotoRowDragBoundaries.Count - 1;
+            return RowDragSlots.ResolveDropIndex(
+                this.thisPhotoRowDragBoundaries,
+                pointerInList.Y,
+                this.thisPhotoDragStartIndex);
         }
 
         // ###########################################################################################

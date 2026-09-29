@@ -23,7 +23,7 @@ public sealed class SubmissionReceiptPresenterTests
     // The four states the server actually writes (see SubmissionState on the server side), each
     // turned into something true for a reader who has never seen the schema.
     [Theory]
-    [InlineData("pending", "Waiting for review")]
+    [InlineData("pending", "Submitted - awaiting feedback from a maintainer")]
     [InlineData("rejected", "Not accepted")]
     [InlineData("abandoned", "Expired before it was finished")]
     [InlineData("uploading", "Never finished sending")]
@@ -52,14 +52,14 @@ public sealed class SubmissionReceiptPresenterTests
     [InlineData("Pending")]
     public void State_matching_ignores_case_and_surrounding_space(string state)
     {
-        Assert.Equal("Waiting for review", SubmissionReceiptPresenter.DescribeState(state));
+        Assert.Equal("Submitted - awaiting feedback from a maintainer", SubmissionReceiptPresenter.DescribeState(state));
     }
 
     // ###########################################################################################
     // AN UNKNOWN STATE IS REPORTED AS UNKNOWN, never guessed at.
     //
     // Phase 5 will add states this build has never heard of. A switch defaulting to something
-    // plausible - "Waiting for review", say - would tell a contributor their rejected submission
+    // plausible - "Submitted - awaiting feedback from a maintainer", say - would tell a contributor their rejected submission
     // is still in the queue, and nothing would ever reveal the lie. Saying the server reported
     // something this version does not recognise is unhelpful but true, and it points at the real
     // fix (update the app).
@@ -70,7 +70,7 @@ public sealed class SubmissionReceiptPresenterTests
         string described = SubmissionReceiptPresenter.DescribeState("awaiting-maintainer-signoff");
 
         Assert.Contains("awaiting-maintainer-signoff", described);
-        Assert.DoesNotContain("Waiting for review", described);
+        Assert.DoesNotContain("Submitted - awaiting feedback from a maintainer", described);
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // THE FOUR PHASE 5 REVIEW STATES - missing until 2026-09-22, and reported from live use.
     //
-    // They were added to the server's vocabulary when the maintainer application was built and never
+    // They were added to the server's vocabulary when the Maintainer tab was built and never
     // taught to DescribeState, so the very first real review round trip showed the contributor
     // "Reported as [changes_requested]" - a raw database value, underscore and all, in the one
     // place this class exists to prevent exactly that.
@@ -270,16 +270,24 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     private static readonly DateTimeOffset Launch = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private static SubmissionReceipt Receipt(string state, DateTimeOffset sent, DateTimeOffset? decided = null) => new()
+    // `lastChecked` defaults to the day before Launch: past the window a merged receipt is asked about
+    // only every MergedLateRecheckInterval, so a receipt checked yesterday is NOT due - which is
+    // what the window tests below are about.
+    private static SubmissionReceipt Receipt(
+        string state,
+        DateTimeOffset sent,
+        DateTimeOffset? decided = null,
+        DateTimeOffset? lastChecked = null) => new()
     {
         SubmissionId = 1,
         LastKnownState = state,
         SentUtc = sent,
-        DecidedUtc = decided
+        DecidedUtc = decided,
+        LastCheckedUtc = lastChecked ?? SubmissionReceiptPresenterTests.Launch.AddDays(-1)
     };
 
     [Fact]
-    public void A_merged_receipt_is_asked_about_until_the_window_after_its_decision_closes()
+    public void A_merged_receipt_is_asked_about_at_every_launch_until_the_window_after_its_decision_closes()
     {
         TimeSpan window = SubmissionReceiptPresenter.MergedRecheckWindow;
         DateTimeOffset sent = SubmissionReceiptPresenterTests.Launch - window - TimeSpan.FromDays(10);
@@ -306,6 +314,95 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.False(SubmissionReceiptPresenter.IsStillOpen(
             SubmissionReceiptPresenterTests.Receipt("merged", SubmissionReceiptPresenterTests.Launch - window - TimeSpan.FromDays(1)),
             SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // ###########################################################################################
+    // *** PAST THE WINDOW, NOW AND THEN - NEVER NEVER (code review, 2026-09-27). *** A merged
+    // submission can be taken back out of BETA long after it merged, and the old hard stop meant a
+    // rollback on day 31 never reached "My submissions": the row said "Published to BETA source"
+    // for good while the server said otherwise. Now it is asked about once a
+    // MergedLateRecheckInterval. Fails against the version that answered false past the window.
+    // ###########################################################################################
+    [Fact]
+    public void A_merged_receipt_past_the_window_is_asked_about_again_once_it_has_not_been_checked_for_a_while()
+    {
+        DateTimeOffset longAgo = SubmissionReceiptPresenterTests.Launch.AddDays(-90);
+        TimeSpan interval = SubmissionReceiptPresenter.MergedLateRecheckInterval;
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("merged", longAgo, longAgo, lastChecked: SubmissionReceiptPresenterTests.Launch - interval),
+            SubmissionReceiptPresenterTests.Launch));
+
+        Assert.False(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("merged", longAgo, longAgo, lastChecked: SubmissionReceiptPresenterTests.Launch - interval + TimeSpan.FromHours(1)),
+            SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // A receipt never checked at all is due - there is no answer on it to keep.
+    [Fact]
+    public void A_merged_receipt_past_the_window_that_was_never_checked_is_asked_about()
+    {
+        DateTimeOffset longAgo = SubmissionReceiptPresenterTests.Launch.AddDays(-90);
+
+        SubmissionReceipt unchecked_ = new()
+        {
+            SubmissionId = 1,
+            LastKnownState = "merged",
+            SentUtc = longAgo,
+            DecidedUtc = longAgo
+        };
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(unchecked_, SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // -----------------------------------------------------------------------------------
+    // "returned" - TAKEN BACK OUT OF BETA (code review, 2026-09-27)
+    //
+    // The server reports it for a pending submission carrying a maintainer's reason, which only a
+    // BETA rollback produces. Without these words the contributor, already told "Published to BETA
+    // source", saw a bare "Waiting for review" and nothing about what had happened.
+    // -----------------------------------------------------------------------------------
+
+    [Fact]
+    public void A_returned_submission_says_it_was_taken_back_out_of_BETA()
+    {
+        Assert.Equal(
+            "Taken back out of BETA - waiting for review again",
+            SubmissionReceiptPresenter.DescribeState("returned"));
+    }
+
+    // It was pulled because something needs attention, so it takes the colour that says "look".
+    [Fact]
+    public void A_returned_submission_is_coloured_as_needing_the_contributor()
+    {
+        Assert.Equal(SubmissionOutcomeKind.NeedsAction, SubmissionReceiptPresenter.ClassifyState("returned"));
+    }
+
+    // Waiting for review again, so it is still asked about - it will be decided a second time.
+    [Fact]
+    public void A_returned_submission_is_still_open()
+    {
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen("returned"));
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(
+            SubmissionReceiptPresenterTests.Receipt("returned", SubmissionReceiptPresenterTests.Launch.AddYears(-1)),
+            SubmissionReceiptPresenterTests.Launch));
+    }
+
+    // And it is NEWS: a contributor who saw "merged" is badged when it turns into "returned".
+    [Fact]
+    public void A_merged_submission_turning_returned_raises_the_badge()
+    {
+        var receipt = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            LastKnownState = "returned",
+            AcknowledgedState = "merged",
+            MaintainerComment = "The U8 pinout is wrong.",
+            AcknowledgedComment = string.Empty
+        };
+
+        Assert.True(SubmissionReceiptPresenter.HasUnreadDecision(receipt));
+        Assert.True(SubmissionReceiptPresenter.HasUnreadNews(receipt));
     }
 
     // Only "merged" is bounded: a submission still waiting for its review is asked about however
@@ -832,12 +929,208 @@ public sealed class SubmissionReceiptPresenterTests
             SubmissionReceiptPresenter.ClassifyState("changes_requested"),
             SubmissionReceiptPresenter.ClassifyState("rejected"));
     }
-    // A maintainer changed the submission in the maintainer application before deciding (2026-09-25):
+    // A maintainer changed the submission in the Maintainer tab before deciding (2026-09-25):
     // said, so a contributor comparing what was published with what they sent knows why.
     [Fact]
     public void A_submission_a_maintainer_changed_says_so_and_one_nobody_changed_says_nothing()
     {
         Assert.StartsWith("A maintainer changed some of the details", SubmissionReceiptPresenter.DescribeAmended(true));
         Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeAmended(false));
+    }
+
+    // ------------------------------------------------------------------ the Drafts tab's badge
+
+    // ###########################################################################################
+    // LatestForSystem - which submission a Drafts row's badge describes (owner request,
+    // 2026-09-27: "When I have submitted ... I need to see that somehow"). Matched on the system id
+    // a submission is sent under, and the newest one wins - a newer submission replaces an older
+    // one on the server too.
+    // ###########################################################################################
+    private static SubmissionReceipt Receipt(long id, string systemId, string sentUtc, string state = "pending") => new()
+    {
+        SubmissionId = id,
+        SystemId = systemId,
+        SentUtc = DateTimeOffset.Parse(sentUtc, CultureInfo.InvariantCulture),
+        LastKnownState = state,
+    };
+
+    [Fact]
+    public void The_badge_describes_the_systems_NEWEST_submission()
+    {
+        SubmissionReceipt latest = SubmissionReceiptPresenter.LatestForSystem(
+            [
+                Receipt(3, "Commodore/C128/310378 Open128", "2026-09-20T10:00:00Z", "withdrawn"),
+                Receipt(8, "Commodore/C128/310378 Open128", "2026-09-27T10:46:11Z", "merged"),
+                Receipt(5, "Commodore/C128/310378 Open128", "2026-09-24T09:00:00Z", "rejected"),
+            ],
+            "Commodore/C128/310378 Open128")!;
+
+        Assert.Equal(8, latest.SubmissionId);
+    }
+
+    [Fact]
+    public void Another_systems_submissions_are_not_this_ones()
+    {
+        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(
+            [Receipt(1, "Commodore/C128/310378", "2026-09-27T10:00:00Z")],
+            "Commodore/C128/310378 Open128"));
+    }
+
+    // The id is folder names, which compare like folder names everywhere else in the app.
+    [Fact]
+    public void The_system_id_matches_ignoring_case_and_outer_spaces()
+    {
+        Assert.NotNull(SubmissionReceiptPresenter.LatestForSystem(
+            [Receipt(1, " commodore/c128/310378 OPEN128 ", "2026-09-27T10:00:00Z")],
+            "Commodore/C128/310378 Open128"));
+    }
+
+    // ###########################################################################################
+    // *** A NEW DRAFT DOES NOT WEAR AN OLDER SUBMISSION'S STATE (code review, 2026-09-27). *** The
+    // first submission reached production and its draft was retired; the contributor starts a new
+    // draft of the same board. Its row showed "Published to source" beside changes never sent.
+    // Only submissions sent since the draft was created describe it - and the next one it sends does.
+    // ###########################################################################################
+    [Fact]
+    public void Submissions_sent_before_the_draft_existed_do_not_describe_it()
+    {
+        SubmissionReceipt[] receipts = [Receipt(8, "Commodore/C64/250407", "2026-09-20T10:00:00Z", "published")];
+        DateTimeOffset draftCreated = DateTimeOffset.Parse("2026-09-25T08:00:00Z", CultureInfo.InvariantCulture);
+
+        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(receipts, "Commodore/C64/250407", draftCreated));
+
+        SubmissionReceipt[] sentSince = [.. receipts, Receipt(9, "Commodore/C64/250407", "2026-09-26T12:00:00Z")];
+        Assert.Equal(9, SubmissionReceiptPresenter.LatestForSystem(sentSince, "Commodore/C64/250407", draftCreated)!.SubmissionId);
+
+        // A marker that does not say when it was made leaves nothing out.
+        Assert.Equal(8, SubmissionReceiptPresenter.LatestForSystem(receipts, "Commodore/C64/250407", draftCreatedUtc: null)!.SubmissionId);
+    }
+
+    [Fact]
+    public void A_system_never_submitted_has_no_badge()
+    {
+        Assert.Null(SubmissionReceiptPresenter.LatestForSystem([], "Commodore/C64/250407"));
+        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(null, "Commodore/C64/250407"));
+        Assert.Null(SubmissionReceiptPresenter.LatestForSystem([Receipt(1, "Commodore/C64/250407", "2026-09-27T10:00:00Z")], "  "));
+    }
+
+    // Two sent in the same instant (a clock that did not move): the higher id is the later one.
+    [Fact]
+    public void Two_sent_at_once_are_told_apart_by_their_id()
+    {
+        Assert.Equal(7, SubmissionReceiptPresenter.LatestForSystem(
+            [Receipt(7, "A/B/C", "2026-09-27T10:00:00Z"), Receipt(6, "A/B/C", "2026-09-27T10:00:00Z")],
+            "A/B/C")!.SubmissionId);
+    }
+
+    // The tooltip carries the app's one date format - month capitalised, whatever the wording.
+    [Fact]
+    public void The_badges_tooltip_names_the_day_it_was_sent_in_the_one_date_format()
+    {
+        SubmissionReceipt receipt = Receipt(8, "A/B/C", "2026-09-27T10:46:11Z");
+
+        string tooltip = SubmissionReceiptPresenter.DescribeLastSubmission(receipt);
+
+        Assert.Contains(SubmissionReceiptPresenter.FormatDate(receipt.SentUtc), tooltip, StringComparison.Ordinal);
+        Assert.Contains("September", tooltip, StringComparison.Ordinal);
+        Assert.Contains("My submissions", tooltip, StringComparison.Ordinal);
+    }
+
+    // ------------------------------------------------------------------ system names
+
+    // ###########################################################################################
+    // A real receipt carries the SYSTEM ID ("Commodore/C128/310378 Open128"), and "My submissions"
+    // used to drop its last segment as a file name - reading "Commodore C128", board missing
+    // (2026-09-27). A workbook path loses only its file.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Commodore/C128/310378 Open128", "Commodore C128 310378 Open128")]
+    [InlineData("Commodore/C64/250407/Data C64 250407.xlsx", "Commodore C64 250407")]
+    [InlineData("  ", "(unknown system)")]
+    public void A_system_is_named_in_full_whether_given_as_an_id_or_a_workbook_path(string systemId, string expected)
+    {
+        Assert.Equal(expected, SubmissionReceiptPresenter.DescribeSystem(systemId));
+    }
+
+    // ------------------------------------------------------------------ the switch-back-from-BETA notice
+
+    // ###########################################################################################
+    // "There should be some kind of notification for the user, when/if this gets promoted from BETA
+    // to production, so the user can know he should now change the source from BETA to the normal
+    // online source" (owner, 2026-09-27). Only published submissions, only undismissed ones, and
+    // only for someone actually downloading BETA.
+    // ###########################################################################################
+    private static SubmissionReceipt Sent(long id, string state, bool dismissed = false) => new()
+    {
+        SubmissionId = id,
+        SystemId = "Commodore/C128/310378 Open128",
+        LastKnownState = state,
+        SentUtc = new DateTimeOffset(2026, 9, 27, 10, 0, 0, TimeSpan.Zero).AddMinutes(id),
+        SourceNoticeDismissed = dismissed,
+    };
+
+    [Fact]
+    public void A_submission_reaching_production_is_noticed_while_downloading_from_BETA()
+    {
+        Assert.Equal(
+            [8L],
+            SubmissionReceiptPresenter.NeedingSourceSwitchNotice([Sent(8, "published")], downloadingFromBeta: true)
+                .Select(receipt => receipt.SubmissionId));
+    }
+
+    // In BETA only, it is not yet in the online source - switching back would lose sight of it.
+    [Theory]
+    [InlineData("merged")]
+    [InlineData("pending")]
+    [InlineData("approved")]
+    [InlineData("returned")]
+    public void Nothing_short_of_production_is_noticed(string state)
+    {
+        Assert.Empty(SubmissionReceiptPresenter.NeedingSourceSwitchNotice([Sent(8, state)], downloadingFromBeta: true));
+    }
+
+    [Fact]
+    public void Someone_on_the_normal_source_has_nothing_to_switch()
+    {
+        Assert.Empty(SubmissionReceiptPresenter.NeedingSourceSwitchNotice([Sent(8, "published")], downloadingFromBeta: false));
+    }
+
+    [Fact]
+    public void A_dismissed_notice_is_not_shown_again()
+    {
+        Assert.Empty(SubmissionReceiptPresenter.NeedingSourceSwitchNotice([Sent(8, "published", dismissed: true)], downloadingFromBeta: true));
+        Assert.Empty(SubmissionReceiptPresenter.NeedingSourceSwitchNotice(null, downloadingFromBeta: true));
+    }
+
+    [Fact]
+    public void The_notice_names_the_whole_system_and_says_where_to_switch()
+    {
+        string text = SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(8, "published")]);
+
+        Assert.StartsWith("Your submission for Commodore C128 310378 Open128 is now published to the online source.", text, StringComparison.Ordinal);
+        Assert.Contains("BETA source", text, StringComparison.Ordinal);
+        Assert.Contains("Configuration tab", text, StringComparison.Ordinal);
+    }
+
+    // Two submissions of one system are one system; two systems are both named.
+    [Fact]
+    public void Several_submissions_name_each_system_once()
+    {
+        SubmissionReceipt other = new()
+        {
+            SubmissionId = 9,
+            SystemId = "Commodore/C64/250407",
+            LastKnownState = "published",
+        };
+
+        Assert.Contains(
+            "Your submission for Commodore C128 310378 Open128 is",
+            SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(7, "published"), Sent(8, "published")]),
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "Your submissions for Commodore C128 310378 Open128 and Commodore C64 250407 are",
+            SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(8, "published"), other]),
+            StringComparison.Ordinal);
     }
 }

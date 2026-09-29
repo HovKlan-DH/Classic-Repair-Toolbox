@@ -22,7 +22,7 @@ namespace CRT.Server.Tests
         public void A_FRESH_session_is_not_extended()
         {
             // Just issued, so nearly a full lifetime remains. Extending here would move the expiry
-            // by seconds and write a row for nothing - and the maintainer app calls the queue on
+            // by seconds and write a row for nothing - and the Maintainer tab calls the queue on
             // launch, on every refresh click and after every decision.
             Assert.False(SessionExtensionRules.ShouldExtend(
                 SessionExtensionRulesTests.Now.AddDays(30),

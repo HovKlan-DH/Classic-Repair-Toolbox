@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using CRT;
 using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CRT
@@ -135,13 +137,7 @@ namespace CRT
             }
 
             this.SubmitButton.IsEnabled = false;
-
-            IProgress<string> progress = new Progress<string>(statusMessage =>
-            {
-                this.ShowStatus(statusMessage, isError: false);
-            });
-
-            progress.Report("Preparing payload...");
+            this.ShowStatus(string.Empty, isError: false);
 
             bool attachLogs = this.AttachLogfileCheckBox.IsChecked == true;
             bool attachConfig = this.AttachConfigsCheckBox.IsChecked == true;
@@ -149,8 +145,33 @@ namespace CRT
 
             try
             {
-                var (success, statusCode, responseBody) = await Task.Run(() =>
-                    this.ProcessAndSendFeedbackAsync(email, feedback, attachLogs, attachConfig, customPaths, progress));
+                // ###########################################################################################
+                // *** UNDER THE "PLEASE WAIT" OVERLAY (owner request, 2026-09-28: "this should also be
+                // visible then when submitting a large feedback in the Feedback tab"). *** The packing
+                // and upload percentages go onto the overlay, and each one starts its two minutes
+                // again - so a large attachment on a slow line is never cut off while it is visibly
+                // moving, and only two minutes with NOTHING happening gives up (WaitLimit).
+                // ###########################################################################################
+                WaitResult<(bool Success, int StatusCode, string ResponseBody)> waited = await BusyOverlay.RunAsync(
+                    this,
+                    CrtWaitWording.SendingFeedback,
+                    context =>
+                    {
+                        IProgress<string> progress = context.AsProgress();
+                        return Task.Run(() => this.ProcessAndSendFeedbackAsync(
+                            email, feedback, attachLogs, attachConfig, customPaths, progress, context.Token));
+                    });
+
+                // Nothing answers back from the feedback page, so whether it arrived cannot be
+                // checked - it MAY have. The text stays, so nothing typed is lost either way.
+                if (waited.IsTimedOut)
+                {
+                    Logger.Warning("Feedback submission: no answer within the wait limit.");
+                    this.ShowStatus(CrtWaitWording.FeedbackNoAnswer, isError: true);
+                    return;
+                }
+
+                var (success, statusCode, responseBody) = waited.Value;
 
                 if (success)
                 {
@@ -213,7 +234,7 @@ namespace CRT
         // ###########################################################################################
         // Collects local files, generates the zip stream, and performs the multipart POST request.
         // ###########################################################################################
-        private async Task<(bool Success, int StatusCode, string ResponseBody)> ProcessAndSendFeedbackAsync(string email, string feedbackText, bool attachLogs, bool attachConfig, List<string> customPaths, IProgress<string> progress)
+        private async Task<(bool Success, int StatusCode, string ResponseBody)> ProcessAndSendFeedbackAsync(string email, string feedbackText, bool attachLogs, bool attachConfig, List<string> customPaths, IProgress<string> progress, CancellationToken cancellationToken)
         {
             var targetFiles = new List<(string Source, string ZipEntryName)>();
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -321,12 +342,12 @@ namespace CRT
 
             //Target URL
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("CRT "+ AppConfig.AppDisplayVersionString);
-            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-feedback/", progressContent);
+            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-feedback/", progressContent, cancellationToken);
 
             // Read the exact string back from the server
             // We must explicitly look for the string "Success" to evaluate a true success,
             // because PHP can crash with a warning string while technically returning HTTP 200
-            string responseBody = await response.Content.ReadAsStringAsync();
+            string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             bool isSuccess = response.IsSuccessStatusCode && responseBody.Trim().StartsWith("Success", StringComparison.OrdinalIgnoreCase);
 
             return (isSuccess, (int)response.StatusCode, responseBody);

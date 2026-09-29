@@ -93,6 +93,61 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
+        // Tells a contributor their merged submission was rolled back out of BETA and is in the
+        // queue again (owner decision, 2026-09-27). Its OWN method rather than a "pending" arm in
+        // BuildMessage: "pending" is also the state a brand-new submission arrives in, and a state
+        // word that names two different events is a trap for the next caller. The first version of
+        // the rollback DID send NotifyDecisionAsync(Pending), which BuildMessage answered with null
+        // - so no contributor would ever have been told, defeating the feature's whole purpose.
+        //
+        // Same guard shape as NotifyDecisionAsync: the rollback is already done, so a mail that
+        // cannot be sent is logged, never thrown.
+        // ###########################################################################################
+        // ###########################################################################################
+        // A board taken out of BETA (2026-09-28): the contributor is told their submission is back
+        // in the queue - or, for Beta > Prod's "Reject", that it was rejected, in the queue's own
+        // rejection mail, since that is what it now is.
+        // ###########################################################################################
+        public Task NotifyTakenOutOfBetaAsync(
+            string? contactEmail,
+            string? systemName,
+            string maintainerComment,
+            bool rejected,
+            CancellationToken cancellationToken = default) =>
+            rejected
+                ? this.NotifyDecisionAsync(contactEmail, systemName, SubmissionState.Rejected, maintainerComment, cancellationToken: cancellationToken)
+                : this.NotifyReturnedToQueueAsync(contactEmail, systemName, maintainerComment, cancellationToken);
+
+        public async Task NotifyReturnedToQueueAsync(
+            string? contactEmail,
+            string? systemName,
+            string maintainerComment,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(contactEmail))
+            {
+                return;
+            }
+
+            try
+            {
+                EmailMessage message = EmailTemplates.SubmissionReturnedToQueue(
+                    contactEmail.Trim(),
+                    systemName ?? string.Empty,
+                    maintainerComment);
+
+                await this.thisMailer.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.thisLogger.LogWarning(
+                    ex,
+                    "Could not send the returned-to-queue mail for [{System}].",
+                    systemName);
+            }
+        }
+
+        // ###########################################################################################
         // Tells the people who can decide a submission that one is waiting (Phase 6 task 11).
         //
         // One mail per address, each failure logged and swallowed - the submission is already

@@ -337,13 +337,13 @@ namespace CRT.Server.Tests
         public void The_minimum_reason_length_is_the_value_the_REVIEW_APP_also_uses()
         {
             // *** A CONTRACT ACROSS TWO PROJECTS THAT DO NOT REFERENCE EACH OTHER. ***
-            // ReviewDecisionWording.MinimumCommentLength in CRT.Maintainer checks the same rule
+            // ReviewDecisionWording.MinimumCommentLength in CRT.App (the Maintainer tab) checks the same rule
             // locally, purely so a maintainer is told to write more BEFORE a round trip. The server
             // owns the rule and refuses regardless.
             //
             // What must never happen is the CLIENT becoming the stricter of the two: it would
             // refuse something this method would have accepted, and the maintainer would have no way
-            // past it. The maintainer app cannot reference CRT.Server, so this literal is the pin -
+            // past it. The Maintainer tab cannot reference CRT.Server, so this literal is the pin -
             // change one and this test names the other.
             Assert.Equal(10, ReviewDecisionRules.MinimumReasonLength);
         }

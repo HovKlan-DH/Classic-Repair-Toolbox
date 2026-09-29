@@ -19,7 +19,7 @@ namespace CRT
     //
     // WHICH file each side is, is BoardTableFileCells' (CRT.Data); the bytes come from the host's
     // IBoardTableFileSource. This only lays them out. Built in code rather than markup, as the
-    // maintainer application's own image comparison is, because every part depends on what loads.
+    // Maintainer tab's own image comparison is, because every part depends on what loads.
     //
     // *** THE SAME PATH ON BOTH SIDES IS STILL A COMPARISON. *** A picture replaced under its own
     // name leaves the cell's text unchanged, so the cell is not orange - and it is exactly the change
@@ -53,13 +53,19 @@ namespace CRT
         // Set by ReleaseImages: the card has closed, and a read still in flight is not decoded.
         private bool thisReleased;
 
-        public BoardTableFilePreview(BoardTableFileCell file, IBoardTableFileSource source, string? note = null)
+        // Off for a card that says nothing about a change - the Maintainer tab's file tree, whose row
+        // already says it (owner request, 2026-09-28: "only the relative path and then the other
+        // functionality from the table format").
+        private readonly bool thisShowsHeadline;
+
+        public BoardTableFilePreview(BoardTableFileCell file, IBoardTableFileSource source, string? note = null, bool showHeadline = true)
         {
             ArgumentNullException.ThrowIfNull(file);
             ArgumentNullException.ThrowIfNull(source);
 
             this.thisFile = file;
             this.thisSource = source;
+            this.thisShowsHeadline = showHeadline;
 
             this.MaxWidth = (ImageMaxWidth * 2) + 48;
 
@@ -81,7 +87,7 @@ namespace CRT
                 FontWeight = FontWeight.SemiBold,
                 TextWrapping = TextWrapping.Wrap
             };
-            this.thisHeadline.IsVisible = this.thisHeadline.Text!.Length > 0;
+            this.thisHeadline.IsVisible = showHeadline && this.thisHeadline.Text!.Length > 0;
             content.Children.Add(this.thisHeadline);
 
             var sides = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
@@ -177,7 +183,7 @@ namespace CRT
             this.thisHeadline.Text = same && !this.thisSource.SaysUnchanged
                 ? string.Empty
                 : BoardTableFileCells.Headline(this.thisFile, same) ?? string.Empty;
-            this.thisHeadline.IsVisible = this.thisHeadline.Text.Length > 0;
+            this.thisHeadline.IsVisible = this.thisShowsHeadline && this.thisHeadline.Text.Length > 0;
 
             // Identical: one picture is the whole story.
             if (same && publishedSide is not null)

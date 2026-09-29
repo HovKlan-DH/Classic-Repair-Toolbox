@@ -174,7 +174,7 @@ namespace CRT.Server.Handlers.Submissions
         // board does not actually name.
         //
         // The submitted rows are used rather than the published board because they are what the
-        // manifest carries, and the two agree on every file the comparison offers - the maintainer app
+        // manifest carries, and the two agree on every file the comparison offers - the Maintainer tab
         // only ever asks for a path that appeared in one of the two lists it was given.
         // ###########################################################################################
         private static bool IsReferencedByBoard(SubmissionManifest manifest, string relativePath)
@@ -210,7 +210,7 @@ namespace CRT.Server.Handlers.Submissions
         private static IEnumerable<string> BoardFilePaths(SubmissionManifest manifest)
         {
             // Built against no published board, so the result is the submission's OWN rows -
-            // exactly the set the maintainer app was handed and can ask about.
+            // exactly the set the Maintainer tab was handed and can ask about.
             BoardData board = PublishMerge.Build(manifest, published: null);
 
             return SubmissionManifestBuilder.CollectReferencedFiles(board);

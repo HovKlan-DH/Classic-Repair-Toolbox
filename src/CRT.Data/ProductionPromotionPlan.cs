@@ -77,7 +77,10 @@ namespace Handlers.DataHandling
 
             var problems = new List<ValidationFinding>();
             var copies = new Dictionary<string, PromotionFile>(StringComparer.Ordinal);
-            int unchanged = 0;
+
+            // Already identical in production - by path, for the file tree (owner request,
+            // 2026-09-28), and counted for the summary.
+            var unchanged = new List<string>();
 
             string[] own = ownFiles
                 .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -116,7 +119,7 @@ namespace Handlers.DataHandling
                 if (ProductionPromotionPlan.TryPlan(path, beta, production, problems, out PromotionFile? file))
                 {
                     if (file is null)
-                        unchanged++;
+                        unchanged.Add(path);
                     else
                         copies[path] = file;
                 }
@@ -182,7 +185,7 @@ namespace Handlers.DataHandling
                 if (ProductionPromotionPlan.TryPlan(cited, beta, production, problems, out PromotionFile? shared))
                 {
                     if (shared is null)
-                        unchanged++;
+                        unchanged.Add(cited);
                     else
                         copies[cited] = shared with { IsShared = true };
                 }
@@ -196,9 +199,12 @@ namespace Handlers.DataHandling
 
             return new ProductionPromotionResult(
                 problems.Count == 0 ? ordered : [],
-                unchanged,
+                unchanged.Count,
                 problems,
-                TouchesSharedFiles: ordered.Any(file => file.IsShared));
+                // Only REPLACING a shared file production already has needs the administrator too
+                // (owner decision, 2026-09-27) - a new one reaches nobody who did not ask for it.
+                TouchesSharedFiles: ordered.Any(file => file.IsShared && file.Change == PromotionChange.Replaced),
+                Unchanged: unchanged.Order(StringComparer.Ordinal).ToList());
         }
 
         // ###########################################################################################
@@ -294,7 +300,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // One file a promotion will copy. On the wire to the maintainer application as this very record,
+    // One file a promotion will copy. On the wire to the Maintainer tab as this very record,
     // so the two cannot disagree about its fields. The enums travel as NAMES for the reason
     // SubmissionFileScope gives.
     // ###########################################################################################
@@ -320,11 +326,14 @@ namespace Handlers.DataHandling
         Board
     }
 
+    // `Unchanged`: the paths counted by UnchangedCount - the file tree's "already the same" (owner
+    // request, 2026-09-28). Empty when the plan was refused before it looked at any file.
     public sealed record ProductionPromotionResult(
         IReadOnlyList<PromotionFile> Files,
         int UnchangedCount,
         IReadOnlyList<ValidationFinding> Problems,
-        bool TouchesSharedFiles)
+        bool TouchesSharedFiles,
+        IReadOnlyList<string>? Unchanged = null)
     {
         public bool CanPromote => this.Problems.Count == 0;
     }

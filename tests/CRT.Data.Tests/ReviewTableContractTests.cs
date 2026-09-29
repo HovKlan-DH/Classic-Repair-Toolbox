@@ -8,7 +8,7 @@ namespace CRT.Data.Tests
     // ###########################################################################################
     // The maintainer's table (2026-09-25): the rows<->board conversions, the one rule for what an
     // amendment may change (SubmissionRowsBoard.WithTableSections), and the wire shapes the server
-    // writes and the maintainer application and CRT read. The records are shared, so the wire tests
+    // writes and the Maintainer tab and CRT read. The records are shared, so the wire tests
     // serialise the way ASP.NET does (web defaults, camelCase) and read back as the clients do - a
     // renamed property fails here instead of arriving as an empty table or a missing flag.
     // ###########################################################################################

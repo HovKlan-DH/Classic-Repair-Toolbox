@@ -23,7 +23,7 @@ namespace CRT.Server.Handlers.Submissions
     // named methods cannot be called for the wrong outcome by accident, and a later role that
     // splits the outcomes again changes one method rather than an enum switch.
     //
-    // Every refusal hands back a REASON. The maintainer app shows it rather than silently not drawing
+    // Every refusal hands back a REASON. The Maintainer tab shows it rather than silently not drawing
     // a button: a maintainer whose account is not in this system's pool needs telling that, and a
     // submission somebody else already decided needs saying so rather than appearing broken.
     // ###########################################################################################

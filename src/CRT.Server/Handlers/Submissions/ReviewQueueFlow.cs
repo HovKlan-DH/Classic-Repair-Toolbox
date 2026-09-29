@@ -12,7 +12,7 @@ namespace CRT.Server.Handlers.Submissions
     // - the queue is small, and one rule in one place beats a second copy of it in SQL.
     //
     // *** THE TWO BADGES (owner request, 2026-09-26) ARE THE DETAIL'S OWN ANSWERS. *** The queue
-    // list in the maintainer application shows "New system" / "Published system" and "Awaiting
+    // list in the Maintainer tab shows "New system" / "Published system" and "Awaiting
     // your review". A new system is one with no published board - PublishedBoardLocator, which the
     // detail's comparison reads through. Awaiting you is ApprovalStatus.CanApprove - the answer the
     // Approve button follows - judged with the stored shared-files flag: re-checking the tree needs
@@ -37,6 +37,11 @@ namespace CRT.Server.Handlers.Submissions
 
             var entries = new List<ReviewQueueEntry>();
 
+            // Whose contributor discarded their own draft (2026-09-28) - one read for the whole queue.
+            IReadOnlyDictionary<long, DateTimeOffset> discarded = await store
+                .GetDraftDiscardsAsync(queued.Select(record => record.Id).ToList(), cancellationToken)
+                .ConfigureAwait(false);
+
             foreach (SubmissionRecord record in queued)
             {
                 if (!ReviewAuthority.CanReview(access, record))
@@ -50,7 +55,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 bool awaitsYou = ReviewAuthority.CanPublish(access, record) && approval.CanApprove;
 
-                entries.Add(ReviewQueueFlow.Entry(record, isNewSystem, awaitsYou));
+                entries.Add(ReviewQueueFlow.Entry(record, isNewSystem, awaitsYou, discarded.TryGetValue(record.Id, out DateTimeOffset at) ? at : null));
             }
 
             // Everything in a filtered queue is publishable by the caller - CanPublish is kept for
@@ -68,7 +73,7 @@ namespace CRT.Server.Handlers.Submissions
         // One submission as a queue row - also the `submission` of the detail answer, with the
         // detail's own two answers.
         // ###########################################################################################
-        public static ReviewQueueEntry Entry(SubmissionRecord record, bool? isNewSystem, bool? awaitsYou)
+        public static ReviewQueueEntry Entry(SubmissionRecord record, bool? isNewSystem, bool? awaitsYou, DateTimeOffset? draftDiscardedUtc = null)
         {
             ArgumentNullException.ThrowIfNull(record);
 
@@ -85,7 +90,10 @@ namespace CRT.Server.Handlers.Submissions
                 // So the administrator can see WHY a submission is theirs as well as a maintainer's.
                 record.TouchesSharedFiles,
                 isNewSystem,
-                awaitsYou);
+                awaitsYou,
+
+                // The contributor discarded their own draft after sending it (2026-09-28).
+                draftDiscardedUtc);
         }
     }
 }

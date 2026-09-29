@@ -6,7 +6,7 @@
 	<Application.Resources>
 		<ResourceDictionary>
 
-			<!-- The table editor's own colours, shared with the maintainer application (CRT.UI). -->
+			<!-- The table editor's own colours, shared with the Maintainer tab (CRT.UI). -->
 			<ResourceDictionary.MergedDictionaries>
 				<ResourceInclude Source="avares://CRT.UI/BoardTable/BoardTableColors.axaml" />
 			</ResourceDictionary.MergedDictionaries>
@@ -156,7 +156,7 @@
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
 
 					<!-- Light, the table editor's colours (BoardTable_*) now live in CRT.UI's
-					     BoardTable/BoardTableColors.axaml, merged below, so the maintainer application's
+					     BoardTable/BoardTableColors.axaml, merged below, so the Maintainer tab's
 					     table uses the very same ones. -->
 
 					<!-- Light, Workbooks tab: the surfaces the tab actually paints.
@@ -226,6 +226,20 @@
 
 					<!-- Light, Feedback tab -->
 					<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+
+					<!-- Light, Maintainer tab (2026-09-29; the values CRT Maintainer's own theme carried): the
+					     queue's "New system" badge and the line between its boards, and the four screen
+					     buttons with their badges -->
+					<SolidColorBrush x:Key="Badge_NewSystem_Bg">#FFF1D6</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_NewSystem_Fg">#8A5200</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_NewSystem_Border">#E8B866</SolidColorBrush>
+					<SolidColorBrush x:Key="Queue_Divider">#D0D0D0</SolidColorBrush>
+					<SolidColorBrush x:Key="Mode_Selected_Bg">#DCE7F3</SolidColorBrush>
+					<SolidColorBrush x:Key="Mode_Selected_Border">#4F7FBF</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_Attention_Bg">#C0392B</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_Attention_Fg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_Count_Bg">#E2E2E2</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_Count_Fg">#505050</SolidColorBrush>
 
 				</ResourceDictionary>
 
@@ -394,6 +408,18 @@
 
 				<!-- Dark, Feedback tab -->
 				<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+
+				<!-- Dark, Maintainer tab (see the Light twin) -->
+				<SolidColorBrush x:Key="Badge_NewSystem_Bg">#3D2E10</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_NewSystem_Fg">#F7C873</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_NewSystem_Border">#7A5A1E</SolidColorBrush>
+				<SolidColorBrush x:Key="Queue_Divider">#4A4A4A</SolidColorBrush>
+				<SolidColorBrush x:Key="Mode_Selected_Bg">#27384D</SolidColorBrush>
+				<SolidColorBrush x:Key="Mode_Selected_Border">#6F9FD8</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_Attention_Bg">#D9534F</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_Attention_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_Count_Bg">#3A3A3A</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_Count_Fg">#C8C8C8</SolidColorBrush>
 
 			</ResourceDictionary>
 		</ResourceDictionary.ThemeDictionaries>

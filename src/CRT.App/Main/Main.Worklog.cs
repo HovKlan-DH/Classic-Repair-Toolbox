@@ -240,6 +240,10 @@ namespace CRT
                 return;
             }
 
+            // The sidebar and the worklog bar collapse while the Maintainer tab is selected, and
+            // come back on leaving it (Main.Maintainer.cs).
+            this.ApplyMaintainerLayoutForSelection(e);
+
             if (this.MainTabControl?.SelectedItem is TabItem { Header: "Workbooks" })
             {
                 this.TabWorkbooks?.FocusSearchBox();

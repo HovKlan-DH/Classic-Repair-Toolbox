@@ -76,6 +76,8 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = current.RevisionDate,
+                HardwareName = current.HardwareName,
+                BoardName = current.BoardName,
                 Schematics = current.Schematics,
                 Components = LabelEditorBoardWriter.ApplyComponents(current, saveRows, region),
                 ComponentImages = current.ComponentImages,

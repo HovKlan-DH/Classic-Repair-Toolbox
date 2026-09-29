@@ -175,7 +175,15 @@ namespace CRT.Server.Tests
                 existing ?? [],
                 "Data C64 250407",
                 manifest,
-                "r2",
+
+                // ###########################################################################################
+                // *** THE PLAN'S REVISION IS NOW THE ONE THE WORKBOOK GETS (2026-09-26). *** It used
+                // to be a placeholder ("r2") because the executor stamped the workbook itself and
+                // nothing compared the two - which was the defect: the board and
+                // `systems.current_revision` disagreed. ApprovePublishFlow stamps it once now, so
+                // the fixture passes what that would produce for `Now`.
+                // ###########################################################################################
+                BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now),
                 PublishExecutorTests.Now,
                 ["Someone"],
                 SystemDescriptorRules.SystemOrigin.Contributed);
@@ -254,6 +262,18 @@ namespace CRT.Server.Tests
 
             // The numeric-looking value survives the publish, not just the writer's own tests.
             Assert.Equal("0.35", Assert.Single(published.Schematics).SchematicHighlightOpacity);
+
+            // ###########################################################################################
+            // *** AND THE `systems` ROW SAYS THE SAME (owner confirmation, 2026-09-26: "the revision
+            // date gets updated from server ... so server always wins"). ***
+            //
+            // The workbook is stamped with the publish date above, but the row was written from the
+            // PLAN's revision, which is the SUBMITTED value - so the board said "2026-September-21"
+            // while `systems.current_revision` said "2026-August-21". That row is what a
+            // contributor's next draft re-bases against (DraftBaseRevision), so the two disagreeing
+            // is the drift check comparing against a revision no board ever carried.
+            // ###########################################################################################
+            Assert.Equal(published.RevisionDate, store.PublishedSystems["Commodore/C64/250407"].Revision);
         }
 
         // -----------------------------------------------------------------------------------
@@ -448,7 +468,9 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished, outcome.Failure);
             Assert.False(File.Exists(leftover));
 
-            Assert.Equal("r2", outcome.Descriptor!.Revision);
+            Assert.Equal(
+                BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now),
+                outcome.Descriptor!.Revision);
             Assert.NotEmpty(outcome.Descriptor.ContentHash);
         }
 
@@ -531,7 +553,7 @@ namespace CRT.Server.Tests
 
             PublishedSystemRow row = store.PublishedSystems["Commodore/C64/250407"];
 
-            Assert.Equal("r2", row.Revision);
+            Assert.Equal(BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now), row.Revision);
             Assert.Equal(outcome.Descriptor!.ContentHash, row.ContentHash);
         }
 
@@ -567,7 +589,9 @@ namespace CRT.Server.Tests
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: null, PublishExecutorTests.Now);
 
             Assert.True(outcome.IsPublished);
-            Assert.Equal("r2", store.PublishedSystems["Commodore/C64/250407"].Revision);
+            Assert.Equal(
+                BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now),
+                store.PublishedSystems["Commodore/C64/250407"].Revision);
         }
 
         // -----------------------------------------------------------------------------------
@@ -651,6 +675,112 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(plan.WorkbookPath));
             Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName)));
             Assert.Empty(store.PublishedSystems);
+        }
+
+        // ###########################################################################################
+        // *** A FOLDER THE SERVICE MAY NOT WRITE STOPS THE PUBLISH BEFORE ANYTHING IS WRITTEN
+        // (owner report, 2026-09-28). *** Production's files had been copied into BETA by hand as
+        // root; the approval wrote the new workbook and was then refused at the highlight file
+        // beside it - a 500 over a half-replaced board. Now every folder the publish writes into is
+        // asked first, and the maintainer is told which, with nothing changed. (A folder that may
+        // not be written cannot be made on every OS, so the executor's probe is told the answer.)
+        // ###########################################################################################
+        [Fact]
+        public async Task A_board_folder_the_service_may_not_write_STOPS_the_publish_before_anything_is_written()
+        {
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
+            string hash = await this.PutBlobAsync(image);
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
+                new SubmissionFile
+                {
+                    Path = "Commodore/C64/250407/Images/sheet1.png",
+                    Sha256 = hash,
+                    SizeBytes = image.LongLength
+                }));
+
+            var executor = new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance)
+            {
+                CanWriteFolderForTests = folder => folder != this.thisSystemFolder
+            };
+
+            PublishOutcome outcome = await executor
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("[Commodore/C64/250407]", outcome.Failure);
+            Assert.Contains("nothing was changed", outcome.Failure);
+
+            // Not the image (its "Images" folder is not there yet, so the board folder is what must
+            // allow it), not the workbook, not the database.
+            Assert.False(File.Exists(plan.Files[0].AbsolutePath));
+            Assert.False(File.Exists(plan.WorkbookPath));
+            Assert.False(File.Exists(plan.SidecarPath));
+            Assert.Empty(store.PublishedSystems);
+        }
+
+        // ###########################################################################################
+        // *** A HIGHLIGHT FILE THAT CANNOT BE WRITTEN IS REPORTED, NOT THROWN (owner report,
+        // 2026-09-28). *** The sidecar step caught nothing, so the refusal escaped as a bare 500
+        // "The server answered 500." with the workbook already written. It now says the board is
+        // part-published and that approving again repairs it, and records nothing in the database.
+        // Provoked with a DIRECTORY where the sidecar goes, as the file test above does.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_highlight_file_that_cannot_be_written_is_a_REPORTED_part_publish_not_an_exception()
+        {
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
+
+            Directory.CreateDirectory(plan.SidecarPath);
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("highlight file could not be written", outcome.Failure);
+            Assert.Contains("part-published", outcome.Failure);
+            Assert.Empty(store.PublishedSystems);
+        }
+
+        // ###########################################################################################
+        // *** FILES COPIED IN BY HAND ARE REPLACED, NOT REFUSED (owner report, 2026-09-28). *** A
+        // file copied into BETA as root may be replaced by the service - that is its folder's
+        // permission - but not opened for writing, and the highlight file was written by opening
+        // it. Both board files are now written beside themselves and renamed into place, so the
+        // publish goes through. Made here as files with no write permission for their owner, which
+        // refuses an open the same way; not on Windows (no such mode) and not as root (which
+        // ignores it). Fails against the in-place sidecar write.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_board_whose_files_may_not_be_opened_for_writing_is_still_published()
+        {
+            // The return is for the platform analyzer, which cannot see that Skip throws.
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.Skip("Unix permissions only.");
+                return;
+            }
+            Assert.SkipWhen(Environment.UserName == "root", "root may write anything.");
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
+
+            File.WriteAllText(plan.WorkbookPath, "copied in by hand");
+            File.WriteAllText(plan.SidecarPath, "{}");
+            File.SetUnixFileMode(plan.WorkbookPath, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+            File.SetUnixFileMode(plan.SidecarPath, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.True(outcome.IsPublished, outcome.Failure);
+
+            BoardData? published = await BoardDataReader.LoadAsync(plan.WorkbookPath, "hand-copied-" + Guid.NewGuid().ToString("N"));
+            Assert.Equal("U8", Assert.Single(published!.Components).BoardLabel);
+            Assert.Contains(BoardSidecarWriter.HighlightsRoot, File.ReadAllText(plan.SidecarPath));
         }
 
         [Fact]

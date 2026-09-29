@@ -23,7 +23,7 @@ namespace CRT
         // "Reload": Discard or Cancel.
         Reloading,
 
-        // Closing the MAINTAINER APPLICATION's table on a submission (2026-09-25): Save, Discard or
+        // Closing the MAINTAINER TAB's table on a submission (2026-09-25): Save, Discard or
         // Cancel - the same choice as Leaving, but the edits go into the submission, not a draft.
         LeavingSubmission,
 

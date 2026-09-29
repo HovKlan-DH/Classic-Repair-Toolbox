@@ -1,6 +1,7 @@
 ﻿using CRT;
 using Handlers.DataHandling;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
@@ -81,7 +82,10 @@ namespace Handlers.OnlineHandling
         // onProgress: optional callback receiving download progress (0-100).
         // Returns true if successful, false if the download/install failed.
         // ###########################################################################################
-        public static async Task<bool> DownloadAndInstallAsync(Action<int>? onProgress = null)
+        // `cancellationToken` stops the DOWNLOAD (2026-09-28: the "please wait" overlay gives up
+        // after two minutes with no progress) - so a stalled download that recovered later can never
+        // restart the application under somebody who has carried on working.
+        public static async Task<bool> DownloadAndInstallAsync(Action<int>? onProgress = null, CancellationToken cancellationToken = default)
         {
             if (SimulationOptions.Current.SimulateUpdate)
             {
@@ -89,7 +93,7 @@ namespace Handlers.OnlineHandling
                 for (int i = 0; i <= 100; i += 5)
                 {
                     onProgress?.Invoke(i);
-                    await Task.Delay(50);
+                    await Task.Delay(50, cancellationToken);
                 }
                 Logger.Warning("Simulated update - download complete (the restart is deliberately skipped)");
                 return true;
@@ -103,17 +107,34 @@ namespace Handlers.OnlineHandling
 
             try
             {
-                await _manager.DownloadUpdatesAsync(_pendingUpdate, onProgress);
+                await _manager.DownloadUpdatesAsync(_pendingUpdate, onProgress, cancellationToken);
                 Logger.Info("Update downloaded - restarting into new version");
                 _manager.ApplyUpdatesAndRestart(_pendingUpdate);
                 return true; // Execution technically halts on the line above if restart succeeds
             }
             catch (Exception ex)
             {
+                // The caller stopped it - the "please wait" overlay's two-minute limit with no
+                // progress. An expected, user-facing path ("stopped moving, try again"), not a failed
+                // install, so it is not logged as one (code review, 2026-09-29).
+                if (UpdateService.WasStoppedByCaller(ex, cancellationToken))
+                {
+                    Logger.Warning("Update download stopped - it made no progress within the wait limit");
+                    return false;
+                }
+
                 Logger.Critical($"Update install failed - [{ex.Message}]");
                 return false; // Safely return false instead of crashing the app
             }
         }
+
+        // ###########################################################################################
+        // Whether a failed download was the CALLER cancelling it, rather than a fault. Only a
+        // cancellation the caller's own token asked for: HttpClient reports its own timeout as a
+        // TaskCanceledException too, with the caller's token untouched, and that one IS a failure.
+        // ###########################################################################################
+        internal static bool WasStoppedByCaller(Exception exception, CancellationToken cancellationToken) =>
+            exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
 
         // ###########################################################################################
         // Returns the version string of the available update, or null if none was found.

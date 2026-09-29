@@ -90,8 +90,34 @@ namespace CRT.Data.Tests
             // zero with no explanation looks broken.
             var progress = new SubmissionProgress(SubmissionPhase.Hashing, 3, 12, 0, 0, null);
 
-            Assert.Contains("Checking files", progress.Describe(), StringComparison.Ordinal);
+            Assert.Contains("Checking which files need sending", progress.Describe(), StringComparison.Ordinal);
             Assert.Contains("3 of 12", progress.Describe(), StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** THE HEADING SAYS "SENDING" ONLY ONCE SOMETHING IS SENT (owner report, 2026-09-28). ***
+        // It read "Sending contribution" through the whole local file check of a 2,242-file system,
+        // while nothing had left the machine. Every phase before the upload is "Preparing".
+        // ###########################################################################################
+        [Theory]
+        [InlineData(SubmissionPhase.Preparing, "Preparing contribution")]
+        [InlineData(SubmissionPhase.Hashing, "Preparing contribution")]
+        [InlineData(SubmissionPhase.Negotiating, "Preparing contribution")]
+        [InlineData(SubmissionPhase.Uploading, "Sending contribution")]
+        [InlineData(SubmissionPhase.Finalising, "Sending contribution")]
+        [InlineData(SubmissionPhase.Done, "Contribution sent")]
+        public void The_heading_says_sending_only_once_the_upload_has_started(SubmissionPhase phase, string expected)
+        {
+            var progress = new SubmissionProgress(phase, 1, 2, 10, 100, "file.png");
+
+            Assert.Equal(expected, progress.Heading);
+        }
+
+        [Fact]
+        public void A_submission_that_has_just_started_is_preparing_not_sending()
+        {
+            // What the dialog shows the moment Submit is pressed, before any progress is reported.
+            Assert.Equal("Preparing contribution", SubmissionProgress.Starting().Heading);
         }
 
         [Fact]

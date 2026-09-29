@@ -310,6 +310,9 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = revisionDate ?? string.Empty,
+                // Rows carry no caption; the publish supplies it (PublishMerge.CaptionedAs).
+                HardwareName = string.Empty,
+                BoardName = string.Empty,
                 Schematics = [.. rows.Schematics],
                 Components = [.. rows.Components],
                 ComponentImages = [.. rows.ComponentImages],

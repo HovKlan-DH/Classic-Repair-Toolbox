@@ -102,22 +102,7 @@ namespace Handlers.OnlineHandling
         {
             try
             {
-                var osHighLevel = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows"
-                    : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macOS"
-                    : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "Linux"
-                    : RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD) ? "FreeBSD"
-                    : "Unknown";
-
-                var osVersion = RuntimeInformation.OSDescription;
-
-                var cpu = RuntimeInformation.ProcessArchitecture switch
-                {
-                    Architecture.X64 => "64-bit",
-                    Architecture.X86 => "32-bit",
-                    Architecture.Arm64 => "ARM 64-bit",
-                    Architecture.Arm => "ARM 32-bit",
-                    var a => a.ToString()
-                };
+                (string osHighLevel, string osVersion, string cpu) = OnlineServices.DescribeMachine();
 
                 using var http = new HttpClient { Timeout = AppConfig.ApiTimeout };
                 http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", OnlineServices.UserAgent);
@@ -143,6 +128,36 @@ namespace Handlers.OnlineHandling
                 Logger.Warning($"Online check-in failed: [{ex.Message}]");
             }
         }
+
+        // ###########################################################################################
+        // The machine as the launch check-in describes it - and board views too (BoardViewReporter),
+        // so crt_update and crt_board_views name an operating system and a CPU alike.
+        // ###########################################################################################
+        internal static (string OsHighLevel, string OsVersion, string Cpu) DescribeMachine()
+        {
+            var osHighLevel = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macOS"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "Linux"
+                : RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD) ? "FreeBSD"
+                : "Unknown";
+
+            var osVersion = RuntimeInformation.OSDescription;
+
+            var cpu = RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => "64-bit",
+                Architecture.X86 => "32-bit",
+                Architecture.Arm64 => "ARM 64-bit",
+                Architecture.Arm => "ARM 32-bit",
+                var a => a.ToString()
+            };
+
+            return (osHighLevel, osVersion, cpu);
+        }
+
+        // The version as the launch check-in sends it (its User-Agent), and so as crt_update.version
+        // holds it: "CRT 2026.10.0".
+        internal static string VersionForServer => OnlineServices.UserAgent;
 
         // ###########################################################################################
         // Fetches and parses the online checksum manifest. Returns null on failure.

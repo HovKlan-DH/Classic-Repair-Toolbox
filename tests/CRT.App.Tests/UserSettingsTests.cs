@@ -59,6 +59,8 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.DetachSchematicsThumbnails);
         Assert.False(UserSettings.RememberThumbnailWindowSettingsPerBoard);
         Assert.False(UserSettings.ViewOfficialPublishedOnly);
+        Assert.False(UserSettings.EnableMaintainerTab);
+        Assert.False(UserSettings.MaintainerShowChangesOnly);
     }
 
     [Fact]
@@ -170,6 +172,41 @@ public sealed class UserSettingsTests : IDisposable
 
         UserSettings.LoadFrom(path);
         Assert.False(UserSettings.EnableWorklog);
+    }
+
+    // The Maintainer tab is OFF until a maintainer turns it on: almost nobody running CRT has a
+    // maintainer account, and a tab opening on a sign-in screen they cannot use would only confuse.
+    [Fact]
+    public void Turning_the_maintainer_tab_on_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.EnableMaintainerTab = true;
+
+        Assert.True(ReadJson(path)["enableMaintainerTab"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.EnableMaintainerTab);
+    }
+
+    // The Maintainer tab's table remembers "Show changes only" - what the separate maintainer
+    // application kept in a file of its own until 2026-09-29.
+    [Fact]
+    public void The_maintainer_tables_show_changes_only_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.MaintainerShowChangesOnly = true;
+
+        Assert.True(ReadJson(path)["maintainerShowChangesOnly"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.MaintainerShowChangesOnly);
+
+        UserSettings.MaintainerShowChangesOnly = false;
+
+        UserSettings.LoadFrom(path);
+        Assert.False(UserSettings.MaintainerShowChangesOnly);
     }
 
     [Fact]

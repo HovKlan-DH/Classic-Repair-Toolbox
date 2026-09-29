@@ -374,9 +374,16 @@ namespace CRT
         // ###########################################################################################
         private async void OnConnectToOscilloscopeClick(object? sender, RoutedEventArgs e)
         {
-            await this.ConnectSelectedOscilloscopeAsync(
-                CancellationToken.None,
-                isAutomaticReconnect: false);
+            // A connect the user pressed for waits under the "please wait" overlay (2026-09-28); the
+            // automatic reconnect in the background does not - nobody is waiting on it. Its token is
+            // the overlay's, so an oscilloscope that never answers is let go after the limit.
+            WaitResult<bool> waited = await BusyOverlay.RunAsync(
+                this,
+                CrtWaitWording.ConnectingOscilloscope,
+                context => this.ConnectSelectedOscilloscopeAsync(context.Token, isAutomaticReconnect: false));
+
+            if (waited.IsTimedOut)
+                this.AppendOutputLine("Warning", CrtWaitWording.OscilloscopeNoAnswer);
         }
 
         // ###########################################################################################

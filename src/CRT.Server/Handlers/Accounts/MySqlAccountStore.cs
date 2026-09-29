@@ -644,6 +644,232 @@ namespace CRT.Server.Handlers.Accounts
         // Plumbing.
         // -----------------------------------------------------------------------------------
 
+        public async Task<IReadOnlyList<AuditEntry>> GetAuditForSubjectsAsync(IReadOnlyCollection<string> subjects, int limit, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(subjects);
+
+            List<string> named = subjects.Where(subject => !string.IsNullOrWhiteSpace(subject)).Distinct(StringComparer.Ordinal).ToList();
+
+            if (named.Count == 0)
+                return [];
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            // One parameter per subject - never the subjects spliced into the text.
+            var names = new List<string>(named.Count);
+
+            for (int i = 0; i < named.Count; i++)
+            {
+                names.Add($"@s{i}");
+                command.Parameters.AddWithValue($"@s{i}", named[i]);
+            }
+
+            command.CommandText =
+                "SELECT actor_account_id, actor_label, action, subject, detail, at_utc FROM audit " +
+                $"WHERE subject IN ({string.Join(", ", names)}) ORDER BY at_utc DESC, id DESC LIMIT @limit;";
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
+
+            var entries = new List<AuditEntry>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                entries.Add(new AuditEntry(
+                    reader.IsDBNull(0) ? null : reader.GetInt64(0),
+                    reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    MySqlAccountStore.ReadUtc(reader, 5)!.Value));
+            }
+
+            return entries;
+        }
+
+        // ---------------------------------------------------------------------------------------
+        // Maintainer invitations (2026-09-27, migration 0012).
+        // ---------------------------------------------------------------------------------------
+
+        private const string InvitationColumns =
+            "id, system_id, email, email_normalised, invited_by, created_utc, expires_utc, accepted_utc, withdrawn_utc";
+
+        public async Task<long> CreateInvitationAsync(NewMaintainerInvitation invitation, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(invitation);
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                INSERT INTO maintainer_invitations
+                    (system_id, email, email_normalised, token_hash, invited_by, created_utc, expires_utc)
+                VALUES (@systemId, @email, @normalised, @hash, @invitedBy, @created, @expires);
+                SELECT LAST_INSERT_ID();
+                """;
+
+            command.Parameters.AddWithValue("@systemId", invitation.SystemId);
+            command.Parameters.AddWithValue("@email", invitation.Email);
+            command.Parameters.AddWithValue("@normalised", invitation.NormalisedEmail);
+            command.Parameters.AddWithValue("@hash", invitation.TokenHash);
+            command.Parameters.AddWithValue("@invitedBy", invitation.InvitedByAccountId);
+            command.Parameters.AddWithValue("@created", invitation.CreatedUtc.UtcDateTime);
+            command.Parameters.AddWithValue("@expires", invitation.ExpiresUtc.UtcDateTime);
+
+            object? id = await command.ExecuteScalarAsync(cancellationToken);
+
+            return Convert.ToInt64(id, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        public async Task<MaintainerInvitationRecord?> FindInvitationByHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.InvitationColumns} FROM maintainer_invitations WHERE token_hash = @hash LIMIT 1;";
+            command.Parameters.AddWithValue("@hash", tokenHash);
+
+            IReadOnlyList<MaintainerInvitationRecord> found = await MySqlAccountStore.ReadInvitationsAsync(command, cancellationToken);
+            return found.Count == 0 ? null : found[0];
+        }
+
+        public async Task<MaintainerInvitationRecord?> FindInvitationByIdAsync(long invitationId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.InvitationColumns} FROM maintainer_invitations WHERE id = @id LIMIT 1;";
+            command.Parameters.AddWithValue("@id", invitationId);
+
+            IReadOnlyList<MaintainerInvitationRecord> found = await MySqlAccountStore.ReadInvitationsAsync(command, cancellationToken);
+            return found.Count == 0 ? null : found[0];
+        }
+
+        public async Task<IReadOnlyList<MaintainerInvitationRecord>> ListOpenInvitationsAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.InvitationColumns} FROM maintainer_invitations " +
+                "WHERE accepted_utc IS NULL AND withdrawn_utc IS NULL AND expires_utc > @now " +
+                "ORDER BY system_id, created_utc, id;";
+            command.Parameters.AddWithValue("@now", nowUtc.UtcDateTime);
+
+            return await MySqlAccountStore.ReadInvitationsAsync(command, cancellationToken);
+        }
+
+        public Task WithdrawInvitationAsync(long invitationId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            // Only an open one: an accepted invitation is history, and withdrawing it after the
+            // fact would make the record say it never happened.
+            return this.ExecuteAsync(
+                """
+                UPDATE maintainer_invitations SET withdrawn_utc = @when
+                WHERE id = @id AND accepted_utc IS NULL AND withdrawn_utc IS NULL;
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("@id", invitationId);
+                    command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
+                },
+                cancellationToken);
+        }
+
+        public async Task<long?> AcceptInvitationsAsync(NewAccount account, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(account);
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            long accountId;
+
+            await using (MySqlCommand command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+
+                // VERIFIED from the start: the invitation code arrived at this address, which is
+                // everything the verification link would have proved.
+                command.CommandText = """
+                    INSERT INTO accounts (email, email_normalised, password_hash, display_name, created_utc, is_verified)
+                    VALUES (@email, @normalised, @hash, @displayName, @created, 1);
+                    SELECT LAST_INSERT_ID();
+                    """;
+
+                command.Parameters.AddWithValue("@email", account.Email);
+                command.Parameters.AddWithValue("@normalised", account.NormalisedEmail);
+                command.Parameters.AddWithValue("@hash", account.PasswordHash);
+                command.Parameters.AddWithValue("@displayName", account.DisplayName);
+                command.Parameters.AddWithValue("@created", account.CreatedUtc.UtcDateTime);
+
+                try
+                {
+                    object? id = await command.ExecuteScalarAsync(cancellationToken);
+                    accountId = Convert.ToInt64(id, System.Globalization.CultureInfo.InvariantCulture);
+                }
+                catch (MySqlException exception) when (exception.ErrorCode == MySqlErrorCode.DuplicateKeyEntry)
+                {
+                    // The address took an account since the flow looked. Nothing is written.
+                    await transaction.RollbackAsync(cancellationToken);
+                    return null;
+                }
+            }
+
+            // The pools first, from the invitations still open - then those invitations are closed.
+            // INSERT IGNORE: a pool row that somehow exists already keeps its first grant.
+            await using (MySqlCommand command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = """
+                    INSERT IGNORE INTO maintainers (system_id, account_id, granted_by, granted_utc)
+                    SELECT system_id, @accountId, invited_by, @when FROM maintainer_invitations
+                    WHERE email_normalised = @normalised
+                      AND accepted_utc IS NULL AND withdrawn_utc IS NULL AND expires_utc > @when;
+
+                    UPDATE maintainer_invitations SET accepted_utc = @when, accepted_account_id = @accountId
+                    WHERE email_normalised = @normalised
+                      AND accepted_utc IS NULL AND withdrawn_utc IS NULL AND expires_utc > @when;
+                    """;
+
+                command.Parameters.AddWithValue("@accountId", accountId);
+                command.Parameters.AddWithValue("@normalised", account.NormalisedEmail);
+                command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            return accountId;
+        }
+
+        private static async Task<IReadOnlyList<MaintainerInvitationRecord>> ReadInvitationsAsync(MySqlCommand command, CancellationToken cancellationToken)
+        {
+            var invitations = new List<MaintainerInvitationRecord>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                invitations.Add(new MaintainerInvitationRecord(
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                    MySqlAccountStore.ReadUtc(reader, 5)!.Value,
+                    MySqlAccountStore.ReadUtc(reader, 6)!.Value,
+                    MySqlAccountStore.ReadUtc(reader, 7),
+                    MySqlAccountStore.ReadUtc(reader, 8)));
+            }
+
+            return invitations;
+        }
+
         private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)
         {
             var connection = new MySqlConnection(this.thisConnectionString);

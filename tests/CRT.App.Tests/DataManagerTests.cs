@@ -110,6 +110,48 @@ public sealed class DataManagerTests : IDisposable
     private static BoardWorkbookBuilder HardwareWorkbook(params string?[][] rows) =>
         new BoardWorkbookBuilder().Sheet(HardwareSheet, HardwareHeaders, rows);
 
+    // ###########################################################################################
+    // *** THE SERVER WRITES THE ROW, CRT READS IT - ONE FORMAT, BOTH SIDES (2026-09-27). *** A new
+    // system published to BETA gets its row in the main Excel data file from MasterListing (CRT.Data,
+    // run by the server). This drives that writer and then CRT's own reader, so a column renamed or
+    // a row placed where CRT does not look fails here rather than as a board missing from everyone's
+    // drop-downs.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_the_server_inserts_is_listed_by_CRT_in_its_place_with_its_names()
+    {
+        const string fileName = "Classic-Repair-Toolbox.v2.0.0.xlsx";
+
+        HardwareWorkbook(
+                new[] { "Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "" },
+                new[] { "Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx", "" },
+                new[] { "ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/Data ZX Issue 4B v2.0.0.xlsx", "" })
+            .SaveTo(Path.Combine(this.thisWorkspace.Root, fileName));
+
+        MasterListingEdit edit = MasterListing.Insert(
+            Path.Combine(this.thisWorkspace.Root, fileName),
+            new MasterListingRow(
+                "Commodore 128",
+                "310378 Open128",
+                "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx",
+                "Open-source replica."),
+            "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
+
+        Assert.True(edit.IsDone, edit.Failure);
+
+        DataManager.LoadFrom(this.thisWorkspace.Root, fileName);
+
+        Assert.Equal(
+            ["250407 (long board)", "310378 (C128 & C128D)", "310378 Open128", "Issue 4B"],
+            DataManager.HardwareBoards.Select(entry => entry.BoardName));
+
+        HardwareBoardEntry added = DataManager.HardwareBoards[2];
+        Assert.Equal("Commodore 128", added.HardwareName);
+        Assert.Equal("Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx", added.ExcelDataFile);
+        Assert.Equal("Open-source replica.", added.HardwareNotes);
+        Assert.True(added.IsPublished);
+    }
+
     [Fact]
     public void A_missing_workbook_leaves_the_lists_empty_instead_of_throwing()
     {

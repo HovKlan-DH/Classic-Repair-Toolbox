@@ -1310,4 +1310,241 @@ public sealed class TabDraftsTests : IDisposable
             Assert.Empty(tab.Drafts);
         });
     }
+
+    // ###########################################################################################
+    // *** THE SUBMISSION BADGE (owner request, 2026-09-27): "When I have submitted my submission to
+    // the server, then I need to see that somehow". *** A drafted system's row carries its latest
+    // submission's state, in the words and colour "My submissions" gives that state - read here off
+    // the RENDERED row, not only the model, since a badge that exists but is not drawn helps nobody.
+    // ###########################################################################################
+    private static SubmissionReceipt SentReceipt(long id, string systemId, string state, string sentUtc = "2026-09-27T10:46:11Z") => new()
+    {
+        SubmissionId = id,
+        SystemId = systemId,
+        LastKnownState = state,
+        SentUtc = DateTimeOffset.Parse(sentUtc, System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    private static Border RenderedBadge(Window window) =>
+        window.GetVisualDescendants().OfType<Border>().Single(border => border.Classes.Contains("SubmissionBadge"));
+
+    [Fact]
+    public void A_submitted_draft_shows_its_submissions_state_as_a_badge_beside_its_name()
+    {
+        UiTest.Run(() =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                ReceiptsOverrideForTests = [SentReceipt(8, "Commodore/C64/250407", "pending")],
+            };
+
+            tab.RefreshDrafts();
+
+            DraftListItem row = Assert.Single(tab.Drafts);
+            Assert.True(row.HasSubmission);
+            Assert.Equal("Submitted - awaiting feedback from a maintainer", row.SubmissionStateText);
+            Assert.Contains("2026-September-27", row.SubmissionTooltip, StringComparison.Ordinal);
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Border badge = RenderedBadge(window);
+            Assert.True(badge.IsEffectivelyVisible);
+            Assert.Equal("Submitted - awaiting feedback from a maintainer", badge.GetVisualDescendants().OfType<TextBlock>().Single().Text);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_draft_never_submitted_has_no_badge()
+    {
+        UiTest.Run(() =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                ReceiptsOverrideForTests = [SentReceipt(3, "Commodore/C64/250466", "pending")],
+            };
+
+            tab.RefreshDrafts();
+            Assert.False(Assert.Single(tab.Drafts).HasSubmission);
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(RenderedBadge(window).IsEffectivelyVisible);
+
+            window.Close();
+        });
+    }
+
+    // The badge moves with the review: the NEWEST submission's state, not the first one's.
+    [Fact]
+    public void The_badge_follows_the_newest_submission_of_the_system()
+    {
+        UiTest.Run(() =>
+        {
+            const string excelDataFile = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 128", "310378 Open128", excelDataFile)],
+                ReceiptsOverrideForTests =
+                [
+                    SentReceipt(5, "Commodore/C128/310378 Open128", "withdrawn", "2026-09-20T10:00:00Z"),
+                    SentReceipt(8, "Commodore/C128/310378 Open128", "merged", "2026-09-27T10:46:11Z"),
+                ],
+            };
+
+            tab.RefreshDrafts();
+
+            Assert.Equal("Published to BETA source", Assert.Single(tab.Drafts).SubmissionStateText);
+        });
+    }
+
+    // ###########################################################################################
+    // The colour is "My submissions"' own for that state (SubmissionListItem.AccentFor), so the two
+    // cannot disagree - "Changes requested" is the orange that says the contributor has something
+    // to do, in both places.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("changes_requested", SubmissionOutcomeKind.NeedsAction)]
+    [InlineData("merged", SubmissionOutcomeKind.Good)]
+    [InlineData("rejected", SubmissionOutcomeKind.Bad)]
+    [InlineData("pending", SubmissionOutcomeKind.Waiting)]
+    public void The_badge_is_coloured_as_My_submissions_colours_the_same_state(string state, SubmissionOutcomeKind kind)
+    {
+        UiTest.Run(() =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                ReceiptsOverrideForTests = [SentReceipt(8, "Commodore/C64/250407", state)],
+            };
+
+            tab.RefreshDrafts();
+
+            var expected = (Avalonia.Media.ISolidColorBrush)SubmissionListItem.AccentFor(kind);
+            var actual = (Avalonia.Media.ISolidColorBrush)Assert.Single(tab.Drafts).SubmissionAccentBrush!;
+
+            Assert.Equal(expected.Color, actual.Color);
+        });
+    }
+
+    // ###########################################################################################
+    // *** STRAIGHT AFTER A SUCCESSFUL SEND THE BADGE SAYS IT WAS SUBMITTED (owner report,
+    // 2026-09-27). *** It read "Not checked yet": the receipt is recorded before the upload with no
+    // state, and nothing recorded the state the server confirmed at finalise. This drives the real
+    // store the way SubmitDraftWindow does - Record, then RecordFinalised - and reads the badge.
+    // ###########################################################################################
+    [Fact]
+    public void Straight_after_a_successful_send_the_badge_says_submitted_rather_than_not_checked_yet()
+    {
+        UiTest.Run(() =>
+        {
+            using var receipts = new TempWorkspace();
+            SubmissionReceiptStore.LoadFrom(System.IO.Path.Combine(receipts.Root, "submissions.json"));
+
+            try
+            {
+                const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+                WriteDraftWithChanges(excelDataFile);
+
+                SubmissionReceiptStore.Record(new SubmissionReceipt
+                {
+                    SubmissionId = 9,
+                    UploadToken = "tok",
+                    SystemId = "Commodore/C64/250407",
+                    SentUtc = DateTimeOffset.UtcNow,
+                });
+
+                SubmissionReceiptStore.RecordFinalised(
+                    new SubmissionResult { SubmissionId = 9, IsAccepted = true, State = "pending" }, DateTimeOffset.UtcNow);
+
+                var tab = new TabDrafts
+                {
+                    HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                };
+
+                tab.RefreshDrafts();
+
+                Assert.Equal("Submitted - awaiting feedback from a maintainer", Assert.Single(tab.Drafts).SubmissionStateText);
+            }
+            finally
+            {
+                SubmissionReceiptStore.LoadFrom(string.Empty);
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** DISCARDING A DRAFT WHOSE SUBMISSION IS STILL WITH THE MAINTAINERS TELLS THEM (owner
+    // request, 2026-09-28). *** The receipt is marked first (so no network still gets it reported at
+    // the next launch), the notice is sent with the submission's own token, and a 204 finishes it.
+    // A submission already published is not reported - nobody can act on it any more.
+    // ###########################################################################################
+    [Fact]
+    public async Task Discarding_a_draft_with_a_submission_in_BETA_tells_the_server_once()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            using var receipts = new TempWorkspace();
+            SubmissionReceiptStore.LoadFrom(System.IO.Path.Combine(receipts.Root, "submissions.json"));
+
+            try
+            {
+                const string excelDataFile = "Commodore/C128/310378/Data.xlsx";
+                WriteDraftWithChanges(excelDataFile);
+
+                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 9, UploadToken = "tok9", SystemId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "merged" });
+                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 8, UploadToken = "tok8", SystemId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "published" });
+
+                HardwareBoardEntry entry = BoardEntry("Commodore 128", "310378", excelDataFile);
+                var sent = new List<(long Id, string Token)>();
+
+                var tab = new TabDrafts
+                {
+                    HardwareBoardsOverrideForTests = [entry],
+                    DraftDiscardSendOverrideForTests = (id, token, _) =>
+                    {
+                        sent.Add((id, token));
+                        return Task.FromResult<int?>(204);
+                    }
+                };
+
+                tab.RefreshDrafts();
+
+                IReadOnlyList<SubmissionReceipt> unfinished = DraftDiscardContract.WhichToReport(SubmissionReceiptStore.All, "Commodore/C128/310378");
+                tab.DiscardConfirmed(entry, unfinished);
+
+                for (int attempt = 0; attempt < 200 && sent.Count == 0; attempt++)
+                    await Task.Delay(5);
+
+                Assert.Equal([(9L, "tok9")], sent);
+
+                SubmissionReceipt told = SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 9);
+                Assert.NotNull(told.DraftDiscardedUtc);
+                Assert.True(told.DraftDiscardReported);
+                Assert.Null(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 8).DraftDiscardedUtc);
+            }
+            finally
+            {
+                SubmissionReceiptStore.LoadFrom(string.Empty);
+            }
+        });
+    }
 }

@@ -8,6 +8,7 @@
   - Added mandatory data gathering of "system" usage (when selecting a board in drop-down)
     - Required for the option to remove non-used systems
     - Fun-fact for system maintainers, to see usage level of their system
+  - Changed a "wait" state will have clear UI indication
   - Fixed traces will react correctly after KiCad calibration applied
   - Fixed all traces for a selected component will highlight (depends on checkbox selection)
   - Fixed KiCad calibration now feels more responsive when dragging traces

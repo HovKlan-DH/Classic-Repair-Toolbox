@@ -393,10 +393,30 @@ namespace CRT
                 this.UpdateBannerDismissButton.IsEnabled = false;
                 this.UpdateBannerText.Text = "Downloading update...";
 
-                bool installed = await UpdateService.DownloadAndInstallAsync(progress =>
+                // ###########################################################################################
+                // *** UNDER THE "PLEASE WAIT" OVERLAY (2026-09-28). *** The application restarts at the
+                // end, so nothing should be started meanwhile. Each percentage starts the two minutes
+                // again - a large download on a slow line is never cut off while it is moving - and a
+                // download that stops moving for two minutes is CANCELLED, not left to restart the
+                // application later under somebody who has carried on working.
+                // ###########################################################################################
+                WaitResult<bool> waited = await BusyOverlay.RunAsync(this, CrtWaitWording.DownloadingUpdate, context =>
+                    UpdateService.DownloadAndInstallAsync(
+                        progress =>
+                        {
+                            context.Report(CrtWaitWording.DownloadingUpdateAt(progress), progress / 100.0);
+                            Dispatcher.UIThread.Post(() => this.UpdateBannerText.Text = $"Downloading update: {progress}%");
+                        },
+                        context.Token));
+
+                if (waited.IsTimedOut)
                 {
-                    Dispatcher.UIThread.Post(() => this.UpdateBannerText.Text = $"Downloading update: {progress}%");
-                });
+                    this.RestoreUpdateBannerAfterFailedInstall();
+                    this.UpdateBannerText.Text = CrtWaitWording.UpdateNoProgress;
+                    return;
+                }
+
+                bool installed = waited.Value;
 
                 if (!installed)
                 {

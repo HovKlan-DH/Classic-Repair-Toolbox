@@ -1,5 +1,6 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -33,6 +34,11 @@ namespace CRT.Server.Handlers.Submissions
             admin.MapPost("/maintainers", AdminEndpoints.AddMaintainerAsync);
             admin.MapPost("/maintainers/remove", AdminEndpoints.RemoveMaintainerAsync);
 
+            // Inviting an address with no account yet, and taking an invitation back - see
+            // MaintainerInvitationFlows. Both answer { message }.
+            admin.MapPost("/maintainers/invite", AdminEndpoints.InviteMaintainerAsync);
+            admin.MapPost("/maintainers/invitations/withdraw", AdminEndpoints.WithdrawInvitationAsync);
+
             // Files nothing uses, per tree, and removing the ones the administrator chose - see
             // UnusedFileFlows. The tree is "beta" or "production".
             admin.MapGet("/unused-files", AdminEndpoints.ListUnusedFilesAsync);
@@ -43,7 +49,7 @@ namespace CRT.Server.Handlers.Submissions
         // The two lists, and the bodies of changing a pool and removing unused files, are CRT.Data's
         // ReviewApiContract records (MaintainerSystemsAnswer, MaintainerAccountsAnswer,
         // MaintainerChangeRequest, UnusedFilesRemoveRequest, UnusedFilesRemoveAnswer), shared with the
-        // maintainer application.
+        // Maintainer tab.
 
         // ###########################################################################################
         // GET /api/admin/systems - every system with its maintainers.
@@ -150,6 +156,69 @@ namespace CRT.Server.Handlers.Submissions
                 access, request?.SystemId, request?.AccountId ?? 0, accounts, DateTimeOffset.UtcNow, cancellationToken);
 
             return AdminEndpoints.ToResult(outcome, request);
+        }
+
+        // POST /api/admin/maintainers/invite  { systemId, email }
+        private static async Task<IResult> InviteMaintainerAsync(
+            MaintainerInviteRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore submissions,
+            IEmailSender mailer,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            MaintainerInvitationOutcome outcome = await MaintainerInvitationFlows.InviteAsync(
+                access,
+                request?.SystemId,
+                request?.Email,
+                PublishedSystemLister.List(options.DataTreeRoot),
+                accounts,
+                submissions,
+                mailer,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            return AdminEndpoints.ToResult(outcome);
+        }
+
+        // POST /api/admin/maintainers/invitations/withdraw  { invitationId }
+        private static async Task<IResult> WithdrawInvitationAsync(
+            InvitationWithdrawRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            MaintainerInvitationOutcome outcome = await MaintainerInvitationFlows.WithdrawAsync(
+                access, request?.InvitationId ?? 0, accounts, DateTimeOffset.UtcNow, cancellationToken);
+
+            return AdminEndpoints.ToResult(outcome);
+        }
+
+        private static IResult ToResult(MaintainerInvitationOutcome outcome)
+        {
+            if (outcome.IsDone)
+                return Results.Ok(new { message = outcome.Message });
+
+            if (outcome.IsForbidden)
+                return Results.Json(new { error = outcome.Message }, statusCode: StatusCodes.Status403Forbidden);
+
+            if (outcome.IsNotFound)
+                return Results.NotFound(new { error = outcome.Message });
+
+            return Results.BadRequest(new { error = outcome.Message });
         }
 
         // ###########################################################################################

@@ -108,7 +108,7 @@ promote BETA to Production by hand, the service never has any legitimate reason 
 Production, so denying it costs nothing and removes a whole class of accident.
 
 > **Since 2026-09-25 this is the DEFAULT, not the only way.** Maintainers can publish a board from
-> BETA to Production from the maintainer application, once you switch that on - step 13, which
+> BETA to Production from CRT's Maintainer tab, once you switch that on - step 13, which
 > deliberately undoes part of this step for the Production data folder only. Until you do, this
 > step stands exactly as written, and nothing can write Production.
 
@@ -146,6 +146,38 @@ namei -l /mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA/Data
 Check 2 **must** print `Production refused (correct)`. If it prints the warning instead, stop here:
 the interlock is not in place, and the service would be one configuration mistake away from writing
 data that every user downloads.
+
+### Copying data into BETA (or Production) by hand later
+
+**Whatever you copy in as root arrives owned by root, and the service cannot write into a FOLDER
+made that way.** The setgid bit above gives new files and folders the `crt-data` group, but a
+normal `cp` as root leaves them without GROUP WRITE (mode 644 files, 755 folders). For FILES that
+does not matter since server 3.3.1 - the service replaces a board file by writing a new one beside
+it and renaming it into place, which needs only the folder. A FOLDER you copied in, though, cannot
+be written into by anything but root.
+
+The service checks every folder before a publish, a production publish or a "Push back to queue"
+writes anything, and refuses with the folders named ("nothing was changed") - the log line gives
+the exact command. So nothing breaks half-way; you are just asked to do this. **After copying,
+run the step 3 commands again for what you copied** (or for the whole tree - it is harmless):
+
+```bash
+# The whole BETA folder, as in step 3 - dataChecksums.json sits beside Data/, not in it.
+# For Production: .../app-data instead (step 13).
+T=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA
+sudo chgrp -R crt-data $T
+sudo chmod -R g+rwX    $T
+sudo find $T -type d -exec chmod g+s {} +
+```
+
+**Do NOT run the service as root to avoid this.** It is the one process on the box that takes
+uploads from anybody on the internet; as root, any bug in it - or in a library that reads an
+uploaded file - owns the whole server, and step 3's kernel refusal to write Production is gone.
+
+Before 3.3.1 this went wrong in the middle of an approval: the board's workbook was written, the
+highlight file beside it (root-owned, copied from Production) was refused, and the maintainer saw
+"The server answered 500." with the board half-published. Approving again, after the commands
+above, finishes it - the publish writes every file again.
 
 ---
 
@@ -201,6 +233,20 @@ cp -r ~/publish-server/* /mydir/http/classic-repair-toolbox.dk/crt-server/app/  
 chown -R root:crt-data /mydir/http/classic-repair-toolbox.dk/crt-server
 chmod -R 0750 /mydir/http/classic-repair-toolbox.dk/crt-server
 ```
+
+**On every LATER deployment, stop the service before the `cp` and start it after:**
+
+```bash
+sudo systemctl stop crt-server
+cp -r ~/publish-server/* /mydir/http/classic-repair-toolbox.dk/crt-server/app/
+chown -R root:crt-data /mydir/http/classic-repair-toolbox.dk/crt-server
+chmod -R 0750 /mydir/http/classic-repair-toolbox.dk/crt-server
+sudo systemctl start crt-server
+```
+
+Copying over a RUNNING service replaces DLLs it has not finished loading; the next time it needs
+code from one it reads a file that no longer matches what it loaded, and it can crash with a core
+dump whose stack trace carries garbled method names.
 
 The binaries are owned by **root**, so the service cannot rewrite its own program files - an
 attacker who compromises the service then cannot make themselves persistent by editing them.
@@ -280,8 +326,9 @@ Restart=always
 RestartSec=5
 # A refused setting exits with 78 (EX_CONFIG) and is NOT retried: a restart
 # cannot fix a wrong setting, and each retry used to add a core dump to the
-# journal every five seconds. Anything else - the database not up yet at boot,
-# a crash - still restarts.
+# journal every five seconds. From server 3.2.1 a failed database migration
+# exits with 78 too, for the same reason. Anything else - the database not up
+# yet at boot (exit 69), a crash - still restarts.
 RestartPreventExitStatus=78
 
 Environment=ASPNETCORE_ENVIRONMENT=Production
@@ -458,15 +505,24 @@ systemctl is-active crt-server && curl -s http://127.0.0.1:5199/api/health
 
 `active` followed by a line of JSON means yes. Anything else, read on.
 
+**The `version` in that JSON is how you tell WHICH build is running** - the thing to check after a
+deploy, to confirm the new binaries actually replaced the old ones rather than a copy silently
+failing or systemd still holding the previous process. Compare it against the top row of
+[VERSION.md](VERSION.md); if it has not changed, the deployment did not land. That version is
+maintained by Claude on every server change (see VERSION.md for the SemVer policy), so it moves
+whenever the service's behaviour does - you do not have to bump it yourself.
+
 ### Reading the log WITHOUT the core dump
 
 **A crash on .NET/Linux writes a ~200-line core dump into the journal**, and the one line that
 says what actually went wrong is buried in it. Every command here filters that out. Use these
 rather than a bare `journalctl -u crt-server`.
 
-**A refused setting no longer does that.** The service logs each reason at `crit` and exits with
-code 78, and `RestartPreventExitStatus=78` in the unit (step 5) stops systemd retrying, so
-`systemctl status crt-server` shows `status=78` and the journal ends with the reasons. A unit
+**A refused setting or a failed migration no longer does that** (the migration from server 3.2.1).
+The service logs each reason at `crit` and exits with code 78, and `RestartPreventExitStatus=78` in
+the unit (step 5) stops systemd retrying, so `systemctl status crt-server` shows `status=78` and the
+journal ends with the reasons. A database that does not answer at start exits with 69 instead and
+IS retried every five seconds - no core dump, one line each time. A unit
 written before 2026-09-25 lacks that line: add it with `sudo systemctl edit --full crt-server`,
 then `sudo systemctl daemon-reload`.
 
@@ -486,6 +542,12 @@ spaces, while every real log line begins with a timestamp. It is crude and compl
 
 **`-p warning` is the one to reach for first.** Our own configuration and migration failures are
 logged at `crit`, so they survive the filter while systemd's routine chatter does not.
+
+**That needs server 3.2.1 or later.** From 3.2.1 the service writes its log in systemd's own format
+when it runs under systemd - one line per entry, e.g. `CRT.Server.Migrations[0] Applying migration
+0013 ...`, with its level recorded in the journal. Before it, each entry was two lines
+(`info: CRT.Server.Migrations[0]` and the message below it) and the journal filed EVERY line as
+info, so `-p warning` showed only systemd's own lines and never the service's reasons.
 
 ### When you do want everything
 
@@ -549,8 +611,9 @@ sudo systemctl reload httpd
 | `status=200/CHDIR` in `systemctl status` | The service cannot enter `WorkingDirectory`. Its group (`crt-data`, from the unit's `Group=`) does not match the group owning the service directory, so `0750` gives it nothing | `ls -ld <root>/crt-server/app` - the group must be `crt-data`; fix with `chown -R root:crt-data <root>/crt-server` |
 | `status=150/EXEC` or "file not found" on start | The publish output was never copied, or only partly | `ls -l <root>/crt-server/app/` - expect ~11 files including `CRT.Data.dll` and `CRT.Server.runtimeconfig.json` |
 | `IOException: Permission denied` in `FileConfigurationProvider.Load`, inside `WebApplication.CreateBuilder` | The host cannot open `appsettings.Production.json`. Almost always the group: the file is `root:crt-server` while the process runs `crt-server:crt-data`, because **systemd does not apply supplementary groups when `Group=` is set** | `ls -ln <root>/crt-server/app/appsettings.Production.json` - group must be `crt-data` (not `crt-server`); fix with `chown root:crt-data` on it. Do NOT test with `sudo -u crt-server cat`, which passes regardless - use the `systemd-run` check in step 9 |
-| `Result: core-dump`, `signal=ABRT`, and a long stack trace | An unhandled exception on .NET/Linux exits via `abort()`: the database was unreachable, a migration failed, or the service crashed. (A refused SETTING no longer looks like this - it exits with `status=78`, see the next row.) | Read the `crit:` line ABOVE the trace - it names the real reason. Use `journalctl -u crt-server -n 20 --no-pager -p warning`, which shows the reason and none of the dump |
-| `status=78` and the unit stays stopped | A setting in `appsettings.Production.json` was refused. The service logs every reason and does not retry, since a restart cannot fix a setting (`RestartPreventExitStatus=78`, step 5) | `journalctl -u crt-server -n 20 --no-pager -p warning` lists each `Configuration error:` naming its setting. Fix them all, then `sudo systemctl restart crt-server` |
+| `Result: core-dump`, `signal=ABRT`, and a long stack trace | An unhandled exception on .NET/Linux exits via `abort()`: the service crashed. (A refused SETTING and, from 3.2.1, a failed MIGRATION no longer look like this - they exit with `status=78`, see the next row; an unreachable database exits with `status=69` and is retried.) Before 3.2.1 a failed migration and an unreachable database crashed like this too | `journalctl -u crt-server -n 30 --no-pager \| grep -v '^ '` - the reason is the last line before the dump |
+| A publish, production publish or push-back is refused: "The server is not allowed to write into [...] in the BETA data, so nothing was changed" | A folder was copied into the tree by hand as root and has no group write (see step 3, "Copying data into BETA by hand later") | `journalctl -u crt-server -n 20 --no-pager -p warning` - the line names the folders and ends with the `chgrp`/`chmod`/`find` command that fixes them; run it, then try again |
+| `status=78` and the unit stays stopped | A setting in `appsettings.Production.json` was refused, or (from 3.2.1) a database migration failed. The service logs every reason at `crit` and does not retry, since a restart cannot fix either (`RestartPreventExitStatus=78`, step 5) | `journalctl -u crt-server -n 20 --no-pager -p warning` lists each `Configuration error:` naming its setting, or the migration and the database's own error. Fix it, then `sudo systemctl restart crt-server`. A failed migration may have left tables it created - look before dropping anything |
 | `The migrations directory [...] does not exist` | The `Migrations/` subfolder did not reach the server. A publish from before the folder existed, or a copy that only took the loose files | `ls $APP/Migrations/*.sql`; fix with `cp -r ~/publish-server/Migrations $APP/` then `chown -R root:crt-data $APP/Migrations` |
 | `appsettings.Production.json` downloads over HTTPS | `crt-server/` ended up INSIDE the document root | `grep -i DocumentRoot` the vhost; the service directory must be a sibling of `public_html`, not under it. Move it, then rotate the database password - it has been published |
 | Service is `activating` then fails | Usually a configuration error - read the message, it names the setting | `journalctl -u crt-server -n 20 --no-pager -p warning` |
@@ -1052,7 +1115,7 @@ mysql -u crt_review -p -h 127.0.0.1 crt_review -e "SELECT system_id, current_rev
 ```
 
 Anything whose spelling differs from the published folder names and has no `current_revision` was
-never published; reject its submissions in the maintainer app.
+never published; reject its submissions in CRT's Maintainer tab.
 
 ### 12c - Settings
 
@@ -1078,7 +1141,7 @@ never published; reject its submissions in the maintainer app.
 * **The hourly sweep now also deletes completed blobs no live submission needs**, and clears the
   stored rows of submissions that ended without publishing once they are 30 days old. Blobs of
   merged submissions are kept, so the next edit to that board uploads only what changed.
-* **The maintainer app lists every file that changes on the server**, not only images, and flags
+* **The Maintainer tab lists every file that changes on the server**, not only images, and flags
   shared folders, other boards' files and files no row uses.
 
 **Closing a board to contributions** - the lever for one being flooded - no longer needs a code
@@ -1093,11 +1156,11 @@ open.
 
 ---
 
-## Step 13 - Publishing to production from the maintainer application (optional, 2026-09-25)
+## Step 13 - Publishing to production from CRT's Maintainer tab (optional, 2026-09-25)
 
 **Publishing is two steps now.** Approving a submission publishes it to **BETA**, as before.
-Then, once a maintainer has looked at the board in CRT with the BETA data, they press **Production**
-in the maintainer application and publish that board to **Production** - the data every user downloads.
+Then, once a maintainer has looked at the board in CRT with the BETA data, they open **Beta > Prod**
+in CRT's Maintainer tab and publish that board to **Production** - the data every user downloads.
 Maintainers can do this for the systems they review; you can do it for all of them. **You are e-mailed
 every time a maintainer does it.**
 
@@ -1110,7 +1173,7 @@ you first; the other is e-mailed). Each file is hashed as it is copied and only 
 one if it matches BETA. If BETA has changed since the maintainer opened the board, the publish is
 refused and they are told to look again.
 
-**It is OFF until you do all of the following.** Until then the maintainer application says so, and the
+**It is OFF until you do all of the following.** Until then the Maintainer tab says so, and the
 interlock from step 3 holds exactly as before.
 
 **1. Let the service write the Production DATA folder - and only that folder.** This is the one
@@ -1191,7 +1254,7 @@ What they will need when you do:
   (see "The reviewer role is now called maintainer" below). Nothing to do by hand.
 - **Publishing writes the BETA tree only.** The service has no write permission on Production (step
   0), which is the interlock working as designed rather than a misconfiguration to fix. Publishing
-  to production from the maintainer application is a separate, switched-off-by-default feature - step
+  to production from CRT's Maintainer tab is a separate, switched-off-by-default feature - step
   13.
 
 ---
@@ -1201,7 +1264,7 @@ What they will need when you do:
 **This is the one step with no code path, and nothing works without it.** `is_administrator`
 defaults to 0, no endpoint sets it, and nothing seeds it - so a freshly deployed server has no
 account that can approve anything. `GET /api/review/queue` answers 403 for every account, and the
-maintainer app shows an empty queue with "this account is not allowed to review submissions".
+Maintainer tab shows an empty queue with "this account is not allowed to review submissions".
 
 That is deliberate rather than an omission: an endpoint that grants administrator is an endpoint
 that can be abused to grant administrator. The first one is made by hand, on the server, by
@@ -1234,36 +1297,60 @@ SELECT id, email, is_verified, is_administrator, is_locked
 **No restart is needed.** Authority is resolved per request from the account row, which is the
 same property that makes locking an account bite immediately rather than at next login.
 
-## Granting MAINTAINERS - from the maintainer application, not SQL
+## Granting MAINTAINERS - from CRT's Maintainer tab, not SQL
 
 **A maintainer is somebody you assign to a system, and that person reviews AND publishes changes
 to exactly the systems you assign** (the project owner's two-role model, 2026-09-25). There is no
-flag to set: sign in to the maintainer application as the administrator, press **Maintainers** above
-the queue, pick a system on the left and add an account from the list underneath. The list shows
-every registered account and says, in the line itself, why one cannot be granted - address not
-verified, locked, or already an administrator.
+flag to set: sign in on CRT's Maintainer tab as the administrator, open the **Systems** screen,
+pick a system, and under its maintainers either:
+
+- **choose somebody who has an account** from the list and press **Add as maintainer** - the list
+  says, in the line itself, why one cannot be granted (address not verified, locked, or already an
+  administrator); or
+- **type the email address of somebody new** and press **Send invitation** (2026-09-27). They get a
+  mail with a code, and the mail tells them the rest: install CRT (or use the one they have), tick
+  **"Enable Maintainer tab"** in its Configuration tab, choose **"I have an invitation"** on that
+  tab's sign-in screen, paste it, and pick a name and a password. That makes their account - already verified - and they
+  maintain the system from that moment. The code works for 14 days and once. Until it is used the
+  invitation is listed under the system's maintainers with a **Withdraw** button; inviting the same
+  address again sends a new code and stops the old one. An address that already has an account is
+  not invited - choose it from the list instead.
+
+Each maintainer has a **Remove** button beside them. Migration 0012 (`maintainer_invitations`)
+applies itself on the next start; check it with
+`mysql -u crt_review -p -h 127.0.0.1 crt_review -e "SHOW TABLES LIKE 'maintainer_invitations';"`.
 
 Every board in the BETA tree is listed, whether or not anything has ever been submitted to it,
 so a maintainer can be assigned before the first contribution arrives. **Removal takes effect on
 the person's very next request** - authority is read from the `maintainers` table on every call,
 never cached in a session.
 
-What a maintainer gets: the queue filtered to their systems, and Approve on each. A submission that
-adds or changes a file under `Shared files` or `Generic shared files` needs TWO approvals, the
-maintainer's AND yours, for BETA and again for Production (it says "changes shared files" in the row).
-Either of you may approve first; that publishes nothing, the row then says "one of two approvals
-given", and the other is e-mailed. The second approval publishes. On a board with no maintainer, your
-approval alone does it. When a submission is queued, whoever must approve is e-mailed: its system's
-maintainers, plus you on a shared-files change; with nobody assigned, you alone.
+What a maintainer gets: the queue filtered to their systems, and Approve on each. One approval
+publishes - theirs or yours - with ONE exception (since server 3.1.0, 2026-09-27): a submission that
+REPLACES a file that already exists under `Shared files` or `Generic shared files` with different
+content needs TWO approvals, the maintainer's AND yours, for BETA and again for Production, because
+it changes what every board using that file shows (it says "replaces a shared file" in the row).
+Adding a NEW shared file needs only the one approval. Either of you may approve a replacement first;
+that publishes nothing, the row then says "one of two approvals given", and the other is e-mailed.
+The second approval publishes. On a board with no maintainer, your approval alone does it. When a
+submission is queued, whoever must approve is e-mailed: its system's maintainers, plus you on a
+shared-file replacement; with nobody assigned, you alone.
+
+**A publish, a promotion or a push-back removes files only inside the system's own folder**
+(`Commodore/C64/250407/...`) - never under `Shared files`, `Generic shared files` or another
+system's folder. A shared file no board uses any more stays where it is; it shows up in **Admin >
+Unused files**, where you remove it when you choose.
 
 Migration 0008 (the two approval tables) applies itself on the next start, like 0006 and 0007.
 
-Only an administrator can open the Maintainers screen or call `/api/admin/*`; the server refuses
-everyone else regardless of what the app shows.
+Only an administrator sees these controls or can call `/api/admin/*`; the server refuses everyone
+else regardless of what the app shows. Accepting an invitation (`/api/accounts/accept-invitation`)
+needs no sign-in - the code is the proof.
 
 ### Changing a submission before publishing it
 
-**View in table format** in the maintainer application shows a submission as the Drafts tab's table,
+**View in table format** in the maintainer application (now CRT's Maintainer tab, where the table
+simply opens with the submission) shows a submission as the Drafts tab's table,
 coloured against the published board, and a maintainer of that board (or you) can correct rows there
 and press Save changes. That saves a new version of the submission: the contributor's original is
 kept in the database, any approval already given is cleared (it was given to other content), the
@@ -1274,7 +1361,10 @@ contributors. Migration 0009 (`submission_amendments`) applies itself on the nex
 ### The reviewer role is now called maintainer (migration 0010)
 
 The review application is now **CRT Maintainer**, and the role it serves is **maintainer** - it was
-"reviewer" until 2026-09-25. Migration 0010 applies itself on the next start: it renames the pool
+"reviewer" until 2026-09-25. (**Since 2026-09-29 there is no separate CRT Maintainer application**:
+it became the Maintainer tab in CRT, shown by ticking "Enable Maintainer tab" in CRT's Configuration
+tab. The server did not change for that beyond the wording of its mails - 3.5.1. The notes below that
+say "deploy with the new CRT Maintainer" describe what was true when each build shipped.) Migration 0010 applies itself on the next start: it renames the pool
 table `reviewers` back to `maintainers`, rewrites the stored approval roles (`reviewer` becomes
 `maintainer`, with the CHECK constraints that allow them) and the grant/revoke actions in the audit
 trail. Nothing to do by hand. Check it landed:
@@ -1305,7 +1395,7 @@ mysql -u crt_review -p -h 127.0.0.1 crt_review -e "RENAME TABLE maintainers TO r
 
 A publish now removes the files a board stops using, when nothing else uses them either - the
 maintainer sees that list before approving. Files that were ALREADY unused are yours: **Unused files**
-in the maintainer application (beside Maintainers, administrator only) lists them per data tree, BETA or
+under **Admin** in CRT's Maintainer tab (administrator only) lists them per data tree, BETA or
 Production, with sizes. Look through the list, tick the box, and press Remove. The server removes
 only the files on the list that it still finds unused, rewrites that tree's `dataChecksums.json`,
 and records every file in the audit trail (`data.unused_removed`).
@@ -1318,10 +1408,183 @@ be read - nothing can be removed until that is fixed, and no publish removes any
 A user's CRT keeps its downloaded copy of a removed file unless "Delete orphan and non-used files"
 is switched on in its Configuration tab (off by default).
 
+### A new system's place in the drop-down lists (migration 0011, server 2.0.0)
+
+A new system now has to be PLACED in CRT's drop-down lists before it can be approved: its hardware
+name, board name and hardware notes, and which row of the main Excel data file it goes after. A
+maintainer of the system (or you) does that on the **Systems** screen of CRT's Maintainer tab, by dragging
+it into place in the full list. An approval of a new system nobody has placed is refused with a
+message saying so; the review screen warns about it above the table first.
+
+What happens to the main Excel data file (`Classic-Repair-Toolbox.v<newest>.xlsx`, in each tree):
+
+- **Publishing to BETA** inserts the system's row into BETA's file, after the row it was placed
+  after, before the submission is marked merged - so CRT users on the BETA source see it at once.
+- **A system already in BETA but not in its list** (copied there by hand, or merged before this
+  version) is added to BETA's list the moment it is placed, and the BETA manifest is rebuilt.
+- **Publish to production** inserts the same row into production's file, straight after the nearest
+  row above it that production also lists. It is refused, with nothing copied, when neither file
+  lists the system.
+- **Push back to queue** on a system that never reached production takes its row out of BETA's file
+  again. Its placement is kept, so publishing it again puts it back in the same place.
+- Any of these is refused when another system is already listed under the same hardware name AND
+  board name - CRT keys a board by that pair, so it would show one board twice.
+
+Only the one row changes; the other sheets (Oscilloscope) and every other row are left exactly as they
+were, formatting included. Older generations of the file (`v1.x`) are never touched.
+
+Migration 0011 applies itself on the next start: six nullable `listing_*` columns on `systems`,
+where each placement is kept. Nothing to do by hand. Check it landed:
+
+```bash
+mysql -u crt_review -p -h 127.0.0.1 crt_review -e "SHOW COLUMNS FROM systems LIKE 'listing_%';"
+```
+
+It answers six rows.
+
+### One submission in BETA per system, and a system's history (server 3.0.0)
+
+**A system takes one submission into BETA at a time** (owner decision, 2026-09-27). While a
+system has a submission in BETA that has not been published to production, no other submission of
+that system can be approved: the Maintainer tab greys Approve out with the reason above the table, and
+the server refuses it anyway. Publish the one in BETA to production (**Beta > Prod**) or push it
+back to the queue, and the next can go. This is because pushing back always takes back everything
+merged since the last promotion - a publish replaces the board's rows, so one contributor's work
+cannot be picked out of several. The rule is on only when production publishing is configured
+(step 13); without it nothing ever leaves BETA.
+
+Each system on the **Systems** screen now shows its **History**, newest first: submissions sent and
+decided (and by whom), promotions to production, push-backs, maintainers added, removed and
+invited, and its place in the drop-down lists being saved. It is read from the submissions and the
+audit trail, so there is nothing to migrate - events from before this version appear as far as the
+audit trail recorded them (a maintainer removed before it shows as "account N" rather than an
+address).
+
+**Deploy this server build together with the new CRT Maintainer.** An older CRT Maintainer shows the
+refusal's reason on Approve, but it has no Systems-screen placement, so a new system cannot be
+approved from it at all.
+
+### A board copied to production by hand, and "taken back out of BETA" (migration 0015, server 3.6.0)
+
+**A board you copy into production by hand is no longer "waiting for production".** The server
+only knew a board had reached production when "Publish to production" put it there, so a board
+copied as root stayed listed under **Beta > Prod** and - through the one-in-BETA rule above - blocked
+every new approval of that system. Now, when the record says a system waits, the server compares
+the two trees: if production already holds exactly what BETA has (nothing to copy, nothing to
+remove, the system already in production's drop-down lists), it records the system as in production
+and says so in the system's **History** ("Found already in production"). Nothing for you to do; the
+Beta > Prod list re-checks a system that genuinely differs at most every ten minutes.
+
+**"Taken back out of BETA" is now recorded, not guessed.** Migration **0015** adds the table
+`submission_beta_returns`, and applies itself on the next start like every migration. A push-back
+writes one row per submission it returns. Submissions pushed back BEFORE this version have no row,
+so they now read as plain "Waiting for review" to their contributor; the maintainer's comment is
+still shown. Check it landed:
+
+```sql
+SHOW TABLES LIKE 'submission_beta_returns';
+```
+
+## Board views - which boards CRT users look at (migration 0013, server 3.2.0)
+
+From the CRT release that carries it, CRT counts a **view** every time a published board has been on
+screen for 10 seconds, and sends its views here in batches (`POST /api/usage/board-views`, anonymous,
+like the launch check-in). The server stores **one row per view** in `crt_review.crt_board_views`:
+the board and its names from the published main Excel data file, when, the CRT version, operating
+system and CPU, whether CRT was downloading from the BETA source, and the **country** - looked up
+from the sender's address when the batch arrives. **No address and no identifier is stored.** The
+launch check-in (`app-checkin`, `crt_update`) is unchanged and carries on beside it.
+
+Nothing to configure (one optional setting, `CountLocalNetworkBoardViews`, is described below). Four
+things to do once, each checkable on its own:
+
+**1. Deploy as usual; migration 0013 applies itself.** Check both tables exist:
+
+```bash
+mysql -u root -p -e "SHOW TABLES FROM crt_review LIKE 'crt\_board%';"
+```
+
+Expect `crt_board_view_batches` and `crt_board_views`. The first only remembers which batches have
+arrived (for 60 days), so a batch CRT sends again is not counted twice.
+
+**2. The country lookup is an outbound call to ip-api.com** - the service the check-in has always
+used, over plain HTTP, three seconds at most. Check the service's user can reach it:
+
+```bash
+sudo -u crt-server curl -s -m 5 "http://ip-api.com/json/8.8.8.8?fields=status,countryCode,country"
+```
+
+Expect `{"status":"success","country":"United States","countryCode":"US"}`. If it fails, views are
+still stored, only without a country, and the journal says `Looking up a board view's country
+failed` (without the address). The unit's `RestrictAddressFamilies` already allows it.
+
+**3. Let the Fun facts page read the new table** (the page reads the database directly, as its other
+charts do; the `helligsoe` user has table-level grants only - never `crt_review.*`):
+
+```sql
+GRANT SELECT ON crt_review.crt_board_views TO 'helligsoe'@'192.168.20.%';
+```
+
+**4. Copy the two Fun facts files** from `Assets/Webserver/funfacts/` to
+`classic-repair-toolbox.dk/public_html/funfacts/`: the new `funfacts_board_views.php` (two charts:
+the most viewed boards and views per country, both the last 30 days, BETA-source views left out) and
+`funfacts.php`, which now ends its charts with `require "funfacts_board_views.php";`. Before step 3 or
+before the first views arrive, the two charts are simply empty.
+
+**Until board views go live, only your own PC (`192.168.30.11`) sees the two charts** - everybody
+else gets the Fun facts page exactly as before. The check is the four lines marked `NOT LIVE YET` at
+the top of `funfacts_board_views.php`; delete them (locally and on the server) to show the charts to
+everyone.
+
+**Verify** once somebody on the new CRT has had a board open for 10 seconds and a minute has passed:
+
+```bash
+mysql -u root -p -e "SELECT viewedUtc, hardwareName, boardName, version, countryCode, fromBeta, fromLocalNetwork FROM crt_review.crt_board_views ORDER BY id DESC LIMIT 5;"
+```
+
+**Your own CRT at home is counted too - for now** (your request, 2026-09-27, so the numbers can be
+checked). A batch from your own network arrives with a `192.168.*` address, which places nobody, so
+its views get the country of the server's own public address (the same ip-api.com call, asking about
+the server itself) and are **marked `fromLocalNetwork = 1`**. Each home batch is also said in the
+journal:
+
+```bash
+journalctl -u crt-server --since "10 min ago" --no-pager | grep "board views"
+```
+
+Expect `A batch of board views from a local-network address arrived: N stored, 0 not stored.` To
+list only your own views:
+
+```bash
+mysql -u root -p -e "SELECT viewedUtc, hardwareName, boardName, countryCode FROM crt_review.crt_board_views WHERE fromLocalNetwork = 1 ORDER BY id DESC LIMIT 10;"
+```
+
+**When you want home views to stop counting**, add this line inside the `CrtServer` section of
+`appsettings.Production.json` and restart the service (`sudo systemctl restart crt-server`):
+
+```json
+"CountLocalNetworkBoardViews": false,
+```
+
+From then on a home batch is accepted and nothing of it is stored - the check-in's rule - and the
+journal says `0 stored, N not stored`. The views already stored stay. To remove them as well:
+
+```sql
+DELETE FROM crt_review.crt_board_views WHERE fromLocalNetwork = 1;
+```
+
+**Rate limit:** one address may send 60 batches an hour (in memory only - the address is not
+written anywhere); more are answered `429`, and CRT keeps those views and sends them later. **CRT
+Maintainer's Systems screen** shows each system's views ("48 views in 30 days" on its line, and the
+counts, countries and BETA-source views in its panel), so deploy the new CRT Maintainer with this
+build to see them - an older one simply shows none.
+
 ## Staying signed in, and how to end a session
 
-The maintainer app remembers its session between launches, so a maintainer signs in once rather than
-retyping a long password every time. Two things make that safe, and both are worth knowing when
+CRT's Maintainer tab remembers its session between launches, so a maintainer signs in once rather
+than retyping a long password every time. (It is the same file, in the same folder, the separate CRT
+Maintainer application kept until 2026-09-29, so a maintainer who was signed in there is still signed
+in on the tab.) Two things make that safe, and both are worth knowing when
 something looks wrong.
 
 **The session slides rather than being long.** `RefreshTokenDays` (default 30) is measured from
@@ -1384,7 +1647,7 @@ Once an administrator exists, in order. Each step's failure tells you something 
    - `200` with an empty list - working, nothing waiting.
 3. **Submit something from CRT** against the same server, to put a row in the queue. CRT already
    points at `CrtServerBaseUrl`; no client configuration is needed.
-4. **Open it in the maintainer app** - sign in, click the row. The change summary is computed
+4. **Open it in CRT's Maintainer tab** - sign in, click the row. The change summary is computed
    server-side, so an empty one here means the payload could not be loaded rather than that
    nothing changed.
 5. **Request changes**, then check the contributor side - `GET /api/submissions/{id}` with the

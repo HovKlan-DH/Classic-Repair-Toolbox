@@ -21,20 +21,28 @@
 									   VerticalAlignment="Center"
 									   Foreground="{DynamicResource Table_Fg}" />
 
-							<!-- The same amber chip vocabulary the component list uses for
-							     a drafted row - one visual language for "your local view
-							     and the official data are not the same thing". -->
-							<Border IsVisible="{Binding HasDrift}"
-									Background="{DynamicResource Draft_Chip_Bg}"
-									BorderBrush="{DynamicResource Draft_Chip_Border}"
+							<!-- This system's latest submission (owner request, 2026-09-27),
+							     in the words and colour "My submissions" gives the same state
+							     (DraftListItem). Outlined like the app's other informational
+							     pills: a 1px edge and text in the state's own colour. -->
+							<Border Classes="SubmissionBadge"
+									IsVisible="{Binding HasSubmission}"
+									Background="{DynamicResource Form_Bg}"
+									BorderBrush="{Binding SubmissionAccentBrush}"
 									BorderThickness="1"
 									CornerRadius="3"
 									Padding="5,1"
-									VerticalAlignment="Center">
-								<TextBlock Text="Updated officially"
+									VerticalAlignment="Center"
+									ToolTip.Tip="{Binding SubmissionTooltip}">
+								<TextBlock Text="{Binding SubmissionStateText}"
 										   FontSize="10"
-										   Foreground="{DynamicResource Draft_Chip_Fg}" />
+										   Foreground="{Binding SubmissionAccentBrush}" />
 							</Border>
+
+							<!-- No "Updated officially" chip here any more (owner request,
+							     2026-09-28): it only repeated the DriftSummary line below, and
+							     was found confusing - e.g. beside "Published to BETA source",
+							     where the official update IS the contributor's own work. -->
 						</StackPanel>
 
 						<TextBlock Text="{Binding RowSummary}"

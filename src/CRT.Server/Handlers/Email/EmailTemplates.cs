@@ -108,8 +108,8 @@ namespace CRT.Server.Handlers.Email
 
                 {resetCode}
 
-                Open CRT Maintainer, choose "I forgot my password", then paste this code
-                and type the password you want.
+                Open CRT, go to the Maintainer tab, choose "I forgot my password", then paste
+                this code and type the password you want.
 
                 The code works for {validHours} hours.
 
@@ -134,7 +134,7 @@ namespace CRT.Server.Handlers.Email
         //
         // The fix could have been an HTML form served by the API. It is a pasted code instead
         // (owner's choice) because the audience is a handful of maintainers who are already
-        // sitting in front of the maintainer app, and serving HTML would mean the API growing a page
+        // sitting in front of the Maintainer tab, and serving HTML would mean the API growing a page
         // to style, escape and keep accessible for one form.
         //
         // *** A PREFETCHING MAIL CLIENT CANNOT BURN THIS. *** The old link was a GET, so a scanner
@@ -161,8 +161,8 @@ namespace CRT.Server.Handlers.Email
 
                 {resetCode}
 
-                Open CRT Maintainer, choose "I forgot my password", then paste this code
-                and type the password you want.
+                Open CRT, go to the Maintainer tab, choose "I forgot my password", then paste
+                this code and type the password you want.
 
                 The code works for {validHours} hours and can only be used once.
 
@@ -172,6 +172,60 @@ namespace CRT.Server.Handlers.Email
             return new EmailMessage(
                 toAddress,
                 $"Set a new {EmailTemplates.ProductName} password",
+                EmailTemplates.Normalise(body));
+        }
+
+        // Where CRT is downloaded. A maintainer uses CRT's own Maintainer tab since 2026-09-29; the
+        // separate CRT Maintainer application, and the repository its releases lived in, are gone.
+        public const string CrtDownloadUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases";
+
+        // ###########################################################################################
+        // AN INVITATION TO MAINTAIN A SYSTEM (owner request, 2026-09-27). The person has no account
+        // and may not run CRT at all, so it says what a maintainer does, where CRT is, how to show
+        // its Maintainer tab, and exactly which button to press - and, like the reset mail, carries a
+        // CODE rather than a link: accepting needs a password, so it cannot be a click, and a
+        // prefetching mail client cannot spend a code by following it.
+        // ###########################################################################################
+        public static EmailMessage MaintainerInvitation(
+            string toAddress,
+            string systemName,
+            string invitedBy,
+            string invitationCode,
+            int validDays)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+            ArgumentException.ThrowIfNullOrWhiteSpace(invitationCode);
+
+            string inviter = string.IsNullOrWhiteSpace(invitedBy) ? "The administrator" : invitedBy.Trim();
+
+            string body =
+                $"""
+                Hello,
+
+                {inviter} has invited you to be a maintainer of {systemName} in {EmailTemplates.ProductName}.
+                A maintainer looks through the changes people send in for that system, and publishes
+                the good ones for everybody who uses the data.
+
+                Your invitation code:
+
+                {invitationCode}
+
+                To accept it:
+
+                1. Install Classic Repair Toolbox (CRT) from {EmailTemplates.CrtDownloadUrl},
+                   or use the one you already have.
+                2. In CRT's Configuration tab, tick "Enable Maintainer tab".
+                3. Open the Maintainer tab and choose "I have an invitation".
+                4. Paste the code, and pick the name others will see and a password.
+
+                The code works for {validDays} days and can only be used once.
+
+                If you were not expecting this, you can ignore it - nothing happens unless the code is used.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"You are invited to maintain {systemName}",
                 EmailTemplates.Normalise(body));
         }
 
@@ -237,7 +291,7 @@ namespace CRT.Server.Handlers.Email
 
             string comment = EmailTemplates.QuotedComment(maintainerComment);
 
-            // A maintainer corrected some rows in the maintainer application before publishing
+            // A maintainer corrected some rows in the Maintainer tab before publishing
             // (2026-09-25). Said, so a contributor comparing the result with what they sent is not
             // left wondering where the difference came from.
             string amended = amendedByMaintainer
@@ -316,9 +370,9 @@ namespace CRT.Server.Handlers.Email
                 Hello,
 
                 {approvedBy} has approved {what} for {EmailTemplates.DescribeSystem(systemName)}.
-                It changes shared files, so it needs your approval too before it is published.
+                It replaces a shared file other boards may use, so it needs your approval too before it is published.
 
-                Open CRT Maintainer to look at it.
+                Open CRT and go to the Maintainer tab to look at it.
                 """;
 
             return new EmailMessage(
@@ -399,6 +453,56 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
+        // Sent when a maintainer rolls a BETA board back and this submission goes with it (owner
+        // decision, 2026-09-27) - the production window's "push back to queue".
+        //
+        // *** IT SAYS THE DATA WAS IN BETA AND NOW IS NOT. *** This contributor was already told
+        // "published to BETA"; a mail that read like an ordinary change request would leave them
+        // believing their work was still live.
+        //
+        // *** AND IT PROMISES ONLY WHAT IS TRUE (code review, 2026-09-27). *** The first version said
+        // the draft was "still on your own computer, exactly as you left it" and that a new
+        // submission "takes this one's place in the queue". Neither is guaranteed: CRT deletes a
+        // draft once the published board matches it, which may well have happened while this sat in
+        // BETA; and a submission a maintainer amended is not replaced by a newer one
+        // (SubmissionReplacementRules). What IS true is that the contribution itself is not lost -
+        // it is in the queue exactly as it was published - so that is what the mail says.
+        //
+        // The comment is always present: BetaRollbackFlow refuses a rollback without one.
+        // ###########################################################################################
+        public static EmailMessage SubmissionReturnedToQueue(
+            string toAddress,
+            string systemName,
+            string maintainerComment)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string body =
+                $"""
+                Hello,
+
+                Your contribution to {EmailTemplates.DescribeSystem(systemName)} had been published
+                to the BETA data, but a maintainer has taken it back out and returned it to the review
+                queue:
+
+                {EmailTemplates.Indent(maintainerComment)}
+
+                The BETA data no longer holds it. The contribution itself is not lost: it is back in
+                the queue as it was, and a maintainer will look at it again.
+
+                If the note above asks you for something, you can send a corrected version from the
+                Drafts tab in {EmailTemplates.ProductName}. If the draft is no longer there -
+                {EmailTemplates.ProductName} tidies a draft away once its contribution is published -
+                start a new one from the board.
+                """;
+
+            return new EmailMessage(
+                toAddress,
+                $"Your {EmailTemplates.ProductName} contribution was taken back out of BETA",
+                EmailTemplates.Normalise(body));
+        }
+
+        // ###########################################################################################
         // Sent when a submission will not be going in.
         //
         // *** IT SAYS WHY, AND IT SAYS THE WORK IS NOT LOST. *** A rejection with no reason is
@@ -442,11 +546,11 @@ namespace CRT.Server.Handlers.Email
         // submission changes shared files.
         //
         // This one goes to an account holder, unlike the three above: somebody who agreed to look
-        // after a board and would otherwise have to open the maintainer application on the off-chance.
+        // after a board and would otherwise have to open the Maintainer tab on the off-chance.
         // It names the board and quotes the contributor's own summary, which is what tells a
         // maintainer whether it is a two-minute typo or an evening's work.
         //
-        // No link, like every other mail here; the maintainer application is named.
+        // No link, like every other mail here; the Maintainer tab is named.
         // ###########################################################################################
         public static EmailMessage SubmissionWaiting(
             string toAddress,
@@ -469,8 +573,8 @@ namespace CRT.Server.Handlers.Email
 
                 {EmailTemplates.Indent(summary)}
 
-                Open CRT Maintainer to look at it. If somebody else reviews it first, it will simply
-                be gone from the queue.
+                Open CRT and go to the Maintainer tab to look at it. If somebody else reviews it
+                first, it will simply be gone from the queue.
                 """;
 
             return new EmailMessage(

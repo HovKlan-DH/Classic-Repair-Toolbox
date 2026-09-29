@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using CRT;
+using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -114,6 +115,40 @@ public sealed class DiscardDraftWindowTests
             Assert.Contains(textBlocks, t => t.Text == "This permanently discards your local, unpublished edits to:");
             Assert.Contains(textBlocks, t => t.Text != null && t.Text.Contains("officially published data is not affected", StringComparison.Ordinal));
             Assert.Contains(textBlocks, t => t.Text == "This cannot be undone!");
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE CONTRIBUTOR IS TOLD THE MAINTAINERS WILL KNOW (owner request, 2026-09-28). *** Only
+    // when something sent from this draft is still being reviewed; in the words "My submissions"
+    // gives its state; and never suggesting the submission is withdrawn (it is not).
+    // ###########################################################################################
+    [Fact]
+    public void With_a_submission_still_in_review_the_dialog_says_the_maintainers_are_told()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new DiscardDraftWindow();
+            window.Initialize("Commodore 128 - 310378", [new SubmissionReceipt { SubmissionId = 9, UploadToken = "t", LastKnownState = "merged" }]);
+
+            TextBlock notice = window.FindControl<TextBlock>("SubmissionNoticeText")!;
+
+            Assert.True(notice.IsVisible);
+            Assert.Contains(SubmissionReceiptPresenter.DescribeState("merged"), notice.Text, StringComparison.Ordinal);
+            Assert.Contains("the maintainers are told", notice.Text, StringComparison.Ordinal);
+            Assert.Contains("does not withdraw", notice.Text, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void With_nothing_in_review_the_dialog_says_nothing_about_maintainers()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new DiscardDraftWindow();
+            window.Initialize("Commodore 128 - 310378", []);
+
+            Assert.False(window.FindControl<TextBlock>("SubmissionNoticeText")!.IsVisible);
         });
     }
 }

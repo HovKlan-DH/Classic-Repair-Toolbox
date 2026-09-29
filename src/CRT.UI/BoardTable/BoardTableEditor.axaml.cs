@@ -26,7 +26,7 @@ namespace CRT
     // *** THIS CONTROL ONLY PAINTS. *** What a cell is, whether it differs from the published data,
     // where a deleted row goes and what a save writes are all decided in CRT.Data -
     // BoardTableDocument, BoardTableSheet and DraftTableSession - because the project owner wants the
-    // same table in the maintainer application later. Keep it that way: logic added here is logic the
+    // same table in the Maintainer tab later. Keep it that way: logic added here is logic the
     // maintainer's copy would have to duplicate, and logic no test without a display can reach.
     //
     // It deliberately knows nothing of Main or DataManager either: it is handed a drafts folder, a
@@ -57,7 +57,7 @@ namespace CRT
     public partial class BoardTableEditor : UserControl
     {
         // The table on screen, and - in the Drafts tab only - the draft FILE behind it. In document
-        // mode (the maintainer application, Open(BoardTableDocument)) there is no session: Save raises
+        // mode (the Maintainer tab, Open(BoardTableDocument)) there is no session: Save raises
         // SaveRequested for the host to save, and Reload and the file notices do not apply.
         private BoardTableDocument? thisDocument;
         private DraftTableSession? thisSession;
@@ -144,9 +144,9 @@ namespace CRT
         public bool HasTable => this.thisDocument is not null;
 
         // ###########################################################################################
-        // DOCUMENT MODE - the maintainer application's table (2026-09-25). Shows `document` with no
+        // DOCUMENT MODE - the Maintainer tab's table (2026-09-25). Shows `document` with no
         // draft file behind it: "Save changes" raises SaveRequested, and the host saves it however
-        // it saves (the maintainer application sends it to the server as an amendment), then calls
+        // it saves (the Maintainer tab sends it to the server as an amendment), then calls
         // Open again with the saved state, or ShowMessage to say why not. Reload and the notices
         // about a draft file being changed or open in Excel do not apply and stay hidden.
         // ###########################################################################################
@@ -155,7 +155,7 @@ namespace CRT
             ArgumentNullException.ThrowIfNull(document);
 
             // The sheet already on screen when the host re-opens after a save; otherwise the one the
-            // host asks for - the maintainer application's last-visited sheet, so moving through the
+            // host asks for - the Maintainer tab's last-visited sheet, so moving through the
             // queue stays on it (owner request, 2026-09-26) - and failing that the FIRST SHEET WITH A
             // CHANGE: a maintainer opening a submission wants what changed, not "Board schematics"
             // every time. A sheet whose tab "Show changes only" hides gives way - see Attach.
@@ -506,7 +506,7 @@ namespace CRT
         // nothing.
         // ###########################################################################################
         // The user's own choice of "Show changes only", which the filter follows wherever there is
-        // something published - what a host remembers between runs (the maintainer application).
+        // something published - what a host remembers between runs (CRT's Maintainer tab).
         internal bool OnlyChangesWanted => this.thisOnlyChangesWanted;
 
         internal bool OnlyChanges
@@ -514,10 +514,25 @@ namespace CRT
             get => this.thisOnlyChanges;
             set
             {
+                bool changed = this.thisOnlyChangesWanted != value;
+
                 this.thisOnlyChangesWanted = value;
                 this.ApplyOnlyChanges(value);
+
+                if (changed)
+                    this.OnlyChangesWantedChanged?.Invoke(this, EventArgs.Empty);
             }
         }
+
+        // ###########################################################################################
+        // The user's CHOICE of "Show changes only" changed - so a host can remember it (CRT's
+        // Maintainer tab does, 2026-09-29). Raised HERE ONLY, where the choice changes: the check
+        // box routes through this setter, while ApplyOnlyChanges and the Attach path change the
+        // FILTER alone. Raising it from those would write "off" back as the user's choice every time
+        // a table with nothing published turned the filter off for itself. The Drafts tab does not
+        // listen.
+        // ###########################################################################################
+        internal event EventHandler? OnlyChangesWantedChanged;
 
         // ###########################################################################################
         // Turns the filter on or off without touching the user's choice (thisOnlyChangesWanted).
@@ -1290,8 +1305,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // A cell's text tooltip - "Published value: ...", a flagged row's reason, what a marker
-        // means - shows AT ONCE (owner request, 2026-09-26: "the instant-show should also work for
+        // A cell's text tooltip - the value it replaced (BoardTableDocument.BaselineLabel names it,
+        // "Published value" by default), a flagged row's reason, what a marker means - shows AT ONCE (owner request, 2026-09-26: "the instant-show should also work for
         // texts - not only images"), as the file hover card does. The theme's default waits 400 ms.
         // It closes the moment the pointer leaves the cell, as every tooltip does.
         // ###########################################################################################
