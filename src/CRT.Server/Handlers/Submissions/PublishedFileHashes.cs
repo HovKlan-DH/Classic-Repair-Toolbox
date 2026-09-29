@@ -5,12 +5,12 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // THE SHA-256 OF EACH PUBLISHED FILE A SUBMISSION ALSO CARRIES, so the maintainer app can tell an
+    // THE SHA-256 OF EACH PUBLISHED FILE A SUBMISSION ALSO CARRIES, so the Maintainer tab can tell an
     // unchanged file from a replaced one (fixed 2026-09-23).
     //
     // *** WHY THIS EXISTS: WITHOUT IT, EVERY FILE ON BOTH SIDES READS AS "REPLACED". *** A
     // submission names every file the board references, with a hash, because the manifest
-    // describes the whole intended state. The maintainer app pairs those against the published
+    // describes the whole intended state. The Maintainer tab pairs those against the published
     // list, and ReviewImageComparison.Plan drops a pair only when it is told the published hash
     // and it matches. Nothing sent that hash, so a submission that changed one component's short
     // description was shown to the maintainer as "1178 images to compare" - all of them identical.
@@ -51,7 +51,7 @@ namespace CRT.Server.Handlers.Submissions
         // Path -> lowercase hex SHA-256, for every path that resolves safely and exists.
         //
         // A path that does not resolve or is not on disk is simply absent from the result, never
-        // an error: the maintainer app then treats that file as replaced, which is the safe direction
+        // an error: the Maintainer tab then treats that file as replaced, which is the safe direction
         // to be wrong in (shown to a maintainer rather than hidden from one).
         //
         // Lowercase hex, because that is what the client sends in the manifest, what

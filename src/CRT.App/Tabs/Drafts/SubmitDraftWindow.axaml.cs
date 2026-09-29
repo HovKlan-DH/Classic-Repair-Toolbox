@@ -387,7 +387,13 @@ namespace CRT
 
             progress.Report(new SubmissionProgress(SubmissionPhase.Finalising, done, done, totalBytes, totalBytes, null));
 
-            return await client.FinaliseAsync(negotiation.SubmissionId, negotiation.UploadToken, token);
+            SubmissionResult result = await client.FinaliseAsync(negotiation.SubmissionId, negotiation.UploadToken, token);
+
+            // The receipt learns the state the server just confirmed, so the Drafts tab's badge says
+            // it at once instead of "Not checked yet" until the next launch.
+            SubmissionReceiptStore.RecordFinalised(result, DateTimeOffset.UtcNow);
+
+            return result;
         }
 
         // Read on the UI thread before the work starts, because a TextBox cannot be touched from
@@ -416,7 +422,9 @@ namespace CRT
             this.ConfirmPanel.IsVisible = false;
             this.ProgressPanel.IsVisible = true;
             this.SubmitButton.IsVisible = false;
-            this.HeaderText.Text = "Sending contribution";
+
+            // "Preparing" until the upload starts - OnProgress moves it on with the phase.
+            this.HeaderText.Text = SubmissionProgress.Starting().Heading;
         }
 
         private void CaptureEntries()
@@ -445,6 +453,11 @@ namespace CRT
             Dispatcher.UIThread.Post(() =>
             {
                 this.ProgressText.Text = progress.Describe();
+
+                // Only while the progress panel is up: a report still queued when the outcome
+                // arrives must not turn "Contribution sent" back into "Sending contribution".
+                if (this.ProgressPanel.IsVisible)
+                    this.HeaderText.Text = progress.Heading;
 
                 double? fraction = progress.Fraction;
 

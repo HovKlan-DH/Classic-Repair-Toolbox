@@ -5,8 +5,10 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
 using Handlers.OnlineHandling;
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -124,11 +126,21 @@ namespace CRT
         // contributor on an older build is never stranded. New work goes to CrtServerBaseUrl.
         public const string ContributionUploadUrl = "https://classic-repair-toolbox.dk/app-contribution/api/";
 
+        // The CRT.Server host with NO path - what the Maintainer tab's review client builds on
+        // (ReviewApiRoutes.DefaultBaseAddress), since every one of its routes appends the full
+        // "/api/..." path itself. One host, so the two base addresses below cannot drift apart.
+        public const string CrtServerRootUrl = "https://classic-repair-toolbox.dk";
+
         // Base URL of the CRT.Server API (NewContributeStrategy.md Phase 3 onward) - accounts,
         // and from Phase 4 the submission pipeline.
         //
-        // Used by: SubmissionClient, and whatever later phases add.
-        public const string CrtServerBaseUrl = "https://classic-repair-toolbox.dk/api";
+        // *** IT CARRIES "/api", AND CrtServerRootUrl DOES NOT - ON PURPOSE. *** SubmissionClient
+        // appends only "/submissions", while the review routes append "/api/review/...". A base
+        // ending in "/api" handed to the review client would request "/api/api/..." - a 404 on the
+        // first request. ReviewApiRoutesTests pins the review side.
+        //
+        // Used by: SubmissionClient, BoardViewReporter, and whatever later phases add.
+        public const string CrtServerBaseUrl = CrtServerRootUrl + "/api";
 
         // Timeout for uploading one blob chunk. Generous, because a contributor on a domestic
         // connection uploading a 40 MB board scan is doing nothing wrong - and unlike the manifest
@@ -147,6 +159,15 @@ namespace CRT
         //
         // Used by: SubmissionClient.CreateAsync, SubmissionClient.FinaliseAsync
         public static readonly TimeSpan SubmissionRequestTimeout = TimeSpan.FromMinutes(2);
+
+        // Board views (CRT.Data's BoardViewContract): how long a report may take - up to 200 short
+        // views and the server looking up a country - and how long after a view is counted the
+        // waiting views are sent, so changing boards a few times in a row goes as one report - and
+        // how often, while CRT is open, views a send could not deliver are tried again.
+        // Used by: BoardViewReporter, Main.BoardViews
+        public static readonly TimeSpan BoardViewTimeout = TimeSpan.FromSeconds(20);
+        public static readonly TimeSpan BoardViewSendDelay = TimeSpan.FromMinutes(1);
+        public static readonly TimeSpan BoardViewRetryInterval = TimeSpan.FromMinutes(15);
 
         // Timeout for genuinely small API calls - a short form POST and its short reply.
         // Used by: OnlineServices.CheckInVersionAsync, SubmissionClient.GetStatusAsync
@@ -190,6 +211,7 @@ namespace CRT
         public const string WikiPageMiniPro = "MiniPro-programmer";
         public const string WikiPageScopeKeyboard = "Controlling-oscilloscope-with-keyboard";
         public const string WikiPageScopeSync = "Synchronize-oscilloscope";
+        public const string WikiPageMaintainer = "Maintainer-tab";
 
         // Builds the full URL of a Wiki page from the repository owner/name above, so a repository
         // rename does not have to be chased through five string literals.
@@ -562,6 +584,13 @@ namespace CRT
 
             UserSettings.Load();
 
+            // The separate maintainer application's "Show changes only", carried into CRT's own
+            // settings once and its file removed (2026-09-29: it became the Maintainer tab). Right
+            // after the settings load, so the value lands in the settings just read.
+            MaintainerSettingsMigration.Apply(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.AppFolderName),
+                value => UserSettings.MaintainerShowChangesOnly = value);
+
             // Loaded unconditionally here, NOT inside the desktop-lifetime branch below. Every
             // WorklogManager read returns empty until this has run, and CreateWorkbook refuses with
             // "no usable workbook root folder", so a lifetime other than the classic desktop one
@@ -586,6 +615,15 @@ namespace CRT
             // roots, this is not a tree anyone browses by hand, and it carries capability tokens
             // that have no business being pointed at an arbitrary folder.
             SubmissionReceiptStore.Load();
+
+            // The Maintainer tab's remembered sign-in (DPAPI-protected on Windows, never stored
+            // elsewhere). Only the file's place is resolved here; the tab reads it the first time it
+            // is shown. Beside the receipts: one small file in the same folder.
+            ReviewSessionStore.Initialise();
+
+            // Board views waiting to be sent (Main.BoardViews.cs) - loaded before the first board is,
+            // since that board is counted too. One small JSON file, like the receipts above.
+            BoardViewReporter.Load();
 
             // Loud on purpose. A simulated update looks exactly like a real one in a screenshot, so
             // the log has to be the place where that is unambiguous when a bug report arrives.
@@ -671,6 +709,10 @@ namespace CRT
 
                 // UI has finished loading, so we can do a check-in
                 _ = OnlineServices.CheckInVersionAsync();
+
+                // ...and send the board views an earlier run could not (no network, or closed
+                // before its send). Never throws; nothing waits on it.
+                _ = BoardViewReporter.SendWaitingAsync();
             }
 
             base.OnFrameworkInitializationCompleted();

@@ -9,7 +9,7 @@ namespace CRT.Data.Tests
     // Covers BoardTableFileCells - which table cells name a file, and which file each side of the
     // hover card shows (owner request, 2026-09-26: an image cell shows the picture, a changed one
     // the published and the new picture side by side, a PDF a link to open it). The Drafts tab and
-    // the maintainer application both paint these answers, so they are decided - and tested - once.
+    // the Maintainer tab both paint these answers, so they are decided - and tested - once.
     // ###########################################################################################
     public sealed class BoardTableFileCellsTests
     {

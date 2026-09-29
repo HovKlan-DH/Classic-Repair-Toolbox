@@ -145,9 +145,9 @@ namespace CRT
             // when the hardware/board names differ from a previous system's only by the display
             // name, so the identity check above passes while the FOLDER still collides.
             //
-            // Asked of the MARKER since Phase 6, which is what makes a folder a draft - a stray
-            // workbook copied in by hand is not one, and refusing to create over it would block a
-            // legitimate name for no reason.
+            // Asked of the MARKER since Phase 6, which is what makes a folder a draft. A board
+            // folder copied in by hand gets one when the board list loads (DraftFolderImport), so
+            // one that was there at startup is refused here too.
             if (DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile))
             {
                 validationMessage = "A draft already exists in that folder. Pick a different name.";

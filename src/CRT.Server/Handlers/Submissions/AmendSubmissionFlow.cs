@@ -138,7 +138,7 @@ namespace CRT.Server.Handlers.Submissions
                     Code = "amend.file_unknown",
                     Subject = path,
                     Message = $"[{path}] is neither in this submission nor in the published data. A change made " +
-                        "in CRT Maintainer can only use files that are already there."
+                        "in the Maintainer tab can only use files that are already there."
                 });
             }
 
@@ -281,7 +281,7 @@ namespace CRT.Server.Handlers.Submissions
         public static AmendOutcome Conflict(string error) => new(false, 0, error, [], IsConflict: true);
 
         // The refusal as ONE sentence for the maintainer: the error, then what each blocking finding
-        // says - the maintainer application shows a refusal's `error` and nothing else.
+        // says - the Maintainer tab shows a refusal's `error` and nothing else.
         public string FullError =>
             string.Join(" ", new[] { this.Error }
                 .Concat(this.Findings.Where(finding => finding.Severity == ValidationSeverity.Error).Select(finding => finding.Message))

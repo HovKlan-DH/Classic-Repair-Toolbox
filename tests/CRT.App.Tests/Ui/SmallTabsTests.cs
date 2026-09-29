@@ -118,6 +118,32 @@ public class SmallTabsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "Enable Maintainer tab" (2026-09-29) reads and writes UserSettings.EnableMaintainerTab, like
+    // every other check box here. Unticked by default: the tab needs a maintainer account.
+    // ###########################################################################################
+    [Fact]
+    public void The_maintainer_tab_checkbox_reflects_and_persists_its_setting()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.EnableMaintainerTab = false;
+
+            var tab = new TabConfiguration();
+            CheckBox box = tab.GetControl<CheckBox>("EnableMaintainerTabCheckBox");
+
+            Assert.False(box.IsChecked);
+
+            box.IsChecked = true;
+            Assert.True(UserSettings.EnableMaintainerTab);
+
+            Assert.True(new TabConfiguration().GetControl<CheckBox>("EnableMaintainerTabCheckBox").IsChecked);
+
+            box.IsChecked = false;
+            Assert.False(UserSettings.EnableMaintainerTab);
+        });
+    }
+
     [Fact]
     public void Unticking_a_configuration_checkbox_persists_the_setting()
     {

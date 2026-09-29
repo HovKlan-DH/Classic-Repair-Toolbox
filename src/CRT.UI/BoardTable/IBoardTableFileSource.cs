@@ -12,7 +12,7 @@ namespace CRT
     // ###########################################################################################
     // WHERE THE TABLE'S FILE PREVIEW GETS ITS BYTES (owner request, 2026-09-26) - the host's
     // business, since the two hosts keep files in different places: the Drafts tab reads the local
-    // data folder and the draft's own copies, the maintainer application asks the server.
+    // data folder and the draft's own copies, the Maintainer tab asks the server.
     //
     // WHICH file each side is, is CRT.Data's (BoardTableFileCells); what it looks like is
     // BoardTableFilePreview's. A host with no source set shows no preview at all.

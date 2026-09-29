@@ -39,9 +39,17 @@ namespace Handlers.DataHandling
             if (scope is not (SubmissionFileScope.ManufacturerShared or SubmissionFileScope.GenericShared))
                 return false;
 
-            string? published = tree?.HashOf(file.Path);
+            // *** ONLY A REPLACEMENT COUNTS (owner decision, 2026-09-27). *** A NEW shared file is
+            // cited by no other board yet, so adding one changes nothing anybody else sees - it no
+            // longer needs the administrator. Replacing one that exists with different bytes changes
+            // it for every board that cites it, and still does. With no tree to look at, it cannot
+            // be told which, so it is counted: the safe side of a rule that asks for more eyes.
+            if (tree is null)
+                return true;
 
-            return published is null || !string.Equals(published, file.Sha256, StringComparison.Ordinal);
+            string? published = tree.HashOf(file.Path);
+
+            return published is not null && !string.Equals(published, file.Sha256, StringComparison.Ordinal);
         }
     }
 }

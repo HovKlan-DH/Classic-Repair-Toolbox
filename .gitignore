@@ -74,6 +74,7 @@ Assets/Webserver/
 # Stop-hook state stamps (local, per-clone)
 .claude/.tests-green
 .claude/.wiki-reminded
+.claude/.server-version-reminded
 
 # Server configuration that can hold credentials (Phase 3 onward).
 #

@@ -108,6 +108,19 @@ namespace Handlers.DataHandling
 
         public bool HasBaseline => this.thisDocument.HasBaseline;
 
+        // ###########################################################################################
+        // *** WHAT A CHANGED CELL'S TOOLTIP CALLS THE VALUE IT REPLACED (owner request, 2026-09-26).
+        // *** It always said "Published value: ...", which on a NEW SYSTEM names something that does
+        // not exist, so every such tooltip read "Published value: (empty)" and told the maintainer
+        // nothing: "yes, it will always be empty, but it should state [the contributor's value] if
+        // it was changed from empty to something".
+        //
+        // The answer is the whole table's, and it belongs to whoever BUILT it - HasBaseline cannot
+        // give it, because the maintainer's new-system table compares the submission with itself
+        // and so has a baseline that is not published. See BoardTableDocument.Create.
+        // ###########################################################################################
+        public string ReplacedValueLabel => this.thisDocument.BaselineLabel;
+
         // Rows added, modified or deleted - the number on the sheet's tab. Blank, duplicate and
         // incomplete rows are not counted, matching BoardDataDiffer on the board a save produces.
         public int ChangeCount { get; private set; }

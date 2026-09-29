@@ -377,6 +377,105 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(admins);
         }
 
+        // ---------------------------------------------------------------------------------------
+        // Maintainer invitations (2026-09-27). TokenHash is kept beside each record, as the tokens'
+        // hashes are, so a test can prove the plaintext code was never stored.
+        // ---------------------------------------------------------------------------------------
+
+        private long thisNextInvitationId = 1;
+
+        public Dictionary<long, MaintainerInvitationRecord> Invitations { get; } = [];
+
+        public Dictionary<long, string> InvitationHashes { get; } = [];
+
+        public Task<long> CreateInvitationAsync(NewMaintainerInvitation invitation, CancellationToken cancellationToken = default)
+        {
+            long id = this.thisNextInvitationId++;
+
+            this.Invitations[id] = new MaintainerInvitationRecord(
+                id,
+                invitation.SystemId,
+                invitation.Email,
+                invitation.NormalisedEmail,
+                invitation.InvitedByAccountId,
+                invitation.CreatedUtc,
+                invitation.ExpiresUtc,
+                AcceptedUtc: null,
+                WithdrawnUtc: null);
+
+            this.InvitationHashes[id] = invitation.TokenHash;
+
+            return Task.FromResult(id);
+        }
+
+        public Task<MaintainerInvitationRecord?> FindInvitationByHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        {
+            long id = this.InvitationHashes.FirstOrDefault(pair => pair.Value == tokenHash).Key;
+            return Task.FromResult(this.Invitations.GetValueOrDefault(id));
+        }
+
+        public Task<MaintainerInvitationRecord?> FindInvitationByIdAsync(long invitationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Invitations.GetValueOrDefault(invitationId));
+
+        public Task<IReadOnlyList<MaintainerInvitationRecord>> ListOpenInvitationsAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<MaintainerInvitationRecord> open = this.Invitations.Values
+                .Where(invitation => invitation.IsOpenAt(nowUtc))
+                .OrderBy(invitation => invitation.SystemId, StringComparer.Ordinal)
+                .ThenBy(invitation => invitation.CreatedUtc)
+                .ThenBy(invitation => invitation.Id)
+                .ToList();
+
+            return Task.FromResult(open);
+        }
+
+        public Task WithdrawInvitationAsync(long invitationId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            if (this.Invitations.TryGetValue(invitationId, out MaintainerInvitationRecord? invitation) &&
+                invitation.AcceptedUtc is null && invitation.WithdrawnUtc is null)
+            {
+                this.Invitations[invitationId] = invitation with { WithdrawnUtc = whenUtc };
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<long?> AcceptInvitationsAsync(NewAccount account, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            if (this.Accounts.Values.Any(existing => existing.NormalisedEmail == account.NormalisedEmail))
+                return Task.FromResult<long?>(null);
+
+            long id = this.thisNextAccountId++;
+
+            this.Accounts[id] = new AccountRecord(
+                id, account.Email, account.NormalisedEmail, account.PasswordHash, account.DisplayName,
+                IsVerified: true, IsAdministrator: false, IsLocked: false, account.CreatedUtc, LastLoginUtc: null);
+
+            foreach (MaintainerInvitationRecord invitation in this.Invitations.Values
+                .Where(invitation => invitation.NormalisedEmail == account.NormalisedEmail && invitation.IsOpenAt(whenUtc))
+                .ToList())
+            {
+                this.Maintainers.Add((invitation.SystemId, id));
+                this.Invitations[invitation.Id] = invitation with { AcceptedUtc = whenUtc };
+            }
+
+            return Task.FromResult<long?>(id);
+        }
+
+        public Task<IReadOnlyList<AuditEntry>> GetAuditForSubjectsAsync(IReadOnlyCollection<string> subjects, int limit, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<AuditEntry> found = this.Audit
+                .Select((entry, index) => (entry, index))
+                .Where(item => item.entry.Subject is not null && subjects.Contains(item.entry.Subject))
+                .OrderByDescending(item => item.entry.AtUtc)
+                .ThenByDescending(item => item.index)
+                .Take(Math.Clamp(limit, 1, 1000))
+                .Select(item => item.entry)
+                .ToList();
+
+            return Task.FromResult(found);
+        }
+
         public Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default)
         {
             this.Audit.Add(entry);

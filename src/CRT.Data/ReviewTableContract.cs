@@ -6,14 +6,14 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // THE MAINTAINER'S TABLE (owner request, 2026-09-25): "make the same 'Edit in table
-    // format' available in the maintainer app ... The maintainer should be able to also edit whatever, if
+    // format' available in the Maintainer tab ... The maintainer should be able to also edit whatever, if
     // he chooses to publish it afterwards."
     //
-    // What goes over the wire between CRT.Server and CRT.Maintainer for it, and the one rule for what
+    // What goes over the wire between CRT.Server and CRT's Maintainer tab for it, and the one rule for what
     // an amendment may change - in CRT.Data so both ends use the same types and the same rule.
     // ###########################################################################################
 
-    // What the maintainer application's table opens on: the published board (null for a new system)
+    // What the Maintainer tab's table opens on: the published board (null for a new system)
     // and the submission's current rows, plus the amendment version the rows are at - sent back
     // with an amendment, so two maintainers editing at once cannot silently overwrite each other.
     public sealed record ReviewTableData(int Version, SubmissionRows? Published, SubmissionRows Submitted);
@@ -31,6 +31,9 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = rows.RevisionDate ?? string.Empty,
+                // Rows carry no caption; the publish supplies it (PublishMerge.CaptionedAs).
+                HardwareName = string.Empty,
+                BoardName = string.Empty,
                 Schematics = [.. rows.Schematics],
                 Components = [.. rows.Components],
                 ComponentImages = [.. rows.ComponentImages],

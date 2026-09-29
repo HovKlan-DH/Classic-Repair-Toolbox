@@ -21,6 +21,7 @@
 - [Workbooks](Workbooks-tab)
 - [Oscilloscope](Oscilloscope-tab)
 - [Contribute](Contribute-tab)
+- [Maintainer](Maintainer-tab)
 - [Configuration](Configuration-tab)
 - [Feedback](Feedback-tab)
 - [About](About-tab)

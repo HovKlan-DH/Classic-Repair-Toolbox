@@ -2,8 +2,8 @@
 
 A staged plan to replace the Contribute tab and the `app-contribution` PHP backend with a
 local-first authoring experience in CRT, a shared C# data library, an ASP.NET Core service on the
-project owner's own AlmaLinux server, and a separate desktop maintainer application with per-system
-maintainers.
+project owner's own AlmaLinux server, and a maintainer surface - a separate desktop application until
+2026-09-29, a Maintainer tab inside CRT since - with per-system maintainers.
 
 **Status: Phases 0-4 are DONE, except that nothing PUBLISHES yet - a submission is queued for
 review and stops there, which is by design until Phase 5 builds the maintainer application
@@ -19,7 +19,9 @@ folders rather than as row deltas, which reverses a Phase 2 decision - read that
 before touching anything under `Drafts/`. **Phase 6's ROLES are DONE (2026-09-25)** as two
 roles rather than the four planned - read the phase before assuming the four-role table - and
 its two-stage publish, two-person approval for shared files, orphan removal and the maintainer's
-table are DONE too (2026-09-25). Phase 7 is not started.
+table are DONE too (2026-09-25). Phase 7 is not started. **Phase 8 is DONE (2026-09-29)**: the
+separate CRT Maintainer application is now CRT's Maintainer tab - read it before touching anything
+maintainer-side.
 
 This file is a handoff document. It is written to be picked up by an agent (or a person) who has
 not been part of the conversation that produced it, across many sessions, with no memory of
@@ -43,6 +45,7 @@ earlier ones. Read [How to use this document](#how-to-use-this-document) first.
 - [Phase 6a - Drafts as real board folders](#phase-6a---drafts-as-real-board-folders-done-2026-09-23)
 - [Phase 6 - Maintainers](#phase-6---maintainers)
 - [Phase 7 - Retire the PHP contribution path](#phase-7---retire-the-php-contribution-path)
+- [Phase 8 - Maintainer tab inside CRT](#phase-8---maintainer-tab-inside-crt-done-2026-09-29)
 - [Security model](#security-model)
 - [Cross-cutting concerns](#cross-cutting-concerns)
 - [Open questions for the project owner](#open-questions-for-the-project-owner)
@@ -112,35 +115,34 @@ Problem 4 is the most dangerous and, as it happens, the cheapest to fix. See
 ## The target architecture
 
 ```
-                   CRT desktop app                      Review desktop app
-                 (contributors + users)                    (maintainers)
-                          |                                      |
-                 authors into Drafts/                     approve / reject /
-                 submits manifest+blobs                   request changes
-                          |                                      |
-                          +------------------+-------------------+
-                                             |  HTTPS
-                                             v
-                              +-------------------------------+
-                              |   CRT.Server (ASP.NET Core)   |
-                              |   AlmaLinux, behind existing  |
-                              |   web server on /api/         |
-                              +-------------------------------+
-                                  |                        |
-                    review state  |                        |  published data
-                                  v                        v
-                            +-----------+        +-----------------------+
-                            |  MariaDB  |        |  app-data/  (prod)    |
-                            | accounts  |        |  app-data-BETA/       |
-                            | queue     |        |  plain files, as now  |
-                            | audit     |        +-----------------------+
-                            +-----------+
+                              CRT desktop app
+                  (contributors, users - and, in its Maintainer tab,
+                   maintainers; a separate app until 2026-09-29)
+                                     |
+                 authors into Drafts/, submits manifest+blobs;
+                 Maintainer tab: approve / reject / request changes
+                                     |  HTTPS
+                                     v
+                      +-------------------------------+
+                      |   CRT.Server (ASP.NET Core)   |
+                      |   AlmaLinux, behind existing  |
+                      |   web server on /api/         |
+                      +-------------------------------+
+                          |                        |
+            review state  |                        |  published data
+                          v                        v
+                    +-----------+        +-----------------------+
+                    |  MariaDB  |        |  app-data/  (prod)    |
+                    | accounts  |        |  app-data-BETA/       |
+                    | queue     |        |  plain files, as now  |
+                    | audit     |        +-----------------------+
+                    +-----------+
 
-         All three C# programs compile against ONE shared library: CRT.Data
+         Both C# programs compile against ONE shared library: CRT.Data
 ```
 
-The key property: the app, the maintainer app and the server all read and write board data with the
-same code. The PHP parity problem stops existing.
+The key property: the app (its Maintainer tab included) and the server both read and write board
+data with the same code. The PHP parity problem stops existing.
 
 ---
 
@@ -149,8 +151,13 @@ same code. The PHP parity problem stops existing.
 These were settled with the project owner. An agent picking this up should treat them as given, and
 raise a concern only if implementation reveals one to be genuinely unworkable.
 
-**One decision on this list HAS been reversed, by the project owner, on 2026-09-23: the draft
-file format.** Phase 2 stored a draft as row deltas in `draft.json`; a draft is now a real
+**TWO decisions on this list HAVE been reversed by the project owner.** The second, on 2026-09-29:
+**the review tool is no longer a separate application** - it is the Maintainer tab inside CRT
+([Phase 8](#phase-8---maintainer-tab-inside-crt-done-2026-09-29)). A maintainer is a CRT user, and two
+applications, two versions and two release repositories for a handful of people was cost with no
+benefit. The table's "Review tool" row below records the original choice.
+
+**The first, on 2026-09-23: the draft file format.** Phase 2 stored a draft as row deltas in `draft.json`; a draft is now a real
 board folder with its own workbook. The reasoning, what it cost and what it bought are in
 [Phase 6a](#phase-6a---drafts-as-real-board-folders-done-2026-09-23). Every other decision
 below stands.
@@ -168,10 +175,10 @@ below stands.
 | Server stack | **ASP.NET Core on existing AlmaLinux box** | Enables the shared library; no new machine needed |
 | Review state storage | **MariaDB** (already installed) | Queue/permission/audit data; hardware data stays as files |
 | Published data storage | **Plain files, exactly as today** | Backup and comparison by copying folders |
-| Review tool | **Separate Avalonia desktop app** | Review is visual; reuses CRT rendering; audiences barely overlap |
+| Review tool | **Separate Avalonia desktop app** - REVERSED 2026-09-29: a tab inside CRT (Phase 8) | Review is visual; reuses CRT rendering; audiences barely overlap |
 | Repository layout | **One repo (monorepo)** | `CRT.Data` as ProjectReference, not a versioned NuGet package |
 | GitHub as backend | **Rejected** | Owner considers it too troublesome; contributors must never need it |
-| Maintainer server access | **Never** | Maintainers get an account in the maintainer app, nothing more |
+| Maintainer server access | **Never** | Maintainers get a maintainer account, used from CRT's Maintainer tab, nothing more |
 | Per-row UUIDs | **Retire them** | Base-revision diffing plus natural keys replaces them; see Phase 4 |
 
 ---
@@ -320,7 +327,8 @@ Assets/                         <- stays at repository root, unchanged
 .claude/
 ```
 
-`CRT.Data`, `CRT.Server` and `CRT.Maintainer` join `src/` in later phases.
+`CRT.Data`, `CRT.Server` and `CRT.Maintainer` join `src/` in later phases (`CRT.Maintainer` left it
+again on 2026-09-29, when it became CRT's Maintainer tab - Phase 8).
 
 **Keep `Assets/` at the root.** It holds the data pack, the Wiki mirror and the webserver copy -
 none of it belongs to a single project, the release workflow copies it by path, and moving it would
@@ -1114,6 +1122,17 @@ paths, and was live-fire tested.
     migration of existing `_UserContribution` boards INTO `Drafts/` - they simply keep working
     where they are, read-only-mechanism-wise, for as long as anyone still has one.
 
+    **Amended 2026-09-27 (owner request): a board folder the contributor puts into `Drafts/` BY
+    HAND is taken in as a draft** at the next start (`DraftFolderImport`, run from
+    `DataManager.LoadMainExcel`), so work done the old way can be submitted. Still no AUTOMATIC
+    migration - nothing is moved out of `Data/` - but copying a `_UserContribution` board's folder
+    into `Drafts/` is now the supported route to submit one. Such a board becomes a NEW system
+    (never published), registered under its FOLDER names (a submission's identity needs them),
+    while its `_UserContribution` entry stays in the lists and reads the draft
+    (`MergeDraftOnlySystems` now also dedupes by folder). A new system's draft is compared against
+    nothing (`DraftBoardSource.ComparisonBaselineOf`) - against the legacy copy in `Data/` every row
+    read as unchanged and Submit was disabled.
+
 11. Support **private systems**: a draft never submitted is a fully working local system. Say so in
     the UI; it is a genuine feature, not a staging area. Note this is already true of a
     `_UserContribution` board today - the feature exists, it is just hard to reach.
@@ -1214,7 +1233,8 @@ a new `BoardDataReader.ReadRevisionDateOnly` that reads the marker without mappi
 would compare a value against itself read a different way.
 
 **Two surfaces, both reusing session 2b's vocabulary rather than inventing a parallel one**: an
-amber `Draft_Chip_*` "Updated officially" chip plus a "What changed" button on the Drafts tab row
+amber `Draft_Chip_*` "Updated officially" chip (removed 2026-09-28, owner request - it only repeated
+the drift line under the row) plus a "What changed" button on the Drafts tab row
 (the primary home - it is the one surface that is *about* drafts), and the existing `SyncBanner` for
 the board on screen, following `_isShowingDataSyncDisabledBanner`'s precedent for shared ownership
 of that one text slot. A drifted-row schematic tint was rejected: the drafted tint already means
@@ -2128,6 +2148,10 @@ step and neither is decidable without it.
 ---
 
 ## Phase 5 - Maintainer application, single user [STARTED 2026-09-21]
+
+> **Superseded as an application by [Phase 8](#phase-8---maintainer-tab-inside-crt-done-2026-09-29)
+> (2026-09-29):** everything below was built as the separate CRT Maintainer application, and now runs
+> as CRT's Maintainer tab. This phase is kept as the history of how it was built.
 
 **Goal.** A separate Avalonia desktop app where the project owner reviews and merges submissions. One
 maintainer only; roles come in Phase 6.
@@ -3701,14 +3725,15 @@ is what users see in CRT's Configuration tab and what every installed build's sy
   "source" / "BETA source" names in CRT's Configuration tab. The server reports a merged submission as `published` once its
   system has been promoted since (`ContributorFacingState`), without touching the stored state.
   CRT shows "merged" as "Published to BETA source" and "published" as "Published to source", and
-  keeps asking about a merged one at launch until it reads "published" - for at most 30 days after
-  the decision (`SubmissionReceiptPresenter.MergedRecheckWindow`), since the second publish may
-  never come; "Check for updates" in My submissions still asks after that. `DraftRetirement` needed
+  keeps asking about a merged one at launch until it reads "published" - at every launch for 30 days
+  after the decision (`SubmissionReceiptPresenter.MergedRecheckWindow`), since the second publish
+  may never come, and weekly after that (`MergedLateRecheckInterval`, 2026-09-27) because a BETA
+  rollback can turn a merged submission "returned" at any time; "Check for updates" in My
+  submissions still asks whenever pressed. `DraftRetirement` needed
   no change: it already waits for the contributor's own synced data to carry the change.
-- **Known gap, not addressed: a NEW system is never added to the master workbook** by a publish
-  (to either tree), and CRT finds boards only through the master's "Hardware & Board" sheet - so a
-  new system is copied and does not appear in CRT until its row is added by hand. This predates the
-  two-stage publish and is a owner decision (writing the master touches generation rules).
+- **~~Known gap: a NEW system is never added to the master workbook~~ - CLOSED 2026-09-27**, see
+  "A new system's place in the drop-down lists" below. A maintainer places the system on the
+  Systems screen before it can be approved, and the publish and the promotion each add its row.
 
 ### Orphan files [DONE 2026-09-25]
 
@@ -3728,7 +3753,8 @@ app and the rule disagree on it or on the KiCad folder name), or (6) a file whos
 unreadable master or board workbook, a master listing a workbook the tree lacks, or a folder that
 cannot be walked makes the result incomplete, and an incomplete result removes nothing. A board
 found in the tree counts even when no master lists it, because a new system the server publishes is
-not added to any master (done by hand) - trusting the masters alone would delete it.
+not added to any master (done by hand; since 2026-09-27 the publish adds it, but a board copied
+into a tree by hand still has none) - trusting the masters alone would delete it.
 
 **The shipped data was cleaned first.** Run over `Assets/Data` the rule found 2 masters, 22 board
 workbooks, 10,971 files and **50 orphans (8.7 MB)**: 11 `.fsc` image-editor files, 3 VGG Image
@@ -3855,8 +3881,9 @@ matches (`DraftRetirement`), which can only happen after the master workbook lis
 CRT downloads a board workbook only then - so retiring it never hides the contributor's board. The
 draft and the published workbook have different names (the draft's has no generation suffix), so
 `DraftStatusReader.ResolveForSystem` finds the draft by its folder and keeps the draft's own key.
-**It still depends on the master row, which is added by hand** - the known gap recorded with the
-two-stage publish above ("a NEW system is never added to the master workbook").
+It depends on the master row, which the publish has added since 2026-09-27 (see "A new system's
+place in the drop-down lists"). **And since 2026-09-27 it is retired only once the submission is
+PUBLISHED TO PRODUCTION** - see "Drafts stay until production" below.
 
 ### Code review follow-up [DONE 2026-09-25]
 
@@ -4051,6 +4078,233 @@ Manufacturer, Hardware and Board, then the contributor's comment.
   maintainer app words it (`ReviewContributorLine`). Published = `merged`; a rejection counts only
   when a maintainer made it (`decided_by` set); a replaced (`withdrawn`) or never-finished
   submission is not counted.
+- **The production panel says WHOSE WORK a promotion carries** (owner request, 2026-09-27: "I am not
+  sure if the shown information in the right-side panel is any helpful ... can you propose
+  something?"). It was the file copy list and nothing else - the mechanics of a copy, which cannot
+  tell a maintainer whether the data is right, while the thing the button actually does (push named
+  people's accepted work to every CRT user) was not on screen at all. The panel is now, in order:
+  the merged submissions this carries (contributor, their own description, how long ago it was
+  accepted), then what needs a second look (approval, removals, shared files), then the file list
+  COLLAPSED behind a header that counts it - kept, because it is the audit trail.
+  The facts are the server's `carrying` on the plan answer (CRT.Data's `CarriedSubmission`), built
+  by `ProductionPromotionRules.Carrying` from **the same query and the same window** that
+  `AfterPublishAsync` uses to email those contributors once the promotion succeeds - so the screen
+  cannot name someone the mail will not reach, or stay silent about someone it will. It never fails
+  the plan: context beside a decision, not part of it.
+  **Deliberately NOT a diff of the data itself** (components added, schematics renamed): every
+  submission was already reviewed in the table, and the tick is the maintainer saying they checked
+  the board in BETA, so re-deriving it would re-ask an answered question at real cost.
+- **"PUSH BACK TO QUEUE" IS BUILT** (owner decision, 2026-09-27). It was first judged impossible,
+  and that judgement was WRONG on its central fact: the claim that a merged submission's blobs are
+  garbage-collected. `SubmissionCollectionStates.Live` contains `Merged`, so
+  `DeleteRetiredPayloadsAsync` never touches one - the project owner corrected it ("everything stays
+  shadowed ... data is still there"), and proposed the mechanism: overwrite BETA from production.
+  That works because production holds a COMPLETE board, not a partial set.
+
+  `BetaRollbackFlow` (server) over `BetaRollbackPlan` (CRT.Data, pure) is the mirror of the
+  promotion: production's bytes go back over BETA, files only BETA had are deleted, the system's
+  recorded BETA state follows the tree, and every submission merged since the last promotion returns
+  to `pending` with the maintainer's comment and its approvals cleared - all three in ONE store
+  transaction (`RecordRollbackAsync`, the one writer of the BETA columns that is not a publish) -
+  each contributor mailed. `POST /api/review/production/rollback`
+  and `/rollback/plan`; the button sits beside "Publish to production" in CRT's red.
+
+  **The limit that survives is structural: a rollback is PER SYSTEM.** `PublishMerge` replaces rows
+  wholesale, so nothing records whose row was whose and one contributor's work cannot be picked out
+  - `ProductionPromotionPlan` says the same in the other direction. So the confirmation NAMES every
+  submission it takes back and says "ALL N submissions ... a board cannot be rolled back one
+  contribution at a time". That sentence is the feature's safety: without it a maintainer returning
+  one contributor's work would silently discard two others'.
+
+  **A system never promoted is a REMOVAL, not a restore** (owner decision): production has nothing
+  to restore from, so the board leaves the BETA tree entirely - "restore nothing" would leave the
+  bad board exactly as it is while reporting success. **Shared files are deliberately never
+  restored**: one reaches every board citing it, so rolling THIS board back would silently revert
+  others. The comment is required on both sides - it is the contributor's only feedback.
+
+  **Still not possible, and correctly so:** restoring a board whose submissions were merged BEFORE
+  the last promotion. That work is already in production and live for everyone; a corrective
+  submission is the only honest route.
+
+  **Code review of the rollback (2026-09-27), eleven findings, all fixed.** The ones worth
+  remembering: the BETA checksum manifest is rebuilt the moment the tree moves (it was left
+  advertising the rolled-back bytes, so BETA clients kept them); the bookkeeping is ONE transaction
+  (`RecordRollbackAsync`) that also CLEARS the returning submissions' approvals - left in place, a
+  shared-file submission was republished by a single approval; a SHARED file goes back too, but
+  only when BETA still holds exactly the bytes a returning submission carried, and a shared file it
+  added goes through `UnusedFileRemover` (leaving the shared change in BETA leaked it to production
+  with the next promotion of any board citing it); paths are compared ORDINALLY, as the
+  case-sensitive server tree needs; every restore is a `VerifiedFileCopy`; comparisons check length
+  first and cache hashes per file version, async; a failed record answers `NotRecordedMessage`
+  instead of a 500, and pushing back again completes it; the contributor mail promises only what is
+  true (the draft may already be retired; a newer submission does not always replace it); and CRT
+  hears the rollback as `returned` ("Taken back out of BETA - waiting for review again"), with a
+  merged receipt re-asked weekly past its 30-day window. **Known gap, left open:** a file in the
+  rolled-back board's OWN folder that another board has since cited is deleted with the board's
+  BETA-only files.
+- **THE ADMINISTRATOR'S SECOND APPROVAL ONLY FOR REPLACING A SHARED FILE, AND NO AUTOMATIC
+  REMOVAL OUTSIDE A SYSTEM'S OWN FOLDER** (owner decision, 2026-09-27: "change the review process
+  slightly, so it will NOT require a second acknowledgement from the admin. BUT for this to work,
+  then it should not delete any files in any of these folders ... It can delete any files inside
+  its own system main folder - not outside it"). Asked and answered: a REPLACEMENT of an existing
+  shared file (same path, different bytes) still needs the administrator too, because it changes
+  what every board using it shows; adding a new shared file, and everything else, needs one
+  approval. `SubmissionSharedFiles` counts replacements only (an unreadable tree still counts - the
+  safe side), `ProductionPromotionPlan.TouchesSharedFiles` counts replaced shared copies only, and
+  the approval recomputes from the tree now rather than trusting the flag stored at create (so
+  submissions queued under the old rule are not held back). `AutomaticRemovalScope` limits every
+  automatic removal - publish, promotion, push-back - to the system's own folder; shared or other
+  systems' files a board stops citing become orphans for Admin > Unused files. A push-back no longer
+  removes a shared file the returning submission added. Server 3.1.0.
+- **ONE SUBMISSION IN BETA PER SYSTEM** (owner decision, 2026-09-27: "it should be possible only
+  to submit ONE contributor submission to Beta per system ... Wouldn't this be optimal, or otherwise
+  suggest better option"). It is the right rule given what a push-back can do: `PublishMerge`
+  replaces a board's rows wholesale, so a push-back is per SYSTEM and returns everything merged since
+  the last promotion - with two contributors' work in BETA it could only take both back. The price is
+  throughput on a busy system (its queue waits for Beta > Prod), and reviewing, amending, requesting
+  changes and rejecting all go on meanwhile. `ApprovePublishFlow` step 3b refuses any approval of a
+  system `ProductionPromotionRules.IsAwaitingProduction` (409), with CRT.Data's
+  `OneSubmissionInBeta.BusyMessage`; CRT Maintainer's `ApprovalGate` turns Approve off beside the same
+  sentence, read from its "Beta > Prod" list. ON ONLY when production publishing is configured -
+  without it nothing ever leaves BETA and every system would close after its first approval. The
+  same gate turns Approve off for an UNPLACED new system (the server refused that since 2.0.0; the
+  button now says so before it is pressed). Server 3.0.0 (MAJOR).
+- **A SYSTEM'S HISTORY ON THE SYSTEMS SCREEN** (owner request, 2026-09-27: "I would like to see the
+  date, newest first, to understand what has happened to a system"). `SystemHistoryRules` merges the
+  system's submissions (sent; decided - merged, rejected, changes requested, replaced - and by whom,
+  now that the per-system query reads `decided_by`) with the audit rows naming the system or one of
+  its submissions (promotion, push-back, pool changes, invitations, amendments, placement), newest
+  first, 100 at most; `SystemDetailAnswer.History` carries it and CRT Maintainer shows it, date first,
+  in place of the bare submission list. Three events became audited for it: a saved placement
+  (`system.placed`), an accepted invitation (now one row per system), and a removal's address.
+- **"PLEASE WAIT" WHILE PUSHING BACK OR PUBLISHING TO PRODUCTION** (owner request, 2026-09-27):
+  the main window fades and a layer takes every click until it ends, however it ends
+  (`BetaView.RunBusyAsync`, `MaintainerMain.ShowBusy`).
+- **SEVERAL MAINTAINERS PER SYSTEM** were always possible (the pool's key is system + account); the
+  Systems panel now says so under its controls.
+- **MAINTAINERS ARE SET ON THE SYSTEMS SCREEN, AND A NEW ONE IS INVITED BY EMAIL** (owner request,
+  2026-09-27: "As admin I should be allowed to set a system maintainer in the 'Systems' list - so that
+  should be moved from 'Admin' section. I should be able to either select an existing maintainer or
+  invite a new maintainer via email."). "Set maintainers" left Admin; the Systems panel carries the
+  controls for an administrator. Inviting needed an ACCOUNT PATH, because none existed - accounts
+  were registered with curl, neither application can make one. So an invitation is also account
+  creation: `POST /api/admin/maintainers/invite` stores the hash of a one-time code in migration
+  0012's `maintainer_invitations` (a table of its own, so nothing reading the pool sees an invited
+  person early) and mails the code; `POST /api/accounts/accept-invitation` (code, name, password),
+  from "I have an invitation" on CRT Maintainer's sign-in screen, creates the account VERIFIED - the
+  code proved the mailbox - and adds it to the pool of every system that address has an open
+  invitation to, in one transaction. Hashes the password only after the code checks out (the
+  reset's order), so the unauthenticated route cannot be used to run Argon2 without a real code.
+  An address that has an account is refused (choose it from the list, which says why an account
+  cannot be granted); inviting again replaces the open invitation; `.../invitations/withdraw`
+  cancels one; codes last 14 days. Open invitations ride on `POST /api/review/systems/detail` for
+  an administrator only. The buttons were also renamed: Systems, Contributor Submissions (Review),
+  Beta > Prod (BETA), Admin, in that order. Server 2.1.0.
+- **FOUR SCREENS INSTEAD OF THREE WINDOWS** (owner request, 2026-09-27). CRT Maintainer's top left is
+  four buttons - **Review** (the queue, as it was), **BETA** (the "Publish to production" window),
+  **Systems** (new) and **Admin** ("Set maintainers" and "Unused files", the administrator's two
+  windows) - each a list on the left and the chosen item on the right. Review and BETA carry a badge
+  counting the SYSTEMS that wait for this account (the server's `awaitsYou`: the queue's, and a new
+  optional one on `GET /api/review/production`, false once this account has given its production
+  approval for that BETA state); Systems a discreet count of all systems; Admin shows only for an
+  administrator. Switching screen HIDES rather than closes, so an open table - unsaved changes
+  included - is where it was on coming back. The BETA list and the systems are read with the
+  queue's own minute check, each keeping the "never disturb what is open" rule: the tick on the
+  shown BETA system survives a check unless its row changed.
+  **The Systems screen is for EVERY maintainer, every system, contributors' addresses included**
+  (owner decision, 2026-09-27, asked and answered "Everything for everyone"). That is a deliberate
+  widening: until then a maintainer saw a contributor's address only on a submission they could
+  decide. `GET /api/review/systems` and `POST /api/review/systems/detail` (`SystemOverviewFlow`,
+  authority `CanReviewAnything`) give each system's maintainers, its contributors with how their
+  submissions to it went (ContributorHistory's rules), and its 50 newest submissions in the word the
+  contributor is told - which the maintainer app words with CRT's own `DescribeState`, so both apps
+  describe a submission identically. Server 1.3.0; no migration.
+- **A NEW SYSTEM'S PLACE IN THE DROP-DOWN LISTS** (owner request, 2026-09-27: "When a system is
+  added to BETA, and it is a NEW system, can you then make sure it gets added also to the main Excel
+  data file in the Data root? The maintainer should order the new system, so it becomes visible in
+  the right location for the drop-down lists. This must be done before it can be pushed to BETA.").
+  Asked and answered: the maintainer sets the POSITION and the NAMES (hardware name, board name,
+  hardware notes); production gets the row "at the same place"; the place is chosen by DRAGGING the
+  new system in the full list on the Systems screen.
+  **The rule for the file:** `MasterListing` (CRT.Data) reads and writes the NEWEST master generation
+  only (`NewestMasterPath` - older generations are frozen, as for boards), locates the sheet and the
+  header by name in the first 20 rows, inserts ONE row after the named one (formatted like its
+  neighbour) and changes nothing else; a blank hardware cell below the new row is given its own name
+  so CRT's carry-forward does not move it under the new hardware. Written atomically.
+  **Where it happens:** the placement is saved per system (`SystemListingFlow`, migration 0011's
+  nullable `systems.listing_*` columns) and does not touch a file - unless the board is ALREADY in
+  BETA (copied by hand, or merged before this existed), when BETA's file gets the row at once. The
+  approval refuses a new-to-the-tree or unlisted system with no placement
+  (`ListingForPublishAsync`, before anything is written, with the executor re-checking under the
+  lock); the publish writes the row after the sidecar and before the database. Promotion inserts
+  BETA's row into production's file after the nearest row above it that production lists
+  (`TryResolvePlacement`), and refuses - with nothing copied - when neither file lists the system.
+  Pushing a never-promoted system back out of BETA removes its row there; the placement is kept.
+  **Unreadable masters:** a board already in the tree publishes exactly as before when the file
+  cannot be read (the file was never part of publishing one); only a board NEW to the tree is refused.
+  Promotion with an unreadable master copies as before and lists nothing.
+  **No two systems under one name pair** (`MasterListing.NamesTakenBy`), at the placement, the
+  approval, the publish and the promotion: CRT keys a board by "hardware name|board name",
+  case-insensitively, so a second row with the same pair is one board twice sharing every setting.
+  **The maintainer app:** `SystemPlacementView` on the Systems screen, dragged by CRT.UI's
+  `ListRowDrag` - the Drafts tab's schematic-images drag, lifted out unchanged so both use one copy
+  (frozen slots, re-entrancy guard, capture, edge auto-scroll). The Systems list leads with the
+  systems waiting for a place, its badge counts those this account can place, and the review screen
+  warns above an unplaced new system's table. Server 2.0.0 (MAJOR: the approval refuses what it
+  accepted).
+- **DRAFTS STAY UNTIL PRODUCTION, and a BETA tester is told when to switch back** (owner request,
+  2026-09-27: "it will not remove anything from the users Draft tab, until the data has been
+  migrated to production ... if the user has selected BETA as source ... there should be some kind
+  of notification"). `DraftRetirement.IsPublishedState` is "published" only - "merged" (in BETA) no
+  longer retires a draft, since "Push back to queue" can take it out of BETA again. When a receipt
+  reaches "published" while CRT is downloading from the BETA source, a banner under the tabs
+  (`Main.SourceSwitchNotice.cs`, words from `SubmissionReceiptPresenter.DescribeSourceSwitchNotice`)
+  says the work is in production and to switch "Download data from test source" off; dismissing it
+  is stored on the receipt (`SourceNoticeDismissed`), and it goes by itself when the source is
+  switched. Retiring a draft now also removes the folders it leaves EMPTY above it
+  (`DraftWorkbookStore` - never the Drafts root, never a folder with anything in it).
+- **THE REVISION DATE IS THE SERVER'S, at both stages** (owner decision, 2026-09-26: "when the
+  maintainer publish it to BETA, the revision date gets updated from server. Same happens when it
+  gets published to real production, so server always wins, and what is typed by user is not
+  important"). `ApprovePublishFlow.BuildPlan` stamps `BoardWorkbookStyle.FormatRevisionDate(nowUtc)`
+  into the plan, and `PublishExecutor` writes THAT into the workbook rather than computing its own -
+  one value, used by both. Production promotion copies the BETA bytes and touches nothing, so the
+  BETA stamp carries through.
+
+  This fixed two defects at once. A NEW SYSTEM could not be published at all: its seeded workbook
+  carries no revision date (`DraftSeeder.CreateNewSystem` - nothing to inherit one from, and CRT
+  never asks), `PublishMerge`'s fallback to the published board finds none, and `PublishPlan` then
+  refused `publish.no-revision` at the one irreversible step (reported with a screenshot; it failed
+  CLOSED, so nothing was corrupted). And on an EXISTING board the workbook and the database
+  disagreed: the workbook had been stamped with the publish date since 2026-09-23 while the plan's
+  descriptor - which is what reaches `systems.current_revision` - still carried the SUBMITTED date.
+  That row is the base a contributor's next draft is diffed against, so the drift check was
+  comparing against a revision no board ever held. Pinned by
+  `ApprovePublishFlowTests.A_NEW_system_that_carries_no_revision_date_can_still_be_planned`, its
+  `..._is_ignored_in_favour_of_the_publish_date` twin, and `PublishExecutorTests`' assertion that
+  the workbook and the `systems` row now agree.
+
+  **The client deliberately still stamps nothing.** A draft that stamped its own date would look
+  newer than the board it came from and `DraftRevisionComparer` would report drift on every draft -
+  see `PublishExecutor`'s header.
+- **The decision buttons are coloured by direction, and a new system's tooltip stops saying
+  "Published"** (owner requests, 2026-09-26). "Approve and publish to BETA" is CRT's green
+  (`Button_Ok_*`; `MaintainerApp.axaml` defines them now - it had only `Button_Cancel_*`, and a
+  missing `DynamicResource` draws an unstyled button in silence, so `SharedTableColourKeysTests`
+  covers this application's own windows too), while "Request changes" and "Reject" stay red: "two
+  red ones ... and then one accepting it, being green. Should be logical." Approve keeps its place,
+  last and separated. Separately, a changed cell's tooltip is now TOLD what to call the value it
+  replaced (`BoardTableDocument.Create`'s `baselineLabel`): a new system is compared with the
+  submission itself, so its `HasBaseline` is true and the default "Published value: (empty)" named
+  a board that does not exist - it reads "As submitted: (empty)" there, the file card's own word for
+  that side. A draft names nothing and is unchanged.
+- **A NEW SYSTEM gets no "Files included" line** (owner request, 2026-09-26: "if that is the
+  component/board files, as typed in the table, then there is no reason to show this. Only data that
+  is NOT otherwise visible should be shown here"). Every file of a new system is cited by a row that
+  is itself on screen, so the count repeated the table's own image / local file / link cells. The
+  line stays for a PUBLISHED board, where a file replaced under its own unchanged path moves no cell
+  and so genuinely is invisible; a new system's KiCad data keeps its own line too, since no row
+  cites it. `ReviewNotInTableTests` fails against the version that counted them.
 - **Code review of the day's work (2026-09-26), ten findings, all fixed.** The ones worth
   remembering: the submission lines now count **what the approval would write** (`FilesLine` -
   a file replaced under its own path colours no cell, so it was approved unseen); the previous
@@ -4175,6 +4429,50 @@ it is not split.
 
 ---
 
+### Draft discard notice [DONE 2026-09-28]
+
+Owner request: a contributor who discards their own draft after submitting it must be "clearly visible
+on the system and for the maintainer(s) - both in the BETA to PROD queue, but also in the normal queue",
+so the maintainer can push it back and ask them (by email, for now). CRT's Discard reports each of that
+board's still-open submissions to `POST /api/submissions/{id}/draft-discarded` (token-proved, no body;
+CRT.Data `DraftDiscardContract`), marked on the receipt first so an offline discard goes at the next
+launch (`DraftDiscardReporter`). The server keeps the first notice per submission
+(`submission_draft_discards`, migration 0014, `DraftDiscardFlow`) and audits it as
+`submission.draft_discarded` for the system's history. `draftDiscardedUtc` rides on the queue entry,
+the detail's `submission`, the production plan's carried submissions and the Systems detail;
+`carriesDiscardedDraft` on each production list entry. Server 3.3.0. The discard never withdraws the
+submission, and every sentence says so. Not built: any channel back to the contributor.
+
+### Hand-copied files, and the file tree [DONE 2026-09-28]
+
+**Hand-copied files (server 3.3.1).** The project owner copies data between the trees as root; such
+files refuse an open-for-write, and an approval answered 500 half-way through C128 (new workbook,
+old `.json`). Board files are now REPLACED by rename (CRT.Data `FileReplacer`), and the publish, the
+promotion and the push-back check every folder first (`TreeWriteAccess`), refusing with the
+folders named and the fix command in the log. DEPLOYMENT.md step 3 says how to copy by hand.
+
+**The file tree (server 3.4.0).** Owner request: "a file-structure for all existing files in BETA or
+PROD, and then a highlighting of files changed ... 'show only changed files' ... including their
+parent folder", and a way to open a system's folder and check "the Excel file ... and JSON". Both
+CRT Maintainer queues draw the system's files as a tree (`FileTreeView`; production after the
+publish on Beta > Prod, the BETA data after approving in "Files..."'s window, from the new
+`GET /api/review/submissions/{id}/files`). Double-clicking a file opens it for every maintainer,
+from the trees' public data addresses. The highlight file is now written only when its content
+changes (`BoardSidecarWriter.WriteIfChanged`), so it no longer shows as replaced after a rows-only
+change. Not built: a server-generated preview of the workbook a submission WOULD publish - before
+approval the tree opens BETA's current workbook and says so; the new one is checked on Beta > Prod.
+
+**Same day, after using it (server 3.5.0).** The owner's follow-up: the tree got the table's hover
+card (the path and the picture or an "Open PDF file" link, nothing about the change), plus/minus
+boxes on folders and "Expand all" / "Collapse all"; the administrator's "Open BETA folder" was
+removed again ("with this new folder view you can scrap that"). Beta > Prod got a "Reject" beside
+"Push back to queue" - the same rollback, the submissions `rejected` instead of `pending`. And a
+defect the owner found by opening the workbook: every approval wrote it without the "# Hardware:" /
+"# Board:" caption on each sheet, because the rows do not carry it and `PublishMerge` left it out;
+it now keeps the replaced board's, or takes the drop-down names when there is none. CRT's own
+"Save to draft" and label-editor save dropped it from drafts too - fixed, and guarded by
+`BoardDataCaptionTests`.
+
 ## Phase 7 - Retire the PHP contribution path
 
 **Goal.** New submissions arrive only through the new pipeline.
@@ -4202,6 +4500,68 @@ it is not split.
 - Old-version submissions are rejected with the tailored update message.
 - No supported CRT version posts to the old endpoint.
 - Wiki files are updated in the repo and the project owner has been told which to paste.
+
+---
+
+## Phase 8 - Maintainer tab inside CRT [DONE 2026-09-29]
+
+**Goal (owner decision, 2026-09-29).** No separate CRT Maintainer application: a maintainer uses CRT
+itself, toggling to a Maintainer tab. One application, one version, one release. The detailed plan
+the work followed is `Assets/MaintainerTabMergePlan.md`.
+
+**Decided with the project owner:**
+
+- **A "Maintainer" tab** in CRT's tab row, between Drafts and Configuration. While it is selected
+  the sidebar and the worklog bar collapse, so the four screens (Systems, Contributor Submissions,
+  Beta > Prod, Admin) get the window's width; leaving it puts them back.
+- **Hidden unless "Enable Maintainer tab" is ticked** in the Configuration tab (default off, with
+  a "?" to the new `Maintainer-tab` Wiki page). A hobbyist never sees a sign-in screen.
+- **Sign-in inside the tab**, as the panel swap the application had. A remembered sign-in is
+  restored the first time the tab is shown.
+- **CRT is the UI reference**: the moved screens take CRT's theme and global styles.
+
+**What moved where.** UI to `src/CRT.App/Tabs/Maintainer/` (namespace `CRT`; `MaintainerMain`
+became `TabMaintainer`, a `UserControl`), logic to `src/CRT.App/Handlers/Maintainer/` (namespace
+`Handlers.MaintainerHandling`), tests to `tests/CRT.App.Tests/Maintainer/` and
+`tests/CRT.App.Tests/Ui/Maintainer/`. `Main.Maintainer.cs` holds the tab's visibility and the layout
+while it is selected. `CRT.Data` did not change; `CRT.UI` gained one event
+(`BoardTableEditor.OnlyChangesWantedChanged`).
+
+**What the window did, and where it went:**
+
+| Window behaviour | In the tab |
+| --- | --- |
+| Restore the remembered session in `OnOpened` | On the tab's FIRST attach (`TabMaintainer.Session.cs`); `ReviewSessionStore.Initialise()` at CRT's start-up |
+| Minute queue check while the window is active | While the tab is attached AND CRT's window is active; on returning to either if due |
+| `Closing` asks about unsaved table edits | `Main.OnWindowClosing` asks, after the Drafts tab's table, in one continuation |
+| Its own "please wait" overlay | None; `Main`'s one overlay covers it |
+| Window placement and "Show changes only" in `CRT-Maintainer-Settings.json` | Placement dropped (CRT's window has its own); "Show changes only" is `UserSettings.MaintainerShowChangesOnly`, carried over once by `MaintainerSettingsMigration`, which deletes the old file |
+
+**What was retired:** the `src/CRT.Maintainer/` project and `tests/CRT.Maintainer.Tests/` (their
+tests run in CRT.App.Tests), `build-and-release-maintainer.yml`, the release repository
+`HovKlan-DH/Classic-Repair-Toolbox-Maintainer` and its `REVIEW_RELEASES_TOKEN` secret (both for the
+project owner to archive and delete), the separate version (`1.0.0-alpha.4`), and
+`MaintainerReleaseSeparationTests`. **The server** changed only its wording (3.5.1): the mails and one
+refusal name CRT and its Maintainer tab, and the invitation mail tells the invitee how to show the tab.
+
+**Traps for the next agent:**
+
+- **Two base addresses, on purpose.** `AppConfig.CrtServerRootUrl` has no "/api" (the review routes
+  append "/api/review/..."); `CrtServerBaseUrl` adds it (`SubmissionClient` appends only
+  "/submissions"). Both are built from the one host.
+- **The DPAPI entropy string still says "Review"** (`ReviewSessionProtection`). Changing it makes
+  every remembered session undecryptable - it signs every maintainer out, silently.
+- **The minute check is gated on ATTACHMENT**, not just on the window: a `TabControl` detaches an
+  unselected tab's content, and CRT is in front far more often than the tab is on screen. Each
+  check extends the session.
+- **The exit prompt asks the Drafts table, then the Maintainer table, in ONE continuation** with one
+  settled flag - two separate rounds would each need their own.
+- **`LeftPanelWidth` must never be saved while the tab has collapsed the sidebar** - the splitter
+  handler reads a width of 0 then.
+- **`UserSettings.LoadFrom` on a missing file keeps the settings already in memory** - a test that
+  wants defaults writes `{}` first.
+- **`ReviewHighlightCanvas` is moved but used by nothing** (it drew for the change summary retired on
+  2026-09-26). Left for the project owner to decide on.
 
 ---
 
@@ -4260,8 +4620,9 @@ to make explicitly, and it belongs in this document when it happens.
 
 ### The governing rule
 
-> **The maintainer application contains no authority. It is a rendering surface for decisions the
-> server has already made.**
+> **The Maintainer tab contains no authority. It is a rendering surface for decisions the server has
+> already made.** (Written of the separate maintainer application; it holds unchanged for the tab
+> it became on 2026-09-29.)
 
 Every permission decision happens on the server, against the database, on every request. The
 desktop app hiding a button is a convenience for honest users, never a control. If a single feature
@@ -4504,7 +4865,7 @@ demonstrates the technique and its subtleties.
 
 **Documentation.** Wiki pages ship in the same commit as the code whose behaviour they describe.
 `remind-wiki-mirror.sh` will name candidates; its `MAP` needs new entries as new code appears
-(contribution, drafts, maintainer app). Never claim a page is live - the project owner pastes them by hand.
+(contribution, drafts, the Maintainer tab). Never claim a page is live - the project owner pastes them by hand.
 
 ---
 

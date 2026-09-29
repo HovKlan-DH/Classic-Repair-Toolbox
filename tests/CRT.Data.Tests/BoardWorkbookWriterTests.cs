@@ -171,6 +171,46 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     // The round trip
     // -----------------------------------------------------------------------------------
 
+    // ###########################################################################################
+    // *** THE WORKBOOK IS REPLACED, NEVER WRITTEN IN PLACE (owner report, 2026-09-28). *** Written
+    // complete beside the target and renamed over it, so a reader mid-sync never sees half a
+    // workbook and no temporary is left behind - including the one MakeDeterministic uses.
+    // ###########################################################################################
+    [Fact]
+    public async Task Rewriting_a_workbook_replaces_it_and_leaves_no_temporary_file()
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, "Data Test Board v2.0.0.xlsx");
+
+        BoardWorkbookWriter.Write(path, BoardWorkbookWriterTests.BuildFullBoard());
+        BoardWorkbookWriter.Write(path, BoardWorkbookWriterTests.BuildFullBoard().WithRevisionDate("2026-September-28"));
+
+        Assert.Equal([path], Directory.GetFiles(this.thisWorkspace.Root));
+        Assert.Equal("2026-September-28", (await this.LoadAsync(path))!.RevisionDate);
+    }
+
+    // A workbook copied into the tree by hand as root may be replaced but not opened for writing.
+    // Made here as a file its owner may not write; not on Windows (no such mode) or as root (which
+    // ignores it).
+    [Fact]
+    public async Task A_workbook_that_may_not_be_opened_for_writing_is_still_replaced()
+    {
+        // The return is for the platform analyzer, which cannot see that Skip throws.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix permissions only.");
+            return;
+        }
+        Assert.SkipWhen(Environment.UserName == "root", "root may write anything.");
+
+        string path = Path.Combine(this.thisWorkspace.Root, "Data Test Board v2.0.0.xlsx");
+        File.WriteAllText(path, "copied in by hand");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        BoardWorkbookWriter.Write(path, BoardWorkbookWriterTests.BuildFullBoard());
+
+        Assert.Equal("2026-August-21", (await this.LoadAsync(path))!.RevisionDate);
+    }
+
     [Fact]
     public async Task A_written_board_reads_back_with_every_field_intact()
     {

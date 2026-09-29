@@ -36,7 +36,23 @@ namespace Handlers.DataHandling
 
         public string WorkbookPath { get; init; } = string.Empty;
 
+        // What the draft is compared against. Empty for a new system from Resolve; the LISTED
+        // board's workbook from ResolveForSystem, which retirement uses.
         public string PublishedWorkbookPath { get; init; } = string.Empty;
+
+        // When the draft was created, off its marker - null for a marker that does not say (one
+        // written before markers carried it). The Drafts row's badge describes only submissions
+        // sent from this draft, not from an earlier one (SubmissionReceiptPresenter.LatestForSystem).
+        public DateTimeOffset? CreatedUtc { get; init; }
+
+        public static DateTimeOffset? ParseCreated(string? createdUtc) =>
+            DateTimeOffset.TryParse(
+                createdUtc,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out DateTimeOffset parsed)
+                ? parsed
+                : null;
     }
 
     // ###########################################################################################
@@ -55,7 +71,10 @@ namespace Handlers.DataHandling
         // NOT A SYSTEM ID. *** Handed "Commodore/C64/250407" it strips the last segment as a file
         // name and looks in "Drafts/Commodore/C64" - finding nothing. A submission receipt names its
         // system by id, so go through ResolveForSystem for one.
-        public static DraftStatus? Resolve(string dataRoot, string draftsRoot, string excelDataFile)
+        //
+        // listedAsPublished: HardwareBoardEntry.IsPublished when the caller knows it - it decides what
+        // the draft's changes are counted against (DraftBoardSource.ComparisonBaselineOf).
+        public static DraftStatus? Resolve(string dataRoot, string draftsRoot, string excelDataFile, bool? listedAsPublished = null)
         {
             DraftMarker? marker = DraftMarkerStore.Load(
                 DraftFolderLayout.GetMarkerPath(draftsRoot, excelDataFile));
@@ -70,8 +89,12 @@ namespace Handlers.DataHandling
                 SystemKey = excelDataFile,
                 BaseRevision = marker.BaseRevision,
                 NewSystem = marker.NewSystem,
+                CreatedUtc = DraftStatus.ParseCreated(marker.CreatedUtc),
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile),
-                PublishedWorkbookPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile),
+
+                // Empty for a new system, so every one of its rows counts - see
+                // DraftBoardSource.ComparisonBaselineOf for the legacy copy that made this matter.
+                PublishedWorkbookPath = DraftBoardSource.ComparisonBaselineOf(dataRoot, excelDataFile, marker, listedAsPublished),
             };
         }
 
@@ -141,6 +164,7 @@ namespace Handlers.DataHandling
                 SystemKey = draftKey,
                 BaseRevision = marker.BaseRevision,
                 NewSystem = marker.NewSystem,
+                CreatedUtc = DraftStatus.ParseCreated(marker.CreatedUtc),
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, draftKey),
                 PublishedWorkbookPath = DraftBoardSource.PublishedPathOf(dataRoot, published),
             };

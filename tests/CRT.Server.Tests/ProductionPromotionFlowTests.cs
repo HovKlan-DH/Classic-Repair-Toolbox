@@ -40,8 +40,9 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(this.thisProduction);
             Directory.CreateDirectory(this.thisBlobRoot);
 
-            // The generation the BETA publish writes into - see ApprovePublishFlowTests.
-            File.WriteAllText(Path.Combine(this.thisBeta, "Classic-Repair-Toolbox.v2.0.0.xlsx"), "master v2");
+            // The generation the BETA publish writes into - see ApprovePublishFlowTests. A real
+            // workbook: the fixture's system is new, and its publish adds its row (2026-09-27).
+            DataTreeBuilder.ListingMaster(this.thisBeta, ApprovePublishFlowTests.OtherListedBoard);
         }
 
         public void Dispose()
@@ -104,6 +105,29 @@ namespace CRT.Server.Tests
         {
             store ??= new FakeSubmissionStore();
 
+            long id = await this.PendingAsync(store, image, marker);
+
+            var approvals = new ApprovePublishFlow(
+                new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance),
+                new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
+                store,
+                new FakeAccountStore(),
+                NullLogger<ApprovePublishFlow>.Instance);
+
+            ApproveOutcome outcome = await approvals.ApproveAsync(
+                id, ProductionPromotionFlowTests.Admin(), this.thisBeta, when ?? ProductionPromotionFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            return store;
+        }
+
+        // A pending one-image submission of the fixture's system, placed in the drop-down lists.
+        private async Task<long> PendingAsync(
+            FakeSubmissionStore store,
+            string image = "Commodore/C64/250407/Images/sheet1.png",
+            string marker = "SHEET1")
+        {
             byte[] bytes = ProductionPromotionFlowTests.Png(marker);
             string hash = await this.PutBlobAsync(bytes);
 
@@ -130,19 +154,21 @@ namespace CRT.Server.Tests
             await store.SavePayloadAsync(id, manifest, CancellationToken.None);
             await store.SetStateAsync(id, SubmissionState.Pending, ProductionPromotionFlowTests.Now, CancellationToken.None);
 
-            var approvals = new ApprovePublishFlow(
-                new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance),
-                new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
-                store,
-                new FakeAccountStore(),
-                NullLogger<ApprovePublishFlow>.Instance);
+            // A new system is placed in the drop-down lists before it can reach BETA (2026-09-27).
+            await store.SetPlacementAsync(manifest.SystemId, ApprovePublishFlowTests.Placement(), 1, ProductionPromotionFlowTests.Now, CancellationToken.None);
 
-            ApproveOutcome outcome = await approvals.ApproveAsync(
-                id, ProductionPromotionFlowTests.Admin(), this.thisBeta, when ?? ProductionPromotionFlowTests.Now, CancellationToken.None);
+            return id;
+        }
 
-            Assert.True(outcome.IsPublished, outcome.Error);
-
-            return store;
+        // What the project owner does by hand as root: the whole BETA data tree copied into production.
+        private void CopyBetaToProductionByHand()
+        {
+            foreach (string file in Directory.EnumerateFiles(this.thisBeta, "*", SearchOption.AllDirectories))
+            {
+                string target = Path.Combine(this.thisProduction, Path.GetRelativePath(this.thisBeta, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target, overwrite: true);
+            }
         }
 
         private ProductionPromotionFlow Flow(FakeSubmissionStore store, FakeAccountStore? accounts = null) =>
@@ -321,11 +347,13 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_promotion_changing_a_SHARED_file_needs_the_maintainer_AND_the_administrator()
+        public async Task A_promotion_REPLACING_a_SHARED_file_needs_the_maintainer_AND_the_administrator()
         {
-            // The project owner's rule for production as for BETA (2026-09-25). The first approval is
-            // recorded and NOTHING is copied; the second publishes.
+            // The project owner's rule for production as for BETA (2026-09-25) - since 2026-09-27 for
+            // a REPLACEMENT only: production already has the shared file, differently. The first
+            // approval is recorded and NOTHING is copied; the second publishes.
             FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
+            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
             FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
             string hash = ProductionPromotionFlowTests.BetaHashOf(store);
 
@@ -336,21 +364,46 @@ namespace CRT.Server.Tests
             Assert.False(byMaintainer.IsPublished);
             Assert.True(byMaintainer.IsAwaitingApproval);
             Assert.Equal([ApproverRole.Administrator], byMaintainer.WaitingFor);
-            Assert.False(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
+            Assert.Equal("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
 
             PromotionOutcome byAdmin = await this.Flow(store, accounts).PromoteAsync(
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, hash, this.Options(), ProductionPromotionFlowTests.Now);
 
             Assert.True(byAdmin.IsPublished, byAdmin.Error);
+            Assert.NotEqual("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
+        }
+
+        // A NEW shared file reaches no board that did not ask for it - the maintainer alone promotes
+        // it (owner decision, 2026-09-27).
+        [Fact]
+        public async Task A_promotion_ADDING_a_new_shared_file_is_published_by_the_maintainer_alone()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
+
+            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
             Assert.True(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
+        }
+
+        // Writes a file into the production tree, folders and all.
+        private void WriteInProduction(string relative, string text)
+        {
+            string full = this.InProduction(relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.WriteAllText(full, text);
         }
 
         [Fact]
         public async Task A_production_approval_does_NOT_carry_over_once_BETA_has_changed()
         {
             // The maintainer approved one BETA state; another publish landed in BETA since. The
-            // administrator's approval now starts again - nobody approved the new state twice.
+            // administrator's approval now starts again - nobody approved the new state twice. (A
+            // REPLACEMENT of production's shared file, the kind that needs two.)
             FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
+            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
             FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).PromoteAsync(
@@ -365,7 +418,7 @@ namespace CRT.Server.Tests
 
             Assert.True(byAdmin.IsAwaitingApproval);
             Assert.Equal([ApproverRole.Maintainer], byAdmin.WaitingFor);
-            Assert.False(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
+            Assert.Equal("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
         }
 
         [Fact]
@@ -378,6 +431,132 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
 
             Assert.True(outcome.IsPublished, outcome.Error);
+        }
+
+        // ###########################################################################################
+        // *** A BOARD COPIED TO PRODUCTION BY HAND IS NOT WAITING FOR PRODUCTION (code review,
+        // 2026-09-29). *** Its record said it waited for ever - it was never PROMOTED - so it sat in
+        // Beta > Prod and blocked every new approval of the system. The list now asks the trees:
+        // production already holding exactly BETA's state is recorded as in production, audited,
+        // and left out.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_board_copied_to_production_by_hand_is_not_waiting_and_is_recorded_as_in_production()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            var accounts = new FakeAccountStore();
+
+            this.CopyBetaToProductionByHand();
+
+            IReadOnlyList<SystemRecord> waiting = await this.Flow(store, accounts).ListAwaitingAsync(
+                ProductionPromotionFlowTests.Admin(), this.Options(), ProductionPromotionFlowTests.Now.AddHours(1));
+
+            Assert.Empty(waiting);
+            Assert.Equal(ProductionPromotionFlowTests.BetaHashOf(store), store.ProductionSystems[ProductionPromotionFlowTests.SystemId].ContentHash);
+            Assert.Contains(accounts.Audit, entry =>
+                entry.Action == SystemHistoryEvents.FoundInProduction && entry.Subject == ProductionPromotionFlowTests.SystemId);
+        }
+
+        // The other half, which matters as much: a system production genuinely lacks keeps waiting,
+        // and nothing is recorded for it.
+        [Fact]
+        public async Task A_board_production_does_not_have_keeps_waiting_and_nothing_is_recorded()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            var accounts = new FakeAccountStore();
+
+            IReadOnlyList<SystemRecord> waiting = await this.Flow(store, accounts).ListAwaitingAsync(
+                ProductionPromotionFlowTests.Admin(), this.Options(), ProductionPromotionFlowTests.Now.AddHours(1));
+
+            Assert.Single(waiting);
+            Assert.False(store.ProductionSystems.ContainsKey(ProductionPromotionFlowTests.SystemId));
+            Assert.DoesNotContain(accounts.Audit, entry => entry.Action == SystemHistoryEvents.FoundInProduction);
+        }
+
+        // ###########################################################################################
+        // The same check behind the one-in-BETA rule: a second submission of a system whose BETA
+        // state was copied to production by hand is approved, where it was refused for ever.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_second_approval_goes_through_once_production_holds_BETA_by_hand()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            var accounts = new FakeAccountStore();
+
+            var approvals = new ApprovePublishFlow(
+                new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance),
+                new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
+                store,
+                accounts,
+                NullLogger<ApprovePublishFlow>.Instance,
+                publishLock: null,
+                options: this.Options(),
+                production: this.Flow(store, accounts));
+
+            long second = await this.PendingAsync(store, "Commodore/C64/250407/Images/sheet2.png", "SHEET2");
+
+            // Still genuinely waiting: refused, as the rule says.
+            ApproveOutcome refused = await approvals.ApproveAsync(
+                second, ProductionPromotionFlowTests.Admin(), this.thisBeta, ProductionPromotionFlowTests.Now.AddMinutes(1), CancellationToken.None);
+
+            Assert.False(refused.IsPublished);
+            Assert.Equal(OneSubmissionInBeta.BusyMessage(ProductionPromotionFlowTests.SystemId), refused.Error);
+
+            // Copied to production by hand: the same approval goes through.
+            this.CopyBetaToProductionByHand();
+
+            ApproveOutcome published = await approvals.ApproveAsync(
+                second, ProductionPromotionFlowTests.Admin(), this.thisBeta, ProductionPromotionFlowTests.Now.AddMinutes(2), CancellationToken.None);
+
+            Assert.True(published.IsPublished, published.Error);
+        }
+
+        // ###########################################################################################
+        // *** THE LIST ASKS A FIXED NUMBER OF QUERIES, HOWEVER MANY SYSTEMS WAIT (code review,
+        // 2026-09-29). *** Every open Maintainer tab reads it every minute, and it used to ask three
+        // queries per waiting system to set two booleans. Four systems here: one this account has
+        // already approved for production, one carrying a submission whose contributor discarded
+        // their draft - both flags still right, from one approvals read and one discards read.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_list_reads_its_two_facts_once_for_every_waiting_system_together()
+        {
+            var store = new FakeSubmissionStore();
+            string[] ids = ["Commodore/C64/250407", "Commodore/C64/250425", "Commodore/C128/310378", "Commodore/VIC20/250403"];
+
+            foreach (string id in ids)
+            {
+                string[] parts = id.Split('/');
+                await store.EnsureSystemAsync(id, parts[0], parts[1], parts[2], "pipeline", ProductionPromotionFlowTests.Now);
+                store.PublishedSystems[id] = new PublishedSystemRow("2026-September-25", "beta-" + parts[2], ProductionPromotionFlowTests.Now);
+            }
+
+            // The administrator (account 1) has approved the second one's BETA state for production.
+            store.ProductionApprovals[(ids[1], "beta-250425")] =
+                [new GivenApproval(ApproverRole.Administrator, "A1", ProductionPromotionFlowTests.Now, 1)];
+
+            // A merged submission of the third, whose contributor has since discarded their draft.
+            long merged = await store.CreateAsync(
+                new NewSubmission(
+                    ids[2], "Commodore", "C128", "310378", null, "c@example.com", "192.0.2.1", "hash", "r0",
+                    "A fix.", 1, [], ProductionPromotionFlowTests.Now.AddDays(-2), ProductionPromotionFlowTests.Now.AddDays(-1)),
+                CancellationToken.None);
+            await store.SetStateAsync(merged, SubmissionState.Merged, ProductionPromotionFlowTests.Now.AddDays(-1), CancellationToken.None);
+            await store.RecordDraftDiscardedAsync(merged, ProductionPromotionFlowTests.Now.AddHours(-1), CancellationToken.None);
+
+            IReadOnlyList<ProductionListEntry> entries = await this.Flow(store).ListEntriesAsync(
+                ProductionPromotionFlowTests.Admin(), this.Options(), ProductionPromotionFlowTests.Now);
+
+            Assert.Equal(4, entries.Count);
+            Assert.False(entries.Single(entry => entry.SystemId == ids[1]).AwaitsYou);
+            Assert.True(entries.Single(entry => entry.SystemId == ids[0]).AwaitsYou);
+            Assert.True(entries.Single(entry => entry.SystemId == ids[2]).CarriesDiscardedDraft);
+            Assert.False(entries.Single(entry => entry.SystemId == ids[3]).CarriesDiscardedDraft);
+
+            // One read of each fact for the whole list - never one per system.
+            Assert.Equal(1, store.ProductionApprovalReads);
+            Assert.Equal(1, store.DraftDiscardReads);
+            Assert.Equal(0, store.MergedSubmissionReads);
         }
 
         [Fact]
@@ -437,6 +616,41 @@ namespace CRT.Server.Tests
 
             Assert.False(plan.Removals.IsBlocked, plan.Removals.BlockedBecause);
             Assert.Equal([ProductionPromotionFlowTests.OldManual], plan.Removals.Files);
+        }
+
+        // ###########################################################################################
+        // *** PRODUCTION TOO REMOVES ONLY INSIDE THE SYSTEM'S OWN FOLDER (owner decision, 2026-09-27).
+        // *** The older production board also cited a shared datasheet nothing else uses; the BETA
+        // board does not. It stays in production, unused, for Admin > Unused files - and is not on
+        // the list the maintainer is shown.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_shared_file_the_board_stops_using_is_not_removed_from_production()
+        {
+            const string shared = "Commodore/Shared files/Datasheets/old-chip.pdf";
+
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            DataTreeBuilder.Master(this.thisProduction, DataTreeBuilder.Workbook);
+            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook, ProductionPromotionFlowTests.Sheet, ProductionPromotionFlowTests.OldManual, shared);
+            DataTreeBuilder.Files(this.thisProduction, ProductionPromotionFlowTests.OldManual, shared);
+
+            PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options());
+
+            Assert.Equal([ProductionPromotionFlowTests.OldManual], plan.Removals.Files);
+
+            PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId,
+                ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(),
+                ProductionPromotionFlowTests.Now,
+                [ProductionPromotionFlowTests.OldManual],
+                CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
+            Assert.True(File.Exists(this.InProduction(shared)));
         }
 
         [Fact]
@@ -510,6 +724,90 @@ namespace CRT.Server.Tests
             Assert.Equal(ApprovePublishFlow.RemovalsNotSentMessage, outcome.Error);
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
             Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // A NEW system's row in production's drop-down lists (owner decision, 2026-09-27: "insert
+        // at the same place").
+        // -----------------------------------------------------------------------------------
+
+        [Fact]
+        public async Task Promoting_a_NEW_system_adds_its_row_to_productions_list_after_the_same_neighbour()
+        {
+            MasterListingRow first = new("Commodore VIC-20", "324003", "Commodore/VIC-20/324003/Data VIC20 324003 v2.0.0.xlsx", string.Empty);
+            DataTreeBuilder.ListingMaster(this.thisProduction, first, ApprovePublishFlowTests.OtherListedBoard);
+
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+
+            PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId,
+                ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(),
+                ProductionPromotionFlowTests.Now);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            // After the Amstrad board, as in BETA - and BETA's own row, names and notes included.
+            Assert.Equal(
+                [first, ApprovePublishFlowTests.OtherListedBoard, DataTreeBuilder.ListedIn(this.thisBeta)[1]],
+                DataTreeBuilder.ListedIn(this.thisProduction));
+            Assert.Equal("Commodore 64", DataTreeBuilder.ListedIn(this.thisProduction)[2].HardwareName);
+        }
+
+        // Production can list another system under the names BETA gave this one - refused on the
+        // plan, with nothing copied.
+        [Fact]
+        public async Task A_system_production_lists_another_system_under_the_names_of_is_refused_before_anything_is_copied()
+        {
+            MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/Data C64 326298 v2.0.0.xlsx", string.Empty);
+            DataTreeBuilder.ListingMaster(this.thisProduction, ApprovePublishFlowTests.OtherListedBoard, sameNames);
+
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+
+            PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options());
+
+            Assert.Contains("is already in the drop-down lists", plan.Refusal);
+
+            PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId,
+                ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(),
+                ProductionPromotionFlowTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
+        }
+
+        // ###########################################################################################
+        // A system neither list carries would reach production and be seen by nobody. Refused - and
+        // shown on the plan before anybody presses the button - with nothing copied.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_system_neither_list_carries_is_refused_before_anything_is_copied()
+        {
+            DataTreeBuilder.ListingMaster(this.thisProduction, ApprovePublishFlowTests.OtherListedBoard);
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+
+            // BETA's list loses the row (edited by hand, say) after the publish added it.
+            DataTreeBuilder.ListingMaster(this.thisBeta, ApprovePublishFlowTests.OtherListedBoard);
+
+            PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options());
+
+            Assert.Contains("not in the drop-down lists", plan.Refusal);
+
+            PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId,
+                ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(),
+                ProductionPromotionFlowTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
         }
     }
 }

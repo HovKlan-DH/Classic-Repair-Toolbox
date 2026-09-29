@@ -17,6 +17,12 @@
           },
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/server-version-bump.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking whether CRT.Server's version needs bumping..."
+          },
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/wiki-sync-status.sh\"",
             "timeout": 30,
             "statusMessage": "Refreshing the Wiki sync status..."

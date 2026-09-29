@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
+        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         x:Class="CRT.MySubmissionsWindow"
         Title="My submissions"
         Width="720"
@@ -153,7 +154,7 @@
 									comment belongs with the comment.
 									-->
 
-									<!-- A maintainer changed it in the maintainer application before deciding
+									<!-- A maintainer changed it in the Maintainer tab before deciding
 									     (2026-09-25). Collapsed when nobody did. -->
 									<TextBlock Text="{Binding AmendedText}"
 											   IsVisible="{Binding HasAmendedText}"
@@ -281,5 +282,9 @@
 			<Button x:Name="RefreshButton" Content="Check for updates" Click="OnRefreshClick" />
 			<Button x:Name="CloseButton" Content="Close" Click="OnCloseClick" />
 		</StackPanel>
+
+		<!-- "Please wait" over this window while it asks the server (2026-09-28) - see CRT.UI's
+		     BusyOverlay. The -18 margin covers the grid's own margin. -->
+		<ui:BusyOverlay Grid.RowSpan="4" Margin="-18" />
 	</Grid>
 </Window>

@@ -2,7 +2,7 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
 
-// Covers ReviewSummary - what the maintainer app opens on (Phase 5, task 3).
+// Covers ReviewSummary - what the Maintainer tab opens on (Phase 5, task 3).
 //
 // WHAT MAKES THIS WORTH TESTING HARD: the summary is the maintainer's whole view of a submission
 // before they drill in. A summary that misses a change means a maintainer approves something they

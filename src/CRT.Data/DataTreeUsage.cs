@@ -47,8 +47,10 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class DataTreeUsage
     {
-        public const string MasterSheetName = "Hardware & Board";
-        public const string ExcelDataFileColumn = "Excel data file";
+        // The master's sheet and column - MasterWorkbookSchema's, the one definition CRT, this rule and
+        // the server's new-system row all read.
+        public const string MasterSheetName = MasterWorkbookSchema.SheetName;
+        public const string ExcelDataFileColumn = MasterWorkbookSchema.ColExcelDataFile;
         public const string KiCadFolderName = "KiCad data";
         public const string DocumentationPrefix = "!";
 
@@ -60,7 +62,7 @@ namespace Handlers.DataHandling
         public static IReadOnlyList<string> FoldersReadByName { get; } = [DataTreeUsage.MiniProTestsFolder];
 
         // How far down a master's header row is looked for.
-        private const int HeaderSearchRows = 20;
+        private const int HeaderSearchRows = MasterWorkbookSchema.HeaderSearchRows;
 
         // ###########################################################################################
         // Works out what the tree at `dataRoot` uses.

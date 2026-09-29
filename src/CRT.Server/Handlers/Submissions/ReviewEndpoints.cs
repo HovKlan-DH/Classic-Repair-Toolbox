@@ -50,6 +50,9 @@ namespace CRT.Server.Handlers.Submissions
             review.MapGet("/queue", ReviewEndpoints.GetQueueAsync);
             review.MapGet("/submissions/{submissionId:long}", ReviewEndpoints.GetSubmissionAsync);
 
+            // Its file tree: the BETA data after approving it (owner request, 2026-09-28).
+            review.MapGet("/submissions/{submissionId:long}/files", ReviewEndpoints.GetSubmissionFilesAsync);
+
             // The two asset routes (task 4). They are separated by WHICH SIDE of the comparison
             // they serve, not merged into one route with a "which" parameter, because they take
             // different input and are guarded differently - see ReviewAssetLocator's header. A
@@ -445,7 +448,7 @@ namespace CRT.Server.Handlers.Submissions
         // application from the same records, so a renamed field cannot reach one end only.
 
         // ###########################################################################################
-        // GET /api/review/submissions/{id}/table - what the maintainer application's table opens on:
+        // GET /api/review/submissions/{id}/table - what the Maintainer tab's table opens on:
         // the published board and the submission's current rows, as CRT.Data's ReviewTableData.
         // ###########################################################################################
         private static async Task<IResult> GetTableAsync(
@@ -537,7 +540,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/submitted/{hash}
         //
-        // The bytes a contributor UPLOADED, so the maintainer app can draw the "after" side - task 4's
+        // The bytes a contributor UPLOADED, so the Maintainer tab can draw the "after" side - task 4's
         // images side by side, the moved highlight on its schematic, a scope baseline plotted.
         //
         // *** THE HASH MUST BE ONE THIS SUBMISSION REFERENCES. *** The blob store is shared and
@@ -590,7 +593,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/published/{path}
         //
-        // The bytes CURRENTLY PUBLISHED for this system, so the maintainer app can draw the "before"
+        // The bytes CURRENTLY PUBLISHED for this system, so the Maintainer tab can draw the "before"
         // side. Without it every comparison is one-sided: a maintainer can see the new image but not
         // what it replaces, which is the whole question for a replaced schematic.
         //
@@ -688,7 +691,7 @@ namespace CRT.Server.Handlers.Submissions
         // Everything waiting for a decision that this account may decide, oldest first - see
         // ISubmissionStore.GetQueueAsync for why that ordering rather than newest-first, and
         // ReviewQueueFlow for the filter and what each row says. The answer is CRT.Data's
-        // ReviewQueueAnswer, read by the maintainer application.
+        // ReviewQueueAnswer, read by the Maintainer tab.
         // ###########################################################################################
         private static async Task<IResult> GetQueueAsync(
             HttpContext context,
@@ -756,6 +759,10 @@ namespace CRT.Server.Handlers.Submissions
 
             bool canPublish = ReviewAuthority.CanPublish(access, record);
 
+            // Whether its contributor discarded their own draft since sending it (2026-09-28).
+            IReadOnlyDictionary<long, DateTimeOffset> discarded =
+                await submissions.GetDraftDiscardsAsync([record.Id], cancellationToken);
+
             ApprovalStatus approval = await ApprovePublishFlow.ApprovalStatusAsync(
                 access, record, touchesSharedFiles, submissions, accounts, cancellationToken);
 
@@ -764,7 +771,7 @@ namespace CRT.Server.Handlers.Submissions
                 canPublish,
 
                 // Who must approve, who has, and what THIS account's approval would do - CRT.Data's
-                // ApprovalStatus, read by the maintainer application as the same record.
+                // ApprovalStatus, read by the Maintainer tab as the same record.
                 approval,
 
                 // The queue row, with the detail's own answers for the queue's two badges - which
@@ -772,17 +779,18 @@ namespace CRT.Server.Handlers.Submissions
                 submission = ReviewQueueFlow.Entry(
                     record with { TouchesSharedFiles = touchesSharedFiles },
                     isNewSystem: comparison.Changes?.IsNewSystem,
-                    awaitsYou: canPublish && approval.CanApprove),
+                    awaitsYou: canPublish && approval.CanApprove,
+                    draftDiscardedUtc: discarded.TryGetValue(record.Id, out DateTimeOffset discardedUtc) ? discardedUtc : null),
                 manifest,
 
                 // Who sent it, and how their other submissions went - CRT.Data's
-                // ReviewContributorFacts, read by the maintainer application as the same record.
+                // ReviewContributorFacts, read by the Maintainer tab as the same record.
                 contributor = await ContributorHistory.BuildAsync(record, submissions, accounts, cancellationToken),
 
                 findings = await submissions.GetFindingsAsync(submissionId, cancellationToken),
                 changes = comparison.Changes,
 
-                // The files the PUBLISHED board references - what the maintainer app compares the
+                // The files the PUBLISHED board references - what the Maintainer tab compares the
                 // submission's own files against. See PublishedFilePaths for why this cannot be
                 // derived client-side from `changes`.
                 publishedFiles = comparison.PublishedFiles,
@@ -797,9 +805,9 @@ namespace CRT.Server.Handlers.Submissions
                 schematicImages = comparison.SchematicImages,
 
                 // One entry per submitted file: its scope, whether a row uses it, and the hash of
-                // what is published at its path now. The maintainer app lists every file that would
+                // what is published at its path now. The Maintainer tab lists every file that would
                 // change the tree from this - including the ones it cannot draw. The record type is
-                // CRT.Data's SubmittedFileFact, shared with the maintainer app, so the field names on
+                // CRT.Data's SubmittedFileFact, shared with the Maintainer tab, so the field names on
                 // the wire cannot drift apart. (security review, 2026-09-25)
                 submittedFiles = comparison.SubmittedFiles,
 
@@ -808,11 +816,54 @@ namespace CRT.Server.Handlers.Submissions
                 // shown before approving and sent back with the approval (2026-09-25).
                 removals = comparison.Removals,
 
-                // Whether a maintainer changed it in the maintainer application, and who last did.
+                // Whether a maintainer changed it in the Maintainer tab, and who last did.
                 amendment = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
                     ? new { version = latest.Version, by = latest.By, atUtc = latest.AtUtc }
                     : null
             });
+        }
+
+        // ###########################################################################################
+        // GET /api/review/submissions/{id}/files
+        //
+        // The system's files as the BETA data will hold them after approving this, against BETA now
+        // - CRT.Data's SubmissionFilesAnswer, worked out by SubmissionFileTreeFlow (owner request,
+        // 2026-09-28). The same authority as the detail: a maintainer of the system, or an
+        // administrator. A submission whose contents cannot be loaded has no tree to show, and says
+        // so rather than showing an empty one.
+        // ###########################################################################################
+        private static async Task<IResult> GetSubmissionFilesAsync(
+            long submissionId,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore submissions,
+            PublishedBoardReader publishedBoards,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
+
+            if (record is null)
+                return Results.NotFound();
+
+            if (!ReviewAuthority.CanReview(access, record))
+                return ReviewEndpoints.NotMaintainerOf(access, record);
+
+            SubmissionManifest? manifest = await submissions.LoadPayloadAsync(submissionId, cancellationToken);
+
+            if (manifest is null || string.IsNullOrWhiteSpace(options.DataTreeRoot))
+                return Results.Conflict(new { error = "This submission's contents could not be loaded, so there are no files to show." });
+
+            IReadOnlyList<SystemFileEntry> files = await SubmissionFileTreeFlow.BuildAsync(
+                options.DataTreeRoot, manifest, publishedBoards, DateTimeOffset.UtcNow, cancellationToken);
+
+            return Results.Ok(new SubmissionFilesAnswer(record.SystemId, files, options.PublicDataBaseUrl));
         }
 
         // ###########################################################################################
@@ -899,12 +950,12 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Which IMAGE FILE each schematic is drawn from, so the maintainer app can put a moved
+        // Which IMAGE FILE each schematic is drawn from, so the Maintainer tab can put a moved
         // highlight back on the board it belongs to (task 4).
         //
         // *** A HIGHLIGHT NAMES A SCHEMATIC, NOT A FILE. *** Its natural key is
         // SchematicName|BoardLabel, and the picture lives on a BoardSchematicEntry. Without this
-        // mapping the maintainer app knows a rectangle moved on "Sheet 1" and has no way to find the
+        // mapping the Maintainer tab knows a rectangle moved on "Sheet 1" and has no way to find the
         // image of Sheet 1 to draw it on.
         //
         // *** THE SUBMITTED BOARD WINS, and that ordering is the point. *** A submission may ADD a
@@ -935,7 +986,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Every FILE the published board references, so the maintainer app can tell an added image
+        // Every FILE the published board references, so the Maintainer tab can tell an added image
         // from a replaced one and spot a deletion (task 4).
         //
         // *** THE CLIENT CANNOT DERIVE THIS FROM THE CHANGE SUMMARY, and the first version of the
@@ -1021,7 +1072,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // This used to read ComponentImages ALONE, while SubmissionManifestBuilder.CollectReferencedFiles
         // collects four sources: schematic images, component images, component local files and
-        // board local files. The maintainer app compares one list against the other, so every file
+        // board local files. The Maintainer tab compares one list against the other, so every file
         // from the three missing sources was present on the submitted side and absent on the
         // published side - and was reported to the maintainer as ADDED.
         //
@@ -1063,7 +1114,7 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyDictionary<string, string> SchematicImages,
 
             // Every submitted file with whose it is, whether a row uses it and what is published
-            // at its path now - so the maintainer app can list EVERY file that would change the tree,
+            // at its path now - so the Maintainer tab can list EVERY file that would change the tree,
             // not only the images it can draw. See SubmittedFileFacts.
             IReadOnlyList<SubmittedFileFact> SubmittedFiles,
 
@@ -1078,7 +1129,7 @@ namespace CRT.Server.Handlers.Submissions
         // definition of done), and what lets every rule downstream be pure.
         //
         // Refuses an account with no role at all - not an administrator and in no pool - so the
-        // maintainer app can say "this account is not allowed to review" rather than show an empty
+        // Maintainer tab can say "this account is not allowed to review" rather than show an empty
         // queue. Whether the account may act on a PARTICULAR submission is asked per route.
         // ###########################################################################################
         private static async Task<(ReviewAccess? Access, IResult? Refusal)> AuthoriseAsync(
@@ -1169,9 +1220,9 @@ namespace CRT.Server.Handlers.Submissions
         // Forbid() is a challenge to the AUTHENTICATION middleware: it asks the registered default
         // scheme to write the refusal. This service authenticates its own opaque bearer tokens and
         // registers no scheme at all, so executing Forbid() threw InvalidOperationException and the
-        // maintainer got a 500 - never the 403 this header documents and the maintainer app's "this
+        // maintainer got a 500 - never the 403 this header documents and the Maintainer tab's "this
         // account is not allowed to review" message depends on. ApproveAsync's own refusal already
-        // wrote its 403 directly; this now does the same. The sentence matches the maintainer app's.
+        // wrote its 403 directly; this now does the same. The sentence matches the Maintainer tab's.
         // ###########################################################################################
         internal static IResult NotAMaintainer() =>
             Results.Json(

@@ -56,6 +56,11 @@ namespace CRT.Server.Handlers.Submissions
             this.thisLogger = logger;
         }
 
+        // Whether a folder may be written - TreeWriteAccess's real probe unless a test says
+        // otherwise, since a folder the service may not write cannot be made on every OS a test
+        // runs on.
+        internal Func<string, bool>? CanWriteFolderForTests { get; init; }
+
         // ###########################################################################################
         // Performs the plan. Returns what was written, or the reason it stopped.
         //
@@ -63,12 +68,24 @@ namespace CRT.Server.Handlers.Submissions
         // contributed ones applied - which the caller builds, because assembling it needs the
         // submission's rows and this class's job is the writing.
         // ###########################################################################################
+        public Task<PublishOutcome> ExecuteAsync(
+            PublishPlanDetail plan,
+            BoardData boardData,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            long? submissionId,
+            DateTimeOffset nowUtc,
+            CancellationToken cancellationToken = default) =>
+            this.ExecuteAsync(plan, boardData, calibrations, submissionId, nowUtc, listing: null, cancellationToken);
+
+        // `listing`: a NEW system's row for the main Excel data file (2026-09-27), written after the
+        // board and before the database - see step 2c. Null for everything already listed.
         public async Task<PublishOutcome> ExecuteAsync(
             PublishPlanDetail plan,
             BoardData boardData,
             IReadOnlyList<KiCadCalibrationEntry> calibrations,
             long? submissionId,
             DateTimeOffset nowUtc,
+            MasterRowInsert? listing,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(plan);
@@ -86,7 +103,7 @@ namespace CRT.Server.Handlers.Submissions
             // refusal discovered at file 600 of 1,200 would leave half a board replaced. Every blob
             // is therefore proved present, intact and of the type its name claims, and every
             // destination free of symbolic links, before the first byte lands.
-            string? refusal = await this.CheckBeforeWritingAsync(plan, cancellationToken).ConfigureAwait(false);
+            string? refusal = await this.CheckBeforeWritingAsync(plan, listing, cancellationToken).ConfigureAwait(false);
 
             if (refusal is not null)
                 return PublishOutcome.Failed(refusal);
@@ -197,9 +214,15 @@ namespace CRT.Server.Handlers.Submissions
                 //
                 // Formatted as "2026-May-12" (BoardWorkbookStyle.FormatRevisionDate), matching what
                 // the shipped boards already carry.
+                //
+                // *** TAKEN FROM THE PLAN, NOT COMPUTED AGAIN (2026-09-26). *** It used to stamp
+                // FormatRevisionDate(nowUtc) here while the plan's descriptor - which is what
+                // reaches `systems.current_revision` at step 4 below - was built from the SUBMITTED
+                // date. So the workbook and the database row disagreed, and the row is what the
+                // next draft re-bases against. ApprovePublishFlow.BuildPlan now stamps it once and
+                // both read that one value.
                 // ###########################################################################################
-                BoardData publishedBoard = boardData.WithRevisionDate(
-                    BoardWorkbookStyle.FormatRevisionDate(nowUtc));
+                BoardData publishedBoard = boardData.WithRevisionDate(plan.Descriptor.Revision);
 
                 BoardWorkbookWriter.Write(plan.WorkbookPath, publishedBoard);
 
@@ -250,13 +273,72 @@ namespace CRT.Server.Handlers.Submissions
             // passed separately rather than read off the merged board.
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Takes the WORKBOOK path and derives the sidecar itself, through the same helper the
-            // reader uses - so this call site cannot derive it differently from where it is read.
-            BoardSidecarWriter.Write(plan.WorkbookPath, boardData.ComponentHighlights, calibrations);
+            string sidecarHash;
 
-            string sidecarHash = await PublishExecutor
-                .ComputeFileHashAsync(plan.SidecarPath, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                // Takes the WORKBOOK path and derives the sidecar itself, through the same helper
+                // the reader uses - so this call site cannot derive it differently from where it is
+                // read.
+                //
+                // Only when its content changes (owner request, 2026-09-28): a sidecar already
+                // holding these highlights keeps its bytes, so "Publish to production" does not list
+                // it as a file to copy when nothing in it changed - see WriteIfChanged.
+                if (!BoardSidecarWriter.WriteIfChanged(plan.WorkbookPath, boardData.ComponentHighlights, calibrations))
+                    this.thisLogger.LogInformation("The highlight file of {SystemId} is unchanged and was kept as it is.", plan.SystemId);
+
+                sidecarHash = await PublishExecutor
+                    .ComputeFileHashAsync(plan.SidecarPath, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // ###########################################################################################
+                // *** REPORTED, NOT A 500 (owner report, 2026-09-28). *** This escaped once: a
+                // sidecar copied into BETA by hand could not be opened for writing, and "Approve and
+                // publish" answered a bare 500 with the new workbook already written. The sidecar
+                // is now REPLACED rather than opened (FileReplacer) and the folder is checked before
+                // anything is written, so this should be unreachable - but if it is reached, the
+                // maintainer is told the board is part-published and that approving again repairs
+                // it, exactly as for the workbook above.
+                // ###########################################################################################
+                this.thisLogger.LogError(
+                    ex,
+                    "Publish of {SystemId} stopped while writing the highlight file [{Path}]. The board's "
+                    + "FILES and WORKBOOK were already replaced, so the tree is part-published until this is re-run.",
+                    plan.SystemId,
+                    plan.SidecarPath);
+
+                return PublishOutcome.Failed(
+                    $"The board's highlight file could not be written ({ex.Message}). The board's files and "
+                    + "workbook were already replaced, so this system is part-published - approve again once the "
+                    + "server configuration is fixed.");
+            }
+
+            // ---- 2c. A NEW system's row in the main Excel data file (owner request, 2026-09-27) --
+            //
+            // What makes the board appear in CRT's drop-downs at all - CRT finds boards only through
+            // that file. After the board's two files, so the row never names a board that is not
+            // there; before the database, so the publish is not recorded until it is listed. A
+            // failure here leaves the board written but unlisted - invisible, not broken - and
+            // re-running the publish repairs it: the insert updates a row already there.
+            if (listing is not null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                MasterListingEdit edit = MasterListing.Insert(listing.MasterPath, listing.Row, listing.AfterExcelDataFile);
+
+                if (!edit.IsDone)
+                {
+                    this.thisLogger.LogError(
+                        "Publish of {SystemId} stopped: the board is written but could not be added to [{Master}]: {Failure}",
+                        plan.SystemId, listing.MasterPath, edit.Failure);
+
+                    return PublishOutcome.Failed(
+                        $"The board was written, but it could not be added to the drop-down lists: {edit.Failure} " +
+                        "Nobody sees it until it is - re-run the publish once that is fixed.");
+                }
+            }
 
             // ---- 3. What this publish IS -----------------------------------------------------
             //
@@ -312,12 +394,33 @@ namespace CRT.Server.Handlers.Submissions
         // Also covers the two GENERATED files - workbook and sidecar - for links:
         // they are written through the same folders, and a link there redirects them just as well.
         // ###########################################################################################
-        private async Task<string?> CheckBeforeWritingAsync(PublishPlanDetail plan, CancellationToken cancellationToken)
+        private async Task<string?> CheckBeforeWritingAsync(PublishPlanDetail plan, MasterRowInsert? listing, CancellationToken cancellationToken)
         {
             IEnumerable<string> destinations = plan.Files
                 .Select(file => file.AbsolutePath)
                 .Append(plan.WorkbookPath)
                 .Append(plan.SidecarPath);
+
+            // The main Excel data file too, for a new system: written through the same root.
+            if (listing is not null)
+            {
+                destinations = destinations.Append(listing.MasterPath);
+
+                // Checked before the first byte, like everything else here: a row placed after one
+                // that has since left the list must not be found out after the board is written.
+                if (!MasterListing.TryRead(listing.MasterPath, out IReadOnlyList<MasterListingRow> rows, out string why))
+                    return $"The main Excel data file could not be read ({why}), so the new system could not be listed. Nothing was changed.";
+
+                if (MasterListing.IndexOfSystem(rows, listing.Row.SystemId) < 0 &&
+                    !SystemListingRules.AfterIsListed(rows, listing.AfterExcelDataFile))
+                {
+                    return $"The new system was placed after [{listing.AfterExcelDataFile}], which is no longer in the " +
+                        "drop-down lists. Place it again in the Systems screen. Nothing was changed.";
+                }
+
+                if (MasterListing.NamesTakenBy(rows, listing.Row.SystemId, listing.Row.HardwareName, listing.Row.BoardName) is MasterListingRow taken)
+                    return $"{MasterListing.NamesTakenMessage(taken)} Nothing was changed.";
+            }
 
             foreach (string destination in destinations)
             {
@@ -332,6 +435,26 @@ namespace CRT.Server.Handlers.Submissions
                     return $"The published tree contains a symbolic link at [{link}], and publishing through it " +
                         "could write outside the data tree. Nothing was changed. Remove the link on the server.";
                 }
+            }
+
+            // ###########################################################################################
+            // *** EVERY FOLDER THIS WRITES INTO MAY BE WRITTEN (owner report, 2026-09-28). *** A folder
+            // copied into BETA by hand as another user refuses every write, and finding that out at
+            // the third file leaves the board half-replaced. After the link check, which a probe -
+            // a real file - must never get ahead of. See TreeWriteAccess.
+            // ###########################################################################################
+            IReadOnlyList<string> refusing = TreeWriteAccess.FoldersRefusing(plan.DataRoot, destinations, this.CanWriteFolderForTests);
+
+            if (refusing.Count > 0)
+            {
+                this.thisLogger.LogError(
+                    "Publish of {SystemId} refused before writing anything: the service may not write into {Folders}. "
+                    + "Files copied in by hand as another user do this. Give the service its access back with: {Command}",
+                    plan.SystemId,
+                    string.Join(", ", refusing),
+                    TreeWriteAccess.FixCommand(refusing));
+
+                return TreeWriteAccess.RefusalMessage("BETA", plan.DataRoot, refusing);
             }
 
             foreach (PlannedFile file in plan.Files)
@@ -397,6 +520,12 @@ namespace CRT.Server.Handlers.Submissions
             return Convert.ToHexStringLower(hash);
         }
     }
+
+    // ###########################################################################################
+    // A new system's row for the main Excel data file: which file, the row, and the row it goes
+    // after (null: first). See MasterListing.
+    // ###########################################################################################
+    public sealed record MasterRowInsert(string MasterPath, MasterListingRow Row, string? AfterExcelDataFile);
 
     // ###########################################################################################
     // What a publish did, or why it stopped.

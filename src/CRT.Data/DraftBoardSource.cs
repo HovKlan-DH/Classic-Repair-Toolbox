@@ -48,7 +48,8 @@ namespace Handlers.DataHandling
 
         // The published workbook, whether or not it is the one being read. Kept so a caller can
         // compare a draft against what it was drafted from (BoardDataDiffer) without re-deriving
-        // the path, and so "view as officially published" has somewhere to point.
+        // the path. EMPTY for a new system's draft, which was drafted from nothing - see
+        // DraftBoardSource.ComparisonBaselineOf.
         public string PublishedWorkbookPath { get; init; } = string.Empty;
     }
 
@@ -61,10 +62,11 @@ namespace Handlers.DataHandling
         // Decides which workbook to read for one system.
         //
         // *** THE MARKER IS WHAT MAKES A FOLDER A DRAFT, not the presence of a workbook. *** A
-        // folder under Drafts/ holding an .xlsx but no marker is not a draft - most likely
-        // something copied there by hand - and reading it as one would silently substitute
-        // unknown data for the published board. Requiring the marker means a draft is only ever
-        // something this application created.
+        // folder under Drafts/ holding an .xlsx but no marker is not a draft HERE. A board folder a
+        // contributor put there by hand is given its marker when the board list is loaded
+        // (DraftFolderImport, owner request 2026-09-27) - deliberately, and at that one point - so
+        // this rule still decides everything and there is no second notion of "draft" to keep in
+        // step.
         //
         // preferPublished is "view boards as officially published" (UserSettings). It is honoured
         // HERE, at the one place the choice is made, rather than by each caller - the same reason
@@ -72,11 +74,16 @@ namespace Handlers.DataHandling
         // The marker is still returned, so a caller can say "you are viewing the published
         // version" without re-resolving anything.
         // ###########################################################################################
+        //
+        // listedAsPublished: whether the application lists this system as PUBLISHED (the main
+        // workbook lists it - HardwareBoardEntry.IsPublished), when the caller knows. It decides
+        // what the draft is compared against - see ComparisonBaselineOf.
         public static BoardSourceSelection Resolve(
             string dataRoot,
             string draftsRoot,
             string excelDataFile,
-            bool preferPublished = false)
+            bool preferPublished = false,
+            bool? listedAsPublished = null)
         {
             string publishedPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
 
@@ -95,6 +102,9 @@ namespace Handlers.DataHandling
 
             string draftWorkbook = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
 
+            // What this draft is compared against - nothing, for a new system.
+            string baseline = DraftBoardSource.ComparisonBaselineOf(dataRoot, excelDataFile, marker, listedAsPublished);
+
             // ###########################################################################################
             // A MARKER WITH NO WORKBOOK BESIDE IT FALLS BACK TO THE PUBLISHED COPY.
             //
@@ -110,7 +120,7 @@ namespace Handlers.DataHandling
                 return new BoardSourceSelection
                 {
                     WorkbookPath = publishedPath,
-                    PublishedWorkbookPath = publishedPath,
+                    PublishedWorkbookPath = baseline,
                     IsDraft = false,
                     Marker = marker,
                 };
@@ -125,7 +135,7 @@ namespace Handlers.DataHandling
                     // not exist yet, and the load path already knows to render that as a blank
                     // board rather than as a failure (see IsNewSystem's own note).
                     WorkbookPath = publishedPath,
-                    PublishedWorkbookPath = publishedPath,
+                    PublishedWorkbookPath = baseline,
                     IsDraft = false,
                     Marker = marker,
                 };
@@ -134,7 +144,7 @@ namespace Handlers.DataHandling
             return new BoardSourceSelection
             {
                 WorkbookPath = draftWorkbook,
-                PublishedWorkbookPath = publishedPath,
+                PublishedWorkbookPath = baseline,
                 IsDraft = true,
                 Marker = marker,
             };
@@ -306,6 +316,45 @@ namespace Handlers.DataHandling
             return entries
                 .OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        // ###########################################################################################
+        // The published workbook a DRAFT is compared against - or EMPTY for a new system, which by
+        // definition has nothing published to compare with (owner report, 2026-09-27).
+        //
+        // *** NOT "whatever file sits at the published path". *** For a new system that file can
+        // only be the contributor's OWN copy: a board registered the old way, in a
+        // "_UserContribution" workbook, lives in Data/ at exactly this path, and its copy put into
+        // Drafts/ (DraftFolderImport) was compared against itself - every row unchanged, "New
+        // system, nothing added yet", and Submit disabled. A new system counts every row as an
+        // addition, which is what its "New system, N rows so far" wording already says, and what
+        // the table editor already did (it opens a new system with no published board).
+        //
+        // Retirement does not come through here: it compares against the board the application
+        // LISTS (DraftStatusReader.ResolveForSystem), the right question once a system is published.
+        //
+        // *** THE LISTING DECIDES WHEN THE CALLER KNOWS IT (code review, 2026-09-27). *** "Is there a
+        // published board to compare with" is HardwareBoardEntry.IsPublished - the rule retirement
+        // uses - and the marker only stands in for it. Two cases the marker gets wrong:
+        //   - a NEW system's draft whose system has since been published and listed: compared with
+        //     nothing, every row read as an addition, though the published board holds them;
+        //   - a legacy "_UserContribution" board drafted through "Save to draft", which seeds an
+        //     ORDINARY marker: compared with the contributor's own copy in Data/, so nothing ever
+        //     counted and Submit stayed off. The server decides "new system" from its own tree, so
+        //     such a board is received as the new system it is.
+        // With no listing to ask (null), the marker decides as before.
+        // ###########################################################################################
+        public static string ComparisonBaselineOf(
+            string dataRoot,
+            string excelDataFile,
+            DraftMarker? marker,
+            bool? listedAsPublished = null)
+        {
+            bool hasPublishedBoard = listedAsPublished ?? marker?.IsNewSystem != true;
+
+            return hasPublishedBoard
+                ? DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile)
+                : string.Empty;
         }
 
         // ###########################################################################################

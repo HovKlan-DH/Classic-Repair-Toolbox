@@ -771,7 +771,7 @@ namespace CRT.Server.Handlers.Accounts
         // 2026-09-22, producing ".../api/accounts/reset?token=..." - a path nothing is mapped at,
         // because resetting needs a new PASSWORD and so is POST /reset-password. Every reset mail
         // ever sent therefore led to a 404, unnoticed from Phase 3 until the project owner clicked
-        // one. Reset mails now carry a code to paste into the maintainer app instead.
+        // one. Reset mails now carry a code to paste into the Maintainer tab instead.
         //
         // Before adding a second caller, confirm the path is mapped with MapGet in
         // AccountEndpoints - a wrong value here fails in a mail client days later, not at build.

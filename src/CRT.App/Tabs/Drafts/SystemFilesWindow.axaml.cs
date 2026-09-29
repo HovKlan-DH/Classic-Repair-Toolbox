@@ -29,6 +29,10 @@ namespace CRT
     // WorklogAttachmentWriter follow), into the system's own draft folder. Nothing is written into
     // "Data/", and no .xlsx is created - the schematic rows go into draft.json like every other
     // edit in this phase.
+    //
+    // FILE MAP:
+    //   SystemFilesWindow.axaml.cs          - opening, the image and KiCad imports, the report
+    //   SystemFilesWindow.SchematicOrder.cs - dragging the schematic images into a new order
     // ###########################################################################################
     public partial class SystemFilesWindow : Window
     {
@@ -74,6 +78,8 @@ namespace CRT
             this.KiCadDropTarget.AddHandler(DragDrop.DropEvent, this.OnKiCadDropped);
 
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
+
+            this.WireSchematicRowDrag();
         }
 
         // ###########################################################################################
@@ -142,6 +148,9 @@ namespace CRT
         // ###########################################################################################
         private void ReloadSchematicsFromDraft()
         {
+            // A drag cannot survive its rows being replaced - it would hold a row no longer listed.
+            this.ResetSchematicRowDrag();
+
             // Before the Clear, or the rows holding them are gone before they can be released.
             this.DisposeThumbnails();
 
@@ -180,6 +189,9 @@ namespace CRT
         // ###########################################################################################
         protected override void OnClosed(EventArgs e)
         {
+            // A drag still in flight (released outside the window) stops its auto-scroll timer here.
+            this.ResetSchematicRowDrag();
+
             this.DisposeThumbnails();
 
             base.OnClosed(e);
@@ -406,10 +418,10 @@ namespace CRT
                 return;
             }
 
-            this.ImportSchematics(files.Select(file => file.Path.LocalPath));
+            await this.ImportSchematicsAsync(files.Select(file => file.Path.LocalPath));
         }
 
-        private void OnSchematicsDropped(object? sender, DragEventArgs e)
+        private async void OnSchematicsDropped(object? sender, DragEventArgs e)
         {
             var paths = GetDroppedPaths(e);
             if (paths.Count == 0)
@@ -417,7 +429,7 @@ namespace CRT
                 return;
             }
 
-            this.ImportSchematics(paths.Where(File.Exists));
+            await this.ImportSchematicsAsync(paths.Where(File.Exists));
         }
 
         // ###########################################################################################
@@ -427,8 +439,13 @@ namespace CRT
         // contributor has already named the view when they saved the scan. The stored image path is
         // the bare file name, matching how a published board stores it (the reference C64 board
         // keeps its images directly in the board folder), so publishing later needs no rewriting.
+        //
+        // *** THE COPYING AND THE DRAFT WRITE RUN OFF THE UI THREAD, under the "please wait"
+        // overlay (2026-09-28). *** A handful of large scans and a whole-workbook rewrite used to
+        // freeze the window with nothing on screen. What is decided from the window (which names are
+        // taken) is read here first; the pool thread sees only plain values.
         // ###########################################################################################
-        private void ImportSchematics(IEnumerable<string> sourcePaths)
+        private async Task ImportSchematicsAsync(IEnumerable<string> sourcePaths)
         {
             if (string.IsNullOrWhiteSpace(this.thisDraftFolder))
             {
@@ -447,8 +464,6 @@ namespace CRT
                 return;
             }
 
-            int importedCount = 0;
-
             // Names taken so far, seeded from what is already drafted and added to as this batch
             // goes. The list on screen is only reloaded from disk once the whole batch is saved, so
             // checking it alone would let two files imported together collide with each other - and
@@ -457,6 +472,31 @@ namespace CRT
             var takenNames = new HashSet<string>(
                 this.Schematics.Select(row => row.SchematicName),
                 StringComparer.OrdinalIgnoreCase);
+
+            string draftFolder = this.thisDraftFolder;
+            string excelDataFile = this.thisExcelDataFile;
+
+            int importedCount = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingSchematics, () => Task.Run(() =>
+                SystemFilesWindow.CopySchematicsIntoDraft(accepted, draftFolder, excelDataFile, takenNames)));
+
+            if (importedCount == 0)
+            {
+                this.ShowStatus("Could not import those images - see the log for details.", isError: true);
+                return;
+            }
+
+            this.ReloadSchematicsFromDraft();
+            this.ShowStatus(importedCount == 1 ? "Added 1 schematic image." : $"Added {importedCount} schematic images.");
+        }
+
+        // The copying and the one draft edit, on the pool thread. Returns how many were imported.
+        private static int CopySchematicsIntoDraft(
+            IReadOnlyList<string> accepted,
+            string draftFolder,
+            string excelDataFile,
+            HashSet<string> takenNames)
+        {
+            int importedCount = 0;
 
             // Collected as the batch goes and written in ONE draft edit at the end - a save per
             // image would re-read and re-write the whole workbook per file.
@@ -473,8 +513,8 @@ namespace CRT
                     // ordinary DATA-ROOT-RELATIVE path a published row does
                     // ("Commodore/C64/250407/top.png"), so nothing about the row is draft-aware.
                     // ###########################################################################################
-                    string storedFileName = this.ResolveFreeImageFileName(Path.GetFileName(sourcePath));
-                    string destination = Path.Combine(this.thisDraftFolder, storedFileName);
+                    string storedFileName = SystemFilesWindow.ResolveFreeImageFileName(draftFolder, Path.GetFileName(sourcePath));
+                    string destination = Path.Combine(draftFolder, storedFileName);
 
                     Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                     File.Copy(sourcePath, destination, overwrite: false);
@@ -494,19 +534,15 @@ namespace CRT
                 }
             }
 
-            if (importedCount == 0)
+            if (importedCount > 0)
             {
-                this.ShowStatus("Could not import those images - see the log for details.", isError: true);
-                return;
+                DraftWorkbookStore.Edit(
+                    DraftManager.DraftsRoot,
+                    excelDataFile,
+                    board => SystemFilesWindow.WithSchematics(board, excelDataFile, importedSchematics));
             }
 
-            DraftWorkbookStore.Edit(
-                DraftManager.DraftsRoot,
-                this.thisExcelDataFile,
-                board => SystemFilesWindow.WithSchematics(board, this.thisExcelDataFile, importedSchematics));
-
-            this.ReloadSchematicsFromDraft();
-            this.ShowStatus(importedCount == 1 ? "Added 1 schematic image." : $"Added {importedCount} schematic images.");
+            return importedCount;
         }
 
         // ###########################################################################################
@@ -515,14 +551,14 @@ namespace CRT
         // replacing the first with the second would lose a file the contributor still has a row
         // pointing at.
         // ###########################################################################################
-        private string ResolveFreeImageFileName(string fileName)
+        private static string ResolveFreeImageFileName(string draftFolder, string fileName)
         {
             string baseName = Path.GetFileNameWithoutExtension(fileName);
             string extension = Path.GetExtension(fileName);
             string candidate = fileName;
             int suffix = 2;
 
-            while (File.Exists(Path.Combine(this.thisDraftFolder, candidate)))
+            while (File.Exists(Path.Combine(draftFolder, candidate)))
             {
                 candidate = $"{baseName} ({suffix}){extension}";
                 suffix++;
@@ -594,24 +630,15 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Copies the board with its Schematics section replaced. Every OTHER section is carried
-        // across - a section left out of this copy is a section erased from the workbook, silently.
+        // Copies the board with its Schematics section replaced. Every OTHER field is carried
+        // across - one left out of this copy is erased from the workbook, silently.
+        //
+        // *** THROUGH BoardData.WithSchematics, NOT A HAND-WRITTEN COPY (2026-09-27). *** The copy
+        // that was here listed the sections and forgot HardwareName and BoardName, so every image
+        // import or removal wrote the draft back without its "# Hardware:" / "# Board:" caption.
         // ###########################################################################################
-        private static BoardData WithSchematicList(BoardData board, List<BoardSchematicEntry> schematics) =>
-            new()
-            {
-                RevisionDate = board.RevisionDate,
-                Schematics = schematics,
-                Components = board.Components,
-                ComponentImages = board.ComponentImages,
-                ComponentHighlights = board.ComponentHighlights,
-                ComponentLocalFiles = board.ComponentLocalFiles,
-                ComponentLinks = board.ComponentLinks,
-                BoardLocalFiles = board.BoardLocalFiles,
-                BoardLinks = board.BoardLinks,
-                Credits = board.Credits,
-                KiCadImportantSignals = board.KiCadImportantSignals,
-            };
+        internal static BoardData WithSchematicList(BoardData board, List<BoardSchematicEntry> schematics) =>
+            board.WithSchematics(schematics);
 
         // ###########################################################################################
         // A schematic name not in takenNames. The name is the section's natural key, so reusing one
@@ -729,7 +756,7 @@ namespace CRT
             this.RefreshKiCadState();
             this.ShowStatus($"Removed [{row.RelativePath}] from your draft. Your own KiCad project is not touched - import it again to get the file back.");
 
-            await this.RefreshReportAsync();
+            await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
         }
 
         // Builds the match report and records it as the one in flight, so a Remove can wait for it.
@@ -805,39 +832,54 @@ namespace CRT
             // violation a Remove would hit, so the same wait (see thisPendingReport).
             await this.WaitForPendingReportAsync();
 
-            try
+            // The copy AND the report that follows are one wait (2026-09-28): the window is held
+            // across both, so it does not brighten for a moment between them.
+            await BusyOverlay.HoldAsync(this, CrtWaitWording.ImportingKiCad, async () =>
             {
-                Directory.CreateDirectory(destinationFolder);
-
-                foreach (string sourceFile in sourceFiles)
+                bool copied = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ImportingKiCad, () => Task.Run(() =>
                 {
-                    // The file's path RELATIVE to the folder that was picked, so "Pages/vic.kicad_sch"
-                    // lands under Pages/ rather than being flattened into the root.
-                    string destination = Path.Combine(
-                        destinationFolder,
-                        KiCadRawFileScanner.RelativeDestinationFor(sourceFolder, sourceFile));
+                    try
+                    {
+                        Directory.CreateDirectory(destinationFolder);
 
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                        foreach (string sourceFile in sourceFiles)
+                        {
+                            // The file's path RELATIVE to the folder that was picked, so "Pages/vic.kicad_sch"
+                            // lands under Pages/ rather than being flattened into the root.
+                            string destination = Path.Combine(
+                                destinationFolder,
+                                KiCadRawFileScanner.RelativeDestinationFor(sourceFolder, sourceFile));
 
-                    // Overwrite on purpose here, unlike an imported image: re-importing the KiCad
-                    // folder is how a contributor picks up a change they made in KiCad, and the file
-                    // name is the project's own identity rather than an arbitrary attachment name.
-                    File.Copy(sourceFile, destination, overwrite: true);
+                            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+                            // Overwrite on purpose here, unlike an imported image: re-importing the KiCad
+                            // folder is how a contributor picks up a change they made in KiCad, and the file
+                            // name is the project's own identity rather than an arbitrary attachment name.
+                            File.Copy(sourceFile, destination, overwrite: true);
+                        }
+
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning($"Failed to import KiCad data from [{sourceFolder}] - [{ex.Message}]");
+                        return false;
+                    }
+                }));
+
+                if (!copied)
+                {
+                    this.ShowStatus("Could not copy those KiCad files - see the log for details.", isError: true);
+                    return;
                 }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to import KiCad data from [{sourceFolder}] - [{ex.Message}]");
-                this.ShowStatus("Could not copy those KiCad files - see the log for details.", isError: true);
-                return;
-            }
 
-            this.RefreshKiCadState();
-            this.ShowStatus(sourceFiles.Count == 1
-                ? "Imported 1 KiCad file. Checking what it lines up with..."
-                : $"Imported {sourceFiles.Count} KiCad files. Checking what they line up with...");
+                this.RefreshKiCadState();
+                this.ShowStatus(sourceFiles.Count == 1
+                    ? "Imported 1 KiCad file. Checking what it lines up with..."
+                    : $"Imported {sourceFiles.Count} KiCad files. Checking what they line up with...");
 
-            await this.RefreshReportAsync();
+                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
+            });
         }
 
         // ###########################################################################################
@@ -994,8 +1036,61 @@ namespace CRT
     // ###########################################################################################
     // One board image row in the list - a view model over a drafted Schematics row.
     // ###########################################################################################
-    public sealed class SystemSchematicRow
+    public sealed class SystemSchematicRow : System.ComponentModel.INotifyPropertyChanged, IDraggableRow
     {
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        // ###########################################################################################
+        // True while this row is the one being dragged, which draws it as an empty dashed slot
+        // where a drop would land - the worklog photo rows' IsDropPlaceholder, for the same reason:
+        // the dragged row moves through the list and renders as the gap itself, so the rows around
+        // it already stand in the order the drop will produce. See SystemFilesWindow.SchematicOrder.cs.
+        // ###########################################################################################
+        public bool IsDropPlaceholder
+        {
+            get => this.thisIsDropPlaceholder;
+            set
+            {
+                if (this.thisIsDropPlaceholder == value)
+                {
+                    return;
+                }
+
+                this.thisIsDropPlaceholder = value;
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.IsDropPlaceholder)));
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.IsNotDropPlaceholder)));
+            }
+        }
+
+        public bool IsNotDropPlaceholder => !this.thisIsDropPlaceholder;
+
+        private bool thisIsDropPlaceholder;
+
+        // ###########################################################################################
+        // The row's own measured height while it is the placeholder, so the gap is exactly the row
+        // being moved. It MUST notify: it is assigned just before IsDropPlaceholder, and a binding
+        // that never heard the change drew every gap at the starting value (the worklog's Files
+        // list found this out). Stored always; only the notification is gated, against sub-pixel
+        // churn mid-drag.
+        // ###########################################################################################
+        public double PlaceholderHeight
+        {
+            get => this.thisPlaceholderHeight;
+            set
+            {
+                bool isMeaningfulChange = Math.Abs(this.thisPlaceholderHeight - value) >= 0.5;
+
+                this.thisPlaceholderHeight = value;
+
+                if (isMeaningfulChange)
+                {
+                    this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.PlaceholderHeight)));
+                }
+            }
+        }
+
+        private double thisPlaceholderHeight = 72.0;
+
         public string SchematicName { get; init; } = string.Empty;
         public string ImageFile { get; init; } = string.Empty;
         public string CadName { get; init; } = string.Empty;

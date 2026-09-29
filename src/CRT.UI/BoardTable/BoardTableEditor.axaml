@@ -12,7 +12,7 @@
 
 		     The font and padding are Main.axaml's own TabItem setters, repeated here and scoped to
 		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - it
-		     is meant to move to the maintainer application later, which has no Main.axaml. -->
+		     is meant to move to the Maintainer tab later, which has no Main.axaml. -->
 		<Style Selector="TabControl#SheetTabs TabItem">
 			<Setter Property="FontSize" Value="12" />
 			<Setter Property="Padding" Value="12,4" />

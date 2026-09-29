@@ -57,7 +57,7 @@ namespace Handlers.DataHandling
         }
 
         // The same question for a path already known to be somewhere in a data tree - what the
-        // maintainer application asks of a SubmittedFileFact, whose scope the server has already
+        // Maintainer tab asks of a SubmittedFileFact, whose scope the server has already
         // checked. The TYPE check matters here too: a row may cite an ordinary file that happens to
         // sit inside a "KiCad data" folder, and counting it as KiCad data would overstate what the
         // exemption actually admitted.

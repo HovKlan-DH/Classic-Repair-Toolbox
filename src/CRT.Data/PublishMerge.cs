@@ -60,6 +60,11 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = revisionDate,
+
+                // The caption is the board's it replaces - see CaptionedAs.
+                HardwareName = published?.HardwareName ?? string.Empty,
+                BoardName = published?.BoardName ?? string.Empty,
+
                 Schematics = [.. rows.Schematics],
                 Components = [.. rows.Components],
                 ComponentImages = [.. rows.ComponentImages],
@@ -71,6 +76,31 @@ namespace Handlers.DataHandling
                 Credits = [.. rows.Credits],
                 KiCadImportantSignals = [.. rows.KiCadImportantSignals]
             };
+        }
+
+        // ###########################################################################################
+        // *** THE "# Hardware:" / "# Board:" CAPTION IS THE SERVER'S, like the revision date (owner
+        // report, 2026-09-28). *** Build keeps the caption of the board being replaced. Only a
+        // board with NO caption at all - a new system, or one published before this was fixed -
+        // gets the names it is listed under in the drop-down lists, which for a new system are the
+        // names its contributor typed in "Create system" and so what its draft already showed.
+        //
+        // The rows never carried the caption, and Build used to leave it out, so every approval
+        // wrote a workbook whose first two lines on every sheet were empty (seen against
+        // production's copy of the C128 board). It does not come from the submission: nothing in
+        // the table shows it, so a maintainer would be approving a caption they never saw.
+        //
+        // All or nothing: a board with either line keeps its own, so one caption never mixes two
+        // sources ("Commodore 128 and 128D" over "310378 (C128 & C128D)").
+        // ###########################################################################################
+        public static BoardData CaptionedAs(BoardData board, string? hardwareName, string? boardName)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            if (!string.IsNullOrWhiteSpace(board.HardwareName) || !string.IsNullOrWhiteSpace(board.BoardName))
+                return board;
+
+            return board.WithCaption(hardwareName?.Trim() ?? string.Empty, boardName?.Trim() ?? string.Empty);
         }
 
         // ###########################################################################################

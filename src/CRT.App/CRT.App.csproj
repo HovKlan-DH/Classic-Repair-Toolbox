@@ -85,19 +85,27 @@
     <PackageReference Include="EPPlus" Version="8.7.1" />
     <PackageReference Include="ProDataGrid" Version="12.1.0.4" />
     <PackageReference Include="QuestPDF" Version="2026.9.0" />
+    <!--
+    DPAPI, for the Maintainer tab's remembered sign-in (Handlers/Maintainer/ReviewSessionProtection,
+    moved here with the maintainer application on 2026-09-29). Windows-only by nature: the package
+    restores and builds everywhere and throws PlatformNotSupportedException if called off Windows -
+    which is why every call is guarded by OperatingSystem.IsWindows() and CRT simply declines to
+    remember a maintainer session on other platforms rather than storing one in the clear.
+    -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
     <PackageReference Include="Velopack" Version="1.2.158" />
     <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385" PrivateAssets="all" />
   </ItemGroup>
 
   <!--
   CRT.Data holds the Avalonia-free board-data layer (BoardData/Reader/Writer, board JSON
-  highlights, DataValidator, plus a few pure text helpers) shared with the maintainer app and, from
+  highlights, DataValidator, plus a few pure text helpers) shared with the Maintainer tab and, from
   Phase 3, the server. See src/CRT.Data/CRT.Data.csproj's own header for what deliberately stayed
   behind in this project instead.
   -->
   <ItemGroup>
     <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
-    <!-- The table editor, shared with the maintainer application (2026-09-25). -->
+    <!-- The table editor, shared with the Maintainer tab (2026-09-25). -->
     <ProjectReference Include="..\CRT.UI\CRT.UI.csproj" />
   </ItemGroup>
 

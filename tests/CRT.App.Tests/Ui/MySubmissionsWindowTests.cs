@@ -235,7 +235,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
             SubmissionListItem row = Assert.Single(window.Submissions);
 
             Assert.Equal(42, row.SubmissionId);
-            Assert.Equal("Waiting for review", row.StateText);
+            Assert.Equal("Submitted - awaiting feedback from a maintainer", row.StateText);
             Assert.Equal("Fixed U8 pinout", row.Summary);
 
             Assert.False(window.GetControl<TextBlock>("EmptyStateText").IsVisible);
@@ -262,6 +262,27 @@ public sealed class MySubmissionsWindowTests : IDisposable
 
             Assert.Equal("Commodore C64 250407", row.SystemName);
             Assert.DoesNotContain(".xlsx", row.SystemName);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A REAL RECEIPT CARRIES THE SYSTEM ID, NOT A WORKBOOK PATH (2026-09-27). *** SubmitDraftWindow
+    // records identity.SystemId - "Commodore/C128/310378 Open128" - and the name used to drop the
+    // last segment as though it were a file name, so the row read "Commodore C128" with the board
+    // missing. The fixture above uses the old workbook-path shape no real receipt has, which is how
+    // this went unseen; both shapes are named in full now.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_names_the_WHOLE_system_from_a_real_receipts_system_id()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(43, systemId: "Commodore/C128/310378 Open128"));
+
+            var window = new MySubmissionsWindow();
+            window.Initialize();
+
+            Assert.Equal("Commodore C128 310378 Open128", Assert.Single(window.Submissions).SystemName);
         });
     }
 
@@ -391,7 +412,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
 
             SubmissionListItem row = Assert.Single(window.Submissions);
 
-            Assert.Equal("Waiting for review", row.StateText);
+            Assert.Equal("Submitted - awaiting feedback from a maintainer", row.StateText);
             Assert.Equal("pending", SubmissionReceiptStore.All.Single().LastKnownState);
 
             // And the user is told, rather than left looking at a list that did not visibly change.
@@ -551,6 +572,48 @@ public sealed class MySubmissionsWindowTests : IDisposable
                 blocks,
                 block => block.Text?.StartsWith("Replied ", StringComparison.Ordinal) == true
                     && !block.Text.Contains("maintainer", StringComparison.Ordinal));
+        });
+    }
+
+    // ###########################################################################################
+    // *** "CHECK FOR UPDATES" WAITS UNDER THE OVERLAY, AND GIVES UP AFTER THE LIMIT (2026-09-28). ***
+    // The overlay is up while the server is asked; a server that never answers is let go when the
+    // two minutes pass (the test's clock), the overlay lifts, and the line says the rows show what
+    // was checked before that - nothing lost, and nothing claimed.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_check_with_no_answer_lifts_the_overlay_at_the_limit_and_says_what_is_shown()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            SubmissionReceiptStore.Record(Receipt(7, "pending"));
+
+            var window = new MySubmissionsWindow();
+            BusyOverlay overlay = BusyOverlay.For(window)!;
+
+            var limit = new TaskCompletionSource();
+            overlay.LimitOverrideForTests = _ => limit.Task;
+
+            bool busyWhileAsking = false;
+
+            window.StatusLookupForTests = (_, _, token) =>
+            {
+                busyWhileAsking = overlay.IsBusy;
+
+                // The two minutes pass while this request is still out - and it never answers.
+                limit.TrySetResult();
+                return Task.Delay(Timeout.Infinite, token).ContinueWith<SubmissionStatus?>(_ => null, TaskScheduler.Default);
+            };
+
+            window.Initialize();
+
+            await (Task)typeof(MySubmissionsWindow)
+                .GetMethod("RefreshAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(window, null)!;
+
+            Assert.True(busyWhileAsking);
+            Assert.False(overlay.IsBusy);
+            Assert.Equal(CrtWaitWording.SubmissionsNoAnswer, window.FindControl<TextBlock>("StatusText")!.Text);
         });
     }
 }

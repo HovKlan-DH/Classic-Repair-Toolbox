@@ -242,6 +242,7 @@ namespace CRT
                 // empty state rather than leaving the bar and the Workbooks tab showing the board
                 // that WAS selected a moment ago - stale worklog surfaces above a blank schematic
                 // view read as the previous board still being loaded.
+                this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 return;
             }
@@ -264,6 +265,7 @@ namespace CRT
                 // there is nothing to load and _currentBoardData stays null. Refresh so the worklog
                 // surfaces show THIS board (its workbook list does not need board data) with an
                 // empty board pane, rather than the previous board's previews.
+                this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 return;
             }
@@ -283,11 +285,16 @@ namespace CRT
                 // The board's Excel file is missing or unreadable. Still the currently selected
                 // board, so its worklog surfaces must show IT (empty board pane, real workbook
                 // list) rather than whatever the previously selected board left on screen.
+                this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 return;
             }
 
             this._currentBoardData = boardData;
+
+            // A view of this board starts now, and counts after ten seconds (Main.BoardViews.cs) - a
+            // reload of the board already on screen is not a new one.
+            this.NoteBoardOnScreen(entry);
 
             // Read right after the await above, which is the call that set it - see this field's
             // own header comment for why this is snapshotted rather than read fresh at each of the

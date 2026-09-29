@@ -505,7 +505,7 @@ namespace CRT.Server.Tests
             // allowlist of image types with octet-stream underneath means an attacker cannot
             // choose the type by choosing the extension.
             //
-            // The maintainer app renders images. Everything else downloads, which is also the correct
+            // The Maintainer tab renders images. Everything else downloads, which is also the correct
             // behaviour for the datasheet a maintainer wants to open.
             Assert.Equal("application/octet-stream", ReviewAssetLocator.ContentTypeFor(name));
         }

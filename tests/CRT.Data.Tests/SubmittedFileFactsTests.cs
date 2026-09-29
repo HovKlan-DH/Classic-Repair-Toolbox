@@ -6,7 +6,7 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // Covers SubmittedFileFacts - the per-file account the server sends the maintainer application so
+    // Covers SubmittedFileFacts - the per-file account the server sends the Maintainer tab so
     // a maintainer is shown EVERY file that would change, not only the images (security review,
     // 2026-09-25).
     // ###########################################################################################

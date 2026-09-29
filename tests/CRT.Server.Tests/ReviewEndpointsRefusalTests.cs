@@ -10,7 +10,7 @@ namespace CRT.Server.Tests
     // It used to be Results.Forbid(), which asks the authentication middleware's default scheme
     // to write the refusal. This service authenticates its own opaque bearer tokens and registers
     // no scheme, so executing it threw and the caller got a 500 - never the 403 that
-    // ReviewEndpoints documents and that the maintainer app turns into "This account is not allowed
+    // ReviewEndpoints documents and that the Maintainer tab turns into "This account is not allowed
     // to review submissions".
     //
     // The result is EXECUTED here against a context set up the way this service runs - with no

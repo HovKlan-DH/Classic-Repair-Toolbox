@@ -71,11 +71,14 @@ namespace CRT
             DraftStatus? status = DraftStatusReader.Resolve(
                 DataManager.DataRoot,
                 DraftManager.DraftsRoot,
-                entry.ExcelDataFile);
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
+            // Reading the published board to colour against is a noticeable wait on a large system,
+            // so it runs under the "please wait" overlay (2026-09-28).
             BoardData? published = this.PublishedBoardOverrideForTests is not null
                 ? this.PublishedBoardOverrideForTests(entry)
-                : await TabDrafts.LoadPublishedBoardAsync(entry, status);
+                : await BusyOverlay.RunLocalAsync(this, CrtWaitWording.OpeningTable, () => TabDrafts.LoadPublishedBoardAsync(entry, status));
 
             // Resting on a file cell shows the file - the published copy and the draft's.
             this.TableEditor.FileSource = new DraftTableFileSource(

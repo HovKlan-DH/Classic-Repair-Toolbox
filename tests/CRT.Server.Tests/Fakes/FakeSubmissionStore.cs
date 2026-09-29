@@ -265,6 +265,75 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
+        // ###########################################################################################
+        // A BETA rollback's bookkeeping (2026-09-27). Like the real store: only a row still MERGED
+        // moves, its approvals go, and a system with no row is refused rather than invented.
+        //
+        // FailRollbackRecord makes it throw BEFORE changing anything - the real store's transaction
+        // rolls back whole - so a test can prove the flow survives a failed record and that pushing
+        // back again finishes the job.
+        // ###########################################################################################
+        public Task RecordRollbackAsync(
+            string systemId,
+            IReadOnlyList<long> returningSubmissionIds,
+            long decidedByAccountId,
+            string comment,
+            string? betaRevision,
+            string? betaContentHash,
+            DateTimeOffset decidedUtc,
+            bool reject = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (this.FailRollbackRecord)
+                throw new InvalidOperationException("The database is not reachable.");
+
+            if (!this.Systems.ContainsKey(systemId))
+            {
+                throw new InvalidOperationException(
+                    $"No `systems` row exists for [{systemId}], so a rollback could not be recorded.");
+            }
+
+            foreach (long id in returningSubmissionIds)
+            {
+                if (!this.Submissions.TryGetValue(id, out SubmissionRecord? row) || row.State != SubmissionState.Merged)
+                    continue;
+
+                string state = reject ? SubmissionState.Rejected : SubmissionState.Pending;
+
+                this.Submissions[id] = row with
+                {
+                    State = state,
+                    DecidedUtc = decidedUtc,
+                    DecisionComment = comment
+                };
+
+                // submission_beta_returns (migration 0015): returned to the queue, at this instant.
+                if (!reject)
+                    this.BetaReturns[id] = decidedUtc;
+
+                this.Decisions[id] = new RecordedDecision(state, decidedByAccountId, comment, decidedUtc);
+                this.Approvals.Remove(id);
+            }
+
+            this.BetaStates[systemId] = (betaRevision, betaContentHash);
+
+            // The real store writes `systems.current_revision` / `content_hash`, which FindSystemAsync
+            // reads back - so the fake moves the same row, or a caller re-reading the system would
+            // still see the old BETA state.
+            if (betaRevision is null && betaContentHash is null)
+                this.PublishedSystems.Remove(systemId);
+            else
+                this.PublishedSystems[systemId] = new PublishedSystemRow(betaRevision ?? string.Empty, betaContentHash ?? string.Empty, default);
+
+            return Task.CompletedTask;
+        }
+
+        public bool FailRollbackRecord { get; set; }
+
+        // What RecordRollbackAsync wrote for each system, so a test can assert the recorded BETA
+        // state followed the tree rather than still naming data that was removed.
+        public Dictionary<string, (string? Revision, string? ContentHash)> BetaStates { get; } = new(StringComparer.Ordinal);
+
         // What SetSystemPublishedAsync wrote, so tests can assert the revision and content hash
         // actually reached the systems row.
         public Dictionary<string, PublishedSystemRow> PublishedSystems { get; } = new(StringComparer.Ordinal);
@@ -364,6 +433,27 @@ namespace CRT.Server.Tests.Fakes
                 this.Systems.TryGetValue(systemId, out NewSubmission? system) ? this.ToSystemRecord(system) : null);
         }
 
+        // ---- Placements (migration 0011): an UPDATE of the system's row, so a system with no row
+        // is refused (false) rather than invented - as the real store's matched-rows count says.
+        public Dictionary<string, SystemPlacement> Placements { get; } = new(StringComparer.Ordinal);
+
+        public Task<SystemPlacement?> GetPlacementAsync(string systemId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Placements.TryGetValue(systemId, out SystemPlacement? placement) ? placement : null);
+
+        public Task<bool> SetPlacementAsync(
+            string systemId,
+            SystemPlacement placement,
+            long setByAccountId,
+            DateTimeOffset setUtc,
+            CancellationToken cancellationToken = default)
+        {
+            if (!this.Systems.ContainsKey(systemId))
+                return Task.FromResult(false);
+
+            this.Placements[systemId] = placement;
+            return Task.FromResult(true);
+        }
+
         // An UPDATE in the real store, so - like SetSystemPublishedAsync - a system with no row is
         // refused rather than invented.
         public Task SetSystemInProductionAsync(
@@ -452,6 +542,27 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(records);
         }
 
+        // The real query: this system exactly, never 'uploading' or 'abandoned', newest first, at
+        // most `limit`. A maintainer decided it when SetDecisionAsync recorded it, as below.
+        public Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
+            string systemId,
+            int limit,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<SystemSubmissionRecord> records = this.Submissions.Values
+                .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .Where(record => record.State is not (SubmissionState.Uploading or SubmissionState.Abandoned))
+                .OrderByDescending(record => record.Id)
+                .Take(Math.Clamp(limit, 1, 1000))
+                .Select(record => new SystemSubmissionRecord(
+                    record,
+                    this.Decisions.ContainsKey(record.Id),
+                    this.Decisions.TryGetValue(record.Id, out var decision) ? decision.DecidedByAccountId : null))
+                .ToList();
+
+            return Task.FromResult(records);
+        }
+
         // The real query's two shapes: by account, or by email (trimmed, any case) among the
         // submissions sent without one. A maintainer decided it when SetDecisionAsync recorded it -
         // the automatic checks' rejection goes through SetStateAsync, as in the real store.
@@ -509,10 +620,10 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(latest);
         }
 
-        public Task MarkTouchesSharedFilesAsync(long submissionId, CancellationToken cancellationToken = default)
+        public Task SetTouchesSharedFilesAsync(long submissionId, bool touchesSharedFiles, CancellationToken cancellationToken = default)
         {
             if (this.Submissions.TryGetValue(submissionId, out SubmissionRecord? record))
-                this.Submissions[submissionId] = record with { TouchesSharedFiles = true };
+                this.Submissions[submissionId] = record with { TouchesSharedFiles = touchesSharedFiles };
 
             return Task.CompletedTask;
         }
@@ -545,11 +656,55 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
+        // How many times each of the list's reads was asked - so a test can pin that the Beta > Prod
+        // list asks a fixed number of times however many systems wait (code review, 2026-09-29).
+        public int ProductionApprovalReads { get; private set; }
+
+        public int MergedSubmissionReads { get; private set; }
+
+        public int DraftDiscardReads { get; private set; }
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>>> GetProductionApprovalsForAsync(
+            IReadOnlyCollection<(string SystemId, string BetaContentHash)> states,
+            CancellationToken cancellationToken = default)
+        {
+            this.ProductionApprovalReads++;
+
+            IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>> found = states
+                .Distinct()
+                .Where(this.ProductionApprovals.ContainsKey)
+                .ToDictionary(state => state.SystemId, state => (IReadOnlyList<GivenApproval>)this.ProductionApprovals[state].ToList(), StringComparer.Ordinal);
+
+            return Task.FromResult(found);
+        }
+
+        public Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+            DateTimeOffset decidedUpTo,
+            CancellationToken cancellationToken = default)
+        {
+            this.DraftDiscardReads++;
+
+            IReadOnlySet<string> systems = windows
+                .Where(window => this.Submissions.Values.Any(record =>
+                    string.Equals(record.SystemId, window.SystemId, StringComparison.Ordinal) &&
+                    record.State == SubmissionState.Merged &&
+                    record.DecidedUtc is not null && record.DecidedUtc <= decidedUpTo &&
+                    (window.DecidedAfter is null || record.DecidedUtc > window.DecidedAfter) &&
+                    this.DraftDiscards.ContainsKey(record.Id)))
+                .Select(window => window.SystemId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            return Task.FromResult(systems);
+        }
+
         public Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
             string systemId,
             string betaContentHash,
             CancellationToken cancellationToken = default)
         {
+            this.ProductionApprovalReads++;
+
             IReadOnlyList<GivenApproval> approvals = this.ProductionApprovals.TryGetValue((systemId, betaContentHash), out List<GivenApproval>? list)
                 ? list.ToList()
                 : [];
@@ -581,6 +736,8 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default)
         {
+            this.MergedSubmissionReads++;
+
             IReadOnlyList<SubmissionRecord> records = this.Submissions.Values
                 .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
                 .Where(record => record.State == SubmissionState.Merged)
@@ -590,6 +747,44 @@ namespace CRT.Server.Tests.Fakes
                 .ToList();
 
             return Task.FromResult(records);
+        }
+
+        // submission_beta_returns (migration 0015): when a rollback last returned each submission.
+        public Dictionary<long, DateTimeOffset> BetaReturns { get; } = [];
+
+        public Task<IReadOnlyDictionary<long, DateTimeOffset>> GetBetaReturnsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<long, DateTimeOffset> found = submissionIds
+                .Distinct()
+                .Where(this.BetaReturns.ContainsKey)
+                .ToDictionary(id => id, id => this.BetaReturns[id]);
+
+            return Task.FromResult(found);
+        }
+
+        // submission_draft_discards (migration 0014): the first time per submission is kept.
+        public Dictionary<long, DateTimeOffset> DraftDiscards { get; } = [];
+
+        public Task<bool> RecordDraftDiscardedAsync(
+            long submissionId,
+            DateTimeOffset discardedUtc,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.DraftDiscards.TryAdd(submissionId, discardedUtc));
+
+        public Task<IReadOnlyDictionary<long, DateTimeOffset>> GetDraftDiscardsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            this.DraftDiscardReads++;
+
+            IReadOnlyDictionary<long, DateTimeOffset> found = submissionIds
+                .Distinct()
+                .Where(this.DraftDiscards.ContainsKey)
+                .ToDictionary(id => id, id => this.DraftDiscards[id]);
+
+            return Task.FromResult(found);
         }
 
         // INSERT IGNORE, like CreateAsync: an existing row is left completely alone.

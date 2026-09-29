@@ -85,6 +85,17 @@ namespace CRT.Server.Handlers.Submissions
         Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // One system's submissions for the "Systems" screen (owner request, 2026-09-27), NEWEST
+        // first, at most `limit`, each with whether a maintainer decided it (decided_by is set).
+        // Leaves out the two that never arrived - 'uploading' and 'abandoned' - which were never
+        // anybody's to review.
+        // ###########################################################################################
+        Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
+            string systemId,
+            int limit,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // Every submission from one contributor - `accountId` when they were signed in, otherwise
         // `contactEmail` (trimmed, any case) among the submissions sent WITHOUT an account - with
         // its state and whether a maintainer decided it. For ContributorHistory (2026-09-26).
@@ -221,6 +232,20 @@ namespace CRT.Server.Handlers.Submissions
         Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // Where a NEW system goes in the drop-down lists (2026-09-27, migration 0011): what a
+        // maintainer placed it as in the Systems screen, or null while nobody has. SetPlacementAsync
+        // answers false when the system has no row at all.
+        // ###########################################################################################
+        Task<SystemPlacement?> GetPlacementAsync(string systemId, CancellationToken cancellationToken = default);
+
+        Task<bool> SetPlacementAsync(
+            string systemId,
+            SystemPlacement placement,
+            long setByAccountId,
+            DateTimeOffset setUtc,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // Records that a system's BETA state has been copied to Production (2026-09-25): the BETA
         // revision and content hash it had, and when. A separate call from SetSystemPublishedAsync
         // because it is a separate fact about a separate tree - and the comparison between the two
@@ -234,6 +259,38 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // Records a BETA rollback (owner decision, 2026-09-27), in ONE TRANSACTION:
+        //
+        //   - each returning submission goes back to `pending`, if it is still `merged`, with the
+        //     maintainer who pushed it back, when, and why (the contributor's only feedback) - or to
+        //     `rejected`, when `reject` says the rollback was Beta > Prod's "Reject" (2026-09-28);
+        //   - each one's APPROVALS are cleared. Left in place, ApprovalRules re-read them on the
+        //     next review: a shared-file submission approved by both roles would be republished by
+        //     ONE approval, and an administrator who approved an ordinary one was answered "you have
+        //     already approved" and could never approve it again (code review, 2026-09-27);
+        //   - the system's BETA revision and content hash follow the tree - production's for a
+        //     restore, none for a system removed from BETA. Every other writer of those columns is a
+        //     publish, moving them FORWARDS through SetSystemPublishedAsync.
+        //
+        // *** ONE TRANSACTION, because the tree has already been rewritten when this runs. *** As
+        // separate calls a failure halfway left some submissions pending and some merged, the ones
+        // flipped never mailed, and content_hash naming data BETA no longer holds (code review,
+        // 2026-09-27). Now it is all or nothing, and "nothing" repairs itself: the system still
+        // reads as ahead of production, so pushing back again finds a tree already level, changes
+        // no file, and records it.
+        // ###########################################################################################
+        Task RecordRollbackAsync(
+            string systemId,
+            IReadOnlyList<long> returningSubmissionIds,
+            long decidedByAccountId,
+            string comment,
+            string? betaRevision,
+            string? betaContentHash,
+            DateTimeOffset decidedUtc,
+            bool reject = false,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // The MERGED submissions to a system decided in (after, upTo] - the ones a production
         // promotion has just carried out to everyone, whose contributors are told so. `after` null
         // means "since the beginning": the first promotion of a system carries everything merged.
@@ -242,6 +299,51 @@ namespace CRT.Server.Handlers.Submissions
             string systemId,
             DateTimeOffset? decidedAfter,
             DateTimeOffset decidedUpTo,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // The contributor discarded their own draft in CRT after sending this submission (owner
+        // request, 2026-09-28; migration 0014) - see CRT.Data's DraftDiscardContract and
+        // DraftDiscardFlow. Records it once: true when this call recorded it, false when it was
+        // already recorded (the FIRST time is kept).
+        // ###########################################################################################
+        Task<bool> RecordDraftDiscardedAsync(
+            long submissionId,
+            DateTimeOffset discardedUtc,
+            CancellationToken cancellationToken = default);
+
+        // When each of `submissionIds` had its draft discarded - only those that did appear. One
+        // query for a whole queue or list, so showing the mark costs one read, not one per row.
+        Task<IReadOnlyDictionary<long, DateTimeOffset>> GetDraftDiscardsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // THE "BETA > PROD" LIST'S TWO FACTS, FOR EVERY WAITING SYSTEM AT ONCE (code review,
+        // 2026-09-29). The list is read every minute by every open Maintainer tab, and asked three
+        // queries PER waiting system (approvals, merged submissions, their discards) only to set
+        // two booleans. These answer for the whole list in one query each.
+        //
+        // The production approvals given for each system's BETA state, keyed by system id (a system
+        // with none is absent).
+        // ###########################################################################################
+        Task<IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>>> GetProductionApprovalsForAsync(
+            IReadOnlyCollection<(string SystemId, string BetaContentHash)> states,
+            CancellationToken cancellationToken = default);
+
+        // The systems among `windows` with a submission a promotion would carry - merged in
+        // (DecidedAfter, decidedUpTo], GetMergedSubmissionsAsync's bounds - whose contributor has
+        // discarded their own draft (migration 0014).
+        Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+            DateTimeOffset decidedUpTo,
+            CancellationToken cancellationToken = default);
+
+        // When a BETA rollback last RETURNED each of `submissionIds` to the queue (migration 0015,
+        // written by RecordRollbackAsync) - only those it did. What makes a submission read as
+        // "returned" (ProductionPromotionRules.ContributorFacingState); one query for a list.
+        Task<IReadOnlyDictionary<long, DateTimeOffset>> GetBetaReturnsAsync(
+            IReadOnlyCollection<long> submissionIds,
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
@@ -304,10 +406,10 @@ namespace CRT.Server.Handlers.Submissions
         // The latest amendment, or null for a submission nobody has amended.
         Task<SubmissionAmendment?> GetLatestAmendmentAsync(long submissionId, CancellationToken cancellationToken = default);
 
-        // The submission turns out to change a shared file after all: the published copy it cites
-        // unchanged has moved since it arrived. Only ever RAISES the flag - see
-        // ApprovePublishFlow.TouchesSharedFilesNow.
-        Task MarkTouchesSharedFilesAsync(long submissionId, CancellationToken cancellationToken = default);
+        // Whether the submission REPLACES a shared file, as the tree stands now - raised when a
+        // published copy has moved since it arrived, lowered when it no longer replaces one (or was
+        // flagged under the older add-or-change rule). See ApprovePublishFlow.TouchesSharedFilesNow.
+        Task SetTouchesSharedFilesAsync(long submissionId, bool touchesSharedFiles, CancellationToken cancellationToken = default);
     }
 
     // ###########################################################################################
@@ -492,6 +594,11 @@ namespace CRT.Server.Handlers.Submissions
     // One of a contributor's submissions, as ContributorHistory counts it. DecidedByMaintainer
     // tells a maintainer's rejection from the automatic checks' - decided_by is set only by a person.
     public sealed record ContributorSubmission(long Id, string State, bool DecidedByMaintainer);
+
+    // One submission to a system, with whether a maintainer decided it - GetSubmissionsForSystemAsync.
+    // DecidedByAccountId: the maintainer who decided it (2026-09-27, for the system's history) -
+    // null when none did, or from a store that does not say.
+    public sealed record SystemSubmissionRecord(SubmissionRecord Submission, bool DecidedByMaintainer, long? DecidedByAccountId = null);
 
     // One maintainer's amendment: its version (1, 2, ...), who made it, and when.
     public sealed record SubmissionAmendment(int Version, string By, DateTimeOffset AtUtc);

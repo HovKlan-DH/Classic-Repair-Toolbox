@@ -531,7 +531,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_FRESH_session_is_not_rewritten_on_every_request()
         {
-            // The maintainer app calls the queue on launch, on every refresh click and after every
+            // The Maintainer tab calls the queue on launch, on every refresh click and after every
             // decision. Extending on each would turn a read-only screen into a stream of UPDATEs
             // that move the expiry by seconds.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
@@ -608,7 +608,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_ROTATED_session_is_not_extended_either()
         {
-            // The maintainer app never calls refresh, but AccountFlows.RefreshAsync still exists and
+            // The Maintainer tab never calls refresh, but AccountFlows.RefreshAsync still exists and
             // a future client might. A superseded session must not be handed a fresh lease.
             (FakeAccountStore store, _, string token) = await SessionAndResetTests.LoggedInAsync();
 

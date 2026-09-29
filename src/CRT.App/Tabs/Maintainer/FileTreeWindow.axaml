@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:CRT"
+        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
+        x:Class="CRT.FileTreeWindow"
+        Title="Files"
+        Width="900"
+        Height="720"
+        MinWidth="520"
+        MinHeight="360"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+    A SUBMISSION'S FILES AFTER APPROVING IT (owner request, 2026-09-28), opened with "Files..." on
+    the Contributor Submissions screen. A window of its own rather than a view in place of the
+    table, so the table stays in sight beside it. Not modal: the maintainer can go on reviewing, and
+    the title names the submission it shows.
+
+    Its own BusyOverlay, like every window that waits: opening a file fetches it first.
+    -->
+    <Grid>
+        <DockPanel Margin="16">
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="HeadingText"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,2" />
+            <TextBlock DockPanel.Dock="Top"
+                       x:Name="SubheadingText"
+                       TextWrapping="Wrap"
+                       Opacity="0.75"
+                       Margin="0,0,0,10" />
+
+            <local:FileTreeView x:Name="Tree" />
+        </DockPanel>
+
+        <ui:BusyOverlay x:Name="BusyOverlay" />
+    </Grid>
+</Window>

@@ -15,7 +15,7 @@
 #
 # Usage: coverage-summary.sh <path-to-coverage.cobertura.xml>
 #
-# Hand it the MERGED report (build-and-unittest.yml merges the four test projects' reports with
+# Hand it the MERGED report (build-and-unittest.yml merges the three test projects' reports with
 # ReportGenerator first). One project's own report is that project's figure, not the total.
 
 set -euo pipefail

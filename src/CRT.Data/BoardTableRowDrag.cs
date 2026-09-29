@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     // row as an empty dashed slot: what is seen is the space the row will take, exactly as the
     // worklog's photo and file lists do it.
     //
-    // THE RULES, here rather than in the UI so the maintainer application's table gets them too:
+    // THE RULES, here rather than in the UI so the Maintainer tab's table gets them too:
     //
     //   - A red deleted row is never a place to drop onto. Where a ghost shows is worked out from
     //     the published order after every move (BoardTableSheet.PlaceGhosts), so "dropping onto" one

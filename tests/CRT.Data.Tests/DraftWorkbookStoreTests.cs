@@ -372,10 +372,86 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
     }
 
+    // ###########################################################################################
+    // *** A DISCARD THAT STOPS PART-WAY LEAVES A DRAFT, NOT A HAND-PLACED FOLDER (code review,
+    // 2026-09-27). *** The recursive delete removed the marker first and then stopped at the
+    // workbook Excel held open - and a folder without a marker is taken in again at the next start
+    // (DraftFolderImport), so the discarded draft came back as a new one. The marker goes last now:
+    // the stopped discard says so, the folder is still this draft, and nothing re-imports it.
+    // ###########################################################################################
+    [Fact]
+    public void A_discard_stopped_by_an_open_workbook_keeps_the_marker_so_the_folder_is_not_imported_again()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        }
+
+        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.Empty(DraftFolderImport.ImportUnmarkedFolders(
+            this.DraftsRoot, [new KnownDraftSystem(DraftWorkbookStoreTests.SystemKey, IsPublished: true)], DateTimeOffset.UtcNow));
+
+        // Excel closed: discarding again finishes it.
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+    }
+
     [Fact]
     public void Discarding_a_system_with_NO_draft_answers_false_rather_than_throwing()
     {
         Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+    }
+
+    // ###########################################################################################
+    // *** NO EMPTY FOLDERS LEFT BEHIND (owner report, 2026-09-27). *** A published draft is tidied
+    // away through this discard, and it used to leave "Drafts/Commodore/C64" (and "Drafts/
+    // Commodore") standing empty. The folders above a discarded draft go too - while they are empty.
+    // ###########################################################################################
+    [Fact]
+    public void Discarding_the_only_draft_removes_the_folders_it_leaves_empty_but_not_the_root()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+
+        Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore", "C64")));
+        Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore")));
+        Assert.True(Directory.Exists(this.DraftsRoot));
+    }
+
+    [Fact]
+    public void A_folder_still_holding_another_draft_or_anything_else_is_kept()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        // Another board of the same hardware, and something else beside the manufacturer's boards.
+        string otherBoard = Path.Combine(this.DraftsRoot, "Commodore", "C64", "250425");
+        Directory.CreateDirectory(otherBoard);
+        File.WriteAllText(Path.Combine(otherBoard, "Data C64 250425.xlsx"), "x");
+
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+
+        Assert.False(Directory.Exists(DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey)));
+        Assert.True(Directory.Exists(otherBoard));
+        Assert.True(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore")));
+    }
+
+    [Fact]
+    public void A_manufacturer_folder_holding_a_shared_files_folder_is_kept()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        string shared = Path.Combine(this.DraftsRoot, "Commodore", "Shared files");
+        Directory.CreateDirectory(shared);
+
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+
+        Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore", "C64")));
+        Assert.True(Directory.Exists(shared));
     }
 
     // ------------------------------------------------------------------ Fingerprint / EditIfUnchanged

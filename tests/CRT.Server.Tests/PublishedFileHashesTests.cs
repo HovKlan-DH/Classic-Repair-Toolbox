@@ -8,11 +8,11 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers PublishedFileHashes - the SHA-256 of each published file a submission also names,
-    // which the maintainer app uses to drop byte-identical pairs from the image comparison.
+    // which the Maintainer tab uses to drop byte-identical pairs from the image comparison.
     //
     // *** THIS EXISTS BECAUSE OF A REPORTED SCREEN (2026-09-23). *** A submission that changed
     // one component's short description was shown to the maintainer as "1178 images to compare",
-    // every one of them identical on both sides, because nothing told the maintainer app the
+    // every one of them identical on both sides, because nothing told the Maintainer tab the
     // published hashes. ReviewImageComparison.Plan already knew how to drop a matching pair; it
     // was never handed anything to match against.
     //
@@ -107,7 +107,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_result_is_keyed_by_the_PATH_AS_GIVEN_not_by_the_resolved_location()
         {
-            // The maintainer app looks the hash up by the path in its published-file list, which is
+            // The Maintainer tab looks the hash up by the path in its published-file list, which is
             // the data-root-relative string with forward slashes. A key rewritten to the OS
             // separator, or to an absolute path, would match nothing and every pair would be
             // shown as replaced - silently.

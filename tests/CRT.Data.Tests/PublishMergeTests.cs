@@ -222,4 +222,51 @@ public sealed class PublishMergeTests
 
         Assert.Single(merged.Components);
     }
+
+    // -----------------------------------------------------------------------------------------
+    // The "# Hardware:" / "# Board:" caption - the server's, like the revision date (owner report,
+    // 2026-09-28: every sheet of a published workbook had lost its first two lines).
+    // -----------------------------------------------------------------------------------------
+
+    // The rows carry no caption, so the board being replaced gives it.
+    [Fact]
+    public void The_published_boards_caption_is_kept()
+    {
+        BoardData published = new()
+        {
+            HardwareName = "Commodore 128 and 128D",
+            BoardName = "310378"
+        };
+
+        BoardData merged = PublishMerge.Build(PublishMergeTests.Manifest(), published);
+
+        Assert.Equal(("Commodore 128 and 128D", "310378"), (merged.HardwareName, merged.BoardName));
+    }
+
+    // A new system has no board to take it from: the names it is listed under fill it.
+    [Fact]
+    public void A_board_without_a_caption_takes_the_names_it_is_listed_under()
+    {
+        BoardData merged = PublishMerge.Build(PublishMergeTests.Manifest(), published: null);
+
+        BoardData captioned = PublishMerge.CaptionedAs(merged, " Amstrad CPC 464 ", "MC0002A");
+
+        Assert.Equal(("Amstrad CPC 464", "MC0002A"), (captioned.HardwareName, captioned.BoardName));
+        Assert.Equal("U8", Assert.Single(captioned.Components).BoardLabel);
+    }
+
+    // All or nothing: a board with a caption keeps it, even half of one, so a caption never mixes
+    // the workbook's own wording with the drop-down's.
+    [Theory]
+    [InlineData("Commodore 128 and 128D", "310378")]
+    [InlineData("Commodore 128 and 128D", "")]
+    [InlineData("", "310378")]
+    public void A_board_with_a_caption_keeps_its_own(string hardware, string board)
+    {
+        BoardData merged = PublishMerge.Build(PublishMergeTests.Manifest(), new BoardData { HardwareName = hardware, BoardName = board });
+
+        BoardData captioned = PublishMerge.CaptionedAs(merged, "Commodore 128", "310378 (C128 & C128D)");
+
+        Assert.Same(merged, captioned);
+    }
 }

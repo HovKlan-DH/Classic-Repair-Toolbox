@@ -36,15 +36,21 @@ namespace CRT.Server.Handlers.Submissions
             production.MapPost("/plan", ProductionEndpoints.PlanAsync);
             production.MapPost("/publish", ProductionEndpoints.PublishAsync)
                 .WithBodyLimit(RequestBodyLimits.PathListBytes);
+
+            // Rolling BETA back and returning its submissions to the queue (owner decision,
+            // 2026-09-27) - see BetaRollbackFlow.
+            production.MapPost("/rollback/plan", ProductionEndpoints.RollbackPlanAsync);
+            production.MapPost("/rollback", ProductionEndpoints.RollbackAsync);
         }
 
         // The list, the plan and publish bodies, and their answers, are CRT.Data's ReviewApiContract
         // records (ProductionListAnswer, ProductionPlanRequest, ProductionPublishRequest,
-        // ProductionPlanAnswer, ProductionPublishAnswer), shared with the maintainer application.
+        // ProductionPlanAnswer, ProductionPublishAnswer), shared with the Maintainer tab.
 
         private static async Task<IResult> ListAsync(
             HttpContext context,
             IAccountStore accounts,
+            ISubmissionStore submissions,
             ProductionPromotionFlow flow,
             ServerOptions options,
             CancellationToken cancellationToken)
@@ -55,30 +61,23 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            IReadOnlyList<SystemRecord> systems = options.IsProductionPublishingConfigured
-                ? await flow.ListAwaitingAsync(access, cancellationToken)
+            // ProductionPromotionFlow.ListEntriesAsync - a fixed number of queries however many
+            // systems wait (code review, 2026-09-29).
+            IReadOnlyList<ProductionListEntry> entries = options.IsProductionPublishingConfigured
+                ? await flow.ListEntriesAsync(access, options, DateTimeOffset.UtcNow, cancellationToken)
                 : [];
 
-            // CRT.Data's ProductionListAnswer, read by the maintainer application as the same record.
+            // CRT.Data's ProductionListAnswer, read by the Maintainer tab as the same record.
             // Configured is told rather than inferred from an empty list: "nothing is waiting" and
             // "this server cannot do it" must not look the same.
-            return Results.Ok(new ProductionListAnswer(
-                options.IsProductionPublishingConfigured,
-                systems.Select(system => new ProductionListEntry(
-                    system.SystemId,
-                    system.Manufacturer,
-                    system.Hardware,
-                    system.Board,
-                    BetaRevision: system.CurrentRevision,
-                    BetaContentHash: system.ContentHash,
-                    system.ProductionRevision,
-                    system.ProductionPublishedUtc)).ToList()));
+            return Results.Ok(new ProductionListAnswer(options.IsProductionPublishingConfigured, entries));
         }
 
         private static async Task<IResult> PlanAsync(
             ProductionPlanRequest request,
             HttpContext context,
             IAccountStore accounts,
+            ISubmissionStore submissions,
             ProductionPromotionFlow flow,
             ServerOptions options,
             CancellationToken cancellationToken)
@@ -125,13 +124,194 @@ namespace CRT.Server.Handlers.Submissions
                 Approval: outcome.Approval,
                 UnchangedCount: plan.UnchangedCount,
 
-                // CRT.Data's PromotionFile, read by the maintainer application as the same record.
+                // CRT.Data's PromotionFile, read by the Maintainer tab as the same record.
                 Files: plan.Files,
                 Problems: plan.Problems,
 
                 // What promoting would REMOVE from production - CRT.Data's FileRemovalPreview, shown
                 // before anyone approves and sent back with the publish request (2026-09-25).
-                Removals: outcome.Removals));
+                Removals: outcome.Removals,
+
+                // ###########################################################################################
+                // *** WHOSE WORK THIS WOULD CARRY (owner request, 2026-09-27). *** The same query
+                // AfterPublishAsync uses to email the contributors afterwards, asked BEFORE - so
+                // the maintainer sees the named people whose accepted work they are about to push
+                // to every CRT user, which the file list could never tell them.
+                //
+                // The window is the same as the mails': merged after the last production publish,
+                // up to now. Null previous means the first promotion, which carries everything.
+                // ###########################################################################################
+                Carrying: await ProductionEndpoints.CarriedByAsync(
+                    submissions, accounts, system, cancellationToken),
+
+                // The file tree's other half and where to open a file from (owner request,
+                // 2026-09-28) - see the record.
+                UnchangedFiles: plan.Unchanged ?? [],
+                BetaDataUrl: options.PublicDataBaseUrl,
+                ProductionDataUrl: options.ProductionPublicDataBaseUrl));
+        }
+
+        // ###########################################################################################
+        // The merged submissions this promotion would carry - the panel's top section (owner
+        // request, 2026-09-27). The rule is ProductionPromotionRules.Carrying; this asks the store
+        // the same question AfterPublishAsync asks when it mails them, with the same bounds.
+        //
+        // NEVER FAILS THE PLAN: this is context beside a decision, not part of it. A plan that 500s
+        // because a contributor's name could not be read would block a publish that is otherwise
+        // perfectly fine.
+        // ###########################################################################################
+        private static async Task<IReadOnlyList<CarriedSubmission>> CarriedByAsync(
+            ISubmissionStore submissions,
+            IAccountStore accounts,
+            SystemRecord system,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                IReadOnlyList<SubmissionRecord> merged = await submissions.GetMergedSubmissionsAsync(
+                    system.SystemId,
+                    system.ProductionPublishedUtc,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
+
+                // Whose contributor discarded their own draft since sending it (2026-09-28).
+                IReadOnlyDictionary<long, DateTimeOffset> discarded =
+                    await submissions.GetDraftDiscardsAsync(merged.Select(submission => submission.Id).ToList(), cancellationToken);
+
+                // Each contributor's address - the account's when they were signed in (2026-09-29).
+                IReadOnlyDictionary<long, string> addresses =
+                    await ContributorAddresses.ResolveAsync(accounts, merged, cancellationToken);
+
+                return ProductionPromotionRules.Carrying(merged, discarded, addresses);
+            }
+            catch (Exception)
+            {
+                return [];
+            }
+        }
+
+        // ###########################################################################################
+        // What a rollback WOULD do. Shown before the button, from the code that performs it.
+        // ###########################################################################################
+        private static async Task<IResult> RollbackPlanAsync(
+            BetaRollbackPlanRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            BetaRollbackFlow flow,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ProductionEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            BetaRollbackOutcome outcome = await flow.PlanAsync(access, request?.SystemId, options, cancellationToken);
+
+            if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
+                return problem;
+
+            BetaRollbackPlanResult plan = outcome.Plan!;
+
+            return Results.Ok(new BetaRollbackPlanAnswer(
+                outcome.System!.SystemId,
+                ProductionEndpoints.KindOf(plan.Kind),
+                plan.Restored,
+                plan.Removed,
+                plan.Returning,
+                plan.SharedRestored));
+        }
+
+        // ###########################################################################################
+        // Performs it. The comment is required and reaches every contributor whose submission goes
+        // back to the queue - see BetaRollbackFlow.
+        // ###########################################################################################
+        private static async Task<IResult> RollbackAsync(
+            BetaRollbackRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            ISubmissionStore submissions,
+            BetaRollbackFlow flow,
+            SubmissionNotifier notifier,
+            ServerOptions options,
+            ILogger<BetaRollbackFlow> logger,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await ProductionEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+
+            BetaRollbackOutcome outcome = await flow.RollBackAsync(
+                access, request?.SystemId, request?.Comment, options, now, cancellationToken, reject: request?.Reject == true);
+
+            if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
+                return problem;
+
+            BetaRollbackPlanResult plan = outcome.Plan!;
+
+            // ###########################################################################################
+            // *** AFTER THE FACT, AND NONE OF IT MAY FAIL THE REQUEST. *** BETA has been written and
+            // the submissions are back in the queue - the same position AfterPublishAsync is in. An
+            // error here would be read as "it did not happen" and retried.
+            // ###########################################################################################
+            try
+            {
+                // Its own mail, not NotifyDecisionAsync with a "pending" state - BuildMessage has no
+                // wording for that and answers null, so nobody would have been told. A rejection
+                // (2026-09-28) is the queue's own rejection, and says so in the queue's own mail.
+                foreach (CarriedSubmission submission in plan.Returning)
+                {
+                    await notifier.NotifyTakenOutOfBetaAsync(
+                        submission.ContactEmail,
+                        outcome.System!.SystemId,
+                        request!.Comment,
+                        outcome.Rejected,
+                        cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "{SystemId} WAS rolled back and its submissions recorded (returned to the queue, or rejected), but the contributors " +
+                    "could not all be told.",
+                    outcome.System!.SystemId);
+            }
+
+            return Results.Ok(new BetaRollbackAnswer(
+                outcome.System!.SystemId,
+                ProductionEndpoints.KindOf(plan.Kind),
+                outcome.FilesRestored,
+                outcome.FilesRemoved,
+                plan.Returning.Count,
+                outcome.Rejected));
+        }
+
+        // The wire's word for each kind, so the Maintainer tab does not parse an enum name.
+        private static string KindOf(BetaRollbackKind kind) =>
+            kind == BetaRollbackKind.RemoveFromBeta ? "remove" : "restore";
+
+        // The same status codes the promotion routes use - see this class's header.
+        private static IResult? RefusalFor(BetaRollbackOutcome outcome)
+        {
+            if (outcome.IsNotConfigured)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            if (outcome.IsForbidden)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
+
+            if (outcome.IsNotFound)
+                return Results.NotFound(new { error = outcome.Error });
+
+            if (outcome.IsConflict)
+                return Results.Conflict(new { error = outcome.Error });
+
+            return outcome.Error is not null ? Results.BadRequest(new { error = outcome.Error }) : null;
         }
 
         private static async Task<IResult> PublishAsync(
@@ -264,10 +444,15 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<SubmissionRecord> carried = await submissions.GetMergedSubmissionsAsync(
                 system.SystemId, outcome.PreviousProductionPublishedUtc, now, cancellationToken);
 
+            // The account's address for a signed-in contributor (2026-09-29) - the contact address
+            // alone is empty for them, and they were never told.
+            IReadOnlyDictionary<long, string> addresses =
+                await ContributorAddresses.ResolveAsync(accounts, carried, cancellationToken);
+
             foreach (SubmissionRecord submission in carried)
             {
                 await notifier.NotifyDecisionAsync(
-                    submission.ContactEmail,
+                    addresses.GetValueOrDefault(submission.Id, submission.ContactEmail ?? string.Empty),
                     submission.SystemId,
                     ProductionPromotionRules.PublishedState,
                     maintainerComment: null,

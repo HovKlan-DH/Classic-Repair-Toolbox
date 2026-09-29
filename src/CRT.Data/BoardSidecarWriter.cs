@@ -72,15 +72,7 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(sidecarPath))
                 throw new InvalidOperationException($"Could not resolve a sidecar path for [{workbookPath}].");
 
-            // ONE document carrying BOTH roots - see the class header on why this is not two
-            // writes. Built from scratch rather than loaded: the published sidecar must be exactly
-            // what the submission describes, and carrying an unknown root forward from whatever
-            // was there before would publish data no maintainer ever saw.
-            var root = new JsonObject
-            {
-                [BoardSidecarWriter.HighlightsRoot] = BoardSidecarWriter.BuildHighlights(highlights),
-                [BoardSidecarWriter.CalibrationRoot] = BoardSidecarWriter.BuildCalibrations(calibrations)
-            };
+            JsonObject root = BoardSidecarWriter.BuildDocument(highlights, calibrations);
 
             string directory = Path.GetDirectoryName(sidecarPath) ?? string.Empty;
 
@@ -88,10 +80,136 @@ namespace Handlers.DataHandling
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 
-            File.WriteAllText(
+            // REPLACED, never written in place (owner report, 2026-09-28): a sidecar copied into
+            // the tree by hand as another user cannot be opened for writing, and a publish stopped
+            // here half-way through a board - see FileReplacer.
+            FileReplacer.WriteAllText(
                 sidecarPath,
                 root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
+
+        // ###########################################################################################
+        // *** WRITES ONLY WHEN THE CONTENT CHANGES (owner request, 2026-09-28). *** Returns whether
+        // it wrote. A board's sidecar that holds exactly these highlights and calibrations - as CRT
+        // reads them - is left as it is, bytes and all.
+        //
+        // Why: the server's file differs in BYTES from one CRT or a person wrote - LF against CRLF,
+        // labels sorted as text (C10 before C2) against natural order, an empty calibration section
+        // - so the first publish of every board "replaced" its .json with no highlight changed, and
+        // "Publish to production" then listed it as a file to copy. A maintainer reading that list
+        // is asking "what changed?", and it must not answer "this" when nothing did.
+        //
+        // Server-side (PublishExecutor) only. A draft is always written in full - see Write.
+        // ###########################################################################################
+        public static bool WriteIfChanged(
+            string workbookPath,
+            IReadOnlyList<ComponentHighlightEntry> highlights,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(workbookPath);
+            ArgumentNullException.ThrowIfNull(highlights);
+            ArgumentNullException.ThrowIfNull(calibrations);
+
+            if (BoardSidecarWriter.HoldsTheSameContent(workbookPath, highlights, calibrations))
+                return false;
+
+            BoardSidecarWriter.Write(workbookPath, highlights, calibrations);
+            return true;
+        }
+
+        // ###########################################################################################
+        // Whether the sidecar beside `workbookPath` already holds exactly these highlights and
+        // calibrations. Compared as the WRITER would write both - the existing file read through
+        // CRT's own readers, then built into the same canonical document as the new content - so
+        // formatting, order and line endings never count, and anything CRT would read differently
+        // does.
+        //
+        // *** ONLY A FILE THIS CAN VOUCH FOR IS KEPT. *** One that is missing, does not parse, or
+        // carries any root besides the two known ones is "not the same": keeping a root nothing
+        // here reads would publish data no maintainer saw - the reason Write builds from scratch.
+        // Also used to say whether a publish WOULD change the file (the maintainer's file list).
+        // ###########################################################################################
+        public static bool HoldsTheSameContent(
+            string workbookPath,
+            IReadOnlyList<ComponentHighlightEntry> highlights,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations)
+        {
+            ArgumentNullException.ThrowIfNull(highlights);
+            ArgumentNullException.ThrowIfNull(calibrations);
+
+            string sidecarPath = BoardComponentHighlightStorage.GetJsonPath(workbookPath);
+
+            if (string.IsNullOrWhiteSpace(sidecarPath) || !File.Exists(sidecarPath))
+                return false;
+
+            JsonObject? existing;
+
+            try
+            {
+                existing = JsonNode.Parse(File.ReadAllText(sidecarPath)) as JsonObject;
+            }
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+
+            if (existing is null ||
+                existing.Any(root => root.Key is not (BoardSidecarWriter.HighlightsRoot or BoardSidecarWriter.CalibrationRoot)))
+            {
+                return false;
+            }
+
+            var existingCalibrations = new List<KiCadCalibrationEntry>();
+
+            if (existing[BoardSidecarWriter.CalibrationRoot] is JsonObject calibrationRoot)
+            {
+                foreach (string schematic in calibrationRoot.Select(entry => entry.Key))
+                {
+                    if (!BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+                            workbookPath, schematic, out string cadName, out double offsetX, out double offsetY,
+                            out double scaleX, out double scaleY, out bool mirrorX, out bool mirrorY))
+                    {
+                        return false;
+                    }
+
+                    existingCalibrations.Add(new KiCadCalibrationEntry
+                    {
+                        SchematicName = schematic,
+                        CadName = cadName,
+                        OffsetX = offsetX,
+                        OffsetY = offsetY,
+                        ScaleX = scaleX,
+                        ScaleY = scaleY,
+                        MirrorX = mirrorX,
+                        MirrorY = mirrorY
+                    });
+                }
+            }
+            else if (existing[BoardSidecarWriter.CalibrationRoot] is not null)
+            {
+                return false;
+            }
+
+            string before = BoardSidecarWriter.BuildDocument(
+                BoardComponentHighlightStorage.LoadComponentHighlights(workbookPath), existingCalibrations).ToJsonString();
+
+            return string.Equals(before, BoardSidecarWriter.BuildDocument(highlights, calibrations).ToJsonString(), StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // ONE document carrying BOTH roots - see the class header on why this is not two writes.
+        // Built from scratch rather than loaded: the published sidecar must be exactly what the
+        // submission describes, and carrying an unknown root forward from whatever was there
+        // before would publish data no maintainer ever saw.
+        // ###########################################################################################
+        private static JsonObject BuildDocument(
+            IReadOnlyList<ComponentHighlightEntry> highlights,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations) =>
+            new()
+            {
+                [BoardSidecarWriter.HighlightsRoot] = BoardSidecarWriter.BuildHighlights(highlights),
+                [BoardSidecarWriter.CalibrationRoot] = BoardSidecarWriter.BuildCalibrations(calibrations)
+            };
 
         // ###########################################################################################
         // The "Component highlights" root: schematic -> board label -> an ARRAY of rects.

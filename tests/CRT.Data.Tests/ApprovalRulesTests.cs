@@ -181,6 +181,23 @@ namespace CRT.Data.Tests
             Assert.False(status.ApprovalPublishes);
         }
 
+        // ###########################################################################################
+        // *** THE REQUIREMENT SHRANK TO "ANY ONE APPROVAL" (2026-09-27). *** A maintainer gave the
+        // first of two approvals for ADDING a shared file, which now needs only one. That approval is
+        // enough: the maintainer who gave it can press Approve again and it publishes, rather than
+        // being told "already approved" of an item only the administrator could then finish.
+        // ###########################################################################################
+        [Fact]
+        public void An_item_already_approved_once_when_one_approval_became_enough_is_finished_by_its_approver()
+        {
+            GivenApproval maintainer = new(ApproverRole.Maintainer, "Anna", ApprovalRulesTests.Now, AccountId: 7);
+
+            ApprovalStatus status = ApprovalRules.Status([], [maintainer], ApproverRole.Maintainer, yourAccountId: 7);
+
+            Assert.True(status.CanApprove);
+            Assert.True(status.ApprovalPublishes);
+        }
+
         // -----------------------------------------------------------------------------------
         // On the wire
         // -----------------------------------------------------------------------------------
@@ -188,7 +205,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_status_round_trips_with_its_roles_as_NAMES()
         {
-            // The server serialises this record and the maintainer application reads it back as the
+            // The server serialises this record and the Maintainer tab reads it back as the
             // same record; roles travel as names so a member added later cannot shift the others.
             ApprovalStatus status = ApprovalRules.Status(
                 ApprovalRulesTests.Both, [ApprovalRulesTests.By(ApproverRole.Maintainer)], ApproverRole.Administrator);

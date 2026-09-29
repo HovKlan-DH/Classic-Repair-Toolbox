@@ -68,7 +68,7 @@ namespace CRT.Data.Tests
             Assert.Equal(submittable, SubmissionKiCadFiles.IsSubmittable(SubmissionKiCadFilesTests.Manifest(), path));
         }
 
-        // The maintainer application's side of the same question, asked of a path alone.
+        // The Maintainer tab's side of the same question, asked of a path alone.
         [Theory]
         [InlineData("Manu1/Hardware1/Board1/KiCad data/board.kicad_pcb", true)]
         [InlineData("Manu1/Hardware1/Board1/Sheet1.png", false)]

@@ -29,7 +29,7 @@ namespace Handlers.DataHandling
     // CASE-SENSITIVE, like every path comparison against the Linux tree: "commodore/C64/250407/"
     // is not this system's folder, and treating it as one would let a case-variant pass as own.
     //
-    // Serialised as its NAME, not its number, because the maintainer application reads it off the
+    // Serialised as its NAME, not its number, because the Maintainer tab reads it off the
     // wire - a number that shifted when a member was added would mislabel every file silently.
     // ###########################################################################################
     [JsonConverter(typeof(JsonStringEnumConverter<SubmissionFileScope>))]

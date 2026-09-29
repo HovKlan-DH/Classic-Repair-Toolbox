@@ -330,7 +330,7 @@ namespace Handlers.DataHandling
     // is answered 404 rather than 403, so the small sequential id space cannot be walked to learn
     // which submissions exist.
     //
-    // MaintainerComment is carried now and filled by Phase 5. The maintainer application does not exist
+    // MaintainerComment is carried now and filled by Phase 5. The Maintainer tab does not exist
     // yet, so the server has no field for it and it arrives empty - defined here so that adding it
     // server-side later needs no contract version bump and no change on any contributor's disk.
     // ###########################################################################################
@@ -353,7 +353,7 @@ namespace Handlers.DataHandling
 
         public string MaintainerComment { get; set; } = string.Empty;
 
-        // A maintainer changed some of the submission's rows in the maintainer application before
+        // A maintainer changed some of the submission's rows in the Maintainer tab before
         // deciding it (2026-09-25) - what is published is then not exactly what was sent, and the
         // contributor is told so in "My submissions".
         public bool AmendedByMaintainer { get; set; }

@@ -1,26 +1,48 @@
+using System.Data.Common;
+using CRT.Server.Handlers.Database;
+
 namespace CRT.Server.Configuration
 {
     // ###########################################################################################
-    // The exit code the service stops with when its settings are refused (2026-09-25).
+    // The exit codes the service stops with when it cannot start (2026-09-25, migrations
+    // 2026-09-27).
     //
     // A refused start used to THROW out of Main. On Linux an unhandled exception aborts the
     // process, so systemd-coredump wrote a core dump of every thread into the journal, and
     // Restart=always started the service again five seconds later - another dump every five
     // seconds, burying the one line that named the wrong setting. That is what the first deploy
-    // after the security review looked like.
+    // after the security review looked like, and what the first deploy of migration 0013 looked
+    // like two days later, when a table made by hand was in its way.
     //
-    // A wrong setting is not something a restart can fix, so the service now logs the reasons and
-    // EXITS with this code, and the unit's RestartPreventExitStatus= names it so systemd stops
-    // there. 78 is EX_CONFIG from sysexits.h, "configuration error".
+    // So the service now logs the reason at crit and EXITS:
     //
-    // Everything else that stops a start - the database unreachable, a migration failing - still
-    // throws and is still retried, on purpose: MariaDB coming up a few seconds after this service
-    // at boot is exactly the case a restart does fix.
+    //   ConfigurationRefused (78, EX_CONFIG) - a setting was refused. A restart cannot fix it, and
+    //     the unit's RestartPreventExitStatus= names the code so systemd stops there.
+    //   MigrationFailed - the SAME code, deliberately: a migration that failed, or one MigrationPlan
+    //     refused, needs a person to look at the database, and restarting only repeats it. Sharing
+    //     78 means the unit written from DEPLOYMENT.md needed no change to stop retrying it.
+    //   DatabaseUnreachable (69, EX_UNAVAILABLE) - the database did not answer. That IS what a
+    //     restart fixes (MariaDB coming up a few seconds after this service at boot), so the unit
+    //     does not name it and systemd tries again - now without a core dump each time.
     //
-    // DEPLOYMENT.md's unit file names the same number; ServerExitCodesTests fails if they part.
+    // DEPLOYMENT.md's unit file names 78 and not 69; ServerExitCodesTests fails if they part.
     // ###########################################################################################
     public static class ServerExitCodes
     {
         public const int ConfigurationRefused = 78;
+
+        public const int MigrationFailed = ServerExitCodes.ConfigurationRefused;
+
+        public const int DatabaseUnreachable = 69;
+
+        // The code a start that failed with `exception` exits with - null for anything else,
+        // which Main lets through as before.
+        public static int? ForStartupFailure(Exception exception) =>
+            exception switch
+            {
+                MigrationFailedException => ServerExitCodes.MigrationFailed,
+                DbException => ServerExitCodes.DatabaseUnreachable,
+                _ => null
+            };
     }
 }

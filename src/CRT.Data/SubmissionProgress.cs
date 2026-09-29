@@ -74,12 +74,15 @@ namespace Handlers.DataHandling
                 SubmissionPhase.Preparing =>
                     "Working out what to send...",
 
+                // The files are read on THIS machine to fingerprint them; the server is asked which
+                // fingerprints it lacks only in the next phase. So "which files need sending" is
+                // what the two phases work out between them - nothing is sent or validated yet.
                 SubmissionPhase.Hashing when this.FilesTotal > 0 =>
                     string.Create(CultureInfo.InvariantCulture,
-                        $"Checking files ({this.FilesDone} of {this.FilesTotal})..."),
+                        $"Checking which files need sending ({this.FilesDone} of {this.FilesTotal})..."),
 
                 SubmissionPhase.Hashing =>
-                    "Checking files...",
+                    "Checking which files need sending...",
 
                 SubmissionPhase.Negotiating =>
                     "Asking the server what it already has...",
@@ -103,6 +106,25 @@ namespace Handlers.DataHandling
                 _ => "Working..."
             };
         }
+
+        // ###########################################################################################
+        // The dialog's heading for this phase (owner report, 2026-09-28).
+        //
+        // *** "SENDING" ONLY ONCE SOMETHING IS BEING SENT. *** The heading read "Sending
+        // contribution" from the first moment, while the dialog spent most of a large system's wait
+        // reading files on this machine with nothing leaving it - so the heading and the line under
+        // it described two different things. Before the upload it is "Preparing".
+        // ###########################################################################################
+        public string Heading => this.Phase switch
+        {
+            SubmissionPhase.Preparing or SubmissionPhase.Hashing or SubmissionPhase.Negotiating =>
+                "Preparing contribution",
+
+            SubmissionPhase.Done =>
+                "Contribution sent",
+
+            _ => "Sending contribution"
+        };
     }
 
     public enum SubmissionPhase

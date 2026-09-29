@@ -285,6 +285,41 @@
                       Content="View boards as officially published (hide my own local drafts)"
                       ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a system where you have unpublished local edits" />
 
+			<!-- The Maintainer tab (2026-09-29: the separate CRT Maintainer application became a tab).
+			     Off by default - it needs a maintainer account. Laid out like the Workbooks section:
+			     the check box and its "?" share a row. -->
+			<TextBlock Text="Maintainer"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       Margin="0,16,0,4" />
+
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="EnableMaintainerTabCheckBox"
+						  Content="Enable Maintainer tab"
+						  VerticalAlignment="Center" />
+				<Button x:Name="EnableMaintainerTabHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Open help page for the Maintainer tab"
+						Click="OnEnableMaintainerTabHelpClick">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
+
+			<TextBlock Text="For maintainers of the hardware data. The tab needs a maintainer account, given by the administrator through an invitation."
+                       TextWrapping="Wrap"
+                       Opacity="0.7"
+                       Margin="0,2,0,0" />
+
 			<!-- Three separate buttons rather than one, because these are three different folders
 			     and two of them can be moved elsewhere by the data-root and workbooks-root
 			     command-line switches. Each opens the path the app is ACTUALLY using, so a

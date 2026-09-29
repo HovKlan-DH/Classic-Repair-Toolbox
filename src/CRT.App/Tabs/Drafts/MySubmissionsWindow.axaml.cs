@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using CRT;
 using Handlers.DataHandling;
 using Handlers.Online;
 using System;
@@ -134,57 +135,28 @@ namespace CRT
             CancellationToken token = this.thisRefresh.Token;
 
             this.RefreshButton.IsEnabled = false;
-            this.ShowStatus("Checking with the server...");
+            this.ShowStatus(string.Empty);
 
             try
             {
-                var client = new SubmissionClient();
+                // Under this window's "please wait" overlay (2026-09-28). Each contribution asked about
+                // starts the two minutes again, so a long list is never cut off while it is moving.
+                WaitResult<(int Checked, int Updated, int Unreachable)> waited = await BusyOverlay.RunAsync(
+                    this,
+                    CrtWaitWording.CheckingSubmissions,
+                    context => this.CheckReceiptsAsync(context, token));
 
-                // *** THE LAUNCH CHECK'S "which rows are worth asking about" RULE, WITHOUT ITS TIME
-                // LIMIT *** (SubmissionStatusRefresh.RefreshAsync). This loop is kept rather than
-                // delegated because this screen reports "checked N, updated M, could not reach K"
-                // and the shared method deliberately returns only how many CHANGED - a count that is
-                // right for "should anything be redrawn" and wrong for a status line somebody is
-                // reading.
-                //
-                // The launch check stops asking about a submission in BETA after
-                // SubmissionReceiptPresenter.MergedRecheckWindow, so it costs nothing for ever
-                // (code review, 2026-09-25). This button does not: the contributor pressed it to
-                // ask, and one request per such row, once, is what they asked for.
-                List<SubmissionReceipt> toCheck = SubmissionReceiptStore.All
-                    .Where(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
-                    .ToList();
+                // Whatever was checked before the limit is kept - the rows show it.
+                this.RebuildRows();
 
-                int updated = 0;
-                int unreachable = 0;
-
-                foreach (SubmissionReceipt receipt in toCheck)
+                if (waited.IsTimedOut)
                 {
-                    token.ThrowIfCancellationRequested();
-
-                    SubmissionStatus? status = this.StatusLookupForTests is not null
-                        ? await this.StatusLookupForTests(receipt.SubmissionId, receipt.UploadToken, token)
-                        : await client.GetStatusAsync(receipt.SubmissionId, receipt.UploadToken, token);
-
-                    if (status is null)
-                    {
-                        unreachable++;
-                        continue;
-                    }
-
-                    SubmissionReceiptStore.UpdateState(
-                        receipt.SubmissionId,
-                        status.State,
-                        status.MaintainerComment,
-                        DateTimeOffset.UtcNow,
-                        status.DecidedUtc,
-                        status.AmendedByMaintainer);
-
-                    updated++;
+                    this.ShowStatus(CrtWaitWording.SubmissionsNoAnswer);
+                    return;
                 }
 
-                this.RebuildRows();
-                this.ShowRefreshOutcome(toCheck.Count, updated, unreachable);
+                (int checkedCount, int updated, int unreachable) = waited.Value;
+                this.ShowRefreshOutcome(checkedCount, updated, unreachable);
             }
             catch (OperationCanceledException)
             {
@@ -194,6 +166,64 @@ namespace CRT
             {
                 this.RefreshButton.IsEnabled = this.Submissions.Count > 0;
             }
+        }
+
+        // The asking itself - one request per contribution still open. `closing` is the window's own
+        // token (closed, or replaced by a newer refresh); the overlay's is its two-minute limit.
+        private async Task<(int Checked, int Updated, int Unreachable)> CheckReceiptsAsync(WaitContext context, CancellationToken closing)
+        {
+            using CancellationTokenSource both = CancellationTokenSource.CreateLinkedTokenSource(closing, context.Token);
+            CancellationToken token = both.Token;
+
+            var client = new SubmissionClient();
+
+            // *** THE LAUNCH CHECK'S "which rows are worth asking about" RULE, WITHOUT ITS TIME
+            // LIMIT *** (SubmissionStatusRefresh.RefreshAsync). This loop is kept rather than
+            // delegated because this screen reports "checked N, updated M, could not reach K"
+            // and the shared method deliberately returns only how many CHANGED - a count that is
+            // right for "should anything be redrawn" and wrong for a status line somebody is
+            // reading.
+            //
+            // The launch check stops asking about a submission in BETA after
+            // SubmissionReceiptPresenter.MergedRecheckWindow, so it costs nothing for ever
+            // (code review, 2026-09-25). This button does not: the contributor pressed it to
+            // ask, and one request per such row, once, is what they asked for.
+            List<SubmissionReceipt> toCheck = SubmissionReceiptStore.All
+                .Where(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
+                .ToList();
+
+            int updated = 0;
+            int unreachable = 0;
+
+            foreach (SubmissionReceipt receipt in toCheck)
+            {
+                token.ThrowIfCancellationRequested();
+
+                // Both a sentence and a sign of life: each one starts the two minutes again.
+                context.Report(CrtWaitWording.CheckingSubmission(updated + unreachable + 1, toCheck.Count));
+
+                SubmissionStatus? status = this.StatusLookupForTests is not null
+                    ? await this.StatusLookupForTests(receipt.SubmissionId, receipt.UploadToken, token)
+                    : await client.GetStatusAsync(receipt.SubmissionId, receipt.UploadToken, token);
+
+                if (status is null)
+                {
+                    unreachable++;
+                    continue;
+                }
+
+                SubmissionReceiptStore.UpdateState(
+                    receipt.SubmissionId,
+                    status.State,
+                    status.MaintainerComment,
+                    DateTimeOffset.UtcNow,
+                    status.DecidedUtc,
+                    status.AmendedByMaintainer);
+
+                updated++;
+            }
+
+            return (toCheck.Count, updated, unreachable);
         }
 
         // ###########################################################################################
@@ -409,7 +439,9 @@ namespace CRT
         // failure. Four colours across four buckets, which is the legend being one-to-one rather
         // than something extra to learn.
         // ###########################################################################################
-        private static IBrush AccentFor(SubmissionOutcomeKind kind) => kind switch
+        // internal: the Drafts tab's submission badge colours itself with this same mapping, so a
+        // state cannot be green in one place and orange in the other.
+        internal static IBrush AccentFor(SubmissionOutcomeKind kind) => kind switch
         {
             SubmissionOutcomeKind.Good => SubmissionListItem.Theme("Text_Success_Fg", Brushes.SeaGreen),
             SubmissionOutcomeKind.Bad => SubmissionListItem.Theme("Text_Fail_Fg", Brushes.IndianRed),
@@ -472,21 +504,11 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // "Commodore/C64/250407/Data C64 250407.xlsx" -> "Commodore C64 250407".
-        //
-        // Falls back to the raw key rather than to an empty row when the shape is not what is
-        // expected: a row that names nothing is worse than one naming something odd.
+        // "Commodore/C128/310378 Open128" -> "Commodore C128 310378 Open128" - through the shared
+        // presenter, which the Drafts tab's "switch back from BETA" notice names systems with too.
+        // It used to drop the last segment as a file name, which on a real receipt was the BOARD.
         // ###########################################################################################
-        private static string DescribeSystem(string? systemId)
-        {
-            if (string.IsNullOrWhiteSpace(systemId))
-                return "(unknown system)";
-
-            string[] segments = systemId.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-            return segments.Length < 2
-                ? systemId
-                : string.Join(' ', segments.Take(segments.Length - 1));
-        }
+        private static string DescribeSystem(string? systemId) =>
+            SubmissionReceiptPresenter.DescribeSystem(systemId);
     }
 }

@@ -8,7 +8,7 @@ namespace CRT.Data.Tests
 {
     // ###########################################################################################
     // WorkbookReadCache - what a workbook cites, read once per version of the file (code review,
-    // 2026-09-25). The maintainer application's submission detail computes a removal preview on every
+    // 2026-09-25). The Maintainer tab's submission detail computes a removal preview on every
     // click, and that used to parse every workbook in the BETA tree each time.
     //
     // What matters: an unchanged workbook is not read again, a CHANGED one always is (a stale

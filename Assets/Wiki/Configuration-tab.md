@@ -50,7 +50,9 @@ on without it.
 the live one. This is for coordinated testing of data that is not ready yet, and it can leave you
 with board data that is incomplete or wrong; only use it in agreement with the developer, or at your
 own risk. Ticking it refreshes your data from the BETA source straight away; unticking it takes
-effect at the next application launch. Greyed out unless launch-time data checking is on.
+effect at the next application launch. Greyed out unless launch-time data checking is on. If you
+ticked it to check a contribution of your own, CRT tells you when that contribution reaches the
+ordinary source, so you remember to untick it again.
 
 **Delete orphan and non-used files** — removes files in your data folder that no board refers to any
 more. Housekeeping for a data folder that has been through many updates. Greyed out unless
@@ -111,6 +113,13 @@ already recorded rather than recalculating them.
 board shows exactly what everyone else sees. That covers everything in a draft: its rows, and also
 any schematic image or file you replaced, KiCad data you imported and KiCad calibration you
 changed. Untick it again to see your edits marked and applied as usual. See [Contribute data via CRT](Contribute-data-via-CRT) for what a draft is.
+
+## Maintainer
+
+**Enable Maintainer tab** - shows or hides the [Maintainer tab](Maintainer-tab), where maintainers
+of the hardware data review and publish what other people send in. Off by default: it needs a
+maintainer account, which the administrator gives by invitation, and it does nothing without one.
+Hiding it again does not sign you out.
 
 ## Visible hardware, boards and schematics
 

@@ -1409,9 +1409,15 @@ namespace CRT
 
             try
             {
-                this.ShowStatus("Saving to your local draft...", false);
+                this.ShowStatus(string.Empty, false);
 
-                saveSucceeded = await this.SaveComponentToDraftAsync();
+                // Under this window's "please wait" overlay (2026-09-28). Writing a draft cannot be
+                // stopped halfway, so past the limit it carries on and the line below says so.
+                saveSucceeded = await BusyOverlay.RunLocalAsync(
+                    this,
+                    CrtWaitWording.SavingDraft,
+                    this.SaveComponentToDraftAsync,
+                    () => this.ShowStatus(WaitWording.StillRunning("Saving to your draft"), false));
 
                 if (saveSucceeded)
                 {

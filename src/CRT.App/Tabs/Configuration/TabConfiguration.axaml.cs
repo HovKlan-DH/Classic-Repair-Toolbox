@@ -53,6 +53,7 @@ namespace CRT
             this.EnableMiniproExperimentalDemoModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalDemoMode;
             this.UpdateEnableMiniproExperimentalDemoModeCheckBoxState();
             this.EnableWorklogCheckBox.IsChecked = UserSettings.EnableWorklog;
+            this.EnableMaintainerTabCheckBox.IsChecked = UserSettings.EnableMaintainerTab;
             this.ViewOfficialPublishedOnlyCheckBox.IsChecked = UserSettings.ViewOfficialPublishedOnly;
 
             bool isAllBoardsScope = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
@@ -82,6 +83,7 @@ namespace CRT
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsCheckedChanged += this.OnEnableNetworkConnectedOscilloscopeTabChanged;
             this.EnableMiniproExperimentalModeCheckBox.IsCheckedChanged += this.OnEnableMiniproExperimentalModeChanged;
             this.EnableWorklogCheckBox.IsCheckedChanged += this.OnEnableWorklogChanged;
+            this.EnableMaintainerTabCheckBox.IsCheckedChanged += this.OnEnableMaintainerTabChanged;
             this.ViewOfficialPublishedOnlyCheckBox.IsCheckedChanged += this.OnViewOfficialPublishedOnlyChanged;
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
@@ -402,6 +404,33 @@ namespace CRT
             if (!ExternalTargetLauncher.TryOpen(helpUrl))
             {
                 Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Opens the help page describing the Maintainer tab - same shape as the Workbooks help above.
+        // ###########################################################################################
+        private void OnEnableMaintainerTabHelpClick(object? sender, RoutedEventArgs e)
+        {
+            string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageMaintainer);
+
+            if (!ExternalTargetLauncher.TryOpen(helpUrl))
+            {
+                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Persists "Enable Maintainer tab" and shows or hides the tab to match (2026-09-29). Hiding
+        // it neither signs out nor closes its table - Main.Maintainer.cs.
+        // ###########################################################################################
+        private void OnEnableMaintainerTabChanged(object? sender, RoutedEventArgs e)
+        {
+            UserSettings.EnableMaintainerTab = this.EnableMaintainerTabCheckBox.IsChecked == true;
+
+            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            {
+                mainWindow.ApplyMaintainerTabVisibility();
             }
         }
 
@@ -1002,6 +1031,10 @@ namespace CRT
         {
             bool isEnabled = this.DownloadDataFromTestSourceCheckBox.IsChecked == true;
             UserSettings.DownloadDataFromTestSource = isEnabled;
+
+            // The "switch back from BETA" notice is only for someone downloading BETA - it goes the
+            // moment they switch back, and comes back if they switch to BETA again undismissed.
+            this.thisMainWindow?.RefreshSourceSwitchNotice();
 
             if (!UserSettings.CheckDataOnLaunch)
             {

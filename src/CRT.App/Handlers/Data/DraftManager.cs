@@ -2,6 +2,7 @@ using CRT;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -14,7 +15,7 @@ namespace Handlers.DataHandling
     // This class only resolves the root and maps a system to its folder under it - the same split
     // DataManager (root resolution, sync) keeps from BoardDataReader (board file parsing).
     // Reading/writing one system's draft.json is DraftDataStore, in CRT.Data, since that logic is
-    // pure and needed by the future maintainer app too; only "where is Drafts/" is an app concern.
+    // pure and needed by the Maintainer tab too; only "where is Drafts/" is an app concern.
     //
     // Mirrors WorklogManager's own root-resolution pattern (its own "--workbooks-root=" beside
     // DataManager's "--data-root="): a "--drafts-root=" switch, parsed the same way (case-
@@ -201,7 +202,27 @@ namespace Handlers.DataHandling
                 }
             }
 
-            return result;
+            // ###########################################################################################
+            // *** ONE ROW PER DRAFT FOLDER (code review, 2026-09-27). *** The marker is found by
+            // FOLDER, so every listed entry in a draft's folder "has" it - including one under
+            // another workbook name that cannot read it: a new system listed in BETA as
+            // "... v2.0.0.xlsx" beside its own draft entry ("....xlsx"). That one showed a second row
+            // with nothing changed. Where one entry of a folder reads the draft's workbook, the
+            // entries that cannot are left out; where none can (a marker whose workbook has gone),
+            // all stay, so the draft can still be discarded.
+            // ###########################################################################################
+            return result
+                .GroupBy(entry => SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile), StringComparer.OrdinalIgnoreCase)
+                .SelectMany(folder =>
+                {
+                    List<HardwareBoardEntry> reading = folder
+                        .Where(entry => File.Exists(DraftFolderLayout.GetWorkbookPath(_draftsRoot, entry.ExcelDataFile)))
+                        .ToList();
+
+                    return reading.Count > 0 ? reading : folder.ToList();
+                })
+                .OrderBy(entry => result.IndexOf(entry))
+                .ToList();
         }
 
         // ###########################################################################################
@@ -275,6 +296,64 @@ namespace Handlers.DataHandling
             }
 
             return result;
+        }
+
+        // ###########################################################################################
+        // Makes a draft of every board folder put into Drafts/ by hand (owner request, 2026-09-27) -
+        // see DraftFolderImport for what counts and which kind of draft each becomes.
+        //
+        // Called from DataManager.LoadMainExcel, the one moment the known systems are all in hand
+        // and before anything is listed, so an imported folder shows on the Drafts tab and in the
+        // drop-downs on the same launch. A folder dropped in while the application runs is picked
+        // up at the next start.
+        //
+        // Every folder it looked at is logged: one it could NOT import is otherwise exactly the
+        // silent "my board is not on the Drafts tab" this exists to end.
+        // ###########################################################################################
+        public static void ImportHandPlacedFolders(IEnumerable<KnownDraftSystem> knownSystems)
+        {
+            if (string.IsNullOrWhiteSpace(_draftsRoot))
+            {
+                return;
+            }
+
+            // ###########################################################################################
+            // *** NEVER LETS AN EXCEPTION OUT (code review, 2026-09-27). *** DataManager calls this
+            // while loading the main workbook, before HardwareBoards is set, inside that load's one
+            // try: anything escaping here emptied the whole board list for an optional import. Each
+            // folder already contains its own failures (DraftFolderImport.ImportOne); this contains
+            // the walk around them.
+            // ###########################################################################################
+            IReadOnlyList<DraftFolderImportOutcome> outcomes;
+
+            try
+            {
+                outcomes = DraftFolderImport.ImportUnmarkedFolders(_draftsRoot, knownSystems, DateTimeOffset.UtcNow);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Looking for board folders put into the drafts folder by hand failed - [{ex.Message}]");
+                return;
+            }
+
+            foreach (DraftFolderImportOutcome outcome in outcomes)
+            {
+                if (!outcome.Imported)
+                {
+                    Logger.Warning($"Folder [{outcome.SystemFolder}] in the drafts folder was not taken in as a draft - {outcome.Reason}");
+                    continue;
+                }
+
+                string kind = outcome.Kind == DraftFolderImportKind.NewSystem
+                    ? "a new system"
+                    : "a draft of the published board";
+
+                string renamed = outcome.RenamedFrom.Length > 0
+                    ? $", its workbook renamed from [{outcome.RenamedFrom}]"
+                    : string.Empty;
+
+                Logger.Info($"Took in folder [{outcome.SystemFolder}] as {kind} [{outcome.ExcelDataFile}]{renamed}");
+            }
         }
 
         // ###########################################################################################

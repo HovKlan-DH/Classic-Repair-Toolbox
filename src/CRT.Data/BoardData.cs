@@ -180,6 +180,53 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
         };
 
+        // ###########################################################################################
+        // The same board with a different Schematics list - importing, removing or reordering
+        // board images (SystemFilesWindow). Lists shared, as WithRevisionDate's are.
+        //
+        // *** IT EXISTS BECAUSE THAT WINDOW'S OWN COPY DROPPED THE CAPTION (2026-09-27). *** It
+        // listed the sections by hand and left out HardwareName and BoardName, so every image
+        // import or removal wrote the draft back without its "# Hardware:" / "# Board:" lines - the
+        // caption a brand-new system was already reported once for missing (see DraftSeeder).
+        // A copy here sits beside the other two, where a new property is seen by whoever adds it.
+        // ###########################################################################################
+        public BoardData WithSchematics(List<BoardSchematicEntry> schematics) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = schematics ?? new(),
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+        };
+
+        // The same board under another "# Hardware:" / "# Board:" caption - the publish, for a board
+        // whose caption it has to supply (PublishMerge.CaptionedAs). Lists shared, as
+        // WithRevisionDate's are.
+        public BoardData WithCaption(string hardwareName, string boardName) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = hardwareName ?? string.Empty,
+            BoardName = boardName ?? string.Empty,
+            Schematics = this.Schematics,
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+        };
+
         // The same board with different highlights - used when a save drops the highlights of a
         // deleted component (BoardTableDocument.ApplyTo). Lists shared, as WithRevisionDate's are.
         public BoardData WithComponentHighlights(List<ComponentHighlightEntry> highlights) => new()

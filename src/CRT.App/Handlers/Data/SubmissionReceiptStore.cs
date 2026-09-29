@@ -39,6 +39,17 @@ namespace Handlers.DataHandling
         private static string _path = string.Empty;
         private static List<SubmissionReceipt> _receipts = new();
 
+        // ###########################################################################################
+        // *** EVERY READ AND WRITE HOLDS THIS (code review, 2026-09-29). *** The Submit dialog records
+        // and finalises its receipt from the THREAD POOL - its upload runs under Task.Run - while the
+        // launch status check, the Drafts tab and the discard reporter use the same list on the UI
+        // thread. Unguarded, two writers at once lost receipts, a reader threw "Collection was
+        // modified", and two saves raced on the same temporary file. Reads hand back copies, so a
+        // caller iterating one is never disturbed by a write. Save runs inside the lock, so the file
+        // is always written from a list no other thread is changing.
+        // ###########################################################################################
+        private static readonly object Gate = new();
+
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             WriteIndented = true
@@ -48,8 +59,14 @@ namespace Handlers.DataHandling
         // Everything this machine has sent, newest first. A copy, so a caller iterating the list
         // cannot be disturbed by a save happening underneath it.
         // ###########################################################################################
-        public static IReadOnlyList<SubmissionReceipt> All =>
-            SubmissionReceiptPresenter.InDisplayOrder(_receipts);
+        public static IReadOnlyList<SubmissionReceipt> All
+        {
+            get
+            {
+                lock (Gate)
+                    return SubmissionReceiptPresenter.InDisplayOrder(_receipts.ToList());
+            }
+        }
 
         // ###########################################################################################
         // Resolves the real AppData location and loads. Called once at startup.
@@ -68,7 +85,9 @@ namespace Handlers.DataHandling
             catch (Exception ex)
             {
                 Logger.Warning($"Failed to load submission receipts: [{ex.Message}] - starting empty");
-                _receipts = new List<SubmissionReceipt>();
+
+                lock (Gate)
+                    _receipts = new List<SubmissionReceipt>();
             }
         }
 
@@ -76,6 +95,12 @@ namespace Handlers.DataHandling
         // Loads from an explicit path and makes that path the save target - the test seam.
         // ###########################################################################################
         internal static void LoadFrom(string receiptsFilePath)
+        {
+            lock (Gate)
+                LoadFromLocked(receiptsFilePath);
+        }
+
+        private static void LoadFromLocked(string receiptsFilePath)
         {
             _path = receiptsFilePath ?? string.Empty;
             _receipts = new List<SubmissionReceipt>();
@@ -125,10 +150,41 @@ namespace Handlers.DataHandling
                 return;
             }
 
-            _receipts.RemoveAll(existing => existing.SubmissionId == receipt.SubmissionId);
-            _receipts.Add(receipt);
+            lock (Gate)
+            {
+                _receipts.RemoveAll(existing => existing.SubmissionId == receipt.SubmissionId);
+                _receipts.Add(receipt);
 
-            Save();
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // THE STATE THE SERVER CONFIRMED WHEN THE SUBMISSION WAS FINALISED (owner report,
+        // 2026-09-27). The receipt is written before any byte is uploaded (SubmitDraftWindow says
+        // why), so until now it knew no state at all until the next launch's status check - and the
+        // Drafts tab's badge read "Not checked yet" straight after a successful send. The finalise
+        // answer already carries the state ("pending", or "rejected" when the automatic checks
+        // refused it), so it is recorded here.
+        //
+        // A refusal is recorded as SEEN: the send window has just shown its reasons, and badging it
+        // as unread news would repeat what the contributor is looking at. An answer with no state
+        // (an older server) changes nothing, rather than stamping "checked" onto an unknown state.
+        // ###########################################################################################
+        public static void RecordFinalised(SubmissionResult? result, DateTimeOffset checkedUtc)
+        {
+            if (result is null || string.IsNullOrWhiteSpace(result.State))
+                return;
+
+            // One lock across both, so no reader sees the new state not yet acknowledged. (The
+            // lock is re-entrant for this thread, so the two calls take it again freely.)
+            lock (Gate)
+            {
+                UpdateState(result.SubmissionId, result.State.Trim(), string.Empty, checkedUtc);
+
+                if (!result.IsAccepted)
+                    AcknowledgeComment(result.SubmissionId);
+            }
         }
 
         // ###########################################################################################
@@ -151,48 +207,64 @@ namespace Handlers.DataHandling
             // as decidedUtc, and kept when omitted for the same reason too.
             bool? amendedByMaintainer = null)
         {
-            int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
-            if (index < 0)
-                return;
-
-            SubmissionReceipt existing = _receipts[index];
-
-            _receipts[index] = new SubmissionReceipt
+            lock (Gate)
             {
-                SubmissionId = existing.SubmissionId,
-                UploadToken = existing.UploadToken,
-                SystemId = existing.SystemId,
-                Summary = existing.Summary,
-                SentUtc = existing.SentUtc,
-                LastKnownState = state ?? string.Empty,
-                LastCheckedUtc = checkedUtc,
-                MaintainerComment = maintainerComment ?? string.Empty,
+                int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
+                if (index < 0)
+                    return;
 
-                // *** CARRIED THROUGH UNCHANGED, and that is what makes the badge work. *** A
-                // refresh re-reads the same comment from the server every time, so resetting this
-                // here would make an already-read comment unread again on every check - a badge
-                // that reappears for no reason is one the contributor learns to ignore.
-                //
-                // It is not cleared when the comment CHANGES either: HasUnreadComment compares the
-                // two texts, so a new comment is unread by construction without anything having to
-                // remember to reset a flag.
-                AcknowledgedComment = existing.AcknowledgedComment ?? string.Empty,
+                SubmissionReceipt existing = _receipts[index];
 
-                // Carried for exactly the same reason, and with the same consequence: a refresh
-                // re-reads the same STATE every time, so resetting this here would re-badge a
-                // decision the contributor has already seen on every launch. A state that has
-                // genuinely moved is unread by construction, because HasUnreadDecision compares
-                // the two values rather than trusting a flag.
-                AcknowledgedState = existing.AcknowledgedState ?? string.Empty,
+                // *** EVERYTHING NOT NAMED HERE IS CARRIED, by `with` - and that is what makes the
+                // badges work. *** AcknowledgedComment and AcknowledgedState stay as they were: a
+                // refresh re-reads the same comment and state from the server every time, so resetting
+                // them here would make an already-read decision unread again on every check. A comment
+                // or state that genuinely CHANGED is unread by construction, because HasUnreadComment /
+                // HasUnreadDecision compare texts rather than trusting a flag. SourceNoticeDismissed and
+                // the discard fields are carried too: a refresh must not bring back a closed notice or
+                // forget a discard.
+                _receipts[index] = existing with
+                {
+                    LastKnownState = state ?? string.Empty,
+                    LastCheckedUtc = checkedUtc,
+                    MaintainerComment = maintainerComment ?? string.Empty,
 
-                // Kept when the caller passes nothing, so a refresh that cannot read a decision
-                // date does not wipe one recorded earlier.
-                DecidedUtc = decidedUtc ?? existing.DecidedUtc,
+                    // Kept when the caller passes nothing, so a refresh that cannot read a decision
+                    // date does not wipe one recorded earlier.
+                    DecidedUtc = decidedUtc ?? existing.DecidedUtc,
+                    AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer
+                };
 
-                AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer
-            };
+                Save();
+            }
+        }
 
-            Save();
+        // ###########################################################################################
+        // Records that the contributor closed the "now in the online source - switch back from
+        // BETA" notice for these submissions (SubmissionReceiptPresenter.NeedingSourceSwitchNotice),
+        // so it is not shown for them again. One save for them all.
+        // ###########################################################################################
+        public static void DismissSourceNotice(IEnumerable<long> submissionIds)
+        {
+            var ids = new HashSet<long>(submissionIds ?? []);
+
+            lock (Gate)
+            {
+                bool changed = false;
+
+                for (int index = 0; index < _receipts.Count; index++)
+                {
+                    SubmissionReceipt existing = _receipts[index];
+                    if (!ids.Contains(existing.SubmissionId) || existing.SourceNoticeDismissed)
+                        continue;
+
+                    _receipts[index] = existing with { SourceNoticeDismissed = true };
+                    changed = true;
+                }
+
+                if (changed)
+                    Save();
+            }
         }
 
         // ###########################################################################################
@@ -215,47 +287,95 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static void AcknowledgeComment(long submissionId)
         {
-            int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
-            if (index < 0)
-                return;
-
-            SubmissionReceipt existing = _receipts[index];
-
-            // *** THE EMPTY-COMMENT EARLY RETURN IS GONE, and removing it is the fix. *** It used
-            // to bail out here whenever the maintainer had written nothing, which is precisely the
-            // publish-with-no-comment case the badge now reports - so the row could be shown,
-            // read, and still come back badged on the next launch.
-            //
-            // Nothing to acknowledge AT ALL is still a needless save, so that case is kept.
-            if (!SubmissionReceiptPresenter.HasUnreadNews(existing))
-                return;
-
-            _receipts[index] = new SubmissionReceipt
+            lock (Gate)
             {
-                SubmissionId = existing.SubmissionId,
-                UploadToken = existing.UploadToken,
-                SystemId = existing.SystemId,
-                Summary = existing.Summary,
-                SentUtc = existing.SentUtc,
-                LastKnownState = existing.LastKnownState,
-                LastCheckedUtc = existing.LastCheckedUtc,
-                MaintainerComment = existing.MaintainerComment,
-                AcknowledgedComment = existing.MaintainerComment,
+                int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
+                if (index < 0)
+                    return;
 
-                // The state as it reads RIGHT NOW, for the same reason the comment is stored as
-                // text: a later decision differs from this one and is therefore unread again,
-                // with nothing having to remember to reset anything.
-                AcknowledgedState = existing.LastKnownState ?? string.Empty,
+                SubmissionReceipt existing = _receipts[index];
 
-                // *** CARRIED, like every other field here. *** This method rebuilds the whole
-                // record, so a field left out is a field ERASED - marking a comment as read would
-                // silently drop the date it was written, and the row would lose its "Replied ..."
-                // line the moment the contributor acknowledged it.
-                DecidedUtc = existing.DecidedUtc,
-                AmendedByMaintainer = existing.AmendedByMaintainer
-            };
+                // *** THE EMPTY-COMMENT EARLY RETURN IS GONE, and removing it is the fix. *** It used
+                // to bail out here whenever the maintainer had written nothing, which is precisely
+                // the publish-with-no-comment case the badge now reports - so the row could be shown,
+                // read, and still come back badged on the next launch.
+                //
+                // Nothing to acknowledge AT ALL is still a needless save, so that case is kept.
+                if (!SubmissionReceiptPresenter.HasUnreadNews(existing))
+                    return;
 
-            Save();
+                // The comment and the state as they read RIGHT NOW, stored as text: a later comment or
+                // decision differs from these and is therefore unread again, with nothing having to
+                // remember to reset anything. Every other field is carried by `with`.
+                _receipts[index] = existing with
+                {
+                    AcknowledgedComment = existing.MaintainerComment,
+                    AcknowledgedState = existing.LastKnownState ?? string.Empty
+                };
+
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // THE CONTRIBUTOR DISCARDED THEIR DRAFT (owner request, 2026-09-28) - see CRT.Data's
+        // DraftDiscardContract. Marks these receipts discarded now and not yet reported; the reporter
+        // (DraftDiscardReporter) tells the server and marks each one reported once an answer
+        // finishes it. One save for them all. An id already marked keeps its first time.
+        // ###########################################################################################
+        public static void MarkDraftDiscarded(IEnumerable<long> submissionIds, DateTimeOffset nowUtc)
+        {
+            HashSet<long> ids = [.. submissionIds];
+
+            lock (Gate)
+            {
+                bool changed = false;
+
+                for (int index = 0; index < _receipts.Count; index++)
+                {
+                    SubmissionReceipt existing = _receipts[index];
+
+                    if (!ids.Contains(existing.SubmissionId) || existing.DraftDiscardedUtc is not null)
+                        continue;
+
+                    _receipts[index] = existing with { DraftDiscardedUtc = nowUtc, DraftDiscardReported = false };
+                    changed = true;
+                }
+
+                if (changed)
+                    Save();
+            }
+        }
+
+        // The discards the server has not been told about yet.
+        public static IReadOnlyList<SubmissionReceipt> PendingDraftDiscardNotices
+        {
+            get
+            {
+                lock (Gate)
+                    return _receipts.Where(receipt => receipt.DraftDiscardedUtc is not null && !receipt.DraftDiscardReported).ToList();
+            }
+        }
+
+        // The server has the notice (or can never take it) - it is not sent again.
+        public static void MarkDraftDiscardReported(long submissionId)
+        {
+            lock (Gate)
+            {
+                int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
+
+                if (index < 0 || _receipts[index].DraftDiscardReported)
+                    return;
+
+                SubmissionReceipt existing = _receipts[index];
+                _receipts[index] = existing with
+                {
+                    DraftDiscardedUtc = existing.DraftDiscardedUtc ?? DateTimeOffset.UtcNow,
+                    DraftDiscardReported = true
+                };
+
+                Save();
+            }
         }
 
         // ###########################################################################################
@@ -264,8 +384,11 @@ namespace Handlers.DataHandling
         // Exposed here rather than made the caller's job so the Drafts tab does not have to know
         // how a receipt is shaped - it asks a question and gets a number for its badge.
         // ###########################################################################################
-        public static int UnreadCommentCount() =>
-            SubmissionReceiptPresenter.UnreadCommentCount(_receipts);
+        public static int UnreadCommentCount()
+        {
+            lock (Gate)
+                return SubmissionReceiptPresenter.UnreadCommentCount(_receipts);
+        }
 
         // ###########################################################################################
         // Forgets one receipt - the user's own "remove this from my list".
@@ -277,10 +400,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static void Forget(long submissionId)
         {
-            if (_receipts.RemoveAll(receipt => receipt.SubmissionId == submissionId) > 0)
-                Save();
+            lock (Gate)
+            {
+                if (_receipts.RemoveAll(receipt => receipt.SubmissionId == submissionId) > 0)
+                    Save();
+            }
         }
 
+        // Always called with Gate held - see Gate.
         private static void Save()
         {
             if (string.IsNullOrWhiteSpace(_path))

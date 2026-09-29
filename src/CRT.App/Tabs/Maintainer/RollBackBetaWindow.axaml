@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.RollBackBetaWindow"
+        Width="640" SizeToContent="Height"
+        CanResize="False"
+        CanMinimize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Push back to queue">
+
+    <!--
+    CONFIRMING A ROLLBACK (owner decision, 2026-09-27).
+
+    A rollback is per SYSTEM, so it takes back EVERY submission merged since the last promotion -
+    not just the one that is wrong. That is the whole reason this dialog exists rather than the
+    button acting straight away: the contributors it affects are NAMED here, before anything
+    happens, so nobody's accepted work is discarded out of sight.
+
+    The comment is REQUIRED and the button stays off until something is typed. It is the
+    contributor's only feedback - contributing needs no account, so there is no inbox and no
+    thread - and the server refuses a blank one regardless.
+    -->
+    <StackPanel Margin="16" Spacing="12">
+
+        <TextBlock x:Name="HeadlineText"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+
+        <TextBlock x:Name="ExplanationText"
+                   TextWrapping="Wrap" />
+
+        <!-- Who this takes back, one line each. Hidden when it takes back nobody. -->
+        <StackPanel x:Name="ReturningPanel" Spacing="2" />
+
+        <!--
+        The shared files it puts back or removes (code review, 2026-09-27) - these reach every
+        board citing them, so they are named rather than counted. Hidden when there are none.
+        -->
+        <StackPanel x:Name="SharedPanel" Spacing="2" />
+
+        <TextBlock Text="Why? Every contributor above is told this - it is the only message they get."
+                   TextWrapping="Wrap"
+                   Opacity="0.75" />
+
+        <TextBox x:Name="CommentTextBox"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 Height="90"
+                 TextChanged="OnCommentChanged" />
+
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Click="OnCancelClick" />
+
+            <Button x:Name="ConfirmButton"
+                    Foreground="{DynamicResource Button_Cancel_Fg}"
+                    Background="{DynamicResource Button_Cancel_Bg}"
+                    BorderBrush="{DynamicResource Button_Cancel_Border}"
+                    IsEnabled="False"
+                    Click="OnConfirmClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -13,7 +13,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // ###########################################################################################
 // The table's file hover card (owner request, 2026-09-26): resting on a file cell shows the
 // picture - the published and the new one side by side when it changed - or, for a PDF, a link
-// that opens it. Shared by the Drafts tab and the maintainer application (CRT.UI), with the bytes
+// that opens it. Shared by the Drafts tab and the Maintainer tab (CRT.UI), with the bytes
 // from each host's IBoardTableFileSource; a fake one here.
 //
 // WHICH file each side is, is pinned in CRT.Data.Tests' BoardTableFileCellsTests. This pins what
@@ -72,7 +72,7 @@ public sealed class BoardTableFilePreviewTests
     private static int ImageFileColumn =>
         BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFile);
 
-    // The editor in document mode (the maintainer application's way - no draft file needed) on the
+    // The editor in document mode (the Maintainer tab's way - no draft file needed) on the
     // Component images sheet.
     private static BoardTableEditor Open(BoardData? published, BoardData draft, IBoardTableFileSource? source, string sheetName = BoardWorkbookSchema.SheetComponentImages)
     {

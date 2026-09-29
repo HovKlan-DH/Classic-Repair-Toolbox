@@ -45,6 +45,14 @@ public class TabConstructionTests
         UiTest.Run(() => Assert.NotNull(new TabDrafts()));
     }
 
+    // The Maintainer tab (2026-09-29: the separate CRT Maintainer application's window, now a tab).
+    // Building it reaches no server: a remembered session is restored only when it is first shown.
+    [Fact]
+    public void The_maintainer_tab_can_be_constructed()
+    {
+        UiTest.Run(() => Assert.NotNull(new TabMaintainer()));
+    }
+
     [Fact]
     public void The_feedback_tab_can_be_constructed()
     {

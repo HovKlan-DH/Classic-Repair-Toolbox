@@ -7,7 +7,7 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers ReviewEndpoints.PublishedFilePaths - the list of files the PUBLISHED board
-    // references, which the maintainer app pairs a submission's own files against (Phase 5, task 4).
+    // references, which the Maintainer tab pairs a submission's own files against (Phase 5, task 4).
     //
     // *** THIS EXISTS BECAUSE THE FIRST VERSION DERIVED IT ON THE CLIENT AND WAS WRONG. *** The
     // review window built the published side from the change summary's row keys. A summary's keys
@@ -75,7 +75,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void One_file_cited_by_SEVERAL_rows_is_listed_ONCE()
         {
-            // Legitimate and common: the same scope capture cited for two pins. The maintainer app
+            // Legitimate and common: the same scope capture cited for two pins. The Maintainer tab
             // wants the set of files, and a duplicate would draw the same comparison twice.
             IReadOnlyList<string> files = ReviewPublishedFilesTests.Invoke(
                 ReviewPublishedFilesTests.Board("Images/shared.png", "Images/shared.png"));
@@ -128,7 +128,7 @@ namespace CRT.Server.Tests
         //
         // This method used to read ComponentImages alone, while the SUBMISSION side
         // (SubmissionManifestBuilder.CollectReferencedFiles) collects four sources: schematic
-        // images, component images, component local files and board local files. The maintainer app
+        // images, component images, component local files and board local files. The Maintainer tab
         // compares the two lists, so every file from the three missing sources was present on the
         // submitted side, absent on the published side, and reported to the maintainer as ADDED.
         //
@@ -246,7 +246,7 @@ namespace CRT.Server.Tests
         }
 
         // -------------------------------------------------------------------------------------
-        // SchematicImageFiles - which picture each schematic is drawn from, so the maintainer app can
+        // SchematicImageFiles - which picture each schematic is drawn from, so the Maintainer tab can
         // put a moved highlight back on its own board.
         // -------------------------------------------------------------------------------------
 

@@ -1,0 +1,186 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.FileTreeView">
+
+    <!--
+    A SYSTEM'S FILES AS A FOLDER TREE, with what the next step does to each (owner request,
+    2026-09-28: "a file-structure for all existing files in BETA or PROD, and then a highlighting of
+    files changed (added, removed, changed) ... a possibility to 'show only changed files' ...
+    including their parent folder"). On "Beta > Prod" under the plan, and in the window the
+    Contributor Submissions screen opens with "Files".
+
+    What each file becomes, the folders and which rows show are Handlers/FileTree; the colours are
+    the table's own (BoardTable_*), so green, orange and red mean the same here as there. Pointing
+    at a file shows the table's hover card (FileTreeView.FilePreview.cs).
+
+    *** A FLAT, VIRTUALISED LIST, NEVER INSIDE A SCROLLVIEWER. *** A board is ~2,000 files; the list
+    builds only the rows on screen, and a ScrollViewer around it would make it build every one.
+    -->
+    <Grid>
+        <DockPanel>
+
+            <!-- The counts on a line of their own (hidden where the host says them), then the
+                 controls on the LEFT in this order (owner request, 2026-09-28): "Expand all",
+                 "Collapse all", then "Show only changed files". -->
+            <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,6">
+
+                <TextBlock x:Name="SummaryText"
+                           TextWrapping="Wrap"
+                           Opacity="0.85" />
+
+                <StackPanel Orientation="Horizontal" Spacing="6">
+
+                    <!-- Every folder at once (owner request, 2026-09-28). -->
+                    <Button x:Name="ExpandAllButton"
+                            Content="Expand all"
+                            Click="OnExpandAllClick" />
+
+                    <Button x:Name="CollapseAllButton"
+                            Content="Collapse all"
+                            Click="OnCollapseAllClick" />
+
+                    <!-- On by default: what changes is the question on both screens. -->
+                    <CheckBox x:Name="OnlyChangedCheckBox"
+                              Content="Show only changed files"
+                              IsChecked="True"
+                              Margin="10,0,0,0"
+                              IsCheckedChanged="OnOnlyChangedChanged" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Bottom"
+                       x:Name="MessageText"
+                       TextWrapping="Wrap"
+                       IsVisible="False"
+                       Margin="0,6,0,0" />
+
+            <TextBlock DockPanel.Dock="Bottom"
+                       x:Name="HintText"
+                       Text="Point at a file to see it, double-click it to open it. Click a folder to open or close it."
+                       FontSize="11"
+                       Opacity="0.6"
+                       Margin="0,4,0,0" />
+
+            <Border BorderThickness="1"
+                    BorderBrush="{DynamicResource BoardTable_Header_Separator}"
+                    CornerRadius="3">
+                <ListBox x:Name="RowsList"
+                         Background="Transparent"
+                         SelectionMode="Single"
+                         Tapped="OnRowTapped"
+                         DoubleTapped="OnRowDoubleTapped"
+                         KeyDown="OnRowsKeyDown">
+                    <!-- Right-click on a row: the same as double-clicking it, and its path to paste
+                         elsewhere. -->
+                    <ListBox.ContextMenu>
+                        <ContextMenu x:Name="RowMenu" Opening="OnRowMenuOpening">
+                            <MenuItem x:Name="OpenRowItem" Header="Open" Click="OnOpenRowClick" />
+                            <MenuItem x:Name="CopyPathItem" Header="Copy path" Click="OnCopyPathClick" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.Styles>
+                        <!-- Dense rows: a board is a long list. -->
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="4,1" />
+                            <Setter Property="MinHeight" Value="0" />
+                        </Style>
+
+                        <!-- Pointing lights up only what the row SAYS, where the hover card reacts
+                             too (owner request, 2026-09-28) - not the empty width beside it. A chosen
+                             row keeps the theme's own look. The panel's transparent background (so
+                             the gaps between its parts count as on it) is a STYLE, not set on the
+                             panel itself: a value set there outranks every style, and the shading
+                             never showed. -->
+                        <Style Selector="ListBoxItem:pointerover:not(:selected) /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                        <Style Selector="StackPanel.RowContent">
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                        <Style Selector="StackPanel.RowContent:pointerover">
+                            <Setter Property="Background" Value="{DynamicResource SystemListLowColor}" />
+                        </Style>
+
+                        <!-- The table's colours, as DYNAMIC resources so they follow the theme - a
+                             brush looked up in code before the panel is on screen finds none (seen
+                             in the first render: a light-theme "changed" with no colour at all). -->
+                        <Style Selector="Border.Pill.Added">
+                            <Setter Property="Background" Value="{DynamicResource BoardTable_Added_Bg}" />
+                        </Style>
+                        <Style Selector="Border.Pill.Changed">
+                            <Setter Property="Background" Value="{DynamicResource BoardTable_Modified_Bg}" />
+                        </Style>
+                        <Style Selector="Border.Pill.Removed">
+                            <Setter Property="Background" Value="{DynamicResource BoardTable_Deleted_Bg}" />
+                        </Style>
+
+                        <!-- A folder's box is the outlined plus or minus (owner request, 2026-09-28:
+                             "a plus and a minus (in a box, if possible) for the folder"); a file
+                             keeps its solid file icon. -->
+                        <Style Selector="TextBlock.Glyph">
+                            <Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+                        </Style>
+                        <Style Selector="TextBlock.Glyph.Folder">
+                            <Setter Property="FontFamily" Value="{DynamicResource FontAwesomeRegular}" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="local:FileTreeRowView">
+                            <!-- Left-aligned, so it is as wide as what it says: the hover card
+                                 sits beside it (FileTreeView.FilePreview.cs). -->
+                            <StackPanel Classes="RowContent"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Left"
+                                        Spacing="6"
+                                        Margin="{Binding Indent}"
+                                        ToolTip.Tip="{Binding ToolTip}">
+                                <TextBlock Classes="Glyph"
+                                           Classes.Folder="{Binding IsFolder}"
+                                           Text="{Binding Glyph}"
+                                           FontSize="12"
+                                           Width="16"
+                                           Opacity="0.7"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}"
+                                           FontWeight="{Binding Weight}"
+                                           TextDecorations="{Binding Decorations}"
+                                           VerticalAlignment="Center" />
+                                <Border Classes="Pill"
+                                        Classes.Added="{Binding IsAdded}"
+                                        Classes.Changed="{Binding IsChanged}"
+                                        Classes.Removed="{Binding IsRemoved}"
+                                        CornerRadius="8"
+                                        Padding="6,0"
+                                        IsVisible="{Binding HasPill}"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding PillText}" FontSize="11" />
+                                </Border>
+                                <TextBlock Text="{Binding Note}"
+                                           FontSize="11"
+                                           Opacity="0.6"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </DockPanel>
+
+        <!-- The file's hover card - the table's own (CRT.UI's BoardTableFilePreview), in the same
+             kind of popup and for the same reasons: see BoardTableEditor.axaml. Beside the row, so
+             moving down to the next file does not land on the card. -->
+        <Popup x:Name="FilePreviewPopup"
+               IsLightDismissEnabled="False"
+               ShouldUseOverlayLayer="True"
+               Placement="RightEdgeAlignedTop">
+            <Border x:Name="FilePreviewFrame"
+                    Background="{DynamicResource FlyoutPresenterBackground}"
+                    BorderBrush="{DynamicResource FlyoutBorderThemeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="12"
+                    BoxShadow="0 4 12 0 #40000000" />
+        </Popup>
+    </Grid>
+</UserControl>

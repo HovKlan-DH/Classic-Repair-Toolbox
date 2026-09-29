@@ -27,6 +27,14 @@
 		<TextBlock TextWrapping="Wrap"
 				   Text="Everything you have changed locally for this board - components, highlights, files and links - will be lost. The officially published data is not affected." />
 
+		<!-- Only when this board was sent for review and that review is not finished (owner request,
+		     2026-09-28): says the maintainers are told, and that nothing is withdrawn. Set from code
+		     (Initialize). -->
+		<TextBlock x:Name="SubmissionNoticeText"
+				   TextWrapping="Wrap"
+				   Margin="0,8,0,0"
+				   IsVisible="False" />
+
 		<TextBlock TextWrapping="Wrap"
 				   Margin="0,8,0,0"
 				   Text="This cannot be undone!" />

@@ -410,7 +410,9 @@ namespace CRT
         // ###########################################################################################
         private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
         {
-            if (e.Key == Key.F11)
+            // Not over the Maintainer tab (2026-09-29): F11 opens the SCHEMATICS fullscreen, which has
+            // nothing to do with reviewing, over a window whose sidebar that tab has collapsed.
+            if (e.Key == Key.F11 && !ReferenceEquals(this.MainTabControl?.SelectedItem, this.MaintainerTabItem))
             {
                 this.ToggleSchematicsFullscreenWindow();
                 e.Handled = true;

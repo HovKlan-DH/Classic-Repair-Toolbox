@@ -87,6 +87,8 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = current.RevisionDate,
+                HardwareName = current.HardwareName,
+                BoardName = current.BoardName,
                 Schematics = current.Schematics,
 
                 // In place when the component already exists, otherwise in its category in
@@ -116,7 +118,7 @@ namespace Handlers.DataHandling
                 // silently.
                 //
                 // Reported by the project owner: editing U1's short description while viewing PAL
-                // removed all 40 of U1's NTSC scope baselines, and the maintainer app correctly showed
+                // removed all 40 of U1's NTSC scope baselines, and the Maintainer tab correctly showed
                 // 40 files being deleted by a submission that was meant to change one line of text.
                 //
                 // A row with a BLANK region is visible in every region (the window loads it too),
@@ -214,6 +216,8 @@ namespace Handlers.DataHandling
             return new BoardData
             {
                 RevisionDate = current.RevisionDate,
+                HardwareName = current.HardwareName,
+                BoardName = current.BoardName,
                 Schematics = current.Schematics,
 
                 Components = ComponentBoardWriter.WithoutComponent(

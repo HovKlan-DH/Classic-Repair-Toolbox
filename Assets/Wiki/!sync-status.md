@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**11 pages waiting.**
+**14 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -19,6 +19,9 @@
 | `Contribute-data-via-CRT.md` | Home > Contributing > Via CRT |
 | `Contribute-tab.md` | Home > The tabs > Contribute |
 | `Development-tools-used.md` | Home > Project > Tools used |
+| `Information-collected.md` | Home > Project > Information collected |
+| `Maintainer-tab.md` | Home > The tabs > Maintainer |
 | `Schematics-tab.md` | Home > The tabs > Schematics |
+| `_Sidebar.md` | Home |
 
 <!-- crt:waiting-end -->

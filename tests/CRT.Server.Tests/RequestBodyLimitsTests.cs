@@ -80,11 +80,26 @@ namespace CRT.Server.Tests
             { "POST", "/api/accounts/logout", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/forgot-password", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/reset-password", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/accounts/accept-invitation", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/admin/maintainers", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/admin/maintainers/remove", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/maintainers/invite", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/maintainers/invitations/withdraw", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/production/plan", RequestBodyLimits.DefaultBytes },
+
+            // A rollback: a system id, and the reason the contributor is told. Both small - the
+            // comment is the same shape as a rejection's, which is at the default too.
+            { "POST", "/api/review/production/rollback/plan", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/review/production/rollback", RequestBodyLimits.DefaultBytes },
+
+            // One system's facts for the "Systems" screen: a system id and nothing else.
+            { "POST", "/api/review/systems/detail", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/review/systems/listing", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/reject", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/request-changes", RequestBodyLimits.DefaultBytes },
+
+            // Board views from CRT (2026-09-27): at most BoardViewRules.MaxViewsPerReport short views.
+            { "POST", "/api/usage/board-views", RequestBodyLimits.DefaultBytes },
         };
 
         [Theory]
@@ -120,6 +135,19 @@ namespace CRT.Server.Tests
                 "These routes read a request body but have no decided limit - give each .WithBodyLimit(...) " +
                 "where it is mapped if it needs more than 64 KB, and list it in DecidedBodyRoutes:\n" +
                 string.Join("\n", undecided));
+        }
+
+        // ###########################################################################################
+        // The contributor's "I discarded my draft" notice (2026-09-28) is mapped at the path CRT
+        // builds from CRT.Data's DraftDiscardContract - pinned literally here and there - and reads no
+        // body, so it needs no decided limit.
+        // ###########################################################################################
+        [Fact]
+        public void The_draft_discarded_notice_is_mapped_where_CRT_sends_it_and_reads_no_body()
+        {
+            RouteEndpoint route = RequestBodyLimitsTests.Route("POST", "/api/submissions/{submissionId:long}/draft-discarded");
+
+            Assert.Null(route.Metadata.GetMetadata<IAcceptsMetadata>());
         }
 
         // DENY BY DEFAULT: an endpoint without a limit of its own, and a request matching no route at
@@ -167,7 +195,7 @@ namespace CRT.Server.Tests
         // *** SAVING THE MAINTAINER'S TABLE SENDS A WHOLE BOARD (code review, 2026-09-25). *** The
         // amend route fell to the 64 KB default, so every save of a real board was refused with 413
         // before the endpoint ran. Measured on the largest shipped board, serialised exactly as the
-        // maintainer application sends it.
+        // Maintainer tab sends it.
         // ###########################################################################################
         [Fact]
         public async Task Saving_the_maintainers_table_for_the_largest_shipped_board_fits_its_limit()

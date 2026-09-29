@@ -12,14 +12,14 @@ namespace Handlers.DataHandling
     public static class DataManager
     {
         private const string DataRootArg = "--data-root=";
-        private const string SheetHardwareBoard = "Hardware & Board";
+        private const string SheetHardwareBoard = MasterWorkbookSchema.SheetName;
         private const string SheetOscilloscope = "Oscilloscope";
 
         // Column header names used for robust, order-independent column mapping
-        private const string ColHardwareName = "Hardware name in drop-down";
-        private const string ColBoardName = "Board name in drop-down";
-        private const string ColExcelDataFile = "Excel data file";
-        private const string ColHardwareNotes = "Hardware notes in \"Overview\" tab";
+        private const string ColHardwareName = MasterWorkbookSchema.ColHardwareName;
+        private const string ColBoardName = MasterWorkbookSchema.ColBoardName;
+        private const string ColExcelDataFile = MasterWorkbookSchema.ColExcelDataFile;
+        private const string ColHardwareNotes = MasterWorkbookSchema.ColHardwareNotes;
 
         // Column headers for Oscilloscope
         private const string ColBrand = "Brand";
@@ -876,7 +876,16 @@ namespace Handlers.DataHandling
                                 string identity = $"{contributionEntry.HardwareName}|{contributionEntry.BoardName}";
                                 if (existingKeys.Add(identity))
                                 {
-                                    entries.Add(contributionEntry);
+                                    // Marked, because its file in Data/ is the contributor's own and
+                                    // not the published board - see HardwareBoardEntry.IsPublished.
+                                    entries.Add(new HardwareBoardEntry
+                                    {
+                                        HardwareName = contributionEntry.HardwareName,
+                                        BoardName = contributionEntry.BoardName,
+                                        ExcelDataFile = contributionEntry.ExcelDataFile,
+                                        HardwareNotes = contributionEntry.HardwareNotes,
+                                        IsUserContribution = true,
+                                    });
                                 }
                                 else
                                 {
@@ -950,6 +959,12 @@ namespace Handlers.DataHandling
                 // overwritten by sync or removed by orphan cleanup, and a draft-only system has no
                 // files under "Data/" at all. Its files live under "Drafts/", which sync never
                 // touches in either direction.
+                //
+                // A board folder put into Drafts/ by hand becomes a draft FIRST, so a new system
+                // among them is merged in on this same pass (owner request, 2026-09-27).
+                DraftManager.ImportHandPlacedFolders(entries.Select(entry =>
+                    new KnownDraftSystem(entry.ExcelDataFile, entry.IsPublished)));
+
                 MergeDraftOnlySystems(entries);
 
                 HardwareBoards = entries;
@@ -1047,6 +1062,23 @@ namespace Handlers.DataHandling
         // whole new system and it is later published officially, at which point the synced entry
         // takes over and the draft's rows apply to it as an ordinary overlay. The warning is how
         // that transition becomes visible in the log rather than a silent change of behaviour.
+        //
+        // *** THE SAME FOLDER IS A COLLISION TOO, whatever the names (2026-09-27). *** A board made
+        // the old way is listed by a "_UserContribution" workbook under its display names
+        // ("Commodore 128"), and a copy of it put into Drafts/ is registered under its FOLDER names
+        // ("C128") - which a submission needs (see DraftFolderImport). The names differ, so the
+        // name check let both through: the board twice in the drop-downs and twice on the Drafts
+        // tab, both reading the one draft. The listed entry is kept, so the board stays where the
+        // contributor knows it, and it reads the draft exactly as a published board would.
+        //
+        // *** ONLY WHEN THE LISTED ENTRY REALLY READS THIS DRAFT (code review, 2026-09-27). *** A
+        // listed entry finds a draft's workbook by ITS OWN file name. A new system published into
+        // BETA is listed as "Data C128 310378 Open128 v2.0.0.xlsx" (the tree's generation) while its
+        // draft is still "Data C128 310378 Open128.xlsx" - so the listed entry could not read it, and
+        // skipping the draft's own entry left the draft unreachable until production retired it:
+        // not openable, not editable, not resubmittable, even after a push-back asked for a
+        // correction. So the folder rule applies only when a listed entry carries the draft's own
+        // workbook key; otherwise the draft keeps its entry, as it did before the rule.
         // ###########################################################################################
         private static void MergeDraftOnlySystems(List<HardwareBoardEntry> entries)
         {
@@ -1060,13 +1092,22 @@ namespace Handlers.DataHandling
                 entries.Select(entry => $"{entry.HardwareName}|{entry.BoardName}"),
                 StringComparer.OrdinalIgnoreCase);
 
+            var existingFiles = new HashSet<string>(
+                entries.Select(entry => entry.ExcelDataFile).Where(file => !string.IsNullOrWhiteSpace(file)),
+                StringComparer.OrdinalIgnoreCase);
+
             int addedCount = 0;
 
             foreach (var draftEntry in draftOnlySystems)
             {
-                if (existingKeys.Add($"{draftEntry.HardwareName}|{draftEntry.BoardName}"))
+                if (existingFiles.Contains(draftEntry.ExcelDataFile))
+                {
+                    Logger.Info($"Draft-only system [{draftEntry.HardwareName}] / [{draftEntry.BoardName}] is already listed as [{draftEntry.ExcelDataFile}] - the listed entry reads the draft");
+                }
+                else if (existingKeys.Add($"{draftEntry.HardwareName}|{draftEntry.BoardName}"))
                 {
                     entries.Add(draftEntry);
+                    existingFiles.Add(draftEntry.ExcelDataFile);
                     addedCount++;
                 }
                 else
@@ -1080,6 +1121,19 @@ namespace Handlers.DataHandling
                 Logger.Info($"Loaded [{addedCount}] hardware/board entries from local drafts");
             }
         }
+
+        // ###########################################################################################
+        // The workbook key of every system the MAIN workbook lists - the boards whose file in Data/
+        // really is the published one. What draft retirement may compare a draft against: a
+        // draft-only system has no file there, and a _UserContribution board's file is the
+        // contributor's own (see HardwareBoardEntry.IsPublished).
+        // ###########################################################################################
+        public static List<string> PublishedExcelDataFiles() =>
+            HardwareBoards
+                .Where(entry => entry.IsPublished)
+                .Select(entry => entry.ExcelDataFile)
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .ToList();
 
         // ###########################################################################################
         // Rebuilds the draft-only half of HardwareBoards from disk, leaving everything that came
@@ -1145,7 +1199,8 @@ namespace Handlers.DataHandling
                 _dataRoot,
                 DraftManager.DraftsRoot,
                 entry.ExcelDataFile,
-                UserSettings.ViewOfficialPublishedOnly);
+                UserSettings.ViewOfficialPublishedOnly,
+                entry.IsPublished);
 
             string excelPath = source.WorkbookPath.Length > 0
                 ? source.WorkbookPath

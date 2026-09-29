@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
+        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         x:Class="CRT.SystemFilesWindow"
         Title="Schematic images"
         Width="760"
@@ -58,7 +59,9 @@
 			<TextBlock x:Name="IntroText" TextWrapping="Wrap" />
 		</StackPanel>
 
-		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+		<!-- Named for the schematic row drag, which scrolls it when a row is held near its top or
+		     bottom edge (SystemFilesWindow.SchematicOrder.cs). -->
+		<ScrollViewer x:Name="ContentScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto">
 			<StackPanel Spacing="18">
 
 				<!-- Schematic images - shown for SystemFilesSection.SchematicImages only -->
@@ -67,7 +70,7 @@
 					<TextBlock TextWrapping="Wrap"
 							   FontSize="12"
 							   Opacity="0.8"
-							   Text="A photo, a scan or a PCB render - one per view you want to look at. The KiCad traces are drawn on top of these, so no image means no overlay." />
+							   Text="A photo, a scan or a PCB render - one per view you want to look at. The KiCad traces are drawn on top of these, so no image means no overlay. Drag an image up or down to change the order the views are listed in." />
 
 					<Border Classes="DropTarget" x:Name="SchematicDropTarget">
 						<StackPanel Spacing="8">
@@ -83,61 +86,131 @@
 					</Border>
 
 					<ItemsControl x:Name="SchematicsItemsControl">
+						<!-- The rows are spaced by the PANEL rather than by a margin on each row, so a
+						     row's container is exactly the row: the drag's placeholder takes the
+						     container's height and fills the same gap, no more. -->
+						<ItemsControl.ItemsPanel>
+							<ItemsPanelTemplate>
+								<StackPanel Spacing="4" />
+							</ItemsPanelTemplate>
+						</ItemsControl.ItemsPanel>
 						<ItemsControl.ItemTemplate>
 							<DataTemplate DataType="local:SystemSchematicRow">
-								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
-										BorderThickness="0,0,0,1"
-										Padding="4,6">
-									<Grid ColumnDefinitions="Auto,*,Auto">
-										<!-- The preview. A fixed 80x60 box whichever way the image is
-										     shaped, so the names beside it line up down the list
-										     instead of stepping in and out with each aspect ratio.
-										     Uniform keeps the picture undistorted inside it. -->
-										<Border Grid.Column="0"
-												Width="80"
-												Height="60"
-												Margin="0,0,10,0"
-												VerticalAlignment="Center"
-												BorderBrush="{DynamicResource Table_BorderRowLine}"
-												BorderThickness="1"
-												Background="{DynamicResource Form_Bg}">
-											<Panel>
-												<Image Source="{Binding Thumbnail}"
-													   Stretch="Uniform"
-													   Margin="2"
-													   IsVisible="{Binding HasThumbnail}" />
+								<Grid>
 
-												<!-- A draft can name an image whose file was moved or
-												     deleted by hand. Saying so is more use than an
-												     empty box. -->
-												<TextBlock Text="No preview"
-														   FontSize="10"
-														   Opacity="0.6"
-														   TextWrapping="Wrap"
-														   TextAlignment="Center"
-														   HorizontalAlignment="Center"
+									<!-- Shown in place of the row while it is dragged: an empty dashed slot
+									     the height of the row, marking where a drop will land - the worklog
+									     photo rows' placeholder, drawn the same way. A Rectangle because only
+									     shapes can dash their edge. -->
+									<Panel IsVisible="{Binding IsDropPlaceholder}"
+										   Height="{Binding PlaceholderHeight}">
+										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+												   StrokeThickness="2"
+												   StrokeDashArray="4,3"
+												   RadiusX="3"
+												   RadiusY="3"
+												   Fill="{DynamicResource Bg}" />
+										<TextBlock Text="Move the image up/down and release mouse button for new location"
+												   FontSize="11"
+												   Opacity="0.7"
+												   TextWrapping="Wrap"
+												   TextAlignment="Center"
+												   Margin="14,0"
+												   HorizontalAlignment="Center"
+												   VerticalAlignment="Center" />
+									</Panel>
+
+									<!-- Each image is its own panel (owner request, 2026-09-27), like a
+									     worklog photo row. -->
+									<Border IsVisible="{Binding IsNotDropPlaceholder}"
+											Background="{DynamicResource Form_Bg}"
+											BorderBrush="{DynamicResource Form_Border}"
+											BorderThickness="1"
+											CornerRadius="3"
+											Padding="8,6">
+										<Grid ColumnDefinitions="*,Auto">
+
+											<!-- The drag handle: the whole row but its Remove button, which
+											     handles its own press and so never starts a drag. Background
+											     must be set, or the blank space between the texts is not
+											     hit-testable. No tooltip, as on the worklog rows: the
+											     north/south cursor already says the row can be moved. -->
+											<Grid Grid.Column="0"
+												  Classes="SchematicDragHandle"
+												  ColumnDefinitions="Auto,Auto,*"
+												  Background="Transparent"
+												  Cursor="SizeNorthSouth"
+												  PointerPressed="OnSchematicRowPointerPressed">
+
+												<!-- The grip: says at a glance that the panel can be moved
+												     (owner request, 2026-09-27) - the cursor alone only says
+												     so once the pointer is on it. Font Awesome "grip-vertical",
+												     whose outline fits the font's ascent exactly, so it is not
+												     clipped at the top. Faint, like the table editor's grip:
+												     it marks the handle without competing with the image. -->
+												<TextBlock Grid.Column="0"
+														   Classes="SchematicDragGrip"
+														   Text="&#xf58e;"
+														   FontFamily="{DynamicResource FontAwesomeSolid}"
+														   FontSize="16"
+														   Opacity="0.55"
+														   Margin="2,0,12,0"
 														   VerticalAlignment="Center"
-														   IsVisible="{Binding IsMissing}" />
-											</Panel>
-										</Border>
+														   ToolTip.Tip="Drag up or down to change the order" />
 
-										<StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-											<TextBlock Text="{Binding SchematicName}" FontWeight="SemiBold" />
-											<TextBlock Text="{Binding DetailText}"
-													   FontSize="11"
-													   Opacity="0.75"
-													   TextWrapping="Wrap" />
-										</StackPanel>
-										<Button Grid.Column="2"
-												Content="Remove"
-												VerticalAlignment="Center"
-												Foreground="{DynamicResource Button_Cancel_Fg}"
-												Background="{DynamicResource Button_Cancel_Bg}"
-												BorderBrush="{DynamicResource Button_Cancel_Border}"
-												Tag="{Binding}"
-												Click="OnRemoveSchematicClick" />
-									</Grid>
-								</Border>
+												<!-- The preview. A fixed 80x60 box whichever way the image is
+												     shaped, so the names beside it line up down the list
+												     instead of stepping in and out with each aspect ratio.
+												     Uniform keeps the picture undistorted inside it. -->
+												<Border Grid.Column="1"
+														Width="80"
+														Height="60"
+														Margin="0,0,10,0"
+														VerticalAlignment="Center"
+														BorderBrush="{DynamicResource Table_BorderRowLine}"
+														BorderThickness="1"
+														Background="{DynamicResource Bg}">
+													<Panel>
+														<Image Source="{Binding Thumbnail}"
+															   Stretch="Uniform"
+															   Margin="2"
+															   IsVisible="{Binding HasThumbnail}" />
+
+														<!-- A draft can name an image whose file was moved or
+														     deleted by hand. Saying so is more use than an
+														     empty box. -->
+														<TextBlock Text="No preview"
+																   FontSize="10"
+																   Opacity="0.6"
+																   TextWrapping="Wrap"
+																   TextAlignment="Center"
+																   HorizontalAlignment="Center"
+																   VerticalAlignment="Center"
+																   IsVisible="{Binding IsMissing}" />
+													</Panel>
+												</Border>
+
+												<StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+													<TextBlock Text="{Binding SchematicName}" FontWeight="SemiBold" />
+													<TextBlock Text="{Binding DetailText}"
+															   FontSize="11"
+															   Opacity="0.75"
+															   TextWrapping="Wrap" />
+												</StackPanel>
+											</Grid>
+
+											<Button Grid.Column="1"
+													Content="Remove"
+													Margin="10,0,0,0"
+													VerticalAlignment="Center"
+													Foreground="{DynamicResource Button_Cancel_Fg}"
+													Background="{DynamicResource Button_Cancel_Bg}"
+													BorderBrush="{DynamicResource Button_Cancel_Border}"
+													Tag="{Binding}"
+													Click="OnRemoveSchematicClick" />
+										</Grid>
+									</Border>
+								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
@@ -300,5 +373,9 @@
 					Content="Close"
 					Click="OnCloseClick" />
 		</Grid>
+
+		<!-- "Please wait" over this window while images or KiCad files are copied and checked
+		     (2026-09-28) - see CRT.UI's BusyOverlay. The -18 margin covers the grid's own margin. -->
+		<ui:BusyOverlay Grid.RowSpan="3" Margin="-18" />
 	</Grid>
 </Window>

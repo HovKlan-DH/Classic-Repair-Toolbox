@@ -114,7 +114,7 @@ namespace CRT.Server.Handlers.Database
                 foreach (string failure in allFailures)
                     logger.LogCritical("Migration error: {Failure}", failure);
 
-                throw new InvalidOperationException(
+                throw new MigrationFailedException(
                     $"The database schema cannot be brought up to date: {allFailures.Count} " +
                     $"error(s). See the journal for details " +
                     $"(journalctl -u crt-server -n 20 --no-pager -p warning). " +
@@ -244,7 +244,7 @@ namespace CRT.Server.Handlers.Database
             {
                 await transaction.RollbackAsync(cancellationToken);
 
-                throw new InvalidOperationException(
+                throw new MigrationFailedException(
                     $"Migration {script.Number:D4} ({script.FileName}) failed: {ex.Message}. " +
                     "Note that MariaDB commits DDL implicitly, so any tables this migration " +
                     "already created still exist and must be inspected by hand before retrying.",

@@ -412,4 +412,247 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         SubmissionReceiptStore.LoadFrom(this.thisPath);
         Assert.True(Assert.Single(SubmissionReceiptStore.All).AmendedByMaintainer);
     }
+
+    // ###########################################################################################
+    // The "now in the online source - switch back from BETA" notice (2026-09-27). Closing it is
+    // remembered per submission, on disk, and nothing that later rewrites the receipt brings it back.
+    // ###########################################################################################
+    [Fact]
+    public void A_dismissed_source_notice_stays_dismissed_across_a_reload()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        SubmissionReceiptStore.UpdateState(42, "published", string.Empty, DateTimeOffset.UtcNow);
+
+        SubmissionReceiptStore.DismissSourceNotice([42]);
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).SourceNoticeDismissed);
+    }
+
+    // Every method that rebuilds a receipt must carry the flag, or the next status check or a
+    // comment being read would quietly bring the notice back.
+    [Fact]
+    public void A_later_state_check_or_reading_a_comment_does_not_bring_the_notice_back()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        SubmissionReceiptStore.UpdateState(42, "published", "Thanks!", DateTimeOffset.UtcNow);
+        SubmissionReceiptStore.DismissSourceNotice([42]);
+
+        SubmissionReceiptStore.UpdateState(42, "published", "Thanks!", DateTimeOffset.UtcNow);
+        SubmissionReceiptStore.AcknowledgeComment(42);
+
+        Assert.True(Assert.Single(SubmissionReceiptStore.All).SourceNoticeDismissed);
+    }
+
+    [Fact]
+    public void Dismissing_touches_only_the_submissions_named()
+    {
+        SubmissionReceiptStore.Record(Receipt(42, token: "a"));
+        SubmissionReceiptStore.Record(Receipt(43, token: "b"));
+
+        SubmissionReceiptStore.DismissSourceNotice([43]);
+
+        Assert.False(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 42).SourceNoticeDismissed);
+        Assert.True(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 43).SourceNoticeDismissed);
+    }
+
+    // ###########################################################################################
+    // *** THE STATE THE SERVER CONFIRMED AT FINALISE (owner report, 2026-09-27). *** The receipt is
+    // written before the upload, so without this it knew no state until the next launch's check,
+    // and the Drafts tab's badge read "Not checked yet" straight after a successful send.
+    // ###########################################################################################
+    [Fact]
+    public void A_finalised_submission_records_the_state_the_server_confirmed()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        var checkedUtc = new DateTimeOffset(2026, 9, 27, 11, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult { SubmissionId = 42, IsAccepted = true, State = "pending" }, checkedUtc);
+
+        SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
+        Assert.Equal("pending", stored.LastKnownState);
+        Assert.Equal(checkedUtc, stored.LastCheckedUtc);
+        Assert.Equal("Submitted - awaiting feedback from a maintainer", SubmissionReceiptPresenter.DescribeState(stored.LastKnownState));
+        Assert.Equal("tok", stored.UploadToken);
+
+        // Still asked about at the next launch, and not news in the meantime.
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(stored, checkedUtc));
+        Assert.False(SubmissionReceiptPresenter.HasUnreadDecision(stored));
+    }
+
+    // The automatic checks refused it: recorded, and as SEEN - the send window has just shown why.
+    [Fact]
+    public void A_submission_refused_at_finalise_is_recorded_as_already_seen()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult { SubmissionId = 42, IsAccepted = false, State = "rejected" }, DateTimeOffset.UtcNow);
+
+        SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
+        Assert.Equal("rejected", stored.LastKnownState);
+        Assert.False(SubmissionReceiptPresenter.HasUnreadDecision(stored));
+        Assert.Equal(0, SubmissionReceiptStore.UnreadCommentCount());
+    }
+
+    // An answer that names no state (an older server) must not stamp "checked" onto an unknown one.
+    [Fact]
+    public void A_finalise_answer_with_no_state_changes_nothing()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult { SubmissionId = 42, IsAccepted = true, State = "  " }, DateTimeOffset.UtcNow);
+        SubmissionReceiptStore.RecordFinalised(null, DateTimeOffset.UtcNow);
+
+        SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
+        Assert.Equal(string.Empty, stored.LastKnownState);
+        Assert.Null(stored.LastCheckedUtc);
+    }
+
+    // ###########################################################################################
+    // *** A DISCARDED DRAFT IS REMEMBERED UNTIL THE SERVER HAS BEEN TOLD (owner request,
+    // 2026-09-28). *** Marked on the receipt first, so a discard made with no network is reported
+    // at the next launch; marked reported once an answer finishes it - and it survives a reload.
+    // ###########################################################################################
+    [Fact]
+    public void A_discard_waits_until_reported_and_survives_a_reload()
+    {
+        DateTimeOffset now = new(2026, 9, 28, 9, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceiptStore.Record(Receipt(41));
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.MarkDraftDiscarded([41], now);
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        SubmissionReceipt pending = Assert.Single(SubmissionReceiptStore.PendingDraftDiscardNotices);
+        Assert.Equal(41, pending.SubmissionId);
+        Assert.Equal(now, pending.DraftDiscardedUtc);
+
+        SubmissionReceiptStore.MarkDraftDiscardReported(41);
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Empty(SubmissionReceiptStore.PendingDraftDiscardNotices);
+        Assert.True(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 41).DraftDiscardReported);
+        Assert.Equal(now, SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 41).DraftDiscardedUtc);
+    }
+
+    // A second discard of the same receipt (a later draft of the board) keeps the first time.
+    [Fact]
+    public void A_receipt_already_marked_keeps_its_first_discard_time()
+    {
+        DateTimeOffset first = new(2026, 9, 28, 9, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceiptStore.Record(Receipt(41));
+        SubmissionReceiptStore.MarkDraftDiscarded([41], first);
+        SubmissionReceiptStore.MarkDraftDiscarded([41], first.AddDays(1));
+
+        Assert.Equal(first, Assert.Single(SubmissionReceiptStore.All).DraftDiscardedUtc);
+    }
+
+    // ###########################################################################################
+    // *** EVERY FIELD SURVIVES EVERY REWRITE. *** The store rebuilds a receipt field by field (a
+    // class with init-only properties has no `with`), and a field left out of one rebuild is ERASED
+    // by it - the header of UpdateState says so, and it has happened before. So each rewrite runs
+    // over a receipt with EVERY property set, and every property it does not mean to change must
+    // come back as it was. A property added later and forgotten in one rebuild fails here by name.
+    // ###########################################################################################
+    [Fact]
+    public void Every_receipt_field_survives_every_rewrite()
+    {
+        DateTimeOffset at = new(2026, 9, 20, 8, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceipt Full() => new()
+        {
+            SubmissionId = 7,
+            UploadToken = "token",
+            SystemId = "Commodore/C128/310378",
+            Summary = "summary",
+            SentUtc = at,
+            LastKnownState = "merged",
+            LastCheckedUtc = at.AddHours(1),
+            MaintainerComment = "comment",
+            AcknowledgedComment = "old comment",
+            AcknowledgedState = "pending",
+            DecidedUtc = at.AddHours(2),
+            AmendedByMaintainer = true,
+            SourceNoticeDismissed = false,
+            DraftDiscardedUtc = at.AddHours(3),
+            DraftDiscardReported = false
+        };
+
+        // Each rewrite, and the properties it is MEANT to change.
+        var rewrites = new (string Name, Action Rewrite, string[] Changes)[]
+        {
+            ("UpdateState", () => SubmissionReceiptStore.UpdateState(7, "merged", "comment", at.AddHours(1)), ["LastCheckedUtc"]),
+            ("AcknowledgeComment", () => SubmissionReceiptStore.AcknowledgeComment(7), ["AcknowledgedComment", "AcknowledgedState"]),
+            ("DismissSourceNotice", () => SubmissionReceiptStore.DismissSourceNotice([7]), ["SourceNoticeDismissed"]),
+            ("MarkDraftDiscardReported", () => SubmissionReceiptStore.MarkDraftDiscardReported(7), ["DraftDiscardReported"]),
+        };
+
+        foreach ((string name, Action rewrite, string[] changes) in rewrites)
+        {
+            SubmissionReceiptStore.LoadFrom(this.thisPath);
+            foreach (SubmissionReceipt existing in SubmissionReceiptStore.All.ToList())
+                SubmissionReceiptStore.Forget(existing.SubmissionId);
+
+            SubmissionReceipt before = Full();
+            SubmissionReceiptStore.Record(before);
+
+            rewrite();
+
+            SubmissionReceipt after = Assert.Single(SubmissionReceiptStore.All);
+
+            foreach (System.Reflection.PropertyInfo property in typeof(SubmissionReceipt).GetProperties())
+            {
+                // The legacy names are read-only shims that answer null (see the receipt's header).
+                if (!property.CanWrite || property.GetGetMethod() is null || changes.Contains(property.Name))
+                    continue;
+
+                Assert.True(
+                    Equals(property.GetValue(before), property.GetValue(after)),
+                    $"{name} lost {property.Name}: was [{property.GetValue(before)}], now [{property.GetValue(after)}]");
+            }
+        }
+    }
+
+    // ###########################################################################################
+    // *** SAFE FROM ANY THREAD (code review, 2026-09-29). *** The Submit dialog records and
+    // finalises its receipt from the thread pool (its upload runs under Task.Run), while the launch
+    // status check, the Drafts tab and the discard reporter read and write the same list on the UI
+    // thread. Unguarded, two writers at once lost receipts, threw "Collection was modified" in a
+    // reader, or raced on the save's temporary file. Several threads recording and updating at once
+    // must lose nothing, throw nothing, and leave a file that reads back whole.
+    // ###########################################################################################
+    [Fact]
+    public async Task Receipts_written_from_several_threads_at_once_are_all_kept()
+    {
+        const int threads = 6;
+        const int each = 40;
+
+        Task[] writers = Enumerable.Range(0, threads).Select(thread => Task.Run(() =>
+        {
+            for (int n = 0; n < each; n++)
+            {
+                long id = (thread * 1000) + n;
+
+                SubmissionReceiptStore.Record(Receipt(id));
+                SubmissionReceiptStore.UpdateState(id, "pending", string.Empty, DateTimeOffset.UtcNow);
+
+                // A reader in the middle of it all, as the UI thread is.
+                _ = SubmissionReceiptStore.All.Count;
+                _ = SubmissionReceiptStore.UnreadCommentCount();
+            }
+        })).ToArray();
+
+        await Task.WhenAll(writers);
+
+        Assert.Equal(threads * each, SubmissionReceiptStore.All.Count);
+        Assert.All(SubmissionReceiptStore.All, receipt => Assert.Equal("pending", receipt.LastKnownState));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal(threads * each, SubmissionReceiptStore.All.Count);
+    }
 }

@@ -58,7 +58,13 @@ namespace Handlers.DataHandling
         // at that point would delete the work before anything carried it, and the sync would then
         // bring down a board that still lacks the change.
         //
-        // Only the two states that mean "it is in the published tree" qualify.
+        // ###########################################################################################
+        // *** ONLY PRODUCTION COUNTS - "merged" (BETA) NO LONGER DOES (owner decision,
+        // 2026-09-27). *** "It will not remove anything from the user's Draft tab until the data has
+        // been migrated to production." A submission in BETA can still be pushed back to the queue
+        // by a maintainer, and a draft retired at the BETA stage was then gone from the
+        // contributor's machine - the one copy they would correct it from. So a draft stays until
+        // its work reaches the production data everyone downloads ("published").
         // ###########################################################################################
         public static bool IsPublishedState(string? state)
         {
@@ -69,7 +75,16 @@ namespace Handlers.DataHandling
 
             return state.Trim().ToLowerInvariant() switch
             {
-                "published" or "merged" => true,
+                "published" => true,
+
+                // In BETA only - it can still be taken back out (see above).
+                "merged" => false,
+
+                // "returned" was merged and has been taken back OUT of BETA (code review,
+                // 2026-09-27) - its work is in the published tree no longer, and the draft may be
+                // the only copy the contributor has to correct it from.
+                "returned" => false,
+
                 _ => false
             };
         }
