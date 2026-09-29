@@ -773,14 +773,24 @@ namespace CRT.Server.Tests
             File.SetUnixFileMode(plan.WorkbookPath, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
             File.SetUnixFileMode(plan.SidecarPath, UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
 
+            // The board carries a highlight the hand-copied "{}" does not, so the sidecar really
+            // has to be REPLACED. Without it WriteIfChanged rightly finds "{}" the same as a board
+            // with no highlights, leaves it alone, and this test proves nothing about the replace
+            // (it went red on CI exactly that way once WriteIfChanged arrived).
+            BoardData board = PublishExecutorTests.Board();
+            board.ComponentHighlights.Add(new ComponentHighlightEntry
+            {
+                SchematicName = "Sheet 1", BoardLabel = "U8", X = "100", Y = "200", Width = "40", Height = "20"
+            });
+
             PublishOutcome outcome = await this.Executor(store)
-                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+                .ExecuteAsync(plan, board, [], submissionId: 1, PublishExecutorTests.Now);
 
             Assert.True(outcome.IsPublished, outcome.Failure);
 
             BoardData? published = await BoardDataReader.LoadAsync(plan.WorkbookPath, "hand-copied-" + Guid.NewGuid().ToString("N"));
             Assert.Equal("U8", Assert.Single(published!.Components).BoardLabel);
-            Assert.Contains(BoardSidecarWriter.HighlightsRoot, File.ReadAllText(plan.SidecarPath));
+            Assert.Equal("U8", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(plan.WorkbookPath)).BoardLabel);
         }
 
         [Fact]
