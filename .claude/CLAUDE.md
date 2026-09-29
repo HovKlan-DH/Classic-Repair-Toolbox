@@ -72,6 +72,42 @@ already has uncommitted edits in it (those are the project owner's, in progress)
 write it. "Update the changelog" from the project owner is the only permission — and it covers that
 one request, not the rest of the session.
 
+## Code reviews: every finding carries a severity
+
+**Every finding in a code review starts with its severity**, so the project owner can see at a
+glance whether a review is still finding serious problems or only tidying (owner request,
+2026-09-29). This covers `/code-review` at every effort level and any review asked for in words.
+`/security-review` keeps its own exploitability grading, and `/simplify` is not a review (it applies
+its fixes) and carries no severities.
+
+- **The prefix.** The first thing in EVERY summary field the report has is the level in brackets:
+  `[Critical]`, `[High]`, `[Medium]` or `[Low]`, for example `[High] A rejected submission's mail
+  is never sent`. When findings go through `ReportFindings`, that is both `short_summary` and
+  `summary`; its `short_summary` is capped at 60 characters INCLUDING the prefix (`[Critical] ` is
+  11), so keep the claim short rather than truncating it. When findings are returned as a JSON
+  array, it is each `summary`.
+- **The tally.** After the findings - in the reply text below the JSON block, or after the
+  `ReportFindings` call, never inside either - one line counts the findings that survived
+  verification: `Severity: 0 Critical, 3 High, 4 Medium, 4 Low`. With no findings it reads
+  `Severity: none found`.
+- **The stop signal**, on its own line under the tally. When the worst finding is Medium or Low, or
+  there is none: `Worst finding is Medium - another full review of this change is unlikely to pay
+  off.` (with the real level, or `No findings - ...`). When there is a Critical or High finding: `Worst
+  finding is High - review again once it is fixed.`
+
+| Severity | Means, in this project |
+| --- | --- |
+| **Critical** | Data loss or corruption (a user's drafts or workbooks, the published data trees, the database), a security hole someone can actually reach and exploit, or a crash on a path people use every day. Fix before anything is released or deployed. |
+| **High** | Wrong behaviour a user, contributor or maintainer WILL meet: a stuck state that never clears, a publish or submission that fails, a mail not sent, a crash on a rarer path. |
+| **Medium** | Wrong only in an edge case, a real performance cost, text that misleads, a latent bug that needs another change to go off, or a hardening gap with no known way to exploit it. |
+| **Low** | Duplication, logic in the wrong place, naming, a missing test, a log level - nothing anyone would notice in use. |
+
+**Judge by what would ACTUALLY happen, not by what the kind of code sounds like**: a thread-safety
+defect nobody can reach is Low, and a one-line wording error on a refusal the maintainer depends on
+can be High. **When unsure between two levels, pick the LOWER one** unless the failure scenario
+shows concretely how the higher one happens - rounding up on doubt would make every review look
+serious and the stop signal would never fire. Rank findings most severe first.
+
 ## Documentation: the Wiki, mirrored in `Assets/Wiki/`
 
 The published documentation is the **GitHub Wiki**. Its source of truth is
