@@ -663,7 +663,7 @@ public sealed class TabMaintainerModesTests
     // ###########################################################################################
     // *** "PLEASE WAIT" OVER THE WHOLE WINDOW (owner request, 2026-09-27: "When pushing a system back
     // from Beta then please dim everything"). *** The Beta > Prod panel finds the main window's one
-    // BusyOverlay (CRT.UI, every wait's since 2026-09-28); it is up, with the sentence, while the work
+    // BusyOverlay (every wait's since 2026-09-28); it is up, with the sentence, while the work
     // runs - the rest of the window faded once revealed - and down again after, even when the work
     // throws.
     // ###########################################################################################

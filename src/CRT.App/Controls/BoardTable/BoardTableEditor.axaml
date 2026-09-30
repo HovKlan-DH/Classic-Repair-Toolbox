@@ -11,8 +11,8 @@
 		     Its items carry NO content - the one grid below shows whichever sheet is selected.
 
 		     The font and padding are Main.axaml's own TabItem setters, repeated here and scoped to
-		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - it
-		     is meant to move to the Maintainer tab later, which has no Main.axaml. -->
+		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - the
+		     Drafts tab and the Maintainer tab alike. -->
 		<Style Selector="TabControl#SheetTabs TabItem">
 			<Setter Property="FontSize" Value="12" />
 			<Setter Property="Padding" Value="12,4" />
@@ -175,7 +175,7 @@
 		     band was not enough, and a black one "steals way too much focus"; so the header is set
 		     apart the way a printed table is: SEMI-BOLD names, a soft band, and a FIRM 2px line
 		     under the whole row. BoardTable_Header_* in BoardTableColors.axaml - the table's own
-		     keys, the same in both applications.
+		     keys, the same in the Drafts tab and the Maintainer tab.
 
 		     Four places, each found the hard way (pinned by BoardTableEditorTests'
 		     The_header_row_is_set_apart_from_corner_to_corner):
@@ -229,8 +229,8 @@
 					Padding="0"
 					Margin="0,0,0,6" />
 
-		<!-- THE TOOLBAR WRAPS rather than running off the edge (2026-09-26). In the maintainer
-		     application the table sits in the submission panel beside the queue, and at the window's
+		<!-- THE TOOLBAR WRAPS rather than running off the edge (2026-09-26). In the Maintainer
+		     tab the table sits in the submission panel beside the queue, and at the window's
 		     default width a single row pushed "Save changes" out of sight entirely (seen in a
 		     render). Save and Reload are docked right, so they always keep their place; the row
 		     buttons and the colour key wrap onto a second line when there is no room. At the

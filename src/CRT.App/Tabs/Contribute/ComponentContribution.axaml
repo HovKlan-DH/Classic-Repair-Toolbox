@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
-        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         x:Class="CRT.ComponentContributionWindow"
         Title="Component contribution"
         Width="1400"
@@ -865,8 +864,8 @@
 			</StackPanel>
 		</Grid>
 
-		<!-- "Please wait" over this window while a save runs (2026-09-28) - see CRT.UI's
+		<!-- "Please wait" over this window while a save runs (2026-09-28) - see
 		     BusyOverlay. The -16 margin covers the grid's own margin. -->
-		<ui:BusyOverlay Grid.RowSpan="4" Margin="-16" />
+		<local:BusyOverlay Grid.RowSpan="4" Margin="-16" />
 	</Grid>
 </Window>

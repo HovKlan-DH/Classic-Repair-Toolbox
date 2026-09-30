@@ -5,7 +5,7 @@ using Avalonia.Styling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// Every colour the shared table (src/CRT.UI) names resolves in THIS application, light and dark.
+// Every colour the shared table (src/CRT.App/Controls/BoardTable) names resolves in THIS application, light and dark.
 //
 // The table borrows some of its colours from whichever application hosts it - Table_Bg and
 // Table_BorderRowLine, the Button_Cancel_* red of "Save changes". A key named by the table and
@@ -20,7 +20,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 public sealed class SharedTableColourKeysTests
 {
     private static IReadOnlyList<string> KeysTheTableNames() =>
-        SharedTableColourKeysTests.KeysNamedIn(Path.Combine("src", "CRT.UI", "BoardTable"));
+        SharedTableColourKeysTests.KeysNamedIn(Path.Combine("src", "CRT.App", "Controls", "BoardTable"));
 
     private static IReadOnlyList<string> KeysTheMaintainerTabNames() =>
         SharedTableColourKeysTests.KeysNamedIn(Path.Combine("src", "CRT.App", "Tabs", "Maintainer"));

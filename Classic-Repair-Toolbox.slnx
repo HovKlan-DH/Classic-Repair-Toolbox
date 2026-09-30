@@ -2,7 +2,6 @@
   <Project Path="src/CRT.App/CRT.App.csproj" />
   <Project Path="src/CRT.Data/CRT.Data.csproj" />
   <Project Path="src/CRT.Server/CRT.Server.csproj" />
-  <Project Path="src/CRT.UI/CRT.UI.csproj" />
   <Project Path="tests/CRT.App.Tests/CRT.App.Tests.csproj" />
   <Project Path="tests/CRT.Data.Tests/CRT.Data.Tests.csproj" />
   <Project Path="tests/CRT.Server.Tests/CRT.Server.Tests.csproj" />

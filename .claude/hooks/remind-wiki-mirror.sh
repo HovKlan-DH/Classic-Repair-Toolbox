@@ -67,6 +67,7 @@ src/CRT.App/Handlers/Data/KiCadRawProjectLoader|src/CRT.App/Handlers/Data/KiCadP
 src/CRT.App/Tabs/Contribute/=Contribute-data-via-CRT Contribute-tab
 src/CRT.App/Tabs/Drafts/|src/CRT.App/Main/Main\.NewSystem|src/CRT.Data/NewSystem=Add-new-board-with-KiCad-data Contribute-tab Contribute-data-via-CRT
 src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession=Contribute-data-via-CRT
+src/CRT.App/Controls/BoardTable/=Contribute-data-via-CRT Maintainer-tab
 src/CRT.Data/DraftDrift|src/CRT.Data/DraftRevisionComparer|src/CRT.Data/DraftBaseRevision|src/CRT.App/Main/Main\.DraftDrift=Contribute-data-via-CRT Contribute-tab Board-Excel
 src/CRT.Data/DraftRetirement|src/CRT.App/Handlers/Data/PublishedDraftRetirer|src/CRT.Data/DraftWorkbookStore=Contribute-data-via-CRT
 src/CRT.Data/DraftFolderImport=Contribute-data-via-CRT Add-new-board-with-KiCad-data

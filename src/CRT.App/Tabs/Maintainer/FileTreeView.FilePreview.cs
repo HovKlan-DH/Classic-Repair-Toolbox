@@ -17,7 +17,7 @@ namespace CRT
     // text, if it has changed or whatever ... only the relative path and then the other
     // functionality from the table format").
     //
-    // So this is the table's card - CRT.UI's BoardTableFilePreview, with one side and no headline
+    // So this is the table's card - BoardTableFilePreview, with one side and no headline
     // (FileTreePreviewSource) - and the table's behaviour, kept the same on purpose (see
     // BoardTableEditor.FilePreview.cs for why each part is as it is):
     //

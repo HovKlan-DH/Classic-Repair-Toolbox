@@ -13,7 +13,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // ###########################################################################################
 // The table's file hover card (owner request, 2026-09-26): resting on a file cell shows the
 // picture - the published and the new one side by side when it changed - or, for a PDF, a link
-// that opens it. Shared by the Drafts tab and the Maintainer tab (CRT.UI), with the bytes
+// that opens it. Shared by the Drafts tab and the Maintainer tab (Controls/BoardTable), with the bytes
 // from each host's IBoardTableFileSource; a fake one here.
 //
 // WHICH file each side is, is pinned in CRT.Data.Tests' BoardTableFileCellsTests. This pins what

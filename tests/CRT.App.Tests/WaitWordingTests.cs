@@ -5,8 +5,8 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // WaitWording - what CRT and the Maintainer tab both say when a wait ran into the two-minute limit
-// (owner decision, 2026-09-28: "it must be solid in validating if it did finish"). One class in
-// CRT.UI, so the limit is described the same way in both applications.
+// (owner decision, 2026-09-28: "it must be solid in validating if it did finish"). One class,
+// so the limit is described the same way on every screen.
 //
 // The rule: a sentence says what is KNOWN - it finished, it has not (yet), or it could not be
 // checked - and never "it failed", because the server usually carries on after the client stops

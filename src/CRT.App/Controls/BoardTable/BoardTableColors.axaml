@@ -2,8 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-    THE TABLE EDITOR'S OWN COLOURS, merged by CRT.App's App.axaml, so the Drafts tab's table and
-    the Maintainer tab's table (one application since 2026-09-29) cannot drift apart. Moved here from CRT.App's App.axaml (2026-09-25); a user's own theme colours still
+    THE TABLE EDITOR'S OWN COLOURS, merged by App.axaml, so the Drafts tab's table and
+    the Maintainer tab's table cannot drift apart. Moved here from App.axaml (2026-09-25); a user's own theme colours still
     override them, because the app writes those into its top-level resources, which win over a
     merged dictionary.
     -->

@@ -4,10 +4,10 @@ using System.Globalization;
 namespace CRT
 {
     // ###########################################################################################
-    // What either application says when a wait ran into WaitLimit's two minutes (owner decision,
+    // What CRT says when a wait ran into WaitLimit's two minutes (owner decision,
     // 2026-09-28: "it must be solid in validating if it did finish").
     //
-    // In CRT.UI, shared, because it is VOCABULARY BOTH APPLICATIONS SHOW: the same limit must be
+    // One class, because it is VOCABULARY SEVERAL SCREENS SHOW: the same limit must be
     // described the same way in CRT and in the Maintainer tab. Pure, so the sentences are tested.
     //
     // *** A TIMEOUT IS NEVER REPORTED AS A FAILURE. *** The server usually carries on after the

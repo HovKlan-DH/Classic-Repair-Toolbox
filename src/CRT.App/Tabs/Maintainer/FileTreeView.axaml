@@ -167,7 +167,7 @@
             </Border>
         </DockPanel>
 
-        <!-- The file's hover card - the table's own (CRT.UI's BoardTableFilePreview), in the same
+        <!-- The file's hover card - the table's own (BoardTableFilePreview), in the same
              kind of popup and for the same reasons: see BoardTableEditor.axaml. Beside the row, so
              moving down to the next file does not land on the card. -->
         <Popup x:Name="FilePreviewPopup"

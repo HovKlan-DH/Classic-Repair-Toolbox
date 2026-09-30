@@ -14,8 +14,8 @@ namespace Handlers.MaintainerHandling
     // Pure and tested, like every presenter behind the Maintainer tab. Each sentence names WHAT is happening -
     // "Working..." was the line that started this, and said nothing.
     //
-    // The after-timeout sentences are built by WaitWording (CRT.UI), which CRT uses too, so the
-    // limit is described the same way in both applications. Each takes what a fresh look at the
+    // The after-timeout sentences are built by WaitWording, which the rest of CRT uses too, so the
+    // limit is described the same way on every screen. Each takes what a fresh look at the
     // server found: finished, not (yet), or null when that look failed too.
     // ###########################################################################################
     public static class MaintainerWaitWording

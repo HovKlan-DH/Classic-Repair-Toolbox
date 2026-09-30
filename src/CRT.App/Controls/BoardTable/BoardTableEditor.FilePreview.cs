@@ -31,8 +31,8 @@ namespace CRT
     // under a still pointer). A file column's text tooltip ("Published value: ...") gives way to the
     // card, which shows both paths anyway.
     //
-    // Nothing happens until the host sets FileSource - which is how each application supplies the
-    // bytes (IBoardTableFileSource).
+    // Nothing happens until the host sets FileSource - which is how each host (the Drafts tab, the
+    // Maintainer tab) supplies the bytes (IBoardTableFileSource).
     // ###########################################################################################
     public partial class BoardTableEditor
     {

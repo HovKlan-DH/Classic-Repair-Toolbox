@@ -105,9 +105,18 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\CRT.Data\CRT.Data.csproj" />
-    <!-- The table editor, shared with the Maintainer tab (2026-09-25). -->
-    <ProjectReference Include="..\CRT.UI\CRT.UI.csproj" />
   </ItemGroup>
+
+  <!--
+  There is no separate CRT.UI library any more (2026-09-30). It held the controls the Drafts tab
+  and the separate CRT Maintainer application both showed - the table editor, BusyOverlay,
+  ListRowDrag - and once that application became CRT's Maintainer tab (2026-09-29) both users
+  were in this one project, so it was folded in: Controls/ for the controls, Handlers/ for its pure
+  parts (RowDragSlots, ThemeResources, and WaitLimit/WaitWording in Handlers/Waiting/). A test,
+  SharedControlsIndependenceTests, keeps Controls/ from reaching into Main, DataManager,
+  UserSettings or Logger - the wall the separate library used to be. The table's RULES still live in
+  CRT.Data, which the server shares.
+  -->
 
   <!--
   Repository layout since the Phase 0 restructure: this project lives at src/CRT.App/, with

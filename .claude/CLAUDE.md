@@ -15,9 +15,9 @@ and a MiniPro USB IC programmer/tester.
 **This is one system in four parts, and a change to shared behaviour is not done until every
 part that shares it has been changed in the SAME session.** The parts are the CRT desktop app
 (`src/CRT.App/`, which includes the Maintainer tab - the separate CRT Maintainer application until
-2026-09-29), the contribution service (`src/CRT.Server/`), the shared library they both reference
-(`src/CRT.Data/`, with `src/CRT.UI/` for the controls the Drafts and Maintainer tabs share), and the
-board DATA itself (`Assets/Data/`, and the published tree the server writes).
+2026-09-29 - and, in `src/CRT.App/Controls/`, the controls the Drafts and Maintainer tabs share),
+the contribution service (`src/CRT.Server/`), the shared library they both reference
+(`src/CRT.Data/`), and the board DATA itself (`Assets/Data/`, and the published tree the server writes).
 
 **The legacy PHP contribution path is NOT one of them, by owner decision (2026-09-23).**
 `Assets/Webserver/app-contribution/` is going away when the new pipeline ships, and the old
@@ -50,7 +50,7 @@ exactly why the dangerous surfaces are the ones it CANNOT see:
   more than one application must be changed in all of them, or the same submission describes
   itself differently depending on which window it is shown in.
 
-**So before finishing a change to anything shared, ask which of the five parts also speak it, and
+**So before finishing a change to anything shared, ask which of the four parts also speak it, and
 change them together.** If one of them genuinely cannot be changed yet, say so explicitly in the
 turn summary rather than leaving the divergence to be discovered later.
 
@@ -265,7 +265,7 @@ display, a database or a network; the whole suite is about 75 seconds in Release
 
 | Project | Covers | Rough size |
 | --- | --- | --- |
-| [tests/CRT.App.Tests/](../tests/CRT.App.Tests/) | the desktop app's `Handlers/` (the Maintainer tab's in `Maintainer/`), plus the headless UI tests (the tab's in `Ui/Maintainer/`), and `CRT.UI` | ~4,300 |
+| [tests/CRT.App.Tests/](../tests/CRT.App.Tests/) | the desktop app's `Handlers/` (the Maintainer tab's in `Maintainer/`), plus the headless UI tests (the tab's in `Ui/Maintainer/`), including the shared `Controls/` | ~4,300 |
 | [tests/CRT.Data.Tests/](../tests/CRT.Data.Tests/) | the shared board-data library | ~940 |
 | [tests/CRT.Server.Tests/](../tests/CRT.Server.Tests/) | the contribution service's flows and rules | ~440 |
 
@@ -360,7 +360,7 @@ number formats.
 | Updates | `UpdateChannelFilter` (which release stages the ALPHA/BETA checkboxes admit) |
 | Maintainer tab (`Handlers/Maintainer/`) | `ReviewApiRoutes`, `ReviewApiParser`, `ReviewApiClient` (its User-Agent, via `AnsweringHttpHandler`), `ReviewWireContractTests` (both ends of the review API), `ReviewSession`/`ReviewSessionStore` (the `"ReviewSessionStore"` collection), `MaintainerSettingsMigration`, `QueueRefreshRules`, `MaintainerModes`, `ReviewQueueDisplay`, `SystemsDisplay`, `SystemPlacementDisplay`, `ProductionDisplay`, `UnusedFilesDisplay`, `MaintainerAssignmentDisplay`, `ReviewNotInTable`, `ReviewContributorLine`, `ReviewDecisionWording`, `ReviewTableWording`, `ApprovalGate`, `ApprovalWording`, `DraftDiscardWording`, `FileRemovalWording`, `MaintainerWaitWording`, `FileTree`, `OpenedFiles`, `ReviewTableFiles`, `ReviewFileComparison`, `ReviewImageComparison`, `ReviewHighlightGeometry`, `ReviewScopeBaseline`, `ReviewSummaryPresenter`, `PoolAction` |
 | Headless UI (`Tests/.../Ui/`) | All nine tabs built headlessly, the worklog and Workbooks palettes, component highlight selection and schematics zoom, plus `Main` itself, the label editor's full edit cycle, the worklog area-marking flow, `ComponentInfoWindow`, the oscilloscope's SCPI sequencing, and the Configuration/Overview/About tabs - see [Headless UI tests](#headless-ui-tests) |
-| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry`, `RowDragSlots` (the frozen-slot drag maths the worklog's Photos/Files lists and - through `ListRowDrag` - the Drafts tab's Schematic images window and the Maintainer tab's drop-down placement share; it lives in `src/CRT.UI/Dragging/` since 2026-09-27 and is still tested here) |
+| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry`, `RowDragSlots` (the frozen-slot drag maths the worklog's Photos/Files lists and - through `ListRowDrag` - the Drafts tab's Schematic images window and the Maintainer tab's drop-down placement share) |
 
 `Handlers/` is where the real coverage is; most of the uncovered remainder is `Tabs/` and `Main/`,
 Avalonia code-behind that is verified by running the app.
@@ -512,7 +512,7 @@ the plain-await version. Do not "simplify" it back to one `await`.
 | `Maintainer/BetaViewTests.cs`, `SystemViewTests.cs`, `SystemPlacementViewTests.cs`, `UnusedFilesViewTests.cs`, `FileTreeViewTests.cs`, `RollBackBetaWindowTests.cs`, `DraftDiscardShownTests.cs` | The Maintainer tab's right-hand panels and dialogs, moved unchanged from the separate application's tests |
 
 **The Application is built ONCE per assembly, not per test** - `[assembly: AvaloniaTestIsolation(
-AvaloniaTestIsolationLevel.PerAssembly)]` in both `TestAppBuilder.cs` files (2026-09-26). Avalonia's
+AvaloniaTestIsolationLevel.PerAssembly)]` in `TestAppBuilder.cs` (2026-09-26). Avalonia's
 DEFAULT is `PerTest`, which tears down and rebuilds the `Application` AND its `Dispatcher` before
 every test - and that rebuild intermittently threw `InvalidOperationException: The calling thread
 cannot access this object because a different thread owns it` inside
@@ -642,7 +642,19 @@ to keep the SDK's glob from pulling either into the build.
   `Handlers/` (`Handlers/Geometry/` for maths and geometry) as a plain static class, not as a private
   member of a `UserControl` — that is the difference between logic that can be tested and logic that
   cannot. It then gets tests, per the [Tests](#tests) rules.
-- **Every wait the user watches runs under CRT.UI's `BusyOverlay`** (owner decision, 2026-09-28:
+- **`Controls/` holds the controls more than one tab or window uses** - the table editor
+  (`Controls/BoardTable/`, shown by the Drafts tab and the Maintainer tab), `BusyOverlay` and
+  `ListRowDrag`. They were a separate `CRT.UI` library while the Maintainer tab was its own
+  application, and were folded into CRT.App on 2026-09-30; their pure parts went to `Handlers/`
+  (`RowDragSlots` in `Geometry/`, `ThemeResources` in `Theme/`, `WaitLimit`/`WaitWording` in
+  `Waiting/`). A control used by one tab stays in that tab's folder.
+  **They still touch nothing of CRT's own orchestration - no `Main`, `DataManager`, `UserSettings`
+  or `Logger`** (the rule the separate library's compiler used to enforce). A host hands them what
+  they need - a folder, a document, a remembered choice (reported back through
+  `OnlyChangesWantedChanged`) - and CRT.Data's `CrtLog` is their logging seam. That is what keeps
+  headless tests of them off the user's real settings and log files.
+  `SharedControlsIndependenceTests` fails on any such reference in a `Controls/` source file.
+- **Every wait the user watches runs under `BusyOverlay`** (owner decision, 2026-09-28:
   "I want this method everywhere in the entire project where there is a Wait"). One per window, the
   last child of its root Grid (`Main`, and each dialog that waits:
   `MySubmissionsWindow`, `SystemFilesWindow`, `ComponentContributionWindow`, the Maintainer tab's
@@ -742,10 +754,10 @@ the refusal, Reload and the `DraftChangedOnDisk` prompt remain.
 
 **"Edit in table format" (2026-09-24) opens a draft's workbook as editable sheets** directly below
 its row, hiding the other drafts (`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` is the
-control; `UnsavedTableEditsWindow` the prompt). **Both live in `src/CRT.UI/BoardTable/` since
-2026-09-25**, a library shared with the Maintainer tab's table (see "Maintainer" below), with
-their colours in `BoardTableColors.axaml` - so the editor's files named below are under `src/CRT.UI/`,
-and a change to it reaches the Maintainer tab's table too. Colours are the project owner's: green added, orange
+control; `UnsavedTableEditsWindow` the prompt). **Both live in `src/CRT.App/Controls/BoardTable/`**,
+shared with the Maintainer tab's table (see "Maintainer" below), with their colours in
+`BoardTableColors.axaml` - so the editor's files named below are there, and a change to it reaches
+the Maintainer tab's table too. Colours are the project owner's: green added, orange
 modified (the changed CELL only, published value in its tooltip), red + strikethrough deleted,
 shown WHERE THE ROW USED TO BE. Things to know before touching it:
 
@@ -891,8 +903,8 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   column separators through the header's `SeparatorBrush`. Also: the corner above the grips draws
   its own `TopLeftHeaderRoot` Grid, and CRT's app-wide `TextBlock` style outranks the header's
   inherited text colour. All pinned by `The_header_row_is_set_apart_from_corner_to_corner`.
-  **Every key the table's markup names must resolve in BOTH applications** - `SharedTableColourKeysTests`, in both test
-  projects, fails on a key only one side defines. The text size is set on EVERY column (`CellFontSize`) - a text column carries
+  **Every key the table's markup names must resolve in CRT's App.axaml** - `SharedTableColourKeysTests`, light and dark,
+  fails on a key App.axaml does not define (a missing DynamicResource draws nothing, silently). The text size is set on EVERY column (`CellFontSize`) - a text column carries
   its own size, so the grid's `FontSize` alone shrank only the headers - and cells get `MinHeight` 0
   so the denser rows do not clip the current cell's frame.
 - **Order is NOT a change `BoardDataDiffer` counts** (it pairs by key). A reorder is saved into the
@@ -1743,7 +1755,7 @@ CRT.Data's `SystemFileEntries.ForPromotion` over the plan's copies, removals and
 `unchangedFiles`; **Contributor Submissions** opens it in `FileTreeWindow` from "Files...", from
 `GET /api/review/submissions/{id}/files` (`SubmissionFileTreeFlow` over `ForApproval` - asked on
 demand, since it walks the board's folder and builds the publish plan). **Pointing at a file shows
-the TABLE'S hover card** (`FileTreeView.FilePreview.cs`: CRT.UI's `BoardTableFilePreview`, one side,
+the TABLE'S hover card** (`FileTreeView.FilePreview.cs`: the table's `BoardTableFilePreview`, one side,
 `showHeadline: false` - the owner asked for "only the relative path" and no change text, which the
 row's pill already gives), and **double-clicking opens it**, for every maintainer, through the
 host's `IFileTreeFiles` (`FileTreeFiles`, each file fetched once per tree shown): BETA's and
@@ -1765,7 +1777,7 @@ height builds every one of a board's ~2,000 rows.
 **A NEW system is PLACED in CRT's drop-down lists on the Systems screen before it can be approved**
 (owner request, 2026-09-27). `SystemPlacementView` (inside `SystemView`) shows BETA's main Excel data
 file in CRT's order with the new system as the one panel that moves - the SAME drag as the Drafts
-tab's schematic images, CRT.UI's `ListRowDrag` - plus its hardware name, board name and notes; Save
+tab's schematic images, `Controls/ListRowDrag` - plus its hardware name, board name and notes; Save
 sends "after this row" (`GET`/`POST /api/review/systems/listing`, `SystemListingFlow`, the placement
 kept in migration 0011's `systems.listing_*` columns). The approval refuses an unplaced new system
 (`ApprovePublishFlow.ListingForPublishAsync`), the publish inserts the row (`MasterListing.Insert`,
@@ -1779,8 +1791,8 @@ marked, and the Systems badge turns to an attention badge counting those this ac
 review screen warns above the table. The panel is never rebuilt under unsaved changes by the minute
 check.
 
-**The submission view IS the table** - the Drafts tab's table editor, from the shared
-`src/CRT.UI/` library, in DOCUMENT mode (`BoardTableEditor.Open(BoardTableDocument)`: no draft file,
+**The submission view IS the table** - the Drafts tab's table editor, from
+`src/CRT.App/Controls/BoardTable/`, in DOCUMENT mode (`BoardTableEditor.Open(BoardTableDocument)`: no draft file,
 Save raises `SaveRequested`, the host saves). **Choosing a submission opens its table in the panel**
 (`TabMaintainer.Table.cs`). **The queue is GROUPED BY BOARD** (`TabMaintainer.QueueItems.cs`,
 words and grouping from `ReviewQueueDisplay`): a heading per board ("Commodore / C64 / 250407",
@@ -1848,7 +1860,7 @@ published tree, else refused), the same validation as a new submission, and appr
 cleared. It runs under the `PublishLock`, and the store re-checks the version and the state inside
 its own transaction - the flow's checks are only the early answer. Migration 0009 keeps what each amendment replaced - the contributor's original first. The
 contributor is told (`SubmissionStatus.AmendedByMaintainer`, the BETA mail). **Anything the table
-covers is `CRT.UI`'s and `CRT.Data`'s, not either tab's** - the same rule as "the control only
+covers is `Controls/BoardTable`'s and `CRT.Data`'s, not either tab's** - the same rule as "the control only
 paints" above, across the Drafts tab and the Maintainer tab.
 
 ### Data layer (`Handlers/Data/`, split across `src/CRT.Data/` and `src/CRT.App/Handlers/Data/`)

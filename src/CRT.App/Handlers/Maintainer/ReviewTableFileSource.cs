@@ -9,7 +9,7 @@ namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
     // WHERE THE MAINTAINER'S TABLE READS A FILE CELL'S FILE for its hover card (owner request,
-    // 2026-09-26) - see CRT.UI's BoardTableEditor.FilePreview.cs. The same two routes the change
+    // 2026-09-26) - see Controls/BoardTable/BoardTableEditor.FilePreview.cs. The same two routes the change
     // summary's pictures use: the published file by path, the submitted one by its hash.
     //
     // An I/O boundary, so it is thin: which hash a path means and what a file is saved as before

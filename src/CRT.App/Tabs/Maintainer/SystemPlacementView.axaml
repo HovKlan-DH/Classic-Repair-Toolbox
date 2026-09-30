@@ -11,7 +11,7 @@
     Shown at the top of a system on the Systems screen while that system is not in BETA's main Excel
     data file. The names CRT shows, then BETA's whole list in CRT's order with this system as the one
     panel that can be dragged - the same dashed placeholder as the Drafts tab's schematic images, by
-    the same code (CRT.UI's ListRowDrag) - then where CRT will show it, and Save. The rules and words
+    the same code (Controls/ListRowDrag) - then where CRT will show it, and Save. The rules and words
     are SystemPlacementDisplay's.
     -->
     <UserControl.Styles>

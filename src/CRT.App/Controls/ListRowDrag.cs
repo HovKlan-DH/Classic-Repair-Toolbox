@@ -68,7 +68,7 @@ namespace CRT
         // scroll. See RowDragSlots.EdgeScrollDelta.
         private const double AutoScrollBand = 40.0;
         private const double AutoScrollMaxStep = 18.0;
-        private static readonly TimeSpan AutoScrollInterval = TimeSpan.FromMilliseconds(30);
+        private const double AutoScrollIntervalMs = 30.0;
 
         private readonly ItemsControl thisList;
         private readonly ScrollViewer? thisViewer;
@@ -278,7 +278,7 @@ namespace CRT
                 {
                     this.thisAutoScrollTimer = new DispatcherTimer(DispatcherPriority.Input)
                     {
-                        Interval = AutoScrollInterval,
+                        Interval = TimeSpan.FromMilliseconds(AutoScrollIntervalMs),
                     };
 
                     this.thisAutoScrollTimer.Tick += (_, _) => this.AutoScroll();
