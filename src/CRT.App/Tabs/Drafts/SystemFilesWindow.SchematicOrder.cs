@@ -21,7 +21,7 @@ namespace CRT
     // different things - the data's default for everyone, and one person's preference - so this
     // window leaves the personal one exactly as it is.
     //
-    // *** THE POINTER HANDLING IS CRT.UI's ListRowDrag *** - frozen slots, the re-entrancy guard,
+    // *** THE POINTER HANDLING IS Controls/ListRowDrag *** - frozen slots, the re-entrancy guard,
     // pointer capture and edge auto-scroll, which is what stops the rows "rapidly switching
     // position and not settling" (the race the owner warned about). It was written here first and
     // lifted out when the Maintainer tab needed the same drag for placing a new system in

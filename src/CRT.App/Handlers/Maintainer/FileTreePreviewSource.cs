@@ -23,7 +23,7 @@ namespace Handlers.MaintainerHandling
     // THE TABLE'S HOVER CARD, FOR ONE FILE OF A TREE (owner request, 2026-09-28: "the same hover
     // functionality per file, as in the table format, so I can view an image or open a PDF etc. It
     // should not show any text, if it has changed or whatever ... only the relative path"). So the
-    // card is CRT.UI's BoardTableFilePreview with one side - the file as the tree opens it - and no
+    // card is the table's BoardTableFilePreview with one side - the file as the tree opens it - and no
     // headline: its row already says new, changed or removed.
     //
     // Only a picture is read on hover. Anything else is a link, fetched when it is clicked.

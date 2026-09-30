@@ -15,7 +15,7 @@ using Avalonia.Threading;
 namespace CRT
 {
     // ###########################################################################################
-    // "PLEASE WAIT" OVER A WHOLE WINDOW - the one way either application shows that the user has
+    // "PLEASE WAIT" OVER A WHOLE WINDOW - the one way CRT shows that the user has
     // to wait (owner decisions: 2026-09-27 for pushing a system back from BETA, "please dim
     // everything or alike, so it is visible for the user he should wait until it finishes"; and
     // 2026-09-28, "I want this method everywhere in the entire project where there is a Wait").
@@ -54,8 +54,14 @@ namespace CRT
         // What each faded control's opacity was, so ending the wait puts back exactly that.
         private readonly Dictionary<Control, double> thisFaded = [];
 
+        // Updates the elapsed time on the card. It does NOT decide when to dim: polled at 250 ms, a
+        // 300 ms RevealAfter dimmed at about 500 ms (code review, 2026-09-30) - thisPendingReveal does.
         private readonly DispatcherTimer thisTimer;
         private readonly Stopwatch thisElapsed = new();
+
+        // The one-shot that dims the window RevealAfter into the outermost wait; disposed when that
+        // wait ends, so it can never dim the next one early.
+        private IDisposable? thisPendingReveal;
 
         // Bumped on every outermost start, so a report posted late by a wait that has ended can
         // never change the sentence of the next one.
@@ -83,6 +89,10 @@ namespace CRT
         // Replaces the two-minute clock for a test, which can then say exactly when it passes
         // (see WaitLimit.RunAsync's `limitPassed`).
         internal Func<CancellationToken, Task>? LimitOverrideForTests { get; set; }
+
+        // Replaces the dispatcher's one-shot timer that dims the window, for a test: it is handed
+        // the reveal and its delay, and runs the reveal when it chooses.
+        internal Func<Action, TimeSpan, IDisposable>? ScheduleRevealOverrideForTests { get; set; }
 
         // ###########################################################################################
         // Runs `work` under this overlay. See WaitLimit for the two-minute rule and what TimedOut
@@ -234,6 +244,7 @@ namespace CRT
 
             this.thisElapsed.Restart();
             this.thisTimer.Start();
+            this.ScheduleReveal(this.thisGeneration);
 
             return this.thisGeneration;
         }
@@ -251,6 +262,7 @@ namespace CRT
             }
 
             this.thisTimer.Stop();
+            this.CancelPendingReveal();
             this.thisElapsed.Reset();
             this.thisRevealed = false;
             this.Card.IsVisible = false;
@@ -289,14 +301,32 @@ namespace CRT
 
         private void OnTick()
         {
-            if (!this.IsBusy)
-                return;
-
-            if (!this.thisRevealed && this.thisElapsed.Elapsed >= BusyOverlay.RevealAfter)
-                this.Reveal();
-
-            if (this.thisRevealed)
+            if (this.IsBusy && this.thisRevealed)
                 this.ElapsedText.Text = BusyOverlay.FormatElapsed(this.thisElapsed.Elapsed);
+        }
+
+        // Dims the window RevealAfter from now, unless the wait of `generation` has ended by then.
+        // The generation check covers a timer the dispatcher had already queued when it was
+        // cancelled.
+        private void ScheduleReveal(int generation)
+        {
+            this.CancelPendingReveal();
+
+            void RevealIfStillThisWait()
+            {
+                if (generation == this.thisGeneration)
+                    this.Reveal();
+            }
+
+            this.thisPendingReveal = this.ScheduleRevealOverrideForTests is { } schedule
+                ? schedule(RevealIfStillThisWait, BusyOverlay.RevealAfter)
+                : DispatcherTimer.RunOnce(RevealIfStillThisWait, BusyOverlay.RevealAfter);
+        }
+
+        private void CancelPendingReveal()
+        {
+            this.thisPendingReveal?.Dispose();
+            this.thisPendingReveal = null;
         }
 
         private void Reveal()

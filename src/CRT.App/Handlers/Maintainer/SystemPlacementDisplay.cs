@@ -13,7 +13,7 @@ namespace Handlers.MaintainerHandling
     //
     // The list is BETA's main Excel data file as CRT reads it; the new system is one row dragged
     // into it, and its place is saved as "after this row" (null: first). Pure, so the rules and the
-    // words are tested - the drag itself is CRT.UI's ListRowDrag.
+    // words are tested - the drag itself is Controls/ListRowDrag.
     //
     // *** THE NAME RULE IS THE SERVER's OWN FUNCTION *** (CRT.Data's MasterListing.NamesTakenBy and
     // IsWritableRow), so the screen cannot accept names the server refuses, or refuse names it

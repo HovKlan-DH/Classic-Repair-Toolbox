@@ -4527,6 +4527,15 @@ became `TabMaintainer`, a `UserControl`), logic to `src/CRT.App/Handlers/Maintai
 while it is selected. `CRT.Data` did not change; `CRT.UI` gained one event
 (`BoardTableEditor.OnlyChangesWantedChanged`).
 
+**`CRT.UI` itself was folded into CRT.App on 2026-09-30** (owner request): with one application
+left it had one user, so the separate library bought nothing. The controls went to
+`src/CRT.App/Controls/` (`BoardTable/`, `BusyOverlay`, `ListRowDrag`), the pure parts to
+`Handlers/` (`RowDragSlots` in `Geometry/`, `ThemeResources` in `Theme/`, `WaitLimit` and
+`WaitWording` in a `Waiting/` folder of their own). Namespaces are unchanged; markup names them as `local:` instead of
+`ui:`, and the table's colours are merged from
+`avares://Classic-Repair-Toolbox/Controls/BoardTable/BoardTableColors.axaml`. Nothing the server
+uses moved - the table's rules are still `CRT.Data`'s.
+
 **What the window did, and where it went:**
 
 | Window behaviour | In the tab |

@@ -19,15 +19,15 @@ namespace CRT
     // ###########################################################################################
     public interface IBoardTableFileSource
     {
-        // How the two sides are named in the preview - "Published" / "Your draft", or the maintainer
-        // application's "Before (published)" / "After (submitted)".
+        // How the two sides are named in the preview - "Published" / "Your draft", or the Maintainer
+        // tab's "Before (published)" / "After (submitted)".
         string PublishedLabel { get; }
 
         string CurrentLabel { get; }
 
         // Whether a file whose two sides hold the same bytes is headed "Unchanged". It is worth
-        // saying where the cell could hide a file replaced under its own name; the maintainer
-        // application says no for a NEW system, whose two sides are both the submission, so the
+        // saying where the cell could hide a file replaced under its own name; the Maintainer
+        // tab says no for a NEW system, whose two sides are both the submission, so the
         // word said nothing there (owner request, 2026-09-26).
         bool SaysUnchanged => true;
 

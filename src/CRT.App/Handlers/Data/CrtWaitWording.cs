@@ -9,8 +9,8 @@ namespace Handlers.DataHandling
     // project where there is a Wait ... it must be solid in validating if it did finish").
     //
     // Pure and tested. Each sentence names WHAT is happening, for a hobbyist at the bench rather than
-    // for a log. The after-timeout sentences build on WaitWording (CRT.UI), which the Maintainer tab uses
-    // too, so the limit reads the same in both applications.
+    // for a log. The after-timeout sentences build on WaitWording, which the Maintainer tab uses
+    // too, so the limit reads the same on every screen.
     //
     // *** SOME THINGS CANNOT BE CHECKED AFTERWARDS, AND SAY SO. *** Feedback goes to a page that
     // answers nothing back, so after a timeout nobody can know whether it arrived - the sentence

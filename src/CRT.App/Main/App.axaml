@@ -6,9 +6,9 @@
 	<Application.Resources>
 		<ResourceDictionary>
 
-			<!-- The table editor's own colours, shared with the Maintainer tab (CRT.UI). -->
+			<!-- The table editor's own colours, shared by the Drafts tab and the Maintainer tab (Controls/BoardTable). -->
 			<ResourceDictionary.MergedDictionaries>
-				<ResourceInclude Source="avares://CRT.UI/BoardTable/BoardTableColors.axaml" />
+				<ResourceInclude Source="avares://Classic-Repair-Toolbox/Controls/BoardTable/BoardTableColors.axaml" />
 			</ResourceDictionary.MergedDictionaries>
 
 			<FontFamily x:Key="FontAwesomeSolid">
@@ -155,8 +155,8 @@
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#E6E6E6</SolidColorBrush>
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
 
-					<!-- Light, the table editor's colours (BoardTable_*) now live in CRT.UI's
-					     BoardTable/BoardTableColors.axaml, merged below, so the Maintainer tab's
+					<!-- Light, the table editor's colours (BoardTable_*) now live in
+					     Controls/BoardTable/BoardTableColors.axaml, merged above, so the Maintainer tab's
 					     table uses the very same ones. -->
 
 					<!-- Light, Workbooks tab: the surfaces the tab actually paints.
@@ -350,7 +350,7 @@
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#524842</SolidColorBrush>
 
-				<!-- Dark, the table editor: see CRT.UI's BoardTable/BoardTableColors.axaml. -->
+				<!-- Dark, the table editor: see Controls/BoardTable/BoardTableColors.axaml. -->
 
 				<!-- Dark, Workbooks tab. Surfaces only - see the light block above for why the
 				     category and state colours are not here. -->

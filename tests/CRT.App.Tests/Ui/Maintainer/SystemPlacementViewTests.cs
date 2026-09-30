@@ -16,7 +16,7 @@ namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 // the drop-down lists. This must be done before it can be pushed to BETA.").
 //
 // The panel shows BETA's whole list with the new system as the one panel that moves - dragged with
-// a REAL pointer here, through CRT.UI's ListRowDrag (the Drafts tab's schematic images' drag) - and
+// a REAL pointer here, through ListRowDrag (the Drafts tab's schematic images' drag) - and
 // Save sends the row above it. Save is answered without a server (SaveOverrideForTests). The rules
 // and words are SystemPlacementDisplay's and tested there.
 // ###########################################################################################

@@ -1207,7 +1207,7 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // *** NOT A FAILURE OF THE REQUEST - THE WINDOW STOPPED WAITING (2026-09-28). *** Everything
-        // the maintainer waits for runs under CRT.UI's BusyOverlay, which gives up after WaitLimit's
+        // the maintainer waits for runs under Main's BusyOverlay, which gives up after WaitLimit's
         // two minutes. The server may well have finished regardless, so a caller that changed
         // something must look again before it says what happened (ServerWait).
         // ###########################################################################################

@@ -3,7 +3,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:CRT"
-        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
 		xmlns:shapes="clr-namespace:Avalonia.Controls.Shapes;assembly=Avalonia.Controls"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
@@ -794,12 +793,12 @@
 			</TextBlock>
 		</Panel>
 
-		<!-- "Please wait" over the whole window - CRT.UI's BusyOverlay, the one wait of both
-		     applications (owner decision, 2026-09-28: "I want this method everywhere in the entire
+		<!-- "Please wait" over the whole window - BusyOverlay, the one wait of the whole
+		     application (owner decision, 2026-09-28: "I want this method everywhere in the entire
 		     project where there is a Wait"). Every tab finds it through BusyOverlay.For, so a wait
 		     anywhere in this window dims all of it. Last, and above the mode hint, so it covers
 		     everything. -->
-		<ui:BusyOverlay x:Name="BusyOverlay"
+		<local:BusyOverlay x:Name="BusyOverlay"
 						Grid.Column="0"
 						Grid.ColumnSpan="3"
 						ZIndex="2000" />

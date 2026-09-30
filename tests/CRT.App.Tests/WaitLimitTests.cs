@@ -10,7 +10,7 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 // WaitLimit - when a wait the user is watching ends (owner decision, 2026-09-28: "It should await
 // up to 2 minutes, until it will auto-close, but of course it must be solid in validating if it did
-// finish"). It lives in CRT.UI, shared by both applications, and is tested here as RowDragSlots is.
+// finish").
 //
 // THE CLOCK IS THE TEST'S. Every limit here is a task the test completes by hand ("two minutes
 // have now passed"), so nothing waits on real time and nothing races a timer.

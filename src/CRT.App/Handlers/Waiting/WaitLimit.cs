@@ -27,7 +27,7 @@ namespace CRT
     // ###########################################################################################
     public static class WaitLimit
     {
-        // The limit itself. One value for both applications, so no screen waits longer than another.
+        // The limit itself. One value for every wait, so no screen waits longer than another.
         public static readonly TimeSpan Maximum = TimeSpan.FromMinutes(2);
 
         // ###########################################################################################

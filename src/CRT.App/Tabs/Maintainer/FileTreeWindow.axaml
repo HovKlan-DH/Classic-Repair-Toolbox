@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="using:CRT"
-        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         x:Class="CRT.FileTreeWindow"
         Title="Files"
         Width="900"
@@ -35,6 +34,6 @@
             <local:FileTreeView x:Name="Tree" />
         </DockPanel>
 
-        <ui:BusyOverlay x:Name="BusyOverlay" />
+        <local:BusyOverlay x:Name="BusyOverlay" />
     </Grid>
 </Window>

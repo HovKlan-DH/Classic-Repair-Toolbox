@@ -18,7 +18,7 @@ namespace CRT
     // was dropped and the table opens with the submission (2026-09-26: "make the table the default
     // first view, as this is the most helpful one").
     //
-    // *** THE LOGIC IS ELSEWHERE, AS EVERYWHERE IN THIS TAB. *** The table is CRT.UI's
+    // *** THE LOGIC IS ELSEWHERE, AS EVERYWHERE IN THIS TAB. *** The table is the shared
     // BoardTableEditor in document mode, its rules are CRT.Data's (BoardTableDocument), what a save
     // sends is ReviewTableWording.RowsToSave, and what may change - who, and when - is the
     // server's (AmendSubmissionFlow). Resting on a file cell shows the file (ReviewTableFileSource).

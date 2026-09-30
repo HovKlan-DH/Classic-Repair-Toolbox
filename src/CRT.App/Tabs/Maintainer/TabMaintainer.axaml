@@ -9,7 +9,6 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
              xmlns:local="clr-namespace:CRT"
              x:Class="CRT.TabMaintainer">
 
@@ -675,7 +674,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                     IsVisible="False"
                                     Margin="0,0,0,8" />
 
-                        <ui:BoardTableEditor x:Name="SubmissionTable" />
+                        <local:BoardTableEditor x:Name="SubmissionTable" />
                     </DockPanel>
                 </DockPanel>
 

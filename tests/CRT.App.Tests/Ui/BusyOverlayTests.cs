@@ -7,9 +7,9 @@ using CRT;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// BusyOverlay - the "please wait" both applications show over a whole window (owner decisions,
+// BusyOverlay - the "please wait" CRT shows over a whole window (owner decisions,
 // 2026-09-27 and 2026-09-28: "I want this method everywhere in the entire project where there is a
-// Wait"). It lives in CRT.UI and is tested here, as the table editor is.
+// Wait").
 //
 // What must hold: input is blocked from the first moment; the window dims only once the wait has
 // lasted long enough to notice; it ALWAYS lifts again - on success, on an exception and when the
@@ -92,6 +92,104 @@ public sealed class BusyOverlayTests
             Assert.False(overlay.IsVisible);
             Assert.False(overlay.IsBusy);
             Assert.Equal(0.8, content.Opacity);
+        });
+    }
+
+    // Stands in for the dispatcher's one-shot timer: records each reveal asked for, with its delay,
+    // and runs one only when the test says so.
+    private sealed class RecordingSchedule
+    {
+        public List<(Action Reveal, TimeSpan Delay, Cancellation Handle)> Requests { get; } = [];
+
+        public IDisposable Schedule(Action reveal, TimeSpan delay)
+        {
+            var handle = new Cancellation();
+            this.Requests.Add((reveal, delay, handle));
+            return handle;
+        }
+
+        public sealed class Cancellation : IDisposable
+        {
+            public bool IsDisposed { get; private set; }
+
+            public void Dispose() => this.IsDisposed = true;
+        }
+    }
+
+    // ###########################################################################################
+    // *** THE WINDOW DIMS AT RevealAfter, NOT AT THE NEXT POLL AFTER IT (code review, 2026-09-30).
+    // *** The reveal was checked on the 250 ms elapsed-time tick, so a 300 ms RevealAfter dimmed at
+    // about 500 ms - a wait of 300-500 ms never dimmed at all, and every longer one dimmed 200 ms
+    // late. It is now scheduled once, for exactly RevealAfter, when the outermost wait begins; a
+    // wait nested inside it asks for no second one.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_window_dims_exactly_RevealAfter_into_a_wait_and_only_once_for_nested_waits()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var (_, _, content, _, overlay) = BuildHost();
+            var schedule = new RecordingSchedule();
+            overlay.ScheduleRevealOverrideForTests = schedule.Schedule;
+            var finishOuter = new TaskCompletionSource<int>();
+            var finishInner = new TaskCompletionSource<int>();
+
+            Task<WaitResult<int>> outer = overlay.RunAsync("Outer", _ => finishOuter.Task);
+            Task<WaitResult<int>> inner = overlay.RunAsync("Inner", _ => finishInner.Task);
+
+            var request = Assert.Single(schedule.Requests);
+            Assert.Equal(BusyOverlay.RevealAfter, request.Delay);
+            Assert.False(overlay.IsRevealed);
+
+            request.Reveal();
+
+            Assert.True(overlay.IsRevealed);
+            Assert.Equal(BusyOverlay.Fade, content.Opacity);
+
+            finishInner.SetResult(1);
+            await inner;
+            finishOuter.SetResult(2);
+            await outer;
+
+            Assert.True(request.Handle.IsDisposed);
+            Assert.Equal(0.8, content.Opacity);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A REVEAL LEFT OVER FROM AN ENDED WAIT NEVER DIMS THE NEXT ONE EARLY. *** A 100 ms wait
+    // followed at once by another would otherwise have the first one's timer dim the second only
+    // 200 ms in - the flicker RevealAfter exists to prevent.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_reveal_scheduled_for_a_wait_that_has_ended_leaves_the_next_wait_undimmed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var (_, _, content, _, overlay) = BuildHost();
+            var schedule = new RecordingSchedule();
+            overlay.ScheduleRevealOverrideForTests = schedule.Schedule;
+
+            await overlay.RunAsync("First", _ => Task.FromResult(1));
+
+            var finishSecond = new TaskCompletionSource<int>();
+            Task<WaitResult<int>> second = overlay.RunAsync("Second", _ => finishSecond.Task);
+
+            Assert.Equal(2, schedule.Requests.Count);
+            Assert.True(schedule.Requests[0].Handle.IsDisposed);
+
+            // The first wait's timer fires anyway (a dispatcher that had already queued it).
+            schedule.Requests[0].Reveal();
+
+            Assert.False(overlay.IsRevealed);
+            Assert.Equal(0.8, content.Opacity);
+
+            schedule.Requests[1].Reveal();
+
+            Assert.True(overlay.IsRevealed);
+
+            finishSecond.SetResult(2);
+            await second;
         });
     }
 

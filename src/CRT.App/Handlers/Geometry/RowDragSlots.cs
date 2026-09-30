@@ -8,7 +8,7 @@ namespace Handlers.Geometry
     // the row should go. Shared by the worklog editor's Photos and Files lists, and - through
     // ListRowDrag - the Drafts tab's "Schematic images" window and the Maintainer tab's
     // drop-down placement (2026-09-27), so the one thing that went wrong once cannot go wrong
-    // again in another copy. In CRT.UI since then, because both applications use it; still
+    // again in another copy. It sat in the CRT.UI library from then until 2026-09-30; still
     // Avalonia-free, and still tested by CRT.App.Tests' RowDragSlotsTests.
     //
     // *** WHAT WENT WRONG: THE ROWS OSCILLATED. *** Measuring the LIVE layout feeds each move back

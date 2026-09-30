@@ -16,7 +16,7 @@ namespace CRT
 {
     // ###########################################################################################
     // Placing a new system in CRT's drop-down lists - see the markup's header. This file lays out
-    // the server's listing, lets the one row move (CRT.UI's ListRowDrag, the Drafts tab's schematic
+    // the server's listing, lets the one row move (Controls/ListRowDrag, the Drafts tab's schematic
     // images' drag) and sends the result; SystemPlacementDisplay decides and words everything.
     //
     // *** THE QUEUE's MINUTE CHECK MUST NOT TAKE THE PANEL FROM UNDER THE MAINTAINER. *** Show is

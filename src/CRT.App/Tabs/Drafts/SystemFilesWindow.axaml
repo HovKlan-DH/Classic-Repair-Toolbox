@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
-        xmlns:ui="clr-namespace:CRT;assembly=CRT.UI"
         x:Class="CRT.SystemFilesWindow"
         Title="Schematic images"
         Width="760"
@@ -375,7 +374,7 @@
 		</Grid>
 
 		<!-- "Please wait" over this window while images or KiCad files are copied and checked
-		     (2026-09-28) - see CRT.UI's BusyOverlay. The -18 margin covers the grid's own margin. -->
-		<ui:BusyOverlay Grid.RowSpan="3" Margin="-18" />
+		     (2026-09-28) - see BusyOverlay. The -18 margin covers the grid's own margin. -->
+		<local:BusyOverlay Grid.RowSpan="3" Margin="-18" />
 	</Grid>
 </Window>
