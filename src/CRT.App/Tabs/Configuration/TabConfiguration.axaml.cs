@@ -289,11 +289,31 @@ namespace CRT
 
             UserSettings.ThemeVariant = themeVariant;
 
+            this.ApplyTheme();
+        }
+
+        // ###########################################################################################
+        // Puts the configured theme on CRT's application - or, in a test, calls the stand-in instead.
+        // A test must never change the Application the whole headless run shares (CLAUDE.md,
+        // "Headless UI tests"): a test choosing "Dark" here turned every later test in the run dark,
+        // and one comparing a drawn colour with the light theme's failed on CI at random (2026-10-04).
+        // ###########################################################################################
+        private void ApplyTheme()
+        {
+            if (this.ApplyThemeOverrideForTests is Action apply)
+            {
+                apply();
+                return;
+            }
+
             if (Application.Current is App app)
             {
                 app.ApplyConfiguredTheme();
             }
         }
+
+        // Called instead of App.ApplyConfiguredTheme when set - for tests (see ApplyTheme).
+        internal Action? ApplyThemeOverrideForTests { get; set; }
 
         // ###########################################################################################
         // Persists the "Check for new version at launch" preference when the checkbox is toggled.
@@ -822,10 +842,7 @@ namespace CRT
         {
             UserSettings.ReloadUserThemeColors();
 
-            if (Application.Current is App app)
-            {
-                app.ApplyConfiguredTheme();
-            }
+            this.ApplyTheme();
         }
 
         // ###########################################################################################

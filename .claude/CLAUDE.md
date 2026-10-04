@@ -520,7 +520,7 @@ the plain-await version. Do not "simplify" it back to one `await`.
 
 | File | Covers |
 | --- | --- |
-| `UiTestTests.cs` | The harness itself: that after `UiTest.RunAsync` the test is no longer on the headless dispatcher thread, and that a synchronous `UiTest.Run` completes straight after an async body (asserted with a 30s timeout, so a broken harness fails the test rather than hanging the suite) |
+| `UiTestTests.cs` | The harness itself: that after `UiTest.RunAsync` the test is no longer on the headless dispatcher thread, that a synchronous `UiTest.Run` completes straight after an async body (asserted with a 30s timeout, so a broken harness fails the test rather than hanging the suite), and that a body changing the shared Application's theme fails with the theme put back |
 | `TabConstructionTests.cs` | Every tab constructs without throwing |
 | `ConfigurationHelpIconTests.cs` | The Configuration tab's "?" help icons (Workbooks and MiniPro): that each button exists, carries the `HelpIconButton` class and the Font Awesome circle-question glyph, and shares a row with the checkbox it explains. The CLICK is deliberately not tested - it goes through `ExternalTargetLauncher`, whose accept path calls `Process.Start` (rule 6); a mis-typed `Click` handler name already fails the XAML parse |
 | `ComponentHighlightSelectionTests.cs` | Selecting/deselecting in the component filter box, and the highlights that appear and vanish across the main image and every thumbnail |
@@ -575,7 +575,12 @@ suite always assumed anyway (`UiTest` holds one session per assembly; every UI t
 "HeadlessUi" collection and its dispatcher thread). **Its condition: no test may mutate the shared
 `Application`** - no `RequestedThemeVariant` assignment, no `Styles.Add`; read theme resources with
 an explicit variant through `TryGetResource`, and isolate global state through the app's own seams
-(`UserSettings.LoadFrom` and friends), never through Avalonia's teardown.
+(`UserSettings.LoadFrom` and friends), never through Avalonia's teardown. **The theme half is
+machine-checked** (2026-10-04, after CI failed on it): `UiTest.Run`/`RunAsync` fail a test whose body
+changes `Application.RequestedThemeVariant` and put it back - `SmallTabsTests`' theme drop-down
+went through `App.ApplyConfiguredTheme` and turned the rest of the run dark, so whichever test the
+random order put next and compared a drawn colour with the light theme failed instead. A control
+that applies a theme takes a seam (`TabConfiguration.ApplyThemeOverrideForTests`).
 
 **Do NOT add the `Avalonia.Headless.XUnit` package to get `[AvaloniaFact]`.** It was first kept out
 because it needed xunit v3 while this suite was on xunit 2 (adding it made every `Fact` and

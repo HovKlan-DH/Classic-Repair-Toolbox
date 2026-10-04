@@ -1,7 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Styling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -16,6 +18,13 @@ namespace ClassicRepairToolbox.Tests.Ui;
 //
 // Everything touching a control must go through Run: Avalonia requires a dispatcher and
 // will throw if a visual is created on an arbitrary thread.
+//
+// *** A TEST THAT CHANGES THE APPLICATION'S THEME FAILS, AND THE THEME IS PUT BACK (2026-10-04). ***
+// The Application is built once per assembly (TestAppBuilder.cs), so a test that turned it dark
+// left every later test dark - and a test comparing a drawn colour with the light theme then
+// failed on CI, wherever the random order put it, never at the test that did it
+// (SmallTabsTests' theme drop-down, through App.ApplyConfiguredTheme). Checked around every body,
+// so the culprit is the test that fails.
 // ###########################################################################################
 public static class UiTest
 {
@@ -26,7 +35,23 @@ public static class UiTest
 
     public static void Run(Action body)
     {
-        Session.Dispatch(body, CancellationToken.None).GetAwaiter().GetResult();
+        Session.Dispatch(
+            () =>
+            {
+                ThemeVariant? before = UiTest.Theme;
+                bool finished = false;
+
+                try
+                {
+                    body();
+                    finished = true;
+                }
+                finally
+                {
+                    UiTest.PutTheThemeBack(before, failTheTest: finished);
+                }
+            },
+            CancellationToken.None).GetAwaiter().GetResult();
     }
 
     // ###########################################################################################
@@ -55,7 +80,19 @@ public static class UiTest
         Task dispatched = Session.Dispatch(
             async () =>
             {
-                await body();
+                ThemeVariant? before = UiTest.Theme;
+                bool finished = false;
+
+                try
+                {
+                    await body();
+                    finished = true;
+                }
+                finally
+                {
+                    UiTest.PutTheThemeBack(before, failTheTest: finished);
+                }
+
                 return true;
             },
             CancellationToken.None
@@ -68,6 +105,27 @@ public static class UiTest
             TaskScheduler.Default);
 
         await dispatched;
+    }
+
+    private static ThemeVariant? Theme => Application.Current?.RequestedThemeVariant;
+
+    // The theme as it was before the body; a change fails the test, unless the body already failed
+    // for its own reason - that failure is the one to see.
+    private static void PutTheThemeBack(ThemeVariant? before, bool failTheTest)
+    {
+        ThemeVariant? after = UiTest.Theme;
+
+        if (Equals(after, before) || Application.Current is not Application app)
+            return;
+
+        app.RequestedThemeVariant = before;
+
+        if (failTheTest)
+        {
+            Assert.Fail(
+                $"The test changed the shared Application's theme ({before} to {after}). Every later test would run in it - " +
+                "use the control's seam instead (TabConfiguration.ApplyThemeOverrideForTests, for one).");
+        }
     }
 }
 

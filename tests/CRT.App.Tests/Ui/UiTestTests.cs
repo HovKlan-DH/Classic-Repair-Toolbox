@@ -58,4 +58,32 @@ public class UiTestTests
         Assert.True(finished, "UiTest.Run did not complete within 30 seconds of a UiTest.RunAsync body.");
         Assert.True(ran);
     }
+
+    // ###########################################################################################
+    // *** A BODY THAT CHANGES THE SHARED THEME FAILS, AND THE THEME IS PUT BACK (2026-10-04). *** A
+    // test turning the one Application dark left every later test dark, and a test comparing a
+    // drawn colour with the light theme failed on CI wherever the random order put it. Both ways
+    // of running a body are held to it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_body_that_changes_the_applications_theme_fails_and_the_theme_is_put_back()
+    {
+        Avalonia.Styling.ThemeVariant? before = null;
+        UiTest.Run(() => before = Avalonia.Application.Current!.RequestedThemeVariant);
+
+        Avalonia.Styling.ThemeVariant other =
+            Equals(before, Avalonia.Styling.ThemeVariant.Dark) ? Avalonia.Styling.ThemeVariant.Light : Avalonia.Styling.ThemeVariant.Dark;
+
+        Assert.ThrowsAny<Exception>(() => UiTest.Run(() => Avalonia.Application.Current!.RequestedThemeVariant = other));
+        await Assert.ThrowsAnyAsync<Exception>(() => UiTest.RunAsync(async () =>
+        {
+            Avalonia.Application.Current!.RequestedThemeVariant = other;
+            await Task.Yield();
+        }));
+
+        Avalonia.Styling.ThemeVariant? after = null;
+        UiTest.Run(() => after = Avalonia.Application.Current!.RequestedThemeVariant);
+
+        Assert.Equal(before, after);
+    }
 }
