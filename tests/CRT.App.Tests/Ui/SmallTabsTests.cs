@@ -172,17 +172,27 @@ public class SmallTabsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // Choosing a theme saves it and puts it on the application - through the tab's stand-in here,
+    // never on the real Application: that is shared by every headless test, and this test turning
+    // it dark made a later test comparing a drawn colour with the light theme fail on CI, at random
+    // with the run's order (2026-10-04). UiTest now fails any test that changes the theme.
+    // ###########################################################################################
     [Fact]
-    public void Choosing_a_theme_persists_it()
+    public void Choosing_a_theme_persists_it_and_applies_it()
     {
         UiTest.Run(() =>
         {
             UserSettings.ThemeVariant = "Light";
 
             var tab = new TabConfiguration();
+            int applied = 0;
+            tab.ApplyThemeOverrideForTests = () => applied++;
+
             tab.GetControl<ComboBox>("ThemeVariantComboBox").SelectedIndex = 1;
 
             Assert.Equal("Dark", UserSettings.ThemeVariant);
+            Assert.Equal(1, applied);
         });
     }
 
