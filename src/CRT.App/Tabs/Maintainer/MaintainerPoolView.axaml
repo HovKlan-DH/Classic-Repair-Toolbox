@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.MaintainerPoolView">
+
+    <!--
+    WHO MAINTAINS WHICH SYSTEM, ON THE ACCOUNT SCREEN (the Admin screen until 2026-10-04; owner request, 2026-10-04: "please make sure
+    that the actual 'Send invitation' and 'Add as maintainer' gets moved to the 'Admin' tab (in top
+    menu), as this is something only the admin should be able to do"). ADMINISTRATOR ONLY, like
+    every padlocked entry there - the server refuses everybody else regardless.
+
+    It was on the Systems screen, in a system's Maintainer view, from 2026-09-27 (when it moved there
+    FROM Admin) until 2026-10-04; that view now lists the maintainers and nothing more.
+
+    Choose a system, then: each maintainer with a Remove button, each invitation nobody has accepted
+    yet with a Withdraw button, and the two ways to add somebody - an account chosen from the list, or
+    an address invited by email (the server mails it a code; CRT.Server's MaintainerInvitationFlows).
+    MaintainerPoolView.axaml.cs says what each press does.
+    -->
+    <DockPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Maintainers"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Who maintains each system. Choose a system, then add somebody who has an account, invite somebody new by email, or take a maintainer off it."
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12" />
+
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0"
+                       Text="System"
+                       VerticalAlignment="Center"
+                       Margin="0,0,12,0" />
+            <ComboBox Grid.Column="1"
+                      x:Name="SystemCombo"
+                      HorizontalAlignment="Stretch"
+                      PlaceholderText="Choose a system"
+                      SelectionChanged="OnSystemChanged" />
+        </Grid>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="PoolPanel" Spacing="8" Margin="0,0,12,0" IsVisible="False">
+
+                <!-- The maintainers, each with Remove, then the open invitations, each with Withdraw. -->
+                <StackPanel x:Name="MaintainersSection" Spacing="4" />
+
+                <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                    <ComboBox Grid.Column="0"
+                              x:Name="AddAccountCombo"
+                              HorizontalAlignment="Stretch"
+                              PlaceholderText="Choose somebody who has an account" />
+                    <Button Grid.Column="1"
+                            x:Name="AddAccountButton"
+                            Content="Add as maintainer"
+                            Margin="8,0,0,0"
+                            Click="OnAddAccountClick" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Grid.Column="0"
+                             x:Name="InviteEmailBox"
+                             PlaceholderText="Or invite somebody new - their email address" />
+                    <Button Grid.Column="1"
+                            x:Name="InviteButton"
+                            Content="Send invitation"
+                            Margin="8,0,0,0"
+                            Click="OnInviteClick" />
+                </Grid>
+
+                <TextBlock x:Name="PoolMessageText" TextWrapping="Wrap" IsVisible="False" />
+
+                <!-- Said, because the list shows one line per person and nothing else hints at it
+                     (owner request, 2026-09-27: "I should be able to attach more than one maintainer
+                     per system"). -->
+                <TextBlock x:Name="SeveralMaintainersHint"
+                           Text="A system can have as many maintainers as you like - add them one at a time. Any one of them can approve its submissions (replacing a shared file other boards use also needs you)."
+                           FontSize="11"
+                           Opacity="0.7"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

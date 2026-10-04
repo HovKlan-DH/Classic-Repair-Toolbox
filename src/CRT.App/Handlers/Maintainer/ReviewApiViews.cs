@@ -87,7 +87,11 @@ namespace Handlers.MaintainerHandling
         // or null from an older server, which then draws only what changes.
         IReadOnlyList<string>? UnchangedFiles = null,
         string? BetaDataUrl = null,
-        string? ProductionDataUrl = null);
+        string? ProductionDataUrl = null,
+
+        // Every file's size, by path (2026-10-04) - null from an older server, whose tree then shows
+        // no sizes.
+        IReadOnlyDictionary<string, long>? FileSizes = null);
 
     // State "awaiting" is a recorded approval that published nothing - the first of two.
     // ###########################################################################################
@@ -199,12 +203,38 @@ namespace Handlers.MaintainerHandling
     // What saving a change in the table answered.
     public sealed record ReviewAmendResult(int Version, IReadOnlyList<ReviewFindingView> Warnings);
 
+    // ###########################################################################################
+    // What sending a change from a system's table answered (2026-10-03): the submission it became,
+    // and any warnings its content raised. `Published`: it is in BETA at `Revision`, `RemovedFiles`
+    // gone. Otherwise it was made but not published - `NotPublishedReason` says why - and waits under
+    // Contributor Submissions.
+    // ###########################################################################################
+    public sealed record SystemEditResult(
+        long SubmissionId,
+        IReadOnlyList<ReviewFindingView> Warnings,
+        bool Published = false,
+        string? Revision = null,
+        IReadOnlyList<string>? RemovedFiles = null,
+        string? NotPublishedReason = null);
+
     // What removing unused files did, from the administrator's "Unused files" panel.
     public sealed record UnusedFileRemovalResult(
         string Tree,
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> Kept,
         string? NotDoneBecause);
+
+    // What rebuilding the checksum manifests did, from the administrator's entries on the Account screen
+    // (2026-10-01). The headline and each tree's message are the SERVER's words, shown unchanged.
+    public sealed record ManifestRebuildResult(
+        string Headline,
+        IReadOnlyList<ManifestRebuildTreeResult> Trees);
+
+    public sealed record ManifestRebuildTreeResult(
+        string Tree,
+        bool Skipped,
+        int Entries,
+        string Message);
 
     public sealed record ReviewChangeSummaryView(
         bool IsNewSystem,

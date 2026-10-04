@@ -49,8 +49,8 @@ namespace CRT
         // menu should remember the tab last visited" - then "per system, so if I am in 'Important
         // signals' in one system, then I can navigate to another system, and then it will show the
         // last sheet/tab for that system"). Each queue entry is its own, as the project owner sees
-        // them; one not opened yet starts on its first sheet with a change. Unless "Show changes
-        // only" hides the remembered sheet's tab - see BoardTableDocument.SheetToShow. For as long
+        // them; one not opened yet starts on its first sheet with a change. Unless the picked
+        // colour-key pills hide the remembered sheet's tab - see BoardTableDocument.SheetToShow. For as long
         // as the application runs.
         // ###########################################################################################
         private readonly Dictionary<long, string> thisSheetBySubmission = [];
@@ -72,10 +72,11 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // "Show changes only" as the maintainer last chose it, and every later choice handed to
-        // `remember` - the CHOICE (OnlyChangesWantedChanged), never the filter a particular table
-        // happens to turn on or off for itself (2026-09-29; CRT Maintainer kept it in a file of its
-        // own until then).
+        // The table's filter - the colour-key pills picked (owner request, 2026-10-02; it was the
+        // "Show changes only" check box until then) - as the maintainer last picked it, and every
+        // later pick handed to `remember`: the PICK (FilterWantedChanged), never the filter a
+        // particular table happens to turn on or off for itself (2026-09-29; CRT Maintainer kept it
+        // in a file of its own until then).
         //
         // *** CALLED BY Main, NOT BY THE CONSTRUCTOR. *** Main passes UserSettings; a tab a test
         // builds on its own never reads or writes the shared settings - otherwise one test ticking
@@ -83,13 +84,40 @@ namespace CRT
         // then had no tab and the table opened elsewhere). The same split the separate application
         // kept with its window's UseSettings, which only its App called.
         // ###########################################################################################
-        internal void UseRememberedChoices(bool showChangesOnly, Action<bool> remember)
+        internal void UseRememberedChoices(BoardTableRowKinds filter, Action<BoardTableRowKinds> remember)
         {
             ArgumentNullException.ThrowIfNull(remember);
 
-            this.TableEditor.OnlyChanges = showChangesOnly;
-            this.TableEditor.OnlyChangesWantedChanged += (_, _) => remember(this.TableEditor.OnlyChangesWanted);
+            // A system's table on the Systems screen (2026-10-03) opens on the same pick, and its own
+            // picks are remembered the same way - one table, as the maintainer sees it, in two places.
+            // So a pick in either is handed to the other too (code review, 2026-10-04): each wrote
+            // the one setting without telling the other, and the next launch opened both on
+            // whichever was picked last.
+            //
+            // The stable source's read-only table (2026-10-04) is one more place of the same table.
+            BoardTableEditor[] tables = [.. this.TableEditorsForSharedChoices];
+
+            foreach (BoardTableEditor table in tables)
+            {
+                table.Filter = filter;
+
+                table.FilterWantedChanged += (_, _) =>
+                {
+                    remember(table.FilterWanted);
+
+                    foreach (BoardTableEditor other in tables)
+                    {
+                        if (!ReferenceEquals(other, table))
+                            other.UseFilterWanted(table.FilterWanted);
+                    }
+                };
+            }
         }
+
+        // The tab's tables - a submission's, a system's, and a system's stable source's - which share
+        // the picked pills (UseRememberedChoices).
+        internal IReadOnlyList<BoardTableEditor> TableEditorsForSharedChoices =>
+            [this.TableEditor, this.SystemDetail.TableEditorForRememberedChoices, this.SystemDetail.StableTableEditorForSharedChoices];
 
         // ###########################################################################################
         // Opens the selected submission's table - straight away, as the panel's only view. Nothing
@@ -97,23 +125,34 @@ namespace CRT
         // ###########################################################################################
         private async Task OpenTableAsync(ReviewQueueRow row)
         {
-            if (this.thisClient is null || this.thisSession is null || this.thisTableRow?.Id == row.Id)
+            if (this.thisClient is not ReviewApiClient client ||
+                this.thisSession is not ReviewSession session ||
+                this.thisTableRow?.Id == row.Id)
+            {
                 return;
+            }
 
+            this.BeginTable(row, client, session);
+            this.ShowTableLoadMessage("Loading the table...", isError: false);
+            await this.LoadTableAsync(message: null);
+        }
+
+        // Makes `row` the table's submission, with nothing in it yet - before the rows are read, or
+        // with rows read ahead of time (TabMaintainer.Prefetch.cs).
+        private void BeginTable(ReviewQueueRow row, ReviewApiClient client, ReviewSession session)
+        {
             this.thisTableRow = row;
             this.thisTable = null;
 
             this.TableEditor.FileSource = new ReviewTableFileSource(
-                this.thisClient,
-                this.thisSession,
+                client,
+                session,
                 row.Id,
                 () => this.thisShownDetail?.SubmittedFiles ?? [],
                 () => this.thisTable is { Published: null },
                 this.LaunchFileAsync);
 
             this.ShowTablePanel(open: true);
-            this.ShowTableLoadMessage("Loading the table...", isError: false);
-            await this.LoadTableAsync(message: null);
         }
 
         // ###########################################################################################
@@ -153,7 +192,7 @@ namespace CRT
             // *** A NEW SYSTEM IS COMPARED WITH THE SUBMISSION ITSELF, AS IT WAS OPENED (owner decision,
             // 2026-09-26). *** Its rows start white, and only what the MAINTAINER inserts, changes or
             // deletes is coloured - "Only if the maintainer inserts something, it should show as
-            // added (or removed or changed)" - and "Show changes only" shows nothing until they do.
+            // added (or removed or changed)" - and picking Added, Modified or Deleted shows nothing until they do.
             //
             // Compared with nothing, the table had marked nothing and hidden the colour key but a
             // lone "0 Flagged" ("where are the others?"). Compared with an EMPTY board, every row was
@@ -391,29 +430,32 @@ namespace CRT
         }
 
         // Hands a file the preview saved to the operating system - a PDF opens in the PDF viewer.
-        private async Task<bool> LaunchFileAsync(string fullPath)
-        {
-            try
-            {
-                return TopLevel.GetTopLevel(this)?.Launcher is { } launcher &&
-                       await launcher.LaunchFileInfoAsync(new FileInfo(fullPath));
-            }
-            catch (Exception)
-            {
-                // A platform with no handler for the type; the preview says it could not open.
-                return false;
-            }
-        }
+        private Task<bool> LaunchFileAsync(string fullPath) => MaintainerFileLauncher.LaunchAsync(this, fullPath);
 
         // ###########################################################################################
         // *** QUITTING CRT ASKS TOO, FROM Main (2026-09-29). *** While this was its own window it
         // cancelled its own Closing; a tab has no Closing, so Main.OnWindowClosing asks these two
         // - the same pair TabDrafts hands it - and brings this tab forward first, so the prompt is
         // about a table the maintainer can see. `owner` is Main itself.
+        //
+        // *** BOTH TABLES (2026-10-03). *** A system's table on the Systems screen can hold a change
+        // not sent too. It is asked about after the submission's, on its own screen, for the same
+        // reason.
         // ###########################################################################################
-        internal bool HasUnsavedTableEdits => this.IsTableOpen && this.TableEditor.HasUnsavedChanges;
+        internal bool HasUnsavedTableEdits =>
+            (this.IsTableOpen && this.TableEditor.HasUnsavedChanges) || this.SystemDetail.HasUnsavedTableEdits;
 
-        internal Task<bool> ConfirmLeavingTableAsync(Window? owner = null) => this.MayLeaveTableAsync(owner);
+        internal async Task<bool> ConfirmLeavingTableAsync(Window? owner = null)
+        {
+            if (!await this.MayLeaveTableAsync(owner))
+                return false;
+
+            if (!this.SystemDetail.HasUnsavedTableEdits)
+                return true;
+
+            await this.ShowModeAsync(MaintainerMode.Systems);
+            return await this.SystemDetail.MayLeaveTableAsync(owner);
+        }
 
         // Answers the unsaved-changes prompt in a headless test, where a dialog cannot be answered.
         internal Func<UnsavedTableEditsPrompt, UnsavedTableEditsChoice>? UnsavedTableEditsAnswerForTests { get; set; }

@@ -1,3 +1,4 @@
+using CRT;
 using Handlers.MaintainerHandling;
 using Handlers.DataHandling;
 
@@ -89,6 +90,15 @@ public sealed class MaintainerWaitWordingTests
         Assert.Contains(expected, MaintainerWaitWording.PushBackAfterTimeout("Commodore/C64/250407", stillInBeta), StringComparison.Ordinal);
     }
 
+    // A delete is judged by whether the system is still in the systems list (2026-10-03).
+    [Theory]
+    [InlineData(false, "but it did finish: Commodore/C64/999999 is deleted.")]
+    [InlineData(true, "and Commodore/C64/999999 is still there.")]
+    public void A_delete_is_judged_by_whether_the_system_is_still_listed(bool stillListed, string expected)
+    {
+        Assert.Contains(expected, MaintainerWaitWording.DeleteAfterTimeout("Commodore/C64/999999", stillListed), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(0, "but it did finish: the files are removed.")]
     [InlineData(1, "1 of them is still there")]
@@ -96,6 +106,21 @@ public sealed class MaintainerWaitWordingTests
     public void A_removal_counts_what_is_still_there(int stillThere, string expected)
     {
         Assert.Contains(expected, MaintainerWaitWording.RemovalAfterTimeout(stillThere), StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // A rebuild that timed out WROTE - or may still be writing - both manifests, so it is not the
+    // generic "Try again in a moment" (code review, 2026-10-01). There is nothing to look the
+    // result up with, so it says that, and that pressing again is safe.
+    // ###########################################################################################
+    [Fact]
+    public void A_timed_out_rebuild_says_it_may_have_finished_and_that_pressing_again_is_safe()
+    {
+        string text = MaintainerWaitWording.RebuildAfterTimeout;
+
+        Assert.NotEqual(WaitWording.NoAnswer, text);
+        Assert.Contains("may still be working on it", text, StringComparison.Ordinal);
+        Assert.Contains("Pressing the button again is safe", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -115,5 +140,59 @@ public sealed class MaintainerWaitWordingTests
         Assert.Contains("wait a few minutes before asking again", MaintainerWaitWording.ResetCodeNoAnswer, StringComparison.Ordinal);
         Assert.Contains("try signing in with it", MaintainerWaitWording.PasswordNoAnswer, StringComparison.Ordinal);
         Assert.Contains("try signing in", MaintainerWaitWording.InvitationNoAnswer, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // The "Your account" window (2026-10-03). A name and an address are read back after a timeout,
+    // and the sentence says what the server holds; a code and a password cannot be, and the
+    // sentence says what may have happened.
+    // ###########################################################################################
+    [Fact]
+    public void A_timed_out_name_change_says_what_the_server_holds_now()
+    {
+        AccountAnswer Holding(string name) => new(7, "dh@example.com", name, true, false, [], DateTimeOffset.UnixEpoch);
+
+        Assert.EndsWith("but it did finish: your name is now Dennis H.", MaintainerWaitWording.NameAfterTimeout("Dennis H", Holding("Dennis H")), StringComparison.Ordinal);
+        Assert.Contains("and your name is still Dennis.", MaintainerWaitWording.NameAfterTimeout("Dennis H", Holding("Dennis")), StringComparison.Ordinal);
+        Assert.Contains("could not be checked", MaintainerWaitWording.NameAfterTimeout("Dennis H", null), StringComparison.Ordinal);
+    }
+
+    // The code alone says which address it was for, so ANY other address now means it went through.
+    [Fact]
+    public void A_timed_out_address_change_is_judged_by_whether_the_address_moved()
+    {
+        AccountAnswer Holding(string email) => new(7, email, "Dennis", true, false, [], DateTimeOffset.UnixEpoch);
+
+        Assert.EndsWith("but it did finish: your email address is now bench@example.com.",
+            MaintainerWaitWording.EmailAfterTimeout("dh@example.com", Holding("bench@example.com")), StringComparison.Ordinal);
+        Assert.Contains("and your address is still dh@example.com.",
+            MaintainerWaitWording.EmailAfterTimeout("dh@example.com", Holding("dh@example.com")), StringComparison.Ordinal);
+        Assert.Contains("could not be checked", MaintainerWaitWording.EmailAfterTimeout("dh@example.com", null), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_timed_out_code_or_password_says_what_may_have_happened()
+    {
+        Assert.Contains("A code may still arrive at the new address", MaintainerWaitWording.EmailCodeNoAnswer, StringComparison.Ordinal);
+        Assert.Contains("try the new one first", MaintainerWaitWording.NewPasswordNoAnswer, StringComparison.Ordinal);
+        Assert.DoesNotContain("Working", MaintainerWaitWording.SavingName, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // A change published from a system's table, after no answer: in BETA, made but waiting in the
+    // queue, not there at all - or the system could not be read to look, which never guesses.
+    // ###########################################################################################
+    [Fact]
+    public void A_timed_out_system_change_is_judged_by_the_submission_it_became()
+    {
+        static SystemSubmissionEntry Entry(string state) => new(57, null, "Corrected U8.", state, DateTimeOffset.UnixEpoch, null, null);
+
+        Assert.EndsWith("but it did finish: your change was published to BETA as submission #57.",
+            MaintainerWaitWording.SystemEditAfterTimeout(true, Entry("merged")), StringComparison.Ordinal);
+        Assert.Contains("saved as submission #57, but not published to BETA - it waits under \"Queue: Contributor submissions\"",
+            MaintainerWaitWording.SystemEditAfterTimeout(true, Entry("pending")), StringComparison.Ordinal);
+        Assert.Contains("not among the system's submissions, so it was not published",
+            MaintainerWaitWording.SystemEditAfterTimeout(true, null), StringComparison.Ordinal);
+        Assert.Contains("could not be checked", MaintainerWaitWording.SystemEditAfterTimeout(false, null), StringComparison.Ordinal);
     }
 }

@@ -46,38 +46,6 @@ namespace Handlers.DataHandling
     {
         public const string ReferencedFilesRootFolder = "ReferencedFiles";
 
-        // Marker the contribution endpoint (Assets/Webserver/app-contribution/api/index.php) puts
-        // in its response body when it rejects a submission because the application is older than
-        // the newest released version. The token is followed by that newest version number.
-        public const string OutdatedVersionToken = "OUTDATED_VERSION";
-
-        // ###########################################################################################
-        // Detects the server's "application too old" rejection in a contribution upload response.
-        // Returns true when the token is present; newestVersion carries the version number the
-        // server named right after the token, or an empty string when none could be read.
-        // ###########################################################################################
-        public static bool TryParseOutdatedVersionResponse(string? responseBody, out string newestVersion)
-        {
-            newestVersion = string.Empty;
-
-            string body = responseBody?.Trim() ?? string.Empty;
-            int tokenIndex = body.IndexOf(OutdatedVersionToken, StringComparison.OrdinalIgnoreCase);
-            if (tokenIndex < 0)
-            {
-                return false;
-            }
-
-            string remainder = body.Substring(tokenIndex + OutdatedVersionToken.Length).Trim();
-            string[] parts = remainder.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-
-            if (parts.Length > 0 && parts[0].Length > 0 && char.IsDigit(parts[0][0]))
-            {
-                newestVersion = parts[0];
-            }
-
-            return true;
-        }
-
         // ###########################################################################################
         // The image formats the application can actually put on screen. Every component image is
         // drawn through Avalonia's Bitmap (Skia), so this is the set Bitmap can decode. It is
@@ -97,14 +65,21 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // What is wrong with the file on a component image row, if anything. A row is allowed to sit
-        // there with no file while it is still being filled in, but by submission time every row must
-        // carry a file the application can display - otherwise the contribution ships a component
-        // image that renders as an empty frame for everybody who downloads the data.
+        // there empty while it is still being filled in, but by the time it is saved it must carry
+        // either a file the application can display - otherwise it ships a component image that
+        // renders as an empty frame for everybody who downloads the data - or, with no file, a note.
+        //
+        // *** A NOTE AND NO FILE IS A VALID ROW (owner report, 2026-10-02). *** The C128's "Pinout"
+        // rows that give only a compatible part number are such rows, and this used to refuse them,
+        // so none of those components could be saved here while the Drafts tab's table and the
+        // server accepted them. Whether a row needs a file is CRT.Data's BoardDataChecks.IsNoteOnlyImage
+        // - asked, not restated - and ContributionPackagingTests holds the two to the same rows.
+        // A note never excuses a file of the wrong type.
         // ###########################################################################################
         public enum ComponentImageFileProblem
         {
             None,
-            NoFileSelected,
+            NoFileOrNote,
             NotDisplayable
         }
 
@@ -114,11 +89,13 @@ namespace Handlers.DataHandling
         // it came from existing board data - and is not required to exist on disk here; this decides
         // whether the row is submittable at all, not whether the file resolves.
         // ###########################################################################################
-        public static ComponentImageFileProblem ValidateComponentImageFile(string? storedPath)
+        public static ComponentImageFileProblem ValidateComponentImageFile(string? storedPath, string? note)
         {
             if (string.IsNullOrWhiteSpace(storedPath))
             {
-                return ComponentImageFileProblem.NoFileSelected;
+                return BoardDataChecks.IsNoteOnlyImage(storedPath, note)
+                    ? ComponentImageFileProblem.None
+                    : ComponentImageFileProblem.NoFileOrNote;
             }
 
             return IsDisplayableImageFile(storedPath)

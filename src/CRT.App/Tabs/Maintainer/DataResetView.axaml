@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.DataResetView">
+
+    <!--
+    RESET CONTRIBUTION DATA (owner request, 2026-10-04: "When I go-live with this, it should not have
+    old data visible, so it should be deleted. Of course the real sources of BETA and stable must not
+    be touched, but all contributor and maintainer data should go away"). ADMINISTRATOR ONLY, like
+    every padlocked entry on the Account screen (the Admin screen until 2026-10-04) - and on the server, only while its AllowDataReset setting is on.
+
+    What a reset would delete, counted by the server when this item is chosen; what it leaves; and the
+    red button, which works only once the confirmation word (RESET) is typed - a reset cannot be
+    undone, so it is never one click. While the server's switch is off the counts still show, with the server's words for how
+    to switch it on, and the button stays off.
+
+    The words are DataResetWording's.
+    -->
+    <DockPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeadingText"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="ExplanationText"
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12" />
+
+        <!-- One line per kind of thing deleted, each count bold. -->
+        <StackPanel DockPanel.Dock="Top"
+                    x:Name="CountLines"
+                    Spacing="4"
+                    Margin="0,0,0,12" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="KeptText"
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12" />
+
+        <!-- The server's words while its switch is off. -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="SwitchedOffText"
+                   TextWrapping="Wrap"
+                   Foreground="IndianRed"
+                   IsVisible="False"
+                   Margin="0,0,0,12" />
+
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,0,0,12">
+
+            <TextBlock x:Name="ConfirmPromptText"
+                       VerticalAlignment="Center" />
+
+            <TextBox x:Name="ConfirmBox"
+                     Width="120"
+                     IsEnabled="False" />
+
+            <Button x:Name="ResetButton"
+                    Foreground="{DynamicResource Button_Cancel_Fg}"
+                    Background="{DynamicResource Button_Cancel_Bg}"
+                    BorderBrush="{DynamicResource Button_Cancel_Border}"
+                    IsEnabled="False"
+                    Click="OnResetClick" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="DoneText"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <!-- Nothing fills the rest. -->
+        <Panel />
+    </DockPanel>
+</UserControl>

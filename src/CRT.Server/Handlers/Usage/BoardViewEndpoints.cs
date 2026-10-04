@@ -1,7 +1,5 @@
-using System.Threading.RateLimiting;
 using CRT.Server.Configuration;
 using Handlers.DataHandling;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace CRT.Server.Handlers.Usage
 {
@@ -33,23 +31,8 @@ namespace CRT.Server.Handlers.Usage
         }
 
         // The limiter the route above names - registered with the other services.
-        public static void AddBoardViewRateLimit(this IServiceCollection services)
-        {
-            services.AddRateLimiter(limiter =>
-            {
-                limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-                limiter.AddPolicy(BoardViewEndpoints.RateLimitPolicy, context =>
-                    RateLimitPartition.GetFixedWindowLimiter(
-                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                        _ => new FixedWindowRateLimiterOptions
-                        {
-                            PermitLimit = BoardViewRules.MaxReportsPerAddressPerHour,
-                            Window = TimeSpan.FromHours(1),
-                            QueueLimit = 0
-                        }));
-            });
-        }
+        public static void AddBoardViewRateLimit(this IServiceCollection services) =>
+            services.AddPerAddressRateLimit(BoardViewEndpoints.RateLimitPolicy, BoardViewRules.MaxReportsPerAddressPerHour);
 
         private static async Task<IResult> RecordAsync(
             BoardViewReport? report,

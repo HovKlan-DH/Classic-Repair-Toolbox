@@ -101,4 +101,18 @@ public sealed class DraftDiscardContractTests
     {
         Assert.Equal(expected, DraftDiscardContract.DeliveryFor(status));
     }
+
+    // ###########################################################################################
+    // A submission the server no longer knows (2026-10-04: deleted with its system, or by the reset
+    // at go-live) has nobody to tell - and the discard dialog must not call it "not finished yet".
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_the_server_no_longer_knows_is_not_reported()
+    {
+        SubmissionReceipt gone = Receipt(7, "pending") with { NotFoundUtc = DraftCreated.AddDays(3) };
+
+        Assert.Equal(
+            [8],
+            DraftDiscardContract.WhichToReport([gone, Receipt(8, "pending")], C128, DraftCreated).Select(receipt => receipt.SubmissionId));
+    }
 }

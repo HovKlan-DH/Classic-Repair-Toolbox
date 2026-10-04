@@ -18,20 +18,15 @@
 			<Setter Property="Padding" Value="12,4" />
 		</Style>
 
-		<!-- A sheet tab's flagged rows, in a violet pill beside its name (BoardTableSheetTabHeader,
-		     owner request 2026-09-26) - the rows' own colour, so the tab points at them. -->
-		<Style Selector="Border.SheetTabFlagged">
-			<Setter Property="Background" Value="{DynamicResource BoardTable_Flagged_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
-			<Setter Property="BorderThickness" Value="1" />
-			<Setter Property="CornerRadius" Value="9" />
-			<Setter Property="Padding" Value="7,0" />
-			<Setter Property="VerticalAlignment" Value="Center" />
-		</Style>
-
-		<Style Selector="Border.SheetTabFlagged TextBlock">
-			<Setter Property="FontSize" Value="11" />
-			<Setter Property="FontWeight" Value="SemiBold" />
+		<!-- *** THE POINTER GOES THROUGH A TOOLTIP TO WHAT IS UNDER IT (owner report, 2026-10-02:
+		     "the mouse should follow the cell below, and not the tooltip"). *** A cell's tooltip
+		     opens over the next row, and Avalonia keeps a tooltip open while the pointer is on it -
+		     so the next row could not be reached. Not hit-testable, the pointer lands on the cell
+		     beneath, whose own tooltip takes over. This only works for a tooltip drawn IN the window
+		     (ToolTip.ShouldUseOverlayLayer - the cells and the row grip set it); a tooltip that is a
+		     window of its own, like the toolbar's, is unaffected. -->
+		<Style Selector="ToolTip">
+			<Setter Property="IsHitTestVisible" Value="False" />
 		</Style>
 
 		<Style Selector="TabControl#SheetTabs TabItem:pointerover /template/ Border#PART_SelectedPipe">
@@ -43,6 +38,22 @@
 		     separate badge before the word at first, and with the gaps all alike "Added 1 Modified"
 		     read as easily one way as the other (reported). Count first and bold, the word plain,
 		     as the Workbooks tab's counted pills are. -->
+		<!-- *** THE PILLS ARE THE FILTER (owner request, 2026-10-02: "even do remove the "Show
+		     changes only" so it works in the same unified way"). *** Clicking one shows only the
+		     rows of its kind - more than one picked shows the rows of any of them - and clicking it
+		     again shows every row (BoardTableRowFilter). A picked pill wears a firm 2px outline;
+		     the padding gives back the pixel the outline takes, so the row of pills does not move
+		     when one is picked. -->
+		<!-- *** THREE LOOKS (owner request, 2026-10-03). *** A pill counting nothing is OUTLINED -
+		     no fill, a line in its kind's colour - and DIMMED (Empty). A pill counting something is
+		     FILLED with its kind's wash, at full strength. A picked pill wears the 2px outline
+		     (Selected), and is at full strength even when its count has dropped to 0. Pills with
+		     rows were dimmed too until picked, the same day, and were then too hard to read (owner
+		     request: "make this again non-dimmed"). The classes are set in UpdateToolbar; each pill
+		     names its kind with a class (Added, Modified, ...) so its fill comes from a style here -
+		     a Background set on the pill itself would outrank Empty's and could never be taken off.
+		     The styles are in this order on purpose: among class selectors the later one wins, so
+		     Empty outranks a kind's fill and Selected outranks both. -->
 		<Style Selector="Border.LegendPill">
 			<Setter Property="Height" Value="22" />
 			<Setter Property="Padding" Value="8,0" />
@@ -50,6 +61,53 @@
 			<Setter Property="BorderThickness" Value="1" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
 			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Added">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Added_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Added_Edge}" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Modified">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Modified_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Modified_Edge}" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Deleted">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Deleted_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Deleted_Edge}" />
+		</Style>
+
+		<!-- The Errors and Warnings pills carry the corner mark their cells carry in front of the
+		     count, so the pill and the cells read as one thing; outlined in the mark's colour. -->
+		<Style Selector="Border.LegendPill.Errors">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Error_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Error_Mark}" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Warnings">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Warning_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Warning_Mark}" />
+		</Style>
+
+		<!-- Counting nothing: the outline alone, on the table's own background. It cannot be
+		     picked then (owner request, 2026-10-03 - it could only show an empty table), so no hand
+		     cursor - unless it IS picked, its count having dropped to 0, when a click puts it back. -->
+		<Style Selector="Border.LegendPill.Empty">
+			<Setter Property="Background" Value="{DynamicResource Table_Bg}" />
+			<Setter Property="Opacity" Value="0.4" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Empty:not(.Selected)">
+			<Setter Property="Cursor" Value="Arrow" />
+		</Style>
+
+		<Style Selector="Border.LegendPill.Selected">
+			<Setter Property="Opacity" Value="1" />
+			<Setter Property="BorderThickness" Value="2" />
+			<Setter Property="Padding" Value="7,0" />
+			<Setter Property="BorderBrush" Value="{DynamicResource BoardTable_Pill_Selected_Border}" />
 		</Style>
 
 		<Style Selector="Border.LegendPill TextBlock">
@@ -61,9 +119,6 @@
 			<Setter Property="FontWeight" Value="Bold" />
 		</Style>
 
-		<!-- A pill counting nothing fades back like a disabled control (owner request,
-		     2026-09-24), so the kinds actually present are what catches the eye. The class is set
-		     in UpdateToolbar. -->
 		<!-- The two notices about the draft FILE (changed underneath the table, open in Excel). -->
 		<Style Selector="Border.TableNotice">
 			<Setter Property="Background" Value="{DynamicResource BoardTable_Notice_Bg}" />
@@ -74,10 +129,6 @@
 			     notice that matters reads as one rather than as another line of text. -->
 			<Setter Property="Padding" Value="15,11" />
 			<Setter Property="Margin" Value="0,0,0,6" />
-		</Style>
-
-		<Style Selector="Border.LegendPill.Empty">
-			<Setter Property="Opacity" Value="0.4" />
 		</Style>
 
 		<!-- A deleted row is struck through as well as red: colour alone is not enough for the
@@ -104,6 +155,9 @@
 			<Setter Property="Opacity" Value="0.45" />
 			<Setter Property="Cursor" Value="Hand" />
 			<Setter Property="ToolTip.Tip" Value="Drag to move this row (or Alt+Up / Alt+Down)" />
+			<!-- In the window, so the pointer passes through it to the next row's grip - see the
+			     ToolTip style above. -->
+			<Setter Property="ToolTip.ShouldUseOverlayLayer" Value="True" />
 			<!-- Centred in the whole header (owner request, 2026-09-24). The template puts
 			     the grip in a 16px first column of a two-column grid, so on its own it sat
 			     centred in that column - visibly to the left of the header's middle. -->
@@ -157,6 +211,19 @@
 			<Setter Property="Stroke" Value="{DynamicResource BoardTable_CurrentCell_Border}" />
 			<Setter Property="StrokeThickness" Value="2" />
 			<Setter Property="StrokeDashArray" Value="2,1" />
+		</Style>
+
+		<!-- *** SEVERAL CELLS SELECTED: A VEIL OVER EACH (owner request, 2026-10-02: "mark multiple
+		     rows and then delete those in one go"). *** Shift+click and Ctrl+click select a range
+		     of cells (BoardTableEditor.Selection.cs). A selected cell keeps its own colour (the cell
+		     theme), so with several selected each one is shaded by a translucent veil laid over it -
+		     Excel's way of showing a selected range - drawn by the same CurrencyVisual rectangle, so
+		     the green, orange or red underneath still shows. One selected cell is just the
+		     current cell, which its dashed frame already marks: the SeveralSelected class is set only
+		     with more than one. -->
+		<Style Selector="DataGrid#TableGrid.SeveralSelected DataGridCell:selected /template/ Rectangle#CurrencyVisual">
+			<Setter Property="IsVisible" Value="True" />
+			<Setter Property="Fill" Value="{DynamicResource BoardTable_Selection_Fill}" />
 		</Style>
 
 		<!-- The grid's selection overlay: its outline (the second solid frame) and the fill handle
@@ -215,6 +282,29 @@
 			<Setter Property="Height" Value="2" />
 		</Style>
 
+		<!-- EVERY CELL WRAPS (owner request, 2026-10-04: "always apply wrap text on cells, if the
+		     column size gets reduced" - it was a "Wrap text" check box the same day). With the grid's
+		     CellsWrap class a cell's text - and a cell being typed in - runs over as many lines as it
+		     needs within its column, and the row grows to fit (the grid has no fixed row height).
+		     :is(TextBlock) for the grid's DataGridSearchTextBlock, a subclass - see the
+		     strike-through's note. A class makes each a trigger, which outranks what the cell's own
+		     text theme sets. -->
+		<Style Selector="DataGrid#TableGrid.CellsWrap DataGridCell :is(TextBlock)">
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid.CellsWrap DataGridCell TextBox">
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+
+		<!-- A row with nothing long is BoardTableEditor.MinRowHeight tall: sized to its text alone it
+		     shrank to one bare line, cramped against the rows around it (seen in a render). On the
+		     CELLS - a MinHeight on the row changed nothing - and above the 0 the cell theme gives
+		     them (BuildCellTheme). -->
+		<Style Selector="DataGrid#TableGrid.CellsWrap DataGridCell">
+			<Setter Property="MinHeight" Value="26" />
+		</Style>
+
 		<!-- A deleted row cannot be dragged (BoardTableSheet.BeginRowDrag refuses it), so it offers
 		     no grip. Kept AFTER the grip styles above, which it must outrank. -->
 		<Style Selector="DataGridRow.BoardTableDeleted DataGridRowHeader /template/ Border#DragGrip">
@@ -255,74 +345,113 @@
 
 			<WrapPanel x:Name="ToolbarWrap" Orientation="Horizontal" ItemSpacing="16" LineSpacing="6">
 				<StackPanel Orientation="Horizontal" Spacing="6">
-					<Button x:Name="InsertRowAboveButton"
-							Content="Insert row above"
-							ToolTip.Tip="Add an empty row above the selected one"
-							Click="OnInsertRowAboveClick" />
+					<!-- ONE insert button (owner request, 2026-10-02: "We can of course remove one of
+					     the "Insert row" buttons, as that can be moved afterwards"): the new row goes
+					     below the selected one, and its grip moves it anywhere. -->
 					<Button x:Name="InsertRowBelowButton"
-							Content="Insert row below"
-							ToolTip.Tip="Add an empty row below the selected one"
+							Content="Insert row"
+							ToolTip.Tip="Add an empty row below the selected one. Drag its grip to move it."
 							Click="OnInsertRowBelowClick" />
 					<Button x:Name="DeleteRowButton"
 							Content="Delete row"
-							ToolTip.Tip="Remove the selected row. A published row stays visible in red, where it was. Ctrl+Z undoes it."
+							ToolTip.Tip="Remove the selected rows - Shift+click or Ctrl+click to select several. A published row stays visible in red, where it was. Ctrl+Z undoes it."
 							Click="OnDeleteRowClick" />
 					<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
 					     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
 				</StackPanel>
 
-				<!-- For a system with nothing published, only the Flagged pill shows (Attach): there is
-				     nothing to be added, changed or deleted against, but a duplicate is still one. -->
+				<!-- For a system with nothing published, the Added, Modified and Deleted pills are
+				     hidden (Attach): there is nothing to be added, changed or deleted against. An
+				     error and a warning are what they are either way.
+
+				     Every pill is a FILTER - see the LegendPill styles. Moving rows is off while one is
+				     picked: a position among hidden rows means nothing. -->
 				<StackPanel x:Name="LegendPanel" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 					<Border x:Name="AddedPill"
-							Classes="LegendPill"
-							Background="{DynamicResource BoardTable_Added_Bg}"
-							ToolTip.Tip="Rows that are not in the published data (marked +)">
+							Classes="LegendPill Added"
+							Tapped="OnLegendPillTapped"
+							ToolTip.Tip="Rows that are not in the published data (marked +). Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="AddedCountText" Classes="LegendCount" Text="0" />
 							<TextBlock Text="Added" />
 						</StackPanel>
 					</Border>
 					<Border x:Name="ModifiedPill"
-							Classes="LegendPill"
-							Background="{DynamicResource BoardTable_Modified_Bg}"
-							ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value.">
+							Classes="LegendPill Modified"
+							Tapped="OnLegendPillTapped"
+							ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value. Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="ModifiedCountText" Classes="LegendCount" Text="0" />
 							<TextBlock Text="Modified" />
 						</StackPanel>
 					</Border>
 					<Border x:Name="DeletedPill"
-							Classes="LegendPill"
-							Background="{DynamicResource BoardTable_Deleted_Bg}"
-							ToolTip.Tip="Published rows your draft no longer has (marked -)">
+							Classes="LegendPill Deleted"
+							Tapped="OnLegendPillTapped"
+							ToolTip.Tip="Published rows your draft no longer has (marked -). Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="DeletedCountText" Classes="LegendCount" Text="0" />
 							<TextBlock Text="Deleted" />
 						</StackPanel>
 					</Border>
-					<!-- Rows marked "!": not a change, and not in the tab's number - worth a second look. -->
-					<Border x:Name="FlaggedPill"
-							Classes="LegendPill"
-							Background="{DynamicResource BoardTable_Flagged_Bg}"
-							ToolTip.Tip="Rows marked ! - a duplicate of a row above, or missing a value it needs and so left out when saving. Hover a row to see which.">
+					<!-- THE CHECKS (owner request, 2026-10-02): a cell with a problem carries a small
+					     triangle in its top-left corner - red for an error, amber for a warning - and its
+					     tooltip says what is wrong. An error has to be fixed before the draft can be
+					     submitted; a warning never stops anything. A duplicate row and a row the save
+					     leaves out are warnings since 2026-10-03 - they had a violet "Flagged" pill of
+					     their own until then (owner request: "Should flagged now be treated as
+					     warnings?"). -->
+					<Border x:Name="ErrorsPill"
+							Classes="LegendPill Errors"
+							Tapped="OnLegendPillTapped"
+							ToolTip.Tip="Rows with an error (red corner) - something the server would refuse. Every error has to be fixed before the draft can be submitted. Hover the cell to see what is wrong. Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
-							<TextBlock x:Name="FlaggedCountText" Classes="LegendCount" Text="0" />
-							<TextBlock Text="Flagged" />
+							<Path Data="M0,0 L9,0 L0,9 Z"
+								  Fill="{DynamicResource BoardTable_Error_Mark}"
+								  VerticalAlignment="Center" />
+							<TextBlock x:Name="ErrorsCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Errors" />
 						</StackPanel>
 					</Border>
-
-					<!-- Hides every unchanged row, leaving what was added, changed or deleted - and any
-					     row still needing a second look (flagged, or new and still empty). Moving rows is
-					     off while it is on: a position among hidden rows means nothing. -->
-					<CheckBox x:Name="OnlyChangesCheckBox"
-							  Content="Show changes only"
-							  FontSize="12"
-							  Margin="6,0,0,0"
-							  VerticalAlignment="Center"
-							  ToolTip.Tip="Hide the rows you have not touched, leaving what you added, changed or deleted and any flagged row"
-							  IsCheckedChanged="OnOnlyChangesChanged" />
+					<Border x:Name="WarningsPill"
+							Classes="LegendPill Warnings"
+							Tapped="OnLegendPillTapped"
+							ToolTip.Tip="Rows with a warning (amber corner) - worth a look, but nothing stops it being submitted. Hover the cell to see what it is. Click to show only these rows, and again to show every row.">
+						<StackPanel Orientation="Horizontal" Spacing="4">
+							<Path Data="M0,0 L9,0 L0,9 Z"
+								  Fill="{DynamicResource BoardTable_Warning_Mark}"
+								  VerticalAlignment="Center" />
+							<TextBlock x:Name="WarningsCountText" Classes="LegendCount" Text="0" />
+							<TextBlock Text="Warnings" />
+						</StackPanel>
+					</Border>
 				</StackPanel>
+
+				<!-- THE SEARCH BOX (owner request, 2026-10-02: "the same search/filter as we have in the
+				     "Workbooks" tab, where it highlights what I search for") - its grammar, its
+				     placeholder and its clear button are the Workbooks tab's own. Shows only the rows
+				     it finds, on every sheet, and marks the text found (BoardTableEditor.Search.cs). -->
+				<Grid Width="420" VerticalAlignment="Center">
+					<TextBox x:Name="SearchBox"
+							 PlaceholderText="Find in the table - words are ANDed, &quot;quotes&quot; for a phrase, -minus excludes"
+							 FontSize="11" />
+					<Button x:Name="ClearSearchButton"
+							Content="&#x2715;"
+							ToolTip.Tip="Clear the search"
+							IsVisible="False"
+							FontSize="11"
+							Width="20"
+							Height="20"
+							Padding="0"
+							Margin="0,0,4,0"
+							Background="Transparent"
+							BorderThickness="0"
+							Cursor="Hand"
+							HorizontalAlignment="Right"
+							VerticalAlignment="Center"
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center" />
+				</Grid>
 
 			</WrapPanel>
 		</DockPanel>
@@ -360,13 +489,34 @@
 					   TextWrapping="Wrap"
 					   Margin="0,0,0,6"
 					   IsVisible="False" />
+
+			<!-- The checks' problems that are in NO sheet - highlights, drawn on the schematics
+			     rather than typed into a row (BoardDataChecks; BoardTableProblemWording). Collapsed
+			     when there are none. -->
+			<TextBlock x:Name="OutsideProblemsText"
+					   TextWrapping="Wrap"
+					   Margin="0,0,0,6"
+					   IsVisible="False" />
+
+			<!-- A search that finds nothing in ANY sheet (owner request, 2026-10-03) - the table
+			     then keeps only the sheet on screen, empty, and this says why
+			     (BoardTableSearch.NothingFoundLine). Collapsed otherwise. -->
+			<TextBlock x:Name="NoSearchMatchText"
+					   TextWrapping="Wrap"
+					   Margin="0,0,0,6"
+					   IsVisible="False" />
 		</StackPanel>
 
 		<!-- Sorting is off on purpose: deleted rows are shown where they used to be, which only
 		     means something in the sheet's own order.
 
-		     A smaller font and fixed row height than the grid's defaults (2026-09-24, owner
-		     request), so a sheet shows more rows at once - closer to how dense Excel is.
+		     A smaller font than the grid's default, and rows as low as Excel's unless a cell's text
+		     wraps (2026-09-24 and 2026-10-04, owner requests), so a sheet shows more rows at once.
+		     No RowHeight: each row is as tall as its tallest cell (CellsWrap, the styles above).
+
+		     The grid's own double-click fit is OFF: it measures only the rows on screen. A
+		     double-click on a heading's edge fits the column to EVERY row instead
+		     (BoardTableEditor.TextWrap.cs).
 
 		     The scroll bars stay FULL SIZE (ScrollViewer.AllowAutoHide off, owner request,
 		     2026-09-26): the theme shrank them to a hairline until pointed at, so the columns past
@@ -374,16 +524,17 @@
 		     ScrollViewer of its own, which takes the setting from here. -->
 		<DataGrid Grid.Row="3"
 				  x:Name="TableGrid"
-				  Classes="HeaderStyled"
+				  Classes="HeaderStyled CellsWrap"
 				  FontSize="12"
-				  RowHeight="26"
 				  ColumnHeaderHeight="28"
 				  AutoGenerateColumns="False"
 				  CanUserSortColumns="False"
 				  CanUserReorderColumns="False"
 				  CanUserResizeColumns="True"
+				  CanUserResizeColumnsOnDoubleClick="False"
 				  SelectionUnit="Cell"
-				  SelectionMode="Single"
+				  SelectionMode="Extended"
+				  CanUserDeleteRows="False"
 				  HeadersVisibility="All"
 				  RowHeaderWidth="22"
 				  GridLinesVisibility="All"

@@ -74,6 +74,53 @@ public sealed class DraftSeederTests : IDisposable
 
     // ------------------------------------------------------------------ Seeding a published board
 
+    // ###########################################################################################
+    // *** A DRAFT IS A COPY OF THE PUBLISHED FILE AS IT IS NOW, NOT AS CRT FIRST READ IT (owner
+    // report, 2026-10-02). *** The project owner edited a published workbook in Excel with CRT
+    // open, then saved a component - and the new draft had none of the Excel edits: it was seeded
+    // from the board CRT had cached when the board was first shown. Here the cache holds the old
+    // board, the file is changed behind it, and the draft must hold the change.
+    // ###########################################################################################
+    [Fact]
+    public async Task Seeding_from_the_file_copies_it_as_it_is_now_not_as_it_was_cached()
+    {
+        string published = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftSeederTests.SystemKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(published)!);
+
+        BoardWorkbookWriter.Write(published, DraftSeederTests.PublishedBoard());
+        BoardDataReader.ClearCache(published);
+        BoardData? cached = await BoardDataReader.LoadAsync(published, published);
+        Assert.Equal(2, cached!.Components.Count);
+
+        BoardData edited = DraftSeederTests.PublishedBoard();
+        edited.Components.Add(new ComponentEntry { BoardLabel = "U99", Description = "Typed in Excel" });
+        BoardWorkbookWriter.Write(published, edited);
+
+        try
+        {
+            DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey);
+
+            Assert.True(seeded.Created, seeded.Reason);
+            Assert.Contains(
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftSeederTests.SystemKey)!.Components,
+                component => component.BoardLabel == "U99");
+        }
+        finally
+        {
+            BoardDataReader.ClearCache(published);
+        }
+    }
+
+    [Fact]
+    public void Seeding_from_a_file_that_is_not_there_says_so_and_creates_nothing()
+    {
+        DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey);
+
+        Assert.False(seeded.Created);
+        Assert.NotEmpty(seeded.Reason);
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftSeederTests.SystemKey));
+    }
+
     [Fact]
     public void Seeding_creates_a_workbook_the_app_can_read_back()
     {

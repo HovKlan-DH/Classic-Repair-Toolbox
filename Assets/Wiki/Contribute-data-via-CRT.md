@@ -9,8 +9,8 @@ reading that others would benefit from? You can add it directly from the **Contr
 tab - no GitHub account, no spreadsheets, no technical knowledge needed.
 
 Your edit is saved into your own local **draft** for this board and takes effect on your own
-machine right away — untick "View boards as officially published" in the Configuration tab at any
-point to check what your edit looks like. Nothing changes for anyone else until you submit your
+machine right away — tick "View boards as officially coming from online source" in the Configuration tab at any
+point to see the board without your edit ([View boards from online source](View-boards-from-online-source)). Nothing changes for anyone else until you submit your
 draft and it has been reviewed and accepted, after which it reaches everyone the next time the
 application syncs its data.
 
@@ -58,6 +58,10 @@ Then:
 In any row that has a **File** box, click the box and a normal file browser opens. Pick the
 file from anywhere on your computer — a photo, a datasheet, a screenshot. The file name appears
 in the box, images show a small preview, and a copy of the file is stored inside your local draft.
+
+A **Component images** row needs either an image file or a note. A row with only a note is fine -
+many boards have a "Pinout" row that just gives a compatible part number. A row with neither
+is marked red, and **Save to draft** will not save until you fill in one of them or remove the row.
 
 The **File location** dropdown next to it says which folder the file should end up in once
 published. It only lists the folders a file for this board may go in:
@@ -213,22 +217,76 @@ Everything that differs from the official data is coloured:
 * **orange** - a value you changed. Only the changed cell is coloured, and hovering over it shows
   the official value;
 * **red, and struck through** - a row you deleted. It is shown where it used to be, so you can see
-  what was around it;
-* **violet** - a row worth a second look, marked `!`. Either another row above it describes the
-  same thing (two rows for the same component and region, say), or it is missing a value it needs
-  and will be left out when saving. Hover over the row to see which.
+  what was around it.
 
-The colour key above the table counts each kind for the sheet you are looking at - "2 Added",
-"1 Modified" and so on, with a kind that has none shown faded - and ticking **"Show changes only"** hides every row you have not touched,
-so you can check exactly what you did. It also hides the tabs of sheets where you changed nothing,
-so the tabs left are the places to look. Violet rows stay visible when it is ticked.
+**Renaming is still changing the same row.** Some cells say *which* row it is - a component's board
+label and region, a schematic's name, a credit's category and name, an image's pin. Change one of
+those and nothing else in the row, and the row is simply changed: that cell turns orange, and
+hovering over it shows the old value. Change one of them **and** another cell in the same row - a
+credit's name and its contact, say - and CRT can no longer tell it is the same row, so it shows the
+row as added (green) and the old one as deleted (red). The same goes for two rows that are identical
+apart from those cells: deleting C10 and adding a C51 with exactly the same values reads as C10
+renamed to C51.
+
+**CRT also checks your data as you go**, with the same rules the server uses when you submit. A
+cell with a problem gets a small triangle in its top-left corner - hover over the cell to see what
+is wrong:
+
+* **a red corner is an error** - something the server would refuse, such as a file name that is not
+  on your computer (or is spelled with different capital letters), a file type that cannot be
+  submitted, two components with the same label in the same region, or a link that is not a web
+  address. **Every error has to be fixed before the draft can be submitted**;
+* **an amber corner is a warning** - worth a look, but nothing stops you submitting it: a component
+  that is not marked on any schematic, an oscilloscope setting CRT does not know (T/DIV, V/DIV or
+  T.LVL), a file or link for a component that is not in the Components sheet, or the same part
+  number used for two different chips. Two more are about the rows themselves:
+  * **two or more rows describe the same thing** - on the Component images sheet, for example, the
+    same board label, region, pin and name. **Every one of them** gets the amber corner, so you can
+    see which rows collide. All of them are saved, but only the first is compared with the
+    published data, so a change in the others is not shown to the maintainer who reviews it. Make
+    them differ, or delete the extra row. (Two components with the same label in the same region,
+    or two schematics with the same name, are an error instead, as above - and every one of those
+    rows gets the red corner, so you can see which rows collide.);
+  * **a row is missing a value it needs and will be left out when saving** - an Important signals
+    row with a display name but no KiCad net name, say. It is shown like a new row until it is
+    complete.
+
+The highlights on the schematics are not in any sheet, so a problem with one - a highlight on a
+schematic you renamed in the table, say - is listed in a line above the table instead.
+
+You do not have to open the table to know: **each draft's row on the "Drafts" tab says how many
+errors and warnings it has**, in a red and an amber mark beside its name, from the moment the draft
+is created. If you edit a draft's Excel file while CRT is open, the numbers are checked again when
+you come back to CRT's window or open the "Drafts" tab.
+
+The colour key above the table counts each kind for the whole draft - every sheet together,
+whichever one you are looking at - "2 Added", "1 Modified", "1 Errors" and so on. A kind the draft
+has some of is filled with its colour; a kind it has none of is only outlined and shown faint (and
+cannot be clicked - there would be nothing to see). A count you have clicked gets a firm dark outline.
+**Click a count to see only those rows**, and click it again to see every row. Click several to see the rows of any of
+them - Added, Modified and Deleted together show exactly what you changed. The tabs of
+sheets with none of those rows are hidden meanwhile, so the tabs left are the places to look - and
+clicking "Errors" takes you straight to the first sheet that has one. A new row you have just
+inserted always stays visible.
 
 Each row also starts with a small sign that says the same thing without relying on colour: `+`
-added, `~` changed, `-` deleted, `!` worth a second look. The number on each sheet's tab is how
-many rows were added, changed or deleted on that sheet; violet rows are not counted there, because
-they are not changes - a sheet with violet rows says how many in a small violet mark of its own on
-its tab ("2 flagged"), so you can see where to look. For a board you created yourself nothing is marked as added, changed or
-deleted, since all of it is your own - but violet rows are still shown.
+added, `~` changed, `-` deleted. The number on each sheet's tab is how many rows were added,
+changed or deleted on that sheet; errors and warnings are not counted there, because they are not
+changes. To find them, click "Errors" or "Warnings" in the colour key, and only the tabs of the
+sheets that have them stay. For a board you created yourself nothing is marked as added, changed or
+deleted, since all of it is your own - but errors and warnings are still shown.
+
+**Find something in the table with the search box** above it, which works like the "Find a
+previous repair" box on the Workbooks tab. Type a word and only the rows with it in any cell stay -
+on every sheet, with the tabs of sheets that have none hidden - and what was found is marked in
+yellow in the cells. Several words must all be in the row, though each in its own cell (`cr pinout`);
+put a phrase in quotes to find it as it is (`"pinout (secondary)"`), and a minus in front leaves
+out the rows with that word (`pinout -secondary`). Case does not matter, and numbers are found too -
+`4164` finds the RAM. When nothing in any sheet matches, only the sheet you are on stays, empty,
+with a line above the table saying so. It works together with the colour key: clicking "Modified"
+while searching for `pinout` shows only the changed Pinout rows. A row you edit while searching stays on screen even
+if it no longer matches, until you change the search. The cross at the end of the box empties it,
+and so does closing the table or opening another draft; it stays when you switch sheets or save.
 
 **You can look at a file without leaving the table.** Point at a file name - the *Schematic
 image file* column, or *File* on the Component images, Component local files and Board local files
@@ -245,9 +303,23 @@ link, move the pointer across onto the card; move it anywhere else and the card 
 
 **Editing works much as it does in Excel.** Click a cell to select it - it gets a dashed red
 frame - then just start typing, double-click it, or press F2. **Tab** moves to the next cell to the right (and on to the next row
-at the end of one), **Shift+Tab** to the left, and **Enter** down. **Insert row above** and
-**Insert row below** add an empty row next to the selected one, and **Delete row** removes the
-selected row. Changed your mind? Ctrl+Z, below.
+at the end of one), **Shift+Tab** to the left, and **Enter** down. **Insert row** adds an empty
+row below the selected one - drag it by its handle to put it anywhere else - and **Delete row**
+removes the selected row. Changed your mind? Ctrl+Z, below.
+
+**Seeing all of a long text.** Every text is shown in full. A column is only as wide as its longest
+text, up to a limit, and a longer text runs onto more lines, its row growing to fit. Make a column
+narrower and its text wraps onto more lines; drag the edge of its heading to make it wider - as wide
+as you like. **Double-click the edge of a heading** and the column fits its longest text, as in
+Excel - every row counts, not only the ones on screen - but it never grows wider than the table, so a
+very long note still wraps.
+
+**Several rows can be deleted at once.** Click a cell in the first row, then hold Shift and click a
+cell in the last: every row between is selected, shaded lightly so you can still see its colours.
+Ctrl+click adds one more row, or takes a selected one out again. The button then says how many it
+will delete - "Delete 8 rows" - and one Ctrl+Z brings them all back. Red rows among them are skipped,
+since they are already deleted, and while a count in the colour key is clicked only the rows you can
+see are selected. The Delete key on the keyboard never deletes a row.
 
 **Deleting a component deletes everything that belongs to it.** Its rows on the *Component
 images*, *Component local files* and *Component links* sheets go with it - you will see them in red
@@ -267,8 +339,8 @@ a red row still shows everything it held - type or copy the values back in.
 turns into a red dashed empty slot that moves with the mouse, and the other rows make room, so you
 can see exactly where it will land - let go of the mouse button there. Dragging above or below the
 rows you can see carries it further, one row per move. Alt+Up / Alt+Down move the selected row
-one place from the keyboard. A red (deleted) row cannot be moved, and while **"Show changes only"**
-is ticked no row can. The order matters: it is the order the
+one place from the keyboard. A red (deleted) row cannot be moved, and while a count in the colour
+key is clicked - showing only some rows - no row can. The order matters: it is the order the
 components appear in on the left of the main window. A moved row is not coloured, because its
 content has not changed - see the note below about order on its own.
 
@@ -322,10 +394,19 @@ the Excel file either - and saving the table leaves them untouched.
 
 When a draft is ready, open the **"Drafts"** tab and click **"Submit"** on that board's row.
 
+**A draft with errors is not sent.** Instead its table opens showing only the rows with errors, and
+a line above it says how many there are. Fix them, save the table, and click "Submit" again.
+Warnings never stop a submission.
+
 **You do not need an account, and CRT will not ask you to make one.** The only thing the dialog
 asks for is an email address, and it is used for one purpose: telling you whether your
 contribution was accepted, and why if it was not. You also write a short summary of what you
 changed, which is what the maintainer reads first.
+
+**If you are a maintainer signed in on the [Maintainer tab](Maintainer-tab)**, the dialog uses your
+account's email address instead and sends the submission with your account, so whoever reviews it
+can see the address is checked - also when the Maintainer tab is turned off or hidden. Sign out on
+the Maintainer tab first if you want to send with another address.
 
 Before anything is sent, the dialog shows you exactly what is about to go: how many schematics,
 components and highlights, and how many files are referenced. Nothing leaves your machine until
@@ -342,8 +423,16 @@ and you can carry on using the board as normal while the contribution waits to b
 is deliberate: review takes time, and you should not lose the use of your own work while it
 happens.
 
+**What you have just sent cannot be sent again.** As long as the draft holds exactly what you last
+sent from it, its "Submit" button is greyed out, and pointing at it says when you sent it. Change
+anything the submission carries - a value in the table or in Excel, a component in the Contribute
+tab, a highlight, a KiCad calibration, a picture or a file - and "Submit" works again. Opening the
+Excel file and saving it without changing a value does not count, and neither does changing a value
+and then changing it back. If the earlier send never finished - you cancelled it, or the connection
+was lost - the same draft can be sent again straight away.
+
 **The board's row on the Drafts tab shows how your last submission is doing**, in a small badge
-beside its name - *Submitted - awaiting feedback from a maintainer* as soon as it is sent, then for example *Published to BETA source*, or
+beside its name - *Submitted - awaiting feedback from a maintainer* as soon as it is sent, then for example *Published to the BETA source*, or
 *Changes requested* in orange when there is something for you to look at. It uses the same words and
 colours as "My submissions", and pointing at it tells you when you sent it. It only describes
 submissions sent from this draft: if you start a new draft of a board you submitted before, the badge
@@ -352,8 +441,8 @@ stays away until you send the new one.
 **The board's KiCad data travels with the submission.** If the board has a "KiCad data" folder -
 imported through the Drafts tab, or synced with a published board - its KiCad project files
 (.kicad_pcb, .kicad_sch, .kicad_pro) are sent along with everything else, and publishing the
-contribution publishes them. The maintainer sees how many KiCad files are included and, for a
-published board, how many are new or changed. Files the server already has are not uploaded again,
+contribution publishes them. The maintainer sees them among the board's files, with the new and
+changed ones marked. Files the server already has are not uploaded again,
 so an untouched KiCad folder costs nothing to send.
 
 **Submitting the same board again replaces what you sent before**, as long as nobody has started
@@ -403,17 +492,28 @@ and why:
 The **"My submissions"** button on the Drafts tab lists what you have sent, with the state of each
 one and anything the maintainer has said. **"Check for updates"** asks the server for the latest.
 
+You do not have to keep checking. CRT asks the server about anything still waiting when it starts,
+and again every few minutes while it is open. When a maintainer has decided something or written to
+you, a red number appears on the **Drafts** tab - and on the "My submissions" button inside it -
+counting the contributions with news you have not read yet. It goes away once you have read them
+in "My submissions".
+
 **An accepted contribution is published in two steps.** First it is published to the **BETA
 source**, where a maintainer gives the board a final check; "My submissions" then says *Published to
-BETA source*. After that it is published to the ordinary **source** that everyone downloads from, and
-the row says *Published to source*. You get an email at each step. CRT looks for the second step
-each time it starts, for a month after the first; after that, "Check for updates" still asks.
+the BETA source*. After that it is published to the **stable source** that everyone downloads from,
+and the row says *Published to the stable source*. You get an email at each step. CRT looks for the
+second step when it starts and while it is open, for a month after the first; after that, "Check for
+updates" still asks.
 
-**Checking your work on the BETA source?** Ticking **Download data from BETA source** on the
-Configuration tab lets you see your contribution as it will look, before everyone else gets it. When
-it then reaches the ordinary source, CRT shows a note under its tabs saying so, as a reminder to untick
-that box again - the BETA source is for checking, not for everyday use. The note goes away when you
-untick the box, or when you close it.
+**Checking your work on the BETA source?** Ticking **Download data from the BETA source instead of
+the stable source** on the Configuration tab lets you see your contribution as it will look, before
+everyone else gets it. CRT tells you when there is something to check: as soon as a contribution of
+yours is in the BETA source, a note under its tabs says so and names that box (and, if "Check for new
+or updated data at application launch" is off, says to tick that one first), and "My submissions"
+says it under the contribution too. The note goes away when you tick the box, or when you close it.
+When your contribution then reaches the stable source, CRT shows a note saying so, as a reminder to
+untick that box again - the BETA source is for checking, not for everyday use. That note goes away
+when you untick the box, or when you close it.
 
 **A brand-new board** is added to CRT's hardware and board lists by the maintainer who accepts it:
 they choose the names it is shown under and where in the lists it goes, so it may be listed a little

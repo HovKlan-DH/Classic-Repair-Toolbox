@@ -22,7 +22,9 @@ namespace Handlers.DataHandling
     //
     // *** A RENAME IS CARRIED EXPLICITLY, because natural keys cannot see one. *** Renaming U8 to
     // U9 reads as a delete plus an add, which is technically true and tells the maintainer nothing.
-    // The client knows it was a rename and says so in the manifest, and this honours that.
+    // A client that knows it was a rename can say so in the manifest, and this honours that - and
+    // since 2026-10-04 a rename nobody declared is recognised too, by the table's own rule
+    // (BoardDataDiffer.PairRenamedRows).
     //
     // Pure, so the whole thing is unit tested with no UI, no database and no files - which is the
     // point of putting the Maintainer tab's central screen in CRT.Data rather than in its code-behind.
@@ -205,6 +207,32 @@ namespace Handlers.DataHandling
 
                 handledBefore.Add(rename.From);
                 handledAfter.Add(rename.To);
+            }
+
+            // ###########################################################################################
+            // *** AND A RENAME NOBODY DECLARED (owner decision, 2026-10-04). *** No client declares
+            // one, so a highlight whose label changed, or a calibration whose schematic was renamed,
+            // read as one removed and one added. The rows left over on each side are paired by the
+            // rule the table and BoardDataDiffer pair by - nothing but their identifying cells
+            // different (BoardDataDiffer.PairRenamedRows) - so the maintainer's summary counts one
+            // change where the contributor's table showed one. That rule IS "nothing else changed",
+            // so such a pair is never "also changed" - and is not put through RowsMatchIgnoringKey,
+            // whose drop-by-value cannot line the fields up when the key gains a part (a component
+            // given a region).
+            // ###########################################################################################
+            List<string> lostKey = [.. beforeRows.Keys.Where(key => !handledBefore.Contains(key) && !afterRows.ContainsKey(key))];
+            List<string> gainedKey = [.. afterRows.Keys.Where(key => !handledAfter.Contains(key) && !beforeRows.ContainsKey(key))];
+
+            foreach (BoardRowRename pair in BoardDataDiffer.PairRenamedRows(
+                         [.. lostKey.Select(key => beforeRows[key])],
+                         [.. gainedKey.Select(key => afterRows[key])]))
+            {
+                string from = lostKey[pair.Removed];
+                string to = gainedKey[pair.Added];
+
+                renamed.Add(new ReviewRenamedRow(from, to, AlsoChanged: false));
+                handledBefore.Add(from);
+                handledAfter.Add(to);
             }
 
             var added = new List<string>();

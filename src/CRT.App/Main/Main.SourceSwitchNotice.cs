@@ -7,53 +7,65 @@ using System.Linq;
 namespace CRT
 {
     // ###########################################################################################
-    // "YOUR SUBMISSION IS NOW IN THE ONLINE SOURCE - SWITCH BACK FROM BETA" (owner request,
-    // 2026-09-27). See Main.axaml.cs for the file map of the whole partial class.
+    // THE BANNER UNDER THE TABS ABOUT WHICH SOURCE TO DOWNLOAD FROM. See Main.axaml.cs for the file
+    // map of the whole partial class. It carries one of two notices, never both - each holds only
+    // for one setting of "Download data from the BETA source":
     //
-    // A contributor checks a submission in the BETA data by downloading from the BETA source. Once
-    // a maintainer promotes it to production, they should go back to the normal online source - and
-    // nothing told them so. This banner does, for every published submission of theirs they have
-    // not dismissed it for, while this machine downloads from BETA.
+    //   - "YOUR SUBMISSION IS NOW IN THE BETA SOURCE - TICK BETA TO TRY IT" (owner request,
+    //     2026-10-03), while this machine downloads from the STABLE source and a submission of
+    //     theirs has been accepted into BETA;
+    //   - "YOUR SUBMISSION IS NOW IN THE STABLE SOURCE - SWITCH BACK FROM BETA" (owner request,
+    //     2026-09-27), while this machine downloads from BETA and a submission has been published
+    //     to production.
     //
     // WHICH submissions, and the words, are SubmissionReceiptPresenter's (pure, unit tested). The
     // banner is re-derived from the receipts each time rather than raised once on a state change:
-    // a published submission is never asked about again, so a notice raised as the app closed
-    // would otherwise be lost for good. Dismissing it is remembered per submission.
+    // a notice raised as the app closed would otherwise be lost for good. Closing it is remembered
+    // per submission and per notice.
     // ###########################################################################################
     public partial class Main
     {
-        // The submissions the banner is showing, so dismissing it remembers exactly those.
+        // The submissions the banner is showing, so closing it remembers exactly those - and which
+        // of the two notices it is.
         private IReadOnlyList<long> thisSourceSwitchNoticeIds = [];
+        private bool thisSourceNoticeIsBetaTry;
 
         // ###########################################################################################
-        // Shows or hides the banner to match the receipts and the source setting. Called after every
-        // submission status check and whenever "Download data from BETA source" changes. Never
-        // throws: it runs on the launch path, where an exception would fault a discarded Task.
+        // Shows or hides the banner to match the receipts and the source settings. Called after
+        // every submission status check and whenever "Download data from BETA source" or "Check for
+        // new or updated data at application launch" changes. Never throws: it runs on the launch
+        // path, where an exception would fault a discarded Task.
         // ###########################################################################################
         internal void RefreshSourceSwitchNotice()
         {
             try
             {
-                IReadOnlyList<SubmissionReceipt> needing = SubmissionReceiptPresenter.NeedingSourceSwitchNotice(
-                    SubmissionReceiptStore.All,
-                    UserSettings.DownloadDataFromTestSource);
+                IReadOnlyList<SubmissionReceipt> receipts = SubmissionReceiptStore.All;
+                bool onBeta = UserSettings.DownloadDataFromTestSource;
 
-                this.thisSourceSwitchNoticeIds = needing.Select(receipt => receipt.SubmissionId).ToList();
+                IReadOnlyList<SubmissionReceipt> switchBack = SubmissionReceiptPresenter.NeedingSourceSwitchNotice(receipts, onBeta);
+                IReadOnlyList<SubmissionReceipt> tryBeta = SubmissionReceiptPresenter.NeedingBetaTryNotice(receipts, onBeta);
 
-                this.SourceSwitchBanner.IsVisible = needing.Count > 0;
-                this.SourceSwitchBannerText.Text = needing.Count > 0
-                    ? SubmissionReceiptPresenter.DescribeSourceSwitchNotice(needing)
-                    : string.Empty;
+                this.thisSourceNoticeIsBetaTry = switchBack.Count == 0 && tryBeta.Count > 0;
+                IReadOnlyList<SubmissionReceipt> shown = this.thisSourceNoticeIsBetaTry ? tryBeta : switchBack;
+
+                this.thisSourceSwitchNoticeIds = shown.Select(receipt => receipt.SubmissionId).ToList();
+
+                this.SourceSwitchBanner.IsVisible = shown.Count > 0;
+                this.SourceSwitchBannerText.Text = shown.Count == 0
+                    ? string.Empty
+                    : this.thisSourceNoticeIsBetaTry
+                        ? SubmissionReceiptPresenter.DescribeBetaTryNotice(shown, UserSettings.CheckDataOnLaunch)
+                        : SubmissionReceiptPresenter.DescribeSourceSwitchNotice(shown);
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Could not refresh the switch-back-from-BETA notice: [{ex.Message}]");
+                Logger.Warning($"Could not refresh the BETA source notice: [{ex.Message}]");
             }
         }
 
-        // Takes the contributor to where the setting is. Deliberately does not flip it here: turning
-        // BETA off starts a download of the normal data, which the Configuration tab already
-        // explains and asks about.
+        // Takes the contributor to where the setting is. Deliberately does not flip it here: either
+        // way it starts a download, which the Configuration tab already explains and asks about.
         private void OnSourceSwitchBannerConfigurationClick(object? sender, RoutedEventArgs e)
         {
             if (this.MainTabControl != null && this.ConfigurationTabItem != null)
@@ -64,7 +76,15 @@ namespace CRT
 
         private void OnSourceSwitchBannerDismiss(object? sender, RoutedEventArgs e)
         {
-            SubmissionReceiptStore.DismissSourceNotice(this.thisSourceSwitchNoticeIds);
+            if (this.thisSourceNoticeIsBetaTry)
+            {
+                SubmissionReceiptStore.DismissBetaNotice(this.thisSourceSwitchNoticeIds);
+            }
+            else
+            {
+                SubmissionReceiptStore.DismissSourceNotice(this.thisSourceSwitchNoticeIds);
+            }
+
             this.RefreshSourceSwitchNotice();
         }
     }

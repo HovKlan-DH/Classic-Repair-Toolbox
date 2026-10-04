@@ -56,6 +56,16 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(facts);
         }
 
+        public bool FailDeletes { get; set; }
+
+        public Task<int> DeleteForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            if (this.FailDeletes)
+                throw new UnreachableDatabase();
+
+            return Task.FromResult(this.Rows.RemoveAll(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal)));
+        }
+
         // A view as the flow stores one - for tests that fill the store directly.
         public static BoardViewRow Row(string systemId, DateTimeOffset at, string? country = "DK", bool fromBeta = false) =>
             new(at, systemId, "Commodore 64", "250407", "CRT 2026.10.0", "Windows", "Microsoft Windows 10.0.19045", "64-bit",

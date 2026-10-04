@@ -98,7 +98,9 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // Every submission from one contributor - `accountId` when they were signed in, otherwise
         // `contactEmail` (trimmed, any case) among the submissions sent WITHOUT an account - with
-        // its state and whether a maintainer decided it. For ContributorHistory (2026-09-26).
+        // its state and whether a maintainer decided it. For ContributorHistory (2026-09-26); since
+        // 2026-09-30 with its system, description, dates and decision comment too, which the
+        // Maintainer tab's Contributor view lists.
         // ###########################################################################################
         Task<IReadOnlyList<ContributorSubmission>> GetContributorSubmissionsAsync(
             long? accountId,
@@ -232,6 +234,21 @@ namespace CRT.Server.Handlers.Submissions
         Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // Deletes a system's `systems` row (owner request, 2026-10-03 - SystemDeletionFlow), and
+        // through the schema's ON DELETE CASCADE everything hanging off it: its submissions with
+        // their files, payloads, findings, approvals, amendments, draft-discard and BETA-return rows,
+        // its maintainer pool, its invitations and its production approvals. The `audit` table has
+        // no foreign key to it and keeps every row. Blobs no submission needs any more are reclaimed
+        // by the collector, as for any retired submission.
+        //
+        // Answers the ids of EVERY submission deleted with it, whatever its state, read in the same
+        // transaction (code review, 2026-10-04): the flow clears their partial uploads, which the
+        // abandoned-upload sweeper finds only through these rows - once they are gone, nothing else
+        // knows the ids.
+        // ###########################################################################################
+        Task<IReadOnlyList<long>> DeleteSystemAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // Where a NEW system goes in the drop-down lists (2026-09-27, migration 0011): what a
         // maintainer placed it as in the Systems screen, or null while nobody has. SetPlacementAsync
         // answers false when the system has no row at all.
@@ -343,6 +360,23 @@ namespace CRT.Server.Handlers.Submissions
         // written by RecordRollbackAsync) - only those it did. What makes a submission read as
         // "returned" (ProductionPromotionRules.ContributorFacingState); one query for a list.
         Task<IReadOnlyDictionary<long, DateTimeOffset>> GetBetaReturnsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // What a submission changed as it went into BETA (owner request, 2026-10-04; migration 0017)
+        // - CRT.Data's SubmissionChanges, recorded by the publish, since nothing else can know it
+        // afterwards. A second publish of the same submission replaces the first record.
+        // ###########################################################################################
+        Task SetChangesAsync(
+            long submissionId,
+            SubmissionChanges changes,
+            DateTimeOffset recordedUtc,
+            CancellationToken cancellationToken = default);
+
+        // The recorded changes of each of `submissionIds` - only those with a record appear. One
+        // query for a system's whole history.
+        Task<IReadOnlyDictionary<long, SubmissionChanges>> GetChangesAsync(
             IReadOnlyCollection<long> submissionIds,
             CancellationToken cancellationToken = default);
 
@@ -593,7 +627,17 @@ namespace CRT.Server.Handlers.Submissions
 
     // One of a contributor's submissions, as ContributorHistory counts it. DecidedByMaintainer
     // tells a maintainer's rejection from the automatic checks' - decided_by is set only by a person.
-    public sealed record ContributorSubmission(long Id, string State, bool DecidedByMaintainer);
+    // The rest (2026-09-30) is what the Maintainer tab's Contributor view lists; optional so a
+    // record built for counting alone still reads.
+    public sealed record ContributorSubmission(
+        long Id,
+        string State,
+        bool DecidedByMaintainer,
+        string SystemId = "",
+        string? Summary = null,
+        DateTimeOffset CreatedUtc = default,
+        DateTimeOffset? DecidedUtc = null,
+        string? DecisionComment = null);
 
     // One submission to a system, with whether a maintainer decided it - GetSubmissionsForSystemAsync.
     // DecidedByAccountId: the maintainer who decided it (2026-09-27, for the system's history) -

@@ -33,7 +33,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         public static void ListingMaster(string root, params MasterListingRow[] rows)
         {
-            using var package = new ExcelPackage();
+            using var package = EpplusLicense.NewPackage();
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add(MasterWorkbookSchema.SheetName);
 
             sheet.Cells[1, 1].Value = "# Commodore Repair Toolbox";

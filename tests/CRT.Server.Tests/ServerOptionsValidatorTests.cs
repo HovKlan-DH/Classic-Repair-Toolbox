@@ -34,7 +34,9 @@ namespace CRT.Server.Tests
                 ConnectionString = "Server=localhost;Database=crt_review;Uid=crt_review;Pwd=x;",
                 PublicApiBaseUrl = "https://classic-repair-toolbox.dk/api",
                 MailFromAddress = "noreply@classic-repair-toolbox.dk",
-                BlobStoreRoot = Path.Combine(Path.GetTempPath(), "crt-blobs")
+                BlobStoreRoot = Path.Combine(Path.GetTempPath(), "crt-blobs"),
+                FeedbackRoot = Path.Combine(Path.GetTempPath(), "crt-test", "user-feedback"),
+                FeedbackToAddress = "dennis@classic-repair-toolbox.dk"
             };
         }
 
@@ -540,6 +542,20 @@ namespace CRT.Server.Tests
                 f => f.Contains("MinimumFreeDiskBytes", StringComparison.Ordinal));
         }
 
+        // The feedback folder's total (code review, 2026-10-04): negative would read as "always
+        // full", refusing every attachment while the setting looked configured.
+        [Fact]
+        public void A_negative_feedback_total_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.FeedbackMaxStoredBytes = -1;
+
+            Assert.Contains(
+                ServerOptionsValidatorTests.Validate(options),
+                f => f.Contains("FeedbackMaxStoredBytes", StringComparison.Ordinal));
+        }
+
         // Zero is the deliberate way to switch the reserve off, and must not be mistaken for a fault.
         [Fact]
         public void A_zero_disk_reserve_is_allowed()
@@ -717,6 +733,74 @@ namespace CRT.Server.Tests
                 ServerOptionsValidator.Validate(options, null!, _ => true));
             Assert.Throws<ArgumentNullException>(() =>
                 ServerOptionsValidator.Validate(options, _ => true, null!));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // Feedback (2026-10-03): the folder its files are saved in, and who reads it. No default
+        // for either, and the folder kept apart from everything published or submitted.
+        // -----------------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void A_missing_feedback_folder_or_address_refuses_to_start(string? value)
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.FeedbackRoot = value;
+            options.FeedbackToAddress = value;
+
+            IReadOnlyList<string> failures = ServerOptionsValidatorTests.Validate(options);
+
+            Assert.Contains(failures, failure => failure.Contains("FeedbackRoot is not set", StringComparison.Ordinal));
+            Assert.Contains(failures, failure => failure.Contains("FeedbackToAddress is not set", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_relative_feedback_folder_or_an_address_without_an_at_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.FeedbackRoot = "user-feedback";
+            options.FeedbackToAddress = "dennis";
+
+            IReadOnlyList<string> failures = ServerOptionsValidatorTests.Validate(options);
+
+            Assert.Contains(failures, failure => failure.Contains("FeedbackRoot must be an absolute path", StringComparison.Ordinal));
+            Assert.Contains(failures, failure => failure.Contains("FeedbackToAddress is not an email address", StringComparison.Ordinal));
+        }
+
+        // A stranger's attached files must never be published, nor sit among the blobs.
+        [Fact]
+        public void A_feedback_folder_inside_the_BETA_tree_or_holding_the_blob_store_refuses_to_start()
+        {
+            string beta = ServerOptionsValidatorTests.BetaPath();
+
+            ServerOptions inBeta = ServerOptionsValidatorTests.ValidOptions(beta, ServerOptionsValidatorTests.ProductionPath());
+            inBeta.FeedbackRoot = Path.Combine(beta, "user-feedback");
+
+            ServerOptions aboveBlobs = ServerOptionsValidatorTests.ValidOptions(beta, ServerOptionsValidatorTests.ProductionPath());
+            aboveBlobs.FeedbackRoot = Path.GetTempPath();
+
+            Assert.Contains(ServerOptionsValidatorTests.Validate(inBeta), failure => failure.Contains("FeedbackRoot", StringComparison.Ordinal) && failure.Contains("overlaps DataTreeRoot", StringComparison.Ordinal));
+            Assert.Contains(ServerOptionsValidatorTests.Validate(aboveBlobs), failure => failure.Contains("overlaps BlobStoreRoot", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_feedback_folder_the_service_cannot_write_refuses_to_start_and_names_the_fix()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+
+            IReadOnlyList<string> failures = ServerOptionsValidator.Validate(
+                options,
+                _ => true,
+                path => !path.EndsWith("user-feedback", StringComparison.Ordinal));
+
+            string failure = Assert.Single(failures);
+            Assert.Contains("FeedbackRoot is not writable", failure, StringComparison.Ordinal);
+            Assert.Contains("Feedback from CRT", failure, StringComparison.Ordinal);
         }
     }
 }

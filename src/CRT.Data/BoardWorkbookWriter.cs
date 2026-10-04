@@ -47,17 +47,17 @@ namespace Handlers.DataHandling
     public static class BoardWorkbookWriter
     {
         // ###########################################################################################
-        // *** THE HEADER ROW IS NO LONGER A CONSTANT (owner request, 2026-09-23). ***
+        // *** THE HEADER ROW SITS UNDER A PREAMBLE (owner request, 2026-09-23). ***
         //
         // It used to be row 2 on every sheet, with a bare revision-date marker above it on the
         // schematics sheet and nothing else anywhere. That produced a workbook carrying only data:
-        // no identity lines, no documentation links, no shaded header band, no column widths. The
-        // first real publish turned a 190 KB hand-maintained board into an 81 KB stripped one, and
-        // the project owner asked for the presentation to be kept.
+        // no identity lines, no shaded header band, no column widths. The first real publish turned
+        // a 190 KB hand-maintained board into an 81 KB stripped one, and the project owner asked
+        // for the presentation to be kept.
         //
-        // The header now sits below a PREAMBLE whose height differs by one row between the
-        // schematics sheet (which carries the revision date) and the rest, so the position comes
-        // from BoardWorkbookStyle.HeaderRowFor rather than from a constant here.
+        // The preamble is the same on every sheet since 2026-10-02 - the identity block with the
+        // revision date, a blank line and the section title - so the header is on
+        // BoardWorkbookStyle.HeaderRow everywhere. See there for the shape and why it changed.
         //
         // NOTHING ABOUT READING DEPENDS ON IT. BoardDataReader.ReadSheetRows scans from row 1 for
         // the row carrying the required column names, and ScanRevisionDate searches the schematics
@@ -80,7 +80,7 @@ namespace Handlers.DataHandling
 
             EpplusLicense.Ensure();
 
-            using var package = new ExcelPackage();
+            using var package = EpplusLicense.NewPackage();
 
             // ###########################################################################################
             // *** THE DEFAULT FONT IS SET EXPLICITLY (owner report, 2026-09-24). ***
@@ -189,8 +189,8 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Writes one sheet: the revision-date marker (schematics sheet only), the header row, then
-        // one row per entry.
+        // Writes one sheet: the preamble, the header row, then one row per entry - with the panes
+        // frozen under the header.
         //
         // A SHEET WITH NO ROWS IS STILL CREATED, WITH ITS HEADERS. The reader warns and returns an
         // empty list for a missing sheet, which is survivable - but a board that genuinely has no
@@ -208,13 +208,15 @@ namespace Handlers.DataHandling
             int columnCount = sheet.ColumnOrder.Count;
 
             // ---- the column headers ------------------------------------------------------------
+            // The reference's own header text - one header breaks over two lines there
+            // (BoardWorkbookStyle.HeaderTextFor), which the reader reads back as the schema's name.
             for (int column = 0; column < columnCount; column++)
             {
                 BoardWorkbookWriter.WriteTextCell(
                     worksheet,
                     headerRow,
                     column + 1,
-                    sheet.ColumnOrder[column]);
+                    BoardWorkbookStyle.HeaderTextFor(sheet.ColumnOrder[column]));
             }
 
             // ###########################################################################################
@@ -228,10 +230,16 @@ namespace Handlers.DataHandling
             // wider than every shipped board.
             // ###########################################################################################
             ExcelRange headerBand = worksheet.Cells[headerRow, 1, headerRow, columnCount];
-            headerBand.Style.WrapText = true;
             BoardWorkbookWriter.Fill(headerBand, BoardWorkbookStyle.HeaderFillRgb);
 
-            worksheet.Row(headerRow).Height = BoardWorkbookStyle.HeaderRowHeight;
+            // *** THE HEIGHT AND THE WRAP ARE PER SHEET (owner report, 2026-09-30). *** Only the
+            // sheets whose headers run over several lines in the references wrap and get a taller
+            // row; the rest are an ordinary one-line header - see HeaderRowHeightFor.
+            if (BoardWorkbookStyle.HeaderRowHeightFor(sheet.SheetName) is double headerHeight)
+            {
+                headerBand.Style.WrapText = true;
+                worksheet.Row(headerRow).Height = headerHeight;
+            }
 
             // *** THE CAD NAME COLUMN IS BLUE, on every sheet that has one. *** It is the one
             // column filled in by the KiCad import rather than by hand, and the reference picks it
@@ -270,10 +278,10 @@ namespace Handlers.DataHandling
             // ###########################################################################################
             // Column widths, fitted to the DATA rather than to the preamble.
             //
-            // *** AUTOFIT OVER THE WHOLE SHEET WOULD BE RUINED BY THE PREAMBLE. *** Column A now
-            // holds a 100-character documentation URL, so fitting the used range would widen that
-            // column to the maximum on every sheet and push every other column off the screen. The
-            // fit is therefore measured over the header and data block only.
+            // *** AUTOFIT OVER THE WHOLE SHEET WOULD BE RUINED BY THE PREAMBLE. *** Column A holds
+            // the identity lines in 16pt ("# Hardware: Commodore 64"), so fitting the used range
+            // would widen that column to fit them on every sheet and push the others along. The fit
+            // is therefore measured over the header and data block only.
             // ###########################################################################################
             // ###########################################################################################
             // *** AND IT EXCLUDES THE HEADER ROW TOO (corrected 2026-09-24). ***
@@ -300,7 +308,10 @@ namespace Handlers.DataHandling
 
             for (int column = 0; column < columnCount; column++)
             {
-                double? width = BoardWorkbookStyle.WidthFor(sheet.SheetName, sheet.ColumnOrder[column]);
+                // By the header as WRITTEN - the width table keys the broken description header on
+                // its line break, and the schema's name has a space there.
+                double? width = BoardWorkbookStyle.WidthFor(
+                    sheet.SheetName, BoardWorkbookStyle.HeaderTextFor(sheet.ColumnOrder[column]));
 
                 if (width.HasValue)
                 {
@@ -324,83 +335,79 @@ namespace Handlers.DataHandling
                     worksheet.Column(column).Width = BoardWorkbookStyle.EmptySheetColumnWidth;
                 }
             }
+
+            // ###########################################################################################
+            // *** THE PANES ARE FROZEN UNDER THE HEADER ROW (owner request, 2026-10-02). *** Excel's
+            // own "Freeze Panes" with the first data cell selected: the preamble, the title and the
+            // column headers stay on screen while the rows scroll under them. Rows only - no column
+            // is frozen, so a wide sheet still scrolls sideways as a whole.
+            // ###########################################################################################
+            worksheet.View.FreezePanes(headerRow + 1, 1);
         }
 
         // ###########################################################################################
-        // The identity block, documentation links and section title above the header, matching the
-        // hand-maintained boards. Returns the row the column headers go on.
+        // The identity block and section title above the header, matching the hand-maintained
+        // boards. Returns the row the column headers go on.
         //
-        // See BoardWorkbookStyle for where every value here came from - all of it was read off the
-        // reference board rather than invented, so a generated workbook and a hand-made one look
-        // the same.
+        // See BoardWorkbookStyle for where every value here came from, and for the shape - the
+        // same on every sheet since 2026-10-02, with no documentation lines.
         // ###########################################################################################
         private static int WritePreamble(
             ExcelWorksheet worksheet,
             BoardWorkbookSchema.SheetDefinition sheet,
             BoardData data)
         {
-            int row = BoardWorkbookStyle.PreambleHardwareRow;
-
             // The rows are always RESERVED even when a name is unknown, so the block keeps its
             // shape and the header lands on the same row for every board - but the marker itself is
             // only written when there is something to say. "# Hardware: " with nothing after it is
             // a caption that has lost its subject.
             BoardWorkbookWriter.WriteIdentityCell(
-                worksheet, row++, BoardWorkbookSchema.HardwareMarkerPrefix, data.HardwareName);
+                worksheet, BoardWorkbookStyle.PreambleHardwareRow, BoardWorkbookSchema.HardwareMarkerPrefix, data.HardwareName);
 
             BoardWorkbookWriter.WriteIdentityCell(
-                worksheet, row++, BoardWorkbookSchema.BoardMarkerPrefix, data.BoardName);
+                worksheet, BoardWorkbookStyle.PreambleBoardRow, BoardWorkbookSchema.BoardMarkerPrefix, data.BoardName);
 
-            if (BoardWorkbookStyle.HasRevisionDateRow(sheet.SheetName))
-            {
-                // ###########################################################################################
-                // *** THE DATE ITSELF IS BOLD, THE LABEL IS NOT - which needs RICH TEXT. ***
-                //
-                // The reference stores this cell as two runs: a plain "# Revision date: " followed
-                // by the date in bold. A single bolded cell would be visibly different, and a plain
-                // one loses the emphasis the project owner asked to keep.
-                //
-                // The reader is unaffected either way: ScanRevisionDate takes the cell's TEXT, which
-                // is the concatenation of the runs, so the formatting is presentation only.
-                // ###########################################################################################
-                // The same two-run shape as the hardware and board lines above - one helper, so the
-                // three cannot drift apart again.
-                BoardWorkbookWriter.WriteRichLabelAndValue(
-                    worksheet,
-                    row,
-                    BoardWorkbookSchema.RevisionDateMarkerPrefix,
-                    (data.RevisionDate ?? string.Empty).Trim());
+            // ###########################################################################################
+            // *** THE DATE ITSELF IS BOLD, THE LABEL IS NOT - which needs RICH TEXT. ***
+            //
+            // The reference stores this cell as two runs: a plain "# Revision date: " followed by
+            // the date in bold. A single bolded cell would be visibly different, and a plain one
+            // loses the emphasis the project owner asked to keep.
+            //
+            // The reader is unaffected either way: ScanRevisionDate takes the cell's TEXT, which is
+            // the concatenation of the runs, so the formatting is presentation only. On EVERY sheet
+            // since 2026-10-02 (owner request) - the reader still takes Board schematics' one.
+            // ###########################################################################################
+            // The same two-run shape as the hardware and board lines above - one helper, so the
+            // three cannot drift apart again.
+            BoardWorkbookWriter.WriteRichLabelAndValue(
+                worksheet,
+                BoardWorkbookStyle.PreambleRevisionDateRow,
+                BoardWorkbookSchema.RevisionDateMarkerPrefix,
+                (data.RevisionDate ?? string.Empty).Trim());
 
-                row++;
-            }
+            // A blank line under the identity block, then the section title band, directly above
+            // the headers.
+            int row = BoardWorkbookStyle.TitleRow;
 
-            row++;   // the blank line the reference leaves under the identity block
-
-            BoardWorkbookWriter.WriteTextCell(worksheet, row++, 1, BoardWorkbookStyle.DocumentationLeadIn);
-            BoardWorkbookWriter.WriteTextCell(
-                worksheet, row++, 1, BoardWorkbookStyle.DocumentationUrlFor(sheet.SheetName));
-
-            row++;   // and the blank line under the documentation link
-
-            // The section title band, directly above the headers.
             BoardWorkbookWriter.WriteTextCell(
                 worksheet, row, 1, BoardWorkbookStyle.SectionTitleFor(sheet.SheetName));
 
-            // Not bold - see the header band below. The shading carries the emphasis.
+            // Not bold - see the header band below. Black with white text, on every sheet, across
+            // all its columns (owner report, 2026-09-30); the schematics sheet then bands its own.
             ExcelRange titleBand = worksheet.Cells[row, 1, row, sheet.ColumnOrder.Count];
             BoardWorkbookWriter.Fill(titleBand, BoardWorkbookStyle.SectionTitleFillRgb);
+            BoardWorkbookWriter.FontColour(titleBand, BoardWorkbookStyle.SectionTitleFontRgb);
 
             BoardWorkbookWriter.ApplyTitleBanding(worksheet, sheet, row);
 
-            row++;
-
-            return row;
+            return BoardWorkbookStyle.HeaderRow;
         }
 
         // ###########################################################################################
         // The schematics sheet's three-colour title band (owner report, 2026-09-24).
         //
-        // Every other sheet's title row is a plain white strip carrying the sheet name, which the
+        // Every other sheet's title row is one black strip with the sheet's title in white, which the
         // generic path above has already written. This one groups its columns instead - see
         // BoardWorkbookStyle for the bands and why the colours are literal RGB - and the middle
         // band carries a heading of its own spanning the five highlight columns.
@@ -545,6 +552,9 @@ namespace Handlers.DataHandling
 
         // A solid fill in one literal colour - see BoardWorkbookStyle for why these are RGB rather
         // than the theme references the reference workbook stores.
+        private static void FontColour(ExcelRange range, string argb) =>
+            range.Style.Font.Color.SetColor(System.Drawing.ColorTranslator.FromHtml("#" + argb.Substring(2)));
+
         private static void Fill(ExcelRange range, string argb)
         {
             range.Style.Fill.PatternType = ExcelFillStyle.Solid;

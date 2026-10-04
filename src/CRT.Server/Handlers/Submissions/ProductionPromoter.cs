@@ -44,7 +44,7 @@ namespace CRT.Server.Handlers.Submissions
                     return PromotionCopyOutcome.Failed($"[{file.Path}] cannot be read from BETA: {sourceReason} Nothing was copied.");
 
                 if (!SubmissionPathRules.TryResolve(productionRoot, file.Path, out string destination, out string destinationReason))
-                    return PromotionCopyOutcome.Failed($"[{file.Path}] cannot be written to production: {destinationReason} Nothing was copied.");
+                    return PromotionCopyOutcome.Failed($"[{file.Path}] cannot be written to the stable source: {destinationReason} Nothing was copied.");
 
                 string? link =
                     PublishPathSafety.FindLinkOnPath(betaRoot, source, PublishPathSafety.IsLink) ??
@@ -90,7 +90,7 @@ namespace CRT.Server.Handlers.Submissions
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     return PromotionCopyOutcome.Failed(
-                        $"[{file.Path}] could not be written to production ({ex.Message}). " +
+                        $"[{file.Path}] could not be written to the stable source ({ex.Message}). " +
                         ProductionPromoter.PartialSentence(copied),
                         copied);
                 }
@@ -112,7 +112,7 @@ namespace CRT.Server.Handlers.Submissions
         private static string PartialSentence(int copied) =>
             copied == 0
                 ? "Nothing was copied."
-                : $"{copied} file(s) before it were already copied; publishing to production again completes it.";
+                : $"{copied} file(s) before it were already copied; publishing to the stable source again completes it.";
     }
 
     public sealed record PromotionCopyOutcome(bool IsDone, int FilesCopied, string? Error)

@@ -85,34 +85,158 @@ public sealed class MaintainerModesTests
         Assert.Equal("42", MaintainerModes.CountBadge(42));
     }
 
-    // The tooltip says what the screen is, and then what its badge counts.
+    // ###########################################################################################
+    // *** THE TAB'S OWN BADGE IS THE TWO BUTTONS ADDED UP (owner request, 2026-09-30). *** A system
+    // with a submission queued AND an earlier one in BETA waits for you twice, and each button
+    // counts it - so the tab must say 3 over a 2 and a 1, or the maintainer opens it expecting two
+    // things and finds three.
+    // ###########################################################################################
     [Fact]
-    public void A_buttons_tooltip_says_what_the_screen_is_and_what_its_badge_counts()
+    public void The_tabs_badge_adds_up_the_review_and_BETA_buttons()
     {
-        Assert.Equal(
-            "Contributions waiting for review.\n3 systems with contributions waiting for you.",
-            MaintainerModes.Tooltip(MaintainerMode.Review, 3));
+        ReviewQueueRow[] queue =
+        [
+            MaintainerModesTests.Row(1, "Commodore/C64/250407"),
+            MaintainerModesTests.Row(2, "Commodore/C128/310378")
+        ];
+
+        ProductionSystemRow[] beta = [MaintainerModesTests.Beta("Commodore/C64/250407")];
 
         Assert.Equal(
-            "Systems in BETA, waiting to be published to production or pushed back to the queue.\n1 system waiting for you.",
-            MaintainerModes.Tooltip(MaintainerMode.Beta, 1));
+            MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta),
+            MaintainerModes.TabAttention(queue, beta));
 
-        Assert.EndsWith("\nNothing is waiting for you.", MaintainerModes.Tooltip(MaintainerMode.Beta, 0), StringComparison.Ordinal);
-        Assert.EndsWith("\n42 systems in all.", MaintainerModes.Tooltip(MaintainerMode.Systems, 42), StringComparison.Ordinal);
+        Assert.Equal(3, MaintainerModes.TabAttention(queue, beta));
+    }
 
-        // New systems waiting for a place in the drop-down lists come first on the Systems button,
-        // since they are what its badge then counts (2026-09-27).
-        Assert.Equal(
-            "Every system - who maintains it, who has contributed and how that went.\n" +
-            "2 new systems need a place in the drop-down lists.\n42 systems in all.",
-            MaintainerModes.Tooltip(MaintainerMode.Systems, 42, needingPlace: 2));
-        Assert.EndsWith(
-            "\n1 new system needs a place in the drop-down lists.\n42 systems in all.",
-            MaintainerModes.Tooltip(MaintainerMode.Systems, 42, needingPlace: 1),
-            StringComparison.Ordinal);
+    // "Until it is fully processed": nothing waiting for THIS account - including a system that
+    // waits only for the other approver, in either list - is no badge at all.
+    [Fact]
+    public void The_tabs_badge_is_gone_when_nothing_waits_for_you()
+    {
+        Assert.Equal(0, MaintainerModes.TabAttention(
+            [MaintainerModesTests.Row(1, "Commodore/C64/250407", awaitsYou: false)],
+            [MaintainerModesTests.Beta("Commodore/C128/310378", awaitsYou: false)]));
 
-        // Not known yet: the screen only.
-        Assert.Equal("Contributions waiting for review.", MaintainerModes.Tooltip(MaintainerMode.Review, null));
-        Assert.Equal("Who maintains which system, and files nothing uses.", MaintainerModes.Tooltip(MaintainerMode.Admin, null));
+        Assert.Equal(0, MaintainerModes.TabAttention(null, null));
+        Assert.Null(MaintainerModes.AttentionBadge(0));
+    }
+
+    // ###########################################################################################
+    // "SHOW ONLY THE MAINTAINER TAB WHEN I HAVE OUTSTANDING WORK" (owner request, 2026-10-01).
+    //
+    // The ordinary case first: with the new setting off, the tab follows "Enable Maintainer tab"
+    // exactly as it always did - the badge decides nothing.
+    // ###########################################################################################
+    [Fact]
+    public void With_the_setting_off_the_tab_follows_Enable_Maintainer_tab_alone()
+    {
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: false, badgeKnown: true, attention: 0, selected: false, unsavedEdits: false));
+
+        Assert.False(MaintainerModes.TabIsShown(
+            enabled: false, onlyWhenWaiting: false, badgeKnown: true, attention: 5, selected: false, unsavedEdits: false));
+
+        // The new setting NARROWS the old one; it can never bring the tab back on its own.
+        Assert.False(MaintainerModes.TabIsShown(
+            enabled: false, onlyWhenWaiting: true, badgeKnown: true, attention: 5, selected: true, unsavedEdits: false));
+    }
+
+    // With it on, the badge's number is the condition: work waiting shows the tab, none hides it.
+    [Fact]
+    public void With_the_setting_on_the_tab_appears_only_while_something_waits()
+    {
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true, attention: 1, selected: false, unsavedEdits: false));
+
+        Assert.False(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true, attention: 0, selected: false, unsavedEdits: false));
+    }
+
+    // ###########################################################################################
+    // *** A TAB THE MAINTAINER IS STANDING ON IS NEVER TAKEN AWAY (owner decision, 2026-10-01). ***
+    // Approving the last queued submission drops the badge to zero at that instant. Without this
+    // the tab, the submission's table and any unsaved edits in it would vanish mid-review - so
+    // `selected` holds it open, and it goes on the next tab switch instead.
+    // ###########################################################################################
+    [Fact]
+    public void The_tab_being_looked_at_is_never_hidden_under_the_maintainer()
+    {
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true, attention: 0, selected: true, unsavedEdits: false));
+
+        // ...and goes once it is left, the badge still being empty.
+        Assert.False(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true, attention: 0, selected: false, unsavedEdits: false));
+    }
+
+    // ###########################################################################################
+    // *** NOR IS A TAB HOLDING UNSAVED TABLE EDITS (code review, 2026-10-01). *** The edited
+    // submission may wait only for the other approver, so it counts nothing; switching away
+    // without saving then let the next minute check hide the tab with the edits inside it.
+    // ###########################################################################################
+    [Fact]
+    public void A_tab_holding_unsaved_table_edits_is_never_hidden()
+    {
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true, attention: 0, selected: false, unsavedEdits: true));
+
+        // Turning the tab off is still a deliberate act, and still wins.
+        Assert.False(MaintainerModes.TabIsShown(
+            enabled: false, onlyWhenWaiting: true, badgeKnown: true, attention: 0, selected: false, unsavedEdits: true));
+    }
+
+    // ###########################################################################################
+    // *** AN UNREAD BADGE IS NOT "NO WORK" (code review, 2026-10-01). *** Zero is also what the badge
+    // shows before the lists are read, after a 401 empties it, and while the server cannot be
+    // reached. Hiding the tab then would remove the only way back to the sign-in screen, or make the
+    // tab vanish on a launch whose first read failed - with only the Configuration tab to bring it
+    // back. TabMaintainer.BadgeKnown is false until somebody is signed in and both lists were read.
+    // ###########################################################################################
+    [Fact]
+    public void A_badge_that_has_not_been_read_never_hides_the_tab()
+    {
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: false, attention: 0, selected: false, unsavedEdits: false));
+    }
+
+    // ###########################################################################################
+    // Which entry "Contributor Submissions" and "Beta > Prod" open on (owner request, 2026-09-30):
+    // the one looked at last while it is still listed, else the first as the list shows it.
+    // ###########################################################################################
+    [Fact]
+    public void A_screen_opens_on_the_entry_looked_at_last_or_else_the_first()
+    {
+        Assert.Equal(9, MaintainerModes.EntryToOpen([7L, 3L, 9L], 9));
+        Assert.Equal(7, MaintainerModes.EntryToOpen([7L, 3L, 9L], 12345));
+        Assert.Equal(7, MaintainerModes.EntryToOpen([7L, 3L, 9L], null));
+        Assert.Null(MaintainerModes.EntryToOpen(Array.Empty<long>(), 9));
+
+        Assert.Equal("Commodore/C128/310378", MaintainerModes.EntryToOpen(["Commodore/C64/250407", "Commodore/C128/310378"], "Commodore/C128/310378"));
+        Assert.Equal("Commodore/C64/250407", MaintainerModes.EntryToOpen(["Commodore/C64/250407", "Commodore/C128/310378"], "commodore/c128/310378"));
+        Assert.Null(MaintainerModes.EntryToOpen(Array.Empty<string>(), null));
+    }
+
+    // ###########################################################################################
+    // The screen the tab opens on (owner request, 2026-10-04: "if there is no queue awaiting, when
+    // opening the "Maintainer" tab, then go to "Systems" and show the last selected system"):
+    // Systems when nothing waits for this account in either queue - a queue screen gives way,
+    // unless something is open on it; Systems and Account, chosen, stay.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(MaintainerMode.Review, 0, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Beta, 0, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Review, 1, false, MaintainerMode.Review)]
+    [InlineData(MaintainerMode.Beta, 2, false, MaintainerMode.Beta)]
+    [InlineData(MaintainerMode.Review, 0, true, MaintainerMode.Review)]
+    [InlineData(MaintainerMode.Beta, 0, true, MaintainerMode.Beta)]
+    [InlineData(MaintainerMode.Systems, 3, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Systems, 0, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Account, 0, false, MaintainerMode.Account)]
+    [InlineData(MaintainerMode.Account, 4, false, MaintainerMode.Account)]
+    public void The_tab_opens_on_Systems_when_nothing_waits_and_nothing_is_open(
+        MaintainerMode shown, int attention, bool somethingOpen, MaintainerMode expected)
+    {
+        Assert.Equal(expected, MaintainerModes.ScreenOnOpening(shown, attention, somethingOpen));
     }
 }

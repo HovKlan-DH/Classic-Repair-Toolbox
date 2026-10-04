@@ -326,7 +326,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                MasterListingEdit edit = MasterListing.Insert(listing.MasterPath, listing.Row, listing.AfterExcelDataFile);
+                MasterListingEdit edit = MasterListing.Insert(listing.MasterPath, listing.Row, listing.AfterExcelDataFile, nowUtc);
 
                 if (!edit.IsDone)
                 {

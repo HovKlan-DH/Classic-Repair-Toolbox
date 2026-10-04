@@ -1,3 +1,4 @@
+using Handlers.DataHandling;
 using OfficeOpenXml;
 
 namespace ClassicRepairToolbox.Tests;
@@ -19,7 +20,7 @@ internal sealed class BoardWorkbookBuilder
 
     public BoardWorkbookBuilder()
     {
-        this.thisPackage = new ExcelPackage();
+        this.thisPackage = EpplusLicense.NewPackage();
     }
 
     /// <summary>Adds a sheet whose first row is the header and whose later rows are the data.</summary>

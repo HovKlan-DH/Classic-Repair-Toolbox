@@ -764,8 +764,15 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     // BoardWorkbookStyle's business and are not re-asserted here; what matters is that the block
     // EXISTS and that the data still reads back through the ordinary reader underneath it.
     // ###########################################################################################
+    // ###########################################################################################
+    // *** THE PREAMBLE IS THE SAME ON EVERY SHEET, WITH NO DOCUMENTATION LINES (owner request,
+    // 2026-10-02). *** Identity block (hardware, board, revision date), one blank line, the title
+    // band, the headers. The "Documentation of columns in this worksheet is availble here:" line,
+    // its link to the old Wiki and the blank line under them were removed from every published
+    // board by hand - the columns are maintained from within CRT now - and CRT stopped writing them.
+    // ###########################################################################################
     [Fact]
-    public void A_written_workbook_carries_the_identity_and_documentation_preamble()
+    public void Every_sheet_has_the_identity_block_then_a_blank_line_then_its_title_and_no_documentation_lines()
     {
         string path = this.thisWorkspace.Path_("styled.xlsx");
 
@@ -778,17 +785,95 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         });
 
         using var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path));
-        OfficeOpenXml.ExcelWorksheet sheet =
-            package.Workbook.Worksheets[BoardWorkbookSchema.SheetComponents];
 
-        string columnA = string.Join(
-            "\n",
-            Enumerable.Range(1, 8).Select(r => sheet.Cells[r, 1].Text ?? string.Empty));
+        foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)
+        {
+            OfficeOpenXml.ExcelWorksheet sheet = package.Workbook.Worksheets[definition.SheetName];
 
-        Assert.Contains("# Hardware: Commodore 64", columnA, StringComparison.Ordinal);
-        Assert.Contains("# Board: 250407", columnA, StringComparison.Ordinal);
-        Assert.Contains(BoardWorkbookStyle.DocumentationLeadIn, columnA, StringComparison.Ordinal);
-        Assert.Contains("#worksheet-components", columnA, StringComparison.Ordinal);
+            Assert.Equal("# Hardware: Commodore 64", sheet.Cells[1, 1].Text);
+            Assert.Equal("# Board: 250407", sheet.Cells[2, 1].Text);
+            Assert.Equal("# Revision date: 2026-May-12", sheet.Cells[3, 1].Text);
+            Assert.Equal(string.Empty, sheet.Cells[4, 1].Text);
+            Assert.Equal(BoardWorkbookStyle.SectionTitleFor(definition.SheetName), sheet.Cells[5, 1].Text);
+            Assert.Equal(definition.ColumnOrder[0], sheet.Cells[6, 1].Text);
+
+            // Nothing anywhere above the data points at documentation.
+            for (int row = 1; row <= 6; row++)
+            {
+                for (int column = 1; column <= definition.ColumnOrder.Count; column++)
+                {
+                    OfficeOpenXml.ExcelRange cell = sheet.Cells[row, column];
+
+                    Assert.DoesNotContain("Documentation", cell.Text ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+                    Assert.Null(cell.Hyperlink);
+                }
+            }
+        }
+    }
+
+    // ###########################################################################################
+    // *** THE REVISION DATE IS ON EVERY SHEET, NOT ONLY BOARD SCHEMATICS (owner request,
+    // 2026-10-02). *** The same rich-text line on all of them - and the reader still takes the
+    // board's date from Board schematics, which this proves by reading the workbook back.
+    // ###########################################################################################
+    [Fact]
+    public void Every_sheet_carries_the_revision_date_and_the_board_still_reads_it_back()
+    {
+        string path = this.thisWorkspace.Path_("revision-everywhere.xlsx");
+
+        BoardWorkbookWriter.Write(path, new BoardData
+        {
+            RevisionDate = "2026-October-2",
+            HardwareName = "ZX Spectrum 16K/48K",
+            BoardName = "Issue 4B",
+        });
+
+        using (var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path)))
+        {
+            foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)
+            {
+                OfficeOpenXml.ExcelRange cell =
+                    package.Workbook.Worksheets[definition.SheetName].Cells[BoardWorkbookStyle.PreambleRevisionDateRow, 1];
+
+                Assert.Equal("# Revision date: 2026-October-2", cell.Text);
+                Assert.True(cell.RichText[1].Bold, $"the date on {definition.SheetName} is not bold");
+            }
+        }
+
+        Assert.Equal("2026-October-2", BoardDataReader.ReadWorkbookUncached(path)!.RevisionDate);
+    }
+
+    // ###########################################################################################
+    // *** EVERY SHEET IS FROZEN UNDER ITS HEADER ROW (owner request, 2026-10-02). *** Excel's
+    // "Freeze Panes" with A7 selected: everything down to the column headers stays on screen while
+    // the data scrolls, and no column is frozen.
+    // ###########################################################################################
+    [Fact]
+    public void Every_sheet_is_frozen_under_its_header_row_and_no_column_is_frozen()
+    {
+        string path = this.thisWorkspace.Path_("frozen.xlsx");
+
+        BoardWorkbookWriter.Write(path, new BoardData
+        {
+            HardwareName = "C64",
+            BoardName = "250407",
+            Components = { new ComponentEntry { BoardLabel = "U8" } },
+        });
+
+        using var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path));
+
+        foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)
+        {
+            OfficeOpenXml.ExcelWorksheetView.ExcelWorksheetViewPaneSettings panes =
+                package.Workbook.Worksheets[definition.SheetName].View.PaneSettings;
+
+            Assert.Equal(OfficeOpenXml.ePaneState.Frozen, panes.State);
+            Assert.Equal(BoardWorkbookStyle.HeaderRow, panes.YSplit);
+            // No column split: the attribute is left out of the file (EPPlus reads that as NaN),
+            // exactly as Excel writes a rows-only freeze.
+            Assert.True(double.IsNaN(panes.XSplit) || panes.XSplit == 0, $"{definition.SheetName} freezes {panes.XSplit} column(s)");
+            Assert.Equal($"A{BoardWorkbookStyle.HeaderRow + 1}", panes.TopLeftCell);
+        }
     }
 
     // ###########################################################################################
@@ -817,7 +902,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         OfficeOpenXml.ExcelWorksheet sheet =
             package.Workbook.Worksheets[BoardWorkbookSchema.SheetBoardSchematics];
 
-        OfficeOpenXml.ExcelRange cell = sheet.Cells[BoardWorkbookStyle.PreambleBoardRow + 1, 1];
+        OfficeOpenXml.ExcelRange cell = sheet.Cells[BoardWorkbookStyle.PreambleRevisionDateRow, 1];
 
         Assert.Equal("# Revision date: 2026-May-12", cell.Text);
         Assert.True(cell.IsRichText);
@@ -904,7 +989,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         OfficeOpenXml.ExcelWorksheet sheet =
             package.Workbook.Worksheets[BoardWorkbookSchema.SheetBoardSchematics];
 
-        int headerRow = BoardWorkbookStyle.HeaderRowFor(BoardWorkbookSchema.SheetBoardSchematics);
+        int headerRow = BoardWorkbookStyle.HeaderRow;
         int titleRow = headerRow - 1;
 
         // The three title bands.
@@ -927,23 +1012,41 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         Assert.Equal("#FF8FAADC", sheet.Cells[headerRow, cad].Style.Fill.BackgroundColor.LookupColor());
     }
 
-    // The anti-vacuity half: every OTHER sheet is a plain grey header with no title banding, so a
-    // fix that painted black bands everywhere would fail here.
+    // ###########################################################################################
+    // *** EVERY SHEET'S TITLE BAND IS BLACK WITH WHITE TEXT, across all its columns (owner report,
+    // 2026-09-30). *** This test used to assert the opposite - "an ordinary sheet has no title
+    // banding", the band NOT black - which pinned a misreading of the reference's theme colours:
+    // theme 1 is the dark one. Both references, and the project owner's screenshot of production,
+    // show "Components" white on black. (The schematics sheet then re-bands its own highlight and
+    // CAD-name columns - the test above.) The header row under it stays light grey.
+    // ###########################################################################################
     [Fact]
-    public void An_ordinary_sheet_has_a_plain_header_and_no_title_banding()
+    public void Every_sheet_has_a_black_title_band_with_white_text_across_its_columns()
     {
-        string path = this.thisWorkspace.Path_("plain.xlsx");
+        string path = this.thisWorkspace.Path_("bands.xlsx");
 
         BoardWorkbookWriter.Write(path, new BoardData { HardwareName = "C64", BoardName = "250407" });
 
         using var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path));
-        OfficeOpenXml.ExcelWorksheet sheet =
-            package.Workbook.Worksheets[BoardWorkbookSchema.SheetComponents];
 
-        int headerRow = BoardWorkbookStyle.HeaderRowFor(BoardWorkbookSchema.SheetComponents);
+        foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)
+        {
+            OfficeOpenXml.ExcelWorksheet sheet = package.Workbook.Worksheets[definition.SheetName];
+            int headerRow = BoardWorkbookStyle.HeaderRow;
+            int titleRow = headerRow - 1;
 
-        Assert.Equal("#FFD9D9D9", sheet.Cells[headerRow, 1].Style.Fill.BackgroundColor.LookupColor());
-        Assert.NotEqual("#FF000000", sheet.Cells[headerRow - 1, 1].Style.Fill.BackgroundColor.LookupColor());
+            Assert.Equal(BoardWorkbookStyle.SectionTitleFor(definition.SheetName), sheet.Cells[titleRow, 1].Text);
+            Assert.Equal("#FF000000", sheet.Cells[titleRow, 1].Style.Fill.BackgroundColor.LookupColor());
+            Assert.Equal("#FFFFFFFF", sheet.Cells[titleRow, 1].Style.Font.Color.LookupColor());
+            Assert.Equal("#FFD9D9D9", sheet.Cells[headerRow, 1].Style.Fill.BackgroundColor.LookupColor());
+
+            // Across all its columns - on every sheet but schematics, whose later columns band.
+            if (definition.SheetName != BoardWorkbookSchema.SheetBoardSchematics)
+            {
+                int last = definition.ColumnOrder.Count;
+                Assert.Equal("#FF000000", sheet.Cells[titleRow, last].Style.Fill.BackgroundColor.LookupColor());
+            }
+        }
     }
 
     // ###########################################################################################
@@ -999,7 +1102,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         OfficeOpenXml.ExcelWorksheet sheet =
             package.Workbook.Worksheets[BoardWorkbookSchema.SheetBoardSchematics];
 
-        int headerRow = BoardWorkbookStyle.HeaderRowFor(BoardWorkbookSchema.SheetBoardSchematics);
+        int headerRow = BoardWorkbookStyle.HeaderRow;
 
         Assert.False(sheet.Cells[headerRow, 1].Style.Font.Bold);
         Assert.False(sheet.Cells[headerRow - 1, 1].Style.Font.Bold);
@@ -1032,7 +1135,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         // "Schematic highlight opacity" is 27 characters; fitted to the data it must be far
         // narrower than that, which is only true when the header is excluded from the measurement.
         int opacityColumn = 0;
-        int headerRow = BoardWorkbookStyle.HeaderRowFor(BoardWorkbookSchema.SheetBoardSchematics);
+        int headerRow = BoardWorkbookStyle.HeaderRow;
 
         for (int c = 1; c <= BoardWorkbookSchema.BoardSchematics.ColumnOrder.Count; c++)
         {
@@ -1101,7 +1204,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         OfficeOpenXml.ExcelWorksheet sheet =
             package.Workbook.Worksheets[BoardWorkbookSchema.SheetBoardSchematics];
 
-        int titleRow = BoardWorkbookStyle.HeaderRowFor(BoardWorkbookSchema.SheetBoardSchematics) - 1;
+        int titleRow = BoardWorkbookStyle.HeaderRow - 1;
 
         // Five highlight columns, C through G on this sheet's order.
         Assert.Contains(
@@ -1163,5 +1266,115 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         Assert.Equal(BoardWorkbookSchema.SheetCredits, names[^1]);
         Assert.Equal(BoardWorkbookSchema.SheetKiCadImportantSignals, names[^2]);
         Assert.Equal(BoardWorkbookSchema.AllSheets.Select(sheet => sheet.SheetName), names);
+    }
+
+    // ###########################################################################################
+    // *** THE HEADER ROW'S HEIGHT AND WRAP ARE PER SHEET (owner report, 2026-09-30). *** 57.6 on
+    // every sheet drew a tall grey band over "Components" and all the others. The references have
+    // Board schematics at 57.6, Components and Component images at 28.8 (two lines), and every
+    // other sheet an ordinary one-line header with no wrap.
+    // ###########################################################################################
+    [Fact]
+    public void The_header_row_is_as_tall_as_its_sheets_headers_need_and_no_taller()
+    {
+        string path = this.thisWorkspace.Path_("heights.xlsx");
+
+        BoardWorkbookWriter.Write(path, new BoardData { HardwareName = "C64", BoardName = "250407" });
+
+        using var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path));
+
+        double HeightOf(string sheetName, out bool custom, out bool wraps)
+        {
+            OfficeOpenXml.ExcelWorksheet sheet = package.Workbook.Worksheets[sheetName];
+            int row = BoardWorkbookStyle.HeaderRow;
+            custom = sheet.Row(row).CustomHeight;
+            wraps = sheet.Cells[row, 1].Style.WrapText;
+            return sheet.Row(row).Height;
+        }
+
+        Assert.Equal(57.6, HeightOf(BoardWorkbookSchema.SheetBoardSchematics, out _, out bool schematicsWrap), 1);
+        Assert.True(schematicsWrap);
+        Assert.Equal(28.8, HeightOf(BoardWorkbookSchema.SheetComponents, out _, out bool componentsWrap), 1);
+        Assert.True(componentsWrap);
+        Assert.Equal(28.8, HeightOf(BoardWorkbookSchema.SheetComponentImages, out _, out _), 1);
+
+        foreach (string plain in new[]
+                 {
+                     BoardWorkbookSchema.SheetComponentLocalFiles, BoardWorkbookSchema.SheetComponentLinks,
+                     BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.SheetBoardLinks,
+                     BoardWorkbookSchema.SheetKiCadImportantSignals, BoardWorkbookSchema.SheetCredits
+                 })
+        {
+            HeightOf(plain, out bool custom, out bool wraps);
+            Assert.False(custom, $"{plain}'s header row was given a height of its own");
+            Assert.False(wraps, $"{plain}'s header wraps");
+        }
+    }
+
+    // ###########################################################################################
+    // *** THE DESCRIPTION HEADER BREAKS OVER TWO LINES, AT THE REFERENCE'S WIDTH (owner report,
+    // 2026-09-30). *** It was written on one line, so it ran across a column far wider than the
+    // reference's - whose width, keyed on the broken form, was never even looked up. And a board
+    // written that way still reads back: the reader makes the break a space.
+    // ###########################################################################################
+    [Fact]
+    public void The_description_header_breaks_over_two_lines_at_its_reference_width_and_reads_back()
+    {
+        string path = this.thisWorkspace.Path_("description.xlsx");
+
+        BoardWorkbookWriter.Write(path, new BoardData
+        {
+            HardwareName = "C64",
+            BoardName = "250407",
+            Components = { new ComponentEntry { BoardLabel = "U8", Category = "IC", Description = "The CIA" } },
+        });
+
+        int column = BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColDescription) + 1;
+        int headerRow = BoardWorkbookStyle.HeaderRow;
+
+        using (var package = new OfficeOpenXml.ExcelPackage(new System.IO.FileInfo(path)))
+        {
+            OfficeOpenXml.ExcelWorksheet sheet = package.Workbook.Worksheets[BoardWorkbookSchema.SheetComponents];
+
+            Assert.Equal("Short one-liner description\n(one short line only!)", sheet.Cells[headerRow, column].Text);
+            Assert.Equal(41.2, sheet.Column(column).Width, 1);
+        }
+
+        BoardData? read = BoardDataReader.ReadWorkbookUncached(path);
+        Assert.Equal("The CIA", Assert.Single(read!.Components).Description);
+    }
+
+    // ###########################################################################################
+    // *** THE REFERENCE ITSELF, READ BACK - so the colours cannot be misread a second time. *** The
+    // shipped C128 310378 board is the production file the project owner compared against. Its
+    // "Components" band is the theme's TEXT colour (dark) with the BACKGROUND colour (light) as text
+    // - what the writer's black and white stand for - and its header row is 28.8 points.
+    // ###########################################################################################
+    [Fact]
+    public void The_shipped_reference_has_a_dark_title_band_and_a_two_line_components_header()
+    {
+        string? folder = AppContext.BaseDirectory;
+
+        while (folder is not null && !File.Exists(Path.Combine(folder, "Classic-Repair-Toolbox.slnx")))
+            folder = Path.GetDirectoryName(folder);
+
+        Assert.NotNull(folder);
+
+        string reference = Path.Combine(folder!, "Assets", "Data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.xlsx");
+
+        EpplusLicense.Ensure();
+        using var package = new OfficeOpenXml.ExcelPackage(new FileInfo(reference));
+        OfficeOpenXml.ExcelWorksheet sheet = package.Workbook.Worksheets[BoardWorkbookSchema.SheetComponents];
+
+        // Found by its TEXT rather than by row number: the published boards lost their three
+        // documentation rows by hand (2026-10-02), so the band is on a different row depending on
+        // which copy of the reference this is.
+        int titleRow = Enumerable.Range(1, 12).FirstOrDefault(row => sheet.Cells[row, 1].Text == "Components");
+        int headerRow = titleRow + 1;
+
+        Assert.True(titleRow > 0, "the Components title band was not found");
+        Assert.Equal(OfficeOpenXml.Drawing.eThemeSchemeColor.Text1, sheet.Cells[headerRow - 1, 1].Style.Fill.BackgroundColor.Theme);
+        Assert.Equal(OfficeOpenXml.Drawing.eThemeSchemeColor.Background1, sheet.Cells[headerRow - 1, 1].Style.Font.Color.Theme);
+        Assert.Equal(BoardWorkbookStyle.HeaderRowHeightFor(BoardWorkbookSchema.SheetComponents)!.Value, sheet.Row(headerRow).Height, 1);
     }
 }

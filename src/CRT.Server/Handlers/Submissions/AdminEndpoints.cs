@@ -1,14 +1,16 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Email;
+using CRT.Server.Handlers.Usage;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // The ADMINISTRATOR's API (Phase 6 roles, 2026-09-25): which accounts exist, which systems
-    // exist, and who reviews what - a rim over MaintainerAssignmentFlows - and the "Unused files"
-    // screen, a rim over UnusedFileFlows.
+    // exist, and who reviews what - a rim over MaintainerAssignmentFlows - the "Unused files"
+    // screen, a rim over UnusedFileFlows, deleting a system, a rim over SystemDeletionFlow,
+    // resetting the contribution data (DataResetFlow) and the API usage counts (ApiUsageFlow).
     //
     // Its own group, "/api/admin", rather than routes under "/api/review": everything here is
     // administrator-only, and a group with one rule cannot have a route mapped into it that
@@ -44,6 +46,189 @@ namespace CRT.Server.Handlers.Submissions
             admin.MapGet("/unused-files", AdminEndpoints.ListUnusedFilesAsync);
             admin.MapPost("/unused-files/remove", AdminEndpoints.RemoveUnusedFilesAsync)
                 .WithBodyLimit(RequestBodyLimits.PathListBytes);
+
+            // Rebuilding every tree's dataChecksums.json by hand, after the data was edited on the
+            // box rather than through the service - see ManifestRebuildFlow. No body: the button
+            // does both trees, so there is nothing to send and no body limit to set.
+            admin.MapPost("/manifest/rebuild", AdminEndpoints.RebuildManifestsAsync);
+
+            // Deleting a system completely (owner request, 2026-10-03) - see SystemDeletionFlow. The
+            // plan first, shown in the confirmation; the delete is held to it by its fingerprint.
+            // Both POST a body, because a system id carries slashes; both bodies are small.
+            admin.MapPost("/systems/delete/plan", AdminEndpoints.PlanSystemDeletionAsync);
+            admin.MapPost("/systems/delete", AdminEndpoints.DeleteSystemAsync);
+
+            // The order of CRT's drop-down lists, in BETA and the stable source (owner request,
+            // 2026-10-04) - see SystemOrderFlow. The body is every system id BETA lists, so it gets
+            // the path-list limit rather than the 64 KB default.
+            admin.MapPost("/systems/order", AdminEndpoints.SetSystemOrderAsync)
+                .WithBodyLimit(RequestBodyLimits.PathListBytes);
+
+            // Resetting the contribution data for going live (owner request, 2026-10-04) - see
+            // DataResetFlow. The counts first; the reset is held to them by their fingerprint, and
+            // happens only while the server's AllowDataReset setting is on. A fingerprint is small.
+            admin.MapGet("/reset", AdminEndpoints.PlanDataResetAsync);
+            admin.MapPost("/reset", AdminEndpoints.ResetDataAsync);
+
+            // Which CRT versions call which route (owner request, 2026-10-04) - see ApiUsageFlow.
+            admin.MapGet("/api-usage", AdminEndpoints.GetApiUsageAsync);
+        }
+
+        // ###########################################################################################
+        // GET /api/admin/reset - what a reset would delete, and whether this server allows one. Read
+        // only; answered while the reset is switched off too, so the screen can say how to switch it on.
+        // ###########################################################################################
+        private static async Task<IResult> PlanDataResetAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            IDataResetStore store,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            DataResetOutcome outcome = await DataResetFlow.PlanAsync(access, options, store, cancellationToken);
+
+            return AdminEndpoints.RefusalFor(outcome) ?? Results.Ok(outcome.Plan);
+        }
+
+        // ###########################################################################################
+        // POST /api/admin/reset  { fingerprint } - deletes it. 503 switched off, 409 changed since the
+        // counts were shown, 500 the database refused (nothing deleted), 200 with what went.
+        //
+        // After the rows: every deleted submission's partial uploads, and every stored file no
+        // submission needs any more - the blob store's own collection, run now.
+        // ###########################################################################################
+        private static async Task<IResult> ResetDataAsync(
+            DataResetRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            IDataResetStore store,
+            ISubmissionStore submissions,
+            BlobStore blobs,
+            ApiUsageCounter usage,
+            ServerOptions options,
+            PublishLock publishLock,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            DataResetOutcome outcome = await DataResetFlow.ResetAsync(
+                access,
+                request?.Fingerprint,
+                options,
+                store,
+                publishLock,
+                async (submissionIds, token) =>
+                {
+                    foreach (long submissionId in submissionIds)
+                        blobs.ClearPartials(submissionId);
+
+                    return await SubmissionFlows.CollectUnreferencedBlobsAsync(submissions, blobs, token);
+                },
+                usage,
+                DateTimeOffset.UtcNow,
+                loggerFactory.CreateLogger(typeof(DataResetFlow).FullName!),
+                cancellationToken);
+
+            return AdminEndpoints.RefusalFor(outcome) ?? Results.Ok(outcome.Answer);
+        }
+
+        private static IResult? RefusalFor(DataResetOutcome outcome)
+        {
+            if (outcome.IsForbidden)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
+
+            if (outcome.IsNotEnabled)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            if (outcome.IsConflict)
+                return Results.Conflict(new { error = outcome.Error });
+
+            return outcome.Error is not null
+                ? Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status500InternalServerError)
+                : null;
+        }
+
+        // ###########################################################################################
+        // GET /api/admin/api-usage?days=90 - every route, the CRT versions that called it in the last
+        // `days` days (90 when left out, at most a year), and the launches per version.
+        // ###########################################################################################
+        private static async Task<IResult> GetApiUsageAsync(
+            int? days,
+            HttpContext context,
+            IAccountStore accounts,
+            IApiUsageStore store,
+            ICheckInStore checkIns,
+            ApiRouteList routes,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            ApiUsageAnswer? answer = await ApiUsageFlow.ReadAsync(
+                access,
+                days,
+                routes.All(),
+                store,
+                checkIns,
+                DateTimeOffset.UtcNow,
+                loggerFactory.CreateLogger(typeof(ApiUsageFlow).FullName!),
+                cancellationToken);
+
+            return Results.Ok(answer);
+        }
+
+        // ###########################################################################################
+        // POST /api/admin/systems/order  { systemIds } - every system in BETA's drop-down lists, in
+        // the order wanted. 400 for a list that is not one, 409 for one that no longer matches BETA's
+        // (or a file that cannot be read or written), 200 with what was rewritten.
+        // ###########################################################################################
+        private static async Task<IResult> SetSystemOrderAsync(
+            SystemOrderRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            ServerOptions options,
+            PublishLock publishLock,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            SystemOrderOutcome outcome = await SystemOrderFlow.SetAsync(
+                access!,
+                request,
+                options,
+                tree => DataChecksumManifest.Write(tree.Root, tree.PublicBaseUrl, tree.ManifestPath),
+                publishLock,
+                accounts,
+                DateTimeOffset.UtcNow,
+                cancellationToken,
+                loggerFactory.CreateLogger(typeof(SystemOrderFlow).FullName!));
+
+            if (outcome.Answer is not null)
+                return Results.Ok(outcome.Answer);
+
+            return outcome.IsConflict
+                ? Results.Conflict(new { error = outcome.Error })
+                : Results.BadRequest(new { error = outcome.Error });
         }
 
         // The two lists, and the bodies of changing a pool and removing unused files, are CRT.Data's
@@ -280,10 +465,119 @@ namespace CRT.Server.Handlers.Submissions
                 removal.NotDoneBecause));
         }
 
+        // ###########################################################################################
+        // POST /api/admin/manifest/rebuild - rebuild dataChecksums.json for every configured tree.
+        //
+        // The scan hashes every file in the tree, so it runs on a pool thread rather than holding
+        // the request thread; ManifestRebuildFlow takes the publish lock around it.
+        // ###########################################################################################
+        private static async Task<IResult> RebuildManifestsAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            ServerOptions options,
+            PublishLock publishLock,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            IReadOnlyList<ManifestRebuildFlow.TreeOutcome> outcomes = await ManifestRebuildFlow.RebuildAsync(
+                access!,
+                options,
+                tree => DataChecksumManifest.Write(tree.Root, tree.PublicBaseUrl, tree.ManifestPath),
+                publishLock,
+                accounts,
+                DateTimeOffset.UtcNow,
+                cancellationToken,
+                loggerFactory.CreateLogger(typeof(ManifestRebuildFlow).FullName!));
+
+            return Results.Ok(new ManifestRebuildAnswer(
+                ManifestRebuildFlow.Headline(outcomes),
+                [.. outcomes.Select(outcome => new ManifestRebuildEntry(
+                    outcome.Tree, outcome.Skipped, outcome.Entries, outcome.Message))]));
+        }
+
+        // ###########################################################################################
+        // POST /api/admin/systems/delete/plan  { systemId } - what deleting it would remove. Reads
+        // every workbook in both trees when the system has files, so it takes seconds; writes nothing.
+        // A plan that cannot go ahead is still 200, carrying blockedBecause.
+        // ###########################################################################################
+        private static async Task<IResult> PlanSystemDeletionAsync(
+            SystemDetailRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            SystemDeletionFlow flow,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            SystemDeletionOutcome outcome = await flow.PlanAsync(
+                access, request?.SystemId, options, DateTimeOffset.UtcNow, cancellationToken);
+
+            return AdminEndpoints.RefusalFor(outcome) ?? Results.Ok(outcome.Plan!.ToAnswer());
+        }
+
+        // POST /api/admin/systems/delete  { systemId, fingerprint, reason }
+        private static async Task<IResult> DeleteSystemAsync(
+            SystemDeleteRequest request,
+            HttpContext context,
+            IAccountStore accounts,
+            SystemDeletionFlow flow,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? access, IResult? refusal) =
+                await AdminEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            SystemDeletionOutcome outcome = await flow.DeleteAsync(
+                access, request?.SystemId, request?.Fingerprint, request?.Reason, options, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (AdminEndpoints.RefusalFor(outcome) is IResult problem)
+                return problem;
+
+            return Results.Ok(new SystemDeleteAnswer(
+                outcome.Plan!.SystemId,
+                outcome.BetaFilesRemoved,
+                outcome.ProductionFilesRemoved,
+                outcome.Plan.Submissions.Count,
+                outcome.ContributorsMailed));
+        }
+
+        // The same codes BETA's push-back answers: 503 not switched on, 403, 404, 409 blocked or
+        // changed since it was shown, 400 anything else refused.
+        private static IResult? RefusalFor(SystemDeletionOutcome outcome)
+        {
+            if (outcome.IsNotConfigured)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            if (outcome.IsForbidden)
+                return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
+
+            if (outcome.IsNotFound)
+                return Results.NotFound(new { error = outcome.Error });
+
+            if (outcome.IsConflict)
+                return Results.Conflict(new { error = outcome.Error });
+
+            return outcome.Error is not null ? Results.BadRequest(new { error = outcome.Error }) : null;
+        }
+
         private static IResult ToResult(MaintainerAssignmentOutcome outcome, MaintainerChangeRequest? request)
         {
             if (outcome.IsDone)
-                return Results.Ok(new { systemId = request?.SystemId, accountId = request?.AccountId });
+                return Results.Ok(new MaintainerChangeAnswer(request?.SystemId, request?.AccountId));
 
             if (outcome.IsForbidden)
                 return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);

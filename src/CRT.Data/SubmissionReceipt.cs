@@ -83,6 +83,12 @@ namespace Handlers.DataHandling
 
         public DateTimeOffset? LastCheckedUtc { get; init; }
 
+        // When the server last answered that it does not know this submission (HTTP 404 - deleted
+        // with its system, for one), or null while it does (code review, 2026-10-04). Such a receipt
+        // is asked about only once per NotFoundRecheckInterval rather than every minute for ever;
+        // any later answer clears it. "My submissions" keeps showing its last known state.
+        public DateTimeOffset? NotFoundUtc { get; init; }
+
         // What a maintainer said, once there is a maintainer to say it. Phase 5 builds the review
         // application; until then the server has no field for this and it stays empty. Carried now
         // so that adding it server-side does not need a format change on every contributor's disk.
@@ -192,6 +198,13 @@ namespace Handlers.DataHandling
         public bool SourceNoticeDismissed { get; init; }
 
         // ###########################################################################################
+        // Whether the contributor has closed the "now in the BETA source - tick BETA to try it"
+        // notice for this submission (owner request, 2026-10-03). Set only by dismissing it; a later
+        // submission has its own.
+        // ###########################################################################################
+        public bool BetaNoticeDismissed { get; init; }
+
+        // ###########################################################################################
         // THE CONTRIBUTOR DISCARDED THEIR DRAFT of this board after sending this (owner request,
         // 2026-09-28) - see DraftDiscardContract. When, by this machine's clock, and whether the
         // server has been told. Kept until it has, so a discard made offline is reported at the
@@ -200,6 +213,16 @@ namespace Handlers.DataHandling
         public DateTimeOffset? DraftDiscardedUtc { get; init; }
 
         public bool DraftDiscardReported { get; init; }
+
+        // ###########################################################################################
+        // *** WHAT THE DRAFT HELD WHEN THIS WAS SENT (owner request, 2026-10-03: "the submitted is
+        // identical to what is in draft now. It should not be possible to submit the same data
+        // again"). *** DraftFingerprint.Compute of the draft at the moment of sending. While the
+        // draft still gives the same fingerprint, its Submit button is greyed out - see
+        // SubmissionReceiptPresenter.IsAlreadySent. Empty on a receipt written before this existed,
+        // which therefore never greys anything out.
+        // ###########################################################################################
+        public string DraftFingerprint { get; init; } = string.Empty;
 
         // Never the generated ToString, which would print UploadToken - a secret - into any log line
         // that formats a receipt.
@@ -267,10 +290,13 @@ namespace Handlers.DataHandling
                 "uploading" => "Never finished sending",
                 "pending" => SubmissionReceiptPresenter.PendingWording,
                 "accepted" => "Accepted",
-                // *** "BETA source" AND "source" (owner wording, 2026-09-25). *** The two
-                // stages are named for where the data went, in the words CRT's own Configuration
-                // tab uses for the two places it downloads from ("online source", "BETA source").
-                "published" => "Published to source",
+                // *** "the stable source" AND "the BETA source" (owner decision, 2026-10-01). ***
+                // The two stages are named for where the data went, in the words CRT's own
+                // Configuration tab uses for the two places it downloads from. It was "Published to
+                // source" against "Published to the BETA source", which made the finished state the
+                // nameless one - a contributor could not tell which of the two it meant. See
+                // AppConfig.GetOnlineSourceLabel for why "stable" rather than "production".
+                "published" => "Published to the stable source",
                 "rejected" => "Not accepted",
                 "abandoned" => "Expired before it was finished",
 
@@ -289,8 +315,8 @@ namespace Handlers.DataHandling
                 // two-stage publish, a maintainer's approval writes the BETA data; the board goes out
                 // to everyone when it is published to production, and the server then reports this
                 // same submission as "published" (ProductionPromotionRules.ContributorFacingState)
-                // - which is the row that says "Published to source".
-                "merged" => "Published to BETA source",
+                // - which is the row that says "Published to the stable source".
+                "merged" => "Published to the BETA source",
 
                 // *** "withdrawn" IS A SUBMISSION REPLACED BY THE CONTRIBUTOR'S NEWER ONE (owner
                 // decision, 2026-09-26). *** Nothing else sets it: the server withdraws an older,
@@ -304,7 +330,7 @@ namespace Handlers.DataHandling
                 // Not a database state: the server reports it for a `pending` submission carrying a
                 // maintainer's reason, which only a BETA rollback produces
                 // (ProductionPromotionRules.ContributorFacingState). The contributor had already
-                // been shown "Published to BETA source" and mailed so; a bare "Waiting for review"
+                // been shown "Published to the BETA source" and mailed so; a bare "Waiting for review"
                 // afterwards said nothing about what had happened. The reason is the maintainer
                 // comment beside it.
                 "returned" => "Taken back out of BETA - waiting for review again",
@@ -314,6 +340,35 @@ namespace Handlers.DataHandling
                 // admission that this version does not know it.
                 _ => $"Reported as [{state.Trim()}]"
             };
+        }
+
+        // ###########################################################################################
+        // *** A SUBMISSION THE SERVER NO LONGER KNOWS (2026-10-04). *** The server answers "not
+        // found" for a submission deleted with its system (Account > "Delete a system") or by a reset
+        // of the contribution data at go-live (Account > "Reset contribution data"). The receipt keeps
+        // the state it last had - and showed it, "Submitted - awaiting feedback" for ever, about a
+        // submission nobody will ever look at. These two read the RECEIPT, not only its state, so a
+        // receipt marked not found (SubmissionReceipt.NotFoundUtc) says so instead - in the neutral
+        // colour, since nothing was decided on its merit.
+        // ###########################################################################################
+        public const string NotOnServerWording = "No longer on the server";
+
+        public static string DescribeReceiptState(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return receipt.NotFoundUtc is not null
+                ? SubmissionReceiptPresenter.NotOnServerWording
+                : SubmissionReceiptPresenter.DescribeState(receipt.LastKnownState);
+        }
+
+        public static SubmissionOutcomeKind ClassifyReceipt(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return receipt.NotFoundUtc is not null
+                ? SubmissionOutcomeKind.Waiting
+                : SubmissionReceiptPresenter.ClassifyState(receipt.LastKnownState);
         }
 
         // ###########################################################################################
@@ -417,13 +472,18 @@ namespace Handlers.DataHandling
         // *** BUT NO LONGER A POINT AFTER WHICH IT IS NEVER ASKED AGAIN (code review, 2026-09-27). ***
         // A merged submission can now CHANGE after any length of time: a BETA rollback puts it back
         // in the queue ("returned"). With the old hard stop, a rollback more than thirty days after
-        // the merge never reached "My submissions", which said "Published to BETA source" for good
+        // the merge never reached "My submissions", which said "Published to the BETA source" for good
         // while the server said otherwise. Past the window it is asked about once every
         // MergedLateRecheckInterval instead - still cheap, never silent.
         // ###########################################################################################
         public static readonly TimeSpan MergedRecheckWindow = TimeSpan.FromDays(30);
 
         public static readonly TimeSpan MergedLateRecheckInterval = TimeSpan.FromDays(7);
+
+        // How often a receipt the server answered "not found" for is asked about again (code review,
+        // 2026-10-04). Not never: a 404 from a server being redeployed must not silence a live
+        // submission for good. Once a day is nothing beside the minute check it replaces.
+        public static readonly TimeSpan NotFoundRecheckInterval = TimeSpan.FromDays(1);
 
         // ###########################################################################################
         // Whether this RECEIPT is worth asking the server about AT LAUNCH: its state is still open,
@@ -438,6 +498,13 @@ namespace Handlers.DataHandling
 
             if (!SubmissionReceiptPresenter.IsStillOpen(receipt.LastKnownState))
                 return false;
+
+            // Unknown to the server: once a day, whatever its state.
+            if (receipt.NotFoundUtc is not null)
+            {
+                return receipt.LastCheckedUtc is not DateTimeOffset lastChecked ||
+                    nowUtc - lastChecked >= SubmissionReceiptPresenter.NotFoundRecheckInterval;
+            }
 
             if (!string.Equals(receipt.LastKnownState?.Trim(), "merged", StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -536,6 +603,77 @@ namespace Handlers.DataHandling
         // The notice's words, naming each system once.
         public static string DescribeSourceSwitchNotice(IReadOnlyList<SubmissionReceipt> receipts)
         {
+            (string named, string verb) = SubmissionReceiptPresenter.NameSystems(receipts);
+
+            return $"{named} {verb} now published to the stable source. You are downloading data from the BETA source - " +
+                   "you can switch back to the stable source on the Configuration tab.";
+        }
+
+        // ###########################################################################################
+        // *** THE "TRY IT IN BETA" NOTICE (owner request, 2026-10-03: "When a system gets published
+        // to the either online source, then there should be an information to the contributor that
+        // he can test this"). *** The twin of the switch-back notice above, for the step before it:
+        // a submission accepted into the BETA source ("merged"), not dismissed, while this machine
+        // downloads from the STABLE source - someone already on BETA gets the data with the next
+        // data check, and is not told to tick a box that is ticked. Derived from the receipts each
+        // time, like the other one, so it cannot be missed.
+        // ###########################################################################################
+        public static IReadOnlyList<SubmissionReceipt> NeedingBetaTryNotice(
+            IEnumerable<SubmissionReceipt>? receipts,
+            bool downloadingFromBeta)
+        {
+            if (downloadingFromBeta)
+            {
+                return [];
+            }
+
+            return (receipts ?? [])
+                .Where(receipt => string.Equals(receipt.LastKnownState?.Trim(), "merged", StringComparison.OrdinalIgnoreCase))
+                .Where(receipt => !receipt.BetaNoticeDismissed)
+                .Where(receipt => receipt.NotFoundUtc is null)
+                .OrderBy(receipt => receipt.SentUtc)
+                .ToList();
+        }
+
+        // The notice's words. With "Check for new or updated data at application launch" off, the
+        // BETA check box is greyed out, so the notice names that one first.
+        public static string DescribeBetaTryNotice(IReadOnlyList<SubmissionReceipt> receipts, bool checkDataOnLaunch)
+        {
+            (string named, string verb) = SubmissionReceiptPresenter.NameSystems(receipts);
+
+            string tick = checkDataOnLaunch
+                ? $"tick \"{ConfigurationWording.BetaSourceCheckBox}\""
+                : $"tick \"{ConfigurationWording.CheckDataOnLaunchCheckBox}\" and then \"{ConfigurationWording.BetaSourceCheckBox}\"";
+
+            return $"{named} {verb} now in the BETA source. To try it before everyone else, {tick} on the Configuration tab.";
+        }
+
+        // ###########################################################################################
+        // The line under a submission in "My submissions" while it is in the BETA source (2026-10-03)
+        // - there after the notice is closed, gone once the state moves on. Empty otherwise.
+        // ###########################################################################################
+        public const string BetaTryLine = "To try it before everyone else, download data from the BETA source - see the Configuration tab.";
+
+        public static string DescribeBetaTry(string? state) =>
+            string.Equals(state?.Trim(), "merged", StringComparison.OrdinalIgnoreCase)
+                ? SubmissionReceiptPresenter.BetaTryLine
+                : string.Empty;
+
+        // The same for a receipt - none for one the server no longer knows (2026-10-04): what it sent
+        // is not in the BETA source any more.
+        public static string DescribeReceiptBetaTry(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return receipt.NotFoundUtc is not null
+                ? string.Empty
+                : SubmissionReceiptPresenter.DescribeBetaTry(receipt.LastKnownState);
+        }
+
+        // "Your submission for Commodore C64 250407" / "Your submissions for A and B", and its verb -
+        // each system named once.
+        private static (string Named, string Verb) NameSystems(IReadOnlyList<SubmissionReceipt> receipts)
+        {
             ArgumentNullException.ThrowIfNull(receipts);
 
             List<string> systems = receipts
@@ -550,10 +688,7 @@ namespace Handlers.DataHandling
                 _ => $"Your submissions for {string.Join(", ", systems.Take(systems.Count - 1))} and {systems[^1]}",
             };
 
-            string verb = systems.Count > 1 ? "are" : "is";
-
-            return $"{named} {verb} now published to the online source. You are downloading data from the BETA source - " +
-                   "you can switch back to the online source on the Configuration tab.";
+            return (named, systems.Count > 1 ? "are" : "is");
         }
 
         // ###########################################################################################
@@ -567,7 +702,7 @@ namespace Handlers.DataHandling
         //
         // *** ONLY SUBMISSIONS SENT FROM THIS DRAFT (code review, 2026-09-27). *** A contributor
         // whose first submission reached production has that draft retired, and starts a new one of
-        // the same board - which then carried "Published to source", in green, beside changes that
+        // the same board - which then carried "Published to the stable source", in green, beside changes that
         // had not been sent at all. draftCreatedUtc (the marker's) leaves out anything sent before
         // the draft existed; null, from a marker that does not say, leaves nothing out.
         // ###########################################################################################
@@ -588,6 +723,56 @@ namespace Handlers.DataHandling
                 .OrderByDescending(receipt => receipt.SentUtc)
                 .ThenByDescending(receipt => receipt.SubmissionId)
                 .FirstOrDefault();
+        }
+
+        // ###########################################################################################
+        // *** HAS THE DRAFT ALREADY BEEN SENT AS IT IS NOW? (owner request, 2026-10-03: "It should
+        // not be possible to submit the same data again"; cases agreed with the project owner) ***
+        // True while the draft's fingerprint is the one its LATEST submission (LatestForSystem,
+        // only those sent from this draft) was sent with - whatever has happened to that
+        // submission since: waiting, approved, in BETA, taken back out of BETA, changes requested,
+        // even not accepted. Sending the same rows again answers none of those.
+        //
+        // NOT when that submission never finished sending - cancelled, the connection lost, the
+        // upload window expired, or never confirmed by the server (no state yet: the receipt is
+        // written before the upload, and its state only once the server confirms it). Then the
+        // same draft is exactly what should be sent again.
+        //
+        // Never blocks on an unknown: a receipt from before fingerprints existed, or a draft whose
+        // fingerprint could not be worked out (DraftFingerprint gives "" then).
+        //
+        // NOR when the server no longer knows that submission (2026-10-04) - deleted with its system,
+        // or by the reset at go-live. What was sent is gone, so sending the same draft again is
+        // exactly what is wanted.
+        // ###########################################################################################
+        public static bool IsAlreadySent(SubmissionReceipt? latest, string? currentFingerprint)
+        {
+            if (latest is null ||
+                latest.NotFoundUtc is not null ||
+                string.IsNullOrEmpty(latest.DraftFingerprint) ||
+                string.IsNullOrEmpty(currentFingerprint))
+            {
+                return false;
+            }
+
+            if (SubmissionReceiptPresenter.NeverFinishedSending(latest.LastKnownState))
+            {
+                return false;
+            }
+
+            return string.Equals(latest.DraftFingerprint, currentFingerprint, StringComparison.Ordinal);
+        }
+
+        private static bool NeverFinishedSending(string? state) =>
+            (state ?? string.Empty).Trim().ToLowerInvariant() is "" or "uploading" or "abandoned";
+
+        // The greyed-out Submit button's tooltip (case 1).
+        public static string DescribeAlreadySent(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return $"You have already sent this draft as it is now, on {SubmissionReceiptPresenter.FormatDate(receipt.SentUtc)}. " +
+                   "Change something to send it again.";
         }
 
         // ###########################################################################################

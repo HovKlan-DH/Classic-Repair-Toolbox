@@ -222,7 +222,7 @@ public sealed class BetaRollbackPlanTests
     // ###########################################################################################
     // A shared file the submission ADDED has nothing in production to go back to - and it STAYS
     // (owner decision, 2026-09-27): nothing outside the system's own folder is removed
-    // automatically. Unused, it is Admin > Unused files' to clear.
+    // automatically. Unused, it is Account > Unused files' to clear.
     // ###########################################################################################
     [Fact]
     public void A_shared_file_the_submission_added_is_left_in_place()

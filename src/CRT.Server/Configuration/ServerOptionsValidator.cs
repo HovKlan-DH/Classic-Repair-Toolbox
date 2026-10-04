@@ -51,6 +51,7 @@ namespace CRT.Server.Configuration
             ServerOptionsValidator.ValidateProductionPublishing(options, dataTreeRoot, directoryExists, directoryWritable, failures);
             ServerOptionsValidator.ValidateManifestSettings(options, failures);
             ServerOptionsValidator.ValidateRequiredValues(options, failures);
+            ServerOptionsValidator.ValidateFeedback(options, directoryExists, directoryWritable, failures);
             ServerOptionsValidator.ValidateHashingParameters(options, failures);
             ServerOptionsValidator.ValidateTokenLifetimes(options, failures);
 
@@ -470,6 +471,89 @@ namespace CRT.Server.Configuration
         }
 
         // ###########################################################################################
+        // Feedback (2026-10-03): the folder its files are saved in, and who its mail goes to.
+        //
+        // The folder must exist and be writable - checked here, so a missing permission is a
+        // refusal to start rather than every feedback failing - and must not overlap a data tree
+        // or the blob store in either direction: a stranger's attached files must never be
+        // published, nor sit among submissions' blobs.
+        // ###########################################################################################
+        private static void ValidateFeedback(
+            ServerOptions options,
+            Func<string, bool> directoryExists,
+            Func<string, bool> directoryWritable,
+            List<string> failures)
+        {
+            string prefix = ServerOptions.SectionName;
+
+            if (string.IsNullOrWhiteSpace(options.FeedbackToAddress))
+            {
+                failures.Add(
+                    $"{prefix}:FeedbackToAddress is not set. It has no default: it is who reads the feedback " +
+                    "CRT users send, logs and settings included.");
+            }
+            else if (!options.FeedbackToAddress.Contains('@', StringComparison.Ordinal))
+            {
+                failures.Add($"{prefix}:FeedbackToAddress is not an email address: [{options.FeedbackToAddress}]");
+            }
+
+            if (string.IsNullOrWhiteSpace(options.FeedbackRoot))
+            {
+                failures.Add(
+                    $"{prefix}:FeedbackRoot is not set. It has no default: it is where the files attached " +
+                    "to feedback are saved, e.g. /mydir/http/classic-repair-toolbox.dk/user-feedback - outside " +
+                    "the web document root.");
+                return;
+            }
+
+            if (!Path.IsPathRooted(options.FeedbackRoot.Trim()))
+            {
+                failures.Add($"{prefix}:FeedbackRoot must be an absolute path, but is [{options.FeedbackRoot}]");
+                return;
+            }
+
+            if (!ServerOptionsValidator.TryNormalisePath(options.FeedbackRoot, out string feedback))
+            {
+                failures.Add($"{prefix}:FeedbackRoot is not a usable path: [{options.FeedbackRoot}]");
+                return;
+            }
+
+            var others = new (string Name, string? Value)[]
+            {
+                ("DataTreeRoot", options.DataTreeRoot),
+                ("ProductionTreeRoot", options.ProductionTreeRoot),
+                ("ProductionDataTreeRoot", options.ProductionDataTreeRoot),
+                ("BlobStoreRoot", options.BlobStoreRoot)
+            };
+
+            foreach ((string name, string? value) in others)
+            {
+                if (!ServerOptionsValidator.TryNormalisePath(value, out string other))
+                    continue;
+
+                if (ServerOptionsValidator.PathsAreEqual(feedback, other) ||
+                    ServerOptionsValidator.PathContains(feedback, other) ||
+                    ServerOptionsValidator.PathContains(other, feedback))
+                {
+                    failures.Add(
+                        $"{prefix}:FeedbackRoot [{feedback}] overlaps {name} [{other}]. Feedback files must " +
+                        "be kept apart from the data trees and the blob store.");
+                }
+            }
+
+            if (!directoryExists(feedback))
+            {
+                failures.Add($"{prefix}:FeedbackRoot does not exist or is not a directory: [{feedback}]");
+            }
+            else if (!directoryWritable(feedback))
+            {
+                failures.Add(
+                    $"{prefix}:FeedbackRoot is not writable by the service user: [{feedback}]. It needs the " +
+                    "group and the unit's ReadWritePaths in DEPLOYMENT.md (\"Feedback from CRT\").");
+            }
+        }
+
+        // ###########################################################################################
         // Argon2id cost floor. This is where the production parameters are ASSERTED without ever
         // being executed: the hasher's own tests run at deliberately tiny parameters so the suite
         // stays fast, which would otherwise leave the real cost pinned by nothing at all.
@@ -519,6 +603,15 @@ namespace CRT.Server.Configuration
                 failures.Add(
                     $"{ServerOptions.SectionName}:MinimumFreeDiskBytes must be 0 or more, but is " +
                     $"{options.MinimumFreeDiskBytes.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            // The same reasoning for the feedback folder's total: negative would read as "always
+            // full", refusing every attachment while the setting looked configured.
+            if (options.FeedbackMaxStoredBytes < 0)
+            {
+                failures.Add(
+                    $"{ServerOptions.SectionName}:FeedbackMaxStoredBytes must be 0 or more, but is " +
+                    $"{options.FeedbackMaxStoredBytes.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 

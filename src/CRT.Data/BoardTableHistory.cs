@@ -166,18 +166,7 @@ namespace Handlers.DataHandling
 
             this.thisUndo.RemoveAt(this.thisUndo.Count - 1);
 
-            this.thisApplying = true;
-            try
-            {
-                foreach (SheetState state in step.Sheets)
-                {
-                    state.Sheet.RestoreSnapshot(state.Snapshot);
-                }
-            }
-            finally
-            {
-                this.thisApplying = false;
-            }
+            this.RestoreSheets(step);
 
             this.thisDocument.SetUnsavedChanges(!this.IsAtSavedState);
             return false;
@@ -199,22 +188,34 @@ namespace Handlers.DataHandling
                 Sheets = step.Sheets.Select(state => new SheetState(state.Sheet, state.Sheet.TakeSnapshot())).ToList()
             });
 
+            this.RestoreSheets(step);
+
+            this.thisDocument.SetUnsavedChanges(!this.IsAtSavedState);
+
+            return new BoardTableHistoryResult(step.Sheet, BoardTableHistory.FocusRowAfter(step), step.FocusColumn);
+        }
+
+        // Puts every sheet of `step` back, recording nothing. A step can span sheets (a component
+        // and its image rows), so the board is checked once, after all of them are back
+        // (BoardTableDocument.DeferProblems; code review, 2026-10-04).
+        private void RestoreSheets(Step step)
+        {
             this.thisApplying = true;
+
             try
             {
-                foreach (SheetState state in step.Sheets)
+                using (this.thisDocument.DeferProblems())
                 {
-                    state.Sheet.RestoreSnapshot(state.Snapshot);
+                    foreach (SheetState state in step.Sheets)
+                    {
+                        state.Sheet.RestoreSnapshot(state.Snapshot);
+                    }
                 }
             }
             finally
             {
                 this.thisApplying = false;
             }
-
-            this.thisDocument.SetUnsavedChanges(!this.IsAtSavedState);
-
-            return new BoardTableHistoryResult(step.Sheet, BoardTableHistory.FocusRowAfter(step), step.FocusColumn);
         }
 
         // The row the step was about when it is still in the sheet, otherwise the row now where it

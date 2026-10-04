@@ -725,13 +725,17 @@ namespace CRT.Server.Handlers.Submissions
 
             if (accountId is not null)
             {
-                command.CommandText = "SELECT id, state, decided_by IS NOT NULL FROM submissions WHERE account_id = @account;";
+                command.CommandText = """
+                    SELECT id, state, decided_by IS NOT NULL, system_id, summary, created_utc, decided_utc, decision_comment
+                    FROM submissions WHERE account_id = @account;
+                    """;
                 command.Parameters.AddWithValue("@account", accountId.Value);
             }
             else
             {
                 command.CommandText = """
-                    SELECT id, state, decided_by IS NOT NULL FROM submissions
+                    SELECT id, state, decided_by IS NOT NULL, system_id, summary, created_utc, decided_utc, decision_comment
+                    FROM submissions
                     WHERE account_id IS NULL AND LOWER(TRIM(contact_email)) = LOWER(@email);
                     """;
                 command.Parameters.AddWithValue("@email", email);
@@ -746,7 +750,12 @@ namespace CRT.Server.Handlers.Submissions
                 submissions.Add(new ContributorSubmission(
                     reader.GetInt64(0),
                     reader.GetString(1),
-                    Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture) != 0));
+                    Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture) != 0,
+                    reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    MySqlSubmissionStore.ReadUtc(reader, 5)!.Value,
+                    MySqlSubmissionStore.ReadUtc(reader, 6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7)));
             }
 
             return submissions;
@@ -1012,6 +1021,79 @@ namespace CRT.Server.Handlers.Submissions
                 returns[reader.GetInt64(0)] = MySqlSubmissionStore.ReadUtc(reader, 1)!.Value;
 
             return returns;
+        }
+
+        // REPLACE INTO: a submission published again keeps what it changed the last time (0017).
+        public async Task SetChangesAsync(
+            long submissionId,
+            SubmissionChanges changes,
+            DateTimeOffset recordedUtc,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(changes);
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                REPLACE INTO submission_changes (submission_id, changes_json, recorded_utc)
+                VALUES (@id, @json, @utc);
+                """;
+
+            command.Parameters.AddWithValue("@id", submissionId);
+            command.Parameters.AddWithValue("@json", JsonSerializer.Serialize(changes, MySqlSubmissionStore.JsonOptions));
+            command.Parameters.AddWithValue("@utc", recordedUtc.UtcDateTime);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // ###########################################################################################
+        // See ISubmissionStore.GetChangesAsync - the same one-query shape as GetDraftDiscardsAsync. A
+        // record that no longer reads (hand-edited, or a shape this version does not know) is left
+        // out rather than failing the whole system's screen.
+        // ###########################################################################################
+        public async Task<IReadOnlyDictionary<long, SubmissionChanges>> GetChangesAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            var changes = new Dictionary<long, SubmissionChanges>();
+
+            if (submissionIds is null || submissionIds.Count == 0)
+                return changes;
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            // One parameter per id - never the ids written into the text.
+            List<string> names = [];
+            int index = 0;
+
+            foreach (long id in submissionIds.Distinct())
+            {
+                string name = FormattableString.Invariant($"@id{index++}");
+                names.Add(name);
+                command.Parameters.AddWithValue(name, id);
+            }
+
+            command.CommandText =
+                $"SELECT submission_id, changes_json FROM submission_changes WHERE submission_id IN ({string.Join(", ", names)});";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                try
+                {
+                    if (JsonSerializer.Deserialize<SubmissionChanges>(reader.GetString(1), MySqlSubmissionStore.JsonOptions) is SubmissionChanges read)
+                        changes[reader.GetInt64(0)] = read;
+                }
+                catch (JsonException)
+                {
+                    // Left out - see the header.
+                }
+            }
+
+            return changes;
         }
 
         // The same INSERT IGNORE CreateAsync performs, on its own - see ISubmissionStore.

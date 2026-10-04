@@ -89,6 +89,31 @@ public sealed class ConfigurationHelpIconTests
         });
     }
 
+    // ###########################################################################################
+    // "View boards as officially coming from online source" (owner request, 2026-10-02: "have a
+    // Wiki page for this and add a helper icon to it") - the same "?" beside its check box, opening
+    // AppConfig.WikiPageViewOnlineSource, which WikiHelpPageNamesTests holds to a real page. The
+    // label is pinned too: it is the new wording, and the Wiki page names it.
+    // ###########################################################################################
+    [Fact]
+    public void The_online_source_setting_has_a_help_icon_beside_it_and_its_new_name()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButton = tab.GetControl<Button>("ViewOfficialPublishedOnlyHelpButton");
+            var checkBox = tab.GetControl<CheckBox>("ViewOfficialPublishedOnlyCheckBox");
+
+            Assert.Contains("HelpIconButton", helpButton.Classes);
+            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
+            Assert.Equal(
+                "View boards as officially coming from online source (hide my local draft changes)",
+                checkBox.Content);
+        });
+    }
+
     // The pattern this one was copied from, asserted alongside it so a change to either is made to
     // both rather than leaving the two help icons looking different.
     [Fact]

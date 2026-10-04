@@ -1,12 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
              x:Class="CRT.UnusedFilesView">
 
     <!--
     UNUSED FILES (owner decision, 2026-09-25: "there must be no orphan files") - on the Admin screen
-    since 2026-09-27, a window of its own until then. ADMINISTRATOR ONLY - the Admin screen is
-    offered only when the server says the account is one, and the server refuses everyone else
-    regardless.
+    since 2026-09-27 (the Account screen since 2026-10-04), a window of its own until then.
+    ADMINISTRATOR ONLY - its padlocked entry is shown only when the server says the account is one,
+    and the server refuses everyone else regardless.
 
     A publish removes only what IT made unused. What was already unused - files no workbook cites,
     in either tree - is listed here, and goes only when the administrator has looked through the
@@ -14,6 +15,12 @@
 
     Refresh STAYS, unlike on the other screens: the list reads every workbook in the tree on the
     server and takes seconds, so it is asked for on purpose rather than every minute.
+
+    THE LIST IS THE FILE TREE (owner request, 2026-10-04: "the exact same tree-view like it does in
+    'Systems' and 'Files' ... including visualization of images and opening of files") - FileTreeView
+    as a listing, every folder open, each file with its size; pointing at one shows it, and
+    double-clicking opens it, from the tree's public address (FileTreeFiles). Its own line is off:
+    the summary above says the count and the size.
     -->
     <DockPanel>
 
@@ -25,7 +32,7 @@
                       SelectedIndex="0"
                       SelectionChanged="OnTreeSelectionChanged">
                 <ComboBoxItem Content="BETA" Tag="beta" />
-                <ComboBoxItem Content="Production" Tag="production" />
+                <ComboBoxItem Content="Stable" Tag="production" />
             </ComboBox>
 
             <Button x:Name="RefreshButton" Content="Refresh" Click="OnRefreshClick" />
@@ -61,8 +68,6 @@
                     Click="OnRemoveClick" />
         </StackPanel>
 
-        <ScrollViewer>
-            <StackPanel x:Name="FilesPanel" Spacing="2" />
-        </ScrollViewer>
+        <local:FileTreeView x:Name="UnusedFileTree" />
     </DockPanel>
 </UserControl>

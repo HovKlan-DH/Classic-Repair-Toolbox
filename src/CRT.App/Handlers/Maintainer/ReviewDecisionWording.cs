@@ -120,7 +120,7 @@ namespace Handlers.MaintainerHandling
                     : $"Published to BETA at revision {result.Revision}.";
 
                 return published + FileRemovalWording.Done(result.RemovedFiles) +
-                    " Check it in CRT with the BETA data, then publish it from Production.";
+                    " Check it in CRT with the BETA data, then publish it from " + MaintainerScreenWording.BetaQueueQuoted + ".";
             }
 
             return kind == ReviewDecisionKind.Reject

@@ -25,6 +25,28 @@ namespace Handlers.DataHandling
 
         // How far down the sheet the header row is looked for - the sheet opens with a preamble.
         public const int HeaderSearchRows = 20;
+
+        // ###########################################################################################
+        // THE SECOND SHEET, "Oscilloscope" - the SCPI command sets CRT's Oscilloscope tab reads
+        // (DataManager.LoadMainExcel). Named here beside the first since 2026-10-04, when the server
+        // started writing the file's preamble and panes on both sheets (MasterListing.Finish).
+        // ###########################################################################################
+        public const string OscilloscopeSheetName = "Oscilloscope";
+        public const string ColBrand = "Brand";
+        public const string ColSeriesOrModel = "Series or model";
+        public const string ColPort = "Port";
+
+        // ###########################################################################################
+        // The preamble's date line on both sheets - "# Revision date: 2026-October-4" (owner request,
+        // 2026-10-04: "make sure to update the date in the 'Revision date:'"). Found by this prefix in
+        // the rows above the header, never by a fixed row number.
+        // ###########################################################################################
+        public const string RevisionDatePrefix = "# Revision date:";
+
+        // The Oscilloscope sheet keeps its first two columns - the brand and the series or model - on
+        // screen while it is scrolled right (owner request, 2026-10-04: "it will have many columns,
+        // so it should be possible to always see those oscilloscopes and models").
+        public const int OscilloscopeFrozenColumns = 2;
     }
 
     // ###########################################################################################
@@ -67,6 +89,15 @@ namespace Handlers.DataHandling
     //
     // ATOMIC: written to a temporary file beside it and moved into place, so a crash leaves the old
     // file whole. Order-sensitive readers (the drop-downs) never see half a list.
+    //
+    // *** EVERY WRITE DATES BOTH SHEETS AND SETS THEIR PANES (owner request, 2026-10-04). *** Each
+    // sheet's "# Revision date:" line is set to the day of the write, "Hardware & Board" is frozen
+    // under its header row like every board workbook, and "Oscilloscope" under its header row AND
+    // after its first two columns - see Finish. Nothing else in the preamble is touched.
+    //
+    // REORDERING (owner request, 2026-10-04: "a possibility to be able to sort the list of systems,
+    // which then gets saved to both sources (BETA + stable)") moves whole rows - their values,
+    // formatting and heights - between the rows the list already occupies; see Reorder.
     // ###########################################################################################
     public static class MasterListing
     {
@@ -174,7 +205,10 @@ namespace Handlers.DataHandling
         // A named "after" row that is no longer in the list is REFUSED rather than guessed at: the
         // maintainer placed the system relative to it, and anywhere else is a place nobody chose.
         // ###########################################################################################
-        public static MasterListingEdit Insert(string masterPath, MasterListingRow row, string? afterExcelDataFile)
+        //
+        // `nowUtc` dates the file's two "# Revision date:" lines (see Finish); null is the moment of
+        // the write.
+        public static MasterListingEdit Insert(string masterPath, MasterListingRow row, string? afterExcelDataFile, DateTimeOffset? nowUtc = null)
         {
             ArgumentNullException.ThrowIfNull(row);
 
@@ -214,7 +248,7 @@ namespace Handlers.DataHandling
                     }
 
                     MasterListing.WriteCells(layout!, existing.SheetRow, row);
-                    return MasterListing.Save(package!, masterPath);
+                    return MasterListing.Save(package!, masterPath, nowUtc);
                 }
 
                 int target;
@@ -268,15 +302,18 @@ namespace Handlers.DataHandling
                     sheet.Cells[below.SheetRow + 1, layout.HardwareColumn].Value = below.Row.HardwareName;
                 }
 
-                return MasterListing.Save(package!, masterPath);
+                return MasterListing.Save(package!, masterPath, nowUtc);
             }
         }
 
         // ###########################################################################################
-        // Takes a system's row out - a new system pushed back out of BETA before it ever reached
-        // production. Nothing to remove is a success that changed nothing.
+        // Takes a system's rows out - a new system pushed back out of BETA before it ever reached
+        // production, or a system deleted. EVERY row of it: two rows whose workbooks sit in the same
+        // system folder are one system, and deleting the folder while one row stayed would leave a
+        // board CRT offers but cannot load (code review, 2026-10-04). Nothing to remove is a success
+        // that changed nothing.
         // ###########################################################################################
-        public static MasterListingEdit Remove(string masterPath, string systemId)
+        public static MasterListingEdit Remove(string masterPath, string systemId, DateTimeOffset? nowUtc = null)
         {
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
             {
@@ -292,26 +329,35 @@ namespace Handlers.DataHandling
 
                 List<ListedRow> listed = MasterListing.ReadRows(layout!);
 
-                ListedRow? row = listed.FirstOrDefault(item =>
-                    string.Equals(item.Row.SystemId, systemId?.Trim(), StringComparison.OrdinalIgnoreCase));
+                var ours = new HashSet<int>(listed
+                    .Where(item => string.Equals(item.Row.SystemId, systemId?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .Select(item => item.SheetRow));
 
-                if (row is null)
+                if (ours.Count == 0)
                 {
                     return MasterListingEdit.Done(changed: false);
                 }
 
-                // The row below keeps its own hardware name if its cell leaned on this one's.
-                ListedRow? below = listed.FirstOrDefault(item => item.SheetRow > row.SheetRow);
-
-                if (below is not null &&
-                    string.IsNullOrWhiteSpace(layout!.Sheet.Cells[below.SheetRow, layout.HardwareColumn].Text))
+                // A row that stays keeps its own hardware name if its cell leaned on a removed one's.
+                for (int i = 1; i < listed.Count; i++)
                 {
-                    layout.Sheet.Cells[below.SheetRow, layout.HardwareColumn].Value = below.Row.HardwareName;
+                    ListedRow row = listed[i];
+
+                    if (!ours.Contains(row.SheetRow) &&
+                        ours.Contains(listed[i - 1].SheetRow) &&
+                        string.IsNullOrWhiteSpace(layout!.Sheet.Cells[row.SheetRow, layout.HardwareColumn].Text))
+                    {
+                        layout.Sheet.Cells[row.SheetRow, layout.HardwareColumn].Value = row.Row.HardwareName;
+                    }
                 }
 
-                layout!.Sheet.DeleteRow(row.SheetRow, 1);
+                // Bottom up, so each row's number still holds when it is reached.
+                foreach (int sheetRow in ours.OrderDescending())
+                {
+                    layout!.Sheet.DeleteRow(sheetRow, 1);
+                }
 
-                return MasterListing.Save(package!, masterPath);
+                return MasterListing.Save(package!, masterPath, nowUtc);
             }
         }
 
@@ -360,6 +406,156 @@ namespace Handlers.DataHandling
             }
 
             return true;
+        }
+
+        // ###########################################################################################
+        // THE ORDER OF THE DROP-DOWN LISTS (owner request, 2026-10-04: "a possibility to be able to
+        // sort the list of systems, which then gets saved to both sources (BETA + stable)").
+        //
+        // For each place in the new list, which of `rows` goes there - rows given as the file holds
+        // them, top to bottom. A row whose system `order` names takes that system's place in it; a
+        // row `order` does not name (production listing a board BETA does not, say) stays straight
+        // after the row it followed, or first when nothing named came before it. Rows of one system
+        // listed twice keep their order between them.
+        //
+        // Pure, so the rule is tested without a file; Reorder applies it.
+        // ###########################################################################################
+        public static IReadOnlyList<int> ArrangeAs(IReadOnlyList<MasterListingRow> rows, IReadOnlyList<string> order)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+            ArgumentNullException.ThrowIfNull(order);
+
+            var wanted = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < order.Count; i++)
+            {
+                string id = order[i]?.Trim() ?? string.Empty;
+
+                if (id.Length > 0)
+                    wanted.TryAdd(id, i);
+            }
+
+            var keys = new List<(int Index, int Place, int Follows)>();
+            int anchor = -1;
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (wanted.TryGetValue(rows[i].SystemId, out int place))
+                {
+                    anchor = place;
+                    keys.Add((i, place, 0));
+                }
+                else
+                {
+                    keys.Add((i, anchor, 1));
+                }
+            }
+
+            return keys
+                .OrderBy(key => key.Place)
+                .ThenBy(key => key.Follows)
+                .ThenBy(key => key.Index)
+                .Select(key => key.Index)
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // Puts the file's rows in the order `systemIdsInOrder` gives (ArrangeAs). The rows move, the
+        // places do not: the k-th listed row of the new order lands where the k-th listed row was,
+        // so a blank line or a heading between rows stays where it is. A row moves WHOLE - its values,
+        // its formatting and its height, through a scratch area below the list that is removed again.
+        //
+        // *** A BLANK HARDWARE CELL KEEPS ITS OWN HARDWARE. *** CRT carries a blank hardware cell
+        // forward from the row above, so a moved row could otherwise land under another hardware's
+        // name - every such row whose name would change gets its own written into its cell.
+        //
+        // An order that changes nothing writes nothing (Changed false).
+        // ###########################################################################################
+        public static MasterListingEdit Reorder(string masterPath, IReadOnlyList<string> systemIdsInOrder, DateTimeOffset? nowUtc = null)
+        {
+            ArgumentNullException.ThrowIfNull(systemIdsInOrder);
+
+            if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
+            {
+                return MasterListingEdit.Failed($"The main Excel data file could not be opened: {why}");
+            }
+
+            using (package)
+            {
+                if (!MasterListing.TryLocate(package!, requireEveryColumn: true, out SheetLayout? layout, out why))
+                {
+                    return MasterListingEdit.Failed($"The main Excel data file could not be read: {why}");
+                }
+
+                List<ListedRow> listed = MasterListing.ReadRows(layout!);
+                IReadOnlyList<int> arranged = MasterListing.ArrangeAs(listed.Select(item => item.Row).ToList(), systemIdsInOrder);
+
+                if (arranged.Select((source, place) => source == place).All(same => same))
+                {
+                    return MasterListingEdit.Done(changed: false);
+                }
+
+                ExcelWorksheet sheet = layout!.Sheet;
+                int lastColumn = Math.Max(sheet.Dimension?.End.Column ?? 0, layout.LastColumn);
+                int scratch = (sheet.Dimension?.End.Row ?? layout.HeaderRow) + 2;
+
+                var heights = new List<(double Height, bool Custom)>();
+
+                for (int i = 0; i < listed.Count; i++)
+                {
+                    sheet.Cells[listed[i].SheetRow, 1, listed[i].SheetRow, lastColumn].Copy(sheet.Cells[scratch + i, 1]);
+                    heights.Add((sheet.Row(listed[i].SheetRow).Height, sheet.Row(listed[i].SheetRow).CustomHeight));
+                }
+
+                for (int place = 0; place < listed.Count; place++)
+                {
+                    int source = arranged[place];
+                    int target = listed[place].SheetRow;
+
+                    sheet.Cells[target, 1, target, lastColumn].Clear();
+                    sheet.Cells[scratch + source, 1, scratch + source, lastColumn].Copy(sheet.Cells[target, 1]);
+
+                    sheet.Row(target).Height = heights[source].Height;
+                    sheet.Row(target).CustomHeight = heights[source].Custom;
+                }
+
+                sheet.DeleteRow(scratch, listed.Count);
+
+                MasterListing.KeepHardwareNames(
+                    layout,
+                    listed.Select((item, place) => (item.SheetRow, listed[arranged[place]].Row.HardwareName)).ToList());
+
+                return MasterListing.Save(package!, masterPath, nowUtc);
+            }
+        }
+
+        // ###########################################################################################
+        // After rows moved: walks the list as CRT reads it (a blank hardware cell takes the name above)
+        // and writes a row's own hardware name into its blank cell wherever the carried one is not it.
+        // ###########################################################################################
+        private static void KeepHardwareNames(SheetLayout layout, IReadOnlyList<(int SheetRow, string Hardware)> expected)
+        {
+            Dictionary<int, string> bySheetRow = expected.ToDictionary(item => item.SheetRow, item => item.Hardware);
+            int lastRow = layout.Sheet.Dimension?.End.Row ?? layout.HeaderRow;
+            string carried = string.Empty;
+
+            for (int row = layout.HeaderRow + 1; row <= lastRow; row++)
+            {
+                string own = layout.Sheet.Cells[row, layout.HardwareColumn].Text?.Trim() ?? string.Empty;
+
+                if (own.Length > 0)
+                {
+                    carried = own;
+                    continue;
+                }
+
+                if (bySheetRow.TryGetValue(row, out string? hardware) &&
+                    !string.Equals(carried, hardware.Trim(), StringComparison.Ordinal))
+                {
+                    layout.Sheet.Cells[row, layout.HardwareColumn].Value = hardware.Trim();
+                    carried = hardware.Trim();
+                }
+            }
         }
 
         // ###########################################################################################
@@ -442,7 +638,7 @@ namespace Handlers.DataHandling
             {
                 // Read fully into memory, so the file itself is not held open while it is replaced.
                 byte[] bytes = File.ReadAllBytes(masterPath);
-                package = new ExcelPackage(new MemoryStream(bytes));
+                package = EpplusLicense.OpenPackage(new MemoryStream(bytes));
                 return true;
             }
             catch (Exception ex)
@@ -565,8 +761,130 @@ namespace Handlers.DataHandling
             layout.Sheet.Cells[row, layout.NotesColumn].Value = values.Notes ?? string.Empty;
         }
 
-        private static MasterListingEdit Save(ExcelPackage package, string masterPath)
+        // ###########################################################################################
+        // WHAT EVERY WRITE DOES TO BOTH SHEETS (owner request, 2026-10-04):
+        //
+        //   - the "# Revision date:" line in each sheet's preamble says the day of the write, in the
+        //     boards' own shape ("2026-October-4", BoardWorkbookStyle.FormatRevisionDate) - both
+        //     sheets, as asked, whichever of them the write changed;
+        //   - "Hardware & Board" is frozen under its header row, like every board workbook
+        //     (BoardWorkbookWriter);
+        //   - "Oscilloscope" is frozen under its header row AND after its first two columns, so the
+        //     brand and model stay on screen across its many columns.
+        //
+        // A sheet without a date line or a header row is left as it is - nothing is invented in a
+        // preamble somebody else wrote.
+        // ###########################################################################################
+        internal static void Finish(ExcelPackage package, DateTimeOffset nowUtc)
         {
+            string dateLine = $"{MasterWorkbookSchema.RevisionDatePrefix} {BoardWorkbookStyle.FormatRevisionDate(nowUtc)}";
+
+            ExcelWorksheet? boards = package.Workbook.Worksheets[MasterWorkbookSchema.SheetName];
+
+            if (boards is not null)
+            {
+                int header = MasterListing.FindHeaderRow(boards, MasterWorkbookSchema.ColExcelDataFile);
+                MasterListing.StampRevisionDate(boards, header, dateLine);
+
+                if (header > 0)
+                {
+                    boards.View.FreezePanes(header + 1, 1);
+                }
+            }
+
+            ExcelWorksheet? scopes = package.Workbook.Worksheets[MasterWorkbookSchema.OscilloscopeSheetName];
+
+            if (scopes is not null)
+            {
+                int header = MasterListing.FindHeaderRow(scopes, MasterWorkbookSchema.ColSeriesOrModel);
+                MasterListing.StampRevisionDate(scopes, header, dateLine);
+
+                if (header > 0)
+                {
+                    scopes.View.FreezePanes(header + 1, MasterWorkbookSchema.OscilloscopeFrozenColumns + 1);
+                }
+            }
+        }
+
+        // The first row near the top holding `column` as a cell, or 0 when there is none.
+        private static int FindHeaderRow(ExcelWorksheet sheet, string column)
+        {
+            if (sheet.Dimension is null)
+            {
+                return 0;
+            }
+
+            int lastRow = Math.Min(MasterWorkbookSchema.HeaderSearchRows, sheet.Dimension.End.Row);
+            int lastColumn = sheet.Dimension.End.Column;
+
+            for (int row = 1; row <= lastRow; row++)
+            {
+                for (int cell = 1; cell <= lastColumn; cell++)
+                {
+                    if (string.Equals(sheet.Cells[row, cell].Text?.Trim(), column, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return row;
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        // ###########################################################################################
+        // The preamble's date line - in the first column above the header (or near the top when no
+        // header was found) - set to the date.
+        //
+        // *** ITS FORMATTING IS KEPT. *** The file's line is rich text, like a board workbook's: a
+        // plain "# Revision date: " and the date in bold, larger (checked against the shipped file,
+        // 2026-10-04). Writing the cell's Value would flatten it to one plain run, so in a rich cell
+        // only the runs' TEXT changes - the label in the first run, the date in the second, any
+        // further runs emptied. A plain cell stays plain.
+        // ###########################################################################################
+        private static void StampRevisionDate(ExcelWorksheet sheet, int headerRow, string dateLine)
+        {
+            if (sheet.Dimension is null)
+            {
+                return;
+            }
+
+            int lastRow = headerRow > 0 ? headerRow - 1 : Math.Min(MasterWorkbookSchema.HeaderSearchRows, sheet.Dimension.End.Row);
+
+            for (int row = 1; row <= lastRow; row++)
+            {
+                ExcelRange cell = sheet.Cells[row, 1];
+                string text = cell.Text?.TrimStart() ?? string.Empty;
+
+                if (!text.StartsWith(MasterWorkbookSchema.RevisionDatePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (cell.IsRichText && cell.RichText.Count >= 2)
+                {
+                    string date = dateLine[MasterWorkbookSchema.RevisionDatePrefix.Length..].TrimStart();
+
+                    cell.RichText[0].Text = MasterWorkbookSchema.RevisionDatePrefix + " ";
+                    cell.RichText[1].Text = date;
+
+                    for (int run = 2; run < cell.RichText.Count; run++)
+                    {
+                        cell.RichText[run].Text = string.Empty;
+                    }
+                }
+                else
+                {
+                    cell.Value = dateLine;
+                }
+
+                return;
+            }
+        }
+
+        private static MasterListingEdit Save(ExcelPackage package, string masterPath, DateTimeOffset? nowUtc)
+        {
+            MasterListing.Finish(package, nowUtc ?? DateTimeOffset.UtcNow);
+
             string temporary = masterPath + ".tmp_" + Guid.NewGuid().ToString("N");
 
             try

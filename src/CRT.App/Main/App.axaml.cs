@@ -114,17 +114,13 @@ namespace CRT
         public const string ChecksumsUrl = "https://classic-repair-toolbox.dk/app-data/dataChecksums.json";
         public const string ChecksumsUrl_test = "https://classic-repair-toolbox.dk/app-data-BETA/dataChecksums.json";
 
-        // URL for the phone-home version check endpoint.
+        // URL for the launch check-in.
         // Used by: OnlineServices.CheckInVersionAsync
-        public const string CheckVersionUrl = "https://classic-repair-toolbox.dk/app-checkin/";
-
-        // URL receiving component contribution uploads (Assets/Webserver/app-contribution/api/index.php).
-        // Used by: ComponentContributionWindow.ProcessAndSendContributionAsync
         //
-        // LEGACY, and deliberately still here: this is the PHP path the old Contribute tab posts
-        // to. NewContributeStrategy.md keeps both alive until Phase 7 retires the PHP, so that a
-        // contributor on an older build is never stranded. New work goes to CrtServerBaseUrl.
-        public const string ContributionUploadUrl = "https://classic-repair-toolbox.dk/app-contribution/api/";
+        // CRT.SERVER'S ROUTE SINCE 2026-10-03, not the PHP page at /app-checkin/ (owner request:
+        // retire that page). CRTs already installed still post there, and Apache forwards it to
+        // the same route - CheckInContract keeps the form the page read, so both arrive alike.
+        public const string CheckInUrl = CrtServerBaseUrl + "/" + CheckInContract.PathUnderApi;
 
         // The CRT.Server host with NO path - what the Maintainer tab's review client builds on
         // (ReviewApiRoutes.DefaultBaseAddress), since every one of its routes appends the full
@@ -186,9 +182,12 @@ namespace CRT
         // Used by: OnlineServices.SyncFilesAsync
         public static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(30);
 
-        // Timeout for feedback upload requests, which may include large attachments.
+        // Timeout for feedback upload requests, which may include large attachments - up to 250 MB
+        // packed since 2026-10-03, which five minutes cut off below ~7 Mbit/s. An HOUR is the
+        // outer bound only: the "please wait" overlay gives up after two minutes with NO progress
+        // (WaitLimit), and the upload reports a percentage as it goes.
         // Used by: TabFeedback.ProcessAndSendFeedbackAsync
-        public static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(5);
+        public static readonly TimeSpan UploadTimeout = TimeSpan.FromHours(1);
 
         // ===== GitHub Updates ======================================================================
 
@@ -212,6 +211,7 @@ namespace CRT
         public const string WikiPageScopeKeyboard = "Controlling-oscilloscope-with-keyboard";
         public const string WikiPageScopeSync = "Synchronize-oscilloscope";
         public const string WikiPageMaintainer = "Maintainer-tab";
+        public const string WikiPageViewOnlineSource = "View-boards-from-online-source";
 
         // Builds the full URL of a Wiki page from the repository owner/name above, so a repository
         // rename does not have to be chased through five string literals.
@@ -321,20 +321,41 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Returns the "online source" / "online BETA source" phrase used in data-sync status text,
-        // reflecting the current UserSettings.DownloadDataFromTestSource setting.
+        // THE NAME OF THE DATA SOURCE CRT IS DOWNLOADING FROM, for status text and banners.
+        //
+        // *** THE TWO SOURCES ARE "the stable source" AND "the BETA source" (owner decision,
+        // 2026-10-01). *** They had no names a user could tell apart: the ordinary one was "online
+        // source" - which the BETA one also is - so nothing in the app said what the choice
+        // actually was. "Production" is the word the server, the Maintainer tab and the deployment
+        // notes use, and it stays there, but it is an industry term for the live machine: a hobby
+        // repairer reads it as manufacturing, not as "tested and released to everybody". "Stable"
+        // says the thing that matters when picking, and it pairs with BETA the way firmware
+        // downloads already do everywhere else.
+        //
+        // Change this in step with the Wiki and the Maintainer tab's own wording - a source called
+        // two different things in two windows is the problem this naming was asked to fix.
         // ###########################################################################################
         public static string GetOnlineSourceLabel()
         {
             return UserSettings.DownloadDataFromTestSource
-                ? "online BETA source"
-                : "online source";
+                ? "BETA source"
+                : "stable source";
         }
 
     }
 
     public partial class App : Application
     {
+        // ###########################################################################################
+        // Once, before any control exists: every tooltip opens at its control's edge, never under
+        // the pointer, where it took clicks (2026-09-30) - see ToolTipPlacement. Static, so the
+        // headless tests' App subclass - whose startup is deliberately empty - has it too.
+        // ###########################################################################################
+        static App()
+        {
+            Handlers.Theming.ToolTipPlacement.UseControlEdgePlacement();
+        }
+
         // ###########################################################################################
         // Loads the Avalonia XAML resources for the application instance.
         // ###########################################################################################
@@ -586,10 +607,11 @@ namespace CRT
 
             // The separate maintainer application's "Show changes only", carried into CRT's own
             // settings once and its file removed (2026-09-29: it became the Maintainer tab). Right
-            // after the settings load, so the value lands in the settings just read.
+            // after the settings load, so the value lands in the settings just read. "On" is the
+            // same rows the table's colour-key filter shows for BoardTableRowFilter.Changes.
             MaintainerSettingsMigration.Apply(
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.AppFolderName),
-                value => UserSettings.MaintainerShowChangesOnly = value);
+                value => UserSettings.MaintainerTableFilter = value ? BoardTableRowFilter.Changes : BoardTableRowKinds.None);
 
             // Loaded unconditionally here, NOT inside the desktop-lifetime branch below. Every
             // WorklogManager read returns empty until this has run, and CreateWorkbook refuses with

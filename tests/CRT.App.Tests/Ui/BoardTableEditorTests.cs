@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -34,15 +35,19 @@ public sealed class BoardTableEditorTests : IDisposable
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
+    // Each component's technical value is its own, as real components' are: with one shared value,
+    // a component deleted and one added were identical but for their label, which reads as one
+    // component relabelled (BoardDataDiffer.PairRenamedRows, 2026-10-04) - not the deletion and
+    // addition these tests set up.
     private static ComponentEntry Component(string label, string friendlyName = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = "x" };
+        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}" };
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 
     private void WriteDraft(BoardData board)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(this.WorkbookPath)!);
-        BoardWorkbookWriter.Write(this.WorkbookPath, board);
+        CachedWorkbooks.Write(this.WorkbookPath, board);
     }
 
     // The editor loaded on the draft, with Components selected (the first sheet is schematics).
@@ -246,6 +251,83 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** THE POINTER GOES TO THE CELL BELOW, NOT TO THE TOOLTIP (owner report, 2026-10-02: "the
+    // mouse should follow the cell below, and not the tooltip"). *** A cell's tooltip opens under
+    // the cell, over the next row - and Avalonia keeps a tooltip open for as long as the pointer is
+    // ON it. So moving down one row landed on the tooltip: the cell below got neither its own
+    // tooltip nor the click, and the way out was to move off the tooltip first.
+    //
+    // The headless platform draws every popup inside the window, which is what lets this test see
+    // the pointer pass through at all. In the real application a tooltip is a window of its own
+    // unless told otherwise, and a window cannot let the pointer through - so the cell's tooltip
+    // being IN THE WINDOW is asserted too: it is the half of the fix only that assertion can see.
+    // ###########################################################################################
+    [Fact]
+    public void Moving_down_from_a_cell_with_a_tooltip_reaches_the_cell_below_it()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(
+                Board(Component("U1", "CPU 6510"), Component("U2", "SID 6581")),
+                published: Board(Component("U1", "CPU"), Component("U2", "SID")));
+            Window window = Show(editor);
+
+            int friendly = Column(BoardWorkbookSchema.ColFriendlyName);
+            DataGridCell upper = CellOnScreen(window, Row(editor, "U1"), friendly);
+            DataGridCell lower = CellOnScreen(window, Row(editor, "U2"), friendly);
+            Point below = CentreOf(window, lower);
+
+            window.MouseMove(CentreOf(window, upper));
+            Settle();
+            Assert.True(ToolTip.GetIsOpen(upper));
+
+            // The trap is only there where the tooltip covers the cell below - without this the
+            // test could pass without the tooltip ever being in the way.
+            Rect tip = TipBounds(window, upper);
+            Assert.True(tip.Contains(below), $"the tooltip {tip} does not cover the cell below at {below}");
+
+            window.MouseMove(below);
+            Settle();
+
+            Assert.False(ToolTip.GetIsOpen(upper));
+            Assert.True(ToolTip.GetIsOpen(lower));
+
+            // And a click there is the cell's, not the tooltip's.
+            window.MouseDown(below, Avalonia.Input.MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            window.MouseUp(below, Avalonia.Input.MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(Row(editor, "U2"), editor.CurrentRow);
+            Assert.True(ToolTip.GetShouldUseOverlayLayer(upper), "the cell's tooltip is a window of its own, which the pointer cannot pass through");
+
+            window.Close();
+        });
+    }
+
+    // Lets an opened popup be placed and laid out.
+    private static void Settle()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+    }
+
+    // Where a control's open tooltip is, in the window's coordinates. The ToolTip control Avalonia
+    // made for it is held in an internal attached property.
+    private static Rect TipBounds(Window window, Control control)
+    {
+        var tipProperty = (AvaloniaProperty)typeof(ToolTip)
+            .GetField("ToolTipProperty", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!
+            .GetValue(null)!;
+
+        var tip = (ToolTip)control.GetValue(tipProperty)!;
+        return new Rect(tip.TranslatePoint(new Point(0, 0), window)!.Value, tip.Bounds.Size);
+    }
+
     [Fact]
     public void An_added_row_is_green_and_a_deleted_row_is_red_and_struck_through()
     {
@@ -259,12 +341,16 @@ public sealed class BoardTableEditorTests : IDisposable
             BoardTableRow added = Row(editor, "U9");
             BoardTableRow ghost = Row(editor, "U2", deleted: true);
 
+            // The Friendly name column: U9's Board label cell carries a warning's corner mark
+            // besides its green (no highlight marks U9 - see the checks' tests below).
+            int friendly = Column(BoardWorkbookSchema.ColFriendlyName);
+
             Assert.Equal(
                 ThemeColor("BoardTable_Added_Bg"),
-                (CellOnScreen(window, added, 0).Background as ISolidColorBrush)?.Color);
+                (CellOnScreen(window, added, friendly).Background as ISolidColorBrush)?.Color);
             Assert.Equal(
                 ThemeColor("BoardTable_Deleted_Bg"),
-                (CellOnScreen(window, ghost, 0).Background as ISolidColorBrush)?.Color);
+                (CellOnScreen(window, ghost, friendly).Background as ISolidColorBrush)?.Color);
 
             DataGridRow ghostRow = window.GetVisualDescendants().OfType<DataGridRow>().Single(r => ReferenceEquals(r.DataContext, ghost));
             Assert.Contains("BoardTableDeleted", ghostRow.Classes);
@@ -312,10 +398,11 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void With_nothing_published_only_the_flagged_pill_is_shown_and_the_table_says_why()
+    public void With_nothing_published_the_change_pills_are_hidden_and_the_table_says_why()
     {
         // Nothing to be added, changed or deleted AGAINST - but a duplicate is a duplicate either
-        // way, so the flagged pill stays and still counts.
+        // way, so the checks' two pills stay and still count it (the server's error on Components;
+        // it had a "Flagged" pill of its own until 2026-10-03).
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1"), Component("U1")), published: null);
@@ -323,9 +410,9 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.False(editor.GetControl<Border>("AddedPill").IsVisible);
             Assert.False(editor.GetControl<Border>("ModifiedPill").IsVisible);
             Assert.False(editor.GetControl<Border>("DeletedPill").IsVisible);
-            Assert.False(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
-            Assert.True(editor.GetControl<Border>("FlaggedPill").IsVisible);
-            Assert.Equal("1", editor.GetControl<TextBlock>("FlaggedCountText").Text);
+            Assert.True(editor.GetControl<Border>("ErrorsPill").IsVisible);
+            Assert.True(editor.GetControl<Border>("WarningsPill").IsVisible);
+            Assert.Equal("2", editor.GetControl<TextBlock>("ErrorsCountText").Text);   // both U1 rows
 
             TextBlock status = editor.GetControl<TextBlock>("StatusText");
             Assert.True(status.IsVisible);
@@ -334,16 +421,34 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void With_a_published_board_all_four_pills_and_the_filter_are_shown()
+    public void With_a_published_board_all_five_pills_are_shown()
     {
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
 
             Assert.All(
-                ["AddedPill", "ModifiedPill", "DeletedPill", "FlaggedPill"],
+                ["AddedPill", "ModifiedPill", "DeletedPill", "ErrorsPill", "WarningsPill"],
                 name => Assert.True(editor.GetControl<Border>(name).IsVisible, name));
-            Assert.True(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
+        });
+    }
+
+    // Case 15, on screen (owner request, 2026-10-03: "Flagged" became warnings; cases agreed with
+    // the project owner): the colour key is five pills, and the Flagged one has gone.
+    [Fact]
+    public void The_colour_key_shows_five_pills_and_no_Flagged_one()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
+
+            Panel pills = (Panel)editor.GetControl<Border>("AddedPill").Parent!;
+
+            Assert.Equal(
+                ["AddedPill", "ModifiedPill", "DeletedPill", "ErrorsPill", "WarningsPill"],
+                pills.Children.OfType<Border>().Where(border => border.Classes.Contains("LegendPill")).Select(border => border.Name));
+
+            Assert.Null(editor.FindControl<Border>("FlaggedPill"));
         });
     }
 
@@ -464,36 +569,18 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void Insert_row_above_adds_an_empty_row_straight_before_the_selected_one_and_selects_it()
+    public void There_is_one_insert_button_and_no_move_buttons()
     {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1"), Component("U2")), published: null);
-            Window window = Show(editor);
-
-            editor.SelectCell(Row(editor, "U2"), Column(BoardWorkbookSchema.ColFriendlyName));
-            editor.InsertRowAbove();
-
-            BoardTableRow inserted = Components(editor).Rows[1];
-            Assert.True(inserted.IsBlank);
-            Assert.Same(inserted, editor.CurrentRow);
-            Assert.Same(Row(editor, "U2"), Components(editor).Rows[2]);
-
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void The_insert_buttons_say_above_and_below_and_there_are_no_move_buttons()
-    {
-        // Owner request, 2026-09-24: "Insert row" became two buttons, and Move up / Move down
-        // went - a row is dragged by its grip, or moved with Alt+Up / Alt+Down.
+        // Owner request, 2026-09-24: Move up / Move down went - a row is dragged by its grip, or
+        // moved with Alt+Up / Alt+Down. "Insert row" was two buttons, above and below, until
+        // 2026-10-02 (owner request: "We can of course remove one of the "Insert row" buttons, as
+        // that can be moved afterwards") - the one left inserts below.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
 
-            Assert.Equal("Insert row above", editor.GetControl<Button>("InsertRowAboveButton").Content);
-            Assert.Equal("Insert row below", editor.GetControl<Button>("InsertRowBelowButton").Content);
+            Assert.Equal("Insert row", editor.GetControl<Button>("InsertRowBelowButton").Content);
+            Assert.Null(editor.FindControl<Button>("InsertRowAboveButton"));
             Assert.Null(editor.FindControl<Button>("InsertRowButton"));
             Assert.Null(editor.FindControl<Button>("MoveRowUpButton"));
             Assert.Null(editor.FindControl<Button>("MoveRowDownButton"));
@@ -688,6 +775,116 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** "SAVE CHANGES" WAITS UNDER "PLEASE WAIT" (owner question, 2026-09-30). *** Saving the
+    // largest board takes 0.6-2 seconds, and ran on the UI thread with the window frozen. It now runs
+    // under the window's overlay - asserted through the overlay's own limit being started - and the
+    // result is the ordinary save: on disk, said, and nothing left unsaved.
+    // ###########################################################################################
+    [Fact]
+    public async Task Save_changes_saves_under_the_windows_please_wait()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
+            var overlay = new BusyOverlay();
+            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            bool waited = false;
+            overlay.LimitOverrideForTests = token =>
+            {
+                waited = true;
+                return Task.Delay(Timeout.Infinite, token);
+            };
+
+            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+
+            Assert.True(waited);
+            Assert.False(overlay.IsBusy);
+            Assert.False(editor.HasUnsavedChanges);
+            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
+            Assert.Equal(
+                "CPU 6510",
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.SystemKey)!.Components.Single().FriendlyName);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** PAST THE WAIT LIMIT THE TABLE IS LOCKED UNTIL THE WRITE ENDS (code review, 2026-10-01). ***
+    // The overlay lifts at the limit and the save carries on; with the grid live a contributor could
+    // type, and the finished save then reopened the table on the re-read file and discarded it
+    // silently. The editor is disabled from that moment (asserted INSIDE the hook, where it is
+    // observable) and enabled again afterwards.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_past_the_wait_limit_locks_the_table_until_it_ends_then_unlocks_it()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
+            var overlay = new BusyOverlay();
+            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            // The limit has already passed when the wait starts: the overlay lifts at once.
+            overlay.LimitOverrideForTests = _ => Task.CompletedTask;
+
+            bool lockedWhenTold = false;
+            string statusWhenTold = string.Empty;
+
+            editor.LockedForSaveForTests = () =>
+            {
+                lockedWhenTold = !editor.IsEnabled;
+                statusWhenTold = editor.GetControl<TextBlock>("StatusText").Text ?? string.Empty;
+            };
+
+            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+
+            Assert.True(lockedWhenTold);
+            Assert.Equal(BoardTableEditor.StillSaving, statusWhenTold);
+
+            // Unlocked again, and the ordinary result said.
+            Assert.True(editor.IsEnabled);
+            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
+
+            window.Close();
+        });
+    }
+
+    // While the save writes the file, the file watch leaves it alone - the save's own write would
+    // otherwise read as a change from outside and raise the warning over the table.
+    [Fact]
+    public void The_file_watch_leaves_the_draft_alone_while_the_table_is_saving_it()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
+            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "From the table";
+
+            FieldInfo saving = typeof(BoardTableEditor).GetField("thisSaveInFlight", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            saving.SetValue(editor, true);
+
+            this.WriteDraft(Board(Component("U1", "Written by the save")));
+            editor.CheckDraftFile();
+
+            Assert.False(editor.GetControl<Control>("ChangedOnDiskBar").IsVisible);
+
+            saving.SetValue(editor, false);
+            editor.CheckDraftFile();
+
+            Assert.True(editor.GetControl<Control>("ChangedOnDiskBar").IsVisible);
+        });
+    }
+
     [Fact]
     public void Save_is_refused_with_an_explanation_when_the_draft_changed_outside_the_table()
     {
@@ -749,7 +946,6 @@ public sealed class BoardTableEditorTests : IDisposable
     [InlineData("BoardTable_Added_Bg")]
     [InlineData("BoardTable_Modified_Bg")]
     [InlineData("BoardTable_Deleted_Bg")]
-    [InlineData("BoardTable_Flagged_Bg")]
     [InlineData("BoardTable_CurrentCell_Border")]
     [InlineData("BoardTable_Notice_Bg")]
     [InlineData("BoardTable_Notice_Border")]
@@ -985,7 +1181,7 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void Nothing_can_be_dragged_while_show_changes_only_hides_rows()
+    public void Nothing_can_be_dragged_while_a_picked_pill_hides_rows()
     {
         UiTest.Run(() =>
         {
@@ -993,7 +1189,7 @@ public sealed class BoardTableEditorTests : IDisposable
                 Board(Component("U1", "one"), Component("U2", "two")),
                 published: Board(Component("U1"), Component("U2")));
             Window window = Show(editor);
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             Dispatcher.UIThread.RunJobs();
 
             Point grip = CentreOf(window, HeaderOf(window, Row(editor, "U2")));
@@ -1179,7 +1375,7 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void The_table_uses_a_smaller_font_and_fixed_row_height_to_fit_more_rows()
+    public void The_table_uses_a_smaller_font_and_rows_only_as_tall_as_their_text_to_fit_more_rows()
     {
         UiTest.Run(() =>
         {
@@ -1187,7 +1383,10 @@ public sealed class BoardTableEditorTests : IDisposable
             DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
 
             Assert.Equal(12, grid.FontSize);
-            Assert.Equal(26, grid.RowHeight);
+
+            // No fixed height: a row grows to a cell's wrapped text, and one with nothing long is
+            // MinRowHeight tall (BoardTableEditorTextWrapTests).
+            Assert.True(double.IsNaN(grid.RowHeight));
 
             // The grid's own FontSize reaches only its headers: a text column carries its own size
             // for its cells, so every column must say 12 too - the first version set the grid's
@@ -1217,8 +1416,10 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // What "Show changes only" did, the change pills picked together do (owner request,
+    // 2026-10-02: the colour key became the filter).
     [Fact]
-    public void Only_changes_hides_unchanged_rows_and_switches_moving_off()
+    public void Picking_the_change_pills_hides_unchanged_rows_and_switches_moving_off()
     {
         UiTest.Run(() =>
         {
@@ -1227,7 +1428,7 @@ public sealed class BoardTableEditorTests : IDisposable
                 published: Board(Component("U1", "CPU"), Component("U2"), Component("U3")));
             DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
 
             List<string> shown = ((System.Collections.IEnumerable)grid.ItemsSource!).Cast<BoardTableRow>()
                 .Select(row => row.Cells[Column(BoardWorkbookSchema.ColBoardLabel)].Text)
@@ -1236,29 +1437,30 @@ public sealed class BoardTableEditorTests : IDisposable
             // U1 modified, U2 deleted, U4 added - and U3, unchanged, gone.
             Assert.Equal(["U1", "U2", "U4"], shown);
             Assert.DoesNotContain("RowsDraggable", grid.Classes);
-            Assert.True(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked);
+            Assert.Contains("Selected", editor.GetControl<Border>("AddedPill").Classes);
 
             // Alt+Up does nothing meanwhile, either.
             editor.SelectCell(Row(editor, "U4"), 0);
             editor.MoveRowUp();
             Assert.Equal(["U1", "U3", "U4"], Components(editor).Rows.Where(row => !row.IsDeleted).Select(row => row.Cells[Column(BoardWorkbookSchema.ColBoardLabel)].Text));
 
-            editor.OnlyChanges = false;
+            editor.Filter = BoardTableRowKinds.None;
 
             Assert.Equal(4, ((System.Collections.IEnumerable)grid.ItemsSource!).Cast<BoardTableRow>().Count());
             Assert.Contains("RowsDraggable", grid.Classes);
+            Assert.DoesNotContain("Selected", editor.GetControl<Border>("AddedPill").Classes);
         });
     }
 
     [Fact]
-    public void Under_only_changes_a_row_whose_change_is_reverted_drops_out_of_view()
+    public void Under_the_change_pills_a_row_whose_change_is_reverted_drops_out_of_view()
     {
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU 6510")), published: Board(Component("U1", "CPU")));
             DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             Assert.Single(((System.Collections.IEnumerable)grid.ItemsSource!).Cast<BoardTableRow>());
 
             Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU";
@@ -1312,10 +1514,11 @@ public sealed class BoardTableEditorTests : IDisposable
             .ToList();
 
     [Fact]
-    public void Show_changes_only_still_applies_after_switching_to_another_sheet_and_back()
+    public void A_picked_filter_still_applies_after_switching_to_another_sheet_and_back()
     {
-        // Reported: with the box ticked, leaving the sheet and coming back showed every row again
-        // while the box still said it was ticked. Switched through the real TABS, in a shown window.
+        // Reported, with "Show changes only" ticked: leaving the sheet and coming back showed every
+        // row again while the box still said it was ticked. Switched through the real TABS, in a
+        // shown window.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(
@@ -1323,7 +1526,7 @@ public sealed class BoardTableEditorTests : IDisposable
                 published: Board(Component("U1", "CPU"), Component("U3")));
             Window window = Show(editor);
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             Assert.Equal(["U1"], ShownLabels(editor));
 
             SheetTabs(editor).SelectedItem = SheetTabs(editor).Items.OfType<TabItem>()
@@ -1334,7 +1537,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             Assert.Same(Components(editor), editor.CurrentSheet);
-            Assert.True(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked);
+            Assert.Contains("Selected", editor.GetControl<Border>("ModifiedPill").Classes);
             Assert.Equal(["U1"], ShownLabels(editor));
 
             window.Close();
@@ -1350,15 +1553,17 @@ public sealed class BoardTableEditorTests : IDisposable
     [InlineData("AddedCountText", "Added", "BoardTable_Added_Bg")]
     [InlineData("ModifiedCountText", "Modified", "BoardTable_Modified_Bg")]
     [InlineData("DeletedCountText", "Deleted", "BoardTable_Deleted_Bg")]
-    [InlineData("FlaggedCountText", "Flagged", "BoardTable_Flagged_Bg")]
     public void Each_count_shares_ONE_pill_with_its_own_word_in_its_rows_colour(string countName, string word, string colourKey)
     {
         // Reported: a separate badge before each word, with even gaps all along, read as easily
         // "Added 1" as "2 Added". Now the count and its word are one pill in the wash its rows are
-        // painted in - and only the NUMBER is bold, as on the Workbooks tab's counted pills.
+        // painted in - and only the NUMBER is bold, as on the Workbooks tab's counted pills. The
+        // draft has one row of every kind: a pill counting nothing has no fill (2026-10-03).
         UiTest.Run(() =>
         {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
+            BoardTableEditor editor = this.OpenEditor(
+                Board(Component("U1", "CPU 6510"), Component("U3"), Component("U3"), Component("U4")),
+                published: Board(Component("U1", "CPU"), Component("U2"), Component("U3")));
             Window window = Show(editor);
 
             Border pill = PillOf(editor, countName);
@@ -1375,26 +1580,27 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void The_four_pills_are_four_separate_pills()
+    public void The_five_pills_are_five_separate_pills()
     {
         // Each pill holds its own count - no two counts inside the same one.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
 
-            List<Border> pills = new[] { "AddedCountText", "ModifiedCountText", "DeletedCountText", "FlaggedCountText" }
+            List<Border> pills = new[] { "AddedCountText", "ModifiedCountText", "DeletedCountText", "ErrorsCountText", "WarningsCountText" }
                 .Select(name => PillOf(editor, name))
                 .ToList();
 
-            Assert.Equal(4, pills.Distinct().Count());
+            Assert.Equal(5, pills.Distinct().Count());
         });
     }
 
     [Fact]
-    public void A_duplicate_row_is_painted_violet_counted_as_flagged_and_left_out_of_the_tab_number()
+    public void A_duplicate_row_is_not_coloured_is_counted_by_its_problem_and_left_out_of_the_tab_number()
     {
-        // Owner request: the "!" row should be visualised like the other three, not only
-        // told by a character at its start.
+        // It was painted violet and counted as "Flagged" until 2026-10-03 (owner request: "Should
+        // flagged now be treated as warnings?"). On Components a duplicate is the server's error,
+        // so the Errors pill counts it and shows it - and its colour stays its own.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(
@@ -1405,33 +1611,42 @@ public sealed class BoardTableEditorTests : IDisposable
             BoardTableRow duplicate = Components(editor).Rows.Single(row =>
                 row.Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text == "Second U1");
 
-            Assert.Equal("!", duplicate.Marker);
-            Assert.Equal(
-                ThemeColor("BoardTable_Flagged_Bg"),
+            Assert.Equal(string.Empty, duplicate.Marker);
+            Assert.NotEqual(
+                ThemeColor("BoardTable_Added_Bg"),
                 (CellOnScreen(window, duplicate, Column(BoardWorkbookSchema.ColFriendlyName)).Background as ISolidColorBrush)?.Color);
+            Assert.True(duplicate.HasErrors);
 
-            Assert.Equal("1", editor.GetControl<TextBlock>("FlaggedCountText").Text);
+            // Both U1 rows carry the error (owner decision, 2026-10-03: "it should show all rows,
+            // and not only last"), so the pill counts two rows.
+            BoardTableRow first = Components(editor).Rows.First(row => row.Cells[Column(BoardWorkbookSchema.ColBoardLabel)].Text == "U1");
+            Assert.True(first.HasErrors);
+
+            Assert.Equal("2", editor.GetControl<TextBlock>("ErrorsCountText").Text);
             Assert.Equal("1", editor.GetControl<TextBlock>("AddedCountText").Text);
 
             // The tab says one change (U9), exactly as the draft row's own count does.
             Assert.Equal("Components (1)", SheetTab(editor, "Components (1)").Header?.ToString());
 
-            // And "Show changes only" keeps it - it is the contributor's to look at.
-            editor.OnlyChanges = true;
+            // And the Errors pill shows it - it is the contributor's to look at.
+            editor.Filter = BoardTableRowKinds.Errors;
             Assert.Contains(duplicate, ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>());
 
             window.Close();
         });
     }
 
+    // The check box went when the colour key became the filter (owner request, 2026-10-02: "even
+    // do remove the "Show changes only" so it works in the same unified way").
     [Fact]
-    public void The_filter_box_reads_Show_changes_only()
+    public void There_is_no_Show_changes_only_box_any_more()
     {
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: Board(Component("U1")));
 
-            Assert.Equal("Show changes only", editor.GetControl<CheckBox>("OnlyChangesCheckBox").Content);
+            Assert.Null(editor.FindControl<CheckBox>("OnlyChangesCheckBox"));
+            Assert.Empty(editor.GetVisualDescendants().OfType<CheckBox>());
         });
     }
 
@@ -1708,8 +1923,8 @@ public sealed class BoardTableEditorTests : IDisposable
     [Fact]
     public void Ctrl_Z_works_with_the_focus_on_a_control_beside_the_table()
     {
-        // Undo is handled on the whole editor, not only the grid: ticking "Show changes only"
-        // leaves the focus on the check box, and Ctrl+Z from there must still undo.
+        // Undo is handled on the whole editor, not only the grid: a toolbar button can hold the
+        // focus, and Ctrl+Z from there must still undo.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
@@ -1719,8 +1934,8 @@ public sealed class BoardTableEditorTests : IDisposable
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "Changed");
 
-            CheckBox onlyChanges = editor.GetControl<CheckBox>("OnlyChangesCheckBox");
-            Assert.True(onlyChanges.Focus());
+            Button insert = editor.GetControl<Button>("InsertRowBelowButton");
+            Assert.True(insert.Focus());
             Dispatcher.UIThread.RunJobs();
 
             PressCtrl(window, Avalonia.Input.Key.Z);
@@ -1756,10 +1971,10 @@ public sealed class BoardTableEditorTests : IDisposable
     // ------------------------------------------------------------------ Round 6 (2026-09-24)
 
     [Fact]
-    public void Show_changes_only_still_applies_after_switching_to_another_MAIN_tab_and_back()
+    public void A_picked_filter_still_applies_after_switching_to_another_MAIN_tab_and_back()
     {
-        // Reported: ticked, then Drafts -> Contribute -> Drafts showed every row again while the
-        // box stayed ticked. Leaving a tab detaches its content and coming back re-attaches it,
+        // Reported, with "Show changes only" ticked: Drafts -> Contribute -> Drafts showed every
+        // row again while the box stayed ticked. Leaving a tab detaches its content and coming back re-attaches it,
         // which is what this does - through a real TabControl, as the main window's.
         UiTest.Run(() =>
         {
@@ -1779,7 +1994,7 @@ public sealed class BoardTableEditorTests : IDisposable
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             Assert.Equal(["U1"], ShownLabels(editor));
 
             tabs.SelectedIndex = 1;
@@ -1787,7 +2002,7 @@ public sealed class BoardTableEditorTests : IDisposable
             tabs.SelectedIndex = 0;
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked);
+            Assert.Equal(BoardTableRowFilter.Changes, editor.Filter);
             Assert.Equal(["U1"], ShownLabels(editor));
 
             window.Close();
@@ -1807,12 +2022,12 @@ public sealed class BoardTableEditorTests : IDisposable
         BoardTableDocument.Create(Board(Component("U1", "CPU")), Board(Component("U1", "CPU 6510")));
 
     // ###########################################################################################
-    // *** "SHOW CHANGES ONLY" HIDES THE SHEETS WITH NOTHING TO SHOW (owner request, 2026-09-26). ***
-    // Ticked while on one of them, the table moves to the first sheet that still has a tab;
-    // unticked, every tab is back.
+    // *** A FILTER HIDES THE SHEETS WITH NOTHING TO SHOW (owner request, 2026-09-26, when it was
+    // "Show changes only"). *** Picked while on one of them, the table moves to the first sheet
+    // that still has a tab; with nothing picked, every tab is back.
     // ###########################################################################################
     [Fact]
-    public void Show_changes_only_hides_the_tabs_of_sheets_with_nothing_to_show()
+    public void A_filter_hides_the_tabs_of_sheets_with_nothing_to_show()
     {
         UiTest.Run(() =>
         {
@@ -1823,25 +2038,28 @@ public sealed class BoardTableEditorTests : IDisposable
 
             Assert.Equal(BoardWorkbookSchema.AllSheets.Count, ShownSheetTabs(editor).Count);
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
 
             Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
             Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
 
-            editor.OnlyChanges = false;
+            editor.Filter = BoardTableRowKinds.None;
 
             Assert.Equal(BoardWorkbookSchema.AllSheets.Count, ShownSheetTabs(editor).Count);
         });
     }
 
     // ###########################################################################################
-    // *** A TAB SHOWS ITS FLAGGED ROWS (owner request, 2026-09-26: "the flagged counters should get
-    // visualized also in the tabs headline, as these will be important to address"). *** In a
-    // violet pill of their own - the bracketed number stays the change count, which agrees with
-    // BoardDataDiffer; a duplicate is not a change. A tab with nothing flagged has no pill.
+    // *** A TAB SHOWS ITS NAME AND CHANGE COUNT, AND NOT ITS PROBLEM ROWS (owner request,
+    // 2026-10-02: "the tabs ... should not show "2 flagged" and "8 error" - the tabs will be
+    // obvious when you click those badges"). *** From 2026-09-26 a tab carried its flagged rows in
+    // a violet pill; picking a pill now says the same, by hiding every tab without any. The
+    // bracketed number is still the change count, which agrees with BoardDataDiffer - a duplicate
+    // is not a change, so a second U1 (the server's error, "Flagged" until 2026-10-03) leaves it
+    // at one.
     // ###########################################################################################
     [Fact]
-    public void A_sheet_tab_shows_its_flagged_rows_in_a_violet_pill_apart_from_its_change_count()
+    public void A_sheet_tab_with_problem_rows_shows_only_its_name_and_change_count()
     {
         UiTest.Run(() =>
         {
@@ -1854,114 +2072,148 @@ public sealed class BoardTableEditorTests : IDisposable
             TabItem Tab(string sheet) =>
                 SheetTabs(editor).Items.OfType<TabItem>().Single(tab => ((BoardTableSheet)tab.Tag!).Name == sheet);
 
-            static IEnumerable<Border> Pills(TabItem tab) =>
-                tab.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("SheetTabFlagged"));
-
             TabItem components = Tab(BoardWorkbookSchema.SheetComponents);
+
+            // Both U1 rows carry the error (every row of a duplicate since 2026-10-03) - or a tab
+            // without a pill would prove nothing.
+            Assert.Equal(2, ((BoardTableSheet)components.Tag!).ErrorRowCount);
+
             Assert.Equal("Components (1)", components.Header?.ToString());
-
-            Border pill = Assert.Single(Pills(components));
-            Assert.Equal("1 flagged", ((TextBlock)pill.Child!).Text);
-            Assert.Equal(ThemeColor("BoardTable_Flagged_Bg"), (pill.Background as ISolidColorBrush)?.Color);
-
-            Assert.Empty(Pills(Tab(BoardWorkbookSchema.SheetCredits)));
+            Assert.Equal(["Components (1)"], components.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
 
             window.Close();
         });
     }
 
-    // The same when it is the BOX that is ticked - the way it really happens.
+    // The same when it is a PILL that is clicked - the way it really happens: a real pointer on
+    // the "Modified" pill picks it, and on it again shows every row.
     [Fact]
-    public void Ticking_the_box_hides_the_tabs_too()
+    public void Clicking_a_pill_picks_its_kind_and_clicking_it_again_shows_every_row()
     {
         UiTest.Run(() =>
         {
             var editor = new BoardTableEditor();
             editor.Open(ComponentsChanged());
+            Window window = Show(editor);
+            Border modified = editor.GetControl<Border>("ModifiedPill");
 
-            editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked = true;
+            Click(window, modified);
+            Dispatcher.UIThread.RunJobs();
 
-            Assert.True(editor.OnlyChanges);
+            Assert.Equal(BoardTableRowKinds.Modified, editor.Filter);
+            Assert.Contains("Selected", modified.Classes);
+            Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+
+            Click(window, modified);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.DoesNotContain("Selected", modified.Classes);
+            Assert.Equal(BoardWorkbookSchema.AllSheets.Count, ShownSheetTabs(editor).Count);
+
+            window.Close();
+        });
+    }
+
+    // Two pills picked show the rows of EITHER kind.
+    [Fact]
+    public void Two_picked_pills_show_the_rows_of_either_kind()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(
+                Board(Component("U1", "CPU 6510"), Component("U3"), Component("U4")),
+                published: Board(Component("U1", "CPU"), Component("U2"), Component("U3")));
+
+            editor.TogglePill(BoardTableRowKinds.Added);
+            Assert.Equal(["U4"], ShownLabels(editor));
+
+            editor.TogglePill(BoardTableRowKinds.Deleted);
+            Assert.Equal(["U2", "U4"], ShownLabels(editor));
+
+            editor.TogglePill(BoardTableRowKinds.Added);
+            Assert.Equal(["U2"], ShownLabels(editor));
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE PICK OUTLIVES A TABLE IT WOULD SHOW NOTHING OF. *** The filter is off there - in a
+    // table with nothing published nothing is added, changed or deleted, and the three pills are
+    // hidden - and on again for the next table with such rows, as a maintainer moves through the
+    // queue past a new system.
+    // ###########################################################################################
+    [Fact]
+    public void A_pick_comes_back_after_a_table_it_would_show_nothing_of()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(ComponentsChanged());
+            editor.Filter = BoardTableRowFilter.Changes;
+
+            editor.Clear();
+            editor.Open(BoardTableDocument.Create(null, Board(Component("U1"))));
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.Equal(BoardTableRowFilter.Changes, editor.FilterWanted);
+            Assert.False(editor.GetControl<Border>("AddedPill").IsVisible);
+
+            editor.Clear();
+            editor.Open(ComponentsChanged());
+            Assert.Equal(BoardTableRowFilter.Changes, editor.Filter);
             Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
         });
     }
 
     // ###########################################################################################
-    // *** THE CHOICE OUTLIVES A TABLE WITH NOTHING PUBLISHED. *** The filter is off there (the box
-    // is hidden and every row is unchanged) - and on again for the next table with something to
-    // compare against, as a maintainer moves through the queue past a new system.
+    // *** A HOST IS TOLD WHEN THE PICK CHANGES - AND ONLY THEN (2026-09-29). *** CRT's Maintainer
+    // tab remembers the filter between runs through FilterWantedChanged. A table it would show
+    // nothing of turns the FILTER off by itself; were that reported, the host would save "nothing
+    // picked" as the maintainer's choice every time a new system went past. A pill raises it, the
+    // same pick twice does not, and a table turning its own filter off does not.
     // ###########################################################################################
     [Fact]
-    public void Show_changes_only_comes_back_after_a_table_with_nothing_published()
+    public void The_host_is_told_when_the_pick_changes_and_not_when_a_table_turns_the_filter_off()
     {
         UiTest.Run(() =>
         {
             var editor = new BoardTableEditor();
+            var told = new List<BoardTableRowKinds>();
+            editor.FilterWantedChanged += (_, _) => told.Add(editor.FilterWanted);
+
             editor.Open(ComponentsChanged());
-            editor.OnlyChanges = true;
+            editor.TogglePill(BoardTableRowKinds.Modified);
+            Assert.Equal([BoardTableRowKinds.Modified], told);
+
+            editor.Filter = BoardTableRowKinds.Modified;
+            Assert.Equal([BoardTableRowKinds.Modified], told);
 
             editor.Clear();
             editor.Open(BoardTableDocument.Create(null, Board(Component("U1"))));
-            Assert.False(editor.OnlyChanges);
-            Assert.False(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.Equal([BoardTableRowKinds.Modified], told);
 
             editor.Clear();
             editor.Open(ComponentsChanged());
-            Assert.True(editor.OnlyChanges);
-            Assert.Equal([BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+            editor.Filter = BoardTableRowKinds.None;
+            Assert.Equal([BoardTableRowKinds.Modified, BoardTableRowKinds.None], told);
         });
     }
 
-    // ###########################################################################################
-    // *** A HOST IS TOLD WHEN THE CHOICE CHANGES - AND ONLY THEN (2026-09-29). *** CRT's Maintainer
-    // tab remembers "Show changes only" between runs through OnlyChangesWantedChanged. A table with
-    // nothing published turns the FILTER off by itself; were that reported, the host would save
-    // "off" as the maintainer's choice every time a new system went past. The box raises it, the
-    // same value twice does not, and a table turning its own filter off does not.
-    // ###########################################################################################
+    // Put back by the user, it stays off - the kept pick is the user's, not the last one on.
     [Fact]
-    public void The_host_is_told_when_the_choice_changes_and_not_when_a_table_turns_the_filter_off()
-    {
-        UiTest.Run(() =>
-        {
-            var editor = new BoardTableEditor();
-            var told = new List<bool>();
-            editor.OnlyChangesWantedChanged += (_, _) => told.Add(editor.OnlyChangesWanted);
-
-            editor.Open(ComponentsChanged());
-            editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsChecked = true;
-            Assert.Equal([true], told);
-
-            editor.OnlyChanges = true;
-            Assert.Equal([true], told);
-
-            editor.Clear();
-            editor.Open(BoardTableDocument.Create(null, Board(Component("U1"))));
-            Assert.False(editor.OnlyChanges);
-            Assert.Equal([true], told);
-
-            editor.Clear();
-            editor.Open(ComponentsChanged());
-            editor.OnlyChanges = false;
-            Assert.Equal([true, false], told);
-        });
-    }
-
-    // Unticked by the user, it stays off - the kept choice is the user's, not "on".
-    [Fact]
-    public void Show_changes_only_unticked_by_the_user_stays_off_for_the_next_table()
+    public void A_pill_put_back_by_the_user_stays_off_for_the_next_table()
     {
         UiTest.Run(() =>
         {
             var editor = new BoardTableEditor();
             editor.Open(ComponentsChanged());
-            editor.OnlyChanges = true;
-            editor.OnlyChanges = false;
+            editor.Filter = BoardTableRowFilter.Changes;
+            editor.Filter = BoardTableRowKinds.None;
 
             editor.Clear();
             editor.Open(ComponentsChanged());
 
-            Assert.False(editor.OnlyChanges);
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
         });
     }
 
@@ -1979,7 +2231,7 @@ public sealed class BoardTableEditorTests : IDisposable
             editor.Open(ComponentsChanged(), preferredSheet: BoardWorkbookSchema.SheetCredits);
             Assert.Equal(BoardWorkbookSchema.SheetCredits, editor.CurrentSheet!.Name);
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             editor.Clear();
             editor.Open(ComponentsChanged(), preferredSheet: BoardWorkbookSchema.SheetCredits);
             Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
@@ -1987,23 +2239,23 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void A_draft_with_nothing_published_never_inherits_a_hidden_show_changes_only()
+    public void A_draft_with_nothing_published_never_inherits_a_filter_that_hides_every_row()
     {
         // Reported as "the Board schematics sheet is empty although it has 3 schematic images":
-        // the box was ticked on a published board's table, and the SAME editor then opened a
-        // system with nothing published - where the box is hidden, every row is unchanged, and so
-        // a filter still on hid every row with no way to see why.
+        // "Show changes only" was ticked on a published board's table, and the SAME editor then
+        // opened a system with nothing published - where every row is unchanged, and so a filter
+        // still on hid every row with no way to see why. The change pills picked are the same case.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(
                 Board(Component("U1", "CPU 6510")),
                 published: Board(Component("U1", "CPU")));
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
 
             const string otherKey = "Manu5/Hw5/Board5/Data Hw5 Board5.xlsx";
             string otherPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, otherKey);
             Directory.CreateDirectory(Path.GetDirectoryName(otherPath)!);
-            BoardWorkbookWriter.Write(otherPath, new BoardData
+            CachedWorkbooks.Write(otherPath, new BoardData
             {
                 Schematics =
                 [
@@ -2015,8 +2267,8 @@ public sealed class BoardTableEditorTests : IDisposable
 
             Assert.True(editor.Load(this.DraftsRoot, otherKey, published: null));
 
-            Assert.False(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
-            Assert.False(editor.OnlyChanges);
+            Assert.False(editor.GetControl<Border>("AddedPill").IsVisible);
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
             Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, editor.CurrentSheet!.Name);
             Assert.Equal(3, ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>().Count());
         });
@@ -2025,25 +2277,119 @@ public sealed class BoardTableEditorTests : IDisposable
     // ------------------------------------------------------------------ Round 7 (2026-09-24)
 
     [Fact]
-    public void A_pill_counting_nothing_fades_back_like_a_disabled_control()
+    public void A_pill_counting_nothing_is_outlined_and_dimmed_and_one_counting_rows_is_filled_at_full_strength()
     {
-        // Owner request: "0 Added" should steal less attention than the kinds that are there.
+        // Owner request, 2026-10-03: "0 Added" outlined, a pill with rows filled, and a picked one
+        // as before. A pill with rows was dimmed too until picked, the same day, and was then too
+        // hard to read - so only a pill counting nothing is dimmed now, and the 2px outline alone
+        // says which pills are picked.
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "changed")), published: Board(Component("U1")));
             Window window = Show(editor);
 
-            Assert.Equal(0.4, editor.GetControl<Border>("AddedPill").Opacity, 3);
-            Assert.Equal(0.4, editor.GetControl<Border>("DeletedPill").Opacity, 3);
-            Assert.Equal(0.4, editor.GetControl<Border>("FlaggedPill").Opacity, 3);
-            Assert.Equal(1, editor.GetControl<Border>("ModifiedPill").Opacity, 3);
+            Border added = editor.GetControl<Border>("AddedPill");
+            Border modified = editor.GetControl<Border>("ModifiedPill");
 
-            // And it fades as soon as there is nothing left to count.
+            // Nothing added: the outline alone, in Added's own colour, on the table's background.
+            Assert.Equal(ThemeColor("Table_Bg"), (added.Background as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("BoardTable_Added_Edge"), (added.BorderBrush as ISolidColorBrush)?.Color);
+            Assert.Equal(0.4, added.Opacity, 3);
+            Assert.Equal(0.4, editor.GetControl<Border>("DeletedPill").Opacity, 3);
+
+            // One modified: filled with Modified's wash, at full strength although it is not picked,
+            // and with the ordinary 1px outline - the 2px one is what picking adds.
+            Assert.Equal(ThemeColor("BoardTable_Modified_Bg"), (modified.Background as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("BoardTable_Modified_Edge"), (modified.BorderBrush as ISolidColorBrush)?.Color);
+            Assert.Equal(1, modified.Opacity, 3);
+            Assert.Equal(new Thickness(1), modified.BorderThickness);
+
+            // Picked: still full strength and filled, with the firm outline. The empty ones stay dimmed.
+            editor.TogglePill(BoardTableRowKinds.Modified);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(1, modified.Opacity, 3);
+            Assert.Equal(new Thickness(2), modified.BorderThickness);
+            Assert.Equal(ThemeColor("BoardTable_Pill_Selected_Border"), (modified.BorderBrush as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("BoardTable_Modified_Bg"), (modified.Background as ISolidColorBrush)?.Color);
+            Assert.Equal(0.4, added.Opacity, 3);
+
+            // The last modified row put back while it is picked: the fill goes, the strength stays.
             Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = string.Empty;
             editor.RefreshPendingForTests();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(0.4, editor.GetControl<Border>("ModifiedPill").Opacity, 3);
+            Assert.Equal(ThemeColor("Table_Bg"), (modified.Background as ISolidColorBrush)?.Color);
+            Assert.Equal(1, modified.Opacity, 3);
+
+            window.Close();
+        });
+    }
+
+    private static string? CursorOf(Control control) => control.Cursor?.ToString();
+
+    private static readonly string HandCursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand).ToString();
+
+    // Case 6 (2026-10-03): a pill counting nothing cannot be picked - it could only show an empty
+    // table. No hand cursor, and a real click does nothing; a pill counting rows still picks.
+    [Fact]
+    public void A_pill_counting_nothing_cannot_be_picked()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "changed")), published: Board(Component("U1")));
+            Window window = Show(editor);
+
+            Border added = editor.GetControl<Border>("AddedPill");
+            Border modified = editor.GetControl<Border>("ModifiedPill");
+
+            Assert.NotEqual(HandCursor, CursorOf(added));
+            Assert.Equal(HandCursor, CursorOf(modified));
+
+            Click(window, added);
+
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.DoesNotContain("Selected", added.Classes);
+
+            Click(window, modified);
+
+            Assert.Equal(BoardTableRowKinds.Modified, editor.Filter);
+
+            window.Close();
+        });
+    }
+
+    // Case 6 (2026-10-03), the other half: a picked pill whose count drops to 0 keeps its hand
+    // cursor and is clicked off as before - or it could never be put back.
+    [Fact]
+    public void A_picked_pill_that_drops_to_nothing_can_still_be_clicked_off()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "changed")), published: Board(Component("U1")));
+            Window window = Show(editor);
+
+            Border modified = editor.GetControl<Border>("ModifiedPill");
+            Click(window, modified);
+            Assert.Equal(BoardTableRowKinds.Modified, editor.Filter);
+
+            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = string.Empty;
+            editor.RefreshPendingForTests();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("0", editor.GetControl<TextBlock>("ModifiedCountText").Text);
+
+            Assert.Equal(HandCursor, CursorOf(modified));
+
+            // Off the first click's spot: two quick clicks on one spot are a double-click, which
+            // raises no Tapped.
+            Point nearLeft = modified.TranslatePoint(new Point(modified.Bounds.Width / 5, modified.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(nearLeft, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(nearLeft, Avalonia.Input.MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.DoesNotContain("Selected", modified.Classes);
+            Assert.NotEqual(HandCursor, CursorOf(modified));
 
             window.Close();
         });
@@ -2578,9 +2924,9 @@ public sealed class BoardTableEditorTests : IDisposable
                 $"Save ends at {topLeft.Value.X + save.Bounds.Width:0}, past the table's right edge at {editor.Bounds.Width:0}");
 
             WrapPanel wrap = editor.GetControl<WrapPanel>("ToolbarWrap");
-            Button insertAbove = editor.GetControl<Button>("InsertRowAboveButton");
+            Button insert = editor.GetControl<Button>("InsertRowBelowButton");
             Assert.True(
-                wrap.Bounds.Height > insertAbove.Bounds.Height * 1.5,
+                wrap.Bounds.Height > insert.Bounds.Height * 1.5,
                 "the toolbar did not wrap onto a second line at 720 wide");
 
             window.Close();

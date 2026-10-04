@@ -14,10 +14,35 @@ namespace ClassicRepairToolbox.Tests;
 //
 // To test the findings themselves, ValidateAllDataAsync would need to return them (e.g. a list
 // of validation messages) instead of only logging. That is a public API change and a separate
-// decision; see the Tests section of .claude/CLAUDE.md.
+// decision; see the Tests section of .claude/CLAUDE.md. *** Since 2026-10-02 the RULES are
+// BoardDataChecks' (CRT.Data), tested there - this logs what they find - so only the log line's
+// wording is tested here, through Describe. ***
 [Collection("DataManager")]
 public sealed class DataValidatorTests : IDisposable
 {
+    // A problem in a sheet names the file, sheet, row (1-based, as Excel numbers the data rows) and
+    // column; a problem in no sheet - a highlight - names the JSON beside the workbook.
+    [Fact]
+    public void A_logged_problem_says_where_it_is_and_what_it_is()
+    {
+        var inSheet = new BoardDataProblem(
+            BoardProblemLevel.Warning, "image.time_div", "5 ms", "T/DIV [5 ms] is not a setting CRT knows.",
+            BoardWorkbookSchema.SheetComponentImages, 2, BoardWorkbookSchema.ColTimeDiv);
+
+        Assert.Equal(
+            "Excel data file [Commodore/C64/250407/Data.xlsx] sheet [Component images] row [3] column [T/DIV] has warning [image.time_div]: " +
+            "T/DIV [5 ms] is not a setting CRT knows. - please fix!",
+            DataValidator.Describe("Commodore/C64/250407/Data.xlsx", inSheet));
+
+        var highlight = new BoardDataProblem(
+            BoardProblemLevel.Error, "highlight.unknown_schematic", "X / U1", "A highlight names schematic [X].", null, -1, null);
+
+        Assert.Equal(
+            "Excel data file [Commodore/C64/250407/Data.xlsx] JSON file [Commodore/C64/250407/Data.json] has error [highlight.unknown_schematic]: " +
+            "A highlight names schematic [X]. - please fix!",
+            DataValidator.Describe("Commodore/C64/250407/Data.xlsx", highlight));
+    }
+
     private readonly TempWorkspace thisWorkspace = new();
 
     static DataValidatorTests()

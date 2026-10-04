@@ -136,7 +136,7 @@ workbook to register the board in. None of that is needed any more.
 
 On the **Drafts** tab, find your system and click **Schematic images**.
 
-Drag your image files onto the box, or use **Choose image files...**. PNG, JPG, GIF, BMP and WEBP all
+Drag your image files onto the box, or use **Choose image files**. PNG, JPG, GIF, BMP and WEBP all
 work. Each image becomes one board view, named after the file, and a **copy** is taken into your
 draft - your original files stay where they are.
 
@@ -153,7 +153,7 @@ and is not changed by this.
 ## Step 3 - Import the KiCad data (optional)
 
 On the **Drafts** tab, click **KiCad data** for your system. Drag your KiCad project folder onto the
-box, or use **Choose KiCad folder...**.
+box, or use **Choose KiCad folder**.
 
 * **Pick the whole KiCad project folder.** Only the `.kicad_pcb`, `.kicad_pro` and `.kicad_sch` files
   are copied, so footprint libraries, 3D models, gerbers, netlists and BOM files are all left behind -
@@ -282,7 +282,7 @@ select components, look for copper lighting up, hover nets.
 Two extra checks worth doing:
 
 * Re-open **KiCad data** and confirm nothing is left in the "will NOT light up" list.
-* Untick **"View boards as officially published"** on the Configuration tab and back on again. For a
+* Untick **"View boards as officially coming from online source"** on the Configuration tab and back on again. For a
   brand-new system, ticking it shows an empty board - that is correct, because officially your system
   does not exist yet.
 
@@ -304,7 +304,7 @@ at runtime, so some mistakes are a warning there rather than a visible failure.
 | Signal missing from the Important signals panel | Net name does not resolve - turn on contributor mode and read the log |
 | "Mark first pin" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
 | "KiCad data initializing..." for a long time | Normal on a large `.kicad_pcb`; it loads in the background |
-| Your board shows as empty | "View boards as officially published" is ticked on the Configuration tab. A draft-only system has nothing published yet, so that view is correctly blank |
+| Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only system has nothing published yet, so that view is correctly blank |
 
 ---
 

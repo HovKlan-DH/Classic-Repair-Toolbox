@@ -8,6 +8,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Online;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -419,6 +420,93 @@ public sealed class MySubmissionsWindowTests : IDisposable
             TextBlock status = window.GetControl<TextBlock>("StatusText");
             Assert.True(status.IsVisible);
             Assert.Contains("could not be reached", status.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** "NOT FOUND" IS AN ANSWER, NOT AN UNREACHABLE SERVER (code review, 2026-10-04). *** After a
+    // reset of the contribution data, or a system deleted, every open receipt is answered 404. Those
+    // were counted as "could not be reached", so the line said the server could not be reached
+    // while the rows said "No longer on the server" - and the contributor went looking for a
+    // network problem that was not there.
+    // ###########################################################################################
+    [Fact]
+    public void Submissions_no_longer_on_the_server_are_counted_as_checked_not_as_unreachable()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(41, "pending"));
+            SubmissionReceiptStore.Record(Receipt(42, "pending"));
+
+            var window = new MySubmissionsWindow();
+            window.StatusLookupForTests = (id, _, _) => throw new SubmissionNotFoundException(id);
+
+            window.Initialize();
+            window.RefreshForTests();
+
+            TextBlock status = window.GetControl<TextBlock>("StatusText");
+            Assert.Equal("Checked 2 contributions. 2 are no longer on the server.", status.Text);
+            Assert.All(SubmissionReceiptStore.All, receipt => Assert.NotNull(receipt.NotFoundUtc));
+        });
+    }
+
+    // One gone, one answered, one unreachable: each is said for what it is.
+    [Fact]
+    public void A_mix_of_gone_answered_and_unreachable_says_each_for_what_it_is()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(41, "pending"));
+            SubmissionReceiptStore.Record(Receipt(42, "pending"));
+            SubmissionReceiptStore.Record(Receipt(43, "pending"));
+
+            var window = new MySubmissionsWindow();
+            window.StatusLookupForTests = (id, _, _) => id switch
+            {
+                41 => throw new SubmissionNotFoundException(id),
+                42 => Task.FromResult<SubmissionStatus?>(new SubmissionStatus { Id = id, State = "pending" }),
+                _ => Task.FromResult<SubmissionStatus?>(null)
+            };
+
+            window.Initialize();
+            window.RefreshForTests();
+
+            Assert.Equal(
+                "Checked 2, but 1 could not be reached. Those rows show their last known state. 1 is no longer on the server.",
+                window.GetControl<TextBlock>("StatusText").Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** "UPDATE CRT" IS SAID IN THE SERVER'S WORDS (code review, 2026-10-04). *** Not "the server
+    // could not be reached", which sends the contributor looking for a network problem that is not
+    // there. The rows keep their last known state, and nothing after the first answer is asked.
+    // ###########################################################################################
+    [Fact]
+    public void An_update_CRT_answer_is_shown_in_the_servers_words_and_the_rows_keep_their_state()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(41, "pending"));
+            SubmissionReceiptStore.Record(Receipt(42, "pending"));
+
+            var asked = new List<long>();
+            var window = new MySubmissionsWindow();
+            window.StatusLookupForTests = (id, _, _) =>
+            {
+                asked.Add(id);
+                throw new ClientOutdatedException("Please update CRT to version [3.2.0] or newer.");
+            };
+
+            window.Initialize();
+            window.RefreshForTests();
+
+            Assert.Single(asked);
+            Assert.All(window.Submissions, row => Assert.Equal("Submitted - awaiting feedback from a maintainer", row.StateText));
+
+            TextBlock status = window.GetControl<TextBlock>("StatusText");
+            Assert.True(status.IsVisible);
+            Assert.Equal(SubmissionStatusRefresh.DescribeOutdated("Please update CRT to version [3.2.0] or newer."), status.Text);
         });
     }
 

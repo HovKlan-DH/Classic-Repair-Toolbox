@@ -69,6 +69,19 @@ namespace CRT.Server.Configuration
             !string.IsNullOrWhiteSpace(this.ProductionManifestPath) &&
             !string.IsNullOrWhiteSpace(this.ProductionPublicDataBaseUrl);
 
+        // ###########################################################################################
+        // The tree the Systems screen READS as the stable source: the promotion's own root, else the
+        // older ProductionTreeRoot - or null when neither is set. Reading needs no publishing switched
+        // on. ONE rule for every reader (code review, 2026-10-04): the overview said a system was
+        // in the stable source from this root, which offers CRT's "Data: Stable" switch, while the
+        // stable table and files asked for publishing to be configured - so every pick of the switch
+        // answered 404 on a server that only had ProductionTreeRoot.
+        // ###########################################################################################
+        public string? StableSourceRoot =>
+            !string.IsNullOrWhiteSpace(this.ProductionDataTreeRoot)
+                ? this.ProductionDataTreeRoot
+                : string.IsNullOrWhiteSpace(this.ProductionTreeRoot) ? null : this.ProductionTreeRoot;
+
         // Where the published data is served from, e.g. https://classic-repair-toolbox.dk/app-data-BETA/Data.
         // Unread until Phase 5, which regenerates dataChecksums.json - but validated from Phase 3,
         // because the failure it prevents is invisible: the data root, the manifest path and this
@@ -91,6 +104,27 @@ namespace CRT.Server.Configuration
         // partition nobody was watching. It must also sit OUTSIDE the document root, or the blobs
         // of a submission still under review would be downloadable by anyone who guessed a hash.
         public string? BlobStoreRoot { get; set; }
+
+        // -----------------------------------------------------------------------------------
+        // Feedback from CRT's Feedback tab (owner request, 2026-10-03 - the old PHP page's job).
+        //
+        // FeedbackRoot is where each feedback's attached files are saved, one "feedback-<random>"
+        // folder per feedback - the PHP page's /mydir/http/classic-repair-toolbox.dk/user-feedback,
+        // which the project owner opens from a network share. FeedbackToAddress is who the mail
+        // goes to. NO DEFAULT for either, by this class's rule: one decides where strangers' files
+        // land, the other who reads their logs. The folder must sit outside the web document root
+        // and away from the data trees and the blob store (the validator checks the latter).
+        // -----------------------------------------------------------------------------------
+        public string? FeedbackRoot { get; set; }
+
+        public string? FeedbackToAddress { get; set; }
+
+        // The most the saved feedback under FeedbackRoot may take all together (code review,
+        // 2026-10-04). Anybody may send feedback, so without a total, files could fill the disk
+        // down to MinimumFreeDiskBytes - the reserve the blob store shares - and pause every
+        // contribution. Full, a feedback's text is still mailed, its files are not saved, and the
+        // mail says so. Tuning, so it has a default: 20 GiB. 0 turns the total off.
+        public long FeedbackMaxStoredBytes { get; set; } = 20L * 1024 * 1024 * 1024;
 
         // -----------------------------------------------------------------------------------
         // Safety marker.
@@ -167,6 +201,16 @@ namespace CRT.Server.Configuration
         // the launch check-in's own rule. Tuning, not safety, so it has a default: on, "for now".
         // -----------------------------------------------------------------------------------
         public bool CountLocalNetworkBoardViews { get; set; } = true;
+
+        // -----------------------------------------------------------------------------------
+        // Whether Account > "Reset contribution data" may delete (owner request, 2026-10-04: a clean
+        // start at go-live) - see DataResetFlow. OFF by default and meant to stay off: the project
+        // owner sets it true in appsettings.Production.json, restarts the service, resets, and sets
+        // it back. So a click alone - or a stolen administrator session - can never wipe the
+        // database; switching it on needs a shell on the box. The Account screen still shows the
+        // counts while it is off, and says how to switch it on.
+        // -----------------------------------------------------------------------------------
+        public bool AllowDataReset { get; set; }
 
         // -----------------------------------------------------------------------------------
         // Argon2id parameters. Defaults are RFC 9106's second recommended profile, chosen for a

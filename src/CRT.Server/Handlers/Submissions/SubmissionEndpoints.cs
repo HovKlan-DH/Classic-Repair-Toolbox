@@ -1,5 +1,6 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -175,10 +176,10 @@ namespace CRT.Server.Handlers.Submissions
             return outcome.Status switch
             {
                 BlobUploadStatus.Completed =>
-                    Results.Ok(new { uploaded = outcome.ResumeFrom, complete = true }),
+                    Results.Ok(new BlobUploadAnswer(outcome.ResumeFrom, true)),
 
                 BlobUploadStatus.Partial =>
-                    Results.Ok(new { uploaded = outcome.ResumeFrom, complete = false }),
+                    Results.Ok(new BlobUploadAnswer(outcome.ResumeFrom, false)),
 
                 // 404 for both "no such submission" and "not yours" - see the class header.
                 BlobUploadStatus.NotFound => Results.NotFound(),
@@ -192,7 +193,7 @@ namespace CRT.Server.Handlers.Submissions
                 // 416 Range Not Satisfiable, carrying where to actually resume from.
                 BlobUploadStatus.ChunkRejected =>
                     Results.Json(
-                        new { message = outcome.Error, resumeFrom = outcome.ResumeFrom },
+                        new BlobChunkRejectedAnswer(outcome.Error, outcome.ResumeFrom),
                         statusCode: StatusCodes.Status416RangeNotSatisfiable),
 
                 BlobUploadStatus.HashMismatch =>
@@ -229,11 +230,7 @@ namespace CRT.Server.Handlers.Submissions
             if (state is null)
                 return Results.NotFound();
 
-            return Results.Ok(new
-            {
-                uploaded = state.Uploaded,
-                complete = state.Complete
-            });
+            return Results.Ok(new BlobUploadAnswer(state.Uploaded, state.Complete));
         }
 
         // ###########################################################################################
@@ -248,6 +245,7 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore store,
             BlobStore blobs,
             SubmissionNotifier notifier,
+            ServerOptions options,
             CancellationToken cancellationToken)
         {
             SubmissionResult result = await SubmissionFlows.FinaliseAsync(
@@ -272,11 +270,16 @@ namespace CRT.Server.Handlers.Submissions
 
                     if (record is not null)
                     {
-                        IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+                        IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForAsync(
                             record, accounts, cancellationToken);
 
+                        // A completely new system or an update (owner request, 2026-10-03) - new when
+                        // the BETA tree holds nothing of it, the review queue's own test
+                        // (ReviewQueueFlow), so the mail and the queue's "New system" heading agree.
+                        bool isNewSystem = !PublishedBoardLocator.LocateSystem(options.DataTreeRoot, record.SystemId).Exists;
+
                         await notifier.NotifyMaintainersAsync(
-                            recipients, record.SystemId, record.Id, record.Summary, cancellationToken);
+                            recipients, record.SystemId, record.Id, record.Summary, isNewSystem, cancellationToken);
                     }
                 }
                 catch (Exception ex)
@@ -380,7 +383,7 @@ namespace CRT.Server.Handlers.Submissions
         // logs by default on most web servers, and this value is what authorises writing to a
         // submission. A header is not logged unless somebody asks for it to be.
         // ###########################################################################################
-        private const string UploadTokenHeader = "X-Submission-Token";
+        private const string UploadTokenHeader = SubmissionFormat.UploadTokenHeader;
 
         // ###########################################################################################
         // The client's address, recorded against a submission for rate limiting.
@@ -393,7 +396,7 @@ namespace CRT.Server.Handlers.Submissions
         // UseForwardedHeaders has already run and trusts only loopback proxies (see Program.cs),
         // so this is the real client address rather than Apache's.
         // ###########################################################################################
-        private static string? ClientAddress(HttpContext context)
+        internal static string? ClientAddress(HttpContext context)
         {
             return context.Connection.RemoteIpAddress?.ToString();
         }

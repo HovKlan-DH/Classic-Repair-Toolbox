@@ -156,6 +156,17 @@ namespace CRT.Server.Handlers.Usage
             return facts;
         }
 
+        public async Task<int> DeleteForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = "DELETE FROM crt_board_views WHERE systemId = @system;";
+            command.Parameters.AddWithValue("@system", systemId);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)
         {
             var connection = new MySqlConnection(this.thisConnectionString);

@@ -10,10 +10,16 @@ The Excel file, alongside the board Excel files, is versioned meaning the versio
 
 The Excel file has only two worksheets, so it is pretty simple compared to the board files.
 
+Both worksheets open with three lines starting with `#`, the third being the revision date, for example `# Revision date: 2026-October-4`. Whenever the server changes the file - a new system added to the lists, or the systems put in a new order by the administrator (Maintainer tab, **Account** > **Order of systems**) - it sets that date on both worksheets to the day of the change.
+
+The headers stay in view while you scroll: the **Hardware & Board** worksheet is frozen under its header row, and the **Oscilloscope** worksheet under its header row and after its second column, so the brand and model stay visible however far to the right you scroll.
+
 
 ## Worksheet: Hardware & Board
 
 These are the columns and how to understand them:
+
+The rows are in the order CRT shows them in its drop-down lists.
 
 ### Column: Hardware name in drop-down
 

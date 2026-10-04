@@ -2,6 +2,7 @@ using System;
 using Avalonia.Controls;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -178,6 +179,90 @@ public sealed class SubmitDraftWindowEmailTests : IDisposable
         });
     }
 
+    // ---------------------------------------------------------------- a signed-in maintainer (2026-10-01)
+
+    private static ReviewSession Session() =>
+        new("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+
+    private SubmitDraftWindow BuildSignedInWindow(ReviewSession? session)
+    {
+        var window = new SubmitDraftWindow();
+
+        window.Initialize(
+            "Commodore C64 250407",
+            SubmitDraftWindowEmailTests.EmptyBoard(),
+            SubmitDraftWindowEmailTests.Identity(),
+            this.thisWorkspace.Root,
+            this.thisWorkspace.Root,
+            calibrations: null,
+            signedIn: session);
+
+        return window;
+    }
+
+    // ###########################################################################################
+    // *** SIGNED IN ON THE MAINTAINER TAB, THE ADDRESS IS THE ACCOUNT'S (owner request, 2026-10-01:
+    // "When I am a maintainer, and I have logged in, then I want to use that email address
+    // everywhere in the CRT app"). *** Read only - the submission goes WITH the account, so the
+    // server records the account's address whatever the box says - and the note says why, in place
+    // of "There is no account to create", which would then be untrue.
+    // ###########################################################################################
+    [Fact]
+    public void Signed_in_the_box_shows_the_accounts_address_read_only_and_says_why()
+    {
+        UiTest.Run(() =>
+        {
+            this.FreshSettings();
+            UserSettings.ContactEmail = "typed@example.com";
+
+            SubmitDraftWindow window = this.BuildSignedInWindow(SubmitDraftWindowEmailTests.Session());
+
+            var box = window.GetControl<TextBox>("EmailTextBox");
+
+            Assert.Equal("dh@example.com", box.Text);
+            Assert.True(box.IsReadOnly);
+            Assert.Equal(ContactAddress.SubmitNote, window.GetControl<TextBlock>("EmailNoteText").Text);
+            Assert.DoesNotContain("no account to create", window.GetControl<TextBlock>("EmailNoteText").Text, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    // Sending signed in never saves the account's address as the typed one, so signing out brings
+    // back what was typed before.
+    [Fact]
+    public void Sending_signed_in_does_not_save_the_accounts_address_as_the_typed_one()
+    {
+        UiTest.Run(() =>
+        {
+            this.FreshSettings();
+            UserSettings.ContactEmail = "typed@example.com";
+
+            SubmitDraftWindow window = this.BuildSignedInWindow(SubmitDraftWindowEmailTests.Session());
+
+            window.CaptureEntriesForTests();
+
+            Assert.Equal("typed@example.com", UserSettings.ContactEmail);
+        });
+    }
+
+    // Not signed in, nothing changes: the typed address, editable, with the usual note.
+    [Fact]
+    public void Not_signed_in_the_dialog_is_as_it_always_was()
+    {
+        UiTest.Run(() =>
+        {
+            this.FreshSettings();
+            UserSettings.ContactEmail = "typed@example.com";
+
+            SubmitDraftWindow window = this.BuildSignedInWindow(null);
+
+            var box = window.GetControl<TextBox>("EmailTextBox");
+
+            Assert.Equal("typed@example.com", box.Text);
+            Assert.False(box.IsReadOnly);
+            Assert.Contains("no account to create", window.GetControl<TextBlock>("EmailNoteText").Text, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
     [Fact]
     public void An_IMPLAUSIBLE_address_is_NOT_saved_over_a_good_one()
     {
@@ -196,6 +281,36 @@ public sealed class SubmitDraftWindowEmailTests : IDisposable
             window.CaptureEntriesForTests();
 
             Assert.Equal("good@example.com", UserSettings.ContactEmail);
+        });
+    }
+
+    // ###########################################################################################
+    // The receipt remembers what the draft held as it was sent (owner request, 2026-10-03: "It
+    // should not be possible to submit the same data again") - which is what lets the Drafts tab
+    // grey Submit out while the draft stays the same. Not one of the agreed cases on its own: the
+    // link between them, without which case 1 could never happen outside a test.
+    // ###########################################################################################
+    [Fact]
+    public void The_receipt_remembers_what_the_draft_held_when_it_was_sent()
+    {
+        UiTest.Run(() =>
+        {
+            this.FreshSettings();
+
+            var window = new SubmitDraftWindow();
+            window.Initialize(
+                "Commodore C64 250407",
+                SubmitDraftWindowEmailTests.EmptyBoard(),
+                SubmitDraftWindowEmailTests.Identity(),
+                this.thisWorkspace.Root,
+                this.thisWorkspace.Root,
+                draftFingerprint: "v1:ABC");
+
+            SubmissionReceipt receipt = window.NewReceipt(42, "token", DateTimeOffset.UtcNow);
+
+            Assert.Equal("v1:ABC", receipt.DraftFingerprint);
+            Assert.Equal(42, receipt.SubmissionId);
+            Assert.Equal("Commodore/C64/250407/Data.xlsx", receipt.SystemId);
         });
     }
 }

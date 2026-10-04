@@ -97,6 +97,23 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
+        public Task SetDisplayNameAsync(long accountId, string displayName, CancellationToken cancellationToken = default)
+        {
+            this.Accounts[accountId] = this.Accounts[accountId] with { DisplayName = displayName };
+            return Task.CompletedTask;
+        }
+
+        // Refused when ANOTHER account holds the normalised address - MariaDB's unique index, which
+        // a fake that let it through would certify a race the real store loses.
+        public Task<bool> SetEmailAsync(long accountId, string email, string normalisedEmail, CancellationToken cancellationToken = default)
+        {
+            if (this.Accounts.Values.Any(other => other.Id != accountId && other.NormalisedEmail == normalisedEmail))
+                return Task.FromResult(false);
+
+            this.Accounts[accountId] = this.Accounts[accountId] with { Email = email, NormalisedEmail = normalisedEmail };
+            return Task.FromResult(true);
+        }
+
         // -----------------------------------------------------------------------------------
         // Tokens.
         // -----------------------------------------------------------------------------------
@@ -106,7 +123,8 @@ namespace CRT.Server.Tests.Fakes
             long id = this.thisNextTokenId++;
 
             this.Tokens[id] = new AccountTokenRecord(
-                id, token.AccountId, token.Purpose, token.CreatedUtc, token.ExpiresUtc, ConsumedUtc: null);
+                id, token.AccountId, token.Purpose, token.CreatedUtc, token.ExpiresUtc, ConsumedUtc: null,
+                token.PendingEmail, token.PendingEmailNormalised);
 
             this.TokenHashes[id] = token.TokenHash;
 
@@ -237,6 +255,19 @@ namespace CRT.Server.Tests.Fakes
                 SessionRecord session = this.Sessions[id];
 
                 if (session.AccountId == accountId && session.RevokedUtc is null)
+                    this.Sessions[id] = session with { RevokedUtc = whenUtc, RevokedReason = reason };
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task RevokeOtherSessionsAsync(long accountId, long keepSessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            foreach (long id in this.Sessions.Keys.ToList())
+            {
+                SessionRecord session = this.Sessions[id];
+
+                if (session.AccountId == accountId && id != keepSessionId && session.RevokedUtc is null)
                     this.Sessions[id] = session with { RevokedUtc = whenUtc, RevokedReason = reason };
             }
 
@@ -476,8 +507,14 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(found);
         }
 
+        // Set to make every audit write throw, as a database that has gone away would.
+        public bool FailAuditWrites { get; set; }
+
         public Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default)
         {
+            if (this.FailAuditWrites)
+                throw new InvalidOperationException("The audit table is not reachable.");
+
             this.Audit.Add(entry);
             return Task.CompletedTask;
         }

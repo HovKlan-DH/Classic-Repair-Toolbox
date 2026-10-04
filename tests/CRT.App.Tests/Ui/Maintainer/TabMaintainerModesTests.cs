@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Handlers.MaintainerHandling;
@@ -11,8 +12,8 @@ using ClassicRepairToolbox.Tests.Maintainer;
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
 // ###########################################################################################
-// THE FOUR SCREENS (owner request, 2026-09-27): Review, BETA, Systems and Admin, chosen by the
-// buttons at the top left - each its own list on the left and its own panel on the right, where
+// THE FOUR SCREENS (owner request, 2026-09-27): Review, BETA, Systems and Account (Admin until
+// 2026-10-04), chosen by the buttons at the top left - each its own list on the left and its own panel on the right, where
 // three windows used to open over the queue. TabMaintainer.Modes.cs and its three siblings.
 //
 // The window is BUILT, never shown: its OnOpened restores the real signed-in session and fetches
@@ -54,8 +55,7 @@ public sealed class TabMaintainerModesTests
 
     // ###########################################################################################
     // Each screen is its OWN list and its OWN panel, and its button says it is the one shown.
-    // Admin's panel is its chosen item - "Unused files", the only one since maintainers moved to the
-    // Systems screen (2026-09-27).
+    // Account's panel is its chosen item - "My account", the first (2026-10-04).
     // ###########################################################################################
     [Fact]
     public void Each_screen_shows_its_own_list_and_panel_and_marks_its_button()
@@ -69,7 +69,7 @@ public sealed class TabMaintainerModesTests
             [
                 (MaintainerMode.Beta, "BetaModeButton", "BetaListPanel", "BetaDetailView"),
                 (MaintainerMode.Systems, "SystemsModeButton", "SystemsListPanel", "SystemDetailView"),
-                (MaintainerMode.Admin, "AdminModeButton", "AdminList", "UnusedFilesAdminView"),
+                (MaintainerMode.Account, "AccountModeButton", "AccountList", "MyAccountPanel"),
                 (MaintainerMode.Review, "ReviewModeButton", "ReviewList", "ReviewPanel")
             ];
 
@@ -92,55 +92,156 @@ public sealed class TabMaintainerModesTests
     }
 
     // ###########################################################################################
-    // *** MAINTAINERS ARE SET ON THE SYSTEMS SCREEN, NOT UNDER ADMIN (owner request, 2026-09-27: "so
-    // that should be moved from 'Admin' section"). *** Admin opens on "Unused files", its one item,
-    // and has no "Set maintainers" left; the Systems panel carries the controls for an
-    // administrator instead.
+    // *** ACCOUNT OPENS ON "MY ACCOUNT" (owner request, 2026-10-04: "Move the current account
+    // functionality from the bottom-left corner to a new left-side entry named "My account""). ***
+    // Then "Server version", every maintainer's too, and below them the administrator's own:
+    // "Maintainers" (back from the Systems screen, 2026-10-04), "Order of systems", "Unused files",
+    // "Rebuild checksum manifests", "Delete a system", "API usage" and - LAST, used once at go-live
+    // and deleting the most - "Reset contribution data".
+    //
+    // The panel chosen first reads nothing and writes nothing - and only that panel is shown.
     // ###########################################################################################
     [Fact]
-    public void Admin_opens_on_unused_files_and_setting_maintainers_is_on_the_systems_screen()
+    public void Account_opens_on_my_account_and_lists_every_entry_in_order()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
-            TabMaintainerModesTests.Mode(main, MaintainerMode.Admin);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
 
-            Assert.True(TabMaintainerModesTests.Shown(main, "UnusedFilesAdminView"));
-            Assert.Null(main.FindControl<ListBoxItem>("SetMaintainersItem"));
-            Assert.Null(main.FindControl<Control>("MaintainersAdminView"));
+            Assert.True(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
 
-            Assert.Single(main.FindControl<ListBox>("AdminList")!.Items);
+            foreach (string other in TabMaintainerModesTests.AccountPanels.Where(panel => panel != "MyAccountPanel"))
+                Assert.False(TabMaintainerModesTests.Shown(main, other), other);
+
+            Assert.Equal(
+                ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"],
+                main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>().Select(item => item.Name));
+
+            main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>("SystemOrderItem");
+
+            Assert.True(TabMaintainerModesTests.Shown(main, "SystemOrderAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
         });
     }
 
-    // The Systems panel knows who is looking: an administrator gets the maintainer controls, and
-    // they go again when the account stops being one.
+    // Every panel the Account screen shows on the right.
+    private static readonly string[] AccountPanels =
+    [
+        "MyAccountPanel", "ServerVersionView", "MaintainerPoolAdminView", "SystemOrderAdminView", "UnusedFilesAdminView",
+        "RebuildManifestsAdminView", "SystemDeletionAdminView", "ApiUsageAdminView", "DataResetAdminView"
+    ];
+
+    // ###########################################################################################
+    // The badge's number is trusted - and so may hide the tab - only while somebody is SIGNED IN
+    // and both lists were read (code review, 2026-10-01). Lists applied with no session, which is
+    // what a tab shown on its own is, are not an answer.
+    // ###########################################################################################
     [Fact]
-    public void The_systems_panel_follows_whether_the_account_is_an_administrator()
+    public void The_badge_is_not_known_without_a_signed_in_session_whatever_was_read()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            Assert.False(main.BadgeKnown);
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            TabMaintainerModesTests.BetaList(main, background: false);
+
+            Assert.False(main.BadgeKnown);
+        });
+    }
+
+    // ###########################################################################################
+    // "REBUILD CHECKSUM MANIFESTS" ON THE ACCOUNT SCREEN (owner request, 2026-10-01: "I need a way
+    // ... to press a button, and then it will generate a new online manifest, both for production
+    // and BETA"). Choosing it shows its panel and hides the other - the Account screen is one panel
+    // at a time, like the rest of the tab.
+    // ###########################################################################################
+    [Fact]
+    public void Choosing_rebuild_manifests_shows_its_panel_instead_of_the_unused_files_one()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
+
+            main.FindControl<ListBox>("AccountList")!.SelectedItem =
+                main.FindControl<ListBoxItem>("RebuildManifestsItem");
+
+            Assert.True(TabMaintainerModesTests.Shown(main, "RebuildManifestsAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "UnusedFilesAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+        });
+    }
+
+    // ###########################################################################################
+    // "DELETE A SYSTEM" ON THE ACCOUNT SCREEN (owner request, 2026-10-03: "maybe this should be a
+    // part of the 'Admin' menu, that only I do have access to"). Choosing it shows its panel alone,
+    // and leaving Account hides it with the rest.
+    // ###########################################################################################
+    [Fact]
+    public void Choosing_delete_a_system_shows_its_panel_alone()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
+
+            main.FindControl<ListBox>("AccountList")!.SelectedItem =
+                main.FindControl<ListBoxItem>("DeleteSystemItem");
+
+            Assert.True(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "UnusedFilesAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "RebuildManifestsAdminView"));
+
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Systems);
+
+            Assert.False(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+        });
+    }
+
+    // ###########################################################################################
+    // The Systems screen's Maintainer view is a LIST for everybody, the administrator included
+    // (owner request, 2026-10-04: "The stuff that should be visible in here, is just the selected
+    // maintainer(s)") - no Remove button, no list to add from, no invitation box.
+    // ###########################################################################################
+    [Fact]
+    public void The_systems_panel_lists_maintainers_without_controls_even_for_an_administrator()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
             SystemView view = main.FindControl<SystemView>("SystemDetailView")!;
 
-            view.ShowDetailForTests(new SystemDetailAnswer(TabMaintainerModesTests.System(), [], [], []));
-
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
-            Assert.True(view.FindControl<StackPanel>("MaintainerAdminPanel")!.IsVisible);
+            view.ShowDetailForTests(new SystemDetailAnswer(
+                TabMaintainerModesTests.System(),
+                [new PoolMaintainerEntry(7, "Anna", "anna@example.com")],
+                [],
+                [],
+                [new MaintainerInvitationEntry(3, "new@example.com", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(14))]));
 
-            TabMaintainerModesTests.Queue(main, isAdministrator: false);
-            Assert.False(view.FindControl<StackPanel>("MaintainerAdminPanel")!.IsVisible);
+            Assert.Equal(["Maintainer", "Anna (anna@example.com)"], view.SectionTextsForTests("MaintainersSection"));
+            Assert.Null(view.FindControl<ComboBox>("AddAccountCombo"));
+            Assert.Null(view.FindControl<TextBox>("InviteEmailBox"));
+            Assert.Empty(view.FindControl<StackPanel>("MaintainersSection")!.GetLogicalDescendants().OfType<Button>());
         });
     }
 
     // ###########################################################################################
-    // *** ADMIN IS THE ADMINISTRATOR'S ONLY. *** Offered when the server says so - the server
-    // refuses everybody else regardless - and an account that stops being one while on it goes
-    // back to Review.
+    // *** ACCOUNT IS EVERY MAINTAINER'S; ITS ADMINISTRATOR'S ENTRIES ARE NOT (owner request,
+    // 2026-10-04: "make this tab available to all maintainers ... As admin, I should still be able to
+    // see all the special admin entries - no maintainer should have access to those"). *** A
+    // maintainer has "My account" and "Server version" and nothing else; the entries follow the
+    // server's word on each queue answer, and an account that stops being an administrator while one
+    // of them is chosen is put back on "My account" - still on the Account screen.
     // ###########################################################################################
     [Fact]
-    public void The_admin_screen_is_offered_only_to_an_administrator()
+    public void The_account_screen_is_every_maintainers_and_its_administrators_entries_are_not()
     {
         UiTest.Run(() =>
         {
@@ -148,24 +249,123 @@ public sealed class TabMaintainerModesTests
 
             TabMaintainerModesTests.Queue(main, isAdministrator: false);
 
-            Assert.False(TabMaintainerModesTests.Shown(main, "AdminModeButton"));
-            TabMaintainerModesTests.Mode(main, MaintainerMode.Admin);
-            Assert.Equal(MaintainerMode.Review, main.ShownMode);
+            Assert.True(TabMaintainerModesTests.Shown(main, "AccountModeButton"));
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
+            Assert.Equal(MaintainerMode.Account, main.ShownMode);
+            Assert.Equal(["MyAccountItem", "ServerVersionItem"], main.AccountEntriesShownForTests);
+            Assert.True(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
 
-            // BETA and Systems are every maintainer's.
+            // BETA and Systems are every maintainer's too.
             Assert.True(TabMaintainerModesTests.Shown(main, "BetaModeButton"));
             Assert.True(TabMaintainerModesTests.Shown(main, "SystemsModeButton"));
 
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
-            Assert.True(TabMaintainerModesTests.Shown(main, "AdminModeButton"));
+            Assert.Equal(TabMaintainerModesTests.AllAccountEntries, main.AccountEntriesShownForTests);
 
-            TabMaintainerModesTests.Mode(main, MaintainerMode.Admin);
-            Assert.Equal(MaintainerMode.Admin, main.ShownMode);
+            main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>("MaintainersItem");
+            Assert.True(TabMaintainerModesTests.Shown(main, "MaintainerPoolAdminView"));
 
             TabMaintainerModesTests.Queue(main, isAdministrator: false);
-            Assert.Equal(MaintainerMode.Review, main.ShownMode);
-            Assert.True(TabMaintainerModesTests.Shown(main, "ReviewList"));
-            Assert.False(TabMaintainerModesTests.Shown(main, "AdminList"));
+
+            Assert.Equal(["MyAccountItem", "ServerVersionItem"], main.AccountEntriesShownForTests);
+            Assert.Equal(MaintainerMode.Account, main.ShownMode);
+            Assert.Same(main.FindControl<ListBoxItem>("MyAccountItem"), main.FindControl<ListBox>("AccountList")!.SelectedItem);
+            Assert.True(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "MaintainerPoolAdminView"));
+        });
+    }
+
+    // ###########################################################################################
+    // *** AS DRAWN, NOT ONLY AS BUILT. *** The first version hid the administrator's entries with
+    // IsVisible - which held in a tab never shown (the test above) while a REAL window showed every
+    // one of them to a plain maintainer: the list's VirtualizingStackPanel sets IsVisible back to
+    // true on each container it realises (seen in a render, 2026-10-04). So they are taken out of the
+    // list, and this reads the containers the list actually drew, in a shown window - it fails
+    // against the IsVisible version.
+    // ###########################################################################################
+    [Fact]
+    public void In_a_shown_window_a_maintainer_is_drawn_only_the_two_entries_that_are_theirs()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            var window = new Window { Content = main, Width = 1200, Height = 800 };
+            window.Show();
+
+            Invoke(main, "ShowQueuePanel");
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
+            Dispatcher.UIThread.RunJobs();
+
+            ListBox list = main.FindControl<ListBox>("AccountList")!;
+
+            string?[] Drawn() => list.GetRealizedContainers().Where(container => container.IsEffectivelyVisible).Select(container => container.Name).ToArray();
+
+            Assert.Equal(["MyAccountItem", "ServerVersionItem"], Drawn());
+
+            // Made an administrator, every entry is drawn, in the markup's order; and taken away again.
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(TabMaintainerModesTests.AllAccountEntries, Drawn());
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(["MyAccountItem", "ServerVersionItem"], Drawn());
+
+            window.Close();
+        });
+    }
+
+    private static readonly string[] AllAccountEntries =
+        ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"];
+
+    // ###########################################################################################
+    // *** EVERY ADMINISTRATOR'S ENTRY CARRIES THE PADLOCK, AND NOTHING ELSE DOES (owner request,
+    // 2026-10-04: "Mark all admin locked things ... with the Font Awesome "fa-lock" icon, so it is
+    // clear which things are applicable only for the admin. No title/helper text on this icon"). ***
+    //
+    // Which entries are the administrator's is written out here, so a new entry has to be decided
+    // one way or the other - and the AdminOnly class that hides it must agree with its padlock. No
+    // tooltip on the padlock or its entry. Drawn in a shown window, so the AdminLock style has been
+    // applied: Font Awesome's solid face, with the top room the padlock's outline needs
+    // (FontAwesomeGlyphMetrics) - without it the top of the shackle is clipped.
+    // ###########################################################################################
+    [Fact]
+    public void Every_administrators_entry_carries_the_padlock_with_no_tooltip_and_nothing_else_does()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            var window = new Window { Content = main, Width = 1200, Height = 800 };
+            window.Show();
+
+            Invoke(main, "ShowQueuePanel");
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
+            Dispatcher.UIThread.RunJobs();
+
+            string[] administrators = ["MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"];
+
+            foreach (ListBoxItem item in main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>())
+            {
+                bool administrator = administrators.Contains(item.Name);
+                TextBlock[] locks = item.GetLogicalDescendants().OfType<TextBlock>().Where(text => text.Classes.Contains("AdminLock")).ToArray();
+
+                Assert.Equal(administrator, item.Classes.Contains("AdminOnly"));
+                Assert.Equal(administrator ? 1 : 0, locks.Length);
+                Assert.Null(ToolTip.GetTip(item));
+
+                foreach (TextBlock padlock in locks)
+                {
+                    Assert.Equal("\uF023", padlock.Text);
+                    Assert.Null(ToolTip.GetTip(padlock));
+                    Assert.Same(Application.Current!.FindResource("FontAwesomeSolid"), padlock.FontFamily);
+                    Assert.Equal(Handlers.Geometry.FontAwesomeGlyphMetrics.GetTopOverflowThicknessForText(padlock.Text, padlock.FontSize), padlock.Padding);
+                    Assert.True(padlock.Padding.Top > 0, $"{item.Name}'s padlock has no room for its shackle.");
+                }
+            }
+
+            window.Close();
         });
     }
 
@@ -286,7 +486,7 @@ public sealed class TabMaintainerModesTests
             TabMaintainerModesTests.BetaList(main, background: true, TabMaintainerModesTests.Beta(awaitsYou: false));
 
             Assert.Equal(
-                ["Commodore / C64 / 250407", "BETA 2026-September-25, production 2026-May-14 - with the other approver"],
+                ["Commodore / C64 / 250407", "BETA 2026-September-25, stable 2026-May-14 - with the other approver"],
                 main.BetaTextsForTests());
 
             ListBoxItem item = ((IEnumerable<ListBoxItem>)main.FindControl<ListBox>("BetaList")!.ItemsSource!).Single();
@@ -349,8 +549,8 @@ public sealed class TabMaintainerModesTests
             BetaView view = main.FindControl<BetaView>("BetaDetailView")!;
 
             Assert.Null(view.ShownRow);
-            Assert.Contains("no longer waiting for production", view.FindControl<TextBlock>("MessageText")!.Text, StringComparison.Ordinal);
-            Assert.Equal("Production is up to date with BETA for every system you review.", main.FindControl<TextBlock>("BetaListMessageText")!.Text);
+            Assert.Contains("no longer waiting to go to stable", view.FindControl<TextBlock>("MessageText")!.Text, StringComparison.Ordinal);
+            Assert.Equal("The stable source is up to date with BETA for every system you review.", main.FindControl<TextBlock>("BetaListMessageText")!.Text);
         });
     }
 
@@ -358,8 +558,9 @@ public sealed class TabMaintainerModesTests
     // The Systems list
     // -----------------------------------------------------------------------------------
 
+    // The ordinary "in BETA and the stable source" is not said (owner request, 2026-10-03).
     [Fact]
-    public void Each_system_is_listed_by_name_with_where_its_data_is_and_who_maintains_it()
+    public void Each_system_is_listed_by_name_with_who_maintains_it()
     {
         UiTest.Run(() =>
         {
@@ -370,7 +571,7 @@ public sealed class TabMaintainerModesTests
                 TabMaintainerModesTests.System("Commodore/C64/250407", maintainers: 2)
             ]), background: true).GetAwaiter().GetResult();
 
-            Assert.Equal(["Commodore / C64 / 250407", "In BETA and production - 2 maintainers"], main.SystemsTextsForTests());
+            Assert.Equal(["Commodore / C64 / 250407", "2 maintainers"], main.SystemsTextsForTests());
         });
     }
 
@@ -380,7 +581,8 @@ public sealed class TabMaintainerModesTests
 
     // ###########################################################################################
     // *** NOTHING OF THE PREVIOUS ACCOUNT'S STAYS. *** The next sign-in may be somebody else on the
-    // same machine: every list and badge goes, Admin is hidden again, and it starts on Review.
+    // same machine: every list and badge goes, the administrator's entries are hidden again, and it
+    // starts on Review.
     // (ResetScreens directly - ShowSignInPanel also forgets the stored session file, which is not
     // this test's to touch.)
     // ###########################################################################################
@@ -394,17 +596,17 @@ public sealed class TabMaintainerModesTests
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
             TabMaintainerModesTests.BetaList(main, background: true, TabMaintainerModesTests.Beta());
             main.ApplySystemsListAsync(new SystemOverviewAnswer([TabMaintainerModesTests.System()]), background: true).GetAwaiter().GetResult();
-            TabMaintainerModesTests.Mode(main, MaintainerMode.Admin);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
 
             TabMaintainerModesTests.Invoke(main, "ResetScreens");
 
             Assert.Equal(MaintainerMode.Review, main.ShownMode);
-            Assert.False(TabMaintainerModesTests.Shown(main, "AdminModeButton"));
+            Assert.Equal(["MyAccountItem", "ServerVersionItem"], main.AccountEntriesShownForTests);
             Assert.Empty(main.BetaTextsForTests());
             Assert.Empty(main.SystemsTextsForTests());
             Assert.Null(main.ModeBadgeForTests(MaintainerMode.Beta));
             Assert.Null(main.ModeBadgeForTests(MaintainerMode.Systems));
-            Assert.Null(main.FindControl<ListBox>("AdminList")!.SelectedItem);
+            Assert.Null(main.FindControl<ListBox>("AccountList")!.SelectedItem);
         });
     }
 
@@ -413,34 +615,25 @@ public sealed class TabMaintainerModesTests
     // -----------------------------------------------------------------------------------
 
     // ###########################################################################################
-    // *** THE BUTTONS NEVER RUN OUT OF THEIR COLUMN, WHATEVER THE BADGES SAY. *** Two-digit badges
-    // on all three counted buttons, the widest they ordinarily get: every button still ends inside
-    // the column (the old buttons once ran over the panel beside it - reported).
+    // *** THE SCREEN TABS NEVER RUN OUT OF THE TAB, WHATEVER THE BADGES SAY. *** Two-digit badges on
+    // all three counted tabs, the widest they ordinarily get: all four are shown, on one line, and
+    // end inside the tab. They were buttons wrapped onto two rows of the list column until
+    // 2026-10-01, and the old ones once ran over the panel beside it - reported.
     //
-    // WHETHER THEY SHARE ONE ROW IS NOT ASSERTED HERE, deliberately: this suite draws with
-    // Avalonia's stub headless font, whose glyphs are wider than the real one, so the row wraps here
-    // and not on screen. That was checked by rendering with the real font - at 340 wide the Admin
-    // button wrapped onto a row of its own, at 370 all four fit with "12", "12" and "42".
+    // 1700 wide, not CRT's 800 minimum: this suite draws with Avalonia's stub headless font, whose
+    // glyphs are much WIDER than the real one. Rendered with the real font and "12", "12" and "42",
+    // the four needed about 950 wide after the owner's longer names of 2026-10-04 ("Queue: Awaiting
+    // push from BETA to stable" and the rest); the last one's rename to "Account" the same day saved
+    // some, but at 800 it still wraps onto a second line (rendered), and with no badges at all the
+    // four fit at 800. Narrower, the last wraps, still inside the tab - the next test.
     // ###########################################################################################
     [Fact]
-    public void The_screen_buttons_stay_inside_the_column_with_two_digit_badges()
+    public void The_screen_tabs_stay_on_one_line_inside_the_tab_with_two_digit_badges()
     {
         UiTest.Run(() =>
         {
-            var main = new TabMaintainer();
-
-            Queue(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Row(id, $"Commodore/C{id}/1")).ToArray());
-            TabMaintainerModesTests.BetaList(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Beta($"Commodore/C{id}/1")).ToArray());
-            main.ApplySystemsListAsync(new SystemOverviewAnswer(
-                Enumerable.Range(1, 42).Select(id => TabMaintainerModesTests.System($"Commodore/C{id}/1")).ToList()), background: true).GetAwaiter().GetResult();
-
-            Invoke(main, "ShowQueuePanel");
-
-            // The tab in a plain window, for a layout pass. (It moved its CONTENT into one while it
-            // was a Window, whose own showing signed in to the server; a tab restores a session only
-            // from ReviewSessionStore, which no test points at a real file.)
-
-            var window = new Window { Content = main, Width = 1100, Height = 720 };
+            TabMaintainer main = TabMaintainerModesTests.WithTwoDigitBadges();
+            var window = new Window { Content = main, Width = 1700, Height = 720 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
@@ -448,20 +641,75 @@ public sealed class TabMaintainerModesTests
             Assert.Equal("12", main.ModeBadgeForTests(MaintainerMode.Beta));
             Assert.Equal("42", main.ModeBadgeForTests(MaintainerMode.Systems));
 
-            ListBox queue = main.FindControl<ListBox>("QueueList")!;
-            double columnRight = queue.TranslatePoint(new Point(queue.Bounds.Width, 0), window)!.Value.X;
+            List<Rect> tabs = TabMaintainerModesTests.ScreenTabsInside(main, window);
 
-            foreach (string name in new[] { "ReviewModeButton", "BetaModeButton", "SystemsModeButton", "AdminModeButton" })
-            {
-                Button button = main.FindControl<Button>(name)!;
-                double right = button.TranslatePoint(new Point(button.Bounds.Width, 0), window)!.Value.X;
-
-                Assert.True(button.IsEffectivelyVisible, $"{name} is not shown.");
-                Assert.True(right <= columnRight + 0.5, $"{name} ends at {right}, past the column's edge at {columnRight}.");
-            }
+            Assert.All(tabs, bounds => Assert.Equal(tabs[0].Y, bounds.Y, 0.5));
 
             window.Close();
         });
+    }
+
+    // ###########################################################################################
+    // NARROWER THAN THE FOUR NEED - CRT's 800 minimum, where the real font still wraps the last one
+    // with two-digit badges (rendered 2026-10-04, "Account" included):
+    // every tab is still shown and ends inside the tab, wrapped onto a line of its own rather than
+    // clipped or run over the edge (the WrapPanel's whole reason).
+    // ###########################################################################################
+    [Fact]
+    public void In_a_narrow_window_the_screen_tabs_wrap_inside_the_tab()
+    {
+        UiTest.Run(() =>
+        {
+            TabMaintainer main = TabMaintainerModesTests.WithTwoDigitBadges();
+            var window = new Window { Content = main, Width = 800, Height = 720 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            List<Rect> tabs = TabMaintainerModesTests.ScreenTabsInside(main, window);
+
+            Assert.Contains(tabs, bounds => bounds.Y > tabs[0].Y + 0.5);
+
+            window.Close();
+        });
+    }
+
+    // Every screen tab shown and ending inside the tab, read as laid out in `window`.
+    private static List<Rect> ScreenTabsInside(TabMaintainer main, Window window)
+    {
+        Grid queuePanel = main.FindControl<Grid>("QueuePanel")!;
+        double tabRight = queuePanel.TranslatePoint(new Point(queuePanel.Bounds.Width, 0), window)!.Value.X;
+        var tabs = new List<Rect>();
+
+        foreach (string name in new[] { "SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton" })
+        {
+            Button button = main.FindControl<Button>(name)!;
+            Point origin = button.TranslatePoint(default, window)!.Value;
+            double right = origin.X + button.Bounds.Width;
+
+            Assert.True(button.IsEffectivelyVisible, $"{name} is not shown.");
+            Assert.True(right <= tabRight + 0.5, $"{name} ends at {right}, past the tab's edge at {tabRight}.");
+            tabs.Add(new Rect(origin, button.Bounds.Size));
+        }
+
+        return tabs;
+    }
+
+    // An administrator's tab with two-digit badges on all three counted screens.
+    // The tab goes into a plain window for a layout pass: a tab restores a session only from
+    // ReviewSessionStore, which no test points at a real file.
+    private static TabMaintainer WithTwoDigitBadges()
+    {
+        var main = new TabMaintainer();
+
+        Queue(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Row(id, $"Commodore/C{id}/1")).ToArray());
+        TabMaintainerModesTests.BetaList(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Beta($"Commodore/C{id}/1")).ToArray());
+        main.ApplySystemsListAsync(new SystemOverviewAnswer(
+            Enumerable.Range(1, 42).Select(id => TabMaintainerModesTests.System($"Commodore/C{id}/1")).ToList()), background: true).GetAwaiter().GetResult();
+
+        Invoke(main, "ShowQueuePanel");
+        typeof(TabMaintainer).GetMethod("SetAdministrator", TabMaintainerModesTests.Any)!.Invoke(main, [true]);
+
+        return main;
     }
 
     // ###########################################################################################
@@ -531,8 +779,112 @@ public sealed class TabMaintainerModesTests
         });
     }
 
+    // ###########################################################################################
+    // "SERVER VERSION" UNDER "Account" (owner requests, 2026-10-04: "I would like to see the server
+    // version listed, so it is clear to me what has been deployed", then as a list entry of its own,
+    // worded as three lines - it was one line above the account row - and "do have the "Server
+    // version" entry in the list available for all maintainers"). Asked of GET /api/health when the
+    // entry is chosen, shown in its panel and nowhere else, and asked again when Account is shown
+    // again with it chosen - so a deploy since shows. A server that does not answer is said, never a
+    // blank line. All of it as a maintainer who is NOT an administrator.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_server_version_entry_shows_the_three_lines_and_asks_again_after_a_deploy()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            string version = "4.6.0";
+            int asked = 0;
+
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(request =>
+            {
+                if (request.RequestUri!.AbsolutePath != "/api/health")
+                    return AnsweringHttpHandler.Refused();
+
+                asked++;
+                return AnsweringHttpHandler.Json($"{{\"status\":\"ok\",\"version\":\"{version}\",\"utc\":\"2026-10-04T12:00:00+00:00\",\"apiRevision\":1}}");
+            }))));
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            await main.ShowModeAsync(MaintainerMode.Account);
+
+            // Account opens on "My account": the version is neither shown nor asked.
+            Assert.Null(main.ServerVersionLineForTests);
+            Assert.Equal(0, asked);
+
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+
+            string application = ClientVersionContract.ApiRevision.ToString(global::System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal($"Server version [4.6.0]\nAPI server version [1]\nAPI application version [{application}]", main.ServerVersionLineForTests);
+            Assert.False(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
+
+            // Gone with another entry, and with another screen.
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "MyAccountItem");
+            Assert.Null(main.ServerVersionLineForTests);
+
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+            await main.ShowModeAsync(MaintainerMode.Systems);
+            Assert.Null(main.ServerVersionLineForTests);
+
+            // A deploy since: showing Account again, the entry still chosen, asks again.
+            version = "4.6.1";
+            int askedBefore = asked;
+            await main.ShowModeAsync(MaintainerMode.Account);
+
+            Assert.Equal(askedBefore + 1, asked);
+            Assert.StartsWith("Server version [4.6.1]", main.ServerVersionLineForTests);
+        });
+    }
+
+    // The line above the account row is gone: the version has its own entry now.
+    [Fact]
+    public void The_server_version_is_no_longer_shown_above_the_account_row()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+
+            Assert.Null(main.FindControl<TextBlock>("ServerVersionText"));
+        });
+    }
+
+    [Fact]
+    public async Task A_server_that_does_not_answer_is_said_under_Server_version()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(_ =>
+                new HttpResponseMessage(global::System.Net.HttpStatusCode.BadGateway)))));
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            await main.ShowModeAsync(MaintainerMode.Account);
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+
+            Assert.StartsWith("Server version: the server did not answer\nAPI application version [", main.ServerVersionLineForTests);
+        });
+    }
+
+    // Chooses an entry in the Account list and lets what it reads finish - its SelectionChanged
+    // handler is async, and the test's client answers at once.
+    private static async Task ChooseAccountEntryAsync(TabMaintainer main, string item)
+    {
+        main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>(item);
+
+        for (int pass = 0; pass < 5; pass++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+    }
+
     // The buttons' names (owner request, 2026-09-27: "'Review' should be renamed to 'Contributor
-    // Submissions', 'BETA' button should be renamed to 'Beta > Prod'").
+    // Submissions', 'BETA' button should be renamed to 'Beta > Prod'"; and 2026-10-04: "rename the
+    // "Contributor Submissions" to "Queue: Contributor submissions" and "BETA > Stable" to "Queue:
+    // Awaiting push from BETA to stable" and "Admin" to "Administrator activities""; and later the
+    // same day: "rename the "Administrator activities" tab to "Account""). Written out here rather
+    // than read from MaintainerScreenWording, so a change to the shared words fails.
     [Fact]
     public void The_screen_buttons_are_named_as_the_owner_asked()
     {
@@ -541,11 +893,22 @@ public sealed class TabMaintainerModesTests
             var main = new TabMaintainer();
 
             string Label(string button) =>
-                ((StackPanel)main.FindControl<Button>(button)!.Content!).Children.OfType<TextBlock>().First().Text!;
+                main.FindControl<Button>(button)!.Content switch
+                {
+                    StackPanel panel => panel.Children.OfType<TextBlock>().First().Text!,
+                    TextBlock text => text.Text!,
+                    var other => throw new InvalidOperationException($"{button} holds {other}")
+                };
 
             Assert.Equal("Systems", Label("SystemsModeButton"));
-            Assert.Equal("Contributor Submissions", Label("ReviewModeButton"));
-            Assert.Equal("Beta > Prod", Label("BetaModeButton"));
+            Assert.Equal("Queue: Contributor submissions", Label("ReviewModeButton"));
+            Assert.Equal("Queue: Awaiting push from BETA to stable", Label("BetaModeButton"));
+            Assert.Equal("Account", Label("AccountModeButton"));
+
+            // The words every message naming a screen is built from are the tab strip's own.
+            Assert.Equal(MaintainerScreenWording.ContributorQueue, Label("ReviewModeButton"));
+            Assert.Equal(MaintainerScreenWording.BetaQueue, Label("BetaModeButton"));
+            Assert.Equal(MaintainerScreenWording.Account, Label("AccountModeButton"));
         });
     }
 
@@ -558,7 +921,7 @@ public sealed class TabMaintainerModesTests
             var main = new TabMaintainer();
 
             Assert.Equal(
-                ["SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AdminModeButton"],
+                ["SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton"],
                 main.FindControl<WrapPanel>("ModeBar")!.Children.Select(child => child.Name));
 
             Assert.Contains("Selected", main.FindControl<Button>("ReviewModeButton")!.Classes);
@@ -582,81 +945,8 @@ public sealed class TabMaintainerModesTests
             TextBlock line = ((StackPanel)item.Content!).Children.OfType<TextBlock>().ElementAt(1);
             List<Avalonia.Controls.Documents.Run> runs = line.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
 
-            Assert.Equal("In BETA and production - nobody assigned", string.Concat(runs.Select(run => run.Text)));
+            Assert.Equal("nobody assigned", string.Concat(runs.Select(run => run.Text)));
             Assert.Equal(["nobody assigned"], runs.Where(run => run.FontWeight == Avalonia.Media.FontWeight.Bold).Select(run => run.Text));
-        });
-    }
-
-    // ###########################################################################################
-    // "I HAVE AN INVITATION" (2026-09-27): the code, a name and a password go to the server; on
-    // success the sign-in fields are filled with the invited address and the password - the
-    // password reset's rule, since accepting opens no session - and the panel closes.
-    // ###########################################################################################
-    [Fact]
-    public async Task Accepting_an_invitation_sends_the_code_name_and_password_and_fills_the_sign_in_fields()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            var main = new TabMaintainer();
-            var sent = new List<AcceptInvitationRequest>();
-
-            main.AcceptInvitationOverrideForTests = request =>
-            {
-                sent.Add(request);
-                return Task.FromResult(ReviewApiResult<AcceptInvitationAnswer>.Ok(
-                    new AcceptInvitationAnswer("anna@example.com", ["Commodore/C64/250407"], "Your account is ready.")));
-            };
-
-            main.FindControl<Button>("HaveInvitationButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            Assert.True(main.FindControl<StackPanel>("InvitationPanel")!.IsVisible);
-
-            main.FindControl<TextBox>("InvitationCodeTextBox")!.Text = "  the-code  ";
-            main.FindControl<TextBox>("InvitationNameTextBox")!.Text = "Anna";
-            main.FindControl<TextBox>("InvitationPasswordTextBox")!.Text = "correct horse battery staple";
-
-            await main.AcceptInvitationAsync();
-
-            Assert.Equal([new AcceptInvitationRequest("the-code", "Anna", "correct horse battery staple")], sent);
-            Assert.Equal("anna@example.com", main.FindControl<TextBox>("EmailTextBox")!.Text);
-            Assert.Equal("correct horse battery staple", main.FindControl<TextBox>("PasswordTextBox")!.Text);
-            Assert.False(main.FindControl<StackPanel>("InvitationPanel")!.IsVisible);
-            Assert.Equal("Your account is ready.", main.FindControl<TextBlock>("SignInMessageText")!.Text);
-            Assert.Equal(string.Empty, main.FindControl<TextBox>("InvitationCodeTextBox")!.Text);
-        });
-    }
-
-    // A refusal keeps everything typed and shows the server's words; an empty box asks nobody.
-    [Fact]
-    public async Task A_refused_or_incomplete_invitation_keeps_the_panel_and_says_why()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            var main = new TabMaintainer();
-            int asked = 0;
-
-            main.AcceptInvitationOverrideForTests = _ =>
-            {
-                asked++;
-                return Task.FromResult(ReviewApiResult<AcceptInvitationAnswer>.Failed(
-                    ReviewApiFailure.Refused, "That invitation has expired. Ask the administrator for a new one."));
-            };
-
-            main.FindControl<Button>("HaveInvitationButton")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
-            await main.AcceptInvitationAsync();
-            Assert.Equal(0, asked);
-            Assert.Equal("Paste the code from the invitation email first.", main.FindControl<TextBlock>("SignInMessageText")!.Text);
-
-            main.FindControl<TextBox>("InvitationCodeTextBox")!.Text = "old-code";
-            main.FindControl<TextBox>("InvitationNameTextBox")!.Text = "Anna";
-            main.FindControl<TextBox>("InvitationPasswordTextBox")!.Text = "correct horse battery staple";
-
-            await main.AcceptInvitationAsync();
-
-            Assert.Equal(1, asked);
-            Assert.Equal("That invitation has expired. Ask the administrator for a new one.", main.FindControl<TextBlock>("SignInMessageText")!.Text);
-            Assert.True(main.FindControl<StackPanel>("InvitationPanel")!.IsVisible);
-            Assert.Equal("old-code", main.FindControl<TextBox>("InvitationCodeTextBox")!.Text);
         });
     }
 
@@ -691,7 +981,7 @@ public sealed class TabMaintainerModesTests
                 // the tab included (here, the tab itself: MaintainerTabHost).
                 seen = overlay.IsVisible && main.Opacity < 1;
                 Assert.Equal(
-                    "Pushing Commodore/C64/250407 back to the queue. BETA's data is being put back as production has it - please wait until it is done.",
+                    "Pushing Commodore/C64/250407 back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.",
                     overlay.Message);
                 return Task.CompletedTask;
             });

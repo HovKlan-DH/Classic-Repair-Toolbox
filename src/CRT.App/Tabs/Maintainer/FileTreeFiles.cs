@@ -109,18 +109,7 @@ namespace CRT
             return result;
         }
 
-        private async Task<bool> LaunchAsync(string fullPath)
-        {
-            try
-            {
-                return TopLevel.GetTopLevel(this.thisAnchor)?.Launcher is { } launcher &&
-                    await launcher.LaunchFileInfoAsync(new FileInfo(fullPath));
-            }
-            catch (Exception)
-            {
-                // A platform with no program for the type; the tree says it could not open.
-                return false;
-            }
-        }
+        // A platform with no program for the type answers false; the tree says it could not open.
+        private Task<bool> LaunchAsync(string fullPath) => MaintainerFileLauncher.LaunchAsync(this.thisAnchor, fullPath);
     }
 }

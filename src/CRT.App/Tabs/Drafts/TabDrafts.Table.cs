@@ -85,7 +85,9 @@ namespace CRT
                 DataManager.DataRoot,
                 DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
 
-            if (!this.TableEditor.Load(DraftManager.DraftsRoot, entry.ExcelDataFile, published))
+            // The downloaded data too, so the table's checks find a row's files where a submit
+            // finds them (owner request, 2026-10-02).
+            if (!this.TableEditor.Load(DraftManager.DraftsRoot, entry.ExcelDataFile, published, DataManager.DataRoot))
             {
                 Logger.Warning($"Could not open the table for the draft of [{entry.ExcelDataFile}] - its workbook could not be read");
                 return;
@@ -168,7 +170,7 @@ namespace CRT
 
             return await this.AskAboutUnsavedTableEditsAsync(owner) switch
             {
-                UnsavedTableEditsChoice.Save => this.TableEditor.Save() == DraftWorkbookEditOutcome.Saved,
+                UnsavedTableEditsChoice.Save => await this.TableEditor.SaveAsync() == DraftWorkbookEditOutcome.Saved,
                 UnsavedTableEditsChoice.Discard => true,
                 _ => false,
             };
@@ -189,7 +191,7 @@ namespace CRT
             switch (await this.AskAboutUnsavedTableEditsAsync(owner: null))
             {
                 case UnsavedTableEditsChoice.Save:
-                    return this.TableEditor.Save() == DraftWorkbookEditOutcome.Saved;
+                    return await this.TableEditor.SaveAsync() == DraftWorkbookEditOutcome.Saved;
 
                 case UnsavedTableEditsChoice.Discard:
                     this.TableEditor.Reload();

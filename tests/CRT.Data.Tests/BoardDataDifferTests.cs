@@ -489,4 +489,136 @@ public sealed class BoardDataDifferTests
         Assert.Equal(BoardRowChangeKind.Added, change.Kind);
         Assert.Equal("U8 / NTSC", change.DisplayLabel);
     }
+
+    // ------------------------------------------------------------------ Identifying cells changed (2026-10-04)
+
+    // ###########################################################################################
+    // *** A ROW WHOSE IDENTIFYING CELLS ALONE CHANGED IS ONE ROW MODIFIED (owner decision,
+    // 2026-10-04). *** A credit's "Name or handle" given " 2" was a removal plus an addition: "This
+    // seems weird to me." The owner chose the strict rule - everything but the identifying cells the
+    // same, and something filled in left to recognise the row by - over "mostly the same row".
+    // ###########################################################################################
+    [Fact]
+    public void A_credits_name_changed_and_nothing_else_is_ONE_row_modified()
+    {
+        BoardData published = Board(credits:
+        [
+            new CreditEntry { Category = "Board labelling", NameOrHandle = "Dennis", Contact = "dennis@example.org" },
+        ]);
+        BoardData draft = Board(credits:
+        [
+            new CreditEntry { Category = "Board labelling", NameOrHandle = "Dennis 2", Contact = "dennis@example.org" },
+        ]);
+
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(published, draft));
+
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+        Assert.Equal(["NameOrHandle"], change.ChangedFields);
+        Assert.Equal(BoardDraftNaturalKeys.ForCredit("Board labelling", "", "Dennis 2"), change.NaturalKey);
+    }
+
+    [Fact]
+    public void A_credits_name_AND_contact_changed_is_still_a_removal_plus_an_addition()
+    {
+        // A different person, as far as anything can tell - the owner's own example of where the
+        // strict rule stops.
+        BoardData published = Board(credits: [new CreditEntry { Category = "Board labelling", NameOrHandle = "Dennis", Contact = "dennis@example.org" }]);
+        BoardData draft = Board(credits: [new CreditEntry { Category = "Board labelling", NameOrHandle = "Jane", Contact = "jane@example.org" }]);
+
+        Assert.Equal(
+            [BoardRowChangeKind.Added, BoardRowChangeKind.Deleted],
+            BoardDataDiffer.Compare(published, draft).Select(change => change.Kind));
+    }
+
+    [Fact]
+    public void A_component_relabelled_with_its_values_kept_is_one_row_but_with_ANOTHER_value_changed_is_two()
+    {
+        BoardData published = Board(components: [Component("U8", "CPU", "906114")]);
+
+        BoardRowChange relabelled = Assert.Single(BoardDataDiffer.Compare(published, Board(components: [Component("U9", "CPU", "906114")])));
+        Assert.Equal(BoardRowChangeKind.Modified, relabelled.Kind);
+        Assert.Equal(["BoardLabel"], relabelled.ChangedFields);
+        Assert.Equal("U9", relabelled.DisplayLabel);
+
+        Assert.Equal(
+            [BoardRowChangeKind.Added, BoardRowChangeKind.Deleted],
+            BoardDataDiffer.Compare(published, Board(components: [Component("U9", "VIC", "906114")])).Select(change => change.Kind));
+    }
+
+    // Nothing left to recognise the row by: every other cell blank, and no identifying cell shared.
+    // Pairing such rows would call any deletion plus any addition a rename.
+    [Fact]
+    public void Rows_with_nothing_filled_in_in_common_are_never_paired()
+    {
+        BoardData published = Board(components: [Component("U8")]);
+        BoardData draft = Board(components: [Component("U9")]);
+
+        Assert.Equal(
+            [BoardRowChangeKind.Added, BoardRowChangeKind.Deleted],
+            BoardDataDiffer.Compare(published, draft).Select(change => change.Kind));
+    }
+
+    // An important signal is two identifying cells and nothing else: a new net is one row while its
+    // display name stays, and two rows once neither half does.
+    [Fact]
+    public void An_important_signals_new_net_is_one_row_while_its_display_name_stays()
+    {
+        var published = new BoardData { KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "RESET", KiCadNetName = "/RESET" }] };
+
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            published,
+            new BoardData { KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "RESET", KiCadNetName = "~{RESET}" }] }));
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+
+        Assert.Equal(
+            [BoardRowChangeKind.Added, BoardRowChangeKind.Deleted],
+            BoardDataDiffer.Compare(
+                published,
+                new BoardData { KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "9VAC", KiCadNetName = "9VAC~" }] })
+            .Select(change => change.Kind));
+    }
+
+    // ###########################################################################################
+    // Three credits of one person, each renamed: they all share the contact, so each could be any
+    // other's rename - the one sharing the most filled-in identifying cells (its Category) wins, and
+    // every row keeps its own.
+    // ###########################################################################################
+    [Fact]
+    public void Several_rows_renamed_alike_each_pair_with_the_row_sharing_most_of_its_key()
+    {
+        CreditEntry Credit(string category, string name) => new() { Category = category, NameOrHandle = name, Contact = "dennis@example.org" };
+
+        List<object> removed = [Credit("Board labelling", "Dennis"), Credit("Board data", "Dennis"), Credit("Oscilloscope", "Dennis")];
+        List<object> added = [Credit("Oscilloscope", "Dennis 2"), Credit("Board labelling", "Dennis 2"), Credit("Board data", "Dennis 2")];
+
+        IReadOnlyList<BoardRowRename> pairs = BoardDataDiffer.PairRenamedRows(removed, added);
+
+        Assert.Equal([new BoardRowRename(0, 1), new BoardRowRename(1, 2), new BoardRowRename(2, 0)], pairs);
+    }
+
+    // The table holds new rows in screen order and the saved board in saved order, and both must pair
+    // alike - so which added row wins a tie may not depend on where it is in the list.
+    [Fact]
+    public void Which_added_row_a_tie_goes_to_does_not_depend_on_their_order()
+    {
+        List<object> removed = [Component("U8", "Capacitor", "100n")];
+        List<object> added = [Component("C2", "Capacitor", "100n"), Component("C1", "Capacitor", "100n")];
+
+        object forward = added[BoardDataDiffer.PairRenamedRows(removed, added).Single().Added];
+        added.Reverse();
+        object backward = added[BoardDataDiffer.PairRenamedRows(removed, added).Single().Added];
+
+        Assert.Same(forward, backward);
+        Assert.Equal("C1", ((ComponentEntry)forward).BoardLabel);
+    }
+
+    [Fact]
+    public void Each_row_is_in_at_most_one_pair_and_rows_of_different_kinds_never_pair()
+    {
+        List<object> removed = [Component("U8", "CPU"), new BoardLinkEntry { Category = "CPU", Name = "U8" }];
+        List<object> added = [Component("U9", "CPU"), Component("U10", "CPU")];
+
+        BoardRowRename pair = Assert.Single(BoardDataDiffer.PairRenamedRows(removed, added));
+        Assert.Equal(0, pair.Removed);
+    }
 }

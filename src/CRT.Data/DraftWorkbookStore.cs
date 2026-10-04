@@ -288,6 +288,17 @@ namespace Handlers.DataHandling
         // discarded or retired draft came back. Now everything else goes first; a delete that stops
         // part-way leaves the marker, so the folder is still the same draft - on the Drafts tab,
         // where discarding it again finishes the job.
+        //
+        // *** AND THE WORKBOOK GOES LAST BUT ONE (owner report, 2026-10-02). *** Everything else was
+        // still deleted in NAME order, and "Data ZX 4B v2.0.0.xlsx" sorts before "Issue 4.B.png": a
+        // published draft being retired lost its workbook and sidecar, then stopped at an image that
+        // something had open for a moment. A marker beside three images is no draft at all - nothing
+        // can compare it with the published board, so it was never retired, and it read as "0 rows
+        // changed" with the official data moved under it. Now the copied files go first, then the
+        // workbook, then its sidecar, then the marker: a stop anywhere before the workbook leaves a
+        // whole draft (any file already gone is found in the published tree, DraftFileResolver), and
+        // the workbook before the sidecar because Excel holding the workbook is the usual stop - a
+        // workbook left without its highlights and calibrations would read as changes.
         // ###########################################################################################
         public static bool Discard(string draftsRoot, string excelDataFile)
         {
@@ -300,7 +311,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                DraftWorkbookStore.DeleteMarkerLast(folder);
+                DraftWorkbookStore.DeleteMarkerLast(folder, DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile));
 
                 CrtLog.Info($"Discarded draft for [{excelDataFile}]");
 
@@ -316,14 +327,18 @@ namespace Handlers.DataHandling
             }
         }
 
-        // Everything in the folder but the marker, then the marker, then the (now empty) folder.
-        private static void DeleteMarkerLast(string folder)
+        // Everything in the folder but the workbook, its sidecar and the marker; then those three in
+        // that order; then the (now empty) folder. See Discard for why the order is the design.
+        private static void DeleteMarkerLast(string folder, string workbook)
         {
             string marker = Path.Combine(folder, DraftFolderLayout.DraftMarkerFileName);
+            string sidecar = workbook.Length > 0 ? BoardComponentHighlightStorage.GetJsonPath(workbook) : string.Empty;
+
+            string[] last = [workbook, sidecar, marker];
 
             foreach (string entry in Directory.GetFileSystemEntries(folder))
             {
-                if (string.Equals(Path.GetFileName(entry), DraftFolderLayout.DraftMarkerFileName, StringComparison.Ordinal))
+                if (last.Any(path => DraftWorkbookStore.IsSamePath(entry, path)))
                 {
                     continue;
                 }
@@ -338,13 +353,20 @@ namespace Handlers.DataHandling
                 }
             }
 
-            if (File.Exists(marker))
+            foreach (string path in last)
             {
-                File.Delete(marker);
+                if (path.Length > 0 && File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
 
             Directory.Delete(folder, recursive: false);
         }
+
+        private static bool IsSamePath(string entry, string path) =>
+            path.Length > 0
+            && string.Equals(Path.GetFullPath(entry), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
 
         // ###########################################################################################
         // Removes the folders a discarded draft leaves EMPTY above it - "Drafts/Commodore/C128" once

@@ -18,7 +18,8 @@ namespace CRT.Server.Handlers.Submissions
     //
     // Asked for on demand rather than sent with every submission detail: it walks the board's
     // folder and builds the publish plan, which hashes files, and the detail is read on every
-    // click in the queue.
+    // click in the queue. Each file carries the size of what opens from it - BETA's file, or the
+    // submission's upload (TreeFileSizes, 2026-10-04).
     // ###########################################################################################
     public static class SubmissionFileTreeFlow
     {
@@ -68,12 +69,14 @@ namespace CRT.Server.Handlers.Submissions
                         detail.WorkbookPath, board.ComponentHighlights, PublishMerge.CalibrationsOf(manifest)));
             }
 
-            return SystemFileEntries.ForApproval(
+            IReadOnlyList<SystemFileEntry> entries = SystemFileEntries.ForApproval(
                 SubmittedFileFacts.Build(manifest, hashes),
                 removals.Files,
                 SubmissionFileTreeFlow.OwnFiles(root, manifest),
                 workbook,
                 sidecar);
+
+            return TreeFileSizes.Attach(entries, root, submitted: TreeFileSizes.OfSubmission(manifest));
         }
 
         // ###########################################################################################
@@ -90,6 +93,13 @@ namespace CRT.Server.Handlers.Submissions
                 ? location.SystemFolder
                 : Path.Combine(root, manifest.Manufacturer.Trim(), manifest.Hardware.Trim(), manifest.Board.Trim());
 
+            return SubmissionFileTreeFlow.FilesIn(root, folder);
+        }
+
+        // Every file in a system's folder, by the rule above - also the Systems screen's Files view
+        // (SystemFilesFlow, 2026-10-03), so the two trees cannot list one folder differently.
+        internal static IReadOnlyList<string> FilesIn(string root, string folder)
+        {
             if (!Directory.Exists(folder))
                 return [];
 

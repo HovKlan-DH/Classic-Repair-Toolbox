@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
 using Handlers.Online;
 using System;
 using System.Globalization;
@@ -39,6 +40,8 @@ namespace CRT
     // FILE MAP:
     //   TabDrafts.axaml.cs  - the list, its row actions (discard, files, drift, submit), the badge
     //   TabDrafts.Table.cs  - table mode: opening/closing the table, and the unsaved-edits prompts
+    //   TabDrafts.OutsideChanges.cs - reading the list again when the tab is shown or CRT's window
+    //                         comes back to the front, so a draft edited in Excel shows its new numbers
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {
@@ -145,10 +148,23 @@ namespace CRT
                 // anywhere (Excel included) is still counted afresh.
                 this.thisDraftedSystems.Add(entry);
 
+                SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForSystem(
+                    receipts,
+                    SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                    status.CreatedUtc);
+
                 this.Drafts.Add(new DraftListItem(
                     entry,
                     status,
                     DraftStatusReader.CountChangesCached(status),
+
+                    // The table's own checks, on the row (owner report, 2026-10-02) - remembered
+                    // until the workbook or its sidecar changes, so this costs nothing for a draft
+                    // nobody touched, and catches an edit made in Excel.
+                    DraftStatusReader.CountProblemsCached(
+                        status,
+                        DataManager.DataRoot,
+                        DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
                     ResolveDriftState(entry, status),
                     this.DiscardAsync,
                     this.ManageFilesAsync,
@@ -156,10 +172,8 @@ namespace CRT
                     this.SubmitAsync,
                     isTableOpen: this.IsTableOpenFor(entry),
                     this.ToggleTableAsync,
-                    SubmissionReceiptPresenter.LatestForSystem(
-                        receipts,
-                        SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
-                        status.CreatedUtc)));
+                    lastSubmission,
+                    TabDrafts.IsAlreadySent(entry, status, lastSubmission)));
             }
 
             this.ApplyTableMode();
@@ -507,12 +521,43 @@ namespace CRT
                 return;
             }
 
+            // ###########################################################################################
+            // *** THE SAME DRAFT IS NOT SENT TWICE (owner request, 2026-10-03). *** The row greys
+            // Submit out, but it can be a moment behind - an edit in Excel shows only when CRT's
+            // window is next activated - so the draft is looked at again here, now that the
+            // table's edits are settled. What it gives is also what the receipt remembers.
+            // ###########################################################################################
+            string draftFingerprint = TabDrafts.FingerprintOf(entry, status);
+
+            SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForSystem(
+                this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All,
+                SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                status.CreatedUtc);
+
+            if (SubmissionReceiptPresenter.IsAlreadySent(lastSubmission, draftFingerprint))
+            {
+                this.RefreshDrafts();
+                return;
+            }
+
             // The board as it should READ after publishing. Since Phase 6 that is simply the
             // draft's own workbook - LoadBoardDataAsync resolves it - rather than an official
             // board with drafted rows merged over it. The submission contract is unchanged:
             // SubmissionManifestBuilder has always wanted the complete intended state.
             var mergedData = await DataManager.LoadBoardDataAsync(entry);
             if (mergedData == null)
+            {
+                return;
+            }
+
+            // ###########################################################################################
+            // *** ERRORS ARE FIXED BEFORE ANYTHING IS SENT (owner request, 2026-10-02: "All error
+            // should be fixed before submission can be done"). *** The table's own checks, over the
+            // board a submit would send, with its files looked for where a submit looks
+            // (BoardDataChecks; every error there is one the server would refuse). With any, nothing
+            // is sent: the table opens on exactly those rows, saying why.
+            // ###########################################################################################
+            if (await this.StopForErrorsAsync(entry, mergedData))
             {
                 return;
             }
@@ -596,7 +641,11 @@ namespace CRT
                         DataManager.DataRoot,
                         DraftManager.DraftsRoot,
                         entry.ExcelDataFile),
-                    mergedData));
+                    mergedData),
+
+                // A signed-in maintainer sends with the account (2026-10-01) - see UseMaintainerAccount.
+                this.thisMaintainerAccount,
+                draftFingerprint);
 
             await window.ShowDialog(ownerWindow);
 
@@ -606,10 +655,91 @@ namespace CRT
             this.RefreshDrafts();
         }
 
+        // What the draft holds, as DraftFingerprint gives it - see that class.
+        private static string FingerprintOf(HardwareBoardEntry entry, DraftStatus status) =>
+            DraftFingerprint.Compute(
+                status.WorkbookPath,
+                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+
+        // Whether the row's Submit is greyed out because the draft was already sent as it is. The
+        // draft is only read when its latest submission remembers what it sent, so a draft never
+        // sent costs nothing here.
+        private static bool IsAlreadySent(HardwareBoardEntry entry, DraftStatus status, SubmissionReceipt? lastSubmission) =>
+            lastSubmission is { DraftFingerprint.Length: > 0 } &&
+            SubmissionReceiptPresenter.IsAlreadySent(lastSubmission, TabDrafts.FingerprintOf(entry, status));
+
         // Lets a headless test drive the submit flow without standing up a real dialog that would
         // try to reach the server. null (the default) is the shipped path - a plain
         // new SubmitDraftWindow() - exactly as every other window on this tab is constructed.
         internal Func<SubmitDraftWindow>? SubmitWindowFactoryForTests { get; set; }
+
+        // ###########################################################################################
+        // True when `board` - what a submit of this draft would send - has errors, which are then
+        // shown in the table instead of anything being sent. Apart from SubmitAsync so a test can
+        // drive it without the dialog's window.
+        // ###########################################################################################
+        internal async Task<bool> StopForErrorsAsync(HardwareBoardEntry entry, BoardData board)
+        {
+            int errors = TabDrafts.CountErrors(entry, board);
+
+            if (errors == 0)
+            {
+                return false;
+            }
+
+            await this.ShowErrorsBeforeSubmitAsync(entry, errors);
+            return true;
+        }
+
+        // The errors in the board a submit of this draft would send - the table's own checks.
+        private static int CountErrors(HardwareBoardEntry entry, BoardData board) =>
+            BoardDataChecks.Check(
+                    BoardCheckRows.From(board),
+                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                    BoardCheckScope.Everything)
+                .Count(problem => problem.Level == BoardProblemLevel.Error);
+
+        // ###########################################################################################
+        // Submit pressed on a draft with errors: its table, showing only the rows with errors (the
+        // colour key's "Errors" picked, which takes the table to the first sheet with any), and a
+        // sentence saying what to do. Already open, the table is kept as it is, unsaved edits and all.
+        // ###########################################################################################
+        private async Task ShowErrorsBeforeSubmitAsync(HardwareBoardEntry entry, int errors)
+        {
+            if (!this.IsTableOpenFor(entry))
+            {
+                await this.OpenTableAsync(entry);
+            }
+
+            if (!this.IsTableOpenFor(entry))
+            {
+                return;
+            }
+
+            // Not when every error is on a schematic, in no row: the filter would empty the table.
+            bool rowsWithErrors = this.TableEditor.CommitAndGetDocument()?.HasRowsShownBy(BoardTableRowKinds.Errors) == true;
+
+            if (rowsWithErrors)
+            {
+                this.TableEditor.Filter = BoardTableRowKinds.Errors;
+            }
+
+            this.TableEditor.ShowMessage(BoardTableProblemWording.SubmitBlocked(errors, rowsWithErrors));
+            this.FocusTableIfOpen();
+        }
+
+        // ###########################################################################################
+        // The maintainer signed in on the Maintainer tab, or null (owner request, 2026-10-01: "When I
+        // am a maintainer, and I have logged in, then I want to use that email address everywhere").
+        // Handed over by Main (ShareMaintainerSignIn) - this tab never reaches into the Maintainer
+        // tab - and passed to the Submit dialog, which shows the account's address and sends the
+        // submission with the account (ContactAddress).
+        // ###########################################################################################
+        private ReviewSession? thisMaintainerAccount;
+
+        internal void UseMaintainerAccount(ReviewSession? account) => this.thisMaintainerAccount = account;
+
+        internal ReviewSession? MaintainerAccountForTests => this.thisMaintainerAccount;
 
         // ###########################################################################################
         // Creates a whole new hardware/board of the user's own (session 2c, task 9) - the same
@@ -716,6 +846,19 @@ namespace CRT
 
         // The badge beside the name: this system's latest submission, in "My submissions"' words
         // and colour. Hidden when it was never sent.
+        // ###########################################################################################
+        // *** THE DRAFT'S ERRORS AND WARNINGS, ON ITS ROW (owner report, 2026-10-02: "It must
+        // check for errors when creating the draft, and if the board changes "offline", outside of
+        // app"). *** The table's own checks (DraftStatusReader.CountProblemsCached), so a draft with
+        // something to fix says so the moment it exists or is changed in Excel - not only once its
+        // table is opened. Red for errors (Submit opens the table on them instead of sending),
+        // amber for warnings, nothing at all for a clean draft.
+        // ###########################################################################################
+        public bool HasErrors { get; }
+        public string ErrorsText { get; } = string.Empty;
+        public bool HasWarnings { get; }
+        public string WarningsText { get; } = string.Empty;
+
         public bool HasSubmission { get; }
         public string SubmissionStateText { get; } = string.Empty;
         public string SubmissionTooltip { get; } = string.Empty;
@@ -761,6 +904,7 @@ namespace CRT
             HardwareBoardEntry entry,
             DraftStatus status,
             int changeCount,
+            BoardProblemCounts problems,
             DraftDriftState driftState,
             Func<HardwareBoardEntry, Task> discard,
             Func<HardwareBoardEntry, SystemFilesSection, Task> manageFiles,
@@ -768,7 +912,8 @@ namespace CRT
             Func<HardwareBoardEntry, Task> submit,
             bool isTableOpen,
             Func<HardwareBoardEntry, Task> toggleTable,
-            SubmissionReceipt? lastSubmission)
+            SubmissionReceipt? lastSubmission,
+            bool alreadySent = false)
         {
             this.DisplayName = entry.ToString();
             this.ExcelDataFile = entry.ExcelDataFile;
@@ -777,20 +922,26 @@ namespace CRT
             // *** THE SUBMISSION BADGE (owner request, 2026-09-27): "When I have submitted my
             // submission to the server, then I need to see that somehow". ***
             //
-            // The state words and their colour are "My submissions"' own (DescribeState,
-            // ClassifyState, AccentFor), so the badge moves with the review - "Submitted - awaiting ...",
-            // then "Published to BETA source", or "Changes requested" in orange - and can never say
+            // The state words and their colour are "My submissions"' own (DescribeReceiptState,
+            // ClassifyReceipt, AccentFor - a submission the server no longer knows reads "No longer on
+            // the server"), so the badge moves with the review - "Submitted - awaiting ...",
+            // then "Published to the BETA source", or "Changes requested" in orange - and can never say
             // anything that window does not. Its tooltip says which submission and when.
             // ###########################################################################################
             this.HasSubmission = lastSubmission is not null;
 
             if (lastSubmission is not null)
             {
-                this.SubmissionStateText = SubmissionReceiptPresenter.DescribeState(lastSubmission.LastKnownState);
+                this.SubmissionStateText = SubmissionReceiptPresenter.DescribeReceiptState(lastSubmission);
                 this.SubmissionTooltip = SubmissionReceiptPresenter.DescribeLastSubmission(lastSubmission);
                 this.SubmissionAccentBrush = SubmissionListItem.AccentFor(
-                    SubmissionReceiptPresenter.ClassifyState(lastSubmission.LastKnownState));
+                    SubmissionReceiptPresenter.ClassifyReceipt(lastSubmission));
             }
+
+            this.HasErrors = problems.Errors > 0;
+            this.ErrorsText = problems.Errors == 1 ? "1 error" : $"{problems.Errors} errors";
+            this.HasWarnings = problems.Warnings > 0;
+            this.WarningsText = problems.Warnings == 1 ? "1 warning" : $"{problems.Warnings} warnings";
 
             this.IsTableOpen = isTableOpen;
             this.TableButtonText = isTableOpen ? "Close table" : "Edit in table format";
@@ -828,15 +979,23 @@ namespace CRT
             // row or image is added to it, and this tab lists it from that moment. Sending it would
             // put an empty system in front of a maintainer, so the button says why instead.
             //
-            // A drafted system with rows is always submittable, drift or no drift - the server
-            // diffs against the base revision itself, and refusing to send while the official data
-            // has moved would strand a contributor behind a change they did not make.
-            this.CanSubmit = rowCount > 0;
+            // A drafted system with rows is submittable, drift or no drift - the server diffs
+            // against the base revision itself, and refusing to send while the official data has
+            // moved would strand a contributor behind a change they did not make.
+            //
+            // *** BUT NOT WHAT WAS JUST SENT (owner request, 2026-10-03: "It should not be possible
+            // to submit the same data again"). *** While the draft holds exactly what its latest
+            // submission sent, Submit is greyed out and says so - SubmissionReceiptPresenter.IsAlreadySent.
+            this.CanSubmit = rowCount > 0 && !alreadySent;
 
-            this.SubmitTooltip = this.CanSubmit
-                ? "Send this system for review. You do not need an account - only an email address, " +
-                  "so you can be told whether it was accepted."
-                : "There is nothing to send yet. Add some data to this system first.";
+            this.SubmitTooltip = rowCount == 0
+                ? "There is nothing to send yet. Add some data to this system first."
+                : alreadySent && lastSubmission is not null
+                    ? SubmissionReceiptPresenter.DescribeAlreadySent(lastSubmission)
+                : this.HasErrors
+                    ? $"This draft has {this.ErrorsText} to fix first - Submit opens its table on them instead of sending."
+                    : "Send this system for review. You do not need an account - only an email address, " +
+                      "so you can be told whether it was accepted.";
 
             this.DiscardCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => discard(entry)));
             this.ManageSchematicImagesCommand = new ActionCommand(() =>

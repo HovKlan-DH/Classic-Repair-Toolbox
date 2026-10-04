@@ -8,8 +8,8 @@ namespace Handlers.DataHandling
     // 2026-09-23).
     //
     // *** WHY THIS EXISTS. *** BoardWorkbookWriter used to build an empty package and write bare
-    // rows into it, so a published or newly created board lost the preamble, the documentation
-    // links, the coloured headers and the column widths that every hand-maintained board carries.
+    // rows into it, so a published or newly created board lost the preamble, the coloured headers
+    // and the column widths that every hand-maintained board carries.
     // Nothing was DELETED - it was simply never written - but the first publish of the C64 250407
     // turned a 190 KB owner-authored workbook into an 81 KB stripped one, and the header
     // block linking to the project's own documentation disappeared with it.
@@ -27,65 +27,42 @@ namespace Handlers.DataHandling
     public static class BoardWorkbookStyle
     {
         // ###########################################################################################
-        // The preamble occupies the rows ABOVE the header, and its shape is fixed:
+        // The preamble occupies the rows ABOVE the header, and its shape is the SAME ON EVERY SHEET:
         //
         //   1  # Hardware: <name>          16pt
         //   2  # Board: <name>             16pt
-        //   3  # Revision date: <date>     16pt, the DATE ITSELF bold   (Board schematics only)
+        //   3  # Revision date: <date>     16pt, the DATE ITSELF bold
         //   4  (blank)
-        //   5  Documentation of columns in this worksheet is availble here:
-        //   6  <the sheet's own documentation URL>
-        //   7  (blank)
-        //   8  <section title>             filled
-        //   9  <column headers>            filled
+        //   5  <section title>             filled
+        //   6  <column headers>            filled - and the panes are FROZEN under this row
         //
-        // Every other sheet omits row 3 and shifts up by one, which is exactly what the reference
-        // does - the revision date belongs to the BOARD, and Board schematics is where the reader
-        // looks for it (BoardDataReader.ScanRevisionDate searches that sheet's top-left 10x10).
+        // *** NO DOCUMENTATION LINES ANY MORE (owner request, 2026-10-02). *** Three rows used to
+        // sit between the blank line and the title: "Documentation of columns in this worksheet is
+        // availble here:", a link to the old Wiki's anchor for the sheet, and another blank line.
+        // The columns are maintained from within CRT now, so the project owner removed those rows
+        // from every published board and asked for CRT to stop writing them.
+        //
+        // *** THE REVISION DATE IS ON EVERY SHEET (owner request, 2026-10-02). *** It used to be on
+        // Board schematics alone, as the references had it, so the other sheets were a row shorter.
+        // It is the same date on all of them, and READING is unchanged: the board's date is still
+        // the one on Board schematics (BoardDataReader.ScanRevisionDate searches that sheet's
+        // top-left 10x10), so a hand edit that updates only one sheet must update that one.
         //
         // *** THE READER SCANS FOR THE HEADER ROW, so none of this is load-bearing for parsing. ***
         // ReadSheetRows walks from row 1 looking for the row carrying the required column names.
-        // That is what makes a preamble safe to add, and it is why this is presentation rather
-        // than contract - but it also means a change here cannot break reading, which is worth
-        // knowing before worrying about it.
+        // That is what makes the preamble safe to change - a published board in the old shape and
+        // one in the new shape read exactly alike.
         // ###########################################################################################
         public const int PreambleHardwareRow = 1;
         public const int PreambleBoardRow = 2;
+        public const int PreambleRevisionDateRow = 3;
 
-        // The typo is the project owner's own and is reproduced verbatim: the reference workbooks all
-        // say "availble", and silently correcting it here would make every generated sheet differ
-        // from every hand-made one for no benefit to anybody.
-        public const string DocumentationLeadIn =
-            "Documentation of columns in this worksheet is availble here:";
+        // The section title band, and the column headers directly under it.
+        public const int TitleRow = 5;
+        public const int HeaderRow = 6;
 
         // 16pt, matching the reference's three identity lines.
         public const float IdentityFontSize = 16f;
-
-        // ###########################################################################################
-        // Which documentation anchor each sheet links to.
-        //
-        // *** "Important signals" POINTS AT #worksheet-board-links IN THE REFERENCE, and that is
-        // reproduced rather than corrected. *** It may be a copy-paste slip in the original or it
-        // may be deliberate; either way this class's job is to match the reference, and quietly
-        // pointing it somewhere else would be a documentation change made by a formatting helper.
-        // If it is wrong, it is worth fixing in one place here AND in the shipped boards together.
-        // ###########################################################################################
-        private const string DocumentationBase =
-            "https://github.com/HovKlan-DH/Commodore-Repair-Toolbox/wiki/Documentation";
-
-        private static readonly Dictionary<string, string> DocumentationAnchors =
-            new(StringComparer.OrdinalIgnoreCase)
-            {
-                [BoardWorkbookSchema.SheetBoardSchematics] = "#worksheet-board-schematics",
-                [BoardWorkbookSchema.SheetComponents] = "#worksheet-components",
-                [BoardWorkbookSchema.SheetComponentImages] = "#worksheet-component-images",
-                [BoardWorkbookSchema.SheetComponentLocalFiles] = "#worksheet-component-local-files",
-                [BoardWorkbookSchema.SheetComponentLinks] = "#worksheet-component-links",
-                [BoardWorkbookSchema.SheetBoardLocalFiles] = "#worksheet-board-local-files",
-                [BoardWorkbookSchema.SheetBoardLinks] = "#worksheet-board-links",
-                [BoardWorkbookSchema.SheetKiCadImportantSignals] = "#worksheet-board-links",
-                [BoardWorkbookSchema.SheetCredits] = "#worksheet-credits",
-            };
 
         // ###########################################################################################
         // The title on the row directly above the column headers ("Components", "Board credits").
@@ -116,19 +93,28 @@ namespace Handlers.DataHandling
         // The reference stores these as THEME references with a TINT, which is where the trap is:
         //
         //   header band        fgColor theme="0" tint="-0.15"   -> white darkened 15% -> D9D9D9
-        //   section title band fgColor theme="1"  (no tint)     -> plain white
+        //   section title band fgColor theme="1"  (no tint)     -> BLACK, font theme="0" -> WHITE
         //
         // Two things make that easy to get backwards. In the STYLES part theme="0" is the light
         // background (white) and theme="1" the dark text colour - the opposite order to the theme
         // part's own clrScheme listing, where dk1 comes first. And a tint is not stored as a
         // colour at all, so reading the slot alone gives white for something that renders grey.
         //
+        // *** AND IT WAS GOT BACKWARDS, for the title band (owner report, 2026-09-30). *** This
+        // header said theme="1" is the dark colour and then called the band white, so every workbook
+        // CRT wrote - drafts, and every board published to BETA - carried a white "Components"
+        // strip where the shipped boards have a black one with white text. Checked again in the
+        // XML of BOTH references (C64 250407, C128 310378): every sheet's title band is theme 1
+        // (black) with theme 0 (white) text, across all its columns.
+        //
         // Written as literal RGB rather than theme+tint so a generated workbook, which carries the
-        // DEFAULT theme rather than the reference's, still renders the same grey.
+        // DEFAULT theme rather than the reference's, still renders the same colours.
         // ###########################################################################################
 
-        // Plain white - the band carrying the sheet's title sits above the header and is not shaded.
-        public const string SectionTitleFillRgb = "FFFFFFFF";
+        // Black, with white text - the band carrying the sheet's title, directly above the header.
+        public const string SectionTitleFillRgb = "FF000000";
+
+        public const string SectionTitleFontRgb = "FFFFFFFF";
 
         // ###########################################################################################
         // THE BOARD SCHEMATICS SHEET IS BANDED BY MEANING, not painted in one colour
@@ -174,8 +160,46 @@ namespace Handlers.DataHandling
         // Set rather than left to autofit because Excel does not re-measure a wrapped row's height
         // reliably when the file is written by a library rather than by Excel itself - the row can
         // come out one line tall with the text clipped.
+        //
+        // *** PER SHEET, AS THE REFERENCES HAVE IT (owner report, 2026-09-30). *** 57.6 is the
+        // schematics sheet's height; it was used for EVERY sheet, which drew a tall grey band over
+        // "Components" and every other header. The references (C64 250407, C128 310378) agree:
+        // Board schematics 57.6, Components and Component images 28.8 (two lines - "Short one-liner
+        // description" breaks onto a second), and every other sheet an ordinary one-line row with no
+        // wrap. HeaderRowHeightFor answers null for those: the row's own default.
         // ###########################################################################################
         public const double HeaderRowHeight = 57.6;
+
+        public const double TwoLineHeaderRowHeight = 28.8;
+
+        public static double? HeaderRowHeightFor(string sheetName)
+        {
+            if (string.Equals(sheetName, BoardWorkbookSchema.SheetBoardSchematics, StringComparison.OrdinalIgnoreCase))
+                return BoardWorkbookStyle.HeaderRowHeight;
+
+            if (string.Equals(sheetName, BoardWorkbookSchema.SheetComponents, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(sheetName, BoardWorkbookSchema.SheetComponentImages, StringComparison.OrdinalIgnoreCase))
+            {
+                return BoardWorkbookStyle.TwoLineHeaderRowHeight;
+            }
+
+            return null;
+        }
+
+        // ###########################################################################################
+        // THE TEXT A HEADER CELL CARRIES - the schema's column name, except where the references
+        // break it over two lines (owner report, 2026-09-30): "Short one-liner description" and
+        // "(one short line only!)" are separated by an Alt+Enter in both. Written on one line, the
+        // header ran across a column far wider than its reference width - and that width, keyed on
+        // the broken form, was never found at all.
+        //
+        // Safe to read: BoardDataReader.NormalizeHeader turns a line break in a header into a
+        // space, which is the schema's name exactly.
+        // ###########################################################################################
+        public static string HeaderTextFor(string columnName) =>
+            string.Equals(columnName, BoardWorkbookSchema.ColDescription, StringComparison.Ordinal)
+                ? "Short one-liner description\n(one short line only!)"
+                : columnName;
 
         // ###########################################################################################
         // THE FONT. Calibri 11 throughout, which is what the reference's default font is - and
@@ -306,37 +330,11 @@ namespace Handlers.DataHandling
         // White at 15% darker, which is what the column-header row actually shows.
         public const string HeaderFillRgb = "FFD9D9D9";
 
-        public static string DocumentationUrlFor(string sheetName)
-        {
-            return BoardWorkbookStyle.DocumentationAnchors.TryGetValue(sheetName, out string? anchor)
-                ? BoardWorkbookStyle.DocumentationBase + anchor
-                : BoardWorkbookStyle.DocumentationBase;
-        }
-
         public static string SectionTitleFor(string sheetName)
         {
             return BoardWorkbookStyle.SectionTitles.TryGetValue(sheetName, out string? title)
                 ? title
                 : sheetName;
-        }
-
-        // ###########################################################################################
-        // Where the header row lands, given whether this sheet carries the revision-date line.
-        //
-        // Board schematics: identity (3) + blank + lead-in + url + blank + title = header on row 9.
-        // Everything else:  identity (2) + blank + lead-in + url + blank + title = header on row 8.
-        // ###########################################################################################
-        public static int HeaderRowFor(string sheetName)
-        {
-            return BoardWorkbookStyle.HasRevisionDateRow(sheetName) ? 9 : 8;
-        }
-
-        public static bool HasRevisionDateRow(string sheetName)
-        {
-            return string.Equals(
-                sheetName,
-                BoardWorkbookSchema.SheetBoardSchematics,
-                StringComparison.OrdinalIgnoreCase);
         }
 
         // ###########################################################################################

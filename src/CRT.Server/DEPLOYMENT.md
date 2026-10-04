@@ -1338,8 +1338,9 @@ shared-file replacement; with nobody assigned, you alone.
 
 **A publish, a promotion or a push-back removes files only inside the system's own folder**
 (`Commodore/C64/250407/...`) - never under `Shared files`, `Generic shared files` or another
-system's folder. A shared file no board uses any more stays where it is; it shows up in **Admin >
-Unused files**, where you remove it when you choose.
+system's folder. A shared file no board uses any more stays where it is; it shows up in **Account >
+Unused files** (the Maintainer tab's Admin screen when this was written), where you remove it when
+you choose.
 
 Migration 0008 (the two approval tables) applies itself on the next start, like 0006 and 0007.
 
@@ -1493,7 +1494,8 @@ like the launch check-in). The server stores **one row per view** in `crt_review
 the board and its names from the published main Excel data file, when, the CRT version, operating
 system and CPU, whether CRT was downloading from the BETA source, and the **country** - looked up
 from the sender's address when the batch arrives. **No address and no identifier is stored.** The
-launch check-in (`app-checkin`, `crt_update`) is unchanged and carries on beside it.
+launch check-in (`crt_update`) carries on beside it - received by this service too since 3.11.0,
+which replaced the `app-checkin` PHP page.
 
 Nothing to configure (one optional setting, `CountLocalNetworkBoardViews`, is described below). Four
 things to do once, each checkable on its own:
@@ -1515,8 +1517,8 @@ sudo -u crt-server curl -s -m 5 "http://ip-api.com/json/8.8.8.8?fields=status,co
 ```
 
 Expect `{"status":"success","country":"United States","countryCode":"US"}`. If it fails, views are
-still stored, only without a country, and the journal says `Looking up a board view's country
-failed` (without the address). The unit's `RestrictAddressFamilies` already allows it.
+still stored, only without a country, and the journal says `Looking up a sender's country failed`
+(without the address). The unit's `RestrictAddressFamilies` already allows it.
 
 **3. Let the Fun facts page read the new table** (the page reads the database directly, as its other
 charts do; the `helligsoe` user has table-level grants only - never `crt_review.*`):
@@ -1578,6 +1580,233 @@ written anywhere); more are answered `429`, and CRT keeps those views and sends 
 Maintainer's Systems screen** shows each system's views ("48 views in 30 days" on its line, and the
 counts, countries and BETA-source views in its panel), so deploy the new CRT Maintainer with this
 build to see them - an older one simply shows none.
+
+## API usage - which CRT versions call which route (migration 0018, server 4.7.0)
+
+From server 4.7.0 every request that reaches a route is counted in memory - per day, route PATTERN
+(`/api/review/submissions/{submissionId:long}`, never a real path) and the CRT version its User-Agent
+names - and written into `crt_review.crt_api_calls` every five minutes and when the service stops.
+**No address, no account and no User-Agent text** is stored. CRT's Maintainer tab shows it under
+Account > **API usage**: every route the server maps, the versions that called it
+in the last 30, 90 or 365 days, and how many installations launched each version (counted from
+`crt_update`, inside the database).
+
+Nothing to configure. **Deploy as usual; migration 0018 applies itself.** Check the table exists:
+
+```bash
+mysql -u root -p -e "SHOW TABLES FROM crt_review LIKE 'crt\_api\_calls';"
+```
+
+and, five minutes after the first CRT has talked to the server:
+
+```bash
+mysql -u root -p -e "SELECT callDate, method, route, version, calls FROM crt_review.crt_api_calls ORDER BY lastUtc DESC LIMIT 10;"
+```
+
+What the numbers are for - retiring a route only old versions still call - is CLAUDE.md's
+"Installed CRTs keep working". A route is never simply removed: it stays and answers those versions
+"please update CRT".
+
+## Going live - resetting the contribution data (server 4.7.0)
+
+Account > **Reset contribution data** (in CRT's Maintainer tab) deletes everything people sent and did
+through the contribution service during testing: every submission (and, on disk, its uploaded
+files), every account that is NOT an administrator - so every maintainer and invitation goes with
+them - every system record, the whole history, the board views and the API usage counts. **It never
+touches the BETA or stable data**, their main Excel data files or their checksum manifests, the
+launch check-ins (`crt_update`) or the saved feedback. Your administrator account, and your session,
+stay.
+
+**It works only while the server allows it.** The setting is off by default, so a click alone - or
+a stolen administrator session - can never wipe the database. The order for going live:
+
+1. **Make BETA the same as stable.** Copy the stable data over the BETA data by hand, as in "Copying
+   data into BETA (or Production) by hand later" under step 3 - including removing from BETA what
+   stable does not have, if you want BETA exactly level.
+2. **Rebuild the manifests**: Account > Rebuild checksum manifests.
+3. **Switch the reset on.** In the `CrtServer` section of `appsettings.Production.json`:
+
+   ```json
+   "AllowDataReset": true,
+   ```
+
+   then `sudo systemctl restart crt-server`.
+4. **Reset.** Account > Reset contribution data shows what will go; type `RESET`
+   and press the button. It answers with what was deleted and reads the counts again - all zero
+   except one history entry (the reset itself) and your administrator account.
+5. **Switch it off again**: set `"AllowDataReset": false` (or remove the line) and restart.
+
+Check the journal says so:
+
+```bash
+journalctl -u crt-server --since "10 min ago" --no-pager -p warning | grep "reset the contribution data"
+```
+
+**Testers' CRTs** still remember what they sent. Their submissions now answer "not found", which CRT
+shows as **"No longer on the server"** - and the same draft can be submitted again. Nobody is mailed.
+
+## Feedback from CRT - replacing the app-feedback PHP page (server 3.10.0)
+
+From server 3.10.0 the service receives what CRT's Feedback tab sends (`POST /api/feedback`) and
+does what `public_html/app-feedback/index.php` did: the attached files are saved in a
+`feedback-<random>` folder under `/mydir/http/classic-repair-toolbox.dk/user-feedback` - the same
+folder, so your network share keeps working - and you get a mail with the text, the log file and the
+settings in it, its "Internal reference" naming the folder. **What is different:**
+
+- the mail is **HTML**, with the log, settings and traces in a fixed-width font (and a plain-text
+  copy beside it, as every mail now has);
+- it comes **from `MailFromAddress`, with Reply-To the user's address**. The PHP sent it from the
+  user's own address, which fails the user's provider's SPF check and tends to land in spam. Reply
+  as usual and it goes to the user;
+- the crash log is shown in the mail too, like the log, rather than saved as a file;
+- a log too large to show (over 3 MB) is saved with the files instead, and the mail says so;
+- the attachments may be **at most 250 MB packed** - CRT says so before it sends anything - and one
+  address may send **10 feedbacks an hour**. A zip may hold at most 40,000 entries (server 4.7.2 -
+  more is refused before it is opened, and the mail says so) and unpack to at most 2 GB and 20,000
+  files, and an upload is refused while the disk would drop below `MinimumFreeDiskBytes` (5 GB);
+- the saved feedback folders may take **at most `FeedbackMaxStoredBytes` (20 GB) all together**
+  (server 4.3.1). Past it, the text is still mailed but the files are not saved, and the mail says
+  so - delete old `feedback-*` folders to make room; the service counts the folder again every
+  five minutes (server 4.7.2), so room made through the share counts within that. Optional; `0`
+  turns the total off;
+- the saved folders and files are **group-writable**, so you can delete them through your share
+  (steps 1 and 5);
+- a zip entry naming a path outside its folder (`../`) is never written, and the mail says it was
+  skipped.
+
+**The service will not start until steps 1 to 3 are done** - two new settings are required. Do them
+before deploying 3.10.0, or straight after, before the restart.
+
+**1. Hand the feedback folder to the service** - owner and group `crt-server` (existing `feedback-*`
+folders are left as they are). Step 2's `useradd --system` made a `crt-server` GROUP beside the
+user; the first line checks, and makes it if it is missing. It is the group, not `crt-data`, because
+step 5 may put your share's user in it - and that user must not get write access to the BETA data
+along with it. Nothing else is in the `crt-server` group.
+
+```bash
+getent group crt-server || sudo groupadd crt-server
+
+F=/mydir/http/classic-repair-toolbox.dk/user-feedback
+sudo chown crt-server:crt-server $F
+sudo chmod 2775 $F          # rwxrwsr-x: the setgid "s" makes everything inside get the group
+
+# Must print FEEDBACK WRITABLE (correct):
+sudo -u crt-server touch $F/.probe && echo "FEEDBACK WRITABLE (correct)" && sudo rm -f $F/.probe
+```
+
+Every folder and file the service saves is made group-writable (`rwxrwsr-x` / `rw-rw-r--`) and gets
+the folder's group, `crt-server`, so anybody in that group can delete it - see step 5.
+
+From here until step 6, the old PHP page can still mail feedback but can no longer save attached
+files into the folder (it runs as `apache`) - its mail then says so. Do steps 2 to 6 in one go.
+
+**2. Add the folder to the unit's `ReadWritePaths`,** or `ProtectSystem=strict` refuses the write:
+
+```bash
+systemctl edit --full crt-server
+# ReadWritePaths=.../app-data-BETA .../crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback
+# (keep .../app-data on the line too if you switched on publishing to production, step 13)
+systemctl daemon-reload
+```
+
+**3. Add the two settings** inside the `CrtServer` section of `appsettings.Production.json`:
+
+```json
+"FeedbackRoot": "/mydir/http/classic-repair-toolbox.dk/user-feedback",
+"FeedbackToAddress": "dennis@classic-repair-toolbox.dk",
+```
+
+Then deploy 3.10.0 as usual and restart (`sudo systemctl restart crt-server`). If it refuses to
+start, the journal names the setting (`journalctl -u crt-server -n 20 --no-pager -p warning`).
+
+**4. Try it from the server, through Apache:**
+
+```bash
+# Text only - expect HTTP 200, "Success" and Server: Kestrel, and a mail a moment later:
+curl -i -m 30 --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  -F "feedback=Test from the server" -F "email=dennis@classic-repair-toolbox.dk" -F "version=deploy-test" \
+  https://classic-repair-toolbox.dk/api/feedback
+
+# With a file - expect a new feedback-* folder holding note.txt, named in the mail:
+cd /tmp && echo "hello" > note.txt && python3 -m zipfile -c feedback-test.zip note.txt
+curl -i -m 30 --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  -F "feedback=Test with a file" -F "version=deploy-test" \
+  -F "attachmentFile=@/tmp/feedback-test.zip;type=application/zip" \
+  https://classic-repair-toolbox.dk/api/feedback
+ls -l /mydir/http/classic-repair-toolbox.dk/user-feedback | tail -3
+```
+
+The journal says each one, without the address or the text:
+`Feedback received and mailed: feedback-..., 1 file(s) saved.`
+
+**5. Check you can delete feedback through your share.** Delete the test folder from step 4 in
+Windows, through the share, as you would old feedback.
+
+- **It is deleted** - nothing more to do (your share works as root, or as a user already in the group).
+- **Access denied** - put the share's user in the `crt-server` group. To find that user, list the shares:
+
+  ```bash
+  testparm -s 2>/dev/null | grep -iE '^\[|path *=|force user'
+  ```
+
+  Find the share whose `path` holds `user-feedback`. If it has a `force user = X` line, the user is
+  `X`; if not, it is the name you log in to the share with. Then:
+
+  ```bash
+  sudo usermod -a -G crt-server X       # X = that user
+  sudo systemctl restart smb            # a share only picks up a new group on a new connection
+  ```
+
+  Reconnect the share in Windows and delete the folder again.
+
+**6. Send the old address to the service, for CRTs already installed.** Every CRT up to this release
+posts to `https://classic-repair-toolbox.dk/app-feedback/`. In `/etc/httpd/conf/httpd.conf`, at the
+bottom of the `classic-repair-toolbox.dk` `<VirtualHost>`, are the `/api/` lines from Step 6 - add
+the two `/app-feedback/` lines right after `ProxyPassReverse /api/`, so the end of that vhost reads:
+
+```apache
+  ProxyPreserveHost On
+  ProxyPass        /api/  http://127.0.0.1:5199/api/
+  ProxyPassReverse /api/  http://127.0.0.1:5199/api/
+  ProxyPass        /app-feedback/  http://127.0.0.1:5199/api/feedback
+  ProxyPassReverse /app-feedback/  http://127.0.0.1:5199/api/feedback
+  RequestHeader set X-Forwarded-Proto "https" "expr=%{HTTPS} == 'on'"
+</VirtualHost>
+```
+
+```bash
+apachectl configtest && systemctl reload httpd
+
+# The old address now answers from the service - expect "Success" and Server: Kestrel:
+curl -i -m 30 --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  -F "feedback=Test through the old address" -F "version=deploy-test" \
+  https://classic-repair-toolbox.dk/app-feedback/
+```
+
+If that answer comes from the PHP page instead (no `Server: Kestrel`), the `ProxyPass` lines are
+after something that catches the path - move them up beside the `/api/` lines.
+
+**Apache must let a 256 MB request through.** Its own default allows 1 GB, but a `LimitRequestBody`
+set lower anywhere in the configuration would refuse large feedback before the service sees it:
+
+```bash
+grep -rin "LimitRequestBody" /etc/httpd/ 2>/dev/null
+```
+
+Nothing printed, or only values of `268435456` or more (or `0`, unlimited), is fine. A smaller
+value: raise it to `268435456` where it is set, then `apachectl configtest && systemctl reload httpd`.
+
+**7. Retire the PHP page.** Once step 6 answers from the service, move the page out of the web
+root (kept rather than deleted, in case you want it back):
+
+```bash
+sudo mv /mydir/http/classic-repair-toolbox.dk/public_html/app-feedback /root/app-feedback.retired-2026-10-03
+```
+
+Leave `public_html/libraries/` alone - `app-contribution` uses it (PHPMailer) until it is retired too.
+
+**Going back**, should it ever be needed: move the folder back, remove the two `ProxyPass` lines and
+reload Apache. The service's route can stay; nothing else uses it.
 
 ## Staying signed in, and how to end a session
 

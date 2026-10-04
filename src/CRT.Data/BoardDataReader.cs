@@ -158,7 +158,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
 
                 return new BoardData
                 {
@@ -394,7 +394,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
 
                 return ScanRevisionDate(package);
             }
@@ -444,7 +444,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
 
                 foreach (var row in ReadSheetRows(package, excelPath, SheetBoardSchematics, SchematicsHeaders))
                 {

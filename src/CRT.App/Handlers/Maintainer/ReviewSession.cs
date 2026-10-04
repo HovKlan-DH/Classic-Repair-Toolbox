@@ -83,5 +83,25 @@ namespace Handlers.MaintainerHandling
         // One minute: long enough to cover a slow request over a domestic connection, short
         // enough not to throw away a usable session.
         public static readonly TimeSpan ExpiryMargin = TimeSpan.FromMinutes(1);
+
+        // ###########################################################################################
+        // The same session - the same token and expiry - carrying the name and address the server
+        // now holds (2026-10-03): after a change in the "Your account" window, and when the
+        // remembered sign-in is read again at launch. They are what the Feedback tab and the
+        // Submit dialog use while signed in, so they must not stay as they were at sign-in.
+        //
+        // An answer about a DIFFERENT account changes nothing - it cannot be this session's. An
+        // account id this session could not read (0, ReviewApiParser.ParseLogin's fallback) takes
+        // the answer's, since the answer came back for this very token.
+        // ###########################################################################################
+        public ReviewSession WithAccount(Handlers.DataHandling.AccountAnswer account)
+        {
+            ArgumentNullException.ThrowIfNull(account);
+
+            if (this.AccountId != 0 && account.Id != this.AccountId)
+                return this;
+
+            return this with { AccountId = account.Id, Email = account.Email, DisplayName = account.DisplayName };
+        }
     }
 }

@@ -63,7 +63,11 @@
 					 Watermark="you@example.com"
 					 TextChanged="OnFormChanged" />
 
-			<TextBlock TextWrapping="Wrap"
+			<!-- Replaced by ContactAddress.SubmitNote, and the box made read only, while a maintainer
+			     is signed in on the Maintainer tab (2026-10-01) - "no account to create" would then be
+			     untrue. -->
+			<TextBlock x:Name="EmailNoteText"
+					   TextWrapping="Wrap"
 					   Opacity="0.75"
 					   FontSize="12"
 					   Margin="0,2,0,10"

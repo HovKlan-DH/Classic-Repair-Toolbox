@@ -49,8 +49,21 @@ public sealed class FileTreeTests
         Assert.Equal(2, commodore.Changed);
         Assert.Equal(2, commodore.Unchanged);
         Assert.False(root.Children[1].HasChanges);
-        Assert.Equal("3 changing", FileTreeWording.FolderNote(commodore));
+        Assert.Equal("3 files changed", FileTreeWording.FolderNote(commodore));
         Assert.Equal(string.Empty, FileTreeWording.FolderNote(root.Children[1]));
+    }
+
+    // "1 file changed", never "1 files changed" (owner request, 2026-10-01 - it read "1 changing").
+    [Fact]
+    public void A_folder_with_one_change_says_file_in_the_singular()
+    {
+        FileTreeNode root = FileTree.Build(
+        [
+            FileTreeTests.E("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed),
+            FileTreeTests.E("Commodore/C128/310378/Sheet1.png")
+        ]);
+
+        Assert.Equal("1 file changed", FileTreeWording.FolderNote(root.Children[0]));
     }
 
     // ###########################################################################################
@@ -150,6 +163,42 @@ public sealed class FileTreeTests
     }
 
     // ###########################################################################################
+    // *** THE WORKBOOK AND THE HIGHLIGHT FILE ARE SAID APART, NOT COUNTED (2026-09-30). *** The
+    // approval writes both from the table, and the workbook changes on every approval - counted,
+    // every tree said "1 file changes" at the least and could not agree with the Files button,
+    // which counts what the submission's own files do. Their rows still say "changed".
+    // ###########################################################################################
+    [Fact]
+    public void The_summary_names_the_files_written_from_the_table_instead_of_counting_them()
+    {
+        static SystemFileEntry Written(string path, SystemFileChange change) =>
+            new(path, change, SystemFileSource.Beta, WrittenOnApproval: true);
+
+        FileTreeNode tree = FileTree.Build(
+        [
+            FileTreeTests.E("Commodore/C128/310378/manual.pdf", SystemFileChange.Changed),
+            FileTreeTests.E("Commodore/C128/310378/extra.png", SystemFileChange.Added),
+            FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
+            Written("Commodore/C128/310378/Board.xlsx", SystemFileChange.Changed),
+            Written("Commodore/C128/310378/Board.json", SystemFileChange.Added)
+        ]);
+
+        Assert.Equal(
+            "2 files change: 1 new, 1 changed, 0 removed. Approving also writes the workbook and the highlight file from the table. 1 file already the same.",
+            FileTreeWording.Summary(tree));
+
+        // Only the workbook moves: that is said, and nothing is counted.
+        Assert.Equal(
+            "Approving writes the workbook from the table; nothing else changes. 2 files already the same.",
+            FileTreeWording.Summary(FileTree.Build(
+            [
+                FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
+                Written("Commodore/C128/310378/Board.xlsx", SystemFileChange.Changed),
+                Written("Commodore/C128/310378/Board.json", SystemFileChange.Unchanged)
+            ])));
+    }
+
+    // ###########################################################################################
     // *** THE CARD SAYS NOTHING ABOUT THE CHANGE - only what opens, when it is not the file as it
     // will be (owner request, 2026-09-28). *** The workbook and the highlight file are written
     // from the table on approval, so before then only BETA's current copy opens - or nothing, for a
@@ -180,5 +229,63 @@ public sealed class FileTreeTests
         Assert.Equal("changed", FileTreeWording.ChangeWord(SystemFileChange.Changed));
         Assert.Equal("removed", FileTreeWording.ChangeWord(SystemFileChange.Removed));
         Assert.Equal(string.Empty, FileTreeWording.ChangeWord(SystemFileChange.Unchanged));
+    }
+
+    // -----------------------------------------------------------------------------------
+    // A LISTING (the Systems screen's Files view, 2026-10-03: "just list all files")
+    // -----------------------------------------------------------------------------------
+
+    // There is no change to open on, so it opens down to the system's own folder - and nothing else,
+    // so the shared folders around it start closed.
+    [Fact]
+    public void A_listing_opens_every_folder_down_to_the_systems_own_and_no_other()
+    {
+        FileTreeNode root = FileTreeTests.Sample();
+
+        Assert.Equal(
+            ["Commodore", "Commodore/C128", "Commodore/C128/310378"],
+            FileTree.FoldersOnTheWayTo(root, "Commodore/C128/310378").Order(StringComparer.Ordinal));
+    }
+
+    // A folder the tree does not hold opens only as far as the tree goes; none at all opens nothing.
+    [Fact]
+    public void A_listing_opens_only_folders_the_tree_holds()
+    {
+        FileTreeNode root = FileTreeTests.Sample();
+
+        Assert.Equal(["Commodore"], FileTree.FoldersOnTheWayTo(root, "Commodore/VIC-20/250403"));
+        Assert.Empty(FileTree.FoldersOnTheWayTo(root, null));
+        Assert.Empty(FileTree.FoldersOnTheWayTo(root, " "));
+    }
+
+    // Its line counts the files - every one, changed or not - and says nothing about changes.
+    [Fact]
+    public void A_listings_line_counts_its_files()
+    {
+        Assert.Equal("6 files.", FileTreeWording.Listing(FileTreeTests.Sample()));
+        Assert.Equal("1 file.", FileTreeWording.Listing(FileTree.Build([FileTreeTests.E("a/b.png")])));
+        Assert.Equal("No files.", FileTreeWording.Listing(FileTree.Build([])));
+        Assert.Equal("2,000 files.", FileTreeWording.Listing(FileTree.Build(
+            Enumerable.Range(0, 2000).Select(i => FileTreeTests.E($"a/{i}.png")).ToList())));
+    }
+
+    // A file's size on its row (owner request, 2026-10-04: sizes "everywhere"), as the Unused files
+    // list has always said it; none for a folder or a size not known.
+    [Fact]
+    public void A_files_row_says_its_size_and_a_folder_or_an_unknown_size_says_none()
+    {
+        FileTreeNode root = FileTree.Build(
+        [
+            FileTreeTests.E("a/big.png") with { SizeBytes = 43_110 },
+            FileTreeTests.E("a/small.txt") with { SizeBytes = 812 },
+            FileTreeTests.E("a/unknown.pdf")
+        ]);
+
+        FileTreeNode folder = Assert.Single(root.Children);
+
+        Assert.Equal(string.Empty, FileTreeWording.Size(folder));
+        Assert.Equal("42.1 KB", FileTreeWording.Size(folder.Children.Single(node => node.Name == "big.png")));
+        Assert.Equal("812 bytes", FileTreeWording.Size(folder.Children.Single(node => node.Name == "small.txt")));
+        Assert.Equal(string.Empty, FileTreeWording.Size(folder.Children.Single(node => node.Name == "unknown.pdf")));
     }
 }

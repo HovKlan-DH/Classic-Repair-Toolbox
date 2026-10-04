@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
@@ -51,6 +52,38 @@ public sealed class DraftTableSessionTests : IDisposable
         return sheet.Rows.Single(row => !row.IsDeleted && row.Cells[labelColumn].Text == label).Cells[nameColumn];
     }
 
+    // ###########################################################################################
+    // *** THE CHECKS LOOK FOR A ROW'S FILES WHERE A SUBMIT LOOKS (2026-10-02). *** Given the
+    // downloaded data, the table finds a file in the draft's own folder or in the data, and marks
+    // one in neither as an error; without it, files are not looked for at all.
+    // ###########################################################################################
+    [Fact]
+    public void Given_the_downloaded_data_the_table_marks_a_file_that_is_nowhere()
+    {
+        this.WriteDraft(new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Mine", SchematicImageFile = "Commodore/C64/250407/mine.png" },
+                new BoardSchematicEntry { SchematicName = "Published", SchematicImageFile = "Commodore/C64/250407/published.png" },
+                new BoardSchematicEntry { SchematicName = "Gone", SchematicImageFile = "Commodore/C64/250407/gone.png" }
+            ]
+        });
+
+        this.thisWorkspace.WriteFile("Drafts/Commodore/C64/250407/mine.png", "x");
+        this.thisWorkspace.WriteFile("Data/Commodore/C64/250407/published.png", "x");
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+
+        DraftTableSession checkedSession = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null, dataRoot)!;
+        BoardTableSheet schematics = checkedSession.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+
+        Assert.Equal([false, false, true], schematics.Rows.Select(row => row.HasErrors));
+        Assert.Equal("file.missing", checkedSession.Document.Problems.Single(problem => problem.Level == BoardProblemLevel.Error).Code);
+
+        DraftTableSession unchecked_ = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        Assert.Equal(0, unchecked_.Document.ErrorCount);
+    }
+
     [Fact]
     public void Without_a_draft_nothing_opens()
     {
@@ -84,6 +117,84 @@ public sealed class DraftTableSessionTests : IDisposable
 
         Assert.Equal("CPU 6510", this.ReadDraft().Components.Single().FriendlyName);
         Assert.False(session.Document.HasUnsavedChanges);
+    }
+
+    // ###########################################################################################
+    // *** A SAVE IN THREE STEPS, THE SLOW ONE ON ANOTHER THREAD (2026-09-30). *** "Save changes"
+    // takes the rows on the UI thread (PrepareSave), writes on the pool under "please wait", and
+    // finishes on the UI thread (CompleteSave). The rows written are the ones there when the save
+    // was PREPARED - the write reads nothing of the table - and it is the ordinary save otherwise:
+    // on disk, and the table no longer unsaved.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_prepared_save_writes_the_rows_it_was_prepared_with_from_another_thread()
+    {
+        this.WriteDraft(new BoardData { Components = [Component("U1", "CPU"), Component("U2", "SID")] });
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+
+        FriendlyNameOf(session, "U1").Text = "CPU 6510";
+
+        Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
+
+        // After it was prepared: not in this save.
+        FriendlyNameOf(session, "U2").Text = "SID 6581";
+
+        DraftWorkbookEditOutcome outcome = await Task.Run(write);
+        session.CompleteSave(outcome);
+
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, outcome);
+
+        BoardData saved = this.ReadDraft();
+        Assert.Equal("CPU 6510", saved.Components.Single(component => component.BoardLabel == "U1").FriendlyName);
+        Assert.Equal("SID", saved.Components.Single(component => component.BoardLabel == "U2").FriendlyName);
+
+        // Its fingerprint moved with the file, so the table's own write is not a change from outside.
+        Assert.False(session.HasChangedOnDisk());
+    }
+
+    // ###########################################################################################
+    // *** THE RE-READ'S FINGERPRINT, NOT A SECOND HASH (code review, 2026-10-01). *** The table
+    // re-reads the saved draft on the pool, and that read hashes the file; CompleteSave then hashed
+    // it again on the UI thread. Handed the re-read's fingerprint it takes it as is - and the
+    // session is still in step with the file.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_completed_save_takes_the_fingerprint_it_is_handed_rather_than_hashing_again()
+    {
+        this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+
+        FriendlyNameOf(session, "U1").Text = "CPU 6510";
+        Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
+
+        DraftWorkbookEditOutcome outcome = await Task.Run(write);
+        DraftTableSession reread = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+
+        session.CompleteSave(outcome, reread.Fingerprint);
+
+        Assert.Same(reread.Fingerprint, session.Fingerprint);
+        Assert.False(session.HasChangedOnDisk());
+        Assert.False(session.Document.HasUnsavedChanges);
+    }
+
+    // The three steps refuse a stale read exactly as Save does - the check is in the write.
+    [Fact]
+    public void A_prepared_save_is_still_refused_when_the_workbook_changed_since_the_table_was_read()
+    {
+        this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+
+        FriendlyNameOf(session, "U1").Text = "CPU 6510";
+        Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
+
+        this.WriteDraft(new BoardData { Components = [Component("U1", "Changed in Excel")] });
+
+        DraftWorkbookEditOutcome outcome = write();
+        session.CompleteSave(outcome);
+
+        Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, outcome);
+        Assert.Equal("Changed in Excel", this.ReadDraft().Components.Single().FriendlyName);
+        Assert.True(session.Document.HasUnsavedChanges);
     }
 
     [Fact]

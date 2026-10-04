@@ -555,7 +555,7 @@ namespace CRT.Server.Tests
                 this.Options(), BetaRollbackFlowTests.Now);
 
             // Nothing outside the system's own folder is removed automatically (owner decision,
-            // 2026-09-27): the datasheet stays, unused, for Admin > Unused files.
+            // 2026-09-27): the datasheet stays, unused, for Account > Unused files.
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.True(File.Exists(this.InBeta(Added)));
             Assert.False(outcome.Plan!.TouchesSharedFiles);

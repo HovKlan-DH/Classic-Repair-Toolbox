@@ -1,9 +1,11 @@
 using CRT;
 using Handlers.DataHandling;
+using Handlers.OnlineHandling;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -37,7 +39,7 @@ namespace Handlers.Online
         // The header carrying the capability token. A header rather than a query parameter because
         // query strings are written to access logs by default on most web servers, and this value
         // authorises writing to a submission.
-        private const string TokenHeader = "X-Submission-Token";
+        private const string TokenHeader = SubmissionFormat.UploadTokenHeader;
 
         // Chunked so a dropped connection loses at most this much, and so progress moves visibly
         // rather than jumping per file. The size lives in the shared contract because the server
@@ -123,17 +125,25 @@ namespace Handlers.Online
 
         // ###########################################################################################
         // Step 1 and 2: send the manifest, get back the token and what to upload.
+        //
+        // `bearerToken` is a signed-in MAINTAINER's session (owner request, 2026-10-01: "When I am
+        // a maintainer, and I have logged in, then I want to use that email address everywhere").
+        // The server honours it on this one call - the submission is then the account's, its
+        // address verified (SubmissionEndpoints.CreateAsync) - and the uploads and the finalise
+        // stay on the submission's own capability token. Null for every ordinary contributor.
         // ###########################################################################################
         public async Task<HashNegotiationResponse> CreateAsync(
             SubmissionManifest manifest,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? bearerToken = null)
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
             using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.SubmissionRequestTimeout);
 
-            using HttpResponseMessage response = await http.PostAsJsonAsync(
-                $"{this.thisBaseUrl}/submissions", manifest, cancellationToken);
+            using HttpRequestMessage request = SubmissionClient.BuildCreateRequest(this.thisBaseUrl, manifest, bearerToken);
+
+            using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -142,7 +152,7 @@ namespace Handlers.Online
                 throw new SubmissionRejectedException(
                     (int)response.StatusCode,
                     SubmissionClient.ExtractFindings(body),
-                    $"The server refused the submission ({(int)response.StatusCode}).");
+                    SubmissionClient.RefusalMessage(body, $"The server refused the submission ({(int)response.StatusCode})."));
             }
 
             HashNegotiationResponse? negotiation =
@@ -150,6 +160,24 @@ namespace Handlers.Online
 
             return negotiation
                 ?? throw new SubmissionRejectedException(0, [], "The server's reply could not be read.");
+        }
+
+        // ###########################################################################################
+        // The create request, apart from sending it so a test can read what goes out. The manifest
+        // as JSON (the same web defaults PostAsJsonAsync used), and the Authorization header ONLY
+        // with a token - an ordinary contributor's submission carries none at all.
+        // ###########################################################################################
+        internal static HttpRequestMessage BuildCreateRequest(string baseUrl, SubmissionManifest manifest, string? bearerToken)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/submissions")
+            {
+                Content = JsonContent.Create(manifest)
+            };
+
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken.Trim());
+
+            return request;
         }
 
         // ###########################################################################################
@@ -228,9 +256,14 @@ namespace Handlers.Online
                         {
                             string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
+                            ApiRefusal refusal = ApiRefusal.Read(body);
+
+                            // "Update CRT" stands on its own; any other refusal names the file.
                             throw new SubmissionRejectedException(
                                 (int)response.StatusCode, [],
-                                $"Uploading [{Path.GetFileName(absolutePath)}] failed: {body}");
+                                refusal.IsClientOutdated && refusal.Message is not null
+                                    ? refusal.Message
+                                    : $"Uploading [{Path.GetFileName(absolutePath)}] failed: {refusal.Message ?? body}");
                         }
 
                         attempts++;
@@ -280,7 +313,7 @@ namespace Handlers.Online
                 throw new SubmissionRejectedException(
                     (int)response.StatusCode,
                     SubmissionClient.ExtractFindings(body),
-                    $"The server could not finish the submission ({(int)response.StatusCode}).");
+                    SubmissionClient.RefusalMessage(body, $"The server could not finish the submission ({(int)response.StatusCode})."));
             }
 
             SubmissionResult? result =
@@ -330,16 +363,19 @@ namespace Handlers.Online
         // ###########################################################################################
         // What the server currently says about one already-sent submission (Phase 4, task 6).
         //
-        // Returns null rather than throwing when the answer cannot be had - offline, a timeout, a
-        // server that has forgotten the submission, or a token that no longer works. The "my
-        // submissions" view calls this once per row, and one unreachable row must not fail the
-        // whole refresh; a null simply leaves that row showing its last known state, which is
-        // exactly what the cached value in the receipt is for.
+        // Returns null rather than throwing when the answer cannot be had - offline, a timeout, or
+        // any other refusal. The "my submissions" view calls this once per row, and one unreachable
+        // row must not fail the whole refresh; a null simply leaves that row showing its last known
+        // state, which is exactly what the cached value in the receipt is for.
         //
-        // A 404 is NOT an error worth reporting either. It is what the server answers both for "no
-        // such submission" and for "not yours" (deliberately indistinguishable, so the id space
-        // cannot be walked), and an expired or pruned submission is an ordinary end state rather
-        // than a fault.
+        // *** TWO ANSWERS THROW INSTEAD, BECAUSE THE SERVER DID ANSWER (code review, 2026-10-04). ***
+        //   - 404 throws SubmissionNotFoundException: the server does not know the submission (or
+        //     it is not this token's - deliberately indistinguishable, so the id space cannot be
+        //     walked). It was deleted with its system or by a reset of the contribution data, and
+        //     every caller marks the receipt (SubmissionReceiptStore.NoteNotFound), which CRT then
+        //     shows as "No longer on the server" - never as "could not be reached".
+        //   - "update CRT" throws ClientOutdatedException, carrying the server's words.
+        // A caller handling only the null would count both as an unreachable server.
         // ###########################################################################################
         public async Task<SubmissionStatus?> GetStatusAsync(
             long submissionId,
@@ -357,8 +393,23 @@ namespace Handlers.Online
 
                 using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
 
+                // Not "unreachable": the server answered, and does not know it - deleted with its
+                // system, for one. Said apart so the minute check stops asking (code review,
+                // 2026-10-04; SubmissionStatusRefresh).
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    throw new SubmissionNotFoundException(submissionId);
+
                 if (!response.IsSuccessStatusCode)
+                {
+                    // Not "unreachable" either: the server answered "update CRT" (code review,
+                    // 2026-10-04). Swallowed as null, every receipt froze and nothing said why.
+                    string body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    if (SubmissionClient.OutdatedMessage((int)response.StatusCode, body) is string outdated)
+                        throw new ClientOutdatedException(outdated);
+
                     return null;
+                }
 
                 return await response.Content.ReadFromJsonAsync<SubmissionStatus>(cancellationToken);
             }
@@ -386,7 +437,9 @@ namespace Handlers.Online
         //
         // A failure here is answered with 0 rather than thrown: the worst case is re-uploading
         // bytes the server already had, which is wasteful but correct. Failing the whole submission
-        // because a progress query did not answer would be the wrong trade.
+        // because a progress query did not answer would be the wrong trade. An "update CRT" answer
+        // (426) is no exception: the chunk sent next meets the same answer, and its refusal shows
+        // the server's words (UploadBlobAsync).
         // ###########################################################################################
         private async Task<long> GetResumeOffsetAsync(
             HttpClient http,
@@ -407,12 +460,7 @@ namespace Handlers.Online
                 if (!response.IsSuccessStatusCode)
                     return 0;
 
-                using JsonDocument document = JsonDocument.Parse(
-                    await response.Content.ReadAsStringAsync(cancellationToken));
-
-                return document.RootElement.TryGetProperty("uploaded", out JsonElement uploaded)
-                    ? uploaded.GetInt64()
-                    : 0;
+                return SubmissionClient.ReadUploaded(await response.Content.ReadAsStringAsync(cancellationToken));
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
             {
@@ -420,9 +468,56 @@ namespace Handlers.Online
             }
         }
 
-        private static HttpClient CreateHttpClient(TimeSpan timeout)
+        // ###########################################################################################
+        // *** EVERY REQUEST NAMES THE CRT THAT SENT IT (2026-10-04). *** "CRT <version>", CRT's one
+        // definition (OnlineServices.VersionForServer) - the same the check-in, the board views and
+        // the review API send. It is how the server tells an installed CRT too old for a changed
+        // API to update, in words, instead of failing it unreadably (CRT.Data's
+        // ClientVersionContract); without it every submission arrived nameless and could only be
+        // let through. Internal so a test can read it without a network.
+        // ###########################################################################################
+        internal static HttpClient CreateHttpClient(TimeSpan timeout)
         {
-            return new HttpClient { Timeout = timeout };
+            var http = new HttpClient { Timeout = timeout };
+            http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", OnlineServices.VersionForServer);
+
+            // And the API revision it was built for, so a server that has moved on says "update CRT".
+            OnlineServices.NameApiRevision(http);
+            return http;
+        }
+
+        // ###########################################################################################
+        // The sentence a refusal is shown with: the server's own when it wrote one - an "update CRT"
+        // answer among them - else `fallback`. A refusal a newer server invents must still reach the
+        // contributor in words, not as a bare status code.
+        // ###########################################################################################
+        internal static string RefusalMessage(string? body, string fallback) =>
+            ApiRefusal.Read(body).Message ?? fallback;
+
+        // ###########################################################################################
+        // The server's "update CRT" sentence when an answer is one - HTTP 426, or a body carrying
+        // CRT.Data's ClientOutdatedAnswer code - else null. A 426 without the server's words still
+        // gets CRT's own (ClientOutdatedException.FallbackMessage).
+        // ###########################################################################################
+        internal static string? OutdatedMessage(int statusCode, string? body)
+        {
+            ApiRefusal refusal = ApiRefusal.Read(body);
+
+            if (statusCode != (int)System.Net.HttpStatusCode.UpgradeRequired && !refusal.IsClientOutdated)
+                return null;
+
+            return refusal.Message ?? ClientOutdatedException.FallbackMessage;
+        }
+
+        // How much of a blob the server holds, out of its BlobUploadAnswer - 0 when not said. Throws
+        // JsonException on a body that is not JSON, which the resume query answers with 0 too.
+        internal static long ReadUploaded(string json)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+
+            return document.RootElement.TryGetProperty("uploaded", out JsonElement uploaded)
+                ? uploaded.GetInt64()
+                : 0;
         }
 
         // The server answers a refusal with { "errors": [ ... ] }. Pulling the findings out lets
@@ -474,5 +569,39 @@ namespace Handlers.Online
         public int StatusCode { get; }
 
         public IReadOnlyList<ValidationFinding> Findings { get; }
+    }
+
+    // ###########################################################################################
+    // The server answered a status question with HTTP 404: it does not know this submission (code
+    // review, 2026-10-04). Thrown by GetStatusAsync rather than answered as null, which means
+    // "could not be reached" - the two are handled apart by SubmissionStatusRefresh.
+    // ###########################################################################################
+    public sealed class SubmissionNotFoundException : Exception
+    {
+        public SubmissionNotFoundException(long submissionId)
+            : base($"The server does not know submission {submissionId}.")
+        {
+            this.SubmissionId = submissionId;
+        }
+
+        public long SubmissionId { get; }
+    }
+
+    // ###########################################################################################
+    // The server answered a status question with "update CRT" - HTTP 426, CRT.Data's
+    // ClientOutdatedAnswer (code review, 2026-10-04). Thrown by GetStatusAsync with the server's own
+    // sentence as its Message, so the contributor is TOLD to update rather than left with receipts
+    // that silently never move ("Installed CRTs keep working", CLAUDE.md).
+    // ###########################################################################################
+    public sealed class ClientOutdatedException : Exception
+    {
+        // For a 426 that carries no words of its own.
+        public const string FallbackMessage =
+            "This CRT was made for an older version of the server - please update CRT to the newest version.";
+
+        public ClientOutdatedException(string message)
+            : base(message)
+        {
+        }
     }
 }

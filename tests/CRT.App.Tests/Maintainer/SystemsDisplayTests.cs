@@ -35,47 +35,39 @@ public sealed class SystemsDisplayTests
     }
 
     // ###########################################################################################
-    // WHERE ITS DATA IS, one phrase per case. Production is claimed only when the server looked -
-    // without a production tree it is just "Published".
+    // WHERE ITS DATA IS, one phrase per case - and NOTHING for the ordinary case, in BETA and the
+    // stable source (owner request, 2026-10-03: "only show where there is something odd/off").
     // ###########################################################################################
     [Theory]
-    [InlineData(true, true, false, "In BETA and production")]
-    [InlineData(true, true, true, "BETA ahead of production")]
-    [InlineData(true, false, true, "In BETA - not in production yet")]
-    [InlineData(true, false, false, "In BETA - not in production yet")]
+    [InlineData(true, true, false, "")]
+    [InlineData(true, true, true, "BETA ahead of the stable source")]
+    [InlineData(true, false, true, "In BETA - not in the stable source yet")]
+    [InlineData(true, false, false, "In BETA - not in the stable source yet")]
     [InlineData(false, false, false, "Not published yet")]
-    [InlineData(false, true, false, "In production - not in BETA")]
+    [InlineData(false, true, false, "In the stable source - not in BETA")]
     public void Where_a_systems_data_is_is_said_in_one_phrase(bool inBeta, bool inProduction, bool awaiting, string expected)
     {
         Assert.Equal(expected, SystemsDisplay.Where(SystemsDisplayTests.System(inBeta, inProduction, awaiting)));
     }
 
+    // Without a stable tree to look in, a published system is the ordinary case too: nothing said,
+    // and nothing claimed about the stable source.
     [Fact]
     public void Without_a_production_tree_nothing_is_claimed_about_production()
     {
-        Assert.Equal("Published", SystemsDisplay.Where(SystemsDisplayTests.System(inProduction: null)));
-        Assert.Equal("In BETA - not in production yet", SystemsDisplay.Where(SystemsDisplayTests.System(inProduction: null, awaiting: true)));
+        Assert.Equal(string.Empty, SystemsDisplay.Where(SystemsDisplayTests.System(inProduction: null)));
+        Assert.Equal("In BETA - not in the stable source yet", SystemsDisplay.Where(SystemsDisplayTests.System(inProduction: null, awaiting: true)));
     }
 
-    // The list's grey line: where, how many maintain it, and closed only when it is.
+    // The list's grey line: where, only when it is off; how many maintain it; closed only when it is.
     [Fact]
-    public void A_systems_list_line_says_where_who_and_whether_it_is_closed()
+    public void A_systems_list_line_says_where_only_when_it_is_off_who_and_whether_it_is_closed()
     {
-        Assert.Equal("In BETA and production - 2 maintainers", SystemsDisplay.ListLine(SystemsDisplayTests.System(maintainers: 2)));
+        Assert.Equal("2 maintainers", SystemsDisplay.ListLine(SystemsDisplayTests.System(maintainers: 2)));
+        Assert.Equal("1 maintainer - closed to contributions", SystemsDisplay.ListLine(SystemsDisplayTests.System(accepting: false)));
         Assert.Equal(
             "Not published yet - nobody assigned - closed to contributions",
             SystemsDisplay.ListLine(SystemsDisplayTests.System(inBeta: false, inProduction: false, accepting: false, maintainers: 0)));
-    }
-
-    [Fact]
-    public void The_revisions_are_named_and_a_board_with_none_says_nothing()
-    {
-        Assert.Equal(
-            "BETA revision 2026-September-25 - production revision 2026-May-14, published there 2026-September-25",
-            SystemsDisplay.Revisions(SystemsDisplayTests.System(beta: "2026-September-25", production: "2026-May-14", published: SystemsDisplayTests.Noon)));
-
-        Assert.Equal("Production revision 2026-May-14", SystemsDisplay.Revisions(SystemsDisplayTests.System(production: "2026-May-14")));
-        Assert.Null(SystemsDisplay.Revisions(SystemsDisplayTests.System()));
     }
 
     // Nobody assigned is said, with where its submissions go - it is what this screen is opened to find.
@@ -109,23 +101,21 @@ public sealed class SystemsDisplayTests
     }
 
     [Fact]
-    public void The_contributor_and_submission_headings_say_when_there_are_none()
+    public void The_contributor_heading_says_when_there_are_none()
     {
         Assert.Equal("Nobody has contributed to this system through CRT yet.", SystemsDisplay.ContributorsHeading(0));
         Assert.Equal("Contributors (2)", SystemsDisplay.ContributorsHeading(2));
-        Assert.Equal("No submissions yet.", SystemsDisplay.SubmissionsHeading(0));
-        Assert.Equal("Recent submissions", SystemsDisplay.SubmissionsHeading(4));
     }
 
     // ###########################################################################################
-    // *** THE STATE IN CRT's OWN WORDS. *** "merged" is "Published to BETA source" and "returned"
+    // *** THE STATE IN CRT's OWN WORDS. *** "merged" is "Published to the BETA source" and "returned"
     // is "Taken back out of BETA - waiting for review again" in CRT's "My submissions"; the
     // maintainer reads exactly the same. These strings are asserted, not re-derived, so either
     // side changing alone fails.
     // ###########################################################################################
     [Theory]
-    [InlineData("merged", "Published to BETA source")]
-    [InlineData("published", "Published to source")]
+    [InlineData("merged", "Published to the BETA source")]
+    [InlineData("published", "Published to the stable source")]
     [InlineData("returned", "Taken back out of BETA - waiting for review again")]
     [InlineData("pending", "Submitted - awaiting feedback from a maintainer")]
     [InlineData("withdrawn", "Replaced by a newer submission")]
@@ -133,7 +123,8 @@ public sealed class SystemsDisplayTests
     {
         var submission = new SystemSubmissionEntry(41, "hest@mailscan.dk", "Corrected U8.", state, SystemsDisplayTests.Noon, null, null);
 
-        Assert.Equal($"#41 - {words} - sent 2026-September-25 - hest@mailscan.dk", SystemsDisplay.SubmissionFooter(submission));
+        // The History view's card states it where it stands now (SystemHistoryDisplay, 2026-10-04).
+        Assert.Equal(words, SystemHistoryDisplay.Card(submission, []).State);
     }
 
     // What the contributor was told, labelled by who read it; nothing when nothing was said.
@@ -144,7 +135,6 @@ public sealed class SystemsDisplayTests
 
         Assert.Equal("Told the contributor: U7 is the wrong revision.", SystemsDisplay.SubmissionComment(told));
         Assert.Equal("(no description given)", SystemsDisplay.SubmissionTitle(told));
-        Assert.Equal("#38 - Taken back out of BETA - waiting for review again - sent 2026-September-25", SystemsDisplay.SubmissionFooter(told));
 
         Assert.Null(SystemsDisplay.SubmissionComment(told with { DecisionComment = null }));
     }
@@ -161,13 +151,13 @@ public sealed class SystemsDisplayTests
 
         IReadOnlyList<StatusPart> parts = SystemsDisplay.ListLineParts(system);
 
-        Assert.Equal(["not in production yet", "nobody assigned"], parts.Where(part => part.IsToDo).Select(part => part.Text));
-        Assert.Equal("In BETA - not in production yet - nobody assigned", SystemsDisplay.ListLine(system));
+        Assert.Equal(["not in the stable source yet", "nobody assigned"], parts.Where(part => part.IsToDo).Select(part => part.Text));
+        Assert.Equal("In BETA - not in the stable source yet - nobody assigned", SystemsDisplay.ListLine(system));
         Assert.Equal(SystemsDisplay.ListLine(system), string.Concat(parts.Select(part => part.Text)));
     }
 
     [Theory]
-    [InlineData(true, true, true, "BETA ahead of production")]      // waits for "Publish to production"
+    [InlineData(true, true, true, "BETA ahead of the stable source")]      // waits for "Publish to production"
     [InlineData(false, true, false, "not in BETA")]                 // production holds what BETA lacks
     public void Other_outstanding_states_are_marked_too(bool inBeta, bool inProduction, bool awaiting, string marked)
     {
@@ -188,6 +178,52 @@ public sealed class SystemsDisplayTests
             part => part.IsToDo);
     }
 
+    // ###########################################################################################
+    // *** WHAT IS OFF ABOUT THE DROP-DOWN LISTS IS FLAGGED (owner request, 2026-10-04: "I do not
+    // expect there should be cases where something can only be listed in stable? If so, it must be
+    // flagged in the left-sided menu 'Systems' list"). *** Marked as still to be done, so the line
+    // shows it in bold - and the mirror case too: a board the stable source holds that its list
+    // leaves out, which stable CRT users cannot reach.
+    // ###########################################################################################
+    [Fact]
+    public void A_system_listed_only_in_the_stable_list_is_flagged_as_to_do()
+    {
+        SystemOverviewEntry system = SystemsDisplayTests.System() with { ListedInBeta = false, ListedInStable = true };
+
+        Assert.Equal("listed only in the stable source's drop-down list - 1 maintainer", SystemsDisplay.ListLine(system));
+        Assert.Equal(["listed only in the stable source's drop-down list"], SystemsDisplay.ListLineParts(system).Where(part => part.IsToDo).Select(part => part.Text));
+    }
+
+    [Fact]
+    public void A_board_in_the_stable_source_that_its_list_leaves_out_is_flagged_as_to_do()
+    {
+        SystemOverviewEntry system = SystemsDisplayTests.System(awaiting: true) with { ListedInBeta = true, ListedInStable = false };
+
+        Assert.Equal("BETA ahead of the stable source - missing from the stable source's drop-down list - 1 maintainer", SystemsDisplay.ListLine(system));
+        Assert.Equal(
+            ["BETA ahead of the stable source", "missing from the stable source's drop-down list"],
+            SystemsDisplay.ListLineParts(system).Where(part => part.IsToDo).Select(part => part.Text));
+    }
+
+    // ###########################################################################################
+    // Nothing is flagged that is as it should be or not known: both lists naming it; a NEW system in
+    // BETA only, not promoted yet, which is listed in BETA alone by design; a list that could not be
+    // read; and a board BETA does not hold at all, whose "not in BETA" already says it.
+    // ###########################################################################################
+    [Fact]
+    public void Nothing_about_the_lists_is_said_when_they_are_as_they_should_be_or_unknown()
+    {
+        Assert.Equal("1 maintainer", SystemsDisplay.ListLine(SystemsDisplayTests.System() with { ListedInBeta = true, ListedInStable = true }));
+        Assert.Equal(
+            "In BETA - not in the stable source yet - 1 maintainer",
+            SystemsDisplay.ListLine(SystemsDisplayTests.System(inProduction: false, awaiting: true) with { ListedInBeta = true, ListedInStable = false }));
+        Assert.Equal("1 maintainer", SystemsDisplay.ListLine(SystemsDisplayTests.System() with { ListedInBeta = null, ListedInStable = true }));
+        Assert.Equal("1 maintainer", SystemsDisplay.ListLine(SystemsDisplayTests.System() with { ListedInBeta = true, ListedInStable = null }));
+        Assert.Equal(
+            "In the stable source - not in BETA - 1 maintainer",
+            SystemsDisplay.ListLine(SystemsDisplayTests.System(inBeta: false) with { ListedInBeta = false, ListedInStable = true }));
+    }
+
     // An invitation nobody has accepted, on the administrator's screen: who, and how long its code works.
     [Fact]
     public void An_open_invitation_says_who_when_and_until_when()
@@ -202,28 +238,30 @@ public sealed class SystemsDisplayTests
 
     // ###########################################################################################
     // THE SYSTEM'S HISTORY (owner request, 2026-09-27: "I would like to see the date, newest first,
-    // to understand what has happened to a system"): the DATE FIRST, then what happened, and a grey
-    // line of by whom and what more. Decisions in CRT's own state words.
+    // to understand what has happened to a system"): what happened, and a grey line of by whom and
+    // what more - the date is the History view's own column since 2026-10-04. Decisions in CRT's
+    // own state words.
     // ###########################################################################################
     [Theory]
-    [InlineData(SystemHistoryEvents.Sent, 9L, "Corrected U8.", "hest@mailscan.dk", "2026-September-25 - #9 sent", "from hest@mailscan.dk - Corrected U8.")]
-    [InlineData(SystemHistoryEvents.Decided, 9L, "merged", "Anna", "2026-September-25 - #9 - Published to BETA source", "by Anna")]
-    [InlineData(SystemHistoryEvents.Decided, 9L, "changes_requested", null, "2026-September-25 - #9 - Changes requested", "")]
-    [InlineData(SystemHistoryEvents.PublishedToProduction, null, "revision 2026-September-25; 3 file(s) copied", "admin@example.com", "2026-September-25 - Published to production", "by admin@example.com - revision 2026-September-25; 3 file(s) copied")]
-    [InlineData(SystemHistoryEvents.PushedBack, null, "1 submission(s) returned to the queue; Not ready.", "admin@example.com", "2026-September-25 - Pushed back from BETA to the queue", "by admin@example.com - 1 submission(s) returned to the queue; Not ready.")]
-    [InlineData(SystemHistoryEvents.RejectedFromBeta, null, "1 submission(s) rejected; Not for this board.", "admin@example.com", "2026-September-25 - Rejected in BETA and taken out of it", "by admin@example.com - 1 submission(s) rejected; Not for this board.")]
-    [InlineData(SystemHistoryEvents.MaintainerAdded, null, "anna@example.com", "admin@example.com", "2026-September-25 - anna@example.com made a maintainer", "by admin@example.com")]
-    [InlineData(SystemHistoryEvents.MaintainerRemoved, null, "anna@example.com", "admin@example.com", "2026-September-25 - anna@example.com removed as a maintainer", "by admin@example.com")]
-    [InlineData(SystemHistoryEvents.Invited, null, "new@example.com", "admin@example.com", "2026-September-25 - new@example.com invited to be a maintainer", "by admin@example.com")]
-    [InlineData(SystemHistoryEvents.InvitationAccepted, null, "new@example.com", "new@example.com", "2026-September-25 - new@example.com accepted the invitation and became a maintainer", "")]
-    [InlineData(SystemHistoryEvents.Placed, null, "Commodore 64 / 250407", "anna@example.com", "2026-September-25 - Placed in the drop-down lists", "by anna@example.com - Commodore 64 / 250407")]
-    [InlineData(SystemHistoryEvents.Amended, 9L, "amendment 2, 3 file(s)", "anna@example.com", "2026-September-25 - #9 changed by a maintainer", "by anna@example.com - amendment 2, 3 file(s)")]
-    [InlineData("something.new", null, null, null, "2026-September-25 - something.new", "")]
-    public void A_history_entry_reads_date_first_then_what_happened(string kind, long? submission, string? detail, string? who, string line, string footer)
+    [InlineData(SystemHistoryEvents.Sent, 9L, "Corrected U8.", "hest@mailscan.dk", "#9 sent", "from hest@mailscan.dk - Corrected U8.")]
+    [InlineData(SystemHistoryEvents.Decided, 9L, "merged", "Anna", "#9 - Published to the BETA source", "by Anna")]
+    [InlineData(SystemHistoryEvents.Decided, 9L, "changes_requested", null, "#9 - Changes requested", "")]
+    [InlineData(SystemHistoryEvents.PublishedToProduction, null, "revision 2026-September-25; 3 file(s) copied", "admin@example.com", "Published to the stable source", "by admin@example.com - revision 2026-September-25; 3 file(s) copied")]
+    [InlineData(SystemHistoryEvents.PushedBack, null, "1 submission(s) returned to the queue; Not ready.", "admin@example.com", "Pushed back from BETA to the queue", "by admin@example.com - 1 submission(s) returned to the queue; Not ready.")]
+    [InlineData(SystemHistoryEvents.RejectedFromBeta, null, "1 submission(s) rejected; Not for this board.", "admin@example.com", "Rejected in BETA and taken out of it", "by admin@example.com - 1 submission(s) rejected; Not for this board.")]
+    [InlineData(SystemHistoryEvents.MaintainerAdded, null, "anna@example.com", "admin@example.com", "anna@example.com made a maintainer", "by admin@example.com")]
+    [InlineData(SystemHistoryEvents.MaintainerRemoved, null, "anna@example.com", "admin@example.com", "anna@example.com removed as a maintainer", "by admin@example.com")]
+    [InlineData(SystemHistoryEvents.Invited, null, "new@example.com", "admin@example.com", "new@example.com invited to be a maintainer", "by admin@example.com")]
+    [InlineData(SystemHistoryEvents.InvitationAccepted, null, "new@example.com", "new@example.com", "new@example.com accepted the invitation and became a maintainer", "")]
+    [InlineData(SystemHistoryEvents.Placed, null, "Commodore 64 / 250407", "anna@example.com", "Placed in the drop-down lists", "by anna@example.com - Commodore 64 / 250407")]
+    [InlineData(SystemHistoryEvents.Amended, 9L, "amendment 2, 3 file(s)", "anna@example.com", "#9 changed by a maintainer", "by anna@example.com - amendment 2, 3 file(s)")]
+    [InlineData(SystemHistoryEvents.Deleted, null, "2 file(s) removed from BETA, 2 from the stable data; 3 submission(s) deleted, 0 of them open", "admin@example.com", "Deleted from the BETA and stable data and the database", "by admin@example.com - 2 file(s) removed from BETA, 2 from the stable data; 3 submission(s) deleted, 0 of them open")]
+    [InlineData("something.new", null, null, null, "something.new", "")]
+    public void A_history_entry_says_what_happened_and_by_whom(string kind, long? submission, string? detail, string? who, string line, string footer)
     {
         var entry = new SystemHistoryEntry(SystemsDisplayTests.Noon, kind, who, submission, detail);
 
-        Assert.Equal(line, SystemsDisplay.HistoryLine(entry));
+        Assert.Equal(line, SystemsDisplay.HistoryWhat(entry));
         Assert.Equal(footer, SystemsDisplay.HistoryFooter(entry));
     }
 
@@ -234,28 +272,23 @@ public sealed class SystemsDisplayTests
 
         Assert.Equal("Told the contributor: Wrong board.", SystemsDisplay.HistoryNote(entry));
         Assert.Null(SystemsDisplay.HistoryNote(entry with { Note = null }));
-        Assert.Equal("Nothing has happened to this system yet", SystemsDisplay.HistoryHeading(0));
-        Assert.Equal("History", SystemsDisplay.HistoryHeading(3));
     }
 
     // -----------------------------------------------------------------------------------
     // Board views (owner request, 2026-09-27)
     // -----------------------------------------------------------------------------------
 
-    // The list line ends with the 30-day count - and says nothing about views when the server sent
-    // none (an older server), which is not the same as "no views".
-    [Fact]
-    public void The_list_line_ends_with_the_views_in_30_days_when_the_server_counted_them()
+    // The list line says nothing about views any more (owner request, 2026-10-03: "remove the 'no
+    // views in 30 days' from the data in the left-side list") - they are the Statistics view's.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(48)]
+    public void The_list_line_says_nothing_about_views(int? views)
     {
-        SystemOverviewEntry system = SystemsDisplayTests.System();
+        SystemOverviewEntry system = SystemsDisplayTests.System() with { ViewsLast30Days = views };
 
-        Assert.Equal("In BETA and production - 1 maintainer", SystemsDisplay.ListLine(system));
-        Assert.Equal("In BETA and production - 1 maintainer - 48 views in 30 days", SystemsDisplay.ListLine(system with { ViewsLast30Days = 48 }));
-        Assert.Equal("In BETA and production - 1 maintainer - 1 view in 30 days", SystemsDisplay.ListLine(system with { ViewsLast30Days = 1 }));
-        Assert.Equal("In BETA and production - 1 maintainer - no views in 30 days", SystemsDisplay.ListLine(system with { ViewsLast30Days = 0 }));
-
-        // Not a thing to do, so never in bold.
-        Assert.False(SystemsDisplay.ListLineParts(system with { ViewsLast30Days = 48 })[^1].IsToDo);
+        Assert.Equal("1 maintainer", SystemsDisplay.ListLine(system));
     }
 
     // ###########################################################################################

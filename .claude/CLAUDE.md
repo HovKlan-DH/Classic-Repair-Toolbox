@@ -26,7 +26,12 @@ the PHP, and a change is not blocked by it. Do not spend effort keeping it in st
 let its contract constrain the new design. This REPLACES the older "change both sides in the
 same sitting" instruction for that pair, which is still recorded further down in the webserver
 section and now applies only while something is deliberately still using the old path.
-(`app-feedback` and `app-checkin` are unrelated and stay.)
+(`app-feedback` was RETIRED on 2026-10-03, owner request: CRT.Server's `POST /api/feedback` does
+its job, and Apache forwards the old address for CRTs already installed - DEPLOYMENT.md, "Feedback
+from CRT". `app-checkin` went the same way the same day: `POST /api/usage/check-in`, with Apache
+forwarding `/app-checkin/` - its server steps were given in the session, not written into
+DEPLOYMENT.md, at the owner's request. Their local copies stay in `Assets/Webserver/`, which is
+git-ignored as a whole: nothing there has a git copy, so never delete a file there to "retire" it.)
 
 **The compiler covers less of this than it looks.** Both applications reference `CRT.Data`,
 so a changed method signature or a renamed property fails the build everywhere at once. That is
@@ -205,9 +210,10 @@ did not. It WARNS rather than blocking - whether a change is user-visible is a j
 unlike a red suite there is no objective pass/fail - so read the list and decide. When a page starts
 documenting new code, add the mapping to that script's `MAP`.
 
-**Four Wiki pages are opened by buttons in the shipped app**, across five buttons:
-`Workbooks-tab`, `MiniPro-programmer` (two buttons), `Controlling-oscilloscope-with-keyboard` and
-`Synchronize-oscilloscope`. **They are named once, in `AppConfig`** (`WikiPage*` plus
+**Six Wiki pages are opened by buttons in the shipped app**, across seven buttons:
+`Workbooks-tab`, `MiniPro-programmer` (two buttons), `Controlling-oscilloscope-with-keyboard`,
+`Synchronize-oscilloscope`, `Maintainer-tab` and `View-boards-from-online-source`. **They are named
+once, in `AppConfig`** (`WikiPage*` plus
 `WikiPageUrl`), and the buttons in `TabConfiguration.axaml.cs` and `ComponentInfoWindow.axaml.cs`
 read them from there rather than carrying URL literals — a repository rename then changes one
 place, not five. Renaming or deleting one of these pages breaks a button in builds already
@@ -261,7 +267,26 @@ for full per-OS instructions).
 
 **There are THREE test projects**, all xUnit and all run by the one
 `dotnet test Classic-Repair-Toolbox.slnx`. None needs an oscilloscope, a MiniPro programmer, a
-display, a database or a network; the whole suite is about 75 seconds in Release.
+display, a database or a network; the whole suite is about 2 minutes in Release including the build
+(CRT.App.Tests is the long pole, ~1m45s - its UI tests are ~90 s of it).
+
+**EPPlus forced a full garbage collection on every workbook it disposed** (`DoGarbageCollectOnDispose`,
+true by default) - found 2026-10-03, when the suite had crept to ~10 minutes: in the CRT.App test
+process, whose heap grows to ~500 MB, each forced collection cost ~0.4 s, about 85 % of the run
+(dotnet-counters showed ~90 % of the time in GC pauses; a GC trace put every induced collection in
+`ExcelPackage.Dispose`). CRT paid it too - on the UI thread, per board read or saved. **Every
+`ExcelPackage` is now made by CRT.Data's `EpplusLicense.NewPackage`/`OpenPackage`, which turn it
+off**, and `EpplusPackagesTests` fails on a `new ExcelPackage(` anywhere else in `src/`. If the suite
+slows down again, measure before guessing: a class run alone (`CRT.App.Tests.exe -class ...`) against
+its time in the full run tells whether the cost is the test or something building up in the process.
+
+**A test that WRITES a board workbook as set-up goes through `CachedWorkbooks.Write`** (CRT.App.Tests,
+2026-10-03), not `BoardWorkbookWriter.Write`: the writer is deterministic, so the first write of a
+board hands its bytes to every later test writing the same board (it was ~13 s of the run, measured
+with a sampled trace). Saves the code UNDER TEST makes stay real, and `CachedWorkbooksTests` holds that
+the key covers every field of every entry type. A sampled trace is the tool for the next slowdown:
+`dotnet-trace collect --profile dotnet-common,dotnet-sampled-thread-time -- <absolute path to the
+test exe>` (a relative path fails to launch), then count busy samples per method.
 
 | Project | Covers | Rough size |
 | --- | --- | --- |
@@ -344,6 +369,16 @@ the test. Use `TempWorkspace` for filesystem work. Cover the failure and edge ca
 happy path: blank input, malformed contributed data, wrong region, wrong board side, locale-specific
 number formats.
 
+### No case lists before the code (test-first trial ENDED, owner decision 2026-10-03)
+
+**Do not send the project owner numbered lists of test cases to confirm before writing code.** A
+test-first trial ran from 2026-10-02 to 2026-10-03 - every rule change began with "the rule, a
+numbered list of cases, questions" and waited for "yes to all" - and the project owner stopped it:
+the lists were too much to overview. Implement as before - the code and its tests in one go, per
+the rules above - and **ASK when something is genuinely the project owner's to decide** (a
+behaviour the request does not settle, a wording, a trade-off), with the answer you would propose,
+rather than assuming. A few pointed questions, not a list of cases.
+
 ### What is covered
 
 | Area | Classes |
@@ -352,15 +387,15 @@ number formats.
 | IC testing | `MiniproOutputParser`, `IcTestService` (via `MockMiniproRunner` and local test doubles) |
 | Security | `ExternalTargetLauncher`, `OnlineServices`' manifest-validation predicates |
 | KiCad | `KiCadRawProjectLoader`, `KiCadProjectLoader`, the `KiCadProjectData` model |
-| Board data | `BoardDataReader`, `BoardDataWriter`, `BoardComponentHighlightStorage`, `ComponentListBuilder`, `ComponentImageQueries`, `OverviewHtmlBuilder`, `ContactLinkFormatter`, `BoardWorkbookSchema` (both directions) |
-| Draft table editor | `BoardTableDocument`/`BoardTableSheet` (colours, ghost placement, agreement with `BoardDataDiffer`, moving rows, placing new components on save), `BoardTableHistory` (undo/redo of every change kind, the saved state), `BoardTableRowDrag` (live row drag, ghosts never targets, one step per drag, a return trip leaves none), `BoardTableClipboard`, `DraftTableSession` and `DraftWorkbookStore.EditIfUnchanged` (the refuse-a-stale-save rule), `ComponentPlacement` |
+| Board data | `BoardDataReader`, `BoardDataWriter`, `BoardComponentHighlightStorage`, `ComponentListBuilder`, `ComponentImageQueries`, `OverviewHtmlBuilder`, `ContactLinkFormatter`, `BoardWorkbookSchema` (both directions), `BoardDataChecks` (the one rule set: where each problem is, and that every table error is a server refusal), `SuppliedFileLookup`/`DiskFileLookup`, `DraftFingerprint` (what a draft holds, for "already sent as it is", 2026-10-03) |
+| Draft table editor | `BoardTableDocument`/`BoardTableSheet` (colours, ghost placement, agreement with `BoardDataDiffer`, moving rows, placing new components on save), `BoardTableHistory` (undo/redo of every change kind, the saved state), `BoardTableRowDrag` (live row drag, ghosts never targets, one step per drag, a return trip leaves none), `BoardTableClipboard`, `DraftTableSession` and `DraftWorkbookStore.EditIfUnchanged` (the refuse-a-stale-save rule), `ComponentPlacement`, the checks on the cells (`BoardTableProblemsTests`), `BoardTableRowFilter` (the pills as the filter), `BoardTableProblemWording`, `BoardTableSheet.DeleteRows` and `BoardTableDeletedWith.Combine` (several rows deleted as one step), `BoardTableSearch` (the search box's rows and runs), the document-wide colour-key counts |
 | Worklog | `WorklogManager` (including `ResolveActiveWorkbook`, `AddEntryRecord`, `DeleteEntry`, the non-reusing id counters, `IsResolvedState`, `IsWorkbookStatusOpen`, `GetAllWorkbooks`), `WorklogEntryScope`, `WorklogSearchQuery`, `WorklogSearchIndex`, `WorkbookSummary`, `WorkbookExportModel`, `WorkbookPdfExporter.WriteZip` (the archive only), `WorkbookPdfExporter.ConfigureQuestPdf` and the icon font (the QuestPDF settings, not the layout), `WorklogAttachTargets`, `WorklogAttachmentWriter` |
 | Text links | `TextLinkFinder` (which runs in a user-typed note are web links) |
-| Settings / startup | `UserSettings`, `DataManager` (data-root + master workbook), `DataValidator` (smoke only), `SimulationOptions` |
+| Settings / startup | `UserSettings`, `DataManager` (data-root + master workbook), `DataValidator` (smoke, and its log line - its rules are `BoardDataChecks`'), `SimulationOptions`, `TabBadge` and the Drafts tab's badge (`Ui/DraftsTabBadgeTests.cs`: the unread count on a real `Main`, and when the check while CRT runs asks anything) |
 | Updates | `UpdateChannelFilter` (which release stages the ALPHA/BETA checkboxes admit) |
-| Maintainer tab (`Handlers/Maintainer/`) | `ReviewApiRoutes`, `ReviewApiParser`, `ReviewApiClient` (its User-Agent, via `AnsweringHttpHandler`), `ReviewWireContractTests` (both ends of the review API), `ReviewSession`/`ReviewSessionStore` (the `"ReviewSessionStore"` collection), `MaintainerSettingsMigration`, `QueueRefreshRules`, `MaintainerModes`, `ReviewQueueDisplay`, `SystemsDisplay`, `SystemPlacementDisplay`, `ProductionDisplay`, `UnusedFilesDisplay`, `MaintainerAssignmentDisplay`, `ReviewNotInTable`, `ReviewContributorLine`, `ReviewDecisionWording`, `ReviewTableWording`, `ApprovalGate`, `ApprovalWording`, `DraftDiscardWording`, `FileRemovalWording`, `MaintainerWaitWording`, `FileTree`, `OpenedFiles`, `ReviewTableFiles`, `ReviewFileComparison`, `ReviewImageComparison`, `ReviewHighlightGeometry`, `ReviewScopeBaseline`, `ReviewSummaryPresenter`, `PoolAction` |
+| Maintainer tab (`Handlers/Maintainer/`) | `ReviewApiRoutes`, `ReviewApiParser`, `ReviewApiClient` (its User-Agent, via `AnsweringHttpHandler`), `ReviewWireContractTests` (both ends of the review API), `ReviewSession`/`ReviewSessionStore` (the `"ReviewSessionStore"` collection), `MaintainerSettingsMigration`, `QueueRefreshRules`, `SubmissionPrefetch`, `MaintainerModes`, `ReviewQueueDisplay`, `SystemsDisplay`, `SystemPlacementDisplay`, `ProductionDisplay`, `UnusedFilesDisplay`, `MaintainerAssignmentDisplay`, `ReviewNotInTable`, `ReviewContributorLine`, `ReviewContributorHistory`, `MaintainerModes.EntryToOpen` (which entry a queue opens on), `SubmissionViews` (the three views and the Files count, held to the tree's own headline), `SystemSections` (a system's six views on the Systems screen, and what its table sends), `SystemHistoryDisplay` (the History view's cards, months and change lines), `SystemOrderDisplay` (Account > "Order of systems"), `ReviewDecisionWording`, `ReviewTableWording`, `ApprovalGate`, `ApprovalWording`, `DraftDiscardWording`, `FileRemovalWording`, `MaintainerWaitWording`, `FileTree`, `OpenedFiles`, `ReviewTableFiles`, `ReviewFileComparison`, `ReviewImageComparison`, `ReviewHighlightGeometry`, `ReviewScopeBaseline`, `ReviewSummaryPresenter`, `PoolAction`, `ContactAddress` (which address the Feedback tab and the Submit dialog use while signed in), `MyAccountRules` and `ReviewSession.WithAccount` ("My account" on the Account screen - the "Your account" window until 2026-10-04 - and the "Logged in as" line), `SystemDeletionWording` (Account > "Delete a system"), `DataResetWording` (Account > "Reset contribution data": the button's rule, the counts) and `ApiUsageDisplay` (Account > "API usage": the groups and their order) |
 | Headless UI (`Tests/.../Ui/`) | All nine tabs built headlessly, the worklog and Workbooks palettes, component highlight selection and schematics zoom, plus `Main` itself, the label editor's full edit cycle, the worklog area-marking flow, `ComponentInfoWindow`, the oscilloscope's SCPI sequencing, and the Configuration/Overview/About tabs - see [Headless UI tests](#headless-ui-tests) |
-| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry`, `RowDragSlots` (the frozen-slot drag maths the worklog's Photos/Files lists and - through `ListRowDrag` - the Drafts tab's Schematic images window and the Maintainer tab's drop-down placement share) |
+| Geometry (`Handlers/Geometry/`) | `PolygonGeometry`, `RectGeometry`, `KiCadLayerGeometry`, `KiCadPadGeometry`, `OverlayCullGeometry`, `KiCadOverlayCacheKeys`, `KiCadOverlayNetCache`, `ViewportMath`, `KiCadNetGraphBuilder`, `KiCadHoverIndex`, `HighlightRectBuilder`, `LabelEditorGeometry`, `LabelEditorSnapGeometry`, `TraceGeometry`, `KiCadCalibrationGeometry`, `WorklogBadgeLayout`, `ExportOverlayGeometry`, `WorklogDefaultAreaGeometry`, `ColumnAutoFitGeometry` (which column a table heading's edge resizes, and the double-click fit's width), `RowDragSlots` (the frozen-slot drag maths the worklog's Photos/Files lists and - through `ListRowDrag` - the Drafts tab's Schematic images window and the Maintainer tab's drop-down placement share) |
 
 `Handlers/` is where the real coverage is; most of the uncovered remainder is `Tabs/` and `Main/`,
 Avalonia code-behind that is verified by running the app.
@@ -446,6 +481,8 @@ has an `internal` seam; the test project sees them via `InternalsVisibleTo` in t
   restore a session from it. Its tests share the `"ReviewSessionStore"` collection.
 - `TabMaintainer.UseRememberedChoices(...)` — `Main` hands the Maintainer tab its "Show changes
   only" from `UserSettings` through this; a tab a test builds on its own never touches `UserSettings`.
+  `UseRememberedSelections(...)` does the same for the two queues' last entries, and `UseTabBadge(...)`
+  for the tab's badge.
 
 Use `TempWorkspace` for anything that touches the filesystem; it creates and deletes a temp folder.
 Tests that mutate `UserSettings` or `DataManager` static state live in the `"UserSettings"` and
@@ -505,11 +542,22 @@ the plain-await version. Do not "simplify" it back to one `await`.
 | `WorklogAttachCaptureWindowTests.cs` | The modal that files a captured oscilloscope image into a worklog: that the PRESELECTED row is the ranked-first one (asserted with a component match that is NOT lowest by id, so a dialog doing no ranking at all fails it), that "Create new worklog" is always offered and is always LAST so it never displaces a real entry from the preselected slot (and is correctly the only row, and preselected, when the workbook has no entries), that the button reads "Attach to existing worklog" for an existing worklog and "Create worklog" for the new-entry row (it opens the full editor rather than attaching there and then, and a button still reading "Attach" would misdescribe that), that the target workbook is NAMED (this dialog opens from the component popup, which can be sitting over a schematic while the user has been looking at the scope), and the GROUP HEADERS - that both bands are named in the list itself ("Worklogs with U8 in scope" / "All other worklogs"), that every header is disabled so it can never be selected while the preselected row is still a real worklog, that a header is faint enough not to read as an option and is OUTDENTED with its worklogs indented under it (asserted past the Fluent theme's own 11px item padding, since a row at the default already sits right of the header - verified by removing the `ContainerPrepared` hook), that the matched heading picks the component out in BOLD inside brackets with only that run bold and the joined runs still reading "Worklogs with [U8] in scope", that the "All other worklogs" heading stays a plain string, and that no headers appear at all when nothing matches the component |
 | `TextLinkRendererTests.cs` | Rendering a user-typed note with its web links clickable: that link-free text stays a plain single-`Text` block with no Hand cursor, that a linked one moves its content into `Inlines` with `Text == null` (a block carrying both renders the Text and silently ignores the Inlines), that only the link run is underlined, that re-rendering replaces the previous pass rather than layering on it, and the LINK + SEARCH-HIGHLIGHT merge - a search term landing inside a URL, one outside it, highlighting with no link present, and that the merged runs are never empty and always rebuild the original string. Plus the `LinkText` attached property the editor's DataTemplates use, including re-rendering when a recycled container is handed a different row |
 | `WorklogEntryModeTests.cs` | The parked-pill canvas (separate from the anchored badge canvas, so parked pills do not pan and zoom with the board; no `Background`, since one would swallow every press across the schematic panel; below the "Netlist names" panel in z-order) and the "Add worklog" mode hint (its wording, that it starts hidden and is not hit-testable, that it covers the data-sync icon, that its text wraps inside its box rather than overflowing - a horizontal `StackPanel` measures with infinite width and would never wrap - and that it is plain text with no icon). Formerly `WorklogCreateCardTests.cs`; the quick card's own tests went with the card |
-| `BoardTableEditorTests.cs` | The Drafts tab's table editor as painted: one tab per sheet with its change count, the marker column then the schema's columns, and - in a SHOWN window, reading real `DataGridCell.Background`s - a changed cell orange while its neighbour is not, an added row green, a deleted row red with the `BoardTableDeleted` strike-through class, a duplicate row violet and counted as flagged but not on the tab, each legend count sharing one pill with its own word, "Show changes only" surviving a sheet switch, a clicked cell unfilled (or keeping its orange) inside a 2px dashed red frame with the grid's own frame and fill handle hidden, the drag grip centred, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on real keys (a typed word is ONE step, Ctrl+Z inside a cell being edited is left to it, undo returns to the sheet of the change, works after "Delete row" and from the check box, and greys "Save changes" out again), and a cell edit recolouring once the posted refresh runs (fails if the per-column cell theme binds the wrong column). Plus a REAL pointer drag by the grip (the dashed placeholder row mid-drag, the order live, one undo step; a click is not a drag; past the top edge steps; ghosts and the filtered view refuse), insert above/below and no move buttons, zero pills faded, Credits the last sheet tab, the toolbar's enablement per selected cell, insert/delete (there are NO "Restore row" / "Revert cell" buttons - removed by the project owner once undo existed; the model keeps `RestoreRow`/`RevertCell` for the Maintainer tab), "Show changes only" surviving a MAIN tab switch and never left on, hidden, for a draft with nothing published, single-cell paste (Excel's trailing line break dropped, a block refused with a message, a ghost refused), copy quoting, `EditTriggers` not editing on a single click, save and the refused-when-changed-on-disk message, watching the draft file (an outside change reloads when nothing is unsaved, raises the warning bar and greys Save when something is, never reloads under a cell being typed in; the open-in-Excel notice follows the lock file, edits or not, and shows at once when a table is opened on a draft already open in Excel; the outside-change reload is announced; the timer runs only while on screen), and every `BoardTable_*` key in BOTH themes |
+| `BoardTableEditorTests.cs` | The Drafts tab's table editor as painted: one tab per sheet with its change count, the marker column then the schema's columns, and - in a SHOWN window, reading real `DataGridCell.Background`s - a changed cell orange while its neighbour is not, an added row green, a deleted row red with the `BoardTableDeleted` strike-through class, a duplicate row uncoloured and counted by its problem but not on the tab (it was violet "Flagged" until 2026-10-03), a cell's tooltip letting the pointer through to the cell below it, each legend count sharing one pill with its own word, a picked pill (the filter) surviving a sheet switch, a clicked cell unfilled (or keeping its orange) inside a 2px dashed red frame with the grid's own frame and fill handle hidden, the drag grip centred, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z on real keys (a typed word is ONE step, Ctrl+Z inside a cell being edited is left to it, undo returns to the sheet of the change, works after "Delete row" and from a toolbar button, and greys "Save changes" out again), and a cell edit recolouring once the posted refresh runs (fails if the per-column cell theme binds the wrong column). Plus a REAL pointer drag by the grip (the dashed placeholder row mid-drag, the order live, one undo step; a click is not a drag; past the top edge steps; ghosts and the filtered view refuse), one "Insert row" and no move buttons, zero pills outlined and unpicked ones dimmed, Credits the last sheet tab, the toolbar's enablement per selected cell, insert/delete (there are NO "Restore row" / "Revert cell" buttons - removed by the project owner once undo existed; the model keeps `RestoreRow`/`RevertCell` for the Maintainer tab), a picked pill surviving a MAIN tab switch and never applied to a table it would show nothing of (kept for the next), pills clicked with a real pointer, two pills showing either kind, single-cell paste (Excel's trailing line break dropped, a block refused with a message, a ghost refused), copy quoting, `EditTriggers` not editing on a single click, save and the refused-when-changed-on-disk message, watching the draft file (an outside change reloads when nothing is unsaved, raises the warning bar and greys Save when something is, never reloads under a cell being typed in; the open-in-Excel notice follows the lock file, edits or not, and shows at once when a table is opened on a draft already open in Excel; the outside-change reload is announced; the timer runs only while on screen), and every `BoardTable_*` key in BOTH themes |
+| `BoardTableEditorSelectionTests.cs` | Several rows selected and deleted in one go (2026-10-02), with a REAL pointer: Shift+click a range and Ctrl+click one in or out, a plain click (also inside a selection, and after a search) selecting one cell again, "Delete row" deleting every selected row with one Ctrl+Z back, only red rows greying it out, a picked pill keeping hidden rows out of a range, the cursor landing where the first deleted row was, a grip drag moving one row, copy/paste staying on the framed cell, the button saying "Delete 8 rows", the Delete KEY deleting nothing (it did, through the grid's `CanUserDeleteRows`), and the veil over several selected cells |
+| `BoardTableEditorSearchTests.cs` | The table's search box (2026-10-02): typing narrows the rows and marks the found text in `Workbooks_SearchHit_*` - only the text found, the rest of the cell in its ordinary colour, each cell keeping its own fill - the clear button, together with a picked pill, moving to the first sheet with a match and hiding the others' tabs, a search matching nothing anywhere keeping only the sheet on screen with its line (cases 1-5 of 2026-10-03), no row moving while it is on, kept across sheet and tab switches and a save, emptied by closing the table or opening another draft. Case 21 (the Maintainer tab's table has it too) is in `Maintainer/TabMaintainerTableTests.cs` |
+| `BoardTableEditorChecksTests.cs` | The checks as the table paints them (2026-10-02), in a SHOWN window: a problem cell's corner mark read off its real `LinearGradientBrush` (the level's colour, then the cell's own wash - a changed cell with a warning keeps its orange), the colour key counting the WHOLE DRAFT on every sheet (owner decision, 2026-10-02 - it counted the sheet on screen), picking "Errors" moving to the errors and a fixed row leaving the view, a sheet tab with errors or warnings showing its name alone (its pills went 2026-10-02), the line for a problem in no row, and the new `BoardTable_*` keys in both themes |
+| `BoardTableEditorTextWrapTests.cs` | Long texts (owner requests, 2026-10-04), in a SHOWN window: EVERY cell wraps, with no check box ("Wrap text" was one for a day; now the grid's `CellsWrap` class and no `RowHeight`), a long note's row grows while a short one stays `MinRowHeight`, and a narrower column wraps more; pressing a column heading frees every column of `MaxColumnWidth` (420) so a drag can widen it, built capped again for the next sheet; and a real DOUBLE-CLICK on a heading's right edge, or on the next heading's left edge, fits the column to EVERY row - a row the grid has not built included, which the grid's own `CanUserResizeColumnsOnDoubleClick` (turned off) missed; both cases fail against it - never wider than the table and then scrolled wholly into view (it grew off the right edge before), while the marker column's edge fits nothing. The width rule is `ColumnAutoFitGeometryTests`' |
 | `UnsavedTableEditsWindowTests.cs` | The table editor's unsaved-edits prompt: Enter and Escape both CANCEL, including with "Discard edits" focused (Tunnel route, as `DeleteWorklogWindowTests`), and neither the reload wording nor the draft-changed-on-disk one offers Save (the latter says why), and the saving-elsewhere notice has Cancel alone and sends you to the Drafts tab |
-| `Maintainer/MainMaintainerTabTests.cs` | The Maintainer tab as CRT's window handles it, on a real `new CRT.Main()`: hidden until "Enable Maintainer tab" is on, placed between Drafts and Configuration, selecting it collapses the sidebar (columns 0 and 1 of `RootGrid`, `LeftPanel`, `MainSplitter`) and the worklog bar and leaving it puts back the width that was there, `UserSettings.LeftPanelWidth` never written with the collapsed 0, the worklog bar coming back only when the worklog is on, turning the tab off while selected moving the selection off it, the component filter never taking focus over it, and "Show changes only" read from and written back to `UserSettings.MaintainerShowChangesOnly`. Its settings file is written as `{}` first: `UserSettings.LoadFrom` on a MISSING file keeps the previous test's settings |
-| `Maintainer/TabMaintainerQueueTests.cs`, `TabMaintainerModesTests.cs`, `TabMaintainerTableTests.cs` | The Maintainer tab itself (the separate app's `MaintainerMain*Tests` until 2026-09-29): the queue grouped by board, the four screens and their badges, the table as the submission view, the decisions and their colours, waits under the overlay (through `MaintainerTabHost`, a Grid with one `BusyOverlay` standing in for Main - so the fade lands on the tab, as it does in CRT's window), and quitting CRT's question about unsaved table edits (`ConfirmLeavingTableAsync`, answered by `UnsavedTableEditsAnswerForTests`) |
+| `Maintainer/MainMaintainerTabTests.cs` | The Maintainer tab as CRT's window handles it, on a real `new CRT.Main()`: hidden until "Enable Maintainer tab" is on, placed between Drafts and Configuration, selecting it collapses the sidebar (columns 0 and 1 of `RootGrid`, `LeftPanel`, `MainSplitter`) and the worklog bar and leaving it puts back the width that was there, `UserSettings.LeftPanelWidth` never written with the collapsed 0, the worklog bar coming back only when the worklog is on, turning the tab off while selected moving the selection off it, the component filter never taking focus over it, and the table's filter (its picked pills) read from and written back to `UserSettings.MaintainerTableFilter`, the tab's header badge adding up the queue and BETA waiting for this account (gone, with its tooltip, once nothing waits), and that the badge counts as seen only with the tab on and the window not minimised. Its settings file is written as `{}` first: `UserSettings.LoadFrom` on a MISSING file keeps the previous test's settings |
+| `Maintainer/TabMaintainerQueueTests.cs`, `TabMaintainerModesTests.cs`, `TabMaintainerTableTests.cs`, `TabMaintainerSubmissionViewsTests.cs` (the three submission views: opening on Board data, the Files count, switching without closing the table, the Contributor view's record, a new submission resetting it), `TabMaintainerOpenOnEntryTests.cs` (both queues opening on the last entry or the first, never over one still open), `TabMaintainerDecisionClickTests.cs` (one click on Approve with the pointer resting on it reaches it - the tooltip trap), `TabMaintainerScreenTabsTests.cs` (the screens a tab strip across the top in CRT's tab red, the views one joined switch), `TabMaintainerInvitationTests.cs` ("I have an invitation" shown alone, read off a shown window, and Cancel back to the form as it was) | The Maintainer tab itself (the separate app's `MaintainerMain*Tests` until 2026-09-29): the queue grouped by board, the four screens and their badges, the table as the submission view, the decisions and their colours, waits under the overlay (through `MaintainerTabHost`, a Grid with one `BusyOverlay` standing in for Main - so the fade lands on the tab, as it does in CRT's window), and quitting CRT's question about unsaved table edits (`ConfirmLeavingTableAsync`, answered by `UnsavedTableEditsAnswerForTests`) |
 | `Maintainer/BetaViewTests.cs`, `SystemViewTests.cs`, `SystemPlacementViewTests.cs`, `UnusedFilesViewTests.cs`, `FileTreeViewTests.cs`, `RollBackBetaWindowTests.cs`, `DraftDiscardShownTests.cs` | The Maintainer tab's right-hand panels and dialogs, moved unchanged from the separate application's tests |
+| `Maintainer/MaintainerPoolViewTests.cs`, `SystemOrderViewTests.cs` | Account > Maintainers (2026-10-04 - the Systems screen's pool tests, moved with the controls, plus choosing the system) and Account > "Order of systems" (a move offering Save, "Put back as saved", every system sent in order, a refusal keeping the moves) |
+| `Maintainer/SystemViewSectionsTests.cs`, `TabMaintainerSystemTableTests.cs` | A system's six views (2026-10-03, History 2026-10-04): the switch and the view staying chosen for the next system, the Board data table (opened unmarked with no description box, read-only for a system not maintained or waiting in BETA, the save's order - check, reason, publish - and what it carries, a cancelled reason or a refusal keeping the change, a published change showing BETA as it is now, a table that cannot be read again closed, the `LeavingSystem` prompt and its Save), the Files listing, and the tab asking before another system replaces a change not published and opening one made but not published under Contributor Submissions |
+| `Maintainer/SystemViewBetaCatchUpTests.cs` | A system's table and files following BETA (owner report, 2026-10-04): the owner's case end to end (a highlight naming "hest" warned about, gone once BETA moved), not read again when nothing moved, the sheet kept, a table read while the system waited no longer read-only after a promotion, never read again under unsaved edits (the warning instead, read again once undone), not read again for its own publish, closed when BETA no longer holds the board, and a file list dropped only when BETA's content moved |
+| `Maintainer/PublishSystemChangeWindowTests.cs` | The reason asked before a Systems-screen change goes to BETA (2026-10-03): the files it removes named first, Publish off until a reason is typed and the reason handed back trimmed, a reason kept on reopening, and Enter/Escape cancelling with Publish focused (Tunnel) |
+| `Maintainer/SystemDeletionViewTests.cs`, `DeleteSystemWindowTests.cs` | Account > "Delete a system" (2026-10-03): every system with its own Delete button, a confirmed delete sending back the shown plan's fingerprint and the reason, a cancelled one sending nothing, a blocked system showing the server's reason with no confirmation; the confirmation listing what goes, asking a reason only when a contributor is mailed, and Enter/Escape cancelling with Delete focused (Tunnel) |
+| `Maintainer/DataResetViewTests.cs`, `ApiUsageViewTests.cs` | Account > "Reset contribution data" and "API usage" (2026-10-04), against `AnsweringHttpHandler`: the counts shown and the button off until `RESET` is typed, nothing typable while the server's switch is off, a reset sending back the shown counts' fingerprint and reading them again, a 409 saying so; the usage asking for the days chosen and showing the launches, then each area's routes |
+| `Maintainer/MyAccountViewTests.cs` | Account > "My account" (2026-10-03 as the "Your account" window; a panel of the tab since 2026-10-04), shown, against `AnsweringHttpHandler`: every account the server returns passed on at once, NOTHING passed on while a new address only waits for its code, refusals in red under their own section, the two new passwords that differ, Sign out handed to the tab, every box emptied on signing out, and a change made elsewhere followed |
 
 **The Application is built ONCE per assembly, not per test** - `[assembly: AvaloniaTestIsolation(
 AvaloniaTestIsolationLevel.PerAssembly)]` in `TestAppBuilder.cs` (2026-09-26). Avalonia's
@@ -568,9 +616,9 @@ interaction tests that assert observable state over more construction tests.
   (the `IUpdateSource` decorator that applies it to the feed BEFORE Velopack ranks it) stays
   uncovered - it is a thin pass-through over the real network source.
 - **`DataValidator`'s findings.** `ValidateAllDataAsync` returns a bare `Task` and reports everything
-  through `Logger`, so the tests only prove it walks real data without throwing. Testing what it
-  actually detects means changing it to return its findings — a public API change, and a decision for
-  the project owner rather than something to do in passing.
+  through `Logger`, so the tests only prove it walks real data without throwing, and pin its log line
+  (`Describe`). **Its rules are CRT.Data's `BoardDataChecks` since 2026-10-02** - the same rules the
+  Drafts tab's table marks and the server refuses on - and THOSE are fully tested, in CRT.Data.Tests.
 
 That extraction has been done — see `Handlers/Geometry/` above. What is left inside `TabSchematics`
 is genuinely UI: event handlers, control updates and rendering. Two methods that look pure are not
@@ -651,14 +699,46 @@ to keep the SDK's glob from pulling either into the build.
   **They still touch nothing of CRT's own orchestration - no `Main`, `DataManager`, `UserSettings`
   or `Logger`** (the rule the separate library's compiler used to enforce). A host hands them what
   they need - a folder, a document, a remembered choice (reported back through
-  `OnlyChangesWantedChanged`) - and CRT.Data's `CrtLog` is their logging seam. That is what keeps
+  `FilterWantedChanged`) - and CRT.Data's `CrtLog` is their logging seam. That is what keeps
   headless tests of them off the user's real settings and log files.
   `SharedControlsIndependenceTests` fails on any such reference in a `Controls/` source file.
+- **No button label has "..."** (owner rule, 2026-10-03: 'rename "Account..." button to "Account",
+  and please have a rule for this, as this is not the first time I have seen this - a button should
+  never have "..."'). A button says what it does in plain words - "Account", "Browse", "Choose image
+  files" - with no ellipsis, three dots or the single character, whether or not it opens a window.
+  Status lines and placeholders ("Loading, please wait...") are not buttons and are not affected.
+  **Machine-checked:** `ButtonLabelTests` (CRT.App.Tests) fails on a `*Button` whose `Content`, or a
+  `TextBlock`/`Run` inside it, carries one in any `.axaml` under `src/`, and on a `Content` set to such
+  a string literal in any `.cs` there. A Wiki page naming a button uses the same label.
+- **Everything only the administrator can use carries Font Awesome's padlock** (owner rule,
+  2026-10-04: "Mark all admin locked things (generally everywhere in application) with the Font
+  Awesome "fa-lock" icon, so it is clear which things are applicable only for the admin. No
+  title/helper text on this icon"). `<TextBlock Classes="AdminLock" Text="&#xf023;" />` right after
+  its name - the style is App.axaml's, with the 1px top room the padlock needs (see
+  `FontAwesomeGlyphMetrics`) - and NO tooltip on it. Today that is the seven administrator's entries
+  on the Maintainer tab's Account screen; nothing else in CRT is administrator-only (searched
+  2026-10-04 - the administrator's second approval of a shared-file change is a role in an approval,
+  not a locked control). Such an entry is also hidden from everybody else. Machine-checked for the
+  Account screen: `TabMaintainerModesTests.Every_administrators_entry_carries_the_padlock_with_no_tooltip_and_nothing_else_does`
+  lists the administrator's entries by name, so a new entry has to be decided one way or the other.
+- **Every tooltip opens at its control's EDGE, never under the pointer** (owner report, 2026-09-30:
+  Approve needed three clicks; `Handlers/Theme/ToolTipPlacement`, registered in `App`'s static
+  constructor). Avalonia's default places a tooltip 20 px below the POINTER; with no room it flips
+  above and keeps the 20 px offset, which lands it back OVER the pointer - and CRT's tooltips are
+  native popup windows, so the next click went to the tooltip, not the control: the bottom rows of
+  every table, list and file tree, and the decision buttons. A class handler on `ToolTipOpening` now
+  places each at `PlacementMode.Bottom` with offset 0 - under its control, or flipped on top of it,
+  never covering it. **Do not set `ToolTip.Placement="Pointer"` or a positive `VerticalOffset` on a
+  control** - a control that chooses its own placement opts out of the fix. The defaults could not
+  simply be overridden: Avalonia registers them on `Control` itself. `ToolTipPlacementTests`
+  reproduces the lost click and fails with the handler switched off.
 - **Every wait the user watches runs under `BusyOverlay`** (owner decision, 2026-09-28:
   "I want this method everywhere in the entire project where there is a Wait"). One per window, the
   last child of its root Grid (`Main`, and each dialog that waits:
-  `MySubmissionsWindow`, `SystemFilesWindow`, `ComponentContributionWindow`, the Maintainer tab's
-  `FileTreeWindow`) - the Maintainer tab itself has NONE, its waits run under Main's; anything in the window
+  `MySubmissionsWindow`, `SystemFilesWindow`, `ComponentContributionWindow`) - the Maintainer tab
+  itself has NONE, its waits run under Main's (its file tree window went on 2026-09-30, when the tree
+  became a submission's Files view, and its "Your account" window on 2026-10-04, when it became the
+  "My account" panel); anything in the window
   finds it with `BusyOverlay.For`/`BusyOverlay.RunAsync(this, ...)`. It blocks clicks AND keys at once,
   dims after 300 ms, and gives up after `WaitLimit.Maximum` (2 minutes) **with nothing happening** -
   work that calls `WaitContext.Report` restarts the clock, so a long upload is never cut off while it
@@ -670,7 +750,12 @@ to keep the SDK's glob from pulling either into the build.
   its overlay. **Deliberately NOT under it**: background work nobody pressed for (sync, status checks,
   the minute queue check, board views), board switching, the Submit dialog's upload (its own progress,
   and CRT stays usable), the MiniPro IC test and the oscilloscope's live output, and the SYNCHRONOUS
-  table-editor load/save (the overlay cannot draw while the UI thread is blocked).
+  table-editor LOAD (the overlay cannot draw while the UI thread is blocked). **The table's SAVE is
+  under it since 2026-09-30** (`BoardTableEditor.SaveAsync`; owner question - a save of the largest
+  board takes 0.6-2 s): the rows are taken on the UI thread (`DraftTableSession.PrepareSave`,
+  `BoardTableDocument.TakeSaveSnapshot`), the workbook read/write and the re-read run on the pool
+  under `RunLocalAsync`, and the file watch skips while it writes (`thisSaveInFlight`). The
+  synchronous `Save()` stays for tests; the button and the unsaved-edits prompts use `SaveAsync`.
 - Biggest files right now, for context budgeting: [Tabs/Contribute/ComponentContribution.axaml.cs](../src/CRT.App/Tabs/Contribute/ComponentContribution.axaml.cs)
   (~2,200 lines), [Tabs/Schematics/ComponentInfoWindow.axaml.cs](../src/CRT.App/Tabs/Schematics/ComponentInfoWindow.axaml.cs) (~1,900),
   [Handlers/Data/UserSettings.cs](../src/CRT.App/Handlers/Data/UserSettings.cs) (~1,900),
@@ -717,6 +802,37 @@ locally, sees how it has drifted from the published copy, and submits when ready
 `NewSystemMaintainerWindow` - the maintainer agreement "Create system" must pass through,
 `SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `SystemFilesWindow`,
 `DiscardDraftWindow`, `ForgetSubmissionWindow`), the same way `Worklog/` holds the worklog's.
+
+**The Drafts tab carries a BADGE** (owner request, 2026-09-30: "Like the "Maintainer" tab now has a
+badge, then I think the "Draft" also should have same functionality"; `Main.SubmissionChecks.cs`):
+`SubmissionReceiptStore.UnreadCommentCount`, the SAME number as the "My submissions" button inside
+it, drawn from `ApplyDraftsTabVisibility` - where every receipt or draft change already ends up.
+Sent submissions are asked about at launch AND every `SubmissionStatusRefresh.PeriodicInterval`
+(1 minute, the Maintainer tab's own - owner decision, 2026-10-01, over the earlier 5) while the
+window is not minimised and something is still open (`ChecksPeriodically`); each check is followed
+by the launch check's own path (retire, then `ApplyDraftsTabVisibility`) on `onFinished`, never
+`onChanged` - retirement depends on a state, and a receipt published before its board synced never
+moves again.
+
+**What was just sent cannot be sent again** (owner request, 2026-10-03; cases agreed). The receipt
+keeps `SubmissionReceipt.DraftFingerprint` - CRT.Data's `DraftFingerprint` of the draft as it was
+sent: the workbook's VALUES (not its bytes, so an Excel save with nothing changed, or a change
+undone, gives the same one), the JSON sidecar's bytes, and every file in the draft folder by path
+and content (never the downloaded data, Excel's `~$` owner file, the marker or hidden files). While
+the draft gives the same fingerprint as its LATEST submission, Submit is greyed out with the reason
+(`SubmissionReceiptPresenter.IsAlreadySent` / `DescribeAlreadySent`; `ToolTip.ShowOnDisabled`),
+whatever that submission's state - unless it never finished sending (no state yet, `uploading`,
+`abandoned`). An empty fingerprint (an older receipt, an unreadable draft) never blocks.
+`TabDrafts.SubmitAsync` checks again after settling the table's edits, since the row can lag an
+Excel edit.
+
+**A submission the server no longer knows reads "No longer on the server"** (2026-10-04, with the
+reset at go-live). The server answers 404 for one deleted with its system or by Account > "Reset
+contribution data", and the receipt is marked (`SubmissionReceipt.NotFoundUtc`). It used to keep
+showing its last state for ever. `SubmissionReceiptPresenter.DescribeReceiptState`/`ClassifyReceipt`/
+`DescribeReceiptBetaTry` read the RECEIPT (the Drafts badge, "My submissions"), in the neutral
+colour; such a receipt never blocks Submit (`IsAlreadySent`), offers no "try it in BETA", and is
+not reported on a discard (`DraftDiscardContract.WhichToReport`).
 
 **"Save to draft" in the Contribute tab's component editor lands on the Drafts tab** (owner
 request, 2026-09-24): `ComponentContributionWindow.SetAfterSaved`, which Main sets to close the
@@ -769,8 +885,17 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   case-insensitive, values trimmed + ordinal, first row per key wins). The sheet tabs' counts sit
   right under the draft row's own "N rows changed", and
   `BoardTableDocumentTests.The_change_counts_agree_with_BoardDataDiffer_on_the_board_a_save_writes`
-  holds them equal. A key edit (U8 -> U9) is an add plus a deleted ghost, as the differ and the
-  maintainer see it.
+  holds them equal. **A key edit with NOTHING ELSE changed is ONE row modified** (owner decision,
+  2026-10-04 - a credit's "Name or handle" given " 2" showed a red ghost and a green row: "This
+  seems weird to me"): `BoardDataDiffer.PairRenamedRows` pairs a row that lost its key with one that
+  gained one when every non-identifying cell is equal (DifferingFields' rule) and something filled in
+  is shared; the most shared key cells win, ties by key, so the table (screen order) and the saved
+  board pair alike. The table, the differ and the server's `ReviewSummary` (as `Renamed`) all call
+  it. A key AND another cell changed is still an add plus a deleted ghost - the owner chose this
+  strict rule over "mostly the same row". `BoardDraftNaturalKeys.PropertiesOf` names each type's key
+  properties, held to `ForRow` by a test. Rows identical but for their key DO pair (C10 deleted and
+  an identical C51 added reads as a rename) - test fixtures giving every component the same values
+  had to be made to differ.
 - **A save replaces all nine sheets, so it may only land on the file it was read from.**
   `DraftWorkbookStore.EditIfUnchanged` compares a SHA-256 of the workbook taken BEFORE the read;
   anything else is `ChangedOnDisk` and the table offers Reload. Never route the table's save through
@@ -843,15 +968,102 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   read from the SUBMISSION, `ReviewTableFiles.HashToRead`, since nothing of it is published) only
   beside another one, where it says which is which - a picture on its own is unlabelled (owner
   request, 2026-09-26).
-  **Every cell's TEXT tooltip is instant too** (the value it replaced, a flagged row's reason, the
+  **Every cell's TEXT tooltip is instant too** (the value it replaced, a problem the checks found, the
   marker's meaning): `ToolTip.ShowDelay` is `BoardTableEditor.CellToolTipDelay` (0) in both cell
-  themes, pinned by `BoardTableEditorTests.A_cells_text_tooltip_opens_the_moment_the_pointer_is_on_it`. Which cells are files is
+  themes, pinned by `BoardTableEditorTests.A_cells_text_tooltip_opens_the_moment_the_pointer_is_on_it`.
+  **And the pointer goes THROUGH it** (owner report, 2026-10-02: "the mouse should follow the cell
+  below, and not the tooltip"): a cell's tooltip opens under the cell, over the next row, and
+  Avalonia keeps a tooltip open while the pointer is on it - so the next row could not be reached.
+  The cell themes (and the row grip's style) set `ToolTip.ShouldUseOverlayLayer`, and the editor's
+  `ToolTip` style makes it not hit-testable: a tooltip that is a window of its own cannot let the
+  pointer through. Pinned by `Moving_down_from_a_cell_with_a_tooltip_reaches_the_cell_below_it`,
+  which fails with the style off. Which cells are files is
   CRT.Data's `BoardTableFileCells`; the bytes are the HOST's `IBoardTableFileSource`
   (`DraftTableFileSource` here, `ReviewTableFileSource` in the Maintainer tab) - a host that sets
   none gets no card. A file column's text tooltip gives way to the card.
-- **"Insert row above" / "Insert row below"** (`BoardTableSheet.InsertRowAbove` / `InsertRow`), and
-  a legend pill counting nothing fades to 0.4 opacity (the `Empty` class) so the kinds present stand
-  out.
+- **ONE "Insert row" button** (below the selected row; `BoardTableSheet.InsertRow`) - "Insert row
+  above" went on 2026-10-02 (owner request: "that can be moved afterwards"); the model keeps
+  `InsertRowAbove`. **The legend pills have three looks** (owner request, 2026-10-03): counting
+  nothing, OUTLINED in the kind's `BoardTable_*_Edge` colour with no fill, at 0.4 opacity (the
+  `Empty` class); counting rows, FILLED with the kind's wash at full strength; PICKED, the 2px
+  outline (`Selected`), at full strength even at 0. Pills with rows were dimmed too until picked,
+  briefly, and were too hard to read (owner request, 2026-10-03). A pill counting nothing cannot be picked (no hand
+  cursor; `BoardTableDocument.CanToggle`), but a picked one whose count drops to 0 can be put back. Each pill names its kind by class (`Added` ...
+  `Warnings`) so the fill is a style's - a `Background` set on the pill would outrank `Empty`'s.
+- **THE CHECKS ARE IN THE TABLE** (owner request, 2026-10-02: "integrate the existing validation check
+  into the "Draft" system table view ... All error should be fixed before submission can be done").
+  ONE rule set, CRT.Data's `BoardDataChecks`: the server's `SubmissionValidator` row rules (moved
+  there, run in `BoardCheckScope.Submission` - same codes, subjects, messages and order) plus, in
+  `Everything`, the server's file-name rules (`SubmissionPathRules.IsSafelyShaped`,
+  `SubmissionFileRules.TryCheckName` - CALLED, not restated) and the WARNINGS `DataValidator` used to
+  log alone. **An error in the table is a refusal at submit** -
+  `BoardDataChecksTests.Every_error_the_table_finds_is_one_the_server_refuses` fails otherwise; a new
+  local rule is a warning. Each problem carries its sheet, ENTRY index and column, and
+  `BoardTableDocument.RefreshProblems` (after every sheet refresh - the rules look across sheets)
+  puts it on the cell; a problem in no row (a highlight) is `ProblemsOutsideSheets`, a line above the
+  table. Files are looked for by the host's `IBoardFileLookup`: `DiskFileLookup` (the draft folder,
+  then the downloaded data held to EXACT spelling - the server refuses a case variant of a published
+  path) for the Drafts tab via `DraftTableSession.Open(..., dataRoot)`; none for the Maintainer tab.
+  A problem cell's mark is a TRIANGLE in its top-left corner, red error / amber warning, drawn as ONE
+  background brush (a diagonal gradient with a hard stop at half way to (`CornerMarkSize`,
+  `CornerMarkSize`), the state's wash after it) - so no cell template change, and it shows on an empty
+  cell. Its tooltip leads with the problems; a FILE cell's tooltip is its problems alone
+  (`ProblemToolTip`), beside the file card. Submit on a draft with errors sends nothing and opens its
+  table on them (`TabDrafts.StopForErrorsAsync`); warnings never block. `DataValidator`'s launch log
+  stays (owner decision) and runs the same rules. **Each draft's ROW counts them too** (owner report,
+  2026-10-02: "It must check for errors when creating the draft, and if the board changes
+  "offline""): `DraftStatusReader.CountProblemsCached`, stamped on the workbook and sidecar like
+  the change count, and the list is read again when the Drafts tab is shown or CRT's window is
+  activated (`TabDrafts.OutsideChanges.cs`), which is when an Excel edit arrives.
+- **A NEW DRAFT IS SEEDED FROM THE PUBLISHED FILE AS IT IS ON DISK, never from the board cache**
+  (`DraftSeeder.SeedFromPublishedFile`, 2026-10-02). The Contribute window and the label editor
+  passed `BoardDataReader.LoadAsync`'s CACHED board, so a published workbook edited in Excel while
+  CRT ran was seeded WITHOUT the edit (owner report). Every seeding save path calls this now.
+- **THE COLOUR KEY IS THE FILTER** (owner request, 2026-10-02: "remove the "Show changes only" so it
+  works in the same unified way"). Five pills - Added, Modified, Deleted, Errors, Warnings (a sixth,
+  Flagged, became warnings on 2026-10-03) - each a toggle (`Tapped`); picked ones show rows of ANY
+  picked kind (`BoardTableRowFilter`, `BoardTableRowKinds`), outlined 2px (`Selected` class). "Show
+  changes only" is `BoardTableRowFilter.Changes` (Added | Modified | Deleted). A new BLANK or
+  incomplete row is always shown. Moving rows is off while anything is picked. **The pills count the WHOLE DRAFT** (owner
+  decision, 2026-10-02: "Added, Modified and Deleted should work per system like Error and
+  Warning"): `BoardTableDocument.AddedCount` and its four siblings, every sheet together, whichever
+  is on screen; a pill is outlined only when the draft has none. A sheet's own change count is its tab's.
+- **THE SEARCH BOX** (owner request, 2026-10-02: "the same search/filter as we have in the
+  "Workbooks" tab, where it highlights what I search for"; `BoardTableEditor.Search.cs`). The rule is
+  CRT.Data's `BoardTableSearch` over the Workbooks tab's own `WorklogSearchQuery` (moved to CRT.Data
+  for it): words ANDed, each within one cell, quotes, -minus, any case - and EVERY cell, numbers
+  included (unlike Workbooks). **Decided once, when typed**: the rows not matching THEN are hidden,
+  so a row edited out of the match stays until the search changes (agreed case C) - a save or Reload
+  reads new row objects and works it out again. It combines with the pills (a row both show; the
+  tabs of sheets with none hidden; `BoardTableDocument.SheetsShown(kinds, search, current)`).
+  **A search finding nothing in ANY sheet keeps only the sheet on screen**, empty, with
+  `BoardTableSearch.NothingFoundLine` above the table (owner request, 2026-10-03 - every tab stayed,
+  which read as a search of one sheet); picked pills alone showing nothing still keep every tab. It
+  stops row moves, and is emptied by `Clear` and by `Load` of ANOTHER draft only (agreed case D). **The
+  marks are ProDataGrid's own**: its cell text block marks the runs in the grid's search model's
+  results, which the editor computes and hands over through `BoardTableSearchAdapter` - the stock
+  adapter recomputes them with its own grammar on every view refresh and WIPED them (a spike showed
+  it), so the subclass answers every recompute with the editor's results. Three traps, each found
+  by a render: the model's `HighlightMode` must be `TextAndCell` (the default marks no text), the
+  mark colours are written into the editor's own `Resources` in code from `Workbooks_SearchHit_*`
+  (the grid's control lookup does not reach a theme-dictionary key - in a theme dictionary they came
+  out in its default blue), and the grid's row tint (`DataGridRowSearchMatchOpacity`) is set to 0
+  and a matching cell's `Foreground` bound back to its row's (it gave the whole cell the mark's text
+  colour, unreadable in dark).
+- **SEVERAL ROWS DELETED IN ONE GO** (owner request, 2026-10-02: "mark multiple rows and then
+  delete those in one go"; `BoardTableEditor.Selection.cs`). The grid is `SelectionMode="Extended"`
+  over cells: Shift+click a range, Ctrl+click one in or out; a row is selected when any cell of it
+  is (`SelectedRows()`, sheet order, rows on screen only). "Delete row" calls
+  `BoardTableSheet.DeleteRows` - ONE undo step, ghosts skipped, a component's rows on other sheets
+  taken for all of them (all selected rows are removed FIRST, so two regional twins deleted together
+  count as both gone), `BoardTableDeletedWith.Combine` saying it in one sentence - and reads "Delete
+  8 rows". **`SelectCell` makes its cell the whole selection**, so a selection left behind by an
+  undo, a delete or Tab is never what the next delete takes. Several selected cells carry a
+  translucent veil (`BoardTable_Selection_Fill`, the cell template's `CurrencyVisual` filled, under
+  the grid's `SeveralSelected` class) over their own colour; one cell keeps the dashed frame alone.
+  **The Delete KEY deletes no row** (owner answer: "No") - `CanUserDeleteRows="False"`: it defaulted
+  ON, and Delete on a selected cell took the row out of the sheet's list behind the model's back (no
+  red row, no undo step) until this change.
 - **Deleting a component deletes everything that is its own** (owner, 2026-09-25): its rows on
   the image, local file and link sheets at once (`BoardTableDocument.DeleteRowsOfComponent`, shown
   red there), its highlights at save (`ApplyTo`), all ONE undo step - `BoardTableHistory` steps span
@@ -869,28 +1081,29 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
 - **A component row's identity is its label PLUS its region** (`BoardDraftNaturalKeys.ForComponent`,
   2026-09-24) - a regionalised component is one row per region. It used to be the label alone, so
   an added U1/NTSC beside U1/PAL was flagged a duplicate in the table, counted nowhere, and never
-  shown to a maintainer. Rows with no region key exactly as before. The price, pinned by
-  `ReviewFieldDiffTests`: giving a component a region is now a removal plus an addition, like a
-  label change. **An IMPORTANT SIGNAL's identity is its display name PLUS its KiCad net**
+  shown to a maintainer. Rows with no region key exactly as before. Giving a component a region
+  changes its key, like a label change - one row modified when nothing else changed (2026-10-04,
+  pinned by `ReviewFieldDiffTests`). **An IMPORTANT SIGNAL's identity is its display name PLUS its KiCad net**
   (`ForKiCadImportantSignal`, 2026-09-26): one display name covers several nets ("9VAC" is the 9VAC
   and the 9VAC~ net - the KiCad Wiki page says rows may share a display name), and keyed on the
   name alone every second one was flagged a duplicate (reported from the maintainer's table). A
-  signal therefore has no non-key field: a new net is a removal plus an addition. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
+  signal therefore has no non-key field: a new net is one row modified while its display name stays,
+  and a removal plus an addition once neither half does. `BoardDraftSummary` takes the label as the key's FIRST part for the Draft chips.
   `ComponentPlacement` puts a new regional variant straight after its twin (a blank category used
   to send it to the end of the sheet, where the project owner thought it had vanished).
 - **Excel keys:** Tab / Shift+Tab move right/left and wrap rows (handled on the tunnel route, since
   left alone Tab is the window's focus navigation and left the table); Enter moves down (the grid's
-  own). "Show changes only" filters through a `DataGridCollectionView` over the sheet's rows and
+  own). The pill filter goes through a `DataGridCollectionView` over the sheet's rows and
   switches moving off. **The grid's `FilteringModel.OwnsViewFilter` is set FALSE** - left true,
   the grid writes its own empty predicate over the view's `Filter` whenever it takes the view or
-  is re-attached, so the filter was lost with the box still ticked on every sheet switch and then
-  on every MAIN tab switch (both reported). A draft with nothing published turns the filter OFF
-  when it opens: the box is hidden there and every row is unchanged, so a filter left on from
-  another draft (the editor is reused) hid every row - reported as an "empty" Board schematics
-  sheet. **The user's CHOICE is kept apart from the filter** (`thisOnlyChangesWanted`, 2026-09-26),
-  so the next table with something published has it back on; `ApplyOnlyChanges` changes the
-  filter without touching the choice. **Ticked, it also HIDES the tabs of sheets it would show
-  nothing of** (owner request, 2026-09-26) - `BoardTableDocument.SheetsShown` (the current sheet
+  is re-attached, so the filter (then "Show changes only") was lost with the box still ticked on
+  every sheet switch and then on every MAIN tab switch (both reported). A table the user's pick would
+  show NOTHING of opens unfiltered (`document.HasRowsShownBy`): a filter left on from another draft
+  (the editor is reused) hid every row - reported as an "empty" Board schematics sheet, a draft with
+  nothing published. **The user's PICK is kept apart from the filter** (`thisFilterWanted`,
+  `FilterWanted`), so the next table with such rows has it back on; `ApplyFilter` changes the filter
+  without touching the pick. **A pick also HIDES the tabs of sheets it would show nothing of**
+  (owner request, 2026-09-26) - `BoardTableDocument.SheetsShown` (the current sheet
   keeps its tab while on screen; nothing to show anywhere keeps every tab) and `SheetToShow` (the
   sheet to open on when the wanted one's tab is hidden). The grid's scroll bars stay FULL SIZE (`ScrollViewer.AllowAutoHide="False"` on it - it scrolls
   through a ScrollViewer of its own; owner request, 2026-09-26): the theme's hairline hid that a
@@ -905,8 +1118,14 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   inherited text colour. All pinned by `The_header_row_is_set_apart_from_corner_to_corner`.
   **Every key the table's markup names must resolve in CRT's App.axaml** - `SharedTableColourKeysTests`, light and dark,
   fails on a key App.axaml does not define (a missing DynamicResource draws nothing, silently). The text size is set on EVERY column (`CellFontSize`) - a text column carries
-  its own size, so the grid's `FontSize` alone shrank only the headers - and cells get `MinHeight` 0
-  so the denser rows do not clip the current cell's frame.
+  its own size, so the grid's `FontSize` alone shrank only the headers - and cells get `MinHeight`
+  `MinRowHeight` (26, the `CellsWrap` style) instead of the theme's taller default, so the denser rows
+  do not clip the current cell's frame. **Every cell wraps and a row is as tall as its tallest cell**
+  (owner request, 2026-10-04 - a "Wrap text" check box, remembered in `UserSettings`, came and went
+  the same day), and **a double-click on a heading's edge fits the column to the widest text in every
+  row shown**, never wider than the table (`BoardTableEditor.TextWrap.cs`, the rule
+  `ColumnAutoFitGeometry`) - the grid's own double-click fit is off because it measures only the rows
+  it has built.
 - **Order is NOT a change `BoardDataDiffer` counts** (it pairs by key). A reorder is saved into the
   draft and published with a submission - `PublishMerge` takes rows as submitted - but a draft whose
   ONLY change is a new order reads "0 rows changed" and cannot be submitted, and a maintainer is not
@@ -938,16 +1157,27 @@ shown WHERE THE ROW USED TO BE. Things to know before touching it:
   selection overlay's `PART_SelectionOutline` and the `PART_FillHandle` (Excel's drag-to-fill,
   which writes a run of cells the table was never built for) are hidden. The drag grip spans
   both of the row header's columns (`Grid.ColumnSpan`), or it sits centred in the first, 16px one.
-- **Four colours, four counted pills.** Besides green/orange/red, a row marked `!` (a duplicate
-  key, or incomplete so dropped on save) is FLAGGED: violet across the row
-  (`BoardTableCellState.Flagged`, `BoardTable_Flagged_Bg`), its cells' tooltip giving the reason,
-  and a fourth pill in the colour key. Flagged is NOT a change - `ChangeCount` and the tab's number
-  leave it out, so they keep agreeing with `BoardDataDiffer` - and it is coloured even with nothing
-  published. Each pill holds its count AND its word ("[ 2 Added ]"): a count badge beside a
-  separate word read as belonging to either neighbour (reported). The TAB shows flagged rows in a
-  violet pill of their own beside the bracketed change count ("[ 6 flagged ]",
-  `BoardTableSheetTabHeader`, owner request 2026-09-26: "these will be important to address");
-  tab headers are that record, so a test reads a tab's text through `Header.ToString()`.
+- **Three colours; a duplicate or a row the save drops is a WARNING** (owner request, 2026-10-03:
+  "Should flagged now be treated as warnings?"; cases agreed). They were a fourth colour, violet
+  "Flagged", with `!` and a pill of their own, until then - the colours now mean only what changed.
+  A row whose natural key repeats one above is `BoardDataChecks`' `row.duplicate` warning on EVERY
+  row of the set, on the first identity column (`BoardDraftNaturalKeys.ColumnsOf`, held to `ForRow`
+  by a test), in `Everything` only - except on Components and Board schematics, where a duplicate
+  is already the server's error - refused on the later row(s), and marked by the TABLE on every row
+  of the set (owner decision, 2026-10-03: "it should show all rows, and not only last, as the
+  maintainer/contributor then has some context"), the first one in `Everything` only, so what the
+  server refuses is unchanged. A row the save drops (an Important signals
+  row missing a half - `BoardWorkbookSchema.RequiredColumns`, held to the mapper by a test) is
+  `row.incomplete`, put on by `BoardTableDocument.RefreshProblems` itself, since the checks only see
+  rows a save writes; it is coloured like a new row, marked `+`, and always shown by a filter. A
+  later duplicate is uncoloured and unmarked. Neither is a change - `ChangeCount` and the tab's
+  number leave them out, agreeing with `BoardDataDiffer`, and the first row of a duplicate still
+  counts as whatever pairing made it. A remembered "Flagged" filter parses as Warnings. Each pill holds its count AND its word ("[ 2 Added ]"): a count badge beside a
+  separate word read as belonging to either neighbour (reported). **A sheet TAB says its name and
+  change count and nothing else** (owner request, 2026-10-02: "the tabs ... should not show "2
+  flagged" and "8 error" - the tabs will be obvious when you click those badges"): the flagged
+  (2026-09-26), error and warning pills it carried are gone with `BoardTableSheetTabHeader`, since
+  picking a pill hides every tab without such rows. A tab's header is that plain string.
 
 Two tabs are conditional, both hidden by a Configuration checkbox and both shown from `Main.axaml.cs`:
 `Oscilloscope` (`ApplyOscilloscopeTabVisibility`) and `Workbooks` (`ApplyWorklogBarVisibility`, which
@@ -1295,8 +1525,9 @@ pane specifically), `TabWorkbooks.Summary.cs` (the collapsible workbook-summary 
   refuse every export and log a warning about the file it had just written.
 
 - **The "Find a previous repair" field is now wired up** and filters the whole tab as you type.
-  The query language lives in [Handlers/Data/WorklogSearchQuery.cs](../src/CRT.App/Handlers/Data/WorklogSearchQuery.cs)
-  (pure, unit tested by `WorklogSearchQueryTests`): space-separated terms are ANDed, `"a phrase"`
+  The query language lives in [src/CRT.Data/WorklogSearchQuery.cs](../src/CRT.Data/WorklogSearchQuery.cs)
+  (pure, unit tested by `WorklogSearchQueryTests` in CRT.Data.Tests; moved from CRT.App on 2026-10-02
+  so the board table's search box uses the same grammar - `BoardTableSearch`): space-separated terms are ANDed, `"a phrase"`
   quotes a run containing spaces, a leading `-` excludes, matching is case-insensitive substring
   throughout (so `p c u` finds `CPU`, and `"full text"` finds `Afull textB`). An empty box is not a
   filter and matches everything. Which fields are searched is
@@ -1683,24 +1914,49 @@ namespace `Handlers.MaintainerHandling`), its tests in `tests/CRT.App.Tests/Main
   sidebar (columns 0 and 1 of `RootGrid`) and the worklog bar collapse, and leaving it puts back the
   width that was there. `OnMainSplitterPointerReleased` never saves `LeftPanelWidth` while collapsed
   (it would save 0). Hiding the tab never signs out or closes its table.
-- **The remembered sign-in is restored the FIRST time the tab is shown** (`TabMaintainer.Session.cs`,
-  on first attach), never in the constructor. `ReviewSessionStore.Initialise()` runs at CRT's start-up;
+- **The remembered sign-in is restored AT LAUNCH, quietly, for the tab's badge** (owner request,
+  2026-09-30; `TabMaintainer.RestoreInBackgroundAsync`, started by `Main.StartMaintainerBadge` from
+  `StartAsync` once the window is up, or when the setting is ticked later) - no overlay, and only the
+  badge's two lists. Failing that, on the tab's first attach, under the overlay as before. NEVER in
+  the constructor. `ReviewSessionStore.Initialise()` runs at CRT's start-up;
   no test runs that, so a tab a test builds finds no stored session. The token is DPAPI-protected on
   Windows and not stored anywhere else (`ReviewSessionProtection` - its entropy string still says
   "Review" and must not change). See `ReviewSession`'s header for the API's `refreshToken` naming
   trap: that field IS the bearer token, and there is no access-token exchange to go looking for.
-- **The minute queue check runs while the tab is on screen AND CRT's window is in front**
-  (`TabMaintainer.QueueRefresh.cs`): a tab not on screen is DETACHED, which clears the window it
-  listens to. Returning to the tab, or to the window, checks at once if it is due.
+- **The tab carries a BADGE in CRT's row of tabs** (owner request, 2026-09-30: "until it is fully
+  processed, including if it is awaiting in "BETA to PROD" queue"): the "Contributor Submissions"
+  and "Beta > Prod" attention badges ADDED UP (`MaintainerModes.TabAttention` - a sum, so the tab
+  says what opening it shows), drawn by `Main.ShowMaintainerTabBadge` through
+  `TabMaintainer.UseTabBadge`. A 401 clears what it counts (`ShowSignInPanel` empties
+  `thisQueueEntries`), so a signed-out tab never keeps a stale number. The number is
+  `Handlers/Theme/TabBadge`'s, which the Drafts tab's badge shares. **No tooltips** on it or on the
+  tab's buttons (owner request, 2026-09-30: "no need to see it").
+- **The minute check** (`TabMaintainer.QueueRefresh.cs`, `QueueRefreshRules.MinuteCheck`): with the
+  tab on screen AND CRT's window in front, EVERYTHING, as before (a tab not on screen is DETACHED,
+  which clears the window it listens to; returning checks at once if due, against when everything
+  was last read - `thisEverythingAskedUtc`, not the badge check's time). Otherwise, while the badge
+  can be SEEN (tab on, window not minimised - `Main.MaintainerTabBadgeCanBeSeen`), only the queue
+  and the BETA list - never the Systems overview. **The price, accepted with the request:** every
+  request slides the 30-day session, so a maintainer now stays signed in while CRT is used at all,
+  not only while reviewing.
+- **The entry "Contributor Submissions" opens on is READ AHEAD while the tab is away** (owner
+  request, 2026-10-02: no "please wait" on the first look; `TabMaintainer.Prefetch.cs`, the rule
+  `SubmissionPrefetch`): its detail and table, quietly, last at launch and after each off-screen
+  badge check when that entry's queue row changed. Used once, only for EXACTLY the queue row it was
+  read for; opening it shows it at once and re-reads both quietly (a newer table version replaces
+  the one shown unless something was typed). Coming back to the tab opens the entry BEFORE the
+  full check when the queue is already known.
 - **Quitting CRT asks about unsaved table edits** through `HasUnsavedTableEdits` /
   `ConfirmLeavingTableAsync`, from `Main.OnWindowClosing` - after the Drafts tab's table, in ONE
   posted continuation with one settled flag.
 - **No "please wait" overlay of its own**: its waits run under `Main`'s (`BusyOverlayHostsTests`
   fails if one comes back). Tests stand a Grid with one overlay in for Main (`MaintainerTabHost`).
-- **"Show changes only" is `UserSettings.MaintainerShowChangesOnly`**, handed over by Main through
-  `TabMaintainer.UseRememberedChoices` and written back through the table editor's
-  `OnlyChangesWantedChanged` (raised for the user's CHOICE only). The separate app's own settings file
-  is carried over once and deleted (`MaintainerSettingsMigration`); its window placement is not.
+- **The table's filter - its picked pills - is `UserSettings.MaintainerTableFilter`** (kind names,
+  `BoardTableRowFilter.Format`; it was the "Show changes only" bool until 2026-10-02, and a saved
+  `true` reads as `Changes`), handed over by Main through `TabMaintainer.UseRememberedChoices` and
+  written back through the table editor's `FilterWantedChanged` (raised for the user's PICK only).
+  The separate app's own settings file is carried over once and deleted
+  (`MaintainerSettingsMigration`); its window placement is not.
 - **The component filter never takes focus back over the tab** (`ShouldReturnFocusToComponentSearch`),
   and F11 does not open the schematics fullscreen while it is selected.
 - **The server address is `AppConfig.CrtServerRootUrl`** (no "/api" - every review route appends the
@@ -1708,29 +1964,108 @@ namespace `Handlers.MaintainerHandling`), its tests in `tests/CRT.App.Tests/Main
   differ on purpose; `ReviewApiRoutesTests` pins the review side. Requests send
   `User-Agent: CRT <version>`.
 
-**Four screens, chosen by the buttons at the top left** (owner request, 2026-09-27;
-`TabMaintainer.Modes.cs`), in this order and with these labels (owner request, same day):
-**Systems** (every system's maintainers, contributors and recent submissions -
-`TabMaintainer.Systems.cs` beside `SystemView`), **Contributor Submissions** (the Review screen:
+**"Contributor Submissions" and "Beta > Prod" OPEN ON AN ENTRY** (owner request, 2026-09-30;
+`TabMaintainer.OpenOnEntry.cs`, the rule `MaintainerModes.EntryToOpen`): the one looked at last
+while it is still listed (`UserSettings.MaintainerLastSubmissionId` / `MaintainerLastBetaSystemId`,
+so across restarts), else the first - on choosing the screen's button, after the lists are read at
+sign-in, and on coming back to the tab. Never over something still open (a submission decided
+elsewhere keeps its table), and never from the badge's off-screen check.
+**With nothing waiting, the tab OPENS ON SYSTEMS** (owner request, 2026-10-04: "if there is no queue
+awaiting, when opening the "Maintainer" tab, then go to "Systems" and show the last selected
+system"; `MaintainerModes.ScreenOnOpening`, `TabMaintainer.OpenOnEntry.cs`). Opening is showing the
+tab or signing in on it; the screen is decided ONCE per opening, as soon as it is known whether
+anything waits (`WaitingIsKnown`: something counted in either list settles it, "nothing" needs both
+read), and nothing is opened before then. "Waiting" is the badge's own sense (`TabAttention`), so a
+submission waiting only for the other approver does not count. Only a queue screen gives way, and
+never with a submission or BETA system open on it; a screen chosen meanwhile settles it. Systems
+then opens on `UserSettings.MaintainerLastSystemId`, else the first, once its list is read - the
+Systems BUTTON still opens nothing by itself. The read-ahead (`TabMaintainer.Prefetch.cs`) skips an
+opening that will go to Systems (`ScreenOnNextOpening`).
+**Four screens, chosen by a TAB STRIP across the top** (owner request, 2026-09-27; a strip since
+2026-10-01 - they were grey buttons wrapped onto two rows of the list column, identical to the
+submission's view buttons, and the owner called it "bad UX design");
+`TabMaintainer.Modes.cs`), in this order and with these labels (owner request, same day; RENAMED
+2026-10-04 to "Queue: Contributor submissions", "Queue: Awaiting push from BETA to stable" and
+"Administrator activities", the last renamed again the same day to "Account" - this file still says
+"Contributor Submissions", "Beta > Prod" / "BETA > Stable" and "Admin" for them in older notes). **The labels are CRT.Data's
+`MaintainerScreenWording`**, which the tab strip reads (x:Static) and every message naming a screen -
+the tab's own, `OneSubmissionInBeta` and the server's refusals - is built from, quoted
+(`*Quoted`); never write a screen's name as a literal:
+**Systems** (every system, in five views - below; `TabMaintainer.Systems.cs` beside
+`SystemView`), **Contributor Submissions** (the Review screen:
 the queue and its table, below - `MaintainerMode.Review` and the `Review*` control names stayed),
 **Beta > Prod** (systems waiting for production - `TabMaintainer.Beta.cs` beside `BetaView`, the
-"Publish to production" window until then; `MaintainerMode.Beta`) and **Admin** ("Unused files" -
-`TabMaintainer.Admin.cs` beside `UnusedFilesView`). Sign-in still opens on Contributor Submissions.
-**An administrator sets maintainers on the SYSTEMS screen** (owner request, 2026-09-27 - it was
-"Set maintainers" under Admin): `SystemView.Maintainers.cs` adds a Remove button per maintainer,
-the open invitations with Withdraw, an account list to add from, and **"invite somebody new" by
-email** - the server (`MaintainerInvitationFlows`, migration 0012's `maintainer_invitations`) mails
-a one-time code, and the invitee redeems it with "I have an invitation" on the tab's sign-in
-screen (`TabMaintainer.Invitation.cs`), which creates their account VERIFIED and puts it in every
-pool that address was invited to. That is the ONLY way a new maintainer's account is made - CRT
-cannot register one. An address that already has an account is refused as an invitation
-and chosen from the list instead (the list says why an account cannot be granted). The admin
-systems list (`GET /api/admin/systems`, `ReviewApiClient.GetSystemsAsync`) lost its only screen with
-this and is kept, unused, rather than removed in passing. Each is a list on the left and the chosen item on the right. **Switching
+"Publish to production" window until then; `MaintainerMode.Beta`) and **Account** (`MaintainerMode.Account`,
+`TabMaintainer.Account.cs`; "Admin", the administrator's alone, until 2026-10-04 - owner request:
+"rename the "Administrator activities" tab to "Account". Then make this tab available to all
+maintainers"). **Every maintainer** has its first two entries: **"My account"** (`MyAccountView` - the
+name, address and password of the "Your account" window, and **Sign out**; both were buttons under the
+lists until then) and "Server version". **The administrator's own** follow - "Maintainers", "Order of
+systems", "Unused files", "Rebuild checksum manifests", "Delete a system", "API usage" and "Reset
+contribution data", beside `MaintainerPoolView`, `SystemOrderView`, `UnusedFilesView`,
+`RebuildManifestsView`, `SystemDeletionView` (whose confirmation is `DeleteSystemWindow`),
+`ApiUsageView` and `DataResetView` - each with the class `AdminOnly` and the padlock (see "Code layout
+conventions"), and **taken OUT of the list** for anybody the server's `isAdministrator` does not name
+(`ShowAdministratorEntries`; they start out until the first queue answer). **Not `IsVisible = false`**:
+the list's `VirtualizingStackPanel` sets `IsVisible` back to true on each container it realises, so a
+tab never shown - every test - kept them hidden while a real window showed them all to a maintainer
+(seen in a render; `In_a_shown_window_a_maintainer_is_drawn_only_the_two_entries_that_are_theirs`
+fails against it). Account opens on "My account", which reads nothing. **"API usage"** and **"Reset contribution data"** (owner requests, 2026-10-04 -
+see the server's bullets) read when chosen and never on the minute check; the reset is LAST in the
+list, worded by `DataResetWording`, and its red button works only once `RESET` is typed and only while
+the server's switch is on (`DataResetWording.CanReset`); the usage is worded and ordered by
+`ApiUsageDisplay` (least-called first in each area, the never-retired routes last). **"Server version"** (owner requests,
+2026-10-04 - a line above the account row until the second) is three lines, each value bold in
+brackets: "Server version [4.6.0]", "API server version [1]" and "API application version [1]" -
+the deployed version and API revision from `GET /api/health`, asked with no session whenever the
+entry is shown (chosen, or Account shown again with it chosen), and this CRT's own revision; worded by
+`ServerVersionDisplay`, the answer CRT.Data's `HealthStatus`). Sign-in opens on Contributor Submissions -
+or on Systems when nothing waits (above). At 800 wide (CRT's minimum) with two-digit badges the four
+tabs still do not fit on one line and "Account" wraps onto a second, inside the tab (rendered
+2026-10-04); with no badges they fit. **Under the lists the tab says only who is logged in** (owner
+request, 2026-10-04): "Logged in as:" and, under it, the name in bold and the address in brackets
+(`MyAccountRules.LoggedInAs`) - no buttons.
+**An administrator sets maintainers under ACCOUNT > MAINTAINERS** (owner request, 2026-10-04: "'Send
+invitation' and 'Add as maintainer' gets moved to the 'Admin' tab ... as this is something only the
+admin should be able to do" - they were on the Systems screen from 2026-09-27, and under Admin
+before that). `MaintainerPoolView`: a system chosen from every system (`GET /api/admin/systems`,
+`ReviewApiClient.GetSystemsAsync`, its count beside each), then a Remove button per maintainer, the
+open invitations with Withdraw (the system's detail carries them), an account list to add from, and
+**"invite somebody new" by email** - the server (`MaintainerInvitationFlows`, migration 0012's
+`maintainer_invitations`) mails a one-time code, and the invitee redeems it with "I have an
+invitation" on the tab's sign-in screen (`TabMaintainer.Invitation.cs`), which creates their account
+VERIFIED and puts it in every pool that address was invited to. The invitation is shown INSTEAD of
+the sign-in form, never under it, with Cancel back to the form as it was left (owner request,
+2026-10-04 - the email and password boxes above it were confusing). That is the ONLY way a new
+maintainer's account is made - CRT cannot register one. An address that already has an account is
+refused as an invitation and chosen from the list instead (the list says why an account cannot be
+granted). A system's own Maintainer view on the Systems screen LISTS its maintainers and nothing more
+("The stuff that should be visible in here, is just the selected maintainer(s)"), for everybody.
+**Account > "Order of systems"** (owner request, 2026-10-04: "sort the list of systems, which then gets
+saved to both sources (BETA + stable) after my save"): `SystemOrderView` drags BETA's drop-down list
+(`ListRowDrag`, the placement's own drag) and sends EVERY system in its order to `POST
+/api/admin/systems/order` (`SystemOrderFlow`), which refuses a list not naming exactly BETA's systems
+(409), writes BETA's newest main Excel data file and then the stable source's in the same order
+(`MasterListing.Reorder`/`ArrangeAs` - a row the order does not name stays after the row it
+followed), and rebuilds each changed tree's manifest. A stable list or manifest that could not be
+written after BETA's was is said in the answer (`SystemOrderAnswer.Problem`), never rolled back.
+**EVERY WRITE OF A MAIN EXCEL DATA FILE dates both sheets and freezes their panes** (owner request,
+2026-10-04; `MasterListing.Finish`, called by its one `Save`): the "# Revision date:" line of
+"Hardware & Board" AND "Oscilloscope" set to the day, the first frozen under its header, the second
+under its header and after its second column. A sheet with no date line is not given one; a rich-text one (the shipped file's: a plain label,
+the date bold) keeps its runs, only their text changing. **The Systems list flags what is off with the
+drop-down lists** (owner request, 2026-10-04: "I do not expect there should be cases where something
+can only be listed in stable? If so, it must be flagged"): `SystemOverviewEntry.ListedInBeta` /
+`ListedInStable` (`SystemOverviewFlow.ReadListings`, null when a list could not be read) worded by
+`SystemsDisplay.ListingParts` as to-do - listed only in the stable list, or missing from it while the
+stable source holds the board - and the list now also holds what only the stable source has (tree or
+list), which used to be missing from the screen altogether. Each is a
+list on the left and the chosen item on the right. **Switching
 screen HIDES, it never closes**: an open table, unsaved changes and all, is where it was on coming
 back, so nothing is asked. Review and BETA carry a badge counting the SYSTEMS waiting for this account
 (`MaintainerModes`, over the server's `awaitsYou`), Systems a discreet count of all systems, and
-Admin shows only when the server says the account is an administrator. The BETA list and the
+Account's administrator's entries are in its list only when the server says the account is an
+administrator. The BETA list and the
 drop-down listing are read on the queue's own minute check; the Systems OVERVIEW only while its
 screen is shown (`QueueRefreshRules.ReadsSystemsOverview`, code review 2026-09-27 - the server walks
 both data trees for it). Each keeps the rule below: nothing open is reloaded unless its row changed
@@ -1741,10 +2076,81 @@ submission is opened. **The
 Systems screen shows every system's contributors, addresses included, to EVERY maintainer** - an
 owner decision ("Everything for everyone"), enforced on the server by `SystemOverviewFlow`
 (`CanReviewAnything`), not a default to tighten quietly. Its state words are CRT's own
-(`SubmissionReceiptPresenter.DescribeState`), so the Drafts tab and the Maintainer tab describe a submission identically. The
-left column is 370 wide; the four buttons wrap onto two rows there since their labels were
-lengthened (a WrapPanel, so they never run over the panel beside it).
+(`SubmissionReceiptPresenter.DescribeState`), so the Drafts tab and the Maintainer tab describe a submission identically.
+**A system has SIX VIEWS, like a submission's three** (owner request, 2026-10-03: "all the same
+functionalities, as the 'Contributor Submissions' has"; `SystemSections`, the `SystemView.*`
+partials): **Board data** (BETA's board in the shared table editor), **Files** (every file it uses
+in BETA - `FileTreeView.ShowListing`: no "Show only changed files", a count of files, its own
+folder open), **Contributor**, **Maintainer** (its placement while it needs one, and its maintainers
+as a list), **History** (2026-10-04, below) and **Statistics** (the board views; graphs are to come).
+**The History view is a CARD PER SUBMISSION** (owner request, 2026-10-04: "the full history of what
+has happened with this board, in an 'easy to overview' way"; `SystemHistoryDisplay`,
+`SystemView.History.cs`): by month, newest first, the day in a column of its own; a card gathers a
+submission's sending, amendments and decision, its state now in CRT's words, what the contributor
+was told - and **WHAT IT CHANGED IN BETA**, CRT.Data's `SubmissionChanges` on its
+`SystemSubmissionEntry.Changes` (server 4.3.0). That summary can only be made AT THE PUBLISH - no
+board history is kept, so the board before is gone once written over - so `ApprovePublishFlow`
+compares BETA's board with the one replacing it (`ReviewSummary`, the review's own comparison: rows,
+fields, highlights, calibrations; files added or replaced asked of the tree before the write, removed
+ones after) and stores it (migration 0017's `submission_changes`, `ISubmissionStore.SetChangesAsync`),
+never failing the publish for it. Bounded: `SubmissionChangeFacts.ListedPerKind` names per list, the
+counts carry the rest. A submission published before 4.3.0 has none, and its card says so. Every
+other event is a line of its own (`SystemsDisplay.HistoryWhat`). The view chosen STAYS for the next system (a submission's resets); Board data and Files
+are read from the server when first shown for a system, and READ AGAIN WHEN BETA MOVES (owner report,
+2026-10-04: a fix approved and promoted kept showing its warning until a restart):
+`SystemOverviewEntry.BetaContentHash` (server 4.1.0, the `systems` row's `content_hash`) is held
+against the entry the table was read at - `QueueRefreshRules.SystemTableChanged` for the table (also
+whether it may be edited, which a promotion moves), `BetaBoardChanged` for the files - in
+`SystemView.CatchUpWithBetaAsync`, on every re-read of the system's row. Never under unsaved edits
+(`SystemSections.BetaMovedUnderChange` says so instead). **A Board data edit GOES STRAIGHT TO BETA**
+(owner decision, 2026-10-03: "it should go directly to the next queue, 'BETA > Stable', so it can
+directly be tested in BETA" - it replaced the same day's "Becomes a submission"): "Save changes"
+asks the server what the change would remove (`edit/check`), then asks for a REASON in
+`PublishSystemChangeWindow` beside that list (owner request: "do ask for a change reason when
+clicking the 'Save changes' button" - the description box above the table is gone), then sends it to
+`POST /api/review/systems/edit` with BETA's fingerprint; the server makes it a submission from the
+maintainer's account and approves it at once (see the server's bullet). The table is then read again
+and the BETA > Stable list and the systems re-read (`AfterSystemChangePublishedAsync`), staying on the
+Systems screen. Made but not published, it opens under Contributor Submissions
+(`OpenSentSubmissionAsync`). The table is the editor's READ-ONLY mode (`BoardTableEditor.IsReadOnly`,
+from the server's `MayEdit`) for a system the account does not maintain AND for any system waiting
+under BETA > Stable (owner decision: "it should simply disallow it, even if this is coming from a
+maintainer"). Choosing another system, signing out and quitting CRT ask about a change not published
+(`UnsavedTableEditsPrompt.LeavingSystem`; `TabMaintainer.HasUnsavedTableEdits` covers both tables). **The list line says only what is OFF** (owner request, 2026-10-03: "only show
+where there is something odd/off"): "In BETA and the stable source" (and "Published" with no stable
+tree) is said by nothing, and the view count left the line for the Statistics view.
+**Each level of choice has its own look** (2026-10-01): CRT's tabs; the four screens as tabs
+under them, across the whole Maintainer tab above both panels (`Button.ScreenTab` - still
+Buttons, so `OnModeClick` and the `Selected` class are unchanged - in CRT's tab colours: the
+chosen one underlined in `Main_TabUnderline_Selected`, the others' LABELS greyed so a red badge
+keeps its colour, no bolding since a wider label would move the tabs after it); and a
+submission's Board data / Files / Contributor as ONE joined switch (`Button.Segment`, neighbours
+1px-overlapped to share a border, the chosen one filled in `Mode_Selected_*`). The strip is a
+WrapPanel so a narrow window never clips a tab: since the renames of 2026-10-04 the four need ~910
+px with the real font, so at CRT's 800 minimum the last wraps onto a second line, inside the tab
+(`In_a_narrow_window_the_screen_tabs_wrap_inside_the_tab`). `TabMaintainerScreenTabsTests` pins all of it, read off the
+templates' ContentPresenters. The list column below stays 370 wide.
 
+**A system says WHERE IT IS, and can be looked at in the stable source** (owner request, 2026-10-04: "where
+does this sit now, as I do not think it is in BETA nor stable? Shouldn't there be somewhere a possibility
+to see what we actually do have in BETA or stable"). Under its name the STAGE LINE (`SystemStagesDisplay`,
+`SystemView.Stages.cs`; it replaced the revisions line): Submitted (the newest submission, CRT's state
+words), BETA, Stable - each said, "Not there" included. Board data and Files carry a **Data: BETA | Stable**
+switch (`SystemView.Stable.cs`; the rule `SystemSections.ShowsStable` - the pick, where the system is,
+kept for the next system): the stable source has its OWN read-only table and file tree beside BETA's, so
+switching never touches a change in BETA's table; read through `SystemDetailRequest.Tree`
+(`DataTreeNames.Production`) by `SystemEditFlow.ReadStableTableAsync` and `SystemFilesFlow` with
+`SystemFileSource.Production`, re-read when a promotion moves it (`QueueRefreshRules.StableBoardChanged`).
+The stable table shares the picked pills (`TableEditorsForSharedChoices`, the Maintainer tab's three
+tables).
+**Every file tree says each file's SIZE** (owner request, 2026-10-04: "Ideally the 'Files' actually also
+states its size (everywhere)"): `SystemFileEntry.SizeBytes`, the size of what opens from the row -
+filled by the server's `TreeFileSizes` (through `SubmissionPathRules`) for a system's Files and a
+submission's, and from the production plan's `FileSizes` for Beta > Prod (`SystemFileEntries.WithSizes`);
+null shows nothing. Worded by `FileSizeWording`, which Unused files shares. **Account > "Unused files"
+is the same tree** (same request: "the exact same tree-view ... including visualization of images and
+opening of files"): `FileTreeView.ShowListing(..., openAll: true)` over `UnusedFilesDisplay.TreeEntries`,
+opened from the list's `PublicDataUrl`.
 **Both queues show the system's FILES AS A FOLDER TREE** (owner request, 2026-09-28: "a file-structure
 for all existing files in BETA or PROD, and then a highlighting of files changed (added, removed,
 changed) ... 'show only changed files' ... including their parent folder"). One control,
@@ -1752,9 +2158,13 @@ changed) ... 'show only changed files' ... including their parent folder"). One 
 shared file it uses, each new / changed / removed in the table's own colours, "Show only changed
 files" on by default. **Beta > Prod** draws production after the publish under the plan, from
 CRT.Data's `SystemFileEntries.ForPromotion` over the plan's copies, removals and the new
-`unchangedFiles`; **Contributor Submissions** opens it in `FileTreeWindow` from "Files...", from
-`GET /api/review/submissions/{id}/files` (`SubmissionFileTreeFlow` over `ForApproval` - asked on
-demand, since it walks the board's folder and builds the publish plan). **Pointing at a file shows
+`unchangedFiles`; **Contributor Submissions** shows it as the submission's **Files view**
+(`TabMaintainer.Files.cs` - a window from a "Files..." button until 2026-09-30, which "can easily
+be missed"), from `GET /api/review/submissions/{id}/files` (`SubmissionFileTreeFlow` over
+`ForApproval` - read the first time the view is shown for a submission, since it walks the board's
+folder and builds the publish plan). Its headline leaves the workbook and highlight file the
+approval writes FROM THE TABLE out of its count and names them apart (`FileTreeWording.Summary`),
+so it gives the Files button's number. **Pointing at a file shows
 the TABLE'S hover card** (`FileTreeView.FilePreview.cs`: the table's `BoardTableFilePreview`, one side,
 `showHeadline: false` - the owner asked for "only the relative path" and no change text, which the
 row's pill already gives), and **double-clicking opens it**, for every maintainer, through the
@@ -1807,8 +2217,8 @@ it never reloads the open submission's table, re-reads its detail only when its 
 and an open submission decided elsewhere stays on screen with its decisions off
 (`ReviewDecisionWording.DecidedElsewhere`) instead of closing. A NEW SYSTEM's table is compared with
 the SUBMISSION ITSELF as it was opened (owner decision, 2026-09-26): its rows start white and only
-the maintainer's own inserts, edits and deletions are coloured; "Show changes only" shows nothing
-until there is one. **So its baseline IS a board and `HasBaseline` is TRUE** - which is why a
+the maintainer's own inserts, edits and deletions are coloured; the change pills picked show
+nothing until there is one. **So its baseline IS a board and `HasBaseline` is TRUE** - which is why a
 changed cell's tooltip cannot work its own wording out and is TOLD it
 (`BoardTableDocument.Create`'s `baselineLabel`): there it reads "As submitted: (empty)", the file
 card's own word for that side, instead of "Published value: (empty)", which named a board that does
@@ -1820,28 +2230,79 @@ the tab's ten keys of its own - `Badge_*`, `Mode_Selected_*`, `Queue_Divider` - 
 "Reject" the red. Colour is not a licence to move it: Approve stays last and separated. (Compared with nothing it showed a lone "0 Flagged"; compared with an empty
 board everything was green - tried and turned down.) A save makes the edits the submission, so the
 reopened table is white again.
-"Show changes only" is remembered between runs in CRT's own settings (see the list above).
+The table's picked pills are remembered between runs in CRT's own settings (see the list above).
 The badges are the SERVER's answers, in the queue's `ReviewQueueEntry` (`ReviewQueueFlow`:
 `PublishedBoardLocator.LocateSystem`, and `ApprovalStatus.CanApprove`); the opened row takes the
 detail's answers, which judge shared files against the tree as it is now. **There is no change
 summary any more** (owner request, 2026-09-26: "just
-scrap that information") and no "View in table format" button. **What the table cannot show -
+scrap that information") and no "View in table format" button.
+**A submission has THREE VIEWS, chosen by buttons above it** (owner request, 2026-09-30;
+`TabMaintainer.SubmissionViews.cs`, words in `SubmissionViews`): **Board data** (the table - first,
+and what every newly chosen submission opens on), **Files** (the file tree, above) and
+**Contributor**. Switching HIDES, never closes, so the table and its unsaved changes are untouched;
+the same submission keeps its view through a minute check. The decision bar stays under all three.
+**What the table cannot show -
 highlight and calibration-point changes, the automatic checks' findings - is listed in a few lines
 above it** (`ReviewNotInTable`); both are published by an approval, so do not drop those lines.
-Above them, **who sent it and how their OTHER submissions went** ("From dh@hinet.dk - [5] other
-submissions: [3] published, ..."; owner request 2026-09-26): the server's `ContributorHistory`
+Each section is a counted heading and one change a line, set in under it (owner request, 2026-10-04,
+in the owner's words: "Component highlights have [1] change:" / "Removed component [hest] from
+schematic "Board layout"") - `ReviewNoteLine.Indent`.
+**Who sent it and how their OTHER submissions went** is the Contributor view's (there was a one-line
+"From dh@hinet.dk - [5] other submissions: ..." beside the view buttons until 2026-09-30, removed at
+the owner's request: "this should be available under Contributor"): the server's `ContributorHistory`
 builds CRT.Data's `ReviewContributorFacts` (the detail's `contributor`, pinned by
-`ReviewWireContractTests`), `ReviewContributorLine` words it. Same contributor = same account or
+`ReviewWireContractTests`), `ReviewContributorLine` words the name and counts. Same contributor = same account or
 same email, as `SubmissionReplacementRules`; a rejection counts only when a maintainer made it,
-and replaced or never-finished submissions not at all.
-**A FILE REPLACED UNDER ITS OWN PATH COLOURS NOTHING**, so on a PUBLISHED board the lines also
-count what the approval would write ("Files: [12] included ([2] new, [1] replaced under the same
-name)") - without it a replaced PDF or scan was approved unseen, the blind spot the retired change
-summary's file list used to close. **A NEW SYSTEM gets no files line at all** (owner request,
-2026-09-26): every file of one is cited by a row that is itself on screen, so counting them repeated
-the table's own image / local file / link cells, and these lines exist for what the table CANNOT
-show. That is the test to apply to anything added here. Its KiCad data keeps its line, since no row
-cites it. They do not say "(not in the table)" - that read as if the COMPONENTS were missing - and each
+and replaced or never-finished submissions not at all. **The Contributor view is their whole
+record** (owner request, 2026-09-30: "the trustworthiness history of the contributor"; server 3.7.0):
+whether this submission came from an account (a verified address) or was typed in without one, and
+every OTHER submission the counts count - exactly those (`ContributorHistory.Counted`), newest
+first, at most 50 - with its system, description, state in the contributor's own words, and what
+they were told. `ReviewContributorHistory` words it. **The counts read "[5] submissions in total
+whereof [1] published to stable and [4] rejected"** (owner request, 2026-10-01): the total is still
+the OTHER submissions, and "published" splits into stable and BETA only from the server's
+`PublishedToStable` (3.9.0) - an older server's stays plain "published". **No text a user reads
+calls a contributor "their", "them" or "they"** (owner request, 2026-10-01) - "the contributor",
+or no pronoun at all; the two wording classes' tests assert it.
+
+**A maintainer signed in on the tab is signed in for the whole of CRT** (owner request, 2026-10-01:
+"I want to use that email address everywhere in the CRT app"). `TabMaintainer.SignedInChanged`
+(every change of `thisSession` goes through `UseSession`) reaches `Main.ShareMaintainerSignIn`,
+which hands the session to the Feedback tab (the account's address, read only) and the Drafts tab,
+whose Submit dialog shows it read only and sends the session's token with the create request
+(`SubmissionClient.CreateAsync`'s `bearerToken`) - so the submission is the ACCOUNT's and the
+Contributor view says "Sent with an account". `ContactAddress` is the one rule; the account's
+address is never saved as `UserSettings.ContactEmail`, so signing out brings the typed one back.
+**Shared whatever the Configuration tab says, until signing out** (owner request, 2026-10-02): the
+tab turned off or hidden for want of work changes nothing, and the remembered sign-in is restored
+at launch with the tab off too (`TabMaintainer.RestoreSignInQuietly`, no request). The server's decision mails go to the account
+for such a submission (`SubmissionNotifier.NotifyDecisionAsync(SubmissionRecord, ...)`, 3.9.0) -
+they read the typed address alone before, which a signed-in submission does not carry.
+**A maintainer edits their own account under Account > "My account"** (owner request, 2026-10-03;
+`MyAccountView` - the "Your account" window, opened by "Account" beside "Sign out" under the lists,
+until 2026-10-04; the server's `AccountSelfServiceFlows`,
+`POST /api/accounts/me/name`, `/me/email`, `/me/email/confirm`, `/me/password`, migration 0016,
+server 3.12.0; the session alone since 3.13.0). **The session is enough - NO current password anywhere** (owner decision, 2026-10-03:
+"as I see it as you are already logged in"; an ACCEPTED RISK, recorded in NewContributeStrategy.md's
+Threat 2 - do not put it back without asking). A new ADDRESS still needs a code mailed to it - it
+changes only when the code comes back (the capitals alone: at once, same mailbox), typed in after "I
+have received a code" (the owner's wording, as are "Name or handle" and "New email address"). A new
+address another account holds answers EXACTLY like a free one, and its owner gets a "somebody tried"
+mail instead of a code (owner decision - registration's anti-enumeration rule). An address or
+password change signs out every OTHER session, spends reset codes already mailed, and mails the old
+address (owner decision); both spend the per-address mail budget, which is also what keeps the
+password change's Argon2 hash from being callable without limit. Every account the server returns
+goes through `TabMaintainer.ApplyAccount` (the session, the remembered sign-in, `SignedInChanged`),
+and the remembered name and address are read again from `GET /api/accounts/me` once a launch - only
+on the paths that already talk to the server, never from `RestoreSignInQuietly`.
+**A FILE REPLACED UNDER ITS OWN PATH COLOURS NOTHING** - without something saying so, a replaced
+PDF or scan is approved unseen, the blind spot the retired change summary's file list used to
+close. Lines above the table said it until 2026-09-30 ("Files: [12] included ([1] replaced under the
+same name)", "KiCad data included: [3] files"); **the Files button's COUNT says it now**
+(`SubmissionViews.ChangingFiles`, through `SystemFileEntries.ForApproval` - the tree's own rule, so
+`SubmissionViewsTests` holds the button and the tree's headline to one number). Do not drop the
+count: it is what those lines' tests became. The lines left do not say "(not in the table)" - that
+read as if the COMPONENTS were missing - and each
 count is "[2]" with the number bold, so a line comes as `ReviewNoteRun` pieces; a new system's
 lines count ("Highlights included for [2] components") instead of naming every row. Its file card reads
 both sides from the submission and says no "Unchanged" (`IBoardTableFileSource.SaysUnchanged`).
@@ -1891,9 +2352,24 @@ not something to do in passing). A class with a hidden dependency like this is n
   tabs, and it ends in "Credits"** - as all published workbooks do ("Important signals" before it;
   it was the other way round until 2026-09-24, reported). Readers find sheets by name, so the order
   never affected reading.
+- `BoardWorkbookWriter` / `BoardWorkbookStyle` - how EVERY workbook CRT writes looks: a new or saved
+  draft, and every board the server publishes to BETA (`PublishExecutor`). The look is read off the
+  shipped references (C64 250407, C128 310378), and was misread once: **the title band ("Components")
+  is BLACK with white text on every sheet** - in the styles part `theme="1"` is the DARK colour - and
+  the header row is 57.6 pt only on Board schematics, 28.8 on Components and Component images, one
+  ordinary line elsewhere (owner report, 2026-09-30). Check a change against the references' XML, not
+  against memory; `BoardWorkbookWriterTests.The_shipped_reference_has_a_dark_title_band...` reads the
+  C128 file itself (finding the band by its text). **Since 2026-10-02 every sheet has the same
+  preamble** (owner request): hardware, board and REVISION DATE (on every sheet - the reader still
+  takes Board schematics' one), a blank line, the title band, the headers on row 6 - with the panes
+  FROZEN under them. The "Documentation of columns ... availble here:" line and its link to the old
+  Wiki are gone: the project owner removed them from every published board by hand, while the copies
+  in `Assets/Data` still carry them.
 - `BoardTableDocument` / `BoardTableSheet` / `BoardTableRow` / `DraftTableSession` /
   `BoardTableClipboard` — the Drafts tab's table editor model (see the Drafts paragraph under Tabs).
   Avalonia-free so the Maintainer tab's table uses the same rules.
+- `BoardTableSearch` / `WorklogSearchQuery` — the table's search box (which rows a search shows,
+  which runs of a cell it found), over the Workbooks tab's grammar, which moved here for it.
 - `BoardTableHistory` — the table editor's undo/redo: one sheet snapshot per step, back to the
   last save. In `CRT.Data` so the Maintainer tab's table gets it too.
 - `BoardTableRowDrag` — one row being dragged in the table: `MoveOnto` the row under the pointer,
@@ -2049,12 +2525,82 @@ Things that are load-bearing and easy to undo by accident:
   fails on any body-reading route missing from its list.
 - **Only token HASHES are stored**, for sessions, verification links, reset links and the
   submission capability token alike.
+- **Every mail is HTML with a plain-text copy** (owner request, 2026-10-03). A template writes its
+  mail ONCE as `MailBody` blocks (paragraph, quote, code, steps; runs styled plain, bold, italic,
+  `Named` - a system as `[<b>id</b>]` - or link), and `MailBody` renders both bodies, HTML-encoding
+  every run - so **no template writes markup**, and nothing a person typed becomes markup in somebody
+  else's mail. `SmtpEmailSender` sends multipart/alternative (the plain part is what spam filters
+  expect). The contribution mails carry the project owner's own wording; each greets by the
+  account's name (`MailRecipient`, "Hi there," without one) and ends with the contact line
+  (`EmailTemplates.ContactName`/`ContactAddress`), except the production notice to the
+  administrators. The BETA check box is named through CRT.Data's `ConfigurationWording`, which the
+  Configuration tab's markup also reads (x:Static), so the mail cannot name a box CRT does not have.
+- **Feedback from CRT's Feedback tab is the service's since 2026-10-03** (owner request: "retire the
+  old Feedback backend PHP"): `POST /api/feedback` (`FeedbackEndpoints` -> `FeedbackFormReader` ->
+  `FeedbackFlow`), the PHP page's form and its plain-text `Success` answer UNCHANGED - CRT.Data's
+  `FeedbackContract` is the one copy, and Apache forwards `/app-feedback/` here for installed CRTs, so
+  changing a field name, the zip's file name or the answer breaks every older CRT. CRT's own text
+  files (`FeedbackContract.InlineFiles`, held to AppConfig's names by `FeedbackAttachmentNamesTests`)
+  are SHOWN in the mail in a `MailBody.Preformatted` block ("logfile should still show as monospace");
+  everything else is saved under `FeedbackRoot/feedback-<random>`, the PHP's folder, which the
+  project owner opens - and DELETES - from a network share, so every folder and file of it is made
+  group-writable (`FeedbackFlow.ShareWithGroup`; the folder is the service's own, group `crt-server`
+  - the group `useradd --system` made beside the user, owner decision: no group of its own - and setgid). At most
+  250 MB packed (owner decision), which CRT streams from a temporary file and the server writes
+  straight to disk - neither end may hold it in memory. The mail is FROM the service with Reply-To the sender
+  (the PHP sent it from the sender's address, which fails SPF), and a mail postfix refused is a 502
+  the user sees - `IEmailSender.SendAsync` answers whether it went for exactly this - and its saved
+  files are deleted again, since no mail names them. The saved folders together are capped at
+  `FeedbackMaxStoredBytes` (20 GiB; code review, 2026-10-04): anonymous senders must not fill the
+  disk down to the reserve the blob store shares.
+- **CRT's launch check-in is the service's since 2026-10-03** (owner request: retire the
+  `app-checkin` PHP page): `POST /api/usage/check-in` (`CheckInEndpoints` -> `CheckInFormReader` ->
+  `CheckInFlow`), the PHP page's URL-encoded form and plain-text answer UNCHANGED - CRT.Data's
+  `CheckInContract` is the one copy, the version is the User-Agent, and Apache forwards
+  `/app-checkin/` here for installed CRTs, so a renamed field stops every older CRT counting. It
+  writes ONE row into `crt_update` exactly as the PHP page did (`MySqlCheckInStore`: `NOW()`,
+  `versionMajor` 2, "" rather than NULL) - **including the sender's address**, unlike board views,
+  because every Fun facts chart counts `DISTINCT ipaddr`; never from a local network. `apiJson` holds
+  only the country (the PHP stored ip-api.com's whole answer, which nothing reads).
 - **`SubmissionPathRules` is the single path-containment rule** and it RESOLVES then checks
   containment rather than pattern-matching for `..`. Every write path and the maintainer's file-read
   path go through it. Do not add a second way to turn a submitted string into a path.
-- **`ApprovePublishFlow` is the only irreversible operation in the system** — no revision history is
-  retained, so a publish overwrites in place. Its header explains why the order of its checks is
-  the design.
+- **`ApprovePublishFlow` is one of the two irreversible operations in the system** — no revision
+  history is retained, so a publish overwrites in place. Its header explains why the order of its
+  checks is the design. The other is deleting a system, below.
+- **The administrator can DELETE A SYSTEM completely (owner request, 2026-10-03; Account > "Delete a
+  system", `SystemDeletionFlow` over `SystemDeletionFiles`/`SystemDeletionRules`).** Its folder in
+  BOTH trees, its row in both NEWEST main Excel data files, both manifests rebuilt, then the `systems`
+  row - the schema's ON DELETE CASCADE takes every submission, approval, maintainer and invitation -
+  and its board views (owner decision: "Delete them"). Shared files stay (AutomaticRemovalScope).
+  Open submissions go too and their contributors are MAILED with the reason, which is then required
+  (owner decision: "Delete them and mail the contributors"). **The plan is held to a fingerprint**
+  (both trees' files, both rows, the record, every submission's state): anything changed since the
+  confirmation is a 409. **Refused** for a system an OLDER main Excel data file lists (frozen - and a
+  master naming a missing workbook makes DataTreeUsage incomplete for good) or with a file another
+  board uses. **The order is the crash story**: folders probed, rows (stable first), files, manifests,
+  and the record LAST - a file left keeps the record, so pressing Delete again finishes. Do not move
+  the record's deletion earlier.
+- **The administrator can RESET THE CONTRIBUTION DATA for going live (owner request, 2026-10-04:
+  "When I go-live with this, it should not have old data visible ... the real sources of BETA and
+  stable must not be touched, but all contributor and maintainer data should go away"; Account >
+  "Reset contribution data", `DataResetFlow` over `IDataResetStore`; server 4.7.0).** ONE
+  transaction (`MySqlDataResetStore`, DELETE never TRUNCATE - ids must not start again) empties
+  `submissions` (and everything cascading from it), `production_approvals`, `maintainer_invitations`,
+  `maintainers`, `systems`, every account with `is_administrator = 0` (sessions and tokens cascade),
+  `audit`, `crt_board_views` and `crt_api_calls`, and writes the reset as the new history's first
+  row; then every deleted submission's partial uploads and every stored blob nothing needs go
+  (`SubmissionFlows.CollectUnreferencedBlobsAsync`). **Never touched**: the data trees, their
+  manifests and main Excel data files, `crt_update`, `crt_board_view_batches`, the feedback folders,
+  the administrators. Owner decisions: accounts and maintainer lists go ("I need real data anyway"),
+  board views go, and NOTHING refuses it - not even work waiting under BETA > Stable (the owner
+  copies stable over BETA and rebuilds the manifests around it). **The system records go too** -
+  every flow makes one on demand (`EnsureSystemAsync`) and reads a missing one as "never touched by
+  the pipeline", which is what every system is after a reset. **Only while `AllowDataReset` is true**
+  in appsettings (default false; DEPLOYMENT.md "Going live") - a stolen administrator session cannot
+  wipe the database. The counts shown are held to a fingerprint (submissions and accounts by count
+  AND highest id, pools, invitations, approvals, records - NOT the history, board views or usage,
+  which grow by themselves): 409 when they moved. Under the publish lock. Nobody is mailed.
 - **The Systems screen is for EVERY maintainer, every system (owner decision, 2026-09-27).**
   `GET /api/review/systems` and `POST /api/review/systems/detail` (`SystemEndpoints` over
   `SystemOverviewFlow`) answer to anybody `CanReviewAnything` - contributors' addresses included,
@@ -2062,6 +2608,31 @@ Things that are load-bearing and easy to undo by accident:
   everyone"); do not narrow it to `CanReview(system)` without asking. `GET /api/review/production`'s
   optional `awaitsYou` (`ProductionPromotionRules.AwaitsAccount`) is false once this account has
   approved that BETA state - the BETA badge's count.
+- **A maintainer's edit of a SYSTEM goes STRAIGHT TO BETA - through the ordinary approval (owner
+  decision, 2026-10-03: "it should go directly to the next queue, 'BETA > Stable', so it can directly
+  be tested in BETA"; it reversed the same day's "Becomes a submission").** `POST
+  /api/review/systems/table` reads BETA's board for any maintainer (with a `fingerprint` and
+  `mayEdit`), `POST /api/review/systems/files` lists the files it uses, `POST
+  /api/review/systems/edit/check` (`SystemEditFlow.CheckAsync`) answers what a publish would remove,
+  making nothing, and `POST /api/review/systems/edit` (`PublishAsync`) turns the table edit into a
+  submission from the maintainer's ACCOUNT through `SubmissionFlows.CreateAsync` and `FinaliseAsync`
+  and then APPROVES it as that maintainer with `ApprovePublishFlow.ApproveAsync` - so every approval
+  rule (removals shown, shared files, one submission in BETA, the publish lock) still stands between it
+  and BETA. **Do not give it a path that writes BETA by itself**; the approval is what keeps those
+  rules. Only the system's own maintainers and the administrator may send one (`CanReview(systemId)`),
+  not to a system closed to contributions, **not while the system waits under BETA > Stable** (owner
+  decision, same day: "it should simply disallow it, even if this is coming from a maintainer" -
+  `OneSubmissionInBeta.NoChangeMessage`, only where production publishing is configured), and NOT
+  while the account's last change of the system still waits in the queue (it would replace that one -
+  `SubmissionReplacementRules`). Its order is the design: BETA must still hold the board the table was
+  read from (the fingerprint, 409 otherwise - publishing a table read before another publish would
+  undo that publish silently, as rows are replaced whole), only the nine sheets come from the request
+  (`WithTableSections`; highlights and calibrations are BETA's, read from its sidecar), every cited
+  file must already be in BETA and is imported from there, an edit that changes nothing is refused, a
+  reason (the description) is required, and `expectedRemovals` must be the list the check answered
+  (409). Published: BETA's manifest is rewritten (`ReviewEndpoints.RewriteBetaManifest`) and nobody is
+  mailed. A publish the approval refuses after all leaves the submission PENDING in the queue, its
+  approvers mailed - nothing is lost.
 - **The production panel names WHOSE WORK a promotion carries (owner request, 2026-09-27).** The
   right-side panel was the file copy list alone, which cannot answer the question the button asks.
   It now reads: the merged submissions this carries (contributor, their own description, when it was
@@ -2111,8 +2682,8 @@ Things that are load-bearing and easy to undo by accident:
   shows the counts (`BoardViewStatisticsRules`: whole UTC days, BETA-source views apart; a count that
   cannot be read leaves the numbers out, never the screen). The Fun facts page reads the table
   directly (`Assets/Webserver/funfacts/funfacts_board_views.php`; `helligsoe` has a table-level
-  SELECT). The launch check-in (`app-checkin` -> `crt_update`) is untouched, by owner decision; its
-  three tables were moved into `crt_review` by hand the same day and are the PHP's, not a migration's.
+  SELECT). The launch check-in writes `crt_update` (the service since 2026-10-03, below); it and the
+  other two usage tables were moved into `crt_review` by hand the same day and are no migration's.
 - **"Push back to queue" rolls a BETA board back to production's state (owner decision,
   2026-09-27).** `BetaRollbackFlow` over CRT.Data's `BetaRollbackPlan`, the promotion's mirror:
   production's bytes go back over BETA through `VerifiedFileCopy` (never a bare copy onto a served
@@ -2249,7 +2820,7 @@ Things that are load-bearing and easy to undo by accident:
 - **Automatic removal stays INSIDE THE SYSTEM'S OWN FOLDER (owner decision, 2026-09-27):**
   `AutomaticRemovalScope` (CRT.Data) filters what a publish, a promotion and a push-back may remove
   to `<Manufacturer>/<Hardware>/<Board>/...`. A shared file, or another system's, that a board stops
-  citing stays - an orphan for Admin > Unused files, which is not limited by this. It is the
+  citing stays - an orphan for Account > Unused files, which is not limited by this. It is the
   condition that made dropping the second approval for ADDED shared files safe.
 - **No orphan files (owner decision, 2026-09-25): `DataTreeUsage` (CRT.Data) is the one rule
   for what a data tree uses**, and a publish or promotion REMOVES what the board stops citing that
@@ -2257,12 +2828,17 @@ Things that are load-bearing and easy to undo by accident:
   production plan carry `removals` (CRT.Data's `FileRemovalPreview`), the approval sends it back,
   and the server refuses (409) if the list it would now remove differs. `UnusedFileRemover` does
   every removal, re-reading the tree first and failing closed. Files that were ALREADY orphans are
-  the administrator's "Unused files" screen, under Admin (`UnusedFileFlows`). `DataTreeUsageShippedDataTests`
+  the administrator's "Unused files" entry, under Account (`UnusedFileFlows`). `DataTreeUsageShippedDataTests`
   fails on any file in `Assets/Data` that nothing uses. **A folder CRT reads by NAME** (the MiniPro
   IC tests) must be in `DataTreeUsage.FoldersReadByName`, or the server calls its files unused -
   `DataFoldersReadByNameTests` guards it. The PREVIEWS read workbooks through `WorkbookReadCache`
   (once per file version, 2026-09-25); the removal never does. Details: NewContributeStrategy.md,
-  "Orphan files".
+  "Orphan files". **A board workbook is read at its spelling ON DISK** (2026-10-04, owner request to
+  prove the Unused files list): a master naming it in another case was opened by the master's
+  spelling, not found on the Linux server, and read as citing nothing - so everything only it cites
+  was listed unused while Windows CRTs used it. Also counted since: the legacy master's "KiCad data
+  file" column, and a cited path as the OS resolves it (`./`, `//`, `..`, trailing dots -
+  `DataTreeUsage.Resolved`). Any change to the rule may only make it keep MORE.
 - **A contributor discarding their own draft is shown to maintainers** (owner request,
   2026-09-28). CRT's Discard reports every submission of that board still open (CRT.Data's
   `DraftDiscardContract.WhichToReport`) to `POST /api/submissions/{id}/draft-discarded` with the
@@ -2284,8 +2860,9 @@ Things that are load-bearing and easy to undo by accident:
   "KiCad data" folder, exempt from "every file is cited by a row" at create AND in PublishPlan -
   and an AMENDMENT must carry them over, since its file list is rebuilt from rows, which cite no
   KiCad file. The client sends the union of the draft's and the synced official folder
-  (draft wins); the maintainer reads "KiCad data included: [N] files" above the table
-  (`ReviewNotInTable.KiCadLine`). A new file type in a submission needs a signature in
+  (draft wins); the maintainer sees them in the submission's Files view and counted on its button
+  (`SubmissionViews.ChangingFiles` - a "KiCad data included" line above the table until
+  2026-09-30). A new file type in a submission needs a signature in
   `SubmissionContentRules` (its default arm fails closed).
 - **"Already held" is the blob store OR the published tree at the same path** (2026-09-25). A file
   published unchanged is IMPORTED into the store at create (`BlobStore.TryImportAsync`, hashed as
@@ -2300,8 +2877,9 @@ Things that are load-bearing and easy to undo by accident:
 ### Contribution webserver (`Assets/Webserver/`) — the LEGACY path
 
 A working copy of the PHP deployed at `classic-repair-toolbox.dk/app-contribution/` — the server
-side of the Contribute tab, split into two entities: `api/index.php` receives the uploads the app
-posts to `AppConfig.ContributionUploadUrl`, and `review/index.php` + `review/functions.php` are the
+side of CRT 2.x's Contribute tab, split into two entities: `api/index.php` receives the uploads
+CRT 2.x posts there (CRT 3.0.0 posts nothing to it - its constant, `AppConfig.ContributionUploadUrl`,
+and the parser for its "too old" answer were removed on 2026-10-04), and `review/index.php` + `review/functions.php` are the
 review queue (admin-only, IP-restricted via `review/.htaccess`) that diffs each submission against
 the live server data and merges or rejects it. `api/index.php` requires `review/functions.php` for
 its shared helpers. It is deployed by hand and never ships with the app (Assets are whitelisted
@@ -2313,9 +2891,10 @@ method will not be supported alongside it, and a change to shared behaviour does
 mirrored here. What follows describes how it works and stays accurate for as long as it is
 deployed; it is no longer an instruction to update it.
 
-**The payload is a two-sided contract.** `ComponentContributionPayload` in
-[Tabs/Contribute/ComponentContribution.axaml.cs](../src/CRT.App/Tabs/Contribute/ComponentContribution.axaml.cs)
-is what `review/functions.php` parses, and the PHP deliberately mirrors the app's Excel-reading
+**The payload is a two-sided contract.** `ComponentContributionPayload` in CRT 2.x's
+`Tabs/Contribute/ComponentContribution.axaml.cs` (read it at the `2.5.0` tag - it was removed from
+CRT on 2026-10-04, nothing having built it since 2026-09-25) is what `review/functions.php` parses,
+and the PHP deliberately mirrors the app's Excel-reading
 rules (case-insensitive headers, exact board-file resolution, `.json`-beside-the-Excel highlights,
 the `# Revision date:` marker). When you change either side, change the other in the same
 sitting, and run the PHP suite too: `php Assets/Webserver/tests/run-tests.php`
@@ -2325,6 +2904,134 @@ changes, also bump `$minimumContributionVersion` in `api/index.php`** to the fir
 version carrying the new contract — older apps are rejected at upload with an update-required
 message. Full details, file inventory (including which files are legacy) and known caveats:
 [Assets/Webserver/app-contribution/README.md](../Assets/Webserver/app-contribution/README.md).
+
+## Installed CRTs keep working
+
+**Every CRT ever released stays installed, and must keep working** (owner request, 2026-10-04: "It
+is important that all older versions will continue to work, including the checkin and feedback").
+The server is deployed once and is always the newest party, so the SERVER bends: there is one API,
+no `/api/v1` beside `/api/v2`, and it only ever grows. Where a CRT truly cannot be served any more,
+it is TOLD so in words - never left to fail in a way nobody can read. The full plan is
+NewContributeStrategy.md's "Installed CRTs keep working".
+
+**It protects what a RELEASED CRT uses - never a pre-release** (owner decision, 2026-10-04: "in
+this development time it is of course okay that the API changes for the 3.0.0 version, since this
+has not been released yet - no need to do new API end-points because I e.g. bump from
+"3.0.0-alpha.2" to "3.0.0-beta.7""). The project owner moves CRT to the next version (2.5.0 to 3.0.0)
+and works through `-alpha.N` / `-beta.N` builds until the release. Anything only those pre-releases
+use is changed IN PLACE - renamed, removed, given a new meaning - with CRT's side changed in the same
+session: no new route beside the old one, no field kept for an older alpha or beta. **So the first
+question about any API change is "does a RELEASED CRT use this?"**: is it in a `crt-*.txt`, or is it
+one of the routes CRT 2.x calls (the check-in, feedback, the legacy contribution address - released
+before the frozen files existed, held by their own contract tests)? No: change it freely. Yes: the
+rules below. A tester left on an older pre-release that such a change breaks is told to update by
+the API REVISION (below) - nobody has to know which build has which shape. A `crt-<version>.txt`
+written for a version not yet PUBLISHED (bumped to `3.0.0`, still fixing before the release
+workflow runs) may be deleted and written again by the next test run; it is untouchable from the
+moment that release is published.
+
+**The rules for every change to a route, a JSON body, an answer or a form a released CRT uses:**
+
+- **Add, never rename or remove.** A new optional request field, a new field in an answer, a new
+  route - and the server treats a missing new field as the old behaviour. A field a CRT needs that
+  the server can no longer fill stays, with its old meaning, beside the new one.
+- **A new meaning is a new route.** 4.0.0's change to what `systems/edit` does was only allowed
+  because nothing was released; after CRT 3.0.0 it would be `systems/publish-edit` beside it.
+- **A new REQUIRED request field, a narrower rule, a new member of an enum an answer carries** - each
+  breaks installed CRTs too (an older CRT reading an unknown enum name fails its parse), even though
+  nothing is removed. Treat it as a break.
+- **The server ships before the CRT release that needs it.** A CRT that calls a route the deployed
+  server lacks gets a 404 it cannot explain.
+- **Readers ignore what they do not know.** `ReviewApiContract.WireSettings` must keep skipping
+  unknown fields (`ClientVersionContractTests` pins it) - never switch on
+  `UnmappedMemberHandling.Disallow`.
+- **The data trees are an API too.** Older CRTs read the published workbooks, the JSON sidecar, the
+  main Excel data file and `dataChecksums.json`, which the server now writes: add sheets and
+  columns, never rename or drop what an older reader looks for. Nothing machine-checks this one.
+
+**The machinery, all built 2026-10-04:**
+
+- **Every request names its CRT**: `User-Agent: CRT <version>` (`OnlineServices.VersionForServer`,
+  now on `SubmissionClient` too - submissions sent none before). CRT.Data's `CrtVersion` reads and
+  orders it (SemVer: `3.0.0-alpha.2` < `3.0.0`).
+- **`ClientVersionPolicy`** (CRT.Server, `Handlers/Compat/`) can refuse a CRT older than a minimum
+  for `/api/submissions` or the Maintainer tab's routes (`/api/review`, `/api/admin`,
+  `/api/accounts`) with **HTTP 426 and CRT.Data's `ClientOutdatedAnswer`** ("please update CRT to
+  version [x] or newer"). **No minimum is set.** Raising one is the last resort for a break that
+  cannot be avoided: a MAJOR server bump whose VERSION.md row names the versions it turns away. The
+  check-in, feedback, board views and health check are **never** refused, whatever the minimums -
+  `ClientVersionPolicyTests` lists them and fails on a new top-level route until it is classified.
+  A request naming no CRT version (a browser on a mailed link) is always let through.
+- **The API REVISION tells a CRT it is too old - nobody picks a version** (owner question,
+  2026-10-04: "how do I know which version of app uses which version of server? ... I do not have an
+  overview on what kind of specific changes are done to API and if those changes are compatible or
+  not"). A CRT version does not move when the API does, so a minimum version needs somebody to know
+  which build has which shape. CRT.Data's `ClientVersionContract.ApiRevision` IS the shape: CRT's
+  review and submission clients send it as `X-CRT-Api-Revision` (`OnlineServices.NameApiRevision`),
+  and `ClientVersionPolicy` answers a LOWER revision on the gated routes with the same 426 ("please
+  update CRT to the newest version", `minimumVersion` null). A newer revision, or none, is served.
+  **`ApiCompatibilityTests` raises it for you**: `api-revision-<N>.txt` holds what a CRT built for
+  revision N may use - written the first time N is current (that run fails once: commit the file),
+  GROWN as the API grows - and any change that breaks it fails until `ApiRevision` goes up by one.
+  **Raise it by HAND** for what the surface cannot see: a route given a new meaning with the same
+  shape, or a request field the server starts to require. Each raise is a MAJOR server bump whose
+  VERSION.md row names the revision. `GET /api/health` reports the server's revision, and the
+  Maintainer tab's Account > "Server version" shows it beside this CRT's ("API server version" and
+  "API application version" - `ServerVersionDisplay`). After 3.0.0's release it should not move: a break of a released
+  CRT is the `crt-*.txt` check's, below.
+- **CRT shows the server's words.** `ApiRefusal.Read` takes the sentence out of any refusal body
+  (`message`, else `error`); `SubmissionClient.RefusalMessage` and `ReviewApiClient.WithServersWords`
+  use it on every path, so a refusal a newer server invents still reads as a sentence, and a 426
+  becomes `ReviewApiFailure.ClientOutdated`. A 401 keeps "Sign in to continue.".
+- **`ApiCompatibilityTests` is the check** (CRT.Server.Tests, `ApiCompatibility/`). `ApiSurface`
+  turns the API into lines - every route, every JSON request body per route, every answer record's
+  fields with their JSON kinds, every enum member as it travels, and the wire names of the forms
+  and headers. **When CRT.App.csproj's `InformationalVersion` is a release (no `-`), that surface
+  must be frozen as `crt-<version>.txt`**: the first test run without the file writes it and fails
+  once, saying so - commit it with the release. Every frozen file is then compared with the surface
+  on every run; a line a released CRT relied on that has gone fails, named. **Never edit a
+  `crt-*.txt`**, and never "fix" a failure there by changing the expectation: put the field or route
+  back. A break the project owner has decided on goes in `allowed-breaks.txt` with its reason.
+- **Every answer with data in it is a named CRT.Data record**, because the surface only sees
+  records. The sign-in answer, a submission's detail and four smaller ones were anonymous objects
+  until 2026-10-04 (same JSON now). An endpoint may write an anonymous object only to carry
+  `message`, `error` or `errors`; `Every_answer_with_data_in_it_is_a_named_record` fails otherwise.
+  The surface's answer records are CRT.Data's `*Answer`/`*Response` types plus a short list in
+  `ApiSurface.OtherAnswers` - a new answer type with another name goes in that list.
+- **CRT 2.x's contribution upload is answered, not 404'd**: `POST /api/legacy/contribution`
+  (`LegacyContributionEndpoints`) gives the PHP page's own 426 `OUTDATED_VERSION 3.0.0 - ...` text,
+  which 2.5.0 and later turn into "please update" (tested against a verbatim copy of 2.5.0's parser).
+  Apache forwards `/app-contribution/api/` to it once the PHP page is retired.
+- **The server COUNTS which CRT version calls which route** (owner request, 2026-10-04: "how about
+  tracking the API end-points, to see if it is possible to retire any, if almost no versions uses it
+  any more"; server 4.7.0). Every request reaching a route is counted in memory by Program's pipeline
+  - after routing, BEFORE the version gate and the rate limiter, since a CRT turned away still
+  called the route - per UTC day, route PATTERN (never a path, so no id) and the version its
+  User-Agent names (`ApiUsageRules`, `ApiUsageCounter`), and written into `crt_api_calls`
+  (migration 0018) every five minutes and at shutdown (`ApiUsageFlusher`). No address, no account.
+  Account > "API usage" (`ApiUsageFlow`, `GET /api/admin/api-usage?days=`) lists EVERY mapped route
+  (`ApiRouteList`, the live route table - a route nobody called is the answer most worth seeing)
+  with its versions, least-called first in each area, and the launches per version from the
+  check-ins.
+
+**Retiring a route a released CRT uses** (owner decision, 2026-10-04 - this loosens the rule above
+from "forever" to "until shown to be unused"; nothing can be retired before 3.0.0 is released):
+
+1. **Account > "API usage" is the evidence**: which versions still call it in the last 90 or 365
+   days, and how many installations still launch those versions.
+2. **The project owner decides, per route.** Never automatically, and **never a route in
+   `ClientVersionPolicy`'s Forever area** - the check-in, feedback, board views, the health check and
+   the 2.x contribution address, which every CRT ever released sends (`NeverRetired`;
+   `ApiUsageRulesTests` pins the set).
+3. **The route stays MAPPED and answers HTTP 426** with CRT.Data's `ClientOutdatedAnswer` naming
+   the first version that no longer needs it (`ClientVersionContract.Outdated`) - never a 404, which
+   an installed CRT cannot explain. Every CRT from 3.0.0 shows that as "please update CRT".
+   (Nothing has been retired yet, so the small helper that maps a retired route to its 426 is built
+   with the first one.)
+4. **What its body and answer carried goes in `allowed-breaks.txt`**, each line with the reason
+   ("retired 2027-..., API usage showed no call from ... in 365 days") - the frozen `crt-*.txt`
+   files are never edited.
+5. **A MAJOR server bump**, its VERSION.md row naming the route and the versions turned away.
 
 ## CRT.Server's version is YOURS to bump
 

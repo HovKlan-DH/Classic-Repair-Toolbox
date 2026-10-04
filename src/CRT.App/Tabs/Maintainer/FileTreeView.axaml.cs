@@ -19,7 +19,7 @@ namespace CRT
     // Draws a system's file tree (owner request, 2026-09-28) - see the markup. What each file
     // becomes and which rows show are Handlers/FileTree; this keeps the rows on screen in step with
     // the folders opened and closed, and hands a file to be read or opened to whoever hosts it
-    // (BetaView, FileTreeWindow) through Files.
+    // (BetaView, and the Maintainer tab's Files view) through Files.
     //
     //   FileTreeView.axaml.cs     - the rows, opening and closing folders, opening a file
     //   FileTreeView.FilePreview.cs - the hover card on a file
@@ -65,8 +65,34 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // A LISTING, NOT A COMPARISON (owner request, 2026-10-03: the Systems screen's Files view
+        // "should not show changed files - just list all files"). Off, the tree has no "Show only
+        // changed files" box, its line counts the files rather than the changes, and it opens on
+        // `openFolder` - the system's own folder - since there is no change to open on. On (the
+        // default) for the two queues' trees, which are about what changes.
+        // ###########################################################################################
+        //
+        // `openAll` (2026-10-04) opens every folder instead - the Unused files list, a few files
+        // scattered over the whole tree, where each one is what there is to look at.
+        public void ShowListing(IReadOnlyList<SystemFileEntry>? files, string? openFolder, bool openAll = false)
+        {
+            this.thisIsListing = true;
+            this.thisOpenFolder = openFolder;
+            this.thisOpenAll = openAll;
+
+            if (this.FindControl<CheckBox>("OnlyChangedCheckBox") is CheckBox onlyChanged)
+                onlyChanged.IsVisible = false;
+
+            this.Show(files);
+        }
+
+        private bool thisIsListing;
+        private string? thisOpenFolder;
+        private bool thisOpenAll;
+
+        // ###########################################################################################
         // Shows one system's files. Folders on the way to a change start open
-        // (FileTree.DefaultExpanded).
+        // (FileTree.DefaultExpanded) - or, for a listing, the folders down to its own.
         // ###########################################################################################
         public void Show(IReadOnlyList<SystemFileEntry>? files)
         {
@@ -75,10 +101,16 @@ namespace CRT
             this.thisRoot = FileTree.Build(files);
 
             this.thisExpanded.Clear();
-            this.thisExpanded.UnionWith(FileTree.DefaultExpanded(this.thisRoot));
+            this.thisExpanded.UnionWith(this.thisIsListing
+                ? this.thisOpenAll ? FileTree.AllFolders(this.thisRoot) : FileTree.FoldersOnTheWayTo(this.thisRoot, this.thisOpenFolder)
+                : FileTree.DefaultExpanded(this.thisRoot));
 
             if (this.FindControl<TextBlock>("SummaryText") is TextBlock summary)
-                summary.Text = files is null ? string.Empty : FileTreeWording.Summary(this.thisRoot);
+            {
+                summary.Text = files is null
+                    ? string.Empty
+                    : this.thisIsListing ? FileTreeWording.Listing(this.thisRoot) : FileTreeWording.Summary(this.thisRoot);
+            }
 
             this.ShowMessage(null, isError: false);
             this.Refresh(replaceAll: true);
@@ -112,7 +144,8 @@ namespace CRT
             this.Refresh(replaceAll: true);
         }
 
-        private bool OnlyChanged => this.FindControl<CheckBox>("OnlyChangedCheckBox")?.IsChecked == true;
+        // A listing shows everything - its box is hidden, and nothing in it changes anyway.
+        private bool OnlyChanged => !this.thisIsListing && this.FindControl<CheckBox>("OnlyChangedCheckBox")?.IsChecked == true;
 
         private void OnExpandAllClick(object? sender, RoutedEventArgs e)
         {
@@ -296,6 +329,7 @@ namespace CRT
             this.IsChanged = !node.IsFolder && change == SystemFileChange.Changed;
             this.IsRemoved = !node.IsFolder && change == SystemFileChange.Removed;
             this.PillText = FileTreeWording.ChangeWord(change);
+            this.Size = FileTreeWording.Size(node);
             this.Note = node.IsFolder ? FileTreeWording.FolderNote(node) : string.Empty;
 
             // A file has its hover card instead - except one with nothing to show yet, whose path
@@ -324,6 +358,9 @@ namespace CRT
         public bool HasPill { get; }
 
         public string PillText { get; }
+
+        // The file's size (2026-10-04) - empty for a folder, or a size not known.
+        public string Size { get; }
 
         // Which of the table's colours the pill takes - see the styles in the markup.
         public bool IsAdded { get; }

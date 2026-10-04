@@ -1,0 +1,76 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.DeleteSystemWindow"
+        Width="680" SizeToContent="Height"
+        CanResize="False"
+        CanMinimize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="Delete a system">
+
+    <!--
+    CONFIRMING THAT A SYSTEM IS DELETED COMPLETELY (owner request, 2026-10-03: "list all systems and
+    have a delete button on each (with a confirmation box)").
+
+    Everything here is the SERVER's plan (SystemDeletionFlow), the code that then deletes: what goes
+    from each data tree and the database, and the open submissions whose contributors are mailed.
+    Nothing is deleted that is not listed - the delete is held to this plan's fingerprint.
+
+    The reason is asked for ONLY when somebody is mailed, and is then required - it is the mail's
+    only content. Without open submissions there is nobody to tell, and the box is not shown.
+    -->
+    <StackPanel Margin="16" Spacing="12">
+
+        <TextBlock x:Name="HeadlineText"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+
+        <!-- What goes, one line per place. -->
+        <StackPanel x:Name="WhatGoesPanel" Spacing="2" />
+
+        <TextBlock x:Name="SharedFilesText"
+                   TextWrapping="Wrap"
+                   Opacity="0.75" />
+
+        <!-- The open submissions - deleted too, each contributor mailed. Hidden when there are none. -->
+        <StackPanel x:Name="OpenPanel" Spacing="4">
+            <TextBlock x:Name="OpenHeadingText"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+
+            <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="OpenListPanel" Spacing="2" />
+            </ScrollViewer>
+
+            <TextBlock x:Name="ReasonPromptText"
+                       TextWrapping="Wrap"
+                       Opacity="0.75" />
+
+            <TextBox x:Name="ReasonTextBox"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="90"
+                     TextChanged="OnReasonChanged" />
+        </StackPanel>
+
+        <TextBlock x:Name="CannotBeUndoneText"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Click="OnCancelClick" />
+
+            <Button x:Name="ConfirmButton"
+                    Foreground="{DynamicResource Button_Cancel_Fg}"
+                    Background="{DynamicResource Button_Cancel_Bg}"
+                    BorderBrush="{DynamicResource Button_Cancel_Border}"
+                    IsEnabled="False"
+                    Click="OnConfirmClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

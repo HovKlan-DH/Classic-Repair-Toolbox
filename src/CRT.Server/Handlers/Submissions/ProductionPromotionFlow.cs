@@ -66,7 +66,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public const string NotConfiguredMessage =
-            "Publishing to production is not switched on for this server. Until it is, BETA is copied to production by hand.";
+            "Publishing to the stable source is not switched on for this server. Until it is, BETA is copied to the stable source by hand.";
 
         // ###########################################################################################
         // The systems whose BETA state is ahead of production, that this account may promote -
@@ -349,14 +349,14 @@ namespace CRT.Server.Handlers.Submissions
                 return PromotionOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
 
             if (!ProductionPromotionRules.IsAwaitingProduction(system))
-                return PromotionOutcome.Conflict("Production already has this system as it is in BETA. There is nothing to publish.");
+                return PromotionOutcome.Conflict("The stable source already has this system as it is in BETA. There is nothing to publish.");
 
             // ---- 4. What the maintainer checked ------------------------------------------------
             if (!string.Equals(system.ContentHash, expectedBetaContentHash?.Trim(), StringComparison.Ordinal))
             {
                 return PromotionOutcome.Conflict(
                     "This system has changed in BETA since you opened it - another contribution has been published " +
-                    "there. Check it again in CRT with the BETA data, then publish it to production.");
+                    "there. Check it again in CRT with the BETA data, then publish it to the stable source.");
             }
 
             // ---- 5. The plan -----------------------------------------------------------------
@@ -380,7 +380,7 @@ namespace CRT.Server.Handlers.Submissions
             ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
 
             if (!approval.CanApprove)
-                return PromotionOutcome.Conflict(ApprovePublishFlow.WhyNot(approval, "publishing this to production"));
+                return PromotionOutcome.Conflict(ApprovePublishFlow.WhyNot(approval, "publishing this to the stable source"));
 
             if (!approval.ApprovalPublishes)
             {
@@ -443,7 +443,7 @@ namespace CRT.Server.Handlers.Submissions
             // verified and the insert updates a row already there.
             if (listing.Insert is MasterRowInsert insert)
             {
-                MasterListingEdit edit = MasterListing.Insert(insert.MasterPath, insert.Row, insert.AfterExcelDataFile);
+                MasterListingEdit edit = MasterListing.Insert(insert.MasterPath, insert.Row, insert.AfterExcelDataFile, nowUtc);
 
                 if (!edit.IsDone)
                 {
@@ -452,7 +452,7 @@ namespace CRT.Server.Handlers.Submissions
                         system.SystemId, insert.MasterPath, edit.Failure);
 
                     return PromotionOutcome.Refused(
-                        $"The files were copied, but the system could not be added to production's drop-down lists: {edit.Failure} " +
+                        $"The files were copied, but the system could not be added to the stable source's drop-down lists: {edit.Failure} " +
                         "Publish it again once that is fixed.");
                 }
             }
@@ -498,7 +498,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public const string RemovalsChangedMessage =
-            "The files this would remove from production have changed since you opened it - another publish has " +
+            "The files this would remove from the stable source have changed since you opened it - another publish has " +
             "changed what uses them. Refresh, check the list, then publish.";
 
         // ###########################################################################################
@@ -604,7 +604,7 @@ namespace CRT.Server.Handlers.Submissions
             if (inBeta < 0)
             {
                 return ListingForPublish.Refused(
-                    "This system is not in the drop-down lists in BETA or in production, so nobody would see it. " +
+                    "This system is not in the drop-down lists in BETA or in the stable source, so nobody would see it. " +
                     "Place it in the Systems screen first.");
             }
 
@@ -674,7 +674,7 @@ namespace CRT.Server.Handlers.Submissions
                         Severity = ValidationSeverity.Error,
                         Code = "promote.tree_unavailable",
                         Subject = system.SystemId,
-                        Message = "The BETA or production data tree could not be read on the server."
+                        Message = "The BETA or stable data tree could not be read on the server."
                     }],
                     TouchesSharedFiles: false);
             }

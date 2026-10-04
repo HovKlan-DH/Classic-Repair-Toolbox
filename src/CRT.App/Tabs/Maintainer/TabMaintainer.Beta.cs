@@ -84,9 +84,9 @@ namespace CRT
             }
 
             if (!response.Configured)
-                this.ShowBetaListMessage("Publishing to production is not switched on for this server.", isError: true);
+                this.ShowBetaListMessage("Publishing to the stable source is not switched on for this server.", isError: true);
             else if (this.thisBeta.Count == 0)
-                this.ShowBetaListMessage("Production is up to date with BETA for every system you review.", isError: false);
+                this.ShowBetaListMessage("The stable source is up to date with BETA for every system you review.", isError: false);
             else
                 this.ShowBetaListMessage(null, isError: false);
 
@@ -124,6 +124,9 @@ namespace CRT
                 await this.BetaDetail.ShowSystemAsync(null);
                 return;
             }
+
+            // What the screen opens on next time (TabMaintainer.OpenOnEntry.cs).
+            this.RememberBetaSystem(row.SystemId);
 
             // Chosen by the maintainer, so waited for under the overlay (2026-09-28) - the queue's
             // own minute check re-reads a changed row without it.

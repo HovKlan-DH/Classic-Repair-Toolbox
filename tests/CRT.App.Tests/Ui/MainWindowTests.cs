@@ -181,7 +181,7 @@ public sealed class MainWindowTests : IDisposable
 
             // The table opens the draft's WORKBOOK, which the marker alone does not provide.
             string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, MainWindowTests.DraftSystemKey);
-            BoardWorkbookWriter.Write(workbook, new BoardData { Components = [new ComponentEntry { BoardLabel = "C1" }] });
+            CachedWorkbooks.Write(workbook, new BoardData { Components = [new ComponentEntry { BoardLabel = "C1" }] });
 
             window.TabDrafts.PublishedBoardOverrideForTests = _ => null;
             window.ApplyDraftsTabVisibility();
@@ -236,8 +236,10 @@ public sealed class MainWindowTests : IDisposable
         {
             var main = new CRT.Main();
 
-            TextBlock header = Assert.IsType<TextBlock>(main.DraftsTabItem.Header);
+            // The title beside its badge (2026-09-30) - still its own block, in its own colour.
+            TextBlock header = main.DraftsTabHeaderText;
             Assert.Equal("Drafts", header.Text);
+            Assert.Contains(header, Assert.IsType<StackPanel>(main.DraftsTabItem.Header).Children);
 
             foreach (Avalonia.Styling.ThemeVariant variant in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
             {

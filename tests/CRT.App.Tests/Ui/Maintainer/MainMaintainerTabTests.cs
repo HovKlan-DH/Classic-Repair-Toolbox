@@ -1,6 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
@@ -55,6 +57,164 @@ public sealed class MainMaintainerTabTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** THE SIGN-IN REACHES THE TABS THAT ASK FOR AN ADDRESS (owner request, 2026-10-01: "When I
+    // am a maintainer, and I have logged in, then I want to use that email address everywhere in
+    // the CRT app - e.g. for the Feedback tab or in the Draft tab"). *** Through the real window:
+    // signing in on the Maintainer tab puts the account's address in the Feedback tab, read only,
+    // and hands the session to the Drafts tab for its Submit dialog; signing out brings the typed
+    // address back. Fails if Main stops passing it on.
+    // ###########################################################################################
+    [Fact]
+    public void Signing_in_puts_the_accounts_address_in_the_Feedback_and_Drafts_tabs()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+            UserSettings.ContactEmail = "typed@example.com";
+
+            var window = new CRT.Main();
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+            var feedbackBox = window.TabFeedback.GetControl<TextBox>("EmailTextBox");
+
+            Assert.Equal("typed@example.com", feedbackBox.Text);
+
+            window.TabMaintainer.UseSessionForTests(session);
+
+            Assert.Equal("dh@example.com", feedbackBox.Text);
+            Assert.True(feedbackBox.IsReadOnly);
+            Assert.True(window.TabFeedback.GetControl<TextBlock>("EmailAccountNoteText").IsVisible);
+            Assert.Same(session, window.TabDrafts.MaintainerAccountForTests);
+
+            window.TabMaintainer.UseSessionForTests(null);
+
+            Assert.Equal("typed@example.com", feedbackBox.Text);
+            Assert.False(feedbackBox.IsReadOnly);
+            Assert.False(window.TabFeedback.GetControl<TextBlock>("EmailAccountNoteText").IsVisible);
+            Assert.Null(window.TabDrafts.MaintainerAccountForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** SIGNED IN IS SIGNED IN, WHATEVER THE CONFIGURATION TAB SAYS (owner request, 2026-10-02:
+    // "As long as the maintainer is logged in, then use email from that, no matter what is checked
+    // in "Configuration" tab. The maintainer will need to logoff to be forgotten"). *** Turning the
+    // tab off took the sign-in back until then - this test asserted the opposite. Now only signing
+    // out brings the typed address back.
+    // ###########################################################################################
+    [Fact]
+    public void Turning_the_tab_off_keeps_its_sign_in_until_signing_out()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+            UserSettings.ContactEmail = "typed@example.com";
+
+            var window = new CRT.Main();
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+            window.TabMaintainer.UseSessionForTests(session);
+
+            UserSettings.EnableMaintainerTab = false;
+            window.ApplyMaintainerTabVisibility();
+
+            Assert.False(window.MaintainerTabItem.IsVisible);
+            Assert.Equal("dh@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
+            Assert.Same(session, window.TabDrafts.MaintainerAccountForTests);
+
+            window.TabMaintainer.UseSessionForTests(null);
+
+            Assert.Equal("typed@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
+            Assert.Null(window.TabDrafts.MaintainerAccountForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // And at LAUNCH with the tab off: the remembered sign-in is put in place - with no request at
+    // all, since nothing of the tab runs - so the Feedback tab and the Submit dialog use the
+    // account. Turning the tab on later reads the badge's lists then. The session and the server are
+    // the test's own (no user file, no network).
+    // ###########################################################################################
+    [Fact]
+    public void At_launch_with_the_tab_off_the_remembered_sign_in_is_used_without_asking_the_server()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.EnableMaintainerTab = false;
+            UserSettings.ContactEmail = "typed@example.com";
+
+            var window = new CRT.Main();
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+            var requests = new List<string>();
+
+            window.TabMaintainer.RecallSessionOverrideForTests = _ => session;
+            window.TabMaintainer.ClientOverrideForTests = () => new ReviewApiClient(
+                "https://review.invalid",
+                new HttpClient(new ClassicRepairToolbox.Tests.Maintainer.AnsweringHttpHandler(request =>
+                {
+                    requests.Add(request.RequestUri!.AbsolutePath);
+                    return ClassicRepairToolbox.Tests.Maintainer.AnsweringHttpHandler.Refused();
+                })));
+
+            // What StartAsync does once the window is up.
+            typeof(CRT.Main).GetMethod("StartMaintainerBadge", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(window, null);
+
+            Assert.Same(session, window.TabMaintainer.SignedIn);
+            Assert.Equal("dh@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
+            Assert.Same(session, window.TabDrafts.MaintainerAccountForTests);
+            Assert.Empty(requests);
+
+            // Ticked later: the badge's lists are read now.
+            UserSettings.EnableMaintainerTab = true;
+            window.ApplyMaintainerTabVisibility();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Contains(requests, path => path.EndsWith("/queue", StringComparison.Ordinal));
+        });
+    }
+
+    // ###########################################################################################
+    // *** HIDDEN FOR WANT OF WORK KEEPS THE SIGN-IN (owner report, 2026-10-02). *** It took the
+    // sign-in back from 2026-10-01 (a code review), and the owner's own submission - sent just
+    // after rejecting the last one in the queue, the tab hidden - arrived "Sent without an account"
+    // while signed in. "Hide the Maintainer tab while no work is waiting" is tidiness, not signing
+    // out: the Feedback tab and the Submit dialog keep the account throughout. This test asserted
+    // the opposite until then.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_tab_hidden_for_want_of_work_keeps_its_sign_in_for_the_rest_of_CRT()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+            UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting = true;
+            UserSettings.ContactEmail = "typed@example.com";
+
+            var window = new CRT.Main();
+            TabMaintainer tab = window.TabMaintainer;
+            var feedbackBox = window.TabFeedback.GetControl<TextBox>("EmailTextBox");
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+
+            tab.UseSessionForTests(session);
+
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true, [], false));
+            await tab.ApplyBetaListAsync(new ProductionListResponse(true, []), background: true);
+
+            Assert.False(window.MaintainerTabItem.IsVisible);
+            Assert.Equal("dh@example.com", feedbackBox.Text);
+            Assert.Same(session, window.TabDrafts.MaintainerAccountForTests);
+
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true,
+            [
+                new ReviewQueueRow(1, "Commodore/C64/250407", "pending", "One", "c@example.com", null, AwaitsYou: true)
+            ], false));
+
+            Assert.True(window.MaintainerTabItem.IsVisible);
+            Assert.Equal("dh@example.com", feedbackBox.Text);
+            Assert.Same(session, window.TabDrafts.MaintainerAccountForTests);
+        });
+    }
+
     // Beside the other contribution work - Contribute, Drafts, Maintainer - and before Configuration.
     [Fact]
     public void The_tab_sits_after_Drafts_and_before_Configuration()
@@ -68,7 +228,77 @@ public sealed class MainMaintainerTabTests : IDisposable
 
             Assert.Equal(items.IndexOf(window.DraftsTabItem) + 1, maintainer);
             Assert.Equal(items.IndexOf(window.ConfigurationTabItem) - 1, maintainer);
-            Assert.Equal("Maintainer", window.MaintainerTabItem.Header);
+
+            // The header is a title and a badge since 2026-09-30, not a plain string.
+            Assert.Equal("Maintainer", window.MaintainerTabHeaderText.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE TAB'S BADGE: WHAT WAITS FOR THIS ACCOUNT, IN BOTH QUEUES (owner request, 2026-09-30:
+    // "it should show as a badge in the "Maintainer" tab ... until it is fully processed, including
+    // if it is awaiting in "BETA to PROD" queue"). *** Drawn by Main from what the tab counts - the
+    // two attention badges added up - and gone when nothing waits.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_tabs_badge_adds_up_the_submissions_and_BETA_waiting_for_you()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+
+            var window = new CRT.Main();
+            TabMaintainer tab = window.TabMaintainer;
+
+            Assert.Null(window.MaintainerTabBadgeForTests);
+
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true,
+            [
+                new ReviewQueueRow(1, "Commodore/C64/250407", "pending", "One", "c@example.com", null, AwaitsYou: true),
+                new ReviewQueueRow(2, "Commodore/C128/310378", "pending", "Two", "c@example.com", null, AwaitsYou: true),
+                new ReviewQueueRow(3, "Commodore/VIC-20/250403", "pending", "With the other approver", "c@example.com", null, AwaitsYou: false)
+            ], false));
+
+            Assert.Equal("2", window.MaintainerTabBadgeForTests);
+
+            await tab.ApplyBetaListAsync(new ProductionListResponse(true,
+            [
+                new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", null, "hash", null, null, AwaitsYou: true)
+            ]), background: true);
+
+            Assert.Equal("3", window.MaintainerTabBadgeForTests);
+
+            // No tooltip on it - the owner wants none on these (2026-09-30).
+            Assert.Null(ToolTip.GetTip(window.MaintainerTabItem));
+
+            // All processed: no badge.
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true, [], false));
+            await tab.ApplyBetaListAsync(new ProductionListResponse(true, []), background: true);
+
+            Assert.Null(window.MaintainerTabBadgeForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // The minute check runs off screen only while the badge can be SEEN - the tab turned on and
+    // CRT's window not minimised. A minimised window, or the tab turned off, asks the server
+    // nothing a minute (and keeps no session alive on its behalf).
+    // ###########################################################################################
+    [Fact]
+    public void The_badge_can_be_seen_only_with_the_tab_on_and_the_window_not_minimised()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main();
+
+            UserSettings.EnableMaintainerTab = false;
+            Assert.False(window.MaintainerTabBadgeCanBeSeen);
+
+            UserSettings.EnableMaintainerTab = true;
+            Assert.True(window.MaintainerTabBadgeCanBeSeen);
+
+            window.WindowState = WindowState.Minimized;
+            Assert.False(window.MaintainerTabBadgeCanBeSeen);
         });
     }
 
@@ -180,25 +410,133 @@ public sealed class MainMaintainerTabTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** "SHOW CHANGES ONLY" IS REMEMBERED IN CRT'S SETTINGS (2026-09-29). *** The separate
-    // application kept it in a file of its own; Main now hands the tab UserSettings'
-    // MaintainerShowChangesOnly, and every later CHOICE is written back.
+    // *** THE TABLE'S FILTER IS REMEMBERED IN CRT'S SETTINGS (2026-09-29, as "Show changes only";
+    // the colour-key pills since 2026-10-02). *** The separate application kept it in a file of its
+    // own; Main now hands the tab UserSettings' MaintainerTableFilter, and every later PICK is
+    // written back.
     // ###########################################################################################
     [Fact]
-    public void The_tables_show_changes_only_comes_from_and_goes_back_to_CRTs_settings()
+    public void The_tables_filter_comes_from_and_goes_back_to_CRTs_settings()
     {
         UiTest.Run(() =>
         {
-            UserSettings.MaintainerShowChangesOnly = true;
+            UserSettings.MaintainerTableFilter = BoardTableRowKinds.Errors | BoardTableRowKinds.Modified;
 
             var window = new CRT.Main();
             CRT.BoardTableEditor editor = window.TabMaintainer.TableEditorForTests;
 
-            Assert.True(editor.OnlyChangesWanted);
+            Assert.Equal(BoardTableRowKinds.Errors | BoardTableRowKinds.Modified, editor.FilterWanted);
 
-            editor.OnlyChanges = false;
+            editor.TogglePill(BoardTableRowKinds.Errors);
 
-            Assert.False(UserSettings.MaintainerShowChangesOnly);
+            Assert.Equal(BoardTableRowKinds.Modified, UserSettings.MaintainerTableFilter);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A CHANGED NAME OR ADDRESS REACHES THE REST OF CRT AT ONCE (owner request, 2026-10-03). ***
+    // "My account" (the "Your account" window until 2026-10-04) hands every account the server
+    // returns to the tab, which passes the new address to the Feedback tab and the Submit dialog -
+    // the same path a sign-in takes - says it under the lists, and shows it in "My account" too.
+    // The token is untouched: the next request still goes through.
+    // ###########################################################################################
+    [Fact]
+    public void A_changed_account_reaches_the_feedback_tab_and_the_submit_dialog_at_once()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.ContactEmail = "typed@example.com";
+
+            var window = new CRT.Main();
+            TabMaintainer tab = window.TabMaintainer;
+            tab.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis"));
+
+            // Signed in on the tab, which hands "My account" the session.
+            typeof(TabMaintainer).GetMethod("ShowQueuePanel", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(tab, null);
+
+            tab.ApplyAccount(new AccountAnswer(7, "bench@example.com", "Dennis H", true, false, [], DateTimeOffset.UnixEpoch));
+
+            Assert.Equal("bench@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
+            Assert.Equal("bench@example.com", window.TabDrafts.MaintainerAccountForTests!.Email);
+            Assert.Equal(new ReviewSession(tab.SignedIn!.BearerToken, tab.SignedIn.ExpiresUtc, 7, "bench@example.com", "Dennis H"), tab.SignedIn);
+            Assert.Equal("token", tab.SignedIn.BearerToken);
+            Assert.Equal("Dennis H (bench@example.com)", TabMaintainer.TextOf(tab.GetControl<TextBlock>("SignedInAsText")));
+            Assert.Equal("Dennis H", tab.GetControl<MyAccountView>("MyAccountPanel").Session?.DisplayName);
+        });
+    }
+
+    // ###########################################################################################
+    // *** UNDER THE LISTS: WHO IS LOGGED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show
+    // "Logged in as:<br /><b>Dennis</b> (dennis@...dk)" in the bottom-left corner"). *** The words on
+    // a line of their own, then the name in bold and the address - and no "Account" or "Sign out"
+    // button any more: both are under Account > "My account" (MyAccountViewTests).
+    // ###########################################################################################
+    [Fact]
+    public void Under_the_lists_it_says_who_is_logged_in_and_carries_no_buttons()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabMaintainer();
+            tab.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis"));
+            typeof(TabMaintainer).GetMethod("ShowQueuePanel", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(tab, null);
+
+            StackPanel panel = tab.GetControl<StackPanel>("SignedInAsPanel");
+            TextBlock[] lines = panel.Children.OfType<TextBlock>().ToArray();
+
+            Assert.Equal(2, lines.Length);
+            Assert.Equal("Logged in as:", lines[0].Text);
+            Assert.Same(tab.GetControl<TextBlock>("SignedInAsText"), lines[1]);
+            Assert.Equal("Dennis (dh@example.com)", TabMaintainer.TextOf(lines[1]));
+
+            Avalonia.Controls.Documents.Run[] runs = lines[1].Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToArray();
+            Assert.Equal(["Dennis"], runs.Where(run => run.FontWeight == Avalonia.Media.FontWeight.Bold).Select(run => run.Text));
+
+            Assert.Empty(panel.GetLogicalDescendants().OfType<Button>());
+            Assert.Null(tab.FindControl<Button>("AccountButton"));
+            Assert.Null(tab.FindControl<Button>("SignOutButton"));
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE REMEMBERED NAME AND ADDRESS ARE READ AGAIN AT LAUNCH (2026-10-03). *** The stored
+    // session keeps them as they were at sign-in; changed on another computer, this one would
+    // otherwise keep sending the old address from the Feedback tab. Read once, quietly, with the
+    // badge's lists - the session and the server are the test's own.
+    // ###########################################################################################
+    [Fact]
+    public async Task At_launch_the_remembered_name_and_address_are_read_again_from_the_server()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+
+            var window = new CRT.Main();
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+            var requests = new List<string>();
+
+            window.TabMaintainer.RecallSessionOverrideForTests = _ => session;
+            window.TabMaintainer.ClientOverrideForTests = () => new ReviewApiClient(
+                "https://review.invalid",
+                new HttpClient(new ClassicRepairToolbox.Tests.Maintainer.AnsweringHttpHandler(request =>
+                {
+                    requests.Add(request.RequestUri!.AbsolutePath);
+
+                    return request.RequestUri.AbsolutePath == "/api/accounts/me"
+                        ? ClassicRepairToolbox.Tests.Maintainer.AnsweringHttpHandler.Json(
+                            """{"id":7,"email":"bench@example.com","displayName":"Dennis H","isVerified":true,"isAdministrator":false,"maintainerOf":[],"createdUtc":"2026-01-01T00:00:00+00:00"}""")
+                        : ClassicRepairToolbox.Tests.Maintainer.AnsweringHttpHandler.Refused();
+                })));
+
+            await window.TabMaintainer.RestoreInBackgroundAsync();
+
+            Assert.Single(requests, path => path == "/api/accounts/me");
+            Assert.Equal("bench@example.com", window.TabMaintainer.SignedIn!.Email);
+            Assert.Equal("Dennis H", window.TabMaintainer.SignedIn.DisplayName);
+            Assert.Equal("bench@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
+
+            // Once a launch: asked again, it is not read again.
+            await window.TabMaintainer.RestoreInBackgroundAsync();
+            Assert.Single(requests, path => path == "/api/accounts/me");
         });
     }
 }

@@ -20,8 +20,12 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class BoardTableDocumentTests
 {
+    // Each component's technical value is its own, as real components' are. With one shared value,
+    // every component deleted and every one added were identical but for their label - which reads
+    // as a component relabelled (BoardDataDiffer.PairRenamedRows, 2026-10-04), not as the deletion
+    // and addition those tests set up. A label edited in the table keeps the old value, so it does.
     private static ComponentEntry Component(string label, string friendlyName = "", string description = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = "x", Description = description };
+        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}", Description = description };
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 
@@ -255,22 +259,84 @@ public sealed class BoardTableDocumentTests
 
     // ------------------------------------------------------------------ Keys and comparison
 
+    // ###########################################################################################
+    // *** A KEY CELL CHANGED AND NOTHING ELSE IS ONE ROW MODIFIED (owner decision, 2026-10-04). ***
+    // It was an addition plus a deleted ghost until then - changing a credit's "Name or handle" "did
+    // remove one row and added a new row ... This seems weird to me". The changed key cell is orange
+    // with the value it replaced, and nothing is red. BoardDataDiffer counts it the same way (its
+    // tests, and the agreement test below).
+    // ###########################################################################################
     [Fact]
-    public void Changing_a_key_cell_reads_as_an_addition_plus_a_deleted_ghost()
+    public void Changing_only_a_key_cell_reads_as_ONE_row_modified_with_the_old_value_in_the_cell()
     {
-        // The table must describe the change the way BoardDataDiffer, the submission and the
-        // maintainer all will - so a renamed Board label is NOT shown as a friendly "modified".
         BoardTableDocument document = BoardTableDocument.Create(
-            Board(Component("U8")),
-            Board(Component("U8")));
+            Board(Component("U8", "CPU")),
+            Board(Component("U8", "CPU")));
 
         BoardTableSheet sheet = Components(document);
         Cell(Row(sheet, "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U9";
         sheet.Refresh();
 
+        BoardTableRow row = Row(sheet, "U9");
+        BoardTableCell label = Cell(row, BoardWorkbookSchema.ColBoardLabel);
+
+        Assert.Equal(BoardTableRowState.Modified, row.State);
+        Assert.Equal(BoardTableCellState.Modified, label.State);
+        Assert.Equal("U8", label.PublishedText);
+        Assert.Equal(BoardTableCellState.Unchanged, Cell(row, BoardWorkbookSchema.ColFriendlyName).State);
+        Assert.DoesNotContain(sheet.Rows, candidate => candidate.IsDeleted);
+        Assert.Equal(1, sheet.ChangeCount);
+        Assert.Equal((0, 1, 0), (sheet.AddedCount, sheet.ModifiedCount, sheet.DeletedCount));
+    }
+
+    // The other half of the owner's choice: a key cell AND another cell changed is no longer
+    // recognisably the same row - an addition plus a deleted ghost, as before.
+    [Fact]
+    public void Changing_a_key_cell_AND_another_cell_still_reads_as_an_addition_plus_a_deleted_ghost()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U8", "CPU")),
+            Board(Component("U8", "CPU")));
+
+        BoardTableSheet sheet = Components(document);
+        BoardTableRow row = Row(sheet, "U8");
+        Cell(row, BoardWorkbookSchema.ColBoardLabel).Text = "U9";
+        Cell(row, BoardWorkbookSchema.ColFriendlyName).Text = "VIC";
+        sheet.Refresh();
+
         Assert.Equal(BoardTableRowState.Added, Row(sheet, "U9").State);
         Assert.Equal(BoardTableRowState.Deleted, Row(sheet, "U8", deleted: true).State);
         Assert.Equal(2, sheet.ChangeCount);
+    }
+
+    // The owner's own case: a credit's name given " 2". The name is part of a credit's key, beside
+    // its category - one item can credit several people.
+    [Fact]
+    public void A_credits_name_changed_is_one_row_modified_and_agrees_with_BoardDataDiffer()
+    {
+        BoardData published = new()
+        {
+            Credits =
+            [
+                new CreditEntry { Category = "Board labelling", NameOrHandle = "Dennis", Contact = "dennis@example.org" },
+                new CreditEntry { Category = "Board data", NameOrHandle = "Dennis", Contact = "dennis@example.org" }
+            ]
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(published, published);
+        BoardTableSheet credits = document.FindSheet(BoardWorkbookSchema.SheetCredits)!;
+        BoardTableRow first = credits.Rows[0];
+
+        first.Cells[credits.Columns.ToList().IndexOf(BoardWorkbookSchema.ColNameOrHandle)].Text = "Dennis 2";
+        credits.Refresh();
+
+        Assert.Equal(BoardTableRowState.Modified, first.State);
+        Assert.Equal(BoardTableRowState.Unchanged, credits.Rows[1].State);
+        Assert.DoesNotContain(credits.Rows, row => row.IsDeleted);
+        Assert.Equal(1, credits.ChangeCount);
+
+        BoardData saved = document.ApplyTo(new BoardData());
+        Assert.Equal(credits.ChangeCount, BoardDataDiffer.CountChanges(published, saved));
     }
 
     [Fact]
@@ -305,7 +371,7 @@ public sealed class BoardTableDocumentTests
     }
 
     [Fact]
-    public void A_second_row_with_the_same_key_is_flagged_and_NOT_counted()
+    public void A_second_row_with_the_same_key_is_NOT_counted_and_is_the_servers_error()
     {
         // BoardDataDiffer pairs only the first row per key and ignores the rest; counting the
         // duplicate here would make the tab disagree with the draft row's own count.
@@ -318,22 +384,27 @@ public sealed class BoardTableDocumentTests
 
         Assert.Equal(BoardTableRowState.Unchanged, sheet.Rows[0].State);
         Assert.Equal(BoardTableRowState.Duplicate, duplicate.State);
-        Assert.Equal("!", duplicate.Marker);
-        Assert.NotNull(duplicate.MarkerToolTip);
         Assert.Equal(0, sheet.ChangeCount);
 
-        // Coloured across the whole row and counted on its own (owner request, 2026-09-24:
-        // the "!" alone was easy to miss) - but still not a change.
-        Assert.All(duplicate.Cells, cell => Assert.Equal(BoardTableCellState.Flagged, cell.State));
-        Assert.All(sheet.Rows[0].Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
-        Assert.Equal(1, sheet.FlaggedCount);
+        // Not coloured and not marked since 2026-10-03 (it was violet, "!", "Flagged"): on
+        // Components a duplicate is the server's error, so the error's corner mark says it.
+        Assert.Equal(string.Empty, duplicate.Marker);
+        Assert.Null(duplicate.MarkerToolTip);
+        Assert.All(duplicate.Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
+        Assert.True(duplicate.HasErrors);
+
+        // And the first row carries the error too, so the two read as one problem (owner
+        // decision, 2026-10-03: "it should show all rows, and not only last") - while still the
+        // row the differ pairs, so it stays Unchanged and counts nothing.
+        Assert.True(sheet.Rows[0].HasErrors);
     }
 
     // ###########################################################################################
     // *** A BOARD COMPARED WITH ITSELF MARKS NOTHING - its duplicates included (2026-09-26). *** The
     // maintainer's table compares a NEW system's submission with itself as it was opened, so only
-    // the maintainer's own edits are coloured. A duplicate in it is still flagged - it is one - but
-    // its twin on the compared side must not come back as a red "deleted" ghost.
+    // the maintainer's own edits are coloured. A duplicate in it is still told - it is one, the
+    // server's error on Components - but its twin on the compared side must not come back as a
+    // red "deleted" ghost.
     // ###########################################################################################
     [Fact]
     public void A_board_compared_with_itself_marks_nothing_but_its_duplicates()
@@ -344,7 +415,7 @@ public sealed class BoardTableDocumentTests
 
         Assert.DoesNotContain(sheet.Rows, row => row.IsDeleted);
         Assert.Equal(0, sheet.ChangeCount);
-        Assert.Equal(1, sheet.FlaggedCount);
+        Assert.Equal(2, sheet.ErrorRowCount);   // both U1 rows (every row of a duplicate since 2026-10-03)
         Assert.Equal(BoardTableRowState.Duplicate, sheet.Rows[1].State);
     }
 
@@ -355,7 +426,7 @@ public sealed class BoardTableDocumentTests
     // uniqueness here is both columns"). Both columns the same is still a duplicate.
     // ###########################################################################################
     [Fact]
-    public void Important_signals_sharing_a_display_name_but_not_a_net_are_not_flagged()
+    public void Important_signals_sharing_a_display_name_but_not_a_net_are_not_duplicates()
     {
         var board = new BoardData
         {
@@ -370,8 +441,8 @@ public sealed class BoardTableDocumentTests
         BoardTableSheet sheet = BoardTableDocument.Create(board, board).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
 
         Assert.All(sheet.Rows, row => Assert.Equal(BoardTableRowState.Unchanged, row.State));
-        Assert.Equal(0, sheet.FlaggedCount);
-        Assert.False(sheet.HasChangeRows);
+        Assert.Equal(0, sheet.WarningRowCount);
+        Assert.False(sheet.HasRowsShownBy(BoardTableRowFilter.Changes));
 
         BoardTableSheet doubled = BoardTableDocument.Create(
                 board,
@@ -382,10 +453,12 @@ public sealed class BoardTableDocumentTests
     }
 
     [Fact]
-    public void An_important_signal_missing_half_is_flagged_incomplete_and_its_published_row_shows_as_deleted()
+    public void An_important_signal_missing_half_is_incomplete_and_its_published_row_shows_as_deleted()
     {
         // Saving drops such a row (the schema's own mapper does), so the published signal it came
-        // from really will be gone - and the ghost says exactly that.
+        // from really will be gone - and the ghost says exactly that. The row itself looks like a
+        // new row still being filled in, with the warning saying why it is not saved (2026-10-03;
+        // it was violet and "!" until then).
         var published = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
         BoardTableDocument document = BoardTableDocument.Create(published, published);
 
@@ -395,20 +468,21 @@ public sealed class BoardTableDocumentTests
 
         BoardTableRow incomplete = sheet.Rows.Single(row => !row.IsDeleted);
         Assert.Equal(BoardTableRowState.Incomplete, incomplete.State);
-        Assert.Equal("!", incomplete.Marker);
-        Assert.All(incomplete.Cells, cell => Assert.Equal(BoardTableCellState.Flagged, cell.State));
+        Assert.Equal("+", incomplete.Marker);
+        Assert.All(incomplete.Cells, cell => Assert.Equal(BoardTableCellState.Added, cell.State));
 
         Assert.Single(sheet.Rows, row => row.IsDeleted);
         Assert.Equal(1, sheet.ChangeCount);
-        Assert.Equal(1, sheet.FlaggedCount);
+        Assert.Equal(1, sheet.WarningRowCount);
         Assert.Equal(1, sheet.DeletedCount);
     }
 
     [Fact]
-    public void A_flagged_rows_cells_say_why_when_hovered_and_follow_the_reason_as_it_changes()
+    public void A_rows_warning_follows_its_reason_as_it_changes()
     {
-        // The reason is under the pointer wherever it lands on the violet row - not only on the
-        // narrow "!" column at its start.
+        // A duplicate's warning sits on the row's first identity column; once the row is missing a
+        // half instead, the warning moves to the empty cell - and the first cell is told its
+        // tooltip changed.
         var published = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
         BoardTableDocument document = BoardTableDocument.Create(
             published,
@@ -423,26 +497,27 @@ public sealed class BoardTableDocumentTests
 
         BoardTableSheet sheet = document.FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
         BoardTableRow second = sheet.Rows[1];
-        BoardTableCell cell = second.Cells[0];
+        BoardTableCell cell = second.Cells[Column(sheet, BoardWorkbookSchema.ColDisplayName)];
+        BoardTableCell net = second.Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)];
 
         Assert.Equal(BoardTableRowState.Duplicate, second.State);
-        Assert.Equal(second.MarkerToolTip, cell.ToolTip);
+        Assert.StartsWith("Warning: Another row on this sheet has the same Display name and KiCad net name.", cell.ToolTip, StringComparison.Ordinal);
 
         var raised = new List<string?>();
         cell.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        // Now missing a half: still flagged, for a different reason - and the cell says so.
-        second.Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)].Text = string.Empty;
+        // Now missing a half: still warned about, for a different reason, on the empty cell.
+        net.Text = string.Empty;
         sheet.Refresh();
 
         Assert.Equal(BoardTableRowState.Incomplete, second.State);
-        Assert.Equal(BoardTableCellState.Flagged, cell.State);
-        Assert.Contains("Incomplete", cell.ToolTip);
+        Assert.Null(cell.ToolTip);
+        Assert.Equal("Warning: This row is left out when saving, because KiCad net name is empty.", net.ToolTip);
         Assert.Contains(nameof(BoardTableCell.ToolTip), raised);
     }
 
     [Fact]
-    public void A_flagged_row_that_is_put_right_loses_its_flag()
+    public void A_duplicate_row_that_is_put_right_loses_its_error()
     {
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U1", "CPU")),
@@ -455,8 +530,326 @@ public sealed class BoardTableDocumentTests
 
         Assert.Equal(BoardTableRowState.Added, duplicate.State);
         Assert.All(duplicate.Cells, cell => Assert.Equal(BoardTableCellState.Added, cell.State));
-        Assert.Equal(0, sheet.FlaggedCount);
+        Assert.Equal(0, sheet.ErrorRowCount);
         Assert.Equal(1, sheet.AddedCount);
+    }
+
+    // ------------------------------------------------------------------ Both rows of a duplicate (2026-10-02)
+
+    // ###########################################################################################
+    // *** EVERY ROW OF A DUPLICATE IS MARKED, NOT ONLY THE LATER ONES (owner request, 2026-10-02:
+    // "if there is a duplicate here, then I think it should show both rows, and not only the last
+    // one"; cases agreed with the project owner). *** Only the second R9 / Pinout was violet, so
+    // the row it collided with had to be hunted for. Now the first is marked too - while which row
+    // COUNTS stays BoardDataDiffer's: the first.
+    //
+    // *** THE MARK IS A WARNING SINCE 2026-10-03 *** (owner request: "Should flagged now be treated
+    // as warnings?") - it was violet and "!". These cases hold the same rules for the warning; case
+    // 1's own test became case 12 of 2026-10-03, below. The boards carry components R9 and R12
+    // (ImagesWithComponents), so no image row is also warned about for naming a missing component.
+    // ###########################################################################################
+
+    private const string UpperRowWarning =
+        "Warning: Another row on this sheet has the same Board label, Region, Pin and Name. Only this one, the first, is " +
+        "compared with the published data, so a change in the other is not shown to a maintainer. Make them differ, or delete one.";
+
+    private const string LowerRowWarning =
+        "Warning: Another row on this sheet has the same Board label, Region, Pin and Name. Only the first is compared " +
+        "with the published data, so a change in this one is not shown to a maintainer. Make them differ, or delete one.";
+
+    private static ComponentImageEntry Image(string label, string name, string file, string note = "") =>
+        new() { BoardLabel = label, Name = name, File = file, Note = note };
+
+    private static BoardData ImagesWithComponents(params ComponentImageEntry[] images) => new()
+    {
+        Components = [Component("R9"), Component("R12")],
+        ComponentImages = [.. images],
+    };
+
+    private static BoardTableSheet ImagesSheet(BoardTableDocument document) =>
+        document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!;
+
+    private static bool IsWarnedAsDuplicate(BoardTableRow row) =>
+        Cell(row, BoardWorkbookSchema.ColBoardLabel).Problems.Any(problem => problem.Code == "row.duplicate");
+
+    // The owner's board: R9's pinout twice, where the second should have been "Pinout (secondary)".
+    private static readonly ComponentImageEntry R9Pinout = Image("R9", "Pinout", "Generic shared files/Component images/resistor_10_5.png");
+    private static readonly ComponentImageEntry R9Second = Image("R9", "Pinout", "Generic shared files/Component images/resistor.png");
+    private static readonly ComponentImageEntry R12Pinout = Image("R12", "Pinout", "Generic shared files/Component images/resistor_1k_5.png");
+
+    private static BoardTableDocument R9Twice() =>
+        BoardTableDocument.Create(
+            ImagesWithComponents(R9Pinout, R9Second, R12Pinout),
+            ImagesWithComponents(R9Pinout, R9Second, R12Pinout));
+
+    // Case 2.
+    [Fact]
+    public void Picking_Warnings_shows_both_rows_of_a_duplicate_and_nothing_else()
+    {
+        BoardTableSheet sheet = ImagesSheet(R9Twice());
+
+        Assert.Equal(
+            [true, true, false],
+            sheet.Rows.Select(row => BoardTableRowFilter.Shows(BoardTableRowKinds.Warnings, row)));
+    }
+
+    // Case 3.
+    [Fact]
+    public void The_upper_row_says_it_is_the_one_that_counts_and_the_lower_row_that_it_is_not()
+    {
+        BoardTableSheet sheet = ImagesSheet(R9Twice());
+
+        Assert.Equal(UpperRowWarning, Cell(sheet.Rows[0], BoardWorkbookSchema.ColBoardLabel).ToolTip);
+        Assert.Equal(LowerRowWarning, Cell(sheet.Rows[1], BoardWorkbookSchema.ColBoardLabel).ToolTip);
+    }
+
+    // Case 4.
+    [Fact]
+    public void Three_rows_identifying_the_same_thing_are_all_warned_about()
+    {
+        ComponentImageEntry third = Image("R9", "Pinout", "Generic shared files/Component images/resistor_x.png");
+
+        BoardTableSheet sheet = ImagesSheet(BoardTableDocument.Create(
+            ImagesWithComponents(R9Pinout, R12Pinout),
+            ImagesWithComponents(R9Pinout, R9Second, third, R12Pinout)));
+
+        Assert.All(sheet.Rows.Take(3), row => Assert.True(IsWarnedAsDuplicate(row)));
+        Assert.Equal(3, sheet.WarningRowCount);
+    }
+
+    // Case 5, renaming the lower row.
+    [Fact]
+    public void Renaming_the_lower_row_clears_both_warnings_and_undo_brings_them_back()
+    {
+        BoardTableDocument document = R9Twice();
+        BoardTableSheet sheet = ImagesSheet(document);
+        BoardTableRow upper = sheet.Rows[0];
+        BoardTableRow lower = sheet.Rows[1];
+
+        lower.Cells[Column(sheet, BoardWorkbookSchema.ColName)].Text = "Pinout (secondary)";
+        sheet.Refresh();
+
+        Assert.False(IsWarnedAsDuplicate(upper));
+        Assert.Equal(0, sheet.WarningRowCount);
+
+        document.History.Undo();
+
+        Assert.True(IsWarnedAsDuplicate(upper));
+        Assert.True(IsWarnedAsDuplicate(lower));
+        Assert.Equal(2, sheet.WarningRowCount);
+    }
+
+    // Case 5, deleting the lower row.
+    [Fact]
+    public void Deleting_the_lower_row_clears_both_warnings_and_undo_brings_them_back()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            ImagesWithComponents(R9Pinout, R12Pinout),
+            ImagesWithComponents(R9Pinout, R9Second, R12Pinout));
+        BoardTableSheet sheet = ImagesSheet(document);
+        BoardTableRow upper = sheet.Rows[0];
+
+        sheet.DeleteRow(sheet.Rows[1]);
+
+        Assert.False(IsWarnedAsDuplicate(upper));
+        Assert.Equal(0, sheet.WarningRowCount);
+
+        document.History.Undo();
+
+        Assert.True(IsWarnedAsDuplicate(upper));
+        Assert.Equal(2, sheet.WarningRowCount);
+    }
+
+    // Case 6.
+    [Fact]
+    public void A_duplicate_leaves_the_change_counts_as_BoardDataDiffer_has_them()
+    {
+        // The upper row is a real change (its Note edited); the lower one is never counted.
+        ComponentImageEntry editedUpper = Image("R9", "Pinout", R9Pinout.File, note: "Checked");
+
+        BoardData published = ImagesWithComponents(R9Pinout, R12Pinout);
+        BoardData draft = ImagesWithComponents(editedUpper, R9Second, R12Pinout);
+
+        BoardTableDocument document = BoardTableDocument.Create(published, draft);
+        BoardTableSheet sheet = ImagesSheet(document);
+
+        Assert.Equal(1, sheet.ChangeCount);
+        Assert.Equal(BoardDataDiffer.CountChanges(published, document.ApplyTo(draft)), document.TotalChangeCount);
+    }
+
+    // Case 7.
+    [Fact]
+    public void An_upper_row_that_is_itself_changed_keeps_its_orange_cell_and_counts_as_modified_and_warned()
+    {
+        ComponentImageEntry editedUpper = Image("R9", "Pinout", R9Pinout.File, note: "Checked");
+
+        BoardTableSheet sheet = ImagesSheet(BoardTableDocument.Create(
+            ImagesWithComponents(R9Pinout, R12Pinout),
+            ImagesWithComponents(editedUpper, R9Second, R12Pinout)));
+
+        BoardTableRow upper = sheet.Rows[0];
+        BoardTableCell note = upper.Cells[Column(sheet, BoardWorkbookSchema.ColNote)];
+
+        Assert.Equal("~", upper.Marker);
+        Assert.Equal(BoardTableCellState.Modified, note.State);
+        Assert.Contains("(empty)", note.ToolTip);
+        Assert.All(upper.Cells.Where(cell => cell != note), cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
+
+        Assert.Equal(1, sheet.ModifiedCount);
+        Assert.Equal(2, sheet.WarningRowCount);
+        Assert.True(BoardTableRowFilter.Shows(BoardTableRowKinds.Modified, upper));
+        Assert.True(BoardTableRowFilter.Shows(BoardTableRowKinds.Warnings, upper));
+    }
+
+    // Case 8 - green since 2026-10-03 (violet until then): the colour says what changed.
+    [Fact]
+    public void An_upper_row_that_is_new_is_green_and_counts_as_added()
+    {
+        BoardTableSheet sheet = ImagesSheet(BoardTableDocument.Create(
+            ImagesWithComponents(R12Pinout),
+            ImagesWithComponents(R9Pinout, R9Second, R12Pinout)));
+
+        BoardTableRow upper = sheet.Rows[0];
+
+        Assert.Equal("+", upper.Marker);
+        Assert.All(upper.Cells, cell => Assert.Equal(BoardTableCellState.Added, cell.State));
+        Assert.Equal(1, sheet.AddedCount);
+        Assert.Equal(1, sheet.ChangeCount);
+        Assert.Equal(2, sheet.WarningRowCount);
+    }
+
+    // Case 9: an incomplete row has no identity, so it never pulls another row into a pair.
+    [Fact]
+    public void An_incomplete_row_is_warned_about_on_its_own()
+    {
+        var board = new BoardData
+        {
+            KiCadImportantSignals =
+            [
+                new() { DisplayName = "CLK", KiCadNetName = "Net-1" },
+                new() { DisplayName = "CLK", KiCadNetName = "Net-2" },
+            ],
+        };
+
+        BoardTableSheet sheet = BoardTableDocument.Create(board, board).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
+
+        sheet.Rows[1].Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)].Text = string.Empty;
+        sheet.Refresh();
+
+        BoardTableRow complete = sheet.Rows.First(row => !row.IsDeleted);
+        BoardTableRow incomplete = sheet.Rows.Single(row => row.State == BoardTableRowState.Incomplete);
+
+        Assert.Equal(string.Empty, complete.Marker);
+        Assert.All(complete.Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
+        Assert.False(complete.HasWarnings);
+        Assert.True(incomplete.HasWarnings);
+        Assert.Equal(1, sheet.WarningRowCount);
+    }
+
+    // ------------------------------------------------------------------ Flagged is a warning (2026-10-03)
+
+    // ###########################################################################################
+    // *** NO MORE "FLAGGED" (owner request, 2026-10-03: "Should flagged now be treated as
+    // warnings?"; cases agreed with the project owner). *** A duplicate row and a row the save
+    // leaves out were violet, with a "!" and a pill of their own. They are WARNINGS now - the amber
+    // corner mark on the cell, counted in the Warnings pill - and the colours are back to meaning
+    // only what changed. These boards carry components R9 and R12 (ImagesWithComponents, above),
+    // so no image row is also warned about for naming a component that is not there.
+    // ###########################################################################################
+
+    // Case 12, in the table.
+    [Fact]
+    public void Two_rows_identifying_the_same_thing_both_carry_a_warning_and_count_as_two_warnings()
+    {
+        BoardData board = ImagesWithComponents(R9Pinout, R9Second, R12Pinout);
+        BoardTableSheet sheet = ImagesSheet(BoardTableDocument.Create(board, board));
+
+        foreach (BoardTableRow r9 in sheet.Rows.Take(2))
+        {
+            BoardDataProblem problem = Assert.Single(Cell(r9, BoardWorkbookSchema.ColBoardLabel).Problems);
+            Assert.Equal(BoardProblemLevel.Warning, problem.Level);
+            Assert.Equal("row.duplicate", problem.Code);
+        }
+
+        Assert.Empty(sheet.Rows[2].Cells.SelectMany(cell => cell.Problems));
+        Assert.Equal(2, sheet.WarningRowCount);
+
+        Assert.StartsWith(
+            "Warning: Another row on this sheet has the same Board label, Region, Pin and Name. Only the first is compared with the published data",
+            Cell(sheet.Rows[1], BoardWorkbookSchema.ColBoardLabel).ToolTip,
+            StringComparison.Ordinal);
+    }
+
+    // Case 14. (Agreed as "a Component images row with no Board label"; such a row is in fact
+    // KEPT by the save - the Important signals sheet is the only one whose save leaves a row out.)
+    [Fact]
+    public void An_important_signal_with_no_net_name_is_warned_about_and_left_out_when_saving()
+    {
+        var published = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
+        BoardTableDocument document = BoardTableDocument.Create(published, published);
+        BoardTableSheet sheet = document.FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
+
+        BoardTableCell net = sheet.Rows.Single().Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)];
+        net.Text = string.Empty;
+        sheet.Refresh();
+
+        BoardDataProblem problem = Assert.Single(net.Problems);
+        Assert.Equal(BoardProblemLevel.Warning, problem.Level);
+        Assert.Equal("This row is left out when saving, because KiCad net name is empty.", problem.Message);
+        Assert.Equal(1, sheet.WarningRowCount);
+
+        // Saved: the row is gone, and with it the warning.
+        BoardData saved = document.ApplyTo(published);
+        Assert.Empty(saved.KiCadImportantSignals);
+        Assert.Equal(0, BoardTableDocument.Create(published, saved).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!.WarningRowCount);
+    }
+
+    // Case 15, the model's half: five kinds, and neither a duplicate nor a row the save leaves out
+    // is coloured or marked "!" - the corner mark says it.
+    [Fact]
+    public void The_colour_key_has_five_kinds_and_a_duplicate_is_neither_violet_nor_marked()
+    {
+        Assert.Equal(
+            [BoardTableRowKinds.Added, BoardTableRowKinds.Modified, BoardTableRowKinds.Deleted, BoardTableRowKinds.Errors, BoardTableRowKinds.Warnings],
+            BoardTableRowFilter.Each);
+
+        BoardData board = ImagesWithComponents(R9Pinout, R9Second, R12Pinout);
+        BoardTableSheet sheet = ImagesSheet(BoardTableDocument.Create(board, board));
+
+        Assert.All(sheet.Rows.Take(2), row =>
+        {
+            Assert.Equal(string.Empty, row.Marker);
+            Assert.All(row.Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
+        });
+
+        var signals = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
+        BoardTableSheet signalSheet = BoardTableDocument.Create(signals, signals).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
+        signalSheet.Rows.Single().Cells[Column(signalSheet, BoardWorkbookSchema.ColKiCadNetName)].Text = string.Empty;
+        signalSheet.Refresh();
+
+        Assert.DoesNotContain(signalSheet.Rows, row => row.Marker == "!");
+    }
+
+    // Case 16: which row of a duplicate counts is BoardDataDiffer's, as before - the first.
+    [Fact]
+    public void The_first_row_of_a_duplicate_still_counts_as_added_or_modified_and_the_rows_after_it_count_as_nothing()
+    {
+        BoardTableSheet added = ImagesSheet(BoardTableDocument.Create(
+            ImagesWithComponents(R12Pinout),
+            ImagesWithComponents(R9Pinout, R9Second, R12Pinout)));
+
+        Assert.Equal(BoardTableRowState.Added, added.Rows[0].State);
+        Assert.Equal(BoardTableRowState.Duplicate, added.Rows[1].State);
+        Assert.Equal(1, added.AddedCount);
+        Assert.Equal(1, added.ChangeCount);
+
+        BoardTableSheet modified = ImagesSheet(BoardTableDocument.Create(
+            ImagesWithComponents(R9Pinout, R12Pinout),
+            ImagesWithComponents(Image("R9", "Pinout", R9Pinout.File, note: "Checked"), R9Second, R12Pinout)));
+
+        Assert.Equal(BoardTableRowState.Modified, modified.Rows[0].State);
+        Assert.Equal(1, modified.ModifiedCount);
+        Assert.Equal(1, modified.ChangeCount);
     }
 
     // ------------------------------------------------------------------ Editing
@@ -647,21 +1040,23 @@ public sealed class BoardTableDocumentTests
     // ------------------------------------------------------------------ No published board
 
     [Fact]
-    public void With_no_published_board_nothing_is_coloured_but_duplicates_are_still_flagged()
+    public void With_no_published_board_nothing_is_coloured_but_duplicates_are_still_told()
     {
         // "Add a new system": every row would be green, which tells the contributor nothing. A
-        // duplicate is still a duplicate, though, and is flagged violet all the same.
+        // duplicate is still a duplicate, though - on Components the server's error, whose corner
+        // mark says so (it was violet until 2026-10-03).
         BoardTableDocument document = BoardTableDocument.Create(
             null,
             Board(Component("U1"), Component("U2"), Component("U2")));
         BoardTableSheet sheet = Components(document);
 
         Assert.False(document.HasBaseline);
+        Assert.All(sheet.Rows, row => Assert.All(row.Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State)));
         Assert.Equal(BoardTableRowState.Unchanged, sheet.Rows[0].State);
-        Assert.All(sheet.Rows[0].Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
         Assert.Equal(BoardTableRowState.Duplicate, sheet.Rows[2].State);
-        Assert.All(sheet.Rows[2].Cells, cell => Assert.Equal(BoardTableCellState.Flagged, cell.State));
-        Assert.Equal(1, sheet.FlaggedCount);
+        Assert.True(sheet.Rows[2].HasErrors);
+        Assert.True(sheet.Rows[1].HasErrors);   // both U2 rows (every row of a duplicate since 2026-10-03)
+        Assert.Equal(2, sheet.ErrorRowCount);
         Assert.Equal(0, document.TotalChangeCount);
     }
 
@@ -941,11 +1336,13 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(BoardTableRowState.Added, added.State);
         Assert.Equal("+", added.Marker);
 
-        // Giving the published U1 a region makes it a different row too: the region-less U1 is a
-        // red ghost, and U1/PAL is added - the same as changing its label.
-        Assert.Equal(BoardTableRowState.Added, original.State);
-        Assert.Single(sheet.Rows, row => row.IsDeleted);
-        Assert.Equal(3, sheet.ChangeCount);
+        // Giving the published U1 a region changes its key, as changing its label does - and since
+        // 2026-10-04 that is the same row MODIFIED, its region cell orange, when nothing else of it
+        // changed (it was a red ghost plus U1/PAL added until then).
+        Assert.Equal(BoardTableRowState.Modified, original.State);
+        Assert.Equal(BoardTableCellState.Modified, Cell(original, BoardWorkbookSchema.ColRegion).State);
+        Assert.DoesNotContain(sheet.Rows, row => row.IsDeleted);
+        Assert.Equal(2, sheet.ChangeCount);
     }
 
     [Fact]
@@ -1008,8 +1405,11 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(sheet.ChangeCount, sheet.AddedCount + sheet.ModifiedCount + sheet.DeletedCount);
     }
 
+    // What "Show changes only" showed - every row added, changed or deleted, and a new empty one -
+    // is what picking Added, Modified and Deleted together shows (BoardTableRowFilter.Changes,
+    // since the colour key became the filter, 2026-10-02; Flagged was a fourth until 2026-10-03).
     [Fact]
-    public void Only_rows_that_are_not_plainly_unchanged_count_as_change_rows()
+    public void Only_rows_that_are_not_plainly_unchanged_are_shown_by_the_changes_filter()
     {
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U1"), Component("U2")),
@@ -1017,10 +1417,10 @@ public sealed class BoardTableDocumentTests
         BoardTableSheet sheet = Components(document);
         BoardTableRow blank = sheet.InsertRow(null);
 
-        Assert.False(BoardTableSheet.IsChangeRow(Row(sheet, "U1")));
-        Assert.True(BoardTableSheet.IsChangeRow(Row(sheet, "U3")));
-        Assert.True(BoardTableSheet.IsChangeRow(Row(sheet, "U2", deleted: true)));
-        Assert.True(BoardTableSheet.IsChangeRow(blank));
+        Assert.False(BoardTableRowFilter.Shows(BoardTableRowFilter.Changes, Row(sheet, "U1")));
+        Assert.True(BoardTableRowFilter.Shows(BoardTableRowFilter.Changes, Row(sheet, "U3")));
+        Assert.True(BoardTableRowFilter.Shows(BoardTableRowFilter.Changes, Row(sheet, "U2", deleted: true)));
+        Assert.True(BoardTableRowFilter.Shows(BoardTableRowFilter.Changes, blank));
     }
 
     // ------------------------------------------------------------------ A deleted component
@@ -1184,6 +1584,219 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(3, document.ApplyTo(draft).ComponentHighlights.Count);
     }
 
+    // ------------------------------------------------------------------ Deleting several rows at once (2026-10-02)
+
+    // ###########################################################################################
+    // Owner request, 2026-10-02: "mark multiple rows and then delete those in one go" - the eight
+    // Pinout rows of a Component images sheet, say. BoardTableSheet.DeleteRows; the cases are the
+    // ones agreed before the code was written, numbered as they were then.
+    // ###########################################################################################
+
+    // Case 2: every selected row goes - a published one stays as a red row where it was, one the
+    // contributor added simply goes.
+    [Fact]
+    public void Deleting_several_rows_deletes_all_of_them_published_ones_stay_red_in_place_and_added_ones_go()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1"), Component("U2"), Component("U3")),
+            Board(Component("U1"), Component("U2"), Component("U3"), Component("U4")));
+        BoardTableSheet sheet = Components(document);
+
+        int deleted = sheet.DeleteRows([Row(sheet, "U1"), Row(sheet, "U3"), Row(sheet, "U4")], out _);
+
+        Assert.Equal(3, deleted);
+        Assert.Equal(["U1", "U2", "U3"], sheet.Rows.Select(Label));
+        Assert.Equal([true, false, true], sheet.Rows.Select(row => row.IsDeleted));
+        Assert.Equal(2, sheet.DeletedCount);
+        Assert.True(document.HasUnsavedChanges);
+    }
+
+    // Case 4: red rows among the selection are skipped - already deleted - and a selection of only
+    // red rows deletes nothing and leaves no undo step behind.
+    [Fact]
+    public void Red_rows_among_several_selected_are_skipped_and_only_red_rows_delete_nothing()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1"), Component("U2"), Component("U3")),
+            Board(Component("U2"), Component("U3")));
+        BoardTableSheet sheet = Components(document);
+        BoardTableRow ghost = Row(sheet, "U1", deleted: true);
+
+        Assert.Equal(1, sheet.DeleteRows([ghost, Row(sheet, "U2")], out _));
+        Assert.Equal(["-U1", "-U2", "U3"], sheet.Rows.Select(row => (row.IsDeleted ? "-" : "") + Label(row)));
+
+        int steps = document.History.UndoCount;
+        Assert.Equal(0, sheet.DeleteRows(sheet.Rows.Where(row => row.IsDeleted).ToList(), out BoardTableDeletedWith? deletedWith));
+        Assert.Null(deletedWith);
+        Assert.Equal(steps, document.History.UndoCount);
+    }
+
+    // Case 5: on Components, deleting two components at once takes each one's rows on the image,
+    // file and link sheets, as deleting one does - still ONE undo step, and what went with them
+    // said in one sentence for the status line.
+    [Fact]
+    public void Deleting_two_components_at_once_takes_both_ones_rows_on_the_other_sheets_in_one_undo_step()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+
+        Assert.Equal(2, components.DeleteRows([Row(components, "U8"), Row(components, "U9")], out BoardTableDeletedWith? deletedWith));
+
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLocalFiles));
+        Assert.Empty(LiveLabels(document, BoardWorkbookSchema.SheetComponentLinks));
+        Assert.Empty(document.ApplyTo(board).ComponentHighlights);
+
+        Assert.Equal(
+            "Also deleted with U8 and U9: 2 rows on Component images, 1 on Component local files and 1 on Component links. " +
+            "Their 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            deletedWith!.Describe());
+
+        Assert.Equal(1, document.History.UndoCount);
+        document.History.Undo();
+
+        Assert.Equal(["U8", "U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponents));
+        Assert.Equal(["U8", "U9"], LiveLabels(document, BoardWorkbookSchema.SheetComponentImages));
+        Assert.Equal(3, document.ApplyTo(board).ComponentHighlights.Count);
+    }
+
+    // ###########################################################################################
+    // Every sheet refresh checks the whole board, and deleting components refreshes Components and
+    // then up to three sheets per component - up to 25 whole-board checks for 8 components, on the
+    // UI thread (code review, 2026-10-04). The operation, and its undo, now check it ONCE - and the
+    // problems and the counts still come out as a check after every refresh would leave them.
+    // ###########################################################################################
+    [Fact]
+    public void Deleting_components_with_rows_on_other_sheets_checks_the_board_once_and_so_does_its_undo()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+        int before = document.ProblemChecksRun;
+
+        components.DeleteRows([Row(components, "U8"), Row(components, "U9")], out _);
+
+        Assert.Equal(before + 1, document.ProblemChecksRun);
+
+        document.History.Undo();
+
+        Assert.Equal(before + 2, document.ProblemChecksRun);
+
+        // And what the counts say is what a fresh check says.
+        int errors = document.ErrorRowCount;
+        int warnings = document.WarningRowCount;
+        document.RefreshProblems();
+        Assert.Equal(errors, document.ErrorRowCount);
+        Assert.Equal(warnings, document.WarningRowCount);
+    }
+
+    // The checks still follow a change made inside the deferral, and Changed is raised once they
+    // have run, so a toolbar repainting for it reads the new counts.
+    [Fact]
+    public void A_deferred_check_runs_when_the_scope_ends_and_raises_Changed_after_it()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+        int before = document.ProblemChecksRun;
+        int problemRowsBefore = document.ErrorRowCount + document.WarningRowCount;
+        int? problemRowsAtChanged = null;
+
+        using (document.DeferProblems())
+        {
+            // U9 renamed U8: a duplicate label, which is a problem on the Components sheet.
+            Row(components, "U9").Cells[components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel)].Text = "U8";
+            components.Refresh();
+
+            Assert.Equal(before, document.ProblemChecksRun);
+            document.Changed += (_, _) => problemRowsAtChanged ??= document.ErrorRowCount + document.WarningRowCount;
+        }
+
+        Assert.Equal(before + 1, document.ProblemChecksRun);
+        Assert.True(document.ErrorRowCount + document.WarningRowCount > problemRowsBefore);
+        Assert.Equal(document.ErrorRowCount + document.WarningRowCount, problemRowsAtChanged);
+    }
+
+    // ###########################################################################################
+    // *** ONE EDIT MAPS ONE ROW AGAIN (code review, 2026-10-04). *** The checks run after every
+    // cell edit, and each run mapped every live row of all nine sheets afresh - thousands of rows on
+    // the largest boards for one typed cell, on the UI thread. A row's mapping is remembered until
+    // one of ITS cells changes: an edit and its refresh map that row and nothing else.
+    // ###########################################################################################
+    [Fact]
+    public void An_edit_maps_only_its_own_row_again_and_the_checks_still_follow_it()
+    {
+        BoardData board = BoardWithU8AndU9();
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+        int label = components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel);
+        int mappedBefore = document.RowsMapped;
+        int problemRowsBefore = document.ErrorRowCount + document.WarningRowCount;
+
+        // U9 renamed U8: a duplicate label.
+        Row(components, "U9").Cells[label].Text = "U8";
+        components.Refresh();
+
+        Assert.Equal(mappedBefore + 1, document.RowsMapped);
+        Assert.True(document.ErrorRowCount + document.WarningRowCount > problemRowsBefore);
+
+        // Undone, the text goes back through the other writer - and the problem goes with it.
+        document.History.Undo();
+
+        Assert.Equal(problemRowsBefore, document.ErrorRowCount + document.WarningRowCount);
+
+        // A check with nothing changed maps nothing at all.
+        int mappedNow = document.RowsMapped;
+        document.RefreshProblems();
+        Assert.Equal(mappedNow, document.RowsMapped);
+    }
+
+    // ------------------------------------------------------------------ The colour key counts the whole draft (2026-10-02)
+
+    // ###########################################################################################
+    // Owner decision, 2026-10-02 (question E): "Added, Modified and Deleted should work per
+    // system like Error and Warning" - the colour key counts the WHOLE draft, every sheet added
+    // together, for all five kinds. It counted the sheet on screen, which read "0 Errors" on a
+    // sheet without any while the draft's row said "8 errors" - once the sheet tabs stopped
+    // carrying their own counts, nothing else on screen said where they were.
+    // ###########################################################################################
+    [Fact]
+    public void The_colour_key_counts_are_the_whole_drafts_every_sheet_added_together()
+    {
+        BoardData published = BoardWithU8AndU9();
+        var draft = new BoardData
+        {
+            Components = [Component("U8", "changed"), Component("U10"), Component("U10")],
+            ComponentImages = [published.ComponentImages[0], new ComponentImageEntry { BoardLabel = "U11", Name = "Clock", File = "a/u11.png" }],
+            ComponentLocalFiles = published.ComponentLocalFiles,
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U8", Name = "Ref", Url = "not a link" }],
+            ComponentHighlights = published.ComponentHighlights
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(published, draft);
+
+        foreach ((System.Func<BoardTableSheet, int> perSheet, int total) in new (System.Func<BoardTableSheet, int>, int)[]
+        {
+            (sheet => sheet.AddedCount, document.AddedCount),
+            (sheet => sheet.ModifiedCount, document.ModifiedCount),
+            (sheet => sheet.DeletedCount, document.DeletedCount),
+            (sheet => sheet.ErrorRowCount, document.ErrorRowCount),
+            (sheet => sheet.WarningRowCount, document.WarningRowCount)
+        })
+        {
+            Assert.Equal(document.Sheets.Sum(perSheet), total);
+        }
+
+        // And the board really has each kind on more than one sheet - or a count of the sheet on
+        // screen could pass this test.
+        Assert.True(document.Sheets.Count(sheet => sheet.AddedCount > 0) > 1);
+        Assert.True(document.Sheets.Count(sheet => sheet.DeletedCount > 0) > 1);
+        Assert.True(document.ModifiedCount > 0);
+        Assert.True(document.ErrorRowCount > 0);
+        Assert.True(document.WarningRowCount > 0);
+    }
+
     // ------------------------------------------------------------------ Which sheet tabs show (2026-09-26)
 
     // A board whose Components sheet has a change and whose Credits sheet has none.
@@ -1191,30 +1804,34 @@ public sealed class BoardTableDocumentTests
         BoardTableDocument.Create(Board(Component("U1", "CPU")), Board(Component("U1", "CPU 6510")));
 
     // ###########################################################################################
-    // "Show changes only" hides the sheets it would show nothing of (owner request, 2026-09-26) -
-    // and without it every sheet shows.
+    // A filter hides the sheets it would show nothing of (owner request, 2026-09-26, when it was
+    // "Show changes only"; the colour key's pills since 2026-10-02) - and with nothing picked every
+    // sheet shows.
     // ###########################################################################################
     [Fact]
-    public void With_show_changes_only_only_the_sheets_with_something_to_show_have_tabs()
+    public void With_a_filter_only_the_sheets_with_something_to_show_have_tabs()
     {
         BoardTableDocument document = ComponentsChanged();
 
-        Assert.Equal(document.Sheets, document.SheetsShown(onlyChanges: false, current: null));
-        Assert.Equal([BoardWorkbookSchema.SheetComponents], document.SheetsShown(onlyChanges: true, current: null).Select(sheet => sheet.Name));
+        Assert.Equal(document.Sheets, document.SheetsShown(BoardTableRowKinds.None, current: null));
+        Assert.Equal([BoardWorkbookSchema.SheetComponents], document.SheetsShown(BoardTableRowFilter.Changes, current: null).Select(sheet => sheet.Name));
     }
 
-    // A flagged row (a duplicate, say) is not a change but IS shown by the filter - so its sheet keeps
-    // its tab, or the one thing needing a second look would be out of reach.
+    // A duplicate row is not a change, but it IS shown by the pill that tells it - Errors on
+    // Components, where the server refuses it - so its sheet keeps its tab, or the one thing
+    // needing a second look would be out of reach. (It was shown by "Show changes only" while it
+    // was "Flagged", until 2026-10-03; the changes alone no longer show it.)
     [Fact]
-    public void A_sheet_with_only_a_flagged_row_keeps_its_tab()
+    public void A_sheet_with_only_a_duplicate_row_keeps_its_tab_while_its_problem_is_picked()
     {
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U1")),
             Board(Component("U1"), Component("U1")));
 
         Assert.Equal(0, Components(document).ChangeCount);
-        Assert.True(Components(document).HasChangeRows);
-        Assert.Contains(Components(document), document.SheetsShown(onlyChanges: true, current: null));
+        Assert.True(Components(document).HasRowsShownBy(BoardTableRowKinds.Errors));
+        Assert.Contains(Components(document), document.SheetsShown(BoardTableRowKinds.Errors, current: null));
+        Assert.False(Components(document).HasRowsShownBy(BoardTableRowFilter.Changes));
     }
 
     // The sheet being worked on keeps its tab when its last change is undone - it is not pulled
@@ -1225,8 +1842,8 @@ public sealed class BoardTableDocumentTests
         BoardTableDocument document = ComponentsChanged();
         BoardTableSheet credits = document.FindSheet(BoardWorkbookSchema.SheetCredits)!;
 
-        Assert.Contains(credits, document.SheetsShown(onlyChanges: true, current: credits));
-        Assert.DoesNotContain(credits, document.SheetsShown(onlyChanges: true, current: null));
+        Assert.Contains(credits, document.SheetsShown(BoardTableRowFilter.Changes, current: credits));
+        Assert.DoesNotContain(credits, document.SheetsShown(BoardTableRowFilter.Changes, current: null));
     }
 
     // Nothing to show anywhere: every tab stays, rather than all but one vanishing.
@@ -1235,7 +1852,7 @@ public sealed class BoardTableDocumentTests
     {
         BoardTableDocument document = BoardTableDocument.Create(Board(Component("U1")), Board(Component("U1")));
 
-        Assert.Equal(document.Sheets, document.SheetsShown(onlyChanges: true, current: null));
+        Assert.Equal(document.Sheets, document.SheetsShown(BoardTableRowFilter.Changes, current: null));
     }
 
     // ###########################################################################################
@@ -1247,9 +1864,49 @@ public sealed class BoardTableDocumentTests
     {
         BoardTableDocument document = ComponentsChanged();
 
-        Assert.Equal(BoardWorkbookSchema.SheetCredits, document.SheetToShow(BoardWorkbookSchema.SheetCredits, onlyChanges: false).Name);
-        Assert.Equal(BoardWorkbookSchema.SheetComponents, document.SheetToShow(BoardWorkbookSchema.SheetCredits, onlyChanges: true).Name);
-        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow(null, onlyChanges: false).Name);
-        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow("No such sheet", onlyChanges: false).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetCredits, document.SheetToShow(BoardWorkbookSchema.SheetCredits, BoardTableRowKinds.None).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetComponents, document.SheetToShow(BoardWorkbookSchema.SheetCredits, BoardTableRowFilter.Changes).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow(null, BoardTableRowKinds.None).Name);
+        Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, document.SheetToShow("No such sheet", BoardTableRowKinds.None).Name);
+    }
+
+    // ###########################################################################################
+    // Agreed case 6 (2026-10-03), the rule half: a pill counting nothing cannot be picked - it
+    // could only show an empty table - but a picked one can always be put back, also once its
+    // count has dropped to 0. CountOf is each pill's own count.
+    // ###########################################################################################
+    [Fact]
+    public void A_pill_counting_nothing_cannot_be_picked_but_a_picked_one_can_always_be_put_back()
+    {
+        BoardTableDocument document = ComponentsChanged();
+
+        Assert.Equal(1, document.CountOf(BoardTableRowKinds.Modified));
+        Assert.Equal(0, document.CountOf(BoardTableRowKinds.Added));
+
+        Assert.True(document.CanToggle(BoardTableRowKinds.None, BoardTableRowKinds.Modified));
+        Assert.False(document.CanToggle(BoardTableRowKinds.None, BoardTableRowKinds.Added));
+        Assert.False(document.CanToggle(BoardTableRowKinds.Modified, BoardTableRowKinds.Added));
+
+        // Picked while it had rows, then the last one put back: still clickable, to turn it off.
+        Assert.True(document.CanToggle(BoardTableRowKinds.Added, BoardTableRowKinds.Added));
+        Assert.True(document.CanToggle(BoardTableRowKinds.Added | BoardTableRowKinds.Modified, BoardTableRowKinds.Added));
+    }
+
+    // Each kind's count is the colour key's own.
+    [Fact]
+    public void CountOf_is_the_colour_keys_count_for_each_kind()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU"), Component("U2")),
+            Board(Component("U1", "CPU 6510"), Component("U3"), Component("U3")));
+
+        Assert.Equal(document.AddedCount, document.CountOf(BoardTableRowKinds.Added));
+        Assert.Equal(document.ModifiedCount, document.CountOf(BoardTableRowKinds.Modified));
+        Assert.Equal(document.DeletedCount, document.CountOf(BoardTableRowKinds.Deleted));
+        Assert.Equal(document.ErrorRowCount, document.CountOf(BoardTableRowKinds.Errors));
+        Assert.Equal(document.WarningRowCount, document.CountOf(BoardTableRowKinds.Warnings));
+        Assert.True(document.ErrorRowCount > 0 && document.DeletedCount > 0, "the test needs an error and a deleted row");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => document.CountOf(BoardTableRowKinds.Added | BoardTableRowKinds.Deleted));
     }
 }

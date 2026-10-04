@@ -330,6 +330,124 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.True(DraftRetirement.IsRetirable(this.Status()));
     }
 
+    // ------------------------------------------------------------------ A draft that lost its workbook
+
+    // ###########################################################################################
+    // *** A DISCARD THAT STOPPED PART-WAY LEFT A DRAFT WITH NO WORKBOOK (owner report, 2026-10-02;
+    // cases agreed with the project owner). *** Retiring the ZX Spectrum Issue 4B draft deleted its
+    // workbook and sidecar and then stopped at an image something had open, leaving the marker and
+    // three images byte-identical to stable. With no workbook to compare, every later check refused
+    // it, so it stayed - "0 rows changed", with the drift bar up - for good. The delete order is
+    // fixed (DraftWorkbookStore.Discard); these are the rule that clears a draft ALREADY in that
+    // state: retired when nothing left in its folder differs from the published board.
+    // ###########################################################################################
+
+    // Case 1.
+    [Fact]
+    public void A_published_draft_that_lost_its_workbook_and_holds_only_files_identical_to_stable_is_retired()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+
+        this.WriteDraftThatLostItsWorkbook();
+        this.WriteFile(this.DraftFolder, "Issue 4.B.png", "the published scan");
+
+        RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, "published")],
+            this.ResolveStatus));
+
+        // And the board stops being a draft once the folder goes.
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, found.ExcelDataFile));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftRetirementTests.SystemKey));
+    }
+
+    // Case 2, first half.
+    [Fact]
+    public void A_draft_that_lost_its_workbook_is_kept_when_an_image_differs_from_stable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+
+        this.WriteDraftThatLostItsWorkbook();
+        this.WriteFile(this.DraftFolder, "Issue 4.B.png", "a corrected scan");
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Case 2, second half.
+    [Fact]
+    public void A_draft_that_lost_its_workbook_is_kept_when_an_image_is_not_in_stable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+
+        this.WriteDraftThatLostItsWorkbook();
+        this.WriteFile(this.DraftFolder, "Issue 5.png", "a scan nobody has published");
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Case 3, first half: the highlights file was left behind, and it is stable's own.
+    [Fact]
+    public void A_draft_that_lost_its_workbook_is_retired_when_its_highlights_file_is_identical_to_stable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.PublishedWorkbook), "{ \"highlights\": 1 }");
+
+        this.WriteDraftThatLostItsWorkbook();
+        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.DraftWorkbook), "{ \"highlights\": 1 }");
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Case 3, second half: a highlights file that differs may hold the contributor's own marking.
+    [Fact]
+    public void A_draft_that_lost_its_workbook_is_kept_when_its_highlights_file_differs_from_stable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.PublishedWorkbook), "{ \"highlights\": 1 }");
+
+        this.WriteDraftThatLostItsWorkbook();
+        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.DraftWorkbook), "{ \"highlights\": 2 }");
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Case 4: the submission is still pending, or only in BETA.
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("merged")]
+    public void A_draft_that_lost_its_workbook_is_kept_while_its_submission_is_not_published_to_stable(string state)
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraftThatLostItsWorkbook();
+
+        Assert.Empty(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.SystemId, state)],
+            this.ResolveStatus));
+    }
+
+    // Case 5.
+    [Fact]
+    public void A_draft_that_lost_its_workbook_is_kept_while_the_stable_workbook_is_not_downloaded()
+    {
+        this.WriteDraftThatLostItsWorkbook();
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Case 6: with its workbook, the rows still decide, whatever the files say.
+    [Fact]
+    public void A_draft_that_still_has_its_workbook_is_judged_by_its_rows_as_before()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU, edited after submitting"));
+        this.WriteFile(this.DraftFolder, "Issue 4.B.png", "the published scan");
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
     // ------------------------------------------------------------------ The stamp
 
     // ###########################################################################################
@@ -640,5 +758,12 @@ public sealed class DraftRetirementTests : IDisposable
                 NewSystem = null,
                 CreatedUtc = "2026-09-23T00:00:00Z",
             });
+    }
+
+    // What a discard that stopped after the workbook leaves: the marker, and no workbook beside it.
+    private void WriteDraftThatLostItsWorkbook()
+    {
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+        File.Delete(this.DraftWorkbook);
     }
 }

@@ -65,6 +65,69 @@ public sealed class TabMaintainerTableTests
         });
     }
 
+    // ###########################################################################################
+    // A submission's table and a system's are one table in two places, and share one remembered
+    // pick - so a pick in either is handed to the other (code review, 2026-10-04: each wrote the one
+    // setting without telling the other, so the next launch opened both on whichever was picked
+    // last, and the other table went on showing its own).
+    // ###########################################################################################
+    [Fact]
+    public void A_pill_picked_in_either_Maintainer_table_is_picked_in_the_other_and_remembered()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            var remembered = new List<BoardTableRowKinds>();
+            main.UseRememberedChoices(BoardTableRowKinds.None, remembered.Add);
+
+            BoardTableEditor submission = main.TableEditorsForSharedChoices[0];
+            BoardTableEditor system = main.TableEditorsForSharedChoices[1];
+
+            submission.Filter = BoardTableRowKinds.Errors;
+
+            Assert.Equal(BoardTableRowKinds.Errors, system.FilterWanted);
+            Assert.Equal([BoardTableRowKinds.Errors], remembered);
+
+            system.Filter = BoardTableRowKinds.Added | BoardTableRowKinds.Errors;
+
+            Assert.Equal(BoardTableRowKinds.Added | BoardTableRowKinds.Errors, submission.FilterWanted);
+            Assert.Equal(BoardTableRowKinds.Added | BoardTableRowKinds.Errors, remembered[^1]);
+
+            // Handed over, not echoed back: each pick is remembered once.
+            Assert.Equal(2, remembered.Count);
+        });
+    }
+
+    // ###########################################################################################
+    // Case 21 of the table's search box (owner request, 2026-10-02): the Maintainer tab's table is
+    // the same control as the Drafts tab's, so it has the same search box - and it narrows a
+    // submission's rows the same way.
+    // ###########################################################################################
+    [Fact]
+    public void The_Maintainer_tabs_table_has_the_same_search_box()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            main.OpenTableForTests(Row(42), Table());
+            BoardTableEditor editor = main.TableEditorForTests;
+            TextBox box = editor.GetControl<TextBox>("SearchBox");
+
+            int Shown() => ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<object>().Count();
+
+            Assert.True(box.IsVisible);
+            Assert.Equal(1, Shown());
+
+            box.Text = "zzz";
+            editor.ApplyPendingSearchForTests();
+            Assert.Equal(0, Shown());
+
+            box.Text = "pinout";
+            editor.ApplyPendingSearchForTests();
+            Assert.Equal(1, Shown());
+        });
+    }
+
     // A submission's table fills the panel.
     [Fact]
     public void A_submission_opens_straight_into_its_table()
@@ -190,10 +253,10 @@ public sealed class TabMaintainerTableTests
             Assert.Equal(BoardWorkbookSchema.SheetCredits, editor.CurrentSheet!.Name);
 
             // Credits has nothing to show once the filter is on, so its tab is hidden - 43 then
-            // opens on the first sheet that has one. (Ticked with no table open, so 43's
+            // opens on the first sheet that has one. (Picked with no table open, so 43's
             // remembered sheet is still Credits.)
             Assert.True(await main.CloseTableAsync());
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             main.OpenTableForTests(Row(43), Table());
             Assert.Equal(BoardWorkbookSchema.SheetComponentImages, editor.CurrentSheet!.Name);
         });
@@ -203,7 +266,7 @@ public sealed class TabMaintainerTableTests
     // *** A NEW SYSTEM: ONLY THE MAINTAINER'S OWN CHANGES ARE MARKED (owner decision, 2026-09-26). ***
     // Compared with the submission itself, its rows start white - not all green ("everything is
     // new", so green said nothing), and not with a colour key of a lone "0 Flagged" ("where are the
-    // others?"). "Show changes only" shows no row until the maintainer changes one; an edit is
+    // others?"). The change pills picked show no row until the maintainer changes one; an edit is
     // then coloured, and shown.
     // ###########################################################################################
     [Fact]
@@ -233,12 +296,11 @@ public sealed class TabMaintainerTableTests
             Assert.All(sheet.Rows, row => Assert.Equal(BoardTableRowState.Unchanged, row.State));
             Assert.Equal(0, sheet.ChangeCount);
 
-            // The whole colour key, all at nothing - and the filter offered.
+            // The whole colour key, all at nothing - each pill a filter.
             Assert.True(editor.GetControl<Border>("AddedPill").IsVisible);
             Assert.Equal("0", editor.GetControl<TextBlock>("AddedCountText").Text);
-            Assert.True(editor.GetControl<CheckBox>("OnlyChangesCheckBox").IsVisible);
 
-            editor.OnlyChanges = true;
+            editor.Filter = BoardTableRowFilter.Changes;
             Assert.Empty(((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>());
 
             // The maintainer changes a row: that one is marked, and shown.

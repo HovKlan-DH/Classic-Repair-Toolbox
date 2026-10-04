@@ -111,7 +111,7 @@ namespace CRT
         {
             this.thisRequest++;
             this.ShowPlan(null, null);
-            this.ShowMessage("This system is no longer waiting for production - it was published or pushed back meanwhile.", isError: true);
+            this.ShowMessage("This system is no longer waiting to go to stable - it was published or pushed back meanwhile.", isError: true);
         }
 
         // Signed out: empty, with nothing of the previous account's on screen.
@@ -229,7 +229,7 @@ namespace CRT
                 approvalText.IsVisible = approvalLine is not null;
 
             if (this.FindControl<Button>("PublishButton") is Button publish)
-                publish.Content = ApprovalWording.ApproveButton(plan?.Approval, "production");
+                publish.Content = ApprovalWording.ApproveButton(plan?.Approval, "stable");
 
             if (plan is not null)
             {
@@ -248,7 +248,7 @@ namespace CRT
                 // What publishing REMOVES from production, FIRST and in red: the least visible change
                 // and the one that cannot be undone (2026-09-25). Said even when it is nothing, so
                 // the maintainer knows it was checked.
-                string? removals = FileRemovalWording.Headline(plan.Removals, "production");
+                string? removals = FileRemovalWording.Headline(plan.Removals, "the stable data");
 
                 if (removals is not null)
                 {
@@ -308,7 +308,12 @@ namespace CRT
             ReviewSession? session = this.thisSession;
 
             tree.Files = client is null ? null : new FileTreeFiles(this, client, session, submissionId: null, plan.BetaDataUrl, plan.ProductionDataUrl);
-            tree.Show(SystemFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles));
+            // With each file's size, from the plan (2026-10-04).
+            IReadOnlyDictionary<string, long>? sizes = plan.FileSizes;
+
+            tree.Show(SystemFileEntries.WithSizes(
+                SystemFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles),
+                entry => sizes is not null && sizes.TryGetValue(entry.Path, out long size) ? size : null));
             tree.IsVisible = true;
         }
 
@@ -396,8 +401,8 @@ namespace CRT
 
                 // The first of two approvals: recorded, nothing copied.
                 outcome = result.Value!.IsAwaitingApproval
-                    ? ApprovalWording.Recorded(result.Value.WaitingFor, "production")
-                    : $"{plan.SystemId} is published to production ({result.Value.FilesCopied} file(s) copied)." +
+                    ? ApprovalWording.Recorded(result.Value.WaitingFor, "the stable source")
+                    : $"{plan.SystemId} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
                       FileRemovalWording.Done(result.Value.RemovedFiles) +
                       " Everyone gets it the next time their data updates.";
                 failed = false;

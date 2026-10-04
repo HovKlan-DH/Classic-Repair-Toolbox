@@ -57,12 +57,17 @@ namespace Handlers.MaintainerHandling
             // *** EVERY REQUEST NAMES THE CRT THAT SENT IT (2026-09-29). *** "CRT <version>", the
             // User-Agent CRT's own check-in, sync and board views send (OnlineServices.VersionForServer),
             // so the server's log - and the session row, which keeps it - says which build a
-            // maintainer was on. It sent none while it was a separate application. Nothing on the
-            // server reads it; it is for whoever reads the log. Set on a supplied client too, unless
-            // that client already names itself.
+            // maintainer was on. It sent none while it was a separate application. Set on a supplied
+            // client too, unless that client already names itself.
+            //
+            // *** AND THE API REVISION IT WAS BUILT FOR (2026-10-04). *** The server tells a CRT built
+            // for an older revision to update (CRT.Server's ClientVersionPolicy) - always sent, since
+            // it is this build's and nobody else's.
             // ###########################################################################################
             if (!this.thisHttp.DefaultRequestHeaders.Contains("User-Agent"))
                 this.thisHttp.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", ReviewApiClient.UserAgent);
+
+            OnlineServices.NameApiRevision(this.thisHttp);
         }
 
         // What every request sends as its User-Agent - see the constructor. CRT's ONE definition of
@@ -127,7 +132,7 @@ namespace Handlers.MaintainerHandling
                 using HttpResponseMessage response =
                     await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
-                ReviewApiResult<string>? failure = ReviewApiClient.StatusFailure<string>(response.StatusCode);
+                ReviewApiResult<string>? failure = await ReviewApiClient.StatusFailureAsync<string>(response, cancellationToken).ConfigureAwait(false);
 
                 if (failure is not null)
                     return failure;
@@ -271,7 +276,7 @@ namespace Handlers.MaintainerHandling
                             ?? "That invitation was not accepted.");
                 }
 
-                return ReviewApiClient.StatusFailure<AcceptInvitationAnswer>(response.StatusCode)
+                return await ReviewApiClient.StatusFailureAsync<AcceptInvitationAnswer>(response, cancellationToken).ConfigureAwait(false)
                     ?? ReviewApiResult<AcceptInvitationAnswer>.Failed(ReviewApiFailure.ServerError, "The server could not accept the invitation.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -286,6 +291,131 @@ namespace Handlers.MaintainerHandling
             catch (HttpRequestException exception)
             {
                 return ReviewApiResult<AcceptInvitationAnswer>.Failed(
+                    ReviewApiFailure.Unreachable, $"Could not reach the server: {exception.Message}");
+            }
+        }
+
+        // ###########################################################################################
+        // THE SIGNED-IN MAINTAINER'S OWN ACCOUNT (2026-10-03) - the "Your account" window, and the
+        // remembered sign-in refreshing its name and address at launch.
+        //
+        // The account is read through the shared GET path. A change POSTs one of CRT.Data's
+        // ReviewApiContract records and reads AccountChangeAnswer back; a 400's own sentence ("That
+        // code has expired", or the password rules broken) is the useful part, so it is read back
+        // rather than replaced - the reset's rule. A 429 is StatusFailure's RateLimited: too many
+        // mails asked for from one address.
+        // ###########################################################################################
+        // ###########################################################################################
+        // The deployed server's version, from GET /api/health (owner request, 2026-10-04: shown under
+        // Account > "Server version", for every maintainer). Asked with NO session: the route is public, and the bearer
+        // token is sent nowhere it is not needed.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<HealthStatus>> GetServerVersionAsync(CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.Health(this.thisBaseAddress)),
+                    ReviewApiParser.ParseHealth,
+                    session: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<ReviewApiResult<AccountAnswer>> GetAccountAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.Me(this.thisBaseAddress)),
+                    ReviewApiParser.ParseAccount,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<AccountChangeAnswer>> ChangeNameAsync(
+            ReviewSession session,
+            string displayName,
+            CancellationToken cancellationToken = default) =>
+            this.PostAccountChangeAsync(
+                ReviewApiRoutes.ChangeName(this.thisBaseAddress), new ChangeNameRequest(displayName), session, cancellationToken);
+
+        // Step 1 of a new address: mails a code to it. The address does NOT change here (CodeSent).
+        public Task<ReviewApiResult<AccountChangeAnswer>> RequestEmailChangeAsync(
+            ReviewSession session,
+            string newEmail,
+            CancellationToken cancellationToken = default) =>
+            this.PostAccountChangeAsync(
+                ReviewApiRoutes.ChangeEmail(this.thisBaseAddress), new ChangeEmailRequest(newEmail), session, cancellationToken);
+
+        // Step 2: the code from the new mailbox. Signs out every OTHER session of the account.
+        public Task<ReviewApiResult<AccountChangeAnswer>> ConfirmEmailChangeAsync(
+            ReviewSession session,
+            string code,
+            CancellationToken cancellationToken = default) =>
+            this.PostAccountChangeAsync(
+                ReviewApiRoutes.ConfirmEmailChange(this.thisBaseAddress), new ConfirmEmailChangeRequest(code), session, cancellationToken);
+
+        // Signs out every OTHER session of the account; this one stays signed in.
+        public Task<ReviewApiResult<AccountChangeAnswer>> ChangePasswordAsync(
+            ReviewSession session,
+            string newPassword,
+            CancellationToken cancellationToken = default) =>
+            this.PostAccountChangeAsync(
+                ReviewApiRoutes.ChangePassword(this.thisBaseAddress), new ChangePasswordRequest(newPassword), session, cancellationToken);
+
+        private async Task<ReviewApiResult<AccountChangeAnswer>> PostAccountChangeAsync(
+            string route,
+            object change,
+            ReviewSession session,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var content = new StringContent(ReviewApiClient.Body(change), Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
+
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
+
+                using HttpResponseMessage response =
+                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+                string payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return ReviewApiParser.ParseAccountChange(payload) is AccountChangeAnswer answer
+                        ? ReviewApiResult<AccountChangeAnswer>.Ok(answer)
+                        : ReviewApiResult<AccountChangeAnswer>.Failed(
+                            ReviewApiFailure.UnreadableAnswer, "The server sent an answer this version does not understand.");
+                }
+
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    return ReviewApiResult<AccountChangeAnswer>.Failed(
+                        ReviewApiFailure.Refused,
+                        ReviewApiParser.ParseMessage(payload)
+                            ?? ReviewApiParser.ParseFirstError(payload)
+                            ?? "The server refused the change.");
+                }
+
+                return await ReviewApiClient.StatusFailureAsync<AccountChangeAnswer>(response, cancellationToken).ConfigureAwait(false)
+                    ?? ReviewApiResult<AccountChangeAnswer>.Failed(ReviewApiFailure.ServerError, "The server could not make the change.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (TaskCanceledException)
+            {
+                return ReviewApiResult<AccountChangeAnswer>.Failed(
+                    ReviewApiFailure.Unreachable, "The server did not answer in time. It may have made the change - open this window again to see.");
+            }
+            catch (HttpRequestException exception)
+            {
+                return ReviewApiResult<AccountChangeAnswer>.Failed(
                     ReviewApiFailure.Unreachable, $"Could not reach the server: {exception.Message}");
             }
         }
@@ -503,7 +633,7 @@ namespace Handlers.MaintainerHandling
                 }
 
                 ReviewApiResult<ReviewDecisionResult>? failure =
-                    ReviewApiClient.StatusFailure<ReviewDecisionResult>(response.StatusCode);
+                    await ReviewApiClient.StatusFailureAsync<ReviewDecisionResult>(response, cancellationToken).ConfigureAwait(false);
 
                 if (failure is not null)
                     return failure;
@@ -653,7 +783,7 @@ namespace Handlers.MaintainerHandling
                             ?? "The server refused this change.");
                 }
 
-                ReviewApiResult<string>? failure = ReviewApiClient.StatusFailure<string>(response.StatusCode);
+                ReviewApiResult<string>? failure = await ReviewApiClient.StatusFailureAsync<string>(response, cancellationToken).ConfigureAwait(false);
 
                 if (failure is not null)
                     return failure;
@@ -821,6 +951,60 @@ namespace Handlers.MaintainerHandling
                 cancellationToken);
 
         // ###########################################################################################
+        // A system's Board data and Files views (2026-10-03). The edit is PUBLISHED to BETA as a
+        // submission from this account, after a check of what it would remove - the server's
+        // SystemEditFlow; a refusal reads the server's sentence.
+        // ###########################################################################################
+        // `tree` (2026-10-04): DataTreeNames.Production for the stable source's board, read-only -
+        // none for BETA's, as before.
+        public Task<ReviewApiResult<SystemTableAnswer>> GetSystemTableAsync(
+            ReviewSession session,
+            string systemId,
+            string? tree = null,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.SystemTable(this.thisBaseAddress),
+                new SystemDetailRequest(systemId, tree),
+                ReviewApiParser.ParseSystemTable,
+                session,
+                cancellationToken);
+
+        public Task<ReviewApiResult<SystemEditCheckAnswer>> CheckSystemEditAsync(
+            ReviewSession session,
+            SystemEditRequest request,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.SystemEditCheck(this.thisBaseAddress),
+                request,
+                ReviewApiParser.ParseSystemEditCheck,
+                session,
+                cancellationToken);
+
+        public Task<ReviewApiResult<SystemEditResult>> SendSystemEditAsync(
+            ReviewSession session,
+            SystemEditRequest request,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.SystemEdit(this.thisBaseAddress),
+                request,
+                ReviewApiParser.ParseSystemEdit,
+                session,
+                cancellationToken);
+
+        // `tree` as for the table: the stable source's files, or BETA's.
+        public Task<ReviewApiResult<SystemFilesAnswer>> GetSystemFilesAsync(
+            ReviewSession session,
+            string systemId,
+            string? tree = null,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.SystemFiles(this.thisBaseAddress),
+                new SystemDetailRequest(systemId, tree),
+                ReviewApiParser.ParseSystemFiles,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
         // The drop-down lists as CRT shows them from BETA, and the systems not in them yet; and
         // saving where one goes (owner request, 2026-09-27). A refusal reads the server's sentence.
         // ###########################################################################################
@@ -845,6 +1029,21 @@ namespace Handlers.MaintainerHandling
                 ReviewApiRoutes.SystemListing(this.thisBaseAddress),
                 request,
                 ReviewApiParser.ParseSetPlacement,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
+        // The administrator's "Order of systems" (2026-10-04): every system BETA's drop-down lists
+        // hold, in the order wanted. Refused (Conflict) when the list changed since it was read.
+        // ###########################################################################################
+        public Task<ReviewApiResult<SystemOrderAnswer>> SetSystemOrderAsync(
+            ReviewSession session,
+            IReadOnlyList<string> systemIds,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminSystemOrder(this.thisBaseAddress),
+                new SystemOrderRequest(systemIds),
+                ReviewApiParser.ParseSystemOrder,
                 session,
                 cancellationToken);
 
@@ -877,6 +1076,96 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.ParseUnusedFileRemoval,
                 session,
                 cancellationToken);
+
+        // ###########################################################################################
+        // Rebuilding both data trees' dataChecksums.json (owner request, 2026-10-01). A POST with no
+        // body, and it can take seconds: the server hashes every file in each tree.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<ManifestRebuildResult>> RebuildManifestsAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Post, ReviewApiRoutes.AdminRebuildManifests(this.thisBaseAddress)),
+                    ReviewApiParser.ParseManifestRebuild,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // ###########################################################################################
+        // Deleting a system completely (owner request, 2026-10-03). The plan reads every workbook in
+        // both trees on the server when the system has files, so it takes seconds; the delete is
+        // held to the plan's fingerprint and refused (Conflict) when the system changed since.
+        // ###########################################################################################
+        public Task<ReviewApiResult<SystemDeletePlanAnswer>> GetSystemDeletePlanAsync(
+            ReviewSession session,
+            string systemId,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminSystemDeletePlan(this.thisBaseAddress),
+                new SystemDetailRequest(systemId),
+                ReviewApiParser.ParseSystemDeletePlan,
+                session,
+                cancellationToken);
+
+        public Task<ReviewApiResult<SystemDeleteAnswer>> DeleteSystemAsync(
+            ReviewSession session,
+            string systemId,
+            string fingerprint,
+            string? reason,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminSystemDelete(this.thisBaseAddress),
+                new SystemDeleteRequest(systemId, fingerprint, reason),
+                ReviewApiParser.ParseSystemDelete,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
+        // Resetting the contribution data for going live (owner request, 2026-10-04). The counts are
+        // read only; the reset sends back their fingerprint and is refused (Conflict) when anything
+        // arrived or went since, and (Refused, in the server's words) while the server's switch is off.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<DataResetPlanAnswer>> GetDataResetPlanAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminDataReset(this.thisBaseAddress)),
+                    ReviewApiParser.ParseDataResetPlan,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<DataResetAnswer>> ResetDataAsync(
+            ReviewSession session,
+            string fingerprint,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminDataReset(this.thisBaseAddress),
+                new DataResetRequest(fingerprint),
+                ReviewApiParser.ParseDataReset,
+                session,
+                cancellationToken);
+
+        // Which CRT versions called which route in the last `days` days (owner request, 2026-10-04).
+        public async Task<ReviewApiResult<ApiUsageAnswer>> GetApiUsageAsync(
+            ReviewSession session,
+            int days,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminApiUsage(this.thisBaseAddress, days)),
+                    ReviewApiParser.ParseApiUsage,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         // ###########################################################################################
         // A request body: one of CRT.Data's ReviewApiContract records, in the JSON the server reads
@@ -923,7 +1212,7 @@ namespace Handlers.MaintainerHandling
                         await ReviewApiClient.ReadErrorAsync(response, cancellationToken) ?? "The server refused this.");
                 }
 
-                ReviewApiResult<T>? statusFailure = ReviewApiClient.StatusFailure<T>(response.StatusCode);
+                ReviewApiResult<T>? statusFailure = await ReviewApiClient.StatusFailureAsync<T>(response, cancellationToken).ConfigureAwait(false);
 
                 if (statusFailure is not null)
                     return statusFailure;
@@ -1026,7 +1315,7 @@ namespace Handlers.MaintainerHandling
 
                 // Shared with the bytes path so the two cannot come to disagree about what a
                 // status code means to the person reading it.
-                ReviewApiResult<T>? failure = ReviewApiClient.StatusFailure<T>(response.StatusCode);
+                ReviewApiResult<T>? failure = await ReviewApiClient.StatusFailureAsync<T>(response, cancellationToken).ConfigureAwait(false);
 
                 if (failure is not null)
                     return failure;
@@ -1103,7 +1392,7 @@ namespace Handlers.MaintainerHandling
                         "There is no published file at that path.");
                 }
 
-                ReviewApiResult<byte[]>? failure = ReviewApiClient.StatusFailure<byte[]>(response.StatusCode);
+                ReviewApiResult<byte[]>? failure = await ReviewApiClient.StatusFailureAsync<byte[]>(response, cancellationToken).ConfigureAwait(false);
 
                 if (failure is not null)
                     return failure;
@@ -1146,6 +1435,56 @@ namespace Handlers.MaintainerHandling
         // the message is what a maintainer acts on, and "sign in again" for an account that is
         // signed in perfectly well is a loop they cannot escape.
         // ###########################################################################################
+        private static async Task<ReviewApiResult<T>?> StatusFailureAsync<T>(
+            HttpResponseMessage response,
+            CancellationToken cancellationToken)
+            where T : class
+        {
+            ReviewApiResult<T>? failure = ReviewApiClient.StatusFailure<T>(response.StatusCode);
+
+            if (failure is null)
+                return null;
+
+            string body;
+
+            try
+            {
+                body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException)
+            {
+                return failure;
+            }
+
+            return ReviewApiClient.WithServersWords(failure, response.StatusCode, body);
+        }
+
+        // ###########################################################################################
+        // *** THE SERVER'S OWN WORDS WIN (2026-10-04). *** A refusal body carrying a sentence -
+        // `message` or `error` - replaces the status code's generic one, so a refusal a newer server
+        // invents (a status this version has no case for) still reaches the maintainer in words. An
+        // "update CRT" answer (CRT.Data's ClientOutdatedAnswer, HTTP 426) becomes ClientOutdated.
+        //
+        // A 401 keeps "Sign in to continue." whatever the body says: it is what sends the tab back to
+        // its sign-in screen, and the failure kind is what decides that, not the words.
+        // ###########################################################################################
+        internal static ReviewApiResult<T> WithServersWords<T>(ReviewApiResult<T> failure, HttpStatusCode status, string? body)
+            where T : class
+        {
+            ApiRefusal refusal = ApiRefusal.Read(body);
+
+            if (refusal.IsClientOutdated)
+            {
+                return ReviewApiResult<T>.Failed(
+                    ReviewApiFailure.ClientOutdated,
+                    refusal.Message ?? "This version of CRT is too old for the server - please update CRT.");
+            }
+
+            return status == HttpStatusCode.Unauthorized || refusal.Message is null
+                ? failure
+                : ReviewApiResult<T>.Failed(failure.Failure, refusal.Message);
+        }
+
         private static ReviewApiResult<T>? StatusFailure<T>(HttpStatusCode status)
             where T : class
         {
@@ -1211,7 +1550,14 @@ namespace Handlers.MaintainerHandling
         // two minutes. The server may well have finished regardless, so a caller that changed
         // something must look again before it says what happened (ServerWait).
         // ###########################################################################################
-        TimedOut
+        TimedOut,
+
+        // ###########################################################################################
+        // The server no longer serves this version of CRT for this (2026-10-04) - HTTP 426 with
+        // CRT.Data's ClientOutdatedAnswer. Its message says which version to update to. Not a
+        // failure to retry: nothing changes until CRT is updated.
+        // ###########################################################################################
+        ClientOutdated
     }
 
     // ###########################################################################################

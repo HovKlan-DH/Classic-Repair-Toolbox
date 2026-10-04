@@ -131,6 +131,35 @@ public sealed class BoardTableHistoryTests
         Assert.Equal(["U1:Unchanged", "-U2:Deleted", "U3:Unchanged"], Picture(sheet));
     }
 
+    // ###########################################################################################
+    // Case 3 of deleting several rows at once (owner request, 2026-10-02: "mark multiple rows and
+    // then delete those in one go"): ONE Ctrl+Z brings every one of them back, and one Ctrl+Y
+    // deletes them all again - a delete of eight rows is one step, not eight.
+    // ###########################################################################################
+    [Fact]
+    public void One_undo_brings_back_every_row_of_a_several_row_delete_and_one_redo_deletes_them_again()
+    {
+        BoardTableDocument document = Open();
+        BoardTableSheet sheet = Components(document);
+        BoardTableRow u1 = Row(sheet, "U1");
+        BoardTableRow u3 = Row(sheet, "U3");
+
+        sheet.DeleteRows([u1, u3], out _);
+        Assert.Equal(["-U1:Deleted", "U2:Unchanged", "-U3:Deleted"], Picture(sheet));
+        Assert.Equal(1, document.History.UndoCount);
+
+        document.History.Undo();
+
+        Assert.Equal(["U1:Unchanged", "U2:Unchanged", "U3:Unchanged"], Picture(sheet));
+        Assert.Same(u1, sheet.Rows[0]);
+        Assert.Same(u3, sheet.Rows[2]);
+        Assert.False(document.History.CanUndo);
+
+        document.History.Redo();
+
+        Assert.Equal(["-U1:Deleted", "U2:Unchanged", "-U3:Deleted"], Picture(sheet));
+    }
+
     [Fact]
     public void Undo_takes_back_a_restore_and_the_row_is_red_again()
     {

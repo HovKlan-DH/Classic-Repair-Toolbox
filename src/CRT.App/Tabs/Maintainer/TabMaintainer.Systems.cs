@@ -26,6 +26,12 @@ namespace CRT
     // the Systems button's badge turns into an attention badge counting the ones this account can
     // place, and the chosen system's panel carries SystemPlacementView. A listing that could not be
     // read leaves the previous one in place - never "not in the lists" on a failed request.
+    //
+    // *** A SYSTEM'S TABLE CAN HOLD A CHANGE NOT PUBLISHED YET (2026-10-03). *** Choosing another
+    // system asks first, as choosing another submission does. A change published to BETA reads the
+    // BETA > Stable list and the systems again (AfterSystemChangePublishedAsync), staying on this
+    // screen; one the server made into a submission but could not publish opens it under Contributor
+    // Submissions, where it waits (OpenSentSubmissionAsync).
     // ###########################################################################################
     public partial class TabMaintainer
     {
@@ -133,7 +139,11 @@ namespace CRT
 
             if (kept is null)
             {
-                await this.SystemDetail.ShowSystemAsync(null);
+                // Gone from the list while its table holds a change not sent: the change stays on
+                // screen - emptying the panel would throw it away unasked.
+                if (!this.SystemDetail.HasUnsavedTableEdits)
+                    await this.SystemDetail.ShowSystemAsync(null);
+
                 return;
             }
 
@@ -148,11 +158,25 @@ namespace CRT
 
             SystemOverviewEntry? system = this.SelectedSystem;
 
+            // *** LEAVING A SYSTEM'S TABLE WITH A CHANGE NOT SENT ASKS FIRST (2026-10-03). *** The
+            // panel shows one system, so choosing another replaces the table. Cancel - or a Save the
+            // server refused - puts the selection back on the system it holds.
+            if (!string.Equals(system?.SystemId, this.SystemDetail.ShownSystem?.SystemId, StringComparison.Ordinal) &&
+                !await this.SystemDetail.MayLeaveTableAsync())
+            {
+                this.ReselectShownSystem();
+                return;
+            }
+
             if (system is null)
             {
                 await this.SystemDetail.ShowSystemAsync(null);
                 return;
             }
+
+            // The system the tab opens on next time nothing waits, after a restart too
+            // (TabMaintainer.OpenOnEntry.cs).
+            this.RememberSystem(system.SystemId);
 
             // Chosen by the maintainer, so waited for under the overlay (2026-09-28) - the minute
             // check re-reads a changed system without it.
@@ -160,10 +184,68 @@ namespace CRT
                 this.SystemDetail.ShowMessage(WaitWording.NoAnswer, isError: true);
         }
 
+        // Puts the list's selection back on the system the panel holds, after the maintainer chose to
+        // stay in its table. Suppressed, so it does not count as a new choice.
+        private void ReselectShownSystem()
+        {
+            if (this.FindControl<ListBox>("SystemsList") is not ListBox list || list.ItemsSource is not IEnumerable<ListBoxItem> items)
+                return;
+
+            string? shown = this.SystemDetail.ShownSystem?.SystemId;
+
+            this.thisSuppressSystemsSelection = true;
+
+            try
+            {
+                list.SelectedItem = items.FirstOrDefault(item =>
+                    item.Tag is SystemOverviewEntry entry && string.Equals(entry.SystemId, shown, StringComparison.Ordinal));
+            }
+            finally
+            {
+                this.thisSuppressSystemsSelection = false;
+            }
+        }
+
+        // ###########################################################################################
+        // A change published from a system's table is in BETA (owner decision, 2026-10-03: "it should
+        // go directly to the next queue, 'BETA > Stable'"): that list and the systems are read again
+        // at once, so the BETA > Stable badge counts it and the system's line and revisions say so -
+        // without leaving the Systems screen, where the maintainer may look at the next system. The
+        // minute check would get there too, a minute later.
+        // ###########################################################################################
+        private async Task AfterSystemChangePublishedAsync()
+        {
+            await this.RefreshBetaAsync(background: true);
+            await this.RefreshSystemsAsync(background: true);
+        }
+
+        // ###########################################################################################
+        // A change from a system's table that the server made into a submission but could NOT publish
+        // (something changed between its check and the publish): it is opened under Contributor
+        // Submissions, where it waits and can be approved. Remembered first, so the screen opens on it
+        // when nothing else is open there; chosen outright when something else is, which asks about
+        // that table's unsaved changes as any click in the queue would.
+        // ###########################################################################################
+        internal async Task OpenSentSubmissionAsync(long submissionId)
+        {
+            this.RememberSubmission(submissionId);
+
+            await this.ShowModeAsync(MaintainerMode.Review);
+
+            if (this.thisSelectedId != submissionId &&
+                this.thisQueueEntries.TryGetValue(submissionId, out QueueEntry? entry) &&
+                this.FindControl<ListBox>("QueueList") is ListBox queue)
+            {
+                queue.SelectedItem = entry.Item;
+            }
+        }
+
         private SystemOverviewEntry? SelectedSystem =>
             (this.FindControl<ListBox>("SystemsList")?.SelectedItem as ListBoxItem)?.Tag as SystemOverviewEntry;
 
         internal SystemOverviewEntry? SelectedSystemForTests => this.SelectedSystem;
+
+        internal SystemView SystemDetailForTests => this.SystemDetail;
 
         internal IReadOnlyList<string> SystemsTextsForTests() =>
             this.FindControl<ListBox>("SystemsList")?.ItemsSource is IEnumerable<ListBoxItem> items

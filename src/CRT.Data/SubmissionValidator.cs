@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 
 namespace Handlers.DataHandling
@@ -55,24 +54,32 @@ namespace Handlers.DataHandling
 
             var findings = new List<ValidationFinding>();
 
-            // Ordinal: see the header. This is the comparison the server's filesystem will make.
-            var files = new HashSet<string>(suppliedPaths, StringComparer.Ordinal);
-
-            // ...and a case-insensitive copy, used ONLY to give a better message when a reference
-            // fails. Telling someone "the file is there but spelled differently" is far more
-            // useful than "file not found", and it is the mistake they will actually have made.
-            var filesIgnoringCase = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string path in suppliedPaths)
-                filesIgnoringCase.TryAdd(path, path);
-
             SubmissionValidator.ValidateIdentity(manifest, findings);
-            SubmissionValidator.ValidateSchematics(manifest, files, filesIgnoringCase, findings);
-            SubmissionValidator.ValidateComponents(manifest, findings);
-            SubmissionValidator.ValidateComponentImages(manifest, files, filesIgnoringCase, findings);
-            SubmissionValidator.ValidateHighlights(manifest, findings);
-            SubmissionValidator.ValidateLocalFiles(manifest, files, filesIgnoringCase, findings);
-            SubmissionValidator.ValidateLinks(manifest, findings);
+
+            // ###########################################################################################
+            // *** THE ROW RULES ARE BoardDataChecks', IN ITS SUBMISSION SCOPE (2026-10-02). *** The
+            // Drafts tab's table now shows the same rules on the cells they are about, so they were
+            // moved there rather than copied: one set, so an error the contributor sees in the table
+            // is exactly one this refuses. The scope is these rules exactly - codes, subjects,
+            // messages and order unchanged - which every test of this class still holds.
+            //
+            // The supplied paths compare ORDINALLY, with a case-insensitive second look only for
+            // the better message (SuppliedFileLookup) - see the header for why.
+            // ###########################################################################################
+            foreach (BoardDataProblem problem in BoardDataChecks.Check(
+                         BoardCheckRows.From(manifest.Rows),
+                         new SuppliedFileLookup(suppliedPaths),
+                         BoardCheckScope.Submission))
+            {
+                findings.Add(new ValidationFinding
+                {
+                    Severity = problem.Level == BoardProblemLevel.Error ? ValidationSeverity.Error : ValidationSeverity.Warning,
+                    Code = problem.Code,
+                    Subject = problem.Subject,
+                    Message = problem.Message
+                });
+            }
+
             SubmissionValidator.ValidateScale(manifest, findings);
 
             return findings;
@@ -226,302 +233,6 @@ namespace Handlers.DataHandling
         }
 
         // -------------------------------------------------------------------------------------
-        // Schematics.
-        // -------------------------------------------------------------------------------------
-
-        private static void ValidateSchematics(
-            SubmissionManifest manifest,
-            HashSet<string> files,
-            Dictionary<string, string> filesIgnoringCase,
-            List<ValidationFinding> findings)
-        {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (BoardSchematicEntry schematic in manifest.Rows.Schematics)
-            {
-                if (string.IsNullOrWhiteSpace(schematic.SchematicName))
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "schematic.unnamed", string.Empty, "A schematic row has no name."));
-
-                    continue;
-                }
-
-                // Case-insensitive, because two schematics differing only by capitalisation would
-                // be indistinguishable to a human reading the list - and highlights reference them
-                // by name.
-                if (!seen.Add(schematic.SchematicName))
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "schematic.duplicate",
-                        schematic.SchematicName,
-                        $"More than one schematic is named [{schematic.SchematicName}]."));
-                }
-
-                SubmissionValidator.CheckFileReference(
-                    schematic.SchematicImageFile,
-                    $"schematic [{schematic.SchematicName}]",
-                    files,
-                    filesIgnoringCase,
-                    findings,
-                    required: true);
-            }
-        }
-
-        // -------------------------------------------------------------------------------------
-        // Components.
-        // -------------------------------------------------------------------------------------
-
-        private static void ValidateComponents(SubmissionManifest manifest, List<ValidationFinding> findings)
-        {
-            var seen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (ComponentEntry component in manifest.Rows.Components)
-            {
-                if (string.IsNullOrWhiteSpace(component.BoardLabel))
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "component.unlabelled",
-                        string.Empty,
-                        "A component row has no board label. The label is how everything else " +
-                        "refers to it, so a row without one cannot be used."));
-
-                    continue;
-                }
-
-                // ###########################################################################################
-                // *** THE KEY IS LABEL + REGION, NOT LABEL ALONE (fixed 2026-09-23). ***
-                //
-                // A board label legitimately appears TWICE when the component differs between
-                // regions: on the C64 250407, C70 is a ceramic capacitor on PAL and a film
-                // capacitor on NTSC, and U19/Y1/R26/R52/R53 are region variants too. The
-                // application has always supported this - ComponentListBuilder filters components
-                // by region, so exactly one of the pair is ever shown - and the PUBLISHED board
-                // ships with all six pairs in it.
-                //
-                // Keying on the label alone therefore rejected six rows of correct, already-
-                // published data and made the whole board unsubmittable. Reported by the
-                // project owner on the first real submission of this board.
-                //
-                // A duplicate within ONE region is still an error: that is genuinely ambiguous,
-                // because the region filter cannot tell the two rows apart. A blank region is its
-                // own bucket - it means "all regions", so two blank-region rows collide as well.
-                // ###########################################################################################
-                string region = component.Region?.Trim() ?? string.Empty;
-
-                // BoardDraftNaturalKeys.Separator, the same unit separator every other composite
-                // key in this codebase uses, so a label or region containing an ordinary character
-                // cannot fake a key boundary.
-                string key = region.Length == 0
-                    ? component.BoardLabel.Trim()
-                    : component.BoardLabel.Trim() + BoardDraftNaturalKeys.Separator + region;
-
-                if (seen.TryGetValue(key, out string? first))
-                {
-                    string where = region.Length == 0
-                        ? "with no region"
-                        : $"in region [{region}]";
-
-                    findings.Add(SubmissionValidator.Error(
-                        "component.duplicate_label",
-                        component.BoardLabel,
-                        $"More than one component is labelled [{component.BoardLabel}] {where} " +
-                        $"(also [{first}]). Board labels must be unique within a region."));
-                }
-                else
-                {
-                    seen[key] = component.BoardLabel.Trim();
-                }
-            }
-        }
-
-        // -------------------------------------------------------------------------------------
-        // Component images.
-        // -------------------------------------------------------------------------------------
-
-        private static void ValidateComponentImages(
-            SubmissionManifest manifest,
-            HashSet<string> files,
-            Dictionary<string, string> filesIgnoringCase,
-            List<ValidationFinding> findings)
-        {
-            var componentLabels = new HashSet<string>(
-                manifest.Rows.Components.Select(component => component.BoardLabel),
-                StringComparer.OrdinalIgnoreCase);
-
-            foreach (ComponentImageEntry image in manifest.Rows.ComponentImages)
-            {
-                // ###########################################################################################
-                // *** A COMPONENT-IMAGE ROW WITH NO FILE IS VALID - IT IS A NOTE (fixed 2026-09-23). ***
-                //
-                // This sheet carries a Note column as well as a File column, and a row may fill in
-                // only the Note: "Compatible part-number: BZX55C2V7" on CR1/CR2, or Y1's warning
-                // that probing the crystal directly can stall the machine. That is real repair
-                // information with no picture attached.
-                //
-                // The application has always handled these - ComponentImageQueries has a dedicated
-                // HasDisplayableImageFile predicate and simply skips such a row when rendering
-                // images - and the published C64 250407 board ships with them. Requiring a file
-                // here rejected correct, already-published data and blocked the whole submission.
-                //
-                // A row with NEITHER a file nor a note IS still reported: it declares nothing at
-                // all, so it is a leftover rather than a note.
-                // ###########################################################################################
-                bool hasFile = !string.IsNullOrWhiteSpace(image.File);
-                bool hasNote = !string.IsNullOrWhiteSpace(image.Note);
-
-                if (hasFile || !hasNote)
-                {
-                    SubmissionValidator.CheckFileReference(
-                        image.File,
-                        $"component image for [{image.BoardLabel}]",
-                        files,
-                        filesIgnoringCase,
-                        findings,
-                        required: true);
-                }
-
-                // A warning rather than an error: an image for a component that is not in this
-                // submission is usually a leftover, but it could be intentional during a staged
-                // change, and the data still loads.
-                if (!string.IsNullOrWhiteSpace(image.BoardLabel) &&
-                    !componentLabels.Contains(image.BoardLabel))
-                {
-                    findings.Add(SubmissionValidator.Warning(
-                        "image.orphan",
-                        image.BoardLabel,
-                        $"An image references component [{image.BoardLabel}], which is not in this " +
-                        "submission. It will not be shown anywhere."));
-                }
-            }
-        }
-
-        // -------------------------------------------------------------------------------------
-        // Highlights. The subtlest section, because the coordinates are STRINGS.
-        // -------------------------------------------------------------------------------------
-
-        private static void ValidateHighlights(SubmissionManifest manifest, List<ValidationFinding> findings)
-        {
-            var schematicNames = new HashSet<string>(
-                manifest.Rows.Schematics.Select(schematic => schematic.SchematicName),
-                StringComparer.OrdinalIgnoreCase);
-
-            foreach (ComponentHighlightEntry highlight in manifest.Rows.ComponentHighlights)
-            {
-                string subject = $"{highlight.SchematicName} / {highlight.BoardLabel}";
-
-                // A highlight naming a schematic that does not exist draws nothing, anywhere -
-                // it is invisible rather than wrong-looking, which is why it has to be caught here
-                // rather than noticed later.
-                if (!schematicNames.Contains(highlight.SchematicName))
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "highlight.unknown_schematic",
-                        subject,
-                        $"A highlight names schematic [{highlight.SchematicName}], which is not in " +
-                        "this submission."));
-                }
-
-                if (!SubmissionValidator.TryParseCoordinate(highlight.X, out double x) ||
-                    !SubmissionValidator.TryParseCoordinate(highlight.Y, out double y) ||
-                    !SubmissionValidator.TryParseCoordinate(highlight.Width, out double width) ||
-                    !SubmissionValidator.TryParseCoordinate(highlight.Height, out double height))
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "highlight.unparseable",
-                        subject,
-                        $"A highlight has coordinates that cannot be read " +
-                        $"(x=[{highlight.X}] y=[{highlight.Y}] w=[{highlight.Width}] h=[{highlight.Height}]). " +
-                        "Numbers must use a dot as the decimal separator."));
-
-                    continue;
-                }
-
-                // Zero-sized draws as nothing or as a hairline, and cannot be grabbed and moved -
-                // the component looks like it has no highlight and there is no way to fix it from
-                // the UI. The same defect WorklogDefaultAreaGeometry exists to prevent locally.
-                if (width <= 0 || height <= 0)
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "highlight.degenerate",
-                        subject,
-                        $"A highlight has no area (width {width}, height {height}). It would be " +
-                        "invisible and could not be adjusted."));
-                }
-
-                if (x < 0 || y < 0)
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "highlight.negative_origin",
-                        subject,
-                        $"A highlight starts outside the image (x {x}, y {y})."));
-                }
-            }
-        }
-
-        // -------------------------------------------------------------------------------------
-        // Local files and links.
-        // -------------------------------------------------------------------------------------
-
-        private static void ValidateLocalFiles(
-            SubmissionManifest manifest,
-            HashSet<string> files,
-            Dictionary<string, string> filesIgnoringCase,
-            List<ValidationFinding> findings)
-        {
-            foreach (ComponentLocalFileEntry file in manifest.Rows.ComponentLocalFiles)
-            {
-                SubmissionValidator.CheckFileReference(
-                    file.File, $"file for [{file.BoardLabel}]", files, filesIgnoringCase, findings, required: true);
-            }
-
-            foreach (BoardLocalFileEntry file in manifest.Rows.BoardLocalFiles)
-            {
-                SubmissionValidator.CheckFileReference(
-                    file.File, "board file", files, filesIgnoringCase, findings, required: true);
-            }
-        }
-
-        private static void ValidateLinks(SubmissionManifest manifest, List<ValidationFinding> findings)
-        {
-            foreach (ComponentLinkEntry link in manifest.Rows.ComponentLinks)
-                SubmissionValidator.CheckLink(link.Url, $"link for [{link.BoardLabel}]", findings);
-
-            // A board link is scoped by Category rather than by a component label - see
-            // BoardLinkEntry.
-            foreach (BoardLinkEntry link in manifest.Rows.BoardLinks)
-                SubmissionValidator.CheckLink(link.Url, "board link", findings);
-        }
-
-        // ###########################################################################################
-        // A link must be http or https.
-        //
-        // Not cosmetic: these are opened through ExternalTargetLauncher, which admits only
-        // http/https/mailto and local paths inside the data root. A "file://" or "javascript:" URL
-        // in contributed data is either a mistake or an attempt, and either way it will be refused
-        // at click time with a warning nobody sees - so it is refused here where it can be
-        // explained.
-        // ###########################################################################################
-        private static void CheckLink(string? link, string context, List<ValidationFinding> findings)
-        {
-            if (string.IsNullOrWhiteSpace(link))
-                return;
-
-            bool isWebLink = Uri.TryCreate(link, UriKind.Absolute, out Uri? uri)
-                && (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
-
-            if (!isWebLink)
-            {
-                findings.Add(SubmissionValidator.Error(
-                    "link.not_web",
-                    link,
-                    $"A {context} is [{link}], which is not an http:// or https:// address. " +
-                    "CRT will not open anything else."));
-            }
-        }
-
-        // -------------------------------------------------------------------------------------
         // Scale.
         // -------------------------------------------------------------------------------------
 
@@ -557,75 +268,6 @@ namespace Handlers.DataHandling
         // -------------------------------------------------------------------------------------
         // Helpers.
         // -------------------------------------------------------------------------------------
-
-        // ###########################################################################################
-        // Checks that a referenced file is actually in the submission.
-        //
-        // THE CASE-MISMATCH BRANCH IS THE VALUABLE ONE. A reference that differs only in
-        // capitalisation is the exact failure the strategy document warns about: it works on the
-        // contributor's Windows machine and fails on the Linux server, after publication, on
-        // somebody else's computer. Saying "the file is there but spelled differently" turns a
-        // baffling bug into a one-character fix.
-        // ###########################################################################################
-        private static void CheckFileReference(
-            string? reference,
-            string context,
-            HashSet<string> files,
-            Dictionary<string, string> filesIgnoringCase,
-            List<ValidationFinding> findings,
-            bool required)
-        {
-            if (string.IsNullOrWhiteSpace(reference))
-            {
-                if (required)
-                {
-                    findings.Add(SubmissionValidator.Error(
-                        "file.unreferenced", context, $"The {context} does not name a file."));
-                }
-
-                return;
-            }
-
-            if (files.Contains(reference))
-                return;
-
-            if (filesIgnoringCase.TryGetValue(reference, out string? actual))
-            {
-                findings.Add(SubmissionValidator.Error(
-                    "file.case_mismatch",
-                    reference,
-                    $"The {context} names [{reference}], but the file in the submission is spelled " +
-                    $"[{actual}]. Capitalisation matters on the server even though it does not on " +
-                    "Windows, so this would work for you and fail for everyone else."));
-
-                return;
-            }
-
-            findings.Add(SubmissionValidator.Error(
-                "file.missing",
-                reference,
-                $"The {context} names [{reference}], which is not in the submission."));
-        }
-
-        // ###########################################################################################
-        // Parses a coordinate written as text.
-        //
-        // INVARIANT CULTURE ONLY. These values are written by a Danish, German or French
-        // contributor's machine as readily as an English one, and "1,5" parsed under a comma-
-        // decimal culture is 1.5 while under an invariant one it is 15 - a highlight ten times too
-        // wide, with nothing failing. The data format is invariant, so a comma is a malformed
-        // value and must be reported rather than reinterpreted.
-        // ###########################################################################################
-        private static bool TryParseCoordinate(string? value, out double result)
-        {
-            result = 0;
-
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            return double.TryParse(
-                value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
-        }
 
         // An empty part is canonical here - "missing" is its own finding, and reporting it twice
         // under two codes helps nobody.

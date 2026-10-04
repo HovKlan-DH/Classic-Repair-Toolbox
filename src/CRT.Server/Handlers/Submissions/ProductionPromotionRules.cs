@@ -30,8 +30,8 @@ namespace CRT.Server.Handlers.Submissions
         // *** "merged" NOW MEANS "IN BETA". *** A merged submission is in the BETA data and reaches
         // everyone only when its system is promoted. So a merged submission decided at or before
         // the system's last promotion went out with it, and the contributor is told "published" -
-        // which CRT shows as "Published to source". Before that they are told "merged", which CRT
-        // shows as "Published to BETA source".
+        // which CRT shows as "Published to the stable source". Before that they are told "merged", which CRT
+        // shows as "Published to the BETA source".
         //
         // The database state is NOT changed: "merged" stays the record of what the maintainer did,
         // and this is only how it reads from the outside.
@@ -45,7 +45,7 @@ namespace CRT.Server.Handlers.Submissions
             // ###########################################################################################
             // *** "returned": TAKEN BACK OUT OF BETA (code review, 2026-09-27). *** A BETA rollback
             // moves a merged submission back to `pending` WITH the maintainer's reason. Reported as
-            // plain "pending", CRT showed a contributor who had been told "Published to BETA source"
+            // plain "pending", CRT showed a contributor who had been told "Published to the BETA source"
             // a bare "Waiting for review" with no word for what had happened.
             //
             // *** RECORDED, NOT INFERRED (code review, 2026-09-29). *** It was read off "pending and

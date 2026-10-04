@@ -21,8 +21,10 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class SystemHistoryRules
     {
-        // Plenty to see what happened lately, and a bounded answer however old the system is.
-        public const int Limit = 100;
+        // The system's whole history (owner request, 2026-10-04: "it should show the full history of
+        // what has happened with this board") - a bound no board comes near, so the answer stays
+        // bounded however old the system is.
+        public const int Limit = 1000;
 
         // The audit subject a submission is recorded under (AmendSubmissionFlow writes it so).
         public static string SubmissionSubject(long submissionId) => $"#{submissionId}";
@@ -42,7 +44,11 @@ namespace CRT.Server.Handlers.Submissions
             SystemHistoryEvents.Placed,
 
             // The contributor discarded their own draft after sending (2026-09-28).
-            SystemHistoryEvents.DraftDiscarded
+            SystemHistoryEvents.DraftDiscarded,
+
+            // The administrator deleted the system (2026-10-03) - seen only by a system created
+            // again under the same id, whose history then starts with it.
+            SystemHistoryEvents.Deleted
         };
 
         private static readonly HashSet<string> DecidedStates = new(StringComparer.Ordinal)

@@ -31,19 +31,22 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public sealed class WorkbookReadCache
     {
-        private sealed record Entry(long Length, long WriteTimeUtcTicks, IReadOnlyCollection<string> Values);
+        private sealed record Entry<T>(long Length, long WriteTimeUtcTicks, T Value);
 
         // The two kinds of read are kept apart: a master's listing and a board's citations are
-        // different answers about different files.
-        private readonly ConcurrentDictionary<string, Entry> thisCitations = new(StringComparer.Ordinal);
-        private readonly ConcurrentDictionary<string, Entry> thisListings = new(StringComparer.Ordinal);
+        // different answers about different files - each kept as its OWN type (code review,
+        // 2026-10-04): a master's answer carries two lists, which rode inside a collection subclass
+        // recovered by a downcast, and would have vanished without a word had anything here ever
+        // copied the collection.
+        private readonly ConcurrentDictionary<string, Entry<IReadOnlyCollection<string>>> thisCitations = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, Entry<MasterWorkbookRead>> thisListings = new(StringComparer.Ordinal);
 
         private int thisReads;
 
         // How many times a workbook was actually opened - for tests.
         internal int Reads => Volatile.Read(ref this.thisReads);
 
-        public delegate bool Reader(string fullPath, out IReadOnlyCollection<string> values, out string why);
+        public delegate bool Reader<T>(string fullPath, out T value, out string why);
 
         // What a board workbook cites (BoardDataReader.TryCollectReferencedLocalFiles).
         public bool TryGetCitations(string fullPath, out IReadOnlyCollection<string> cites)
@@ -63,14 +66,14 @@ namespace Handlers.DataHandling
         }
 
         // What a master workbook lists, read by `reader` (DataTreeUsage owns the master's layout).
-        internal bool TryGetListing(string fullPath, Reader reader, out IReadOnlyCollection<string> listed, out string why) =>
+        internal bool TryGetListing(string fullPath, Reader<MasterWorkbookRead> reader, out MasterWorkbookRead listed, out string why) =>
             this.TryGet(this.thisListings, fullPath, reader, out listed, out why);
 
-        private bool TryGet(
-            ConcurrentDictionary<string, Entry> map,
+        private bool TryGet<T>(
+            ConcurrentDictionary<string, Entry<T>> map,
             string fullPath,
-            Reader reader,
-            out IReadOnlyCollection<string> values,
+            Reader<T> reader,
+            out T value,
             out string why)
         {
             why = string.Empty;
@@ -78,17 +81,17 @@ namespace Handlers.DataHandling
             (long Length, long Ticks)? before = WorkbookReadCache.Stamp(fullPath);
 
             if (before is not null &&
-                map.TryGetValue(fullPath, out Entry? cached) &&
+                map.TryGetValue(fullPath, out Entry<T>? cached) &&
                 cached.Length == before.Value.Length &&
                 cached.WriteTimeUtcTicks == before.Value.Ticks)
             {
-                values = cached.Values;
+                value = cached.Value;
                 return true;
             }
 
             Interlocked.Increment(ref this.thisReads);
 
-            if (!reader(fullPath, out values, out why))
+            if (!reader(fullPath, out value, out why))
             {
                 map.TryRemove(fullPath, out _);
                 return false;
@@ -98,7 +101,7 @@ namespace Handlers.DataHandling
             (long Length, long Ticks)? after = WorkbookReadCache.Stamp(fullPath);
 
             if (before is not null && after is not null && before.Value == after.Value)
-                map[fullPath] = new Entry(before.Value.Length, before.Value.Ticks, values);
+                map[fullPath] = new Entry<T>(before.Value.Length, before.Value.Ticks, value);
             else
                 map.TryRemove(fullPath, out _);
 

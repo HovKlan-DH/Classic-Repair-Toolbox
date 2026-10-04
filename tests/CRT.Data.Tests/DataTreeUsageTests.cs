@@ -34,7 +34,7 @@ namespace CRT.Data.Tests
         // A master listing the given board workbooks under a free-text row, as the real ones do.
         internal static void WriteMaster(TempWorkspace tree, string name, params string[] listed)
         {
-            using var package = new ExcelPackage();
+            using var package = EpplusLicense.NewPackage();
             ExcelWorksheet sheet = package.Workbook.Worksheets.Add(DataTreeUsage.MasterSheetName);
             sheet.Cells[1, 1].Value = "# Revision date: 2026-09-25";
             sheet.Cells[2, 1].Value = "Hardware name";
@@ -267,7 +267,7 @@ namespace CRT.Data.Tests
         public void A_master_without_its_sheet_fails_closed()
         {
             using TempWorkspace tree = DataTreeUsageTests.OneBoard();
-            using (var package = new ExcelPackage())
+            using (var package = EpplusLicense.NewPackage())
             {
                 package.Workbook.Worksheets.Add("Something else").Cells[1, 1].Value = "x";
                 package.SaveAs(new FileInfo(tree.Path_("Classic-Repair-Toolbox.xlsx")));
@@ -387,6 +387,137 @@ namespace CRT.Data.Tests
         public void Board_workbooks_are_the_workbooks_at_the_top_of_a_board_folder(string path, bool expected)
         {
             Assert.Equal(expected, DataTreeUsage.IsBoardFolderWorkbook(path));
+        }
+
+        // ###########################################################################################
+        // *** A MASTER NAMING A BOARD WORKBOOK IN ANOTHER CASE (owner request, 2026-10-04: "prove that
+        // the files listed in here really can be deleted"). *** Every Windows and macOS CRT opens such
+        // a workbook and shows what it cites. The rule opened it by the MASTER's spelling - not there
+        // on the Linux server, and a missing workbook cites nothing - so everything only it cites was
+        // listed as unused. It is read at its spelling on disk now.
+        //
+        // Windows finds the file by either spelling, so on this machine the whole-tree test passes
+        // with or without the fix; it is the Linux run (GitHub's) that fails without it. The spelling
+        // lookup below is what holds the fix on every OS.
+        // ###########################################################################################
+        [Fact]
+        public void A_board_workbook_a_master_names_in_another_case_is_read_and_what_it_cites_is_used()
+        {
+            using var tree = new TempWorkspace();
+            DataTreeUsageTests.WriteMaster(tree, "Classic-Repair-Toolbox.v2.0.0.xlsx", "commodore/c64/250407/DATA c64 250407 V2.0.0.xlsx");
+            DataTreeUsageTests.WriteBoard(tree, Workbook, $"{Board}/sheet1.png");
+            DataTreeUsageTests.Touch(tree, $"{Board}/sheet1.png", $"{Board}/old.png");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.True(usage.IsComplete, string.Join(" ", usage.Problems));
+            Assert.Equal(1, usage.BoardWorkbookCount);
+            Assert.True(usage.IsUsed($"{Board}/sheet1.png"));
+            Assert.Equal([$"{Board}/old.png"], usage.UnusedFiles);
+        }
+
+        [Fact]
+        public void A_board_workbook_is_read_at_every_spelling_the_tree_holds_and_never_at_another()
+        {
+            ILookup<string, string> onDisk = new[]
+            {
+                Workbook,
+                $"{Board}/sheet1.png",
+                // Two spellings of one name - only a case-sensitive file system holds both.
+                "Commodore/C128/310378/Data.xlsx",
+                "Commodore/C128/310378/data.xlsx"
+            }.ToLookup(path => path, StringComparer.OrdinalIgnoreCase);
+
+            Assert.Equal([Workbook], DataTreeUsage.SpellingsOnDisk("commodore/C64/250407/data C64 250407 v2.0.0.XLSX", onDisk));
+            Assert.Equal(
+                ["Commodore/C128/310378/Data.xlsx", "Commodore/C128/310378/data.xlsx"],
+                DataTreeUsage.SpellingsOnDisk("Commodore/C128/310378/DATA.xlsx", onDisk));
+            Assert.Empty(DataTreeUsage.SpellingsOnDisk("Commodore/C64/250407/Other.xlsx", onDisk));
+        }
+
+        // ###########################################################################################
+        // The legacy master's "KiCad data file" column, which CRT 1.x reads for a board's traces: a file
+        // named there is used wherever it is (today every one is inside a "KiCad data" folder anyway).
+        // ###########################################################################################
+        [Fact]
+        public void A_file_a_legacy_masters_KiCad_data_file_column_names_is_used()
+        {
+            using var tree = new TempWorkspace();
+
+            using (var package = EpplusLicense.NewPackage())
+            {
+                ExcelWorksheet sheet = package.Workbook.Worksheets.Add(DataTreeUsage.MasterSheetName);
+                sheet.Cells[1, 1].Value = "Hardware name";
+                sheet.Cells[1, 2].Value = DataTreeUsage.ExcelDataFileColumn;
+                sheet.Cells[1, 3].Value = DataTreeUsage.LegacyKiCadDataFileColumn;
+                sheet.Cells[2, 1].Value = "Commodore 64";
+                sheet.Cells[2, 2].Value = Workbook;
+                sheet.Cells[2, 3].Value = $"{Board}/traces/KiCad-traces.json";
+                package.SaveAs(new FileInfo(tree.Path_("Classic-Repair-Toolbox.xlsx")));
+            }
+
+            DataTreeUsageTests.WriteBoard(tree, Workbook, $"{Board}/sheet1.png");
+            DataTreeUsageTests.Touch(tree, $"{Board}/sheet1.png", $"{Board}/traces/KiCad-traces.json", $"{Board}/traces/other.json");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.True(usage.IsComplete, string.Join(" ", usage.Problems));
+            Assert.True(usage.IsUsed($"{Board}/traces/KiCad-traces.json"));
+            Assert.Equal([$"{Board}/traces/other.json"], usage.UnusedFiles);
+
+            // ###########################################################################################
+            // And through the cache, read and then remembered (code review, 2026-10-04): the named
+            // files used to ride inside the master's listing and be recovered by a downcast, so a cache
+            // that ever copied the listing would have dropped them without a word - the fail-open
+            // direction. The second Compute is served from the cache, and still keeps the file.
+            // ###########################################################################################
+            var cache = new WorkbookReadCache();
+
+            DataTreeUsageResult read = DataTreeUsage.Compute(tree.Root, cache: cache);
+            int reads = cache.Reads;
+            DataTreeUsageResult remembered = DataTreeUsage.Compute(tree.Root, cache: cache);
+
+            Assert.Equal(reads, cache.Reads);
+            Assert.True(read.IsUsed($"{Board}/traces/KiCad-traces.json"));
+            Assert.True(remembered.IsUsed($"{Board}/traces/KiCad-traces.json"));
+            Assert.Equal([$"{Board}/traces/other.json"], remembered.UnusedFiles);
+        }
+
+        // ###########################################################################################
+        // A hand-edited cell spelling a path oddly - "./", "//", "x/..", a folder name with a trailing
+        // dot - is found by every client's operating system, so the file it reaches is used.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("Commodore/C64/250407/./sheet1.png")]
+        [InlineData("Commodore/C64/250407//sheet1.png")]
+        [InlineData("Commodore/C64/250407/Sub/../sheet1.png")]
+        [InlineData("Commodore/C64/250407./sheet1.png")]
+        public void A_path_written_oddly_counts_the_file_it_reaches_as_used(string cited)
+        {
+            using var tree = new TempWorkspace();
+            DataTreeUsageTests.WriteMaster(tree, "Classic-Repair-Toolbox.v2.0.0.xlsx", Workbook);
+            DataTreeUsageTests.WriteBoard(tree, Workbook, cited);
+            DataTreeUsageTests.Touch(tree, $"{Board}/sheet1.png");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.True(usage.IsComplete, string.Join(" ", usage.Problems));
+            Assert.True(usage.IsUsed($"{Board}/sheet1.png"), $"[{cited}] does not keep the file it reaches.");
+            Assert.Empty(usage.UnusedFiles);
+        }
+
+        [Theory]
+        [InlineData("a/b.png", "a/b.png")]
+        [InlineData("a/./b.png", "a/b.png")]
+        [InlineData("a//b.png", "a/b.png")]
+        [InlineData("a/x/../b.png", "a/b.png")]
+        [InlineData("a./b.png", "a/b.png")]
+        [InlineData("a /b.png", "a/b.png")]
+        [InlineData("../b.png", null)]
+        [InlineData("a/../../b.png", null)]
+        public void A_path_resolves_as_the_operating_system_finds_it(string path, string? expected)
+        {
+            Assert.Equal(expected, DataTreeUsage.Resolved(path));
         }
     }
 }

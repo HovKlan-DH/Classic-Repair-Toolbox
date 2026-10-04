@@ -396,6 +396,8 @@ namespace CRT.Server.Tests.Fakes
         // Null for a system with no row, like the real SELECT finding nothing.
         public Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default)
         {
+            this.ListSystemsCalls++;
+
             IReadOnlyList<SystemRecord> systems = this.Systems.Values
                 .Select(system => this.ToSystemRecord(system))
                 .OrderBy(system => system.SystemId, StringComparer.Ordinal)
@@ -427,11 +429,68 @@ namespace CRT.Server.Tests.Fakes
         // What SetSystemInProductionAsync wrote.
         public Dictionary<string, PublishedSystemRow> ProductionSystems { get; } = new(StringComparer.Ordinal);
 
+        // How many times each way of reading systems was asked - for a test that a caller reads the
+        // list ONCE rather than a system at a time.
+        public int FindSystemCalls { get; private set; }
+
+        public int ListSystemsCalls { get; private set; }
+
         public Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default)
         {
+            this.FindSystemCalls++;
+
             return Task.FromResult(
                 this.Systems.TryGetValue(systemId, out NewSubmission? system) ? this.ToSystemRecord(system) : null);
         }
+
+        // ###########################################################################################
+        // The real DELETE and its ON DELETE CASCADE: the system's row and everything the schema
+        // hangs off it - every submission of it, whatever its state, with all of their rows. A
+        // submission of ANOTHER system is untouched, which is what a test of a delete must be able
+        // to see. (The maintainer pool and invitations live in FakeAccountStore, as their tables'
+        // owner does; the cascade empties them in MariaDB.)
+        // ###########################################################################################
+        public Task<IReadOnlyList<long>> DeleteSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            this.Systems.Remove(systemId);
+
+            List<long> deleted = this.Submissions.Values
+                .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .Select(record => record.Id)
+                .ToList();
+
+            foreach (long id in deleted)
+            {
+                this.Submissions.Remove(id);
+                this.Files.Remove(id);
+                this.Payloads.Remove(id);
+                this.Findings.Remove(id);
+                this.Created.Remove(id);
+                this.Decisions.Remove(id);
+                this.Approvals.Remove(id);
+                this.BetaReturns.Remove(id);
+                this.DraftDiscards.Remove(id);
+                this.Changes.Remove(id);
+                this.Amendments.RemoveAll(amendment => amendment.SubmissionId == id);
+            }
+
+            this.ClosedSystems.Remove(systemId);
+            this.BetaStates.Remove(systemId);
+            this.PublishedSystems.Remove(systemId);
+            this.ProductionSystems.Remove(systemId);
+            this.Placements.Remove(systemId);
+
+            foreach ((string SystemId, string Hash) key in this.ProductionApprovals.Keys.Where(key => key.SystemId == systemId).ToList())
+                this.ProductionApprovals.Remove(key);
+
+            this.AfterSystemDeleted?.Invoke();
+
+            return Task.FromResult<IReadOnlyList<long>>(deleted);
+        }
+
+        // Run once a system's row is deleted - a test cancels the request there, as a client giving
+        // up after the delete would.
+        public Action? AfterSystemDeleted { get; set; }
 
         // ---- Placements (migration 0011): an UPDATE of the system's row, so a system with no row
         // is refused (false) rather than invented - as the real store's matched-rows count says.
@@ -578,7 +637,15 @@ namespace CRT.Server.Tests.Fakes
                     ? record.AccountId == accountId
                     : record.AccountId is null && email.Length > 0 &&
                       string.Equals(record.ContactEmail?.Trim(), email, StringComparison.OrdinalIgnoreCase))
-                .Select(record => new ContributorSubmission(record.Id, record.State, this.Decisions.ContainsKey(record.Id)))
+                .Select(record => new ContributorSubmission(
+                    record.Id,
+                    record.State,
+                    this.Decisions.ContainsKey(record.Id),
+                    record.SystemId,
+                    record.Summary,
+                    record.CreatedUtc,
+                    record.DecidedUtc,
+                    record.DecisionComment))
                 .ToList();
 
             return Task.FromResult(submissions);
@@ -760,6 +827,31 @@ namespace CRT.Server.Tests.Fakes
                 .Distinct()
                 .Where(this.BetaReturns.ContainsKey)
                 .ToDictionary(id => id, id => this.BetaReturns[id]);
+
+            return Task.FromResult(found);
+        }
+
+        // submission_changes (migration 0017): what each publish changed; a later one replaces it.
+        public Dictionary<long, SubmissionChanges> Changes { get; } = [];
+
+        public Task SetChangesAsync(
+            long submissionId,
+            SubmissionChanges changes,
+            DateTimeOffset recordedUtc,
+            CancellationToken cancellationToken = default)
+        {
+            this.Changes[submissionId] = changes;
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyDictionary<long, SubmissionChanges>> GetChangesAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<long, SubmissionChanges> found = submissionIds
+                .Distinct()
+                .Where(this.Changes.ContainsKey)
+                .ToDictionary(id => id, id => this.Changes[id]);
 
             return Task.FromResult(found);
         }

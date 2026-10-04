@@ -13,7 +13,7 @@ namespace Handlers.DataHandling
     {
         private const string DataRootArg = "--data-root=";
         private const string SheetHardwareBoard = MasterWorkbookSchema.SheetName;
-        private const string SheetOscilloscope = "Oscilloscope";
+        private const string SheetOscilloscope = MasterWorkbookSchema.OscilloscopeSheetName;
 
         // Column header names used for robust, order-independent column mapping
         private const string ColHardwareName = MasterWorkbookSchema.ColHardwareName;
@@ -22,9 +22,9 @@ namespace Handlers.DataHandling
         private const string ColHardwareNotes = MasterWorkbookSchema.ColHardwareNotes;
 
         // Column headers for Oscilloscope
-        private const string ColBrand = "Brand";
-        private const string ColSeriesOrModel = "Series or model";
-        private const string ColPort = "Port";
+        private const string ColBrand = MasterWorkbookSchema.ColBrand;
+        private const string ColSeriesOrModel = MasterWorkbookSchema.ColSeriesOrModel;
+        private const string ColPort = MasterWorkbookSchema.ColPort;
         private const string ColIdentify = "Identify";
         private const string ColDrainErrorQueue = "DrainErrorQueue";
         private const string ColOperationComplete = "Operation-Complete";
@@ -302,12 +302,12 @@ namespace Handlers.DataHandling
                 }
                 else
                 {
-                    Logger.Info("Data root folder created — all files will be downloaded from online source");
+                    Logger.Info($"Data root folder created - all files will be downloaded from the {AppConfig.GetOnlineSourceLabel()}");
                 }
             }
             else if (UserSettings.CheckDataOnLaunch)
             {
-                Logger.Info("Checking online source for new or updated files");
+                Logger.Info($"Checking the {AppConfig.GetOnlineSourceLabel()} for new or updated files");
             }
 
             var localFiles = Directory.EnumerateFiles(_dataRoot)
@@ -578,7 +578,7 @@ namespace Handlers.DataHandling
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            ReportStatus($"Checking data from {AppConfig.GetOnlineSourceLabel()} - please wait...");
+            ReportStatus($"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...");
             int remainingChangedCount = await OnlineServices.SyncFilesAsync(
                 manifest,
                 _dataRoot,
@@ -804,7 +804,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
                 var sheet = package.Workbook.Worksheets[SheetHardwareBoard];
 
                 if (sheet == null)
@@ -1441,7 +1441,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
                 var sheet = package.Workbook.Worksheets[SheetHardwareBoard];
 
                 if (sheet == null)

@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
@@ -40,9 +43,9 @@ namespace Handlers.DataHandling
         // the project owner from the table editor. Component images already key on region too.
         //
         // With NO region the key is the bare label, exactly as before, so every row that is not
-        // regionalised - nearly all of them - keys identically to how it always did. The
-        // consequence worth knowing: changing a row's region is now a delete plus an add, the same
-        // way changing its label is.
+        // regionalised - nearly all of them - keys identically to how it always did. Changing a
+        // row's region changes its key, as changing its label does - and since 2026-10-04 either is
+        // still ONE row edited when nothing else in the row changed (BoardDataDiffer.PairRenamedRows).
         // ###########################################################################################
         public static string ForComponent(string boardLabel, string? region = null) =>
             Normalize(region).Length == 0
@@ -73,6 +76,9 @@ namespace Handlers.DataHandling
         public static string ForBoardLink(string category, string name) =>
             Join(category, name);
 
+        // *** THE NAME IS PART OF IT, because one item can credit several people. *** Changing only
+        // the name is still ONE row edited, not a removal plus an addition - see
+        // BoardDataDiffer.PairRenamedRows (owner decision, 2026-10-04).
         public static string ForCredit(string category, string subCategory, string nameOrHandle) =>
             Join(category, subCategory, nameOrHandle);
 
@@ -84,8 +90,9 @@ namespace Handlers.DataHandling
         // person knows, mapped to every net KiCad gave it. Keyed on the name alone, those rows were
         // ONE row to every comparison, so the table flagged every second one as a duplicate
         // (reported by the project owner from the maintainer's table: "these are not problematic,
-        // and the uniqueness here is both columns"). The consequence worth knowing: changing a
-        // row's net is now a removal plus an addition, as changing a component's region is.
+        // and the uniqueness here is both columns"). Changing a row's net changes its key; it is
+        // still ONE row edited while its display name stays (BoardDataDiffer.PairRenamedRows,
+        // 2026-10-04) - a row with both halves changed has nothing left to be recognised by.
         // ###########################################################################################
         public static string ForKiCadImportantSignal(string displayName, string kiCadNetName) =>
             Join(displayName, kiCadNetName);
@@ -125,6 +132,66 @@ namespace Handlers.DataHandling
             KiCadCalibrationEntry calibration => ForSchematic(calibration.SchematicName),
             _ => throw new System.NotSupportedException($"No natural key rule for row type [{row?.GetType().Name ?? "null"}].")
         };
+
+        // ###########################################################################################
+        // The COLUMNS each sheet's key is built from, in the order ForRow joins them - for the words
+        // that tell a contributor what two rows share ("the same Board label, Region, Pin and
+        // Name", BoardDataChecks' duplicate warning, 2026-10-03). It must name exactly what ForRow
+        // reads: BoardDraftNaturalKeysTests changes each named column alone and holds the key to
+        // changing, and each other column to not.
+        // ###########################################################################################
+        public static IReadOnlyList<string> ColumnsOf(string sheetName) => sheetName switch
+        {
+            BoardWorkbookSchema.SheetBoardSchematics => [BoardWorkbookSchema.ColSchematicName],
+            BoardWorkbookSchema.SheetComponents => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion],
+            BoardWorkbookSchema.SheetComponentImages =>
+                [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.ColPin, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetComponentLocalFiles => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetComponentLinks => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetBoardLocalFiles => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetBoardLinks => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetCredits =>
+                [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColSubCategory, BoardWorkbookSchema.ColNameOrHandle],
+            BoardWorkbookSchema.SheetKiCadImportantSignals => [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName],
+            _ => throw new System.NotSupportedException($"No natural key rule for sheet [{sheetName}].")
+        };
+
+        // ###########################################################################################
+        // The PROPERTIES each row type's key is built from - ColumnsOf's twin on the entry side, for
+        // telling a row whose identifying cells changed from a new row (BoardDataDiffer.PairRenamedRows,
+        // owner decision, 2026-10-04). It must name exactly what ForRow reads, as ColumnsOf must:
+        // BoardDraftNaturalKeysTests changes each property alone and holds the key to changing for
+        // these, and to staying put for every other. An unknown type has no key properties - and
+        // ForRow throws for it, so nothing pairs it.
+        // ###########################################################################################
+        public static IReadOnlyList<string> PropertiesOf(System.Type rowType) =>
+            BoardDraftNaturalKeys.KeyProperties.TryGetValue(rowType, out string[]? properties) ? properties : [];
+
+        private static readonly Dictionary<System.Type, string[]> KeyProperties = new()
+        {
+            [typeof(BoardSchematicEntry)] = [nameof(BoardSchematicEntry.SchematicName)],
+            [typeof(ComponentEntry)] = [nameof(ComponentEntry.BoardLabel), nameof(ComponentEntry.Region)],
+            [typeof(ComponentImageEntry)] =
+            [
+                nameof(ComponentImageEntry.BoardLabel),
+                nameof(ComponentImageEntry.Region),
+                nameof(ComponentImageEntry.Pin),
+                nameof(ComponentImageEntry.Name)
+            ],
+            [typeof(ComponentHighlightEntry)] = [nameof(ComponentHighlightEntry.SchematicName), nameof(ComponentHighlightEntry.BoardLabel)],
+            [typeof(ComponentLocalFileEntry)] = [nameof(ComponentLocalFileEntry.BoardLabel), nameof(ComponentLocalFileEntry.Name)],
+            [typeof(ComponentLinkEntry)] = [nameof(ComponentLinkEntry.BoardLabel), nameof(ComponentLinkEntry.Name)],
+            [typeof(BoardLocalFileEntry)] = [nameof(BoardLocalFileEntry.Category), nameof(BoardLocalFileEntry.Name)],
+            [typeof(BoardLinkEntry)] = [nameof(BoardLinkEntry.Category), nameof(BoardLinkEntry.Name)],
+            [typeof(CreditEntry)] = [nameof(CreditEntry.Category), nameof(CreditEntry.SubCategory), nameof(CreditEntry.NameOrHandle)],
+            [typeof(KiCadImportantSignalEntry)] = [nameof(KiCadImportantSignalEntry.DisplayName), nameof(KiCadImportantSignalEntry.KiCadNetName)],
+            [typeof(KiCadCalibrationEntry)] = [nameof(KiCadCalibrationEntry.SchematicName)],
+        };
+
+        // A key as words - "R307 / Pinout (secondary)" - with the separator, which renders as a
+        // box, never shown. Empty parts are left out.
+        public static string Describe(string key) =>
+            string.Join(" / ", (key ?? string.Empty).Split(Separator).Where(part => part.Length > 0));
 
         private static string Join(params string[] parts)
         {

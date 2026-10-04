@@ -24,15 +24,15 @@ public sealed class FileRemovalWordingTests
             FileRemovalWording.Headline(new FileRemovalPreview(["a", "b"], null), "the BETA data"));
 
         Assert.Equal(
-            "Publishing REMOVES 1 file from production - nothing uses it any more:",
-            FileRemovalWording.Headline(new FileRemovalPreview(["a"], null), "production"));
+            "Publishing REMOVES 1 file from the stable data - nothing uses it any more:",
+            FileRemovalWording.Headline(new FileRemovalPreview(["a"], null), "the stable data"));
     }
 
     // Said even when it is nothing, so the maintainer knows it was checked.
     [Fact]
     public void Nothing_to_remove_is_said_as_such()
     {
-        Assert.Equal("No files are removed from production.", FileRemovalWording.Headline(FileRemovalPreview.Nothing, "production"));
+        Assert.Equal("No files are removed from the stable data.", FileRemovalWording.Headline(FileRemovalPreview.Nothing, "the stable data"));
         Assert.Null(FileRemovalWording.ApproveNote(FileRemovalPreview.Nothing));
     }
 

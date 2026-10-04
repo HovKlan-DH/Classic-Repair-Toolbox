@@ -202,8 +202,9 @@ namespace CRT
         // ###########################################################################################
         // What the card holds for one cell - the seam the tests use for the card's contents.
         //
-        // A flagged row's reason rides along: its cells' tooltip gives way to the card on a file
-        // column, and the reason must not disappear with it.
+        // A flagged row's reason rode along until 2026-10-03, when duplicate rows and rows the save
+        // leaves out became warnings: a file cell's own problems are its tooltip beside the card
+        // (BoardTableCell.ProblemToolTip), and such a warning sits on the row's identity column.
         // ###########################################################################################
         internal BoardTableFilePreview? BuildFilePreview(BoardTableRow row, int columnIndex)
         {
@@ -220,9 +221,7 @@ namespace CRT
                 return null;
             }
 
-            string? note = cell.State == BoardTableCellState.Flagged ? cell.ToolTip : null;
-
-            return new BoardTableFilePreview(file, this.thisFileSource, note);
+            return new BoardTableFilePreview(file, this.thisFileSource);
         }
 
         // Whether this column's cells show the card rather than their text tooltip.

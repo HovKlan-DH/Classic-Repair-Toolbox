@@ -249,6 +249,6 @@ public sealed class DataManagerDraftImportTests : IDisposable
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        BoardWorkbookWriter.Write(path, board);
+        CachedWorkbooks.Write(path, board);
     }
 }

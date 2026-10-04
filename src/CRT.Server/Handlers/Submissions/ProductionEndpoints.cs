@@ -1,5 +1,6 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -148,7 +149,15 @@ namespace CRT.Server.Handlers.Submissions
                 // 2026-09-28) - see the record.
                 UnchangedFiles: plan.Unchanged ?? [],
                 BetaDataUrl: options.PublicDataBaseUrl,
-                ProductionDataUrl: options.ProductionPublicDataBaseUrl));
+                ProductionDataUrl: options.ProductionPublicDataBaseUrl,
+
+                // Every file's size, for the tree (owner request, 2026-10-04) - see the record.
+                FileSizes: TreeFileSizes.ForPromotion(
+                    options.DataTreeRoot ?? string.Empty,
+                    options.ProductionDataTreeRoot,
+                    plan.Files.Select(file => file.Path),
+                    plan.Unchanged,
+                    outcome.Removals?.Files)));
         }
 
         // ###########################################################################################
@@ -264,14 +273,22 @@ namespace CRT.Server.Handlers.Submissions
                 // Its own mail, not NotifyDecisionAsync with a "pending" state - BuildMessage has no
                 // wording for that and answers null, so nobody would have been told. A rejection
                 // (2026-09-28) is the queue's own rejection, and says so in the queue's own mail.
+                // The address is already the account's for a signed-in contributor (the plan's
+                // ContributorAddresses); the account is read again only for the name to greet by.
                 foreach (CarriedSubmission submission in plan.Returning)
                 {
+                    SubmissionRecord? record = await submissions.FindAsync(submission.Id, cancellationToken);
+                    AccountRecord? account = record?.AccountId is long accountId
+                        ? await accounts.FindByIdAsync(accountId, cancellationToken)
+                        : null;
+
                     await notifier.NotifyTakenOutOfBetaAsync(
                         submission.ContactEmail,
                         outcome.System!.SystemId,
                         request!.Comment,
                         outcome.Rejected,
-                        cancellationToken);
+                        cancellationToken,
+                        account?.DisplayName);
                 }
             }
             catch (Exception ex)
@@ -341,13 +358,13 @@ namespace CRT.Server.Handlers.Submissions
             {
                 try
                 {
-                    IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForRolesAsync(
+                    IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForRolesAsync(
                         outcome.WaitingFor, outcome.System!.SystemId, accounts, cancellationToken);
 
                     await notifier.NotifyApprovalNeededAsync(
                         recipients,
                         outcome.System.SystemId,
-                        "publishing the board to the source (production)",
+                        "publishing the board to the stable source",
                         ApprovePublishFlow.Label(access!),
                         cancellationToken);
                 }
@@ -446,17 +463,20 @@ namespace CRT.Server.Handlers.Submissions
 
             // The account's address for a signed-in contributor (2026-09-29) - the contact address
             // alone is empty for them, and they were never told.
-            IReadOnlyDictionary<long, string> addresses =
-                await ContributorAddresses.ResolveAsync(accounts, carried, cancellationToken);
+            IReadOnlyDictionary<long, MailRecipient> recipients =
+                await ContributorAddresses.ResolveRecipientsAsync(accounts, carried, cancellationToken);
 
             foreach (SubmissionRecord submission in carried)
             {
+                MailRecipient recipient = recipients.GetValueOrDefault(submission.Id) ?? new MailRecipient(submission.ContactEmail ?? string.Empty);
+
                 await notifier.NotifyDecisionAsync(
-                    addresses.GetValueOrDefault(submission.Id, submission.ContactEmail ?? string.Empty),
+                    recipient.Email,
                     submission.SystemId,
                     ProductionPromotionRules.PublishedState,
                     maintainerComment: null,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken,
+                    contributorName: recipient.Name);
             }
 
             if (!access.Account.IsAdministrator)
@@ -464,7 +484,7 @@ namespace CRT.Server.Handlers.Submissions
                 IReadOnlyList<AccountRecord> administrators = await accounts.GetAdministratorsAsync(cancellationToken);
 
                 await notifier.NotifyProductionPublishAsync(
-                    administrators.Where(admin => admin.IsVerified && !admin.IsLocked).Select(admin => admin.Email),
+                    administrators.Where(admin => admin.IsVerified && !admin.IsLocked).Select(admin => new MailRecipient(admin.Email, admin.DisplayName)),
                     system.SystemId,
                     $"{access.Account.DisplayName} ({access.Account.Email})",
                     system.CurrentRevision,

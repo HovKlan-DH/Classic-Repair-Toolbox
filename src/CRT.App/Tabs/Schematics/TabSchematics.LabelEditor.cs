@@ -344,21 +344,14 @@ public partial class TabSchematics
         // ###########################################################################################
         string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
         {
+            // Copied from the published FILE as it is now, never from the board cache - see
+            // DraftSeeder.SeedFromPublishedFile.
             if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
             {
-                BoardData? published = await BoardDataReader.LoadAsync(excelPath, excelPath);
+                string draftsRoot = DraftManager.DraftsRoot;
+                string dataRoot = DataManager.DataRoot;
 
-                if (published == null)
-                {
-                    Logger.Warning("Label editor save failed - could not read the board to seed a draft from");
-                    return "Could not read the board data to save against.";
-                }
-
-                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublished(
-                    DraftManager.DraftsRoot,
-                    DataManager.DataRoot,
-                    cacheKey,
-                    published));
+                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublishedFile(draftsRoot, dataRoot, cacheKey));
 
                 if (!seeded.Created)
                 {

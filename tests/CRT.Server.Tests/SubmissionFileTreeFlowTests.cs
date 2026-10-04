@@ -99,6 +99,11 @@ namespace CRT.Server.Tests
             SystemFileEntry workbook = Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
             Assert.True(workbook.WrittenOnApproval);
             Assert.Equal(SystemFileSource.NotWrittenYet, workbook.OpenFrom);
+
+            // Sizes (owner request, 2026-10-04): the upload's, from the manifest; none for a file
+            // with nothing to open yet.
+            Assert.Equal(10, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").SizeBytes);
+            Assert.Null(workbook.SizeBytes);
             Assert.Equal(SystemFileSource.NotWrittenYet, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").OpenFrom);
         }
 

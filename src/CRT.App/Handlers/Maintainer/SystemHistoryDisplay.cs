@@ -1,0 +1,322 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using Handlers.DataHandling;
+
+namespace Handlers.MaintainerHandling
+{
+    // ###########################################################################################
+    // A SYSTEM'S HISTORY VIEW (owner request, 2026-10-04: "another 'History' tab/button, after the
+    // 'Maintainer' button ... it should show the full history of what has happened with this board,
+    // in an 'easy to overview' way... which is not what the current history is").
+    //
+    // What made the old list hard to read was that it was one line per EVENT: a submission's sending
+    // and its decision were two lines apart, with other submissions and pool changes between them,
+    // and nothing said what any of them had changed. So:
+    //
+    //   - ONE CARD PER SUBMISSION, holding everything that happened to it in the order it happened
+    //     (sent, changed by a maintainer, decided, its draft discarded), its state now in CRT's own
+    //     words, what the contributor was told - and WHAT IT CHANGED, from the summary the server
+    //     recorded as it went into BETA (CRT.Data's SubmissionChanges).
+    //   - Everything else - a publish to stable, a push-back, a pool change, a placement - one line
+    //     each, as before (SystemsDisplay.HistoryWhat / HistoryFooter).
+    //   - Newest first, under a heading per MONTH, each item with its day in a column of its own, so
+    //     the left edge reads as a timeline. A card sits at its LATEST event: a submission sent in
+    //     September and published in October is October's.
+    //
+    // Pure, so the grouping and every word are tested; SystemView.History.cs only draws it.
+    // ###########################################################################################
+    public static class SystemHistoryDisplay
+    {
+        // The submission events a card gathers - the rest stay lines of their own.
+        private static readonly HashSet<string> CardEvents = new(StringComparer.Ordinal)
+        {
+            SystemHistoryEvents.Sent,
+            SystemHistoryEvents.Decided,
+            SystemHistoryEvents.Amended,
+            SystemHistoryEvents.DraftDiscarded
+        };
+
+        // ###########################################################################################
+        // The whole view, newest month first. A submission the server listed is a card even when no
+        // event names it; an event naming a submission it did not list is a line of its own, as
+        // before - nothing the server sent is dropped.
+        // ###########################################################################################
+        public static IReadOnlyList<HistoryMonth> Build(SystemDetailAnswer detail)
+        {
+            ArgumentNullException.ThrowIfNull(detail);
+
+            IReadOnlyList<SystemHistoryEntry> history = detail.History ?? [];
+            Dictionary<long, SystemSubmissionEntry> submissions = detail.Submissions
+                .GroupBy(submission => submission.Id)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            var items = new List<HistoryItem>();
+
+            foreach (SystemSubmissionEntry submission in submissions.Values)
+            {
+                List<SystemHistoryEntry> own = history
+                    .Where(entry => entry.SubmissionId == submission.Id && CardEvents.Contains(entry.Event))
+                    .OrderBy(entry => entry.AtUtc)
+                    .ToList();
+
+                items.Add(SystemHistoryDisplay.Card(submission, own));
+            }
+
+            foreach (SystemHistoryEntry entry in history)
+            {
+                if (entry.SubmissionId is long id && submissions.ContainsKey(id) && CardEvents.Contains(entry.Event))
+                    continue;
+
+                items.Add(new HistoryEventLine(entry.AtUtc, SystemsDisplay.HistoryWhat(entry), SystemsDisplay.HistoryFooter(entry), SystemsDisplay.HistoryNote(entry)));
+            }
+
+            return items
+                .Select((item, index) => (item, index))
+                .OrderByDescending(pair => pair.item.AtUtc)
+                .ThenBy(pair => pair.index)
+                .Select(pair => pair.item)
+                .GroupBy(item => SystemHistoryDisplay.MonthOf(item.AtUtc))
+                .Select(group => new HistoryMonth(group.Key, group.ToList()))
+                .ToList();
+        }
+
+        // The heading above everything - and, with nothing at all, the whole view.
+        public static string Heading(int submissions, int events)
+        {
+            if (submissions == 0 && events == 0)
+                return "Nothing has happened to this system yet";
+
+            var parts = new List<string>();
+
+            if (submissions > 0)
+                parts.Add(submissions == 1 ? "1 submission" : $"{submissions.ToString(CultureInfo.InvariantCulture)} submissions");
+
+            if (events > 0)
+                parts.Add(events == 1 ? "1 other event" : $"{events.ToString(CultureInfo.InvariantCulture)} other events");
+
+            return $"History - {string.Join(" and ", parts)}, newest first";
+        }
+
+        // "October 2026" - a month's heading, in the time zone the dates are shown in.
+        public static string MonthOf(DateTimeOffset at) =>
+            at.ToLocalTime().ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+
+        // "4 Oct" - the day in the timeline column; the month is the heading above it.
+        public static string DayOf(DateTimeOffset at) =>
+            at.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture);
+
+        // ###########################################################################################
+        // One submission's card. Its steps read top to bottom in the order they happened; the state
+        // line is where it stands NOW, in CRT's words ("Published to the stable source").
+        // ###########################################################################################
+        public static HistorySubmissionCard Card(SystemSubmissionEntry submission, IReadOnlyList<SystemHistoryEntry> events)
+        {
+            ArgumentNullException.ThrowIfNull(submission);
+            ArgumentNullException.ThrowIfNull(events);
+
+            var steps = new List<string>();
+            var times = new List<DateTimeOffset> { submission.CreatedUtc };
+
+            SystemHistoryEntry? sent = events.FirstOrDefault(entry => entry.Event == SystemHistoryEvents.Sent);
+            string? from = SystemHistoryDisplay.Blank(sent?.Who) ?? SystemHistoryDisplay.Blank(submission.ContactEmail);
+            DateTimeOffset sentAt = sent?.AtUtc ?? submission.CreatedUtc;
+
+            if (submission.CreatedUtc != default || sent is not null)
+            {
+                steps.Add(from is null
+                    ? $"{SubmissionReceiptPresenter.FormatDate(sentAt)} - sent"
+                    : $"{SubmissionReceiptPresenter.FormatDate(sentAt)} - sent by {from}");
+            }
+
+            foreach (SystemHistoryEntry entry in events.Where(entry => entry.Event != SystemHistoryEvents.Sent))
+            {
+                times.Add(entry.AtUtc);
+
+                string date = SubmissionReceiptPresenter.FormatDate(entry.AtUtc);
+                string? who = SystemHistoryDisplay.Blank(entry.Who);
+                string? detail = SystemHistoryDisplay.Blank(entry.Detail);
+
+                switch (entry.Event)
+                {
+                    case SystemHistoryEvents.Decided:
+                        steps.Add($"{date} - {SubmissionReceiptPresenter.DescribeState(detail)}{(who is null ? string.Empty : $" by {who}")}");
+                        break;
+
+                    case SystemHistoryEvents.Amended:
+                        steps.Add($"{date} - changed by {who ?? "a maintainer"}{(detail is null ? string.Empty : $" ({detail})")}");
+                        break;
+
+                    // The draft discarded is the red mark under the card, not a step - see below.
+                    case SystemHistoryEvents.DraftDiscarded:
+                        break;
+                }
+            }
+
+            if (submission.DecidedUtc is DateTimeOffset decided)
+                times.Add(decided);
+
+            if (submission.DraftDiscardedUtc is DateTimeOffset discarded)
+                times.Add(discarded);
+
+            return new HistorySubmissionCard(
+                times.Max(),
+                submission.Id,
+                $"#{submission.Id.ToString(CultureInfo.InvariantCulture)} - {SystemsDisplay.SubmissionTitle(submission)}",
+                SubmissionReceiptPresenter.DescribeState(submission.State),
+                steps,
+                SystemsDisplay.SubmissionComment(submission),
+                submission.DraftDiscardedUtc is DateTimeOffset at ? DraftDiscardWording.Mark(at) : null,
+                submission.Changes is SubmissionChanges changes && SubmissionChangeFacts.HasChanges(changes)
+                    ? SystemHistoryDisplay.ChangeLines(changes)
+                    : [],
+                SystemHistoryDisplay.NoSummaryNote(submission));
+        }
+
+        // ###########################################################################################
+        // Said on a card that went into BETA but carries no summary - published before the server
+        // kept them, so there is no board left to compare it with. Null for every other card: one
+        // never published has nothing to summarise, and one with a summary shows it.
+        // ###########################################################################################
+        public static string? NoSummaryNote(SystemSubmissionEntry submission)
+        {
+            ArgumentNullException.ThrowIfNull(submission);
+
+            if (submission.Changes is not null)
+                return null;
+
+            string state = submission.State?.Trim().ToLowerInvariant() ?? string.Empty;
+
+            return state is "merged" or "published"
+                ? "What it changed was not recorded - it was published before CRT kept a record of that."
+                : null;
+        }
+
+        public const string ChangesHeading = "What it changed in BETA:";
+
+        // ###########################################################################################
+        // WHAT A SUBMISSION CHANGED, as lines: per sheet a heading, then a line per kind of change
+        // under it, the counts in bold ("[2] added: U7, U8"). The names the server recorded follow
+        // each count - "and 5 more" when it recorded only the first of them. A new system is
+        // counted, not named: its first submission adds every row it has.
+        //
+        // Files last: added, replaced (other bytes under the same path - a replaced picture that no
+        // row's colour would show) and removed, by file name.
+        // ###########################################################################################
+        public static IReadOnlyList<HistoryChangeLine> ChangeLines(SubmissionChanges changes)
+        {
+            ArgumentNullException.ThrowIfNull(changes);
+
+            var lines = new List<HistoryChangeLine>();
+
+            if (changes.IsNewSystem)
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun("A new system.", IsCount: false)], IsHeading: true));
+
+            foreach (SectionChanges section in changes.Sections ?? [])
+            {
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun(section.Section, IsCount: false)], IsHeading: true));
+
+                bool named = !changes.IsNewSystem;
+
+                SystemHistoryDisplay.AddKind(lines, section.AddedCount, "added", named ? section.Added : []);
+                SystemHistoryDisplay.AddKind(
+                    lines,
+                    section.ChangedCount,
+                    "changed",
+                    named
+                        ? (section.Changed ?? []).Select(row => (row.Fields ?? []).Count == 0 ? row.Row : $"{row.Row} ({string.Join(", ", row.Fields!)})").ToList()
+                        : []);
+                SystemHistoryDisplay.AddKind(lines, section.RemovedCount, "removed", named ? section.Removed : []);
+                SystemHistoryDisplay.AddKind(
+                    lines,
+                    section.RenamedCount,
+                    "renamed",
+                    named ? (section.Renamed ?? []).Select(row => $"{row.From} to {row.To}").ToList() : []);
+            }
+
+            FileChanges files = changes.Files ?? FileChanges.None;
+
+            if (files.HasChanges)
+            {
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun("Files", IsCount: false)], IsHeading: true));
+
+                SystemHistoryDisplay.AddKind(lines, files.AddedCount, "added", SystemHistoryDisplay.FileNames(files.Added));
+                SystemHistoryDisplay.AddKind(lines, files.ReplacedCount, "replaced", SystemHistoryDisplay.FileNames(files.Replaced));
+                SystemHistoryDisplay.AddKind(lines, files.RemovedCount, "removed", SystemHistoryDisplay.FileNames(files.Removed));
+            }
+
+            return lines;
+        }
+
+        // "[2] added: U7, U8" - or "[45] added" with nothing named; nothing at all for a zero.
+        private static void AddKind(List<HistoryChangeLine> lines, int count, string verb, IReadOnlyList<string>? names)
+        {
+            if (count <= 0)
+                return;
+
+            var runs = new List<ReviewNoteRun>
+            {
+                new("[", IsCount: false),
+                new(count.ToString(CultureInfo.InvariantCulture), IsCount: true),
+                new($"] {verb}", IsCount: false)
+            };
+
+            List<string> shown = (names ?? []).Where(name => !string.IsNullOrWhiteSpace(name)).ToList();
+
+            if (shown.Count > 0)
+            {
+                string list = string.Join(", ", shown);
+                int more = count - shown.Count;
+
+                runs.Add(new ReviewNoteRun(
+                    more > 0 ? $": {list} and {more.ToString(CultureInfo.InvariantCulture)} more" : $": {list}",
+                    IsCount: false));
+            }
+
+            lines.Add(new HistoryChangeLine(runs, IsHeading: false));
+        }
+
+        // A file by its name alone - the folders are the board's own, and the name is what is read.
+        private static IReadOnlyList<string> FileNames(IReadOnlyList<string>? paths) =>
+            (paths ?? []).Select(path => Path.GetFileName(path.Replace('\\', '/').TrimEnd('/'))).ToList();
+
+        private static string? Blank(string? text) =>
+            string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    // One month of the History view, newest item first.
+    public sealed record HistoryMonth(string Heading, IReadOnlyList<HistoryItem> Items);
+
+    // One item of the History view: a submission's card, or any other event's line.
+    public abstract record HistoryItem(DateTimeOffset AtUtc);
+
+    // ###########################################################################################
+    // One submission, all on one card. Title: "#14 - what the contributor wrote". State: where it
+    // stands now. Steps: what happened to it, oldest first. Told: what the contributor was told.
+    // DraftDiscarded: the red mark, when the contributor threw their draft away. Changes: what it
+    // changed in BETA, or none. NoSummary: said instead of the changes when it went into BETA before
+    // they were recorded.
+    // ###########################################################################################
+    public sealed record HistorySubmissionCard(
+        DateTimeOffset AtUtc,
+        long Id,
+        string Title,
+        string State,
+        IReadOnlyList<string> Steps,
+        string? Told,
+        string? DraftDiscarded,
+        IReadOnlyList<HistoryChangeLine> Changes,
+        string? NoSummary) : HistoryItem(AtUtc);
+
+    // Any other event: what happened, the grey line with who and anything more, and - for a decision
+    // whose submission has no card - what the contributor was told.
+    public sealed record HistoryEventLine(DateTimeOffset AtUtc, string What, string Footer, string? Note = null) : HistoryItem(AtUtc);
+
+    // One line of what a submission changed: a sheet's heading, or a kind of change under it.
+    public sealed record HistoryChangeLine(IReadOnlyList<ReviewNoteRun> Runs, bool IsHeading)
+    {
+        public string Text => string.Concat(this.Runs.Select(run => run.Text));
+    }
+}

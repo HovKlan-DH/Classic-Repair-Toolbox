@@ -19,7 +19,11 @@ internal sealed class BoardWorkbookBuilder
 
     public BoardWorkbookBuilder()
     {
+        // EPPlus's own GC.Collect on dispose off, as CRT.Data's EpplusLicense does for every
+        // package (2026-10-03) - in this test process each one was a full collection of a heap
+        // that reaches ~500 MB, and the bulk of the suite's run time.
         this.thisPackage = new ExcelPackage();
+        this.thisPackage.Settings.DoGarbageCollectOnDispose = false;
     }
 
     /// <summary>Adds a sheet whose first row is the header and whose later rows are the data.</summary>

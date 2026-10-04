@@ -159,7 +159,7 @@ pull request. If you add or change logic, add or update the tests in the same ch
 ## Where the hardware data comes from
 
 The ~1 GB in `Assets/Data` is **not** copied into the build output - official installers bundle it, but a
-source build does not. On first launch CRT creates its data folder and downloads from its online source, `classic-repair-toolbox.dk`.
+source build does not. On first launch CRT creates its data folder and downloads from its stable source, `classic-repair-toolbox.dk`.
 
 | Platform | Data folder |
 | --- | --- |

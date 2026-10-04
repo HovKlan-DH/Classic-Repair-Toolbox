@@ -311,6 +311,97 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
+        // What it changed, for the system's History view (owner request, 2026-10-04: "summarize
+        // each submission change in a textual form ... to get an idea, besides the sometimes vague
+        // description from the contributor").
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** RECORDED AT THE PUBLISH - THE ONE MOMENT THE BOARD BEFORE STILL EXISTS. *** A new
+        // system's first publish is the new system: its rows counted, its file new at its path.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_publish_records_what_it_changed_and_a_new_system_says_so()
+        {
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
+            string hash = await this.PutBlobAsync(image);
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
+                ApprovePublishFlowTests.Manifest(new SubmissionFile
+                {
+                    Path = "Commodore/C64/250407/Images/sheet1.png",
+                    Sha256 = hash,
+                    SizeBytes = image.LongLength
+                }));
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
+                ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            SubmissionChanges changes = store.Changes[id];
+
+            Assert.True(changes.IsNewSystem);
+            Assert.Equal(1, changes.Sections.Single(section => section.Section == BoardWorkbookSchema.SheetComponents).AddedCount);
+            Assert.Equal(["Commodore/C64/250407/Images/sheet1.png"], changes.Files.Added);
+            Assert.Empty(changes.Files.Replaced);
+        }
+
+        // ###########################################################################################
+        // The next publish is compared with BETA as the first one left it: only what it changed, with
+        // the field named - which is what lets the history say more than the contributor's words.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_later_publish_records_only_the_rows_and_fields_it_changed()
+        {
+            (FakeSubmissionStore store, long first) = await ApprovePublishFlowTests.PendingAsync();
+            ApprovePublishFlow flow = this.Flow(store);
+
+            Assert.True((await flow.ApproveAsync(first, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None)).IsPublished);
+
+            long second = await ApprovePublishFlowTests.AnotherPendingAsync(store);
+            SubmissionManifest changed = (await store.LoadPayloadAsync(second, CancellationToken.None))!;
+            // The fixture's U8 (Manifest), with another part number.
+            changed.Rows.Components[0] = new ComponentEntry
+            {
+                BoardLabel = "U8",
+                FriendlyName = "PLA",
+                TechnicalNameOrValue = "906114-01",
+                PartNumber = "906114-02"
+            };
+            await store.SavePayloadAsync(second, changed, CancellationToken.None);
+
+            ApproveOutcome outcome = await flow.ApproveAsync(
+                second, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddDays(1), CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            SubmissionChanges changes = store.Changes[second];
+
+            Assert.False(changes.IsNewSystem);
+
+            SectionChanges components = Assert.Single(changes.Sections);
+            ChangedRowFact row = Assert.Single(components.Changed);
+            Assert.Equal("U8", row.Row);
+            Assert.Equal([BoardWorkbookSchema.ColPartNumber], row.Fields);
+        }
+
+        // A publish that is refused records nothing - there is no change to describe.
+        [Fact]
+        public async Task A_refused_publish_records_no_changes()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(placed: false);
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
+                ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Empty(store.Changes);
+        }
+
+        // -----------------------------------------------------------------------------------
         // The refusals. Each one must leave the tree untouched.
         // -----------------------------------------------------------------------------------
 
@@ -1064,7 +1155,7 @@ namespace CRT.Server.Tests
         // *** A PUBLISH REMOVES ONLY INSIDE THE SYSTEM'S OWN FOLDER (owner decision, 2026-09-27). ***
         // The board stops citing its own old manual, a shared manual and a file of another board's;
         // nothing else uses any of them. Only its own file goes - the other two stay, unused, for
-        // Admin > Unused files - and only its own file is on the list the maintainer is shown.
+        // Account > Unused files - and only its own file is on the list the maintainer is shown.
         // ###########################################################################################
         [Fact]
         public async Task A_publish_removes_only_files_inside_the_systems_own_folder()

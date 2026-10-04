@@ -20,6 +20,14 @@ namespace Handlers.MaintainerHandling
     // unseen - the very thing ReviewSummary's calibration section was added to stop. So they are
     // kept as a few short lines above the table, and only when there is something to say.
     //
+    // *** NO FILE LINES ANY MORE (owner request, 2026-09-30: "Now we have the "Files" button ...
+    // I do not think we any longer need to see the files in the yellow highlighted area"). ***
+    // "Files: [12] included ([2] new, [1] replaced under the same name)" and "KiCad data included:
+    // [3] files" stood here, for files no cell shows as changed. The submission's FILES view says
+    // all of it and more - every file new, changed or removed, KiCad data included - and its
+    // button carries the count (ReviewFilesCount), so a file replaced under its own name is still
+    // said before anything is opened. That count is what those two lines' tests now guard.
+    //
     // *** NO "(not in the table)" (owner request, 2026-09-26). *** The lines said so at first, and
     // "Highlights for 2 components (not in the table)" read as if the COMPONENTS were missing from
     // the table - they are on its Components sheet. Where the lines stand says it well enough.
@@ -33,7 +41,7 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public static class ReviewNotInTable
     {
-        // At most this many rows are named per kind of change; the rest are counted.
+        // At most this many changes are named per section, one line each; the rest are counted.
         public const int MaximumNamedRows = 6;
 
         private static readonly HashSet<string> TableSheets =
@@ -41,13 +49,7 @@ namespace Handlers.MaintainerHandling
 
         public static IReadOnlyList<ReviewNoteLine> Lines(
             ReviewChangeSummaryView? changes,
-            IReadOnlyList<ReviewFindingView> findings,
-
-            // The submission's files, as the server states them - where the KiCad data line comes
-            // from (owner request, 2026-09-26: "some data is probably fine not to visualize
-            // directly - e.g. the component highlights and KiCad data, but I need information about
-            // it, and if it is included"). Optional so older callers and tests stand.
-            IReadOnlyList<SubmittedFileFact>? submittedFiles = null)
+            IReadOnlyList<ReviewFindingView> findings)
         {
             ArgumentNullException.ThrowIfNull(findings);
 
@@ -69,30 +71,12 @@ namespace Handlers.MaintainerHandling
             }
             else
             {
-                foreach (ReviewSummaryLine line in ReviewSummaryPresenter.BuildLines(changes))
+                foreach (ReviewSectionView section in changes.Sections)
                 {
-                    if (line.Parts.Count == 0 || ReviewNotInTable.TableSheets.Contains(line.Section))
-                        continue;
-
-                    var runs = new List<ReviewNoteRun> { new($"{line.Section}: ", IsCount: false) };
-
-                    for (int i = 0; i < line.Parts.Count; i++)
-                    {
-                        if (i > 0)
-                            runs.Add(new ReviewNoteRun(", ", IsCount: false));
-
-                        runs.AddRange(ReviewNotInTable.DescribePart(line.Parts[i]));
-                    }
-
-                    lines.Add(ReviewNoteLine.FromRuns(runs, ReviewNoteKind.Change));
+                    if (section.TotalChanges > 0 && !ReviewNotInTable.TableSheets.Contains(section.Section))
+                        lines.AddRange(ReviewNotInTable.DescribeSection(section));
                 }
             }
-
-            if (ReviewNotInTable.FilesLine(changes, submittedFiles) is ReviewNoteLine files)
-                lines.Add(files);
-
-            if (ReviewNotInTable.KiCadLine(changes, submittedFiles) is ReviewNoteLine kiCad)
-                lines.Add(kiCad);
 
             foreach (ReviewFindingView finding in findings)
             {
@@ -110,23 +94,130 @@ namespace Handlers.MaintainerHandling
             return lines;
         }
 
-        // "[2] changed (Schematic 1 / U8, Schematic 1 / U9)" - the rows readable, not as raw keys.
-        private static IEnumerable<ReviewNoteRun> DescribePart(ReviewSummaryPart part)
+        // ###########################################################################################
+        // *** ONE LINE PER CHANGE, UNDER A COUNTED HEADING (owner request, 2026-10-04). *** It was
+        // "Component highlights: [1] removed (Board layout / hest)" - the key's two halves joined by
+        // a slash, which a maintainer had to take apart. Now, in the owner's words:
+        //
+        //     Component highlights have [1] change:
+        //       Removed component [hest] from schematic "Board layout"
+        //
+        // and the KiCad calibration points the same way, being the one other thing the table cannot
+        // show. Removals first, as the summary has always put them (ReviewSummaryPresenter.BuildLines
+        // says why); at most MaximumNamedRows lines, the rest counted.
+        // ###########################################################################################
+        private static IEnumerable<ReviewNoteLine> DescribeSection(ReviewSectionView section)
         {
-            List<string> named = part.Keys
-                .Take(ReviewNotInTable.MaximumNamedRows)
-                .Select(ReviewScopeBaseline.DescribeRowKey)
-                .ToList();
+            int count = section.TotalChanges;
 
-            int more = part.Keys.Count - named.Count;
+            yield return ReviewNoteLine.FromRuns(
+                ReviewNotInTable.Counted($"{section.Section} have ", count, count == 1 ? " change:" : " changes:"),
+                ReviewNoteKind.Change);
 
-            string rows = more > 0
-                ? $"{string.Join(", ", named)} and {more} more"
-                : string.Join(", ", named);
+            List<string> described =
+            [
+                .. section.Removed.Select(key => ReviewNotInTable.DescribeRow(section.Section, ReviewChangeKind.Removed, key, fields: null)),
+                .. section.Changed.Select(key => ReviewNotInTable.DescribeRow(
+                    section.Section, ReviewChangeKind.Changed, key, section.FieldChanges.TryGetValue(key, out var fields) ? fields : null)),
+                .. section.Added.Select(key => ReviewNotInTable.DescribeRow(section.Section, ReviewChangeKind.Added, key, fields: null)),
+                .. section.Renamed.Select(rename => ReviewNotInTable.DescribeRename(section.Section, rename))
+            ];
 
-            string kind = part.Kind.ToString().ToLowerInvariant();
+            foreach (string line in described.Take(ReviewNotInTable.MaximumNamedRows))
+                yield return new ReviewNoteLine(line, ReviewNoteKind.Change) { Indent = 1 };
 
-            return ReviewNotInTable.Counted(string.Empty, part.Count, rows.Length == 0 ? $" {kind}" : $" {kind} ({rows})");
+            int more = described.Count - ReviewNotInTable.MaximumNamedRows;
+
+            if (more > 0)
+                yield return ReviewNoteLine.FromRuns(ReviewNotInTable.Counted("and ", more, " more"), ReviewNoteKind.Change, indent: 1);
+        }
+
+        // ###########################################################################################
+        // One change in words. A highlight's key is its schematic and its component label; a
+        // calibration's, its schematic. A key of another shape - a section this does not know -
+        // is named as its parts, so nothing is ever left out.
+        // ###########################################################################################
+        private static string DescribeRow(string section, ReviewChangeKind kind, string key, IReadOnlyList<ReviewFieldChangeView>? fields)
+        {
+            if (section == ReviewSummary.SectionComponentHighlights && ReviewNotInTable.Highlight(key) is (string schematic, string label))
+            {
+                return kind switch
+                {
+                    ReviewChangeKind.Removed => $"Removed component [{label}] from schematic \"{schematic}\"",
+                    ReviewChangeKind.Added => $"Added component [{label}] to schematic \"{schematic}\"",
+                    _ => $"{ReviewNotInTable.HowMoved(fields)} component [{label}] on schematic \"{schematic}\""
+                };
+            }
+
+            if (section == ReviewSummary.SectionKiCadCalibrations)
+            {
+                string calibrated = ReviewScopeBaseline.DescribeRowKey(key);
+
+                return kind switch
+                {
+                    ReviewChangeKind.Removed => $"Removed the calibration points of schematic \"{calibrated}\"",
+                    ReviewChangeKind.Added => $"Added calibration points to schematic \"{calibrated}\"",
+                    _ => $"Changed the calibration points of schematic \"{calibrated}\""
+                };
+            }
+
+            return $"{kind} {ReviewScopeBaseline.DescribeRowKey(key)}";
+        }
+
+        // ###########################################################################################
+        // A row whose identifying cells changed and nothing else (ReviewSummary pairs them, 2026-10-04)
+        // - for a highlight, a component relabelled on its schematic, or its schematic renamed.
+        // ###########################################################################################
+        private static string DescribeRename(string section, ReviewRenameView rename)
+        {
+            string also = rename.AlsoChanged ? ", and changed it" : string.Empty;
+
+            if (section == ReviewSummary.SectionComponentHighlights &&
+                ReviewNotInTable.Highlight(rename.From) is (string fromSchematic, string fromLabel) &&
+                ReviewNotInTable.Highlight(rename.To) is (string toSchematic, string toLabel))
+            {
+                if (string.Equals(fromSchematic, toSchematic, StringComparison.Ordinal))
+                    return $"Renamed component [{fromLabel}] to [{toLabel}] on schematic \"{toSchematic}\"{also}";
+
+                if (string.Equals(fromLabel, toLabel, StringComparison.Ordinal))
+                    return $"Moved component [{fromLabel}] from schematic \"{fromSchematic}\" to schematic \"{toSchematic}\"{also}";
+
+                return $"Renamed component [{fromLabel}] on schematic \"{fromSchematic}\" to [{toLabel}] on schematic \"{toSchematic}\"{also}";
+            }
+
+            if (section == ReviewSummary.SectionKiCadCalibrations)
+            {
+                return $"Moved the calibration points of schematic \"{ReviewScopeBaseline.DescribeRowKey(rename.From)}\" " +
+                       $"to schematic \"{ReviewScopeBaseline.DescribeRowKey(rename.To)}\"{also}";
+            }
+
+            return $"Renamed {ReviewScopeBaseline.DescribeRowKey(rename.From)} to {ReviewScopeBaseline.DescribeRowKey(rename.To)}{also}";
+        }
+
+        // A highlight's key as its schematic and component label - null for a key of another shape.
+        private static (string Schematic, string Label)? Highlight(string? key)
+        {
+            string[] parts = (key ?? string.Empty).Split(BoardDraftNaturalKeys.Separator);
+
+            return parts.Length == 2 && parts[1].Trim().Length > 0
+                ? (parts[0].Trim(), parts[1].Trim())
+                : null;
+        }
+
+        // What happened to a highlight that is still there: its rectangle moved (X, Y), was resized
+        // (Width, Height), or both - "Changed" when the fields do not say.
+        private static string HowMoved(IReadOnlyList<ReviewFieldChangeView>? fields)
+        {
+            bool moved = fields?.Any(field => field.Field is "X" or "Y") == true;
+            bool resized = fields?.Any(field => field.Field is "Width" or "Height") == true;
+
+            return (moved, resized) switch
+            {
+                (true, true) => "Moved and resized",
+                (true, false) => "Moved",
+                (false, true) => "Resized",
+                _ => "Changed"
+            };
         }
 
         // ###########################################################################################
@@ -161,134 +252,6 @@ namespace Handlers.MaintainerHandling
             return ReviewNotInTable.Counted($"{section.Section}: ", count, count == 1 ? " row" : " rows");
         }
 
-        // ###########################################################################################
-        // *** WHICH FILES THE APPROVAL WOULD WRITE (code review, 2026-09-26). ***
-        //
-        // The table shows a file cell's TEXT, so a file replaced under its own unchanged path
-        // colours nothing: the row reads identically before and after. The hover card compares the
-        // bytes, but only for a picture and only while the pointer is on that one cell - so a
-        // replaced PDF, text file or scan was approved with nothing on screen ever saying a file
-        // changed. That blind spot is what the retired change summary's file list used to close
-        // (security review, 2025-09-25), and dropping it took the answer away while the facts
-        // stayed: SubmittedFileFact carries the hash published at each path now.
-        //
-        // KiCad files are left out - they have their own line below, which counts them the same way.
-        // So is a NEW SYSTEM, which gets no line at all; the reason is at the return that does it.
-        //
-        // "Files: [12] included ([2] new, [1] replaced)" - a submission that changes no file says
-        // nothing, because every file it carries is already published exactly as it is.
-        // ###########################################################################################
-        private static ReviewNoteLine? FilesLine(ReviewChangeSummaryView? changes, IReadOnlyList<SubmittedFileFact>? submittedFiles)
-        {
-            List<SubmittedFileFact> files = (submittedFiles ?? [])
-                .Where(fact => !SubmissionKiCadFiles.IsKiCadDataPath(fact.Path))
-                .ToList();
-
-            if (files.Count == 0)
-                return null;
-
-            // ###########################################################################################
-            // *** A NEW SYSTEM GETS NO FILES LINE AT ALL (owner request, 2026-09-26). *** It used to
-            // say "Files included: [3] files", and every one of those files is a path TYPED IN THE
-            // TABLE - the image, local-file and link cells. Nothing of it is hidden, so the line
-            // repeated what the sheets already show: "if that is the component/board files, as typed
-            // in the table, then there is no reason to show this. Only data that is NOT otherwise
-            // visible should be shown here."
-            //
-            // That is the whole purpose of these lines, and it is why the rule below is NOT the same
-            // rule. On a PUBLISHED board a file replaced under its own unchanged path colours nothing
-            // - the cell's text is the path, which did not move - so "[1] replaced under the same
-            // name" IS invisible data and stays. On a new system there is nothing to replace: every
-            // file arrives with the row that cites it, both new together, and the row is on screen.
-            // KiCad data keeps its line in both cases, because no row cites it at all.
-            // ###########################################################################################
-            if (changes is { IsNewSystem: true })
-                return null;
-
-            int added = files.Count(fact => !fact.ExistsOnServer);
-            int replaced = files.Count(fact => fact.ExistsOnServer && !fact.IsUnchanged);
-
-            if (added == 0 && replaced == 0)
-                return null;
-
-            var runs = new List<ReviewNoteRun>();
-            runs.AddRange(ReviewNotInTable.Counted("Files: ", files.Count, " included ("));
-
-            if (added > 0)
-                runs.AddRange(ReviewNotInTable.Counted(string.Empty, added, " new"));
-
-            if (replaced > 0)
-            {
-                if (added > 0)
-                    runs.Add(new ReviewNoteRun(", ", IsCount: false));
-
-                // "replaced", not "changed": the path is the same and the table shows nothing, which
-                // is exactly what a maintainer has to be told about this one.
-                runs.AddRange(ReviewNotInTable.Counted(string.Empty, replaced, " replaced under the same name"));
-            }
-
-            runs.Add(new ReviewNoteRun(")", IsCount: false));
-
-            return ReviewNoteLine.FromRuns(runs, ReviewNoteKind.Change);
-        }
-
-        // ###########################################################################################
-        // *** THE SUBMISSION'S KiCad DATA, COUNTED (owner request, 2026-09-26). *** KiCad files
-        // travel in the submission since the same day, cited by no row - so no sheet shows them, and
-        // without this line they would be approved and published unseen, the same failure the
-        // highlights line exists for. The facts are the server's SubmittedFileFacts: which files it
-        // holds at a "KiCad data" path, and the hash of what is published there now.
-        //
-        //   - a new system: "KiCad data included: [14] files" - everything is new, so new/changed
-        //     would say nothing (the same reasoning as DescribeNewSystemSection);
-        //   - a published board: "... ([2] new, [1] changed)", or "(unchanged)" when the folder
-        //     travels untouched;
-        //   - no KiCad files: no line. The published folder, if any, is left as it is by a publish,
-        //     so absence changes nothing worth a sentence.
-        // ###########################################################################################
-        private static ReviewNoteLine? KiCadLine(ReviewChangeSummaryView? changes, IReadOnlyList<SubmittedFileFact>? submittedFiles)
-        {
-            List<SubmittedFileFact> kiCad = (submittedFiles ?? [])
-                .Where(fact => SubmissionKiCadFiles.IsKiCadDataPath(fact.Path))
-                .ToList();
-
-            if (kiCad.Count == 0)
-                return null;
-
-            var runs = new List<ReviewNoteRun>();
-            runs.AddRange(ReviewNotInTable.Counted("KiCad data included: ", kiCad.Count, kiCad.Count == 1 ? " file" : " files"));
-
-            if (changes is not { IsNewSystem: true })
-            {
-                int added = kiCad.Count(fact => !fact.ExistsOnServer);
-                int replaced = kiCad.Count(fact => fact.ExistsOnServer && !fact.IsUnchanged);
-
-                if (added == 0 && replaced == 0)
-                {
-                    runs.Add(new ReviewNoteRun(" (unchanged)", IsCount: false));
-                }
-                else
-                {
-                    runs.Add(new ReviewNoteRun(" (", IsCount: false));
-
-                    if (added > 0)
-                        runs.AddRange(ReviewNotInTable.Counted(string.Empty, added, " new"));
-
-                    if (replaced > 0)
-                    {
-                        if (added > 0)
-                            runs.Add(new ReviewNoteRun(", ", IsCount: false));
-
-                        runs.AddRange(ReviewNotInTable.Counted(string.Empty, replaced, " changed"));
-                    }
-
-                    runs.Add(new ReviewNoteRun(")", IsCount: false));
-                }
-            }
-
-            return ReviewNoteLine.FromRuns(runs, ReviewNoteKind.Change);
-        }
-
         // "before [N] after", N bold.
         private static IReadOnlyList<ReviewNoteRun> Counted(string before, int count, string after) =>
         [
@@ -307,29 +270,33 @@ namespace Handlers.MaintainerHandling
 
     // ###########################################################################################
     // One line above the table: its whole text, and the same text in pieces, each count marked to
-    // be shown bold. A line made from text alone is one plain piece.
+    // be shown bold. A line made from text alone is one plain piece. `Indent` sets a line in under
+    // the heading it belongs to - one change of "Component highlights have [2] changes:" (2026-10-04).
     //
-    // Equal by text, kind AND pieces - the pieces are a list, which a record would compare by
-    // reference.
+    // Equal by text, kind, indent AND pieces - the pieces are a list, which a record would compare
+    // by reference.
     // ###########################################################################################
     public sealed record ReviewNoteLine(string Text, ReviewNoteKind Kind)
     {
         public IReadOnlyList<ReviewNoteRun> Runs { get; private init; } = [new ReviewNoteRun(Text, IsCount: false)];
 
-        public static ReviewNoteLine FromRuns(IReadOnlyList<ReviewNoteRun> runs, ReviewNoteKind kind)
+        public int Indent { get; init; }
+
+        public static ReviewNoteLine FromRuns(IReadOnlyList<ReviewNoteRun> runs, ReviewNoteKind kind, int indent = 0)
         {
             ArgumentNullException.ThrowIfNull(runs);
 
-            return new ReviewNoteLine(string.Concat(runs.Select(run => run.Text)), kind) { Runs = runs };
+            return new ReviewNoteLine(string.Concat(runs.Select(run => run.Text)), kind) { Runs = runs, Indent = indent };
         }
 
         public bool Equals(ReviewNoteLine? other) =>
             other is not null &&
             this.Text == other.Text &&
             this.Kind == other.Kind &&
+            this.Indent == other.Indent &&
             this.Runs.SequenceEqual(other.Runs);
 
-        public override int GetHashCode() => HashCode.Combine(this.Text, this.Kind);
+        public override int GetHashCode() => HashCode.Combine(this.Text, this.Kind, this.Indent);
     }
 
     public sealed record ReviewNoteRun(string Text, bool IsCount);

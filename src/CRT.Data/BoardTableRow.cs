@@ -33,18 +33,16 @@ namespace Handlers.DataHandling
         Modified,
 
         // The row exists officially and not in the draft - red, and read-only.
-        Deleted,
+        Deleted
 
-        // The row is marked "!" - a duplicate of a row above, or incomplete - violet across the
-        // whole row (owner request, 2026-09-24: the "!" alone was too easy to miss). Not a
-        // change: it counts towards none of the other three, and it is coloured with or without a
-        // published board, since it is about the data rather than about publishing.
-        Flagged
+        // There was a fifth, Flagged - violet, for a duplicate row and a row the save leaves out.
+        // Both are WARNINGS since 2026-10-03 (owner request: "Should flagged now be treated as
+        // warnings?"), so the colours mean only what changed.
     }
 
     // What one row is, which drives the one-character marker at its start. Deliberately richer
-    // than the cell states: a duplicate and a row that will not survive a save are both simply
-    // Flagged (violet), and the marker's tooltip is where the difference is told.
+    // than the cell states: a duplicate and a row that will not survive a save are not changes,
+    // so neither is coloured - the warning on a cell says what is wrong with them.
     public enum BoardTableRowState
     {
         Unchanged,
@@ -58,11 +56,12 @@ namespace Handlers.DataHandling
         Blank,
 
         // The same natural key as a row ABOVE it. BoardDataDiffer counts only the first row per
-        // key, so this one is not a counted change - but it is still saved, so it is flagged.
+        // key, so this one is not a counted change - but it is still saved, so it is warned about
+        // (BoardDataChecks, "row.duplicate").
         Duplicate,
 
         // A row the schema's own mapper drops on save (an important signal missing one of its two
-        // halves). Flagged rather than silently lost.
+        // halves). Warned about rather than silently lost (BoardTableDocument, "row.incomplete").
         Incomplete
     }
 
@@ -123,6 +122,7 @@ namespace Handlers.DataHandling
                 this.Row.Sheet.RecordCellEdit(this);
 
                 this.thisText = normalised;
+                this.Row.ForgetMapped();
                 this.Raise(nameof(this.Text));
 
                 this.Row.Sheet.OnCellEdited(this);
@@ -140,6 +140,7 @@ namespace Handlers.DataHandling
             }
 
             this.thisText = normalised;
+            this.Row.ForgetMapped();
             this.Raise(nameof(this.Text));
         }
 
@@ -179,20 +180,79 @@ namespace Handlers.DataHandling
             }
         }
 
-        // The hover text: on a changed cell the value it replaced, and on a flagged row's cells why
-        // the row is flagged - the same words as its "!" marker, so the reason is under the pointer
-        // wherever it lands on the row. Null otherwise, so an unchanged cell shows no tooltip at all
-        // rather than an empty box.
-        public string? ToolTip => this.thisState switch
+        // ###########################################################################################
+        // The hover text: what is WRONG with the cell first (its errors and warnings - see
+        // Problems), then on a changed cell the value it replaced. Null when there is nothing to
+        // say, so an unchanged cell shows no tooltip at all rather than an empty box.
+        // ###########################################################################################
+        public string? ToolTip
         {
-            BoardTableCellState.Modified =>
-                $"{this.Row.Sheet.ReplacedValueLabel}: {(this.thisPublishedText.Length == 0 ? "(empty)" : this.thisPublishedText)}",
-            BoardTableCellState.Flagged => this.Row.MarkerToolTip,
-            _ => null,
-        };
+            get
+            {
+                string? state = this.thisState switch
+                {
+                    BoardTableCellState.Modified =>
+                        $"{this.Row.Sheet.ReplacedValueLabel}: {(this.thisPublishedText.Length == 0 ? "(empty)" : this.thisPublishedText)}",
+                    _ => null,
+                };
 
-        // A flagged row can change WHY it is flagged (duplicate to incomplete) with this cell's own
-        // state staying Flagged, so the row tells its cells when their tooltip may have changed.
+                return BoardTableCell.JoinLines(this.ProblemToolTip, state);
+            }
+        }
+
+        // ###########################################################################################
+        // *** THE CHECKS' PROBLEMS ON THIS CELL (owner request, 2026-10-02) *** - BoardDataChecks,
+        // placed here by BoardTableDocument.RefreshProblems. Empty for a deleted row or a new,
+        // still empty one: neither is part of what a save writes, so neither is checked.
+        // ###########################################################################################
+        public IReadOnlyList<BoardDataProblem> Problems => this.thisProblems;
+
+        // The worst of them - what the cell's corner mark shows.
+        public BoardProblemLevel ProblemLevel => BoardDataChecks.Worst(this.thisProblems);
+
+        // Only the problems, one per line, "Error: ..." / "Warning: ..." - for a file cell, whose
+        // other hover text gives way to the file card (BoardTableEditor.FilePreview.cs) but whose
+        // problem must still be readable. Null with none.
+        public string? ProblemToolTip => BoardTableCell.DescribeProblems(this.thisProblems);
+
+        private IReadOnlyList<BoardDataProblem> thisProblems = [];
+
+        // True when the problems changed.
+        internal bool SetProblems(IReadOnlyList<BoardDataProblem> problems)
+        {
+            if (this.thisProblems.SequenceEqual(problems))
+            {
+                return false;
+            }
+
+            this.thisProblems = problems;
+            this.Raise(nameof(this.Problems));
+            this.Raise(nameof(this.ProblemLevel));
+            this.Raise(nameof(this.ProblemToolTip));
+            this.Raise(nameof(this.ToolTip));
+
+            return true;
+        }
+
+        public static string? DescribeProblems(IReadOnlyList<BoardDataProblem> problems) =>
+            problems.Count == 0
+                ? null
+                : string.Join(
+                    Environment.NewLine,
+                    problems
+                        .OrderByDescending(problem => problem.Level)
+                        .Select(problem => $"{(problem.Level == BoardProblemLevel.Error ? "Error" : "Warning")}: {problem.Message}"));
+
+        private static string? JoinLines(string? first, string? second) =>
+            (first, second) switch
+            {
+                (null, _) => second,
+                (_, null) => first,
+                _ => first + Environment.NewLine + second
+            };
+
+        // A row's state can change with this cell's own state staying the same, so the row tells
+        // its cells when their tooltip may have changed.
         internal void RaiseToolTipChanged() => this.Raise(nameof(this.ToolTip));
 
         public static string NormaliseText(string? text) => (text ?? string.Empty).Trim();
@@ -271,17 +331,26 @@ namespace Handlers.DataHandling
 
         public bool IsBlank => this.Cells.All(cell => cell.Text.Length == 0);
 
+        // Whether any cell carries an error, or a warning - BoardDataChecks' problems, which the
+        // colour key counts and filters on (BoardTableRowFilter).
+        public bool HasErrors => this.Cells.Any(cell => cell.Problems.Any(problem => problem.Level == BoardProblemLevel.Error));
+
+        public bool HasWarnings => this.Cells.Any(cell => cell.Problems.Any(problem => problem.Level == BoardProblemLevel.Warning));
+
         // ###########################################################################################
         // The one character at the start of the row. It says the same thing as the colour, in a
         // form that does not depend on telling red from green - roughly one man in twelve cannot
         // reliably do that, and a deleted row must never be mistaken for an added one.
         // ###########################################################################################
+        //
+        // A duplicate row has no sign, and a row the save leaves out has a new row's (2026-10-03):
+        // neither is a change, and the warning on its cell says what is wrong. Both were "!" until
+        // then.
         public string Marker => this.thisState switch
         {
-            BoardTableRowState.Added or BoardTableRowState.Blank => "+",
+            BoardTableRowState.Added or BoardTableRowState.Blank or BoardTableRowState.Incomplete => "+",
             BoardTableRowState.Modified => "~",
             BoardTableRowState.Deleted => "-",
-            BoardTableRowState.Duplicate or BoardTableRowState.Incomplete => "!",
             _ => string.Empty,
         };
 
@@ -291,10 +360,31 @@ namespace Handlers.DataHandling
             BoardTableRowState.Modified => "Changed - hover an orange cell to see its published value",
             BoardTableRowState.Deleted => "Deleted - this row is in the published data but not in your draft. Ctrl+Z brings it back if you deleted it since your last save.",
             BoardTableRowState.Blank => "New, empty row - it is not saved until something is typed in it",
-            BoardTableRowState.Duplicate => "Another row above identifies the same thing, so this one is not counted as a change. Check it is not a duplicate.",
-            BoardTableRowState.Incomplete => "Incomplete - this row is left out when saving, because a value it needs is missing",
+            BoardTableRowState.Incomplete => "New row - it is not saved until the values it needs are filled in",
             _ => null,
         };
+
+        // ###########################################################################################
+        // *** THE ROW AS A SAVE WOULD WRITE IT, REMEMBERED (code review, 2026-10-04). *** The checks
+        // run after every cell edit (BoardTableDocument.RefreshProblems) and mapped every live row of
+        // all nine sheets each time - thousands of rows re-read for one typed cell. The mapping is
+        // kept until a cell of THIS row changes its text (ForgetMapped, from both of the cell's text
+        // writers), so an edit maps one row again. Empty when the schema's mapper drops the row.
+        // ###########################################################################################
+        private IReadOnlyList<object>? thisMapped;
+
+        internal IReadOnlyList<object> MappedForChecks()
+        {
+            if (this.thisMapped is null)
+            {
+                this.thisMapped = BoardWorkbookSchema.MapRows(this.Sheet.Definition, [this.ToDictionary()]);
+                this.Sheet.CountRowMapped();
+            }
+
+            return this.thisMapped;
+        }
+
+        internal void ForgetMapped() => this.thisMapped = null;
 
         // The row as the schema's mappers read it: column name to cell text.
         internal IReadOnlyDictionary<string, string> ToDictionary()

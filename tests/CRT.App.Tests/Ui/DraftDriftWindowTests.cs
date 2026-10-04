@@ -270,7 +270,7 @@ public sealed class DraftDriftWindowTests : IDisposable
 
             var board = new BoardData();
             board.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "my correction" });
-            BoardWorkbookWriter.Write(workbook, board);
+            CachedWorkbooks.Write(workbook, board);
 
             DraftMarkerStore.Save(
                 DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile),
@@ -303,7 +303,7 @@ public sealed class DraftDriftWindowTests : IDisposable
         {
             string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, ExcelDataFile);
             Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
-            BoardWorkbookWriter.Write(workbook, new BoardData());
+            CachedWorkbooks.Write(workbook, new BoardData());
 
             DraftMarkerStore.Save(
                 DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile),

@@ -122,21 +122,59 @@ namespace CRT.Server.Handlers.Accounts
                 cancellationToken);
         }
 
+        public Task SetDisplayNameAsync(long accountId, string displayName, CancellationToken cancellationToken = default)
+        {
+            return this.ExecuteAsync(
+                "UPDATE accounts SET display_name = @displayName WHERE id = @id;",
+                command =>
+                {
+                    command.Parameters.AddWithValue("@displayName", displayName);
+                    command.Parameters.AddWithValue("@id", accountId);
+                },
+                cancellationToken);
+        }
+
+        public async Task<bool> SetEmailAsync(long accountId, string email, string normalisedEmail, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = "UPDATE accounts SET email = @email, email_normalised = @normalised WHERE id = @id;";
+            command.Parameters.AddWithValue("@email", email);
+            command.Parameters.AddWithValue("@normalised", normalisedEmail);
+            command.Parameters.AddWithValue("@id", accountId);
+
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken);
+                return true;
+            }
+            catch (MySqlException exception) when (exception.ErrorCode == MySqlErrorCode.DuplicateKeyEntry)
+            {
+                // Another account took the address since the flow looked. Nothing was written.
+                return false;
+            }
+        }
+
         // -----------------------------------------------------------------------------------
         // Tokens.
         // -----------------------------------------------------------------------------------
 
+        // The pending address is written only for an email-change code (migration 0016) and is
+        // NULL on every other token.
         public Task CreateTokenAsync(NewAccountToken token, CancellationToken cancellationToken = default)
         {
             return this.ExecuteAsync(
                 """
-                INSERT INTO account_tokens (account_id, purpose, token_hash, created_utc, expires_utc)
-                VALUES (@accountId, @purpose, @hash, @created, @expires);
+                INSERT INTO account_tokens (account_id, purpose, pending_email, pending_email_normalised, token_hash, created_utc, expires_utc)
+                VALUES (@accountId, @purpose, @pendingEmail, @pendingNormalised, @hash, @created, @expires);
                 """,
                 command =>
                 {
                     command.Parameters.AddWithValue("@accountId", token.AccountId);
                     command.Parameters.AddWithValue("@purpose", token.Purpose);
+                    command.Parameters.AddWithValue("@pendingEmail", (object?)token.PendingEmail ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@pendingNormalised", (object?)token.PendingEmailNormalised ?? DBNull.Value);
                     command.Parameters.AddWithValue("@hash", token.TokenHash);
                     command.Parameters.AddWithValue("@created", token.CreatedUtc.UtcDateTime);
                     command.Parameters.AddWithValue("@expires", token.ExpiresUtc.UtcDateTime);
@@ -150,7 +188,7 @@ namespace CRT.Server.Handlers.Accounts
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, account_id, purpose, created_utc, expires_utc, consumed_utc
+                SELECT id, account_id, purpose, created_utc, expires_utc, consumed_utc, pending_email, pending_email_normalised
                 FROM account_tokens WHERE token_hash = @hash LIMIT 1;
                 """;
 
@@ -167,7 +205,9 @@ namespace CRT.Server.Handlers.Accounts
                 reader.GetString(2),
                 MySqlAccountStore.ReadUtc(reader, 3)!.Value,
                 MySqlAccountStore.ReadUtc(reader, 4)!.Value,
-                MySqlAccountStore.ReadUtc(reader, 5));
+                MySqlAccountStore.ReadUtc(reader, 5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetString(7));
         }
 
         public Task ConsumeTokenAsync(long tokenId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
@@ -346,6 +386,23 @@ namespace CRT.Server.Handlers.Accounts
                     command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
                     command.Parameters.AddWithValue("@reason", reason);
                     command.Parameters.AddWithValue("@accountId", accountId);
+                },
+                cancellationToken);
+        }
+
+        public Task RevokeOtherSessionsAsync(long accountId, long keepSessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            return this.ExecuteAsync(
+                """
+                UPDATE sessions SET revoked_utc = @when, revoked_reason = @reason
+                WHERE account_id = @accountId AND id <> @keep AND revoked_utc IS NULL;
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
+                    command.Parameters.AddWithValue("@reason", reason);
+                    command.Parameters.AddWithValue("@accountId", accountId);
+                    command.Parameters.AddWithValue("@keep", keepSessionId);
                 },
                 cancellationToken);
         }

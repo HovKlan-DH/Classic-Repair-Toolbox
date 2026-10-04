@@ -83,7 +83,7 @@ namespace CRT.Server.Tests
             // The mail names the system, who invited, where the app is and the button to press.
             EmailMessage mail = world.Mailer.Last!;
             Assert.Equal("Anna@Example.com", mail.ToAddress);
-            Assert.Equal("You are invited to maintain Commodore / C64 / 250407", mail.Subject);
+            Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] system", mail.Subject);
             Assert.Contains("Dennis has invited you", mail.Body, StringComparison.Ordinal);
             Assert.Contains("\"I have an invitation\"", mail.Body, StringComparison.Ordinal);
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT

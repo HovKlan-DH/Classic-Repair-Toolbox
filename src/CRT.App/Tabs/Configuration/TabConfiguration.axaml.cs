@@ -54,6 +54,7 @@ namespace CRT
             this.UpdateEnableMiniproExperimentalDemoModeCheckBoxState();
             this.EnableWorklogCheckBox.IsChecked = UserSettings.EnableWorklog;
             this.EnableMaintainerTabCheckBox.IsChecked = UserSettings.EnableMaintainerTab;
+            this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsChecked = UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting;
             this.ViewOfficialPublishedOnlyCheckBox.IsChecked = UserSettings.ViewOfficialPublishedOnly;
 
             bool isAllBoardsScope = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
@@ -69,6 +70,7 @@ namespace CRT
             this.DownloadDataFromTestSourceCheckBox.IsVisible = true;
             this.DownloadDataFromTestSourceCheckBox.IsChecked = UserSettings.DownloadDataFromTestSource;
             this.UpdateDownloadDataFromTestSourceCheckBoxState();
+            this.UpdateShowMaintainerTabOnlyWhenWorkWaitingCheckBoxState();
 
             this.ThemeVariantComboBox.SelectionChanged += this.OnThemeVariantSelectionChanged;
             this.CheckVersionOnLaunchCheckBox.IsCheckedChanged += this.OnCheckVersionOnLaunchChanged;
@@ -84,6 +86,7 @@ namespace CRT
             this.EnableMiniproExperimentalModeCheckBox.IsCheckedChanged += this.OnEnableMiniproExperimentalModeChanged;
             this.EnableWorklogCheckBox.IsCheckedChanged += this.OnEnableWorklogChanged;
             this.EnableMaintainerTabCheckBox.IsCheckedChanged += this.OnEnableMaintainerTabChanged;
+            this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsCheckedChanged += this.OnShowMaintainerTabOnlyWhenWorkWaitingChanged;
             this.ViewOfficialPublishedOnlyCheckBox.IsCheckedChanged += this.OnViewOfficialPublishedOnlyChanged;
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
@@ -328,6 +331,9 @@ namespace CRT
             this.UpdateAllowDeletionOfOrphanAndNonUsedFilesCheckBoxState();
             this.UpdateDownloadDataFromTestSourceCheckBoxState();
 
+            // The "try it in BETA" notice names this check box too while it is off (2026-10-03).
+            this.thisMainWindow?.RefreshSourceSwitchNotice();
+
             if (!isEnabled)
             {
                 return;
@@ -428,6 +434,36 @@ namespace CRT
         {
             UserSettings.EnableMaintainerTab = this.EnableMaintainerTabCheckBox.IsChecked == true;
 
+            this.UpdateShowMaintainerTabOnlyWhenWorkWaitingCheckBoxState();
+
+            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            {
+                mainWindow.ApplyMaintainerTabVisibility();
+            }
+        }
+
+        // ###########################################################################################
+        // Keeps "Hide the Maintainer tab while no work is waiting for me" enabled only while the tab
+        // itself is enabled, without changing the stored preference - the same shape as
+        // UpdateDownloadDataFromTestSourceCheckBoxState. It narrows that setting, so on its own it
+        // decides nothing and a live-looking check box would say otherwise.
+        // ###########################################################################################
+        private void UpdateShowMaintainerTabOnlyWhenWorkWaitingCheckBoxState()
+        {
+            this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsEnabled =
+                this.EnableMaintainerTabCheckBox.IsChecked == true;
+        }
+
+        // ###########################################################################################
+        // Persists "Hide the Maintainer tab while no work is waiting for me" and re-applies the
+        // visibility at once (owner request, 2026-10-01). The rule is MaintainerModes.TabIsShown;
+        // this only stores the answer and asks the window to look again.
+        // ###########################################################################################
+        private void OnShowMaintainerTabOnlyWhenWorkWaitingChanged(object? sender, RoutedEventArgs e)
+        {
+            UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting =
+                this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsChecked == true;
+
             if (TopLevel.GetTopLevel(this) is Main mainWindow)
             {
                 mainWindow.ApplyMaintainerTabVisibility();
@@ -480,8 +516,23 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists "View boards as officially published" and re-runs the current board's load so
-        // the change is visible immediately rather than on the next board switch.
+        // Opens the help page for "View boards as officially coming from online source" (owner
+        // request, 2026-10-02) - same shape as the Workbooks help above.
+        // ###########################################################################################
+        private void OnViewOfficialPublishedOnlyHelpClick(object? sender, RoutedEventArgs e)
+        {
+            string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageViewOnlineSource);
+
+            if (!ExternalTargetLauncher.TryOpen(helpUrl))
+            {
+                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Persists "View boards as officially coming from online source" (named "View boards as
+        // officially published" until 2026-10-02) and re-runs the current board's load so the
+        // change is visible immediately rather than on the next board switch.
         // ###########################################################################################
         private void OnViewOfficialPublishedOnlyChanged(object? sender, RoutedEventArgs e)
         {

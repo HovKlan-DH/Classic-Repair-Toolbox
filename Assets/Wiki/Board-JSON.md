@@ -94,20 +94,22 @@ Three levels of nesting: **schematic name → board label → a list of rectangl
 | Board label (`"C1"`, `"U17"`) | Sheet `Components`, column `Board label` |
 
 Matching is case-insensitive and surrounding spaces are trimmed, but otherwise the strings have to be
-identical. A label that exists in one file and not in the other is an *orphan*, and the built-in data
-validator writes a warning for it in **both** directions:
+identical. A label that exists in one file and not in the other is an *orphan*, and CRT warns about it
+in **both** directions. In a draft's table on the "Drafts" tab the warning is an amber corner on the
+component's row (or, for a highlight with no component, a line above the table); for every board, the
+logfile gets a line at each launch:
 
 ```
-Excel data file [...] sheet [Components] has an orphan component [C42] that does not
-exist in JSON file [...] property [Component highlights] - please fix!
+Excel data file [...] sheet [Components] row [12] column [Board label] has warning
+[component.no_highlight]: Component [C42] is not marked on any schematic, so CRT cannot
+point it out on the board. Mark it with the label editor on the Schematics tab. - please fix!
 
-JSON file [...] property [Component highlights] has an orphan entry component highlight
-[C42] schematic [Board layout] because component [C42] does not exist in sheet
-[Components] - please fix!
+Excel data file [...] JSON file [...] has warning [highlight.orphan]: Schematic
+[Board layout] marks component [C42], which is not in the Components sheet. - please fix!
 ```
 
-Orphans are the most common defect in contributed board data, and they are cheap to find — run the app
-once with your data and read the logfile.
+Orphans are the most common defect in contributed board data, and they are cheap to find — open the
+draft's table, or run the app once with your data and read the logfile.
 
 ### Coordinates are source-image pixels
 
@@ -198,7 +200,7 @@ What that save actually does:
 * Saves into your own local **draft** for this board, not into the board's Excel file or JSON directly —
   nothing you edit here changes what anyone else sees until you submit it, and the "Drafts" tab lists
   every board you have local changes on. See [Command-line parameters](Commandline-parameters) for where
-  drafts are stored, and the Configuration tab's "View boards as officially published" option to check
+  drafts are stored, and the Configuration tab's "View boards as officially coming from online source" option ([View boards from online source](View-boards-from-online-source)) to check
   what your edit looks like before it exists.
 * Replaces the highlights for the **currently selected schematic only** — every other schematic keeps
   whatever is officially published, untouched.
@@ -230,7 +232,7 @@ selected schematic view; every other view's calibration, official or already dra
 | Highlights land on the wrong schematic, or nowhere | Schematic name key does not match `Board schematics` → `Schematic name` |
 | Every rectangle on one image is shifted or scaled | The image was replaced or cropped after the labelling was done |
 | KiCad copper drifts away from the image | Calibration is stale — recalibrate that view |
-| "Orphan" warnings in the logfile | Excel and JSON disagree about which components exist |
+| Orphan warnings in the table or the logfile | Excel and JSON disagree about which components exist |
 
 A missing or broken JSON never blocks the app. It logs a warning, treats the board as having no
 highlights, and carries on — convenient at runtime, and easy to miss while contributing. Read the log.
@@ -243,8 +245,9 @@ highlights, and carries on — convenient at runtime, and easy to miss while con
   one alone is meaningless.
 * **Keep the base names identical**, including any version suffix.
 * **Let the app write the JSON.** Do not reformat, re-sort or pretty-print it by hand.
-* **Run the app once against your data and read the logfile** before submitting — orphan components,
-  duplicate UUIDs and missing files all show up there.
+* **Look at the draft's table before submitting** - orphan components, missing files and anything
+  the server would refuse are marked there (see [Contribute data via CRT](Contribute-data-via-CRT)),
+  and the logfile has the same for every board at each launch.
 * **Do not put descriptive data here.** Names, values, part numbers, regions, links, credits and
   oscilloscope baselines all belong in the Excel file.
 

@@ -222,6 +222,50 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
         Assert.Equal("Written", draft!.Components.Single(component => component.BoardLabel == "U1").Description);
     }
 
+    // ###########################################################################################
+    // Case 1 (owner report, 2026-10-02). On the C128 board CR4's "Pinout" image row names no file
+    // and carries only the note "Compatible part-number: 1N4148" - one of 20 such rows there, and
+    // valid in the table and on the server. The editor refused every save of such a component with
+    // "Component image #1 has no file selected", so none of them could be edited at all. Driven
+    // through the click, since that is where the check runs, and read back off the draft on disk.
+    // ###########################################################################################
+    [Fact]
+    public async Task Editing_CR4_whose_Pinout_row_has_only_a_note_saves_to_the_draft()
+    {
+        using var workspace = new TempWorkspace();
+
+        var board = new BoardData
+        {
+            RevisionDate = "2026-01-15",
+            Components =
+            {
+                new ComponentEntry { BoardLabel = "CR4", Category = "Diode", Description = "The original description" },
+            },
+            ComponentImages =
+            {
+                new ComponentImageEntry { BoardLabel = "CR4", Name = "Pinout", Note = "Compatible part-number: 1N4148" },
+            },
+        };
+
+        await ComponentContributionSaveRefreshTests.SaveEditedDescriptionAsync(
+            workspace,
+            "Small signal diode",
+            throughTheClick: true,
+            board: board,
+            boardLabel: "CR4");
+
+        BoardData? draft = DraftWorkbookStore.LoadDraftBoard(
+            ComponentContributionSaveRefreshTests.DraftsRootOf(workspace),
+            ComponentContributionSaveRefreshTests.ExcelDataFile);
+
+        Assert.Equal("Small signal diode", draft!.Components.Single(component => component.BoardLabel == "CR4").Description);
+
+        // The note-only row is kept as it was: still a note, still naming no file.
+        ComponentImageEntry pinout = Assert.Single(draft.ComponentImages, image => image.BoardLabel == "CR4");
+        Assert.Equal(string.Empty, pinout.File);
+        Assert.Equal("Compatible part-number: 1N4148", pinout.Note);
+    }
+
     [Fact]
     public async Task A_save_refused_by_validation_stays_in_the_window()
     {
@@ -258,7 +302,9 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
         TempWorkspace workspace,
         string newDescription,
         Action<ComponentContributionWindow>? configure = null,
-        bool throughTheClick = false)
+        bool throughTheClick = false,
+        BoardData? board = null,
+        string boardLabel = "U1")
     {
         string dataRoot = Path.Combine(workspace.Root, "Data");
         string draftsRoot = ComponentContributionSaveRefreshTests.DraftsRootOf(workspace);
@@ -277,14 +323,14 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
         // ###########################################################################################
         ComponentContributionSaveRefreshTests.PointDraftManagerAt(draftsRoot);
 
-        BoardData published = ComponentContributionSaveRefreshTests.PublishedBoard();
+        BoardData published = board ?? ComponentContributionSaveRefreshTests.PublishedBoard();
 
         string publishedPath = Path.Combine(
             dataRoot,
             ComponentContributionSaveRefreshTests.ExcelDataFile.Replace('/', Path.DirectorySeparatorChar));
 
         Directory.CreateDirectory(Path.GetDirectoryName(publishedPath)!);
-        BoardWorkbookWriter.Write(publishedPath, published);
+        CachedWorkbooks.Write(publishedPath, published);
 
         DraftSeedResult seeded = DraftSeeder.SeedFromPublished(
             draftsRoot,
@@ -312,7 +358,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
                 "C64",
                 "250407",
                 "PAL",
-                "U1",
+                boardLabel,
                 ComponentContributionSaveRefreshTests.ExcelDataFile);
 
             configure?.Invoke(window);

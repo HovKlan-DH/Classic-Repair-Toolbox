@@ -154,5 +154,55 @@ namespace CRT.Data.Tests
 
             Assert.Equal(P("a.png"), Assert.Single(entries).Path);
         }
+
+        // -----------------------------------------------------------------------------------
+        // A system as BETA holds it (the Systems screen's Files view, 2026-10-03)
+        // -----------------------------------------------------------------------------------
+
+        // "Just list all files": nothing changes, everything opens from BETA, a file both in the
+        // folder and cited by a row is listed once, and the list is in path order.
+        [Fact]
+        public void A_systems_files_are_all_listed_once_unchanged_and_from_BETA()
+        {
+            IReadOnlyList<SystemFileEntry> entries = SystemFileEntries.ForSystem(
+                [P("manual.pdf"), P("Data.xlsx")],
+                [P("manual.pdf"), "Commodore/Shared files/74LS08.pdf"]);
+
+            Assert.Equal(
+                new[] { P("Data.xlsx"), P("manual.pdf"), "Commodore/Shared files/74LS08.pdf" }.Order(StringComparer.Ordinal),
+                entries.Select(entry => entry.Path));
+
+            Assert.All(entries, entry =>
+            {
+                Assert.Equal(SystemFileChange.Unchanged, entry.Change);
+                Assert.Equal(SystemFileSource.Beta, entry.OpenFrom);
+                Assert.False(entry.WrittenOnApproval);
+            });
+        }
+
+        [Fact]
+        public void A_system_with_no_files_lists_none()
+        {
+            Assert.Empty(SystemFileEntries.ForSystem(null, null));
+        }
+
+        // Sizes in every file tree (owner request, 2026-10-04): an entry gets the size answered for
+        // it, one with none answered keeps none, and a negative answer is no size at all.
+        [Fact]
+        public void WithSizes_gives_each_entry_the_size_answered_for_it_and_leaves_the_rest()
+        {
+            IReadOnlyList<SystemFileEntry> entries = SystemFileEntries.ForSystem(["a/x.png", "a/y.png", "a/z.png"], null);
+
+            IReadOnlyList<SystemFileEntry> sized = SystemFileEntries.WithSizes(entries, entry => entry.Path switch
+            {
+                "a/x.png" => 1234,
+                "a/z.png" => -1,
+                _ => null
+            });
+
+            Assert.Equal([1234L, null, null], sized.Select(entry => entry.SizeBytes));
+            Assert.Equal(entries.Select(entry => entry.Path), sized.Select(entry => entry.Path));
+            Assert.Empty(SystemFileEntries.WithSizes(null, _ => 1));
+        }
     }
 }

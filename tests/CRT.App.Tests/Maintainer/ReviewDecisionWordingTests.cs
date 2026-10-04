@@ -77,7 +77,7 @@ public sealed class ReviewDecisionWordingTests
             ReviewDecisionKind.Approve, new ReviewDecisionResult("merged", "2026-September-25"));
 
         Assert.Contains("BETA", described);
-        Assert.Contains("Production", described);
+        Assert.Contains("publish it from \"Queue: Awaiting push from BETA to stable\"", described);
     }
 
     [Fact]

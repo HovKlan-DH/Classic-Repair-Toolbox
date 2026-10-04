@@ -42,8 +42,12 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Opens the draft's table, or null when there is no readable draft. `published` is the
         // board to colour differences against - null for a system with no published copy.
+        //
+        // `dataRoot` is the downloaded data, so the checks can tell whether a file a row names is
+        // there - looked for as a submit looks for it, the draft's own copy first (DiskFileLookup).
+        // Without one, files are not looked for.
         // ###########################################################################################
-        public static DraftTableSession? Open(string draftsRoot, string excelDataFile, BoardData? published)
+        public static DraftTableSession? Open(string draftsRoot, string excelDataFile, BoardData? published, string? dataRoot = null)
         {
             string fingerprint = DraftWorkbookStore.Fingerprint(draftsRoot, excelDataFile);
             if (fingerprint.Length == 0)
@@ -57,11 +61,15 @@ namespace Handlers.DataHandling
                 return null;
             }
 
+            IBoardFileLookup? files = string.IsNullOrWhiteSpace(dataRoot)
+                ? null
+                : new DiskFileLookup(dataRoot, DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile));
+
             return new DraftTableSession(
                 draftsRoot,
                 excelDataFile,
                 fingerprint,
-                BoardTableDocument.Create(published, draft));
+                BoardTableDocument.Create(published, draft, files: files));
         }
 
         // ###########################################################################################
@@ -73,27 +81,65 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public DraftWorkbookEditOutcome Save()
         {
-            foreach (BoardTableSheet sheet in this.Document.Sheets)
+            DraftWorkbookEditOutcome outcome = this.PrepareSave()();
+            this.CompleteSave(outcome);
+
+            return outcome;
+        }
+
+        // ###########################################################################################
+        // *** THE SAME SAVE IN THREE STEPS, so the slow one can leave the UI thread (owner question,
+        // 2026-09-30: should "Save changes" show the "please wait"? - it takes 0.6 to 2 seconds on
+        // the largest board, and the window could not even draw the wait while it ran). ***
+        //
+        //   PrepareSave  - on the UI thread: every sheet brought up to date (that recolours rows the
+        //                  grid shows), and what the save writes taken from them
+        //                  (BoardTableDocument.TakeSaveSnapshot). Returns the write.
+        //   the write    - on any thread: the workbook read, checked against the fingerprint the
+        //                  table was opened at, and replaced. Touches nothing of the document.
+        //   CompleteSave - on the UI thread again: the new fingerprint, and the document marked
+        //                  saved (which the toolbar and the undo history are told about).
+        //
+        // Save() runs all three at once, exactly as it always did.
+        // ###########################################################################################
+        public Func<DraftWorkbookEditOutcome> PrepareSave()
+        {
+            // Each sheet brought up to date, the board checked once after all of them.
+            using (this.Document.DeferProblems())
             {
-                if (sheet.NeedsRefresh)
+                foreach (BoardTableSheet sheet in this.Document.Sheets)
                 {
-                    sheet.Refresh();
+                    if (sheet.NeedsRefresh)
+                    {
+                        sheet.Refresh();
+                    }
                 }
             }
 
-            DraftWorkbookEditOutcome outcome = DraftWorkbookStore.EditIfUnchanged(
-                this.DraftsRoot,
-                this.ExcelDataFile,
-                this.Fingerprint,
-                current => this.Document.ApplyTo(current));
+            Func<BoardData, BoardData> apply = this.Document.TakeSaveSnapshot();
+            string draftsRoot = this.DraftsRoot;
+            string excelDataFile = this.ExcelDataFile;
+            string fingerprint = this.Fingerprint;
 
+            return () => DraftWorkbookStore.EditIfUnchanged(draftsRoot, excelDataFile, fingerprint, apply);
+        }
+
+        // ###########################################################################################
+        // `knownFingerprint` is the saved file's fingerprint when the caller already has it - the
+        // table re-reads the draft on the pool straight after the write, and that read hashes the
+        // file. Without it this hashed the whole workbook a second time ON THE UI THREAD, after the
+        // overlay had lifted, for a session the re-read one replaced at once (code review,
+        // 2026-10-01) - the very freeze the three steps exist to avoid. Null hashes it here.
+        // ###########################################################################################
+        public void CompleteSave(DraftWorkbookEditOutcome outcome, string? knownFingerprint = null)
+        {
             if (outcome == DraftWorkbookEditOutcome.Saved)
             {
-                this.Fingerprint = DraftWorkbookStore.Fingerprint(this.DraftsRoot, this.ExcelDataFile);
+                this.Fingerprint = string.IsNullOrEmpty(knownFingerprint)
+                    ? DraftWorkbookStore.Fingerprint(this.DraftsRoot, this.ExcelDataFile)
+                    : knownFingerprint;
                 this.Document.MarkSaved();
             }
-
-            return outcome;
         }
 
         // True when the workbook on disk is no longer the one this table was read from - so the

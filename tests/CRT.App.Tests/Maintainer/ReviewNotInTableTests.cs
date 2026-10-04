@@ -34,30 +34,122 @@ public sealed class ReviewNotInTableTests
         Assert.Empty(ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, sections), []));
     }
 
-    // The two sections outside the workbook, each named, with its rows readable - removals first,
-    // as the summary always listed them.
+    // ###########################################################################################
+    // *** THE OWNER'S OWN EXAMPLE (owner request, 2026-10-04) *** - the "hest" component taken off
+    // the "Board layout" schematic read "Component highlights: [1] removed (Board layout / hest)".
+    // Now a counted heading, and the change on a line of its own, set in under it:
+    //
+    //     Component highlights have [1] change:
+    //       Removed component [hest] from schematic "Board layout"
+    // ###########################################################################################
     [Fact]
-    public void Highlights_and_calibration_points_are_listed_with_their_rows()
+    public void A_removed_highlight_reads_as_the_owner_wrote_it()
+    {
+        var changes = new ReviewChangeSummaryView(false,
+            [Section(ReviewSummary.SectionComponentHighlights, removed: [Key("Board layout", "hest")])]);
+
+        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(changes, []);
+
+        Assert.Equal(
+            [
+                "Component highlights have [1] change:",
+                "Removed component [hest] from schematic \"Board layout\""
+            ],
+            Texts(lines));
+
+        Assert.Equal([0, 1], lines.Select(line => line.Indent));
+        Assert.All(lines, line => Assert.Equal(ReviewNoteKind.Change, line.Kind));
+
+        // The heading's count alone is bold.
+        Assert.Equal(
+            [
+                new ReviewNoteRun("Component highlights have [", IsCount: false),
+                new ReviewNoteRun("1", IsCount: true),
+                new ReviewNoteRun("] change:", IsCount: false)
+            ],
+            lines[0].Runs);
+    }
+
+    // The two sections outside the workbook, each under its own heading, each change in words -
+    // removals first, as the summary always listed them. A highlight still there says what happened
+    // to its rectangle; the fields say which.
+    [Fact]
+    public void Highlights_and_calibration_points_are_listed_one_change_a_line_under_their_heading()
     {
         var changes = new ReviewChangeSummaryView(false,
         [
-            Section(ReviewSummary.SectionComponentHighlights,
-                added: [Key("Schematic 1", "U10")],
-                removed: [Key("Schematic 1", "U5")],
-                changed: [Key("Schematic 2", "U8")]),
-            Section(ReviewSummary.SectionKiCadCalibrations, changed: [Key("Top")])
+            new ReviewSectionView(
+                ReviewSummary.SectionComponentHighlights,
+                Added: [Key("Schematic 1", "U10")],
+                Removed: [Key("Schematic 1", "U5")],
+                Changed: [Key("Schematic 2", "U8"), Key("Schematic 2", "U9"), Key("Schematic 2", "U11"), Key("Schematic 2", "U12")],
+                Renamed: [new ReviewRenameView(Key("Schematic 1", "U1"), Key("Schematic 1", "U2"), AlsoChanged: false)],
+                FieldChanges: new Dictionary<string, IReadOnlyList<ReviewFieldChangeView>>
+                {
+                    [Key("Schematic 2", "U8")] = [new("X", "1", "2")],
+                    [Key("Schematic 2", "U9")] = [new("Height", "1", "2")],
+                    [Key("Schematic 2", "U11")] = [new("Y", "1", "2"), new("Width", "1", "2")]
+                }),
+            new ReviewSectionView(
+                ReviewSummary.SectionKiCadCalibrations,
+                Added: [Key("Bottom")],
+                Removed: [],
+                Changed: [Key("Top")],
+                Renamed: [new ReviewRenameView(Key("Old"), Key("New"), AlsoChanged: false)],
+                FieldChanges: new Dictionary<string, IReadOnlyList<ReviewFieldChangeView>>())
         ]);
 
         IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(changes, []);
 
         Assert.Equal(
             [
-                "Component highlights: [1] removed (Schematic 1 / U5), [1] changed (Schematic 2 / U8), [1] added (Schematic 1 / U10)",
-                "KiCad calibration points: [1] changed (Top)"
+                "Component highlights have [7] changes:",
+                "Removed component [U5] from schematic \"Schematic 1\"",
+                "Moved component [U8] on schematic \"Schematic 2\"",
+                "Resized component [U9] on schematic \"Schematic 2\"",
+                "Moved and resized component [U11] on schematic \"Schematic 2\"",
+                "Changed component [U12] on schematic \"Schematic 2\"",
+                "Added component [U10] to schematic \"Schematic 1\"",
+                "and [1] more",
+                "KiCad calibration points have [3] changes:",
+                "Changed the calibration points of schematic \"Top\"",
+                "Added calibration points to schematic \"Bottom\"",
+                "Moved the calibration points of schematic \"Old\" to schematic \"New\""
             ],
             Texts(lines));
 
-        Assert.All(lines, line => Assert.Equal(ReviewNoteKind.Change, line.Kind));
+        Assert.Equal([0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1], lines.Select(line => line.Indent));
+    }
+
+    // A highlight whose label changed, whose schematic was renamed, or both - one row each
+    // (ReviewSummary pairs them, 2026-10-04).
+    [Fact]
+    public void A_renamed_highlight_says_what_changed_about_it()
+    {
+        var changes = new ReviewChangeSummaryView(false,
+        [
+            new ReviewSectionView(
+                ReviewSummary.SectionComponentHighlights,
+                Added: [],
+                Removed: [],
+                Changed: [],
+                Renamed:
+                [
+                    new ReviewRenameView(Key("Board layout", "hest"), Key("Board layout", "U5"), AlsoChanged: false),
+                    new ReviewRenameView(Key("Board", "U8"), Key("Board layout", "U8"), AlsoChanged: false),
+                    new ReviewRenameView(Key("Board", "U9"), Key("Board layout", "U10"), AlsoChanged: true)
+                ],
+                FieldChanges: new Dictionary<string, IReadOnlyList<ReviewFieldChangeView>>())
+        ]);
+
+        Assert.Equal(
+            [
+                "Component highlights have [3] changes:",
+                "Renamed component [hest] to [U5] on schematic \"Board layout\"",
+                "Moved component [U8] from schematic \"Board\" to schematic \"Board layout\"",
+                "Renamed component [U9] on schematic \"Board\" to [U10] on schematic \"Board layout\", and changed it"
+            ],
+            Texts(ReviewNotInTable.Lines(changes, [])));
     }
 
     // ###########################################################################################
@@ -144,7 +236,8 @@ public sealed class ReviewNotInTableTests
         Assert.Empty(ReviewNotInTable.Lines(changes, []));
     }
 
-    // A long list names a few rows and counts the rest, so one line stays one line.
+    // A long list names a few changes and counts the rest, so a board relabelled wholesale does not
+    // push the table off the screen. The heading still counts them all.
     [Fact]
     public void A_long_list_of_rows_is_cut_short_and_counted()
     {
@@ -154,10 +247,13 @@ public sealed class ReviewNotInTableTests
 
         var changes = new ReviewChangeSummaryView(false, [Section(ReviewSummary.SectionComponentHighlights, changed: keys)]);
 
-        string line = Assert.Single(ReviewNotInTable.Lines(changes, [])).Text;
+        IReadOnlyList<string> lines = Texts(ReviewNotInTable.Lines(changes, []));
 
-        Assert.EndsWith("Schematic 1 / U6 and 3 more)", line, StringComparison.Ordinal);
-        Assert.DoesNotContain("U7", line, StringComparison.Ordinal);
+        Assert.Equal($"Component highlights have [{ReviewNotInTable.MaximumNamedRows + 3}] changes:", lines[0]);
+        Assert.Equal(ReviewNotInTable.MaximumNamedRows + 2, lines.Count);
+        Assert.Equal("Changed component [U6] on schematic \"Schematic 1\"", lines[^2]);
+        Assert.Equal("and [3] more", lines[^1]);
+        Assert.DoesNotContain(lines, line => line.Contains("U7", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -194,165 +290,12 @@ public sealed class ReviewNotInTableTests
         Assert.Empty(ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, []), []));
     }
 
-    // ------------------------------------------------------------------ Files (code review, 2026-09-26)
-
-    private static SubmittedFileFact File(string name, string hash = "aa", string? published = null) =>
-        new($"Manu1/Hardware1/Board1/{name}", hash, 10, SubmissionFileScope.Own, IsReferenced: true, PublishedSha256: published);
-
     // ###########################################################################################
-    // *** A FILE REPLACED UNDER ITS OWN NAME COLOURS NOTHING IN THE TABLE. *** The cell's text is
-    // the path, which did not change - so without this line a replaced PDF or scan was approved
-    // with nothing on screen ever saying a file changed (the blind spot the retired change
-    // summary's file list used to close).
+    // *** NO FILE LINES HERE ANY MORE (owner request, 2026-09-30). *** "Files: [3] included ([1]
+    // replaced under the same name)" and "KiCad data included: ..." were said here, for files no
+    // cell shows as changed. The submission's Files view shows them, and the count on its button
+    // is what still says so before anything is opened - its tests, SubmissionViewsTests, carry
+    // every case these lines' tests did (a file replaced under its own name, a new one, KiCad data,
+    // nothing changed). Lines() no longer even takes the files, so nothing here can bring them back.
     // ###########################################################################################
-    [Fact]
-    public void A_file_replaced_under_its_own_name_is_said_although_no_row_changed()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [
-                File("manual.pdf", "new", published: "old"),
-                File("Sheet1.png", "aa", published: "aa"),
-                File("extra.png", "bb", published: null)
-            ]);
-
-        Assert.Equal("Files: [3] included ([1] new, [1] replaced under the same name)", Assert.Single(lines).Text);
-    }
-
-    // Nothing the approval would write: said nowhere, since every file is published as it is.
-    [Fact]
-    public void A_submission_changing_no_file_gets_no_files_line()
-    {
-        Assert.Empty(ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [File("Sheet1.png", "aa", published: "aa")]));
-    }
-
-    // ###########################################################################################
-    // *** A NEW SYSTEM GETS NO FILES LINE (owner request, 2026-09-26). *** Every file of a new
-    // system is cited by a row that is itself on screen, so the line said only what the table's own
-    // image / local file / link cells already say - and these lines exist for what the table CANNOT
-    // show. Fails against the version that counted them.
-    // ###########################################################################################
-    [Fact]
-    public void A_new_systems_files_are_not_counted_because_every_row_that_cites_them_is_shown()
-    {
-        Assert.Empty(ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(true, []),
-            [],
-            [File("Sheet1.png"), File("manual.pdf", "bb")]));
-    }
-
-    // ###########################################################################################
-    // The other half of that rule, and the reason it is not simply "never count files": on a
-    // PUBLISHED board a file swapped under its own unchanged path moves no cell, so it IS invisible
-    // and must still be said. Dropping the new-system line must not take this one with it.
-    // ###########################################################################################
-    [Fact]
-    public void A_published_boards_replaced_file_is_still_said_after_the_new_system_line_went()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [File("manual.pdf", "new", published: "old")]);
-
-        Assert.Equal("Files: [1] included ([1] replaced under the same name)", Assert.Single(lines).Text);
-    }
-
-    // A new system's KiCad data still gets its line: no row cites it, so nothing else shows it.
-    [Fact]
-    public void A_new_systems_KiCad_data_is_still_counted_although_its_other_files_are_not()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(true, []),
-            [],
-            [File("Sheet1.png"), KiCad("board.kicad_pcb", "cc")]);
-
-        Assert.Equal("KiCad data included: [1] file", Assert.Single(lines).Text);
-    }
-
-    // KiCad data has its own line and is not counted twice.
-    [Fact]
-    public void KiCad_files_are_left_to_their_own_line()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [File("Sheet1.png", "new", published: "old"), KiCad("board.kicad_pcb", "cc", published: null)]);
-
-        Assert.Equal(
-            [
-                "Files: [1] included ([1] replaced under the same name)",
-                "KiCad data included: [1] file ([1] new)"
-            ],
-            Texts(lines));
-    }
-
-    // ------------------------------------------------------------------ KiCad data (2026-09-26)
-
-    private static SubmittedFileFact KiCad(string name, string hash = "aa", string? published = null) =>
-        new($"Manu1/Hardware1/Board1/KiCad data/{name}", hash, 10, SubmissionFileScope.Own, IsReferenced: false, PublishedSha256: published);
-
-    // ###########################################################################################
-    // *** THE SUBMISSION'S KiCad DATA IS COUNTED ABOVE THE TABLE (owner request, 2026-09-26). ***
-    // KiCad files travel in the submission, cited by no row - no sheet shows them, so without this
-    // line they would be approved and published unseen. A new system says only how many, since
-    // everything of it is new; a published board says what moved against the tree.
-    // ###########################################################################################
-    [Fact]
-    public void A_new_systems_KiCad_data_is_counted_without_new_or_changed()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(true, []),
-            [],
-            [KiCad("board.kicad_pcb"), KiCad("board.kicad_sch", "bb"), KiCad("Pages/vic.kicad_sch", "cc")]);
-
-        ReviewNoteLine line = Assert.Single(lines);
-        Assert.Equal("KiCad data included: [3] files", line.Text);
-        Assert.Equal(ReviewNoteKind.Change, line.Kind);
-        Assert.Equal(["3"], line.Runs.Where(run => run.IsCount).Select(run => run.Text));
-    }
-
-    [Fact]
-    public void A_published_boards_KiCad_data_says_what_is_new_and_what_changed()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [
-                KiCad("board.kicad_pcb", "aa", published: "aa"),
-                KiCad("board.kicad_sch", "bb", published: "old"),
-                KiCad("Pages/vic.kicad_sch", "cc", published: null)
-            ]);
-
-        Assert.Equal("KiCad data included: [3] files ([1] new, [1] changed)", Assert.Single(lines).Text);
-    }
-
-    // The commonest case for a published board: the folder travels untouched, said in one word so
-    // the maintainer does not go looking for a change that is not there.
-    [Fact]
-    public void KiCad_data_carried_unchanged_says_so()
-    {
-        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(
-            new ReviewChangeSummaryView(false, []),
-            [],
-            [KiCad("board.kicad_pcb", "aa", published: "aa")]);
-
-        Assert.Equal("KiCad data included: [1] file (unchanged)", Assert.Single(lines).Text);
-    }
-
-    // No KiCad files in the submission: no KiCad line. Other files are not KiCad data - the new
-    // image below is counted by the FILES line instead, which is the only line it may produce.
-    [Fact]
-    public void A_submission_without_KiCad_data_gets_no_KiCad_line()
-    {
-        var image = new SubmittedFileFact(
-            "Manu1/Hardware1/Board1/Sheet1.png", "aa", 10, SubmissionFileScope.Own, IsReferenced: true, PublishedSha256: null);
-
-        Assert.Equal(
-            ["Files: [1] included ([1] new)"],
-            Texts(ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, []), [], [image])));
-    }
 }

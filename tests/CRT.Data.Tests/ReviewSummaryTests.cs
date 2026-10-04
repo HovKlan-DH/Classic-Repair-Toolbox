@@ -242,8 +242,10 @@ public sealed class ReviewSummaryTests
     [Fact]
     public void A_rename_declared_for_another_section_does_not_move_a_row_here()
     {
+        // U9 is a different component, not U8 relabelled - or the summary would pair the two by
+        // their content (the next tests), whatever was declared.
         BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
-        BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9"));
+        BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9", friendly: "VIC"));
 
         ReviewChangeSummary summary = ReviewSummary.Compare(
             published,
@@ -255,6 +257,58 @@ public sealed class ReviewSummaryTests
         Assert.Empty(components.Renamed);
         Assert.Equal(["U9"], components.Added);
         Assert.Equal(["U8"], components.Removed);
+    }
+
+    // ###########################################################################################
+    // *** A RENAME NOBODY DECLARED IS STILL ONE ROW (owner decision, 2026-10-04). *** No client
+    // declares renames, so U8 relabelled U9 - nothing else of it changed - was one removed and one
+    // added here while the contributor's table showed ONE row changed. The summary pairs them by the
+    // table's own rule (BoardDataDiffer.PairRenamedRows).
+    // ###########################################################################################
+    [Fact]
+    public void A_row_whose_key_alone_changed_is_reported_as_renamed_without_being_declared()
+    {
+        BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
+        BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9"));
+
+        ReviewSectionChange components = ReviewSummaryTests.Components(ReviewSummary.Compare(published, submitted));
+
+        ReviewRenamedRow renamed = Assert.Single(components.Renamed);
+        Assert.Equal(("U8", "U9", false), (renamed.From, renamed.To, renamed.AlsoChanged));
+        Assert.Empty(components.Added);
+        Assert.Empty(components.Removed);
+        Assert.Equal(1, components.TotalChanges);
+    }
+
+    [Fact]
+    public void A_row_whose_key_AND_another_field_changed_is_still_a_removal_plus_an_addition()
+    {
+        BoardData published = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
+        BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U9", part: "251715-01"));
+
+        ReviewSectionChange components = ReviewSummaryTests.Components(ReviewSummary.Compare(published, submitted));
+
+        Assert.Empty(components.Renamed);
+        Assert.Equal(["U9"], components.Added);
+        Assert.Equal(["U8"], components.Removed);
+    }
+
+    // A highlight relabelled on its schematic - the same rectangle - is the case the maintainer's
+    // lines above the table name ("Renamed component [U8] to [U9] on schematic ...").
+    [Fact]
+    public void A_highlight_relabelled_on_the_same_rectangle_is_renamed()
+    {
+        var published = new BoardData { ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "S", BoardLabel = "U8", X = "1", Y = "2", Width = "3", Height = "4" }] };
+        var submitted = new BoardData { ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "S", BoardLabel = "U9", X = "1", Y = "2", Width = "3", Height = "4" }] };
+
+        ReviewSectionChange highlights = ReviewSummary.Compare(published, submitted).Sections
+            .Single(section => section.Section == ReviewSummary.SectionComponentHighlights);
+
+        ReviewRenamedRow renamed = Assert.Single(highlights.Renamed);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("S", "U8"), renamed.From);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("S", "U9"), renamed.To);
+        Assert.Empty(highlights.Added);
+        Assert.Empty(highlights.Removed);
     }
 
     // -----------------------------------------------------------------------------------

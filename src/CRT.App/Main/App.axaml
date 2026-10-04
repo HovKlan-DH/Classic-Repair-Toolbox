@@ -454,6 +454,27 @@
 			<Setter Property="Background" Value="{DynamicResource Main_TabUnderline_Selected}" />
 		</Style>
 
+		<!--
+		THE ADMINISTRATOR'S PADLOCK, EVERYWHERE IN CRT (owner request, 2026-10-04: "Mark all admin
+		locked things (generally everywhere in application) with the Font Awesome "fa-lock" icon, so it
+		is clear which things are applicable only for the admin. No title/helper text on this icon").
+		Font Awesome's solid "lock", U+F023, written as <TextBlock Classes="AdminLock" Text="&#xf023;" />
+		right after the name of anything only the administrator can use - today the administrator's
+		entries on the Maintainer tab's Account screen - and, deliberately, with NO tooltip.
+
+		The 1px top padding is not decoration: the padlock is drawn 32 units (of 512) taller than the
+		font's declared ascent, and without the room the top of its shackle is clipped. 1px is what
+		FontAwesomeGlyphMetrics works out for it at 11px; change the size and
+		TabMaintainerModesTests' padlock test says the new figure.
+		-->
+		<Style Selector="TextBlock.AdminLock">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Padding" Value="0,1,0,0" />
+			<Setter Property="Opacity" Value="0.7" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
 		<!-- Banner install button: explicit hover/pressed backgrounds -->
 		<Style Selector="Button.BannerInstallButton">
 			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />

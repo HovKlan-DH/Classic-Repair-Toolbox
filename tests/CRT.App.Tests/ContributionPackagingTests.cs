@@ -163,53 +163,6 @@ public class ContributionPackagingTests
         Assert.Null(ContributionPackaging.ResolveExistingFilePath("", "Commodore/C64/pin1.png"));
     }
 
-    // -------------------------------------------------------------- TryParseOutdatedVersionResponse
-
-    // The server rejects submissions from outdated application versions with a response body
-    // containing "OUTDATED_VERSION <newest>" (see Assets/Webserver/app-contribution/api/index.php).
-    // Token and version-right-after-it are the contract; the rest of the body is free text.
-    [Fact]
-    public void The_outdated_version_rejection_is_recognized_and_names_the_newest_version()
-    {
-        bool recognized = ContributionPackaging.TryParseOutdatedVersionResponse(
-            "ERROR: OUTDATED_VERSION 2.5.0 - this application version [2.3.0] is too old to contribute data - please update to version [2.5.0] or newer.",
-            out string newestVersion);
-
-        Assert.True(recognized);
-        Assert.Equal("2.5.0", newestVersion);
-    }
-
-    // A server that could not name the newest version still gets the "please update" handling,
-    // just without a concrete number.
-    [Fact]
-    public void An_outdated_version_rejection_without_a_version_number_is_still_recognized()
-    {
-        bool recognized = ContributionPackaging.TryParseOutdatedVersionResponse(
-            "ERROR: OUTDATED_VERSION - please update.",
-            out string newestVersion);
-
-        Assert.True(recognized);
-        Assert.Equal(string.Empty, newestVersion);
-    }
-
-    [Fact]
-    public void The_token_is_matched_case_insensitively()
-    {
-        Assert.True(ContributionPackaging.TryParseOutdatedVersionResponse(
-            "error: outdated_version 2.5.0-beta.1", out string newestVersion));
-        Assert.Equal("2.5.0-beta.1", newestVersion);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("Success")]
-    [InlineData("ERROR: The contribution zip does not contain ComponentContribution.json.")]
-    public void Other_responses_are_not_mistaken_for_the_outdated_version_rejection(string? responseBody)
-    {
-        Assert.False(ContributionPackaging.TryParseOutdatedVersionResponse(responseBody, out _));
-    }
-
     // -------------------------------------------------------------- IsDisplayableImageFile
 
     // The contribution editor uses this to decide whether a chosen component image can actually
@@ -292,43 +245,57 @@ public class ContributionPackagingTests
 
     // -------------------------------------------------------------- ValidateComponentImageFile
 
-    // "Add new component image" creates a row with every field blank, and it is perfectly normal
-    // for it to sit there while the rest of the row is filled in. What must not happen is that row
-    // being submitted: it would ship a component image entry pointing at nothing.
+    // Case 2 (2026-10-02). "Add new component image" creates a row with every field blank, and it
+    // is perfectly normal for it to sit there while the rest of the row is filled in. What must not
+    // happen is that row being saved: it would ship a component image entry declaring nothing.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void A_row_that_never_had_a_file_chosen_reports_NoFileSelected(string? storedPath)
+    public void A_row_with_no_file_and_no_note_is_refused(string? storedPath)
     {
         Assert.Equal(
-            ContributionPackaging.ComponentImageFileProblem.NoFileSelected,
-            ContributionPackaging.ValidateComponentImageFile(storedPath));
+            ContributionPackaging.ComponentImageFileProblem.NoFileOrNote,
+            ContributionPackaging.ValidateComponentImageFile(storedPath, note: string.Empty));
     }
 
-    // A chosen file of the wrong type is a different problem from no file at all, and the editor
-    // says so differently - so the two must not collapse into one "row is bad" answer.
+    // Case 3. Spaces are not a note - the table and the server trim them away the same way, so a
+    // row "kept" by a note of blanks would be the empty row of case 2 everywhere else.
     [Theory]
-    [InlineData("baselines.xlsx")]
-    [InlineData("datasheet.pdf")]
-    [InlineData("logo.svg")]
-    public void A_row_holding_a_file_the_app_cannot_draw_reports_NotDisplayable(string storedPath)
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public void A_row_with_no_file_and_a_note_of_only_spaces_is_refused(string note)
+    {
+        Assert.Equal(
+            ContributionPackaging.ComponentImageFileProblem.NoFileOrNote,
+            ContributionPackaging.ValidateComponentImageFile(string.Empty, note));
+    }
+
+    // Case 4. A chosen file of the wrong type is a different problem from no file at all, and the
+    // editor says so differently - so the two must not collapse into one "row is bad" answer. A
+    // note does not excuse it: the row still names a file that draws as an empty frame.
+    [Theory]
+    [InlineData("baselines.xlsx", "")]
+    [InlineData("datasheet.pdf", "")]
+    [InlineData("logo.svg", "")]
+    [InlineData("pinout.pdf", "Compatible part-number: 1N4148")]
+    public void A_file_the_app_cannot_display_is_refused_with_or_without_a_note(string storedPath, string note)
     {
         Assert.Equal(
             ContributionPackaging.ComponentImageFileProblem.NotDisplayable,
-            ContributionPackaging.ValidateComponentImageFile(storedPath));
+            ContributionPackaging.ValidateComponentImageFile(storedPath, note));
     }
 
-    // Both shapes a row can hold: an absolute path from the file picker, and the relative path a
-    // row loaded from existing board data carries.
+    // Case 5. Both shapes a row can hold: an absolute path from the file picker, and the relative
+    // path a row loaded from existing board data carries.
     [Theory]
     [InlineData("/pictures/scope/pin1.png")]
     [InlineData("Commodore/C64/250407/pin1.jpg")]
-    public void A_row_holding_a_displayable_image_reports_None(string storedPath)
+    public void A_displayable_file_and_no_note_is_accepted(string storedPath)
     {
         Assert.Equal(
             ContributionPackaging.ComponentImageFileProblem.None,
-            ContributionPackaging.ValidateComponentImageFile(storedPath));
+            ContributionPackaging.ValidateComponentImageFile(storedPath, note: string.Empty));
     }
 
     // The validation deliberately does NOT look at the disk. A row can name a file that has not
@@ -339,7 +306,38 @@ public class ContributionPackagingTests
     {
         Assert.Equal(
             ContributionPackaging.ComponentImageFileProblem.None,
-            ContributionPackaging.ValidateComponentImageFile("/no/such/folder/pin1.png"));
+            ContributionPackaging.ValidateComponentImageFile("/no/such/folder/pin1.png", note: string.Empty));
+    }
+
+    // ###########################################################################################
+    // Case 8 (owner report, 2026-10-02: the editor refused to save C128 components whose "Pinout"
+    // image row carries only a note, while the Drafts tab's table showed nothing wrong). The editor
+    // and the table must refuse the SAME rows for naming no file - CR13 on the C128DCR board (no file,
+    // no note) in both, CR4 on the C128 board (a note, no file) in neither. Both sides are asked about
+    // the same rows here, so this fails if either one changes its mind alone.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("CR13", "", "", true)]
+    [InlineData("CR4", "", "Compatible part-number: 1N4148", false)]
+    [InlineData("CR5", "", "   ", true)]
+    [InlineData("CR6", "Commodore/C128/310378/cr6.png", "", false)]
+    public void The_editor_and_the_table_refuse_the_same_image_rows_for_naming_no_file(
+        string label, string file, string note, bool refused)
+    {
+        bool editorRefuses =
+            ContributionPackaging.ValidateComponentImageFile(file, note) == ContributionPackaging.ComponentImageFileProblem.NoFileOrNote;
+
+        var board = new BoardData();
+        board.Components.Add(new ComponentEntry { BoardLabel = label, Category = "Diode" });
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = label, Name = "Pinout", File = file, Note = note });
+
+        BoardTableSheet images = BoardTableDocument.Create(published: null, board).FindSheet(BoardWorkbookSchema.SheetComponentImages)!;
+        BoardTableRow row = Assert.Single(images.Rows);
+        BoardTableCell fileCell = row.Cells[images.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFile)];
+        bool tableRefuses = fileCell.Problems.Any(problem => problem.Code == "file.unreferenced" && problem.Level == BoardProblemLevel.Error);
+
+        Assert.Equal(refused, tableRefuses);
+        Assert.Equal(refused, editorRefuses);
     }
 
     // -------------------------------------------------------------- ValidateNewComponent

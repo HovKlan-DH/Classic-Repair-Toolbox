@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.OnlineHandling;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace CRT
@@ -34,16 +35,59 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // *** ONE BANNER, TWO REASONS A NEWER CRT IS NEEDED (code review, 2026-10-04). *** Newer main
+        // Excel data that this version cannot read, and the server's "update CRT" answer to the
+        // submission status check. Each is kept on its own, and the banner says every one that is
+        // set - it used to say only the last one shown, so either reason overwrote the other, and
+        // the server's words (shown once a run) could be lost for the rest of it. Dismissing the
+        // banner forgets both: a reason shown again after that (the main Excel one, after the next
+        // sync) comes back alone.
+        // ###########################################################################################
+        private const string MainExcelRequiresAppUpdateText =
+            "Newer main Excel data file is available, but requires a newer application version, due to breaking changes - please update the application. No more data updates will be given for this application version, and worst-case is that future data update will break UI or functionality. Consider yourself informed 😁";
+
+        private string? thisMainExcelUpdateReason;
+        private string? thisSubmissionsUpdateReason;
+
+        // ###########################################################################################
         // Shows the dedicated dismissable warning banner explaining that newer main Excel data
         // exists but requires a newer application version before it can be used.
         // ###########################################################################################
         private void ShowMainExcelRequiresAppUpdateBanner()
         {
-            this.MainExcelRequiresAppUpdateBannerText.Text =
-                "Newer main Excel data file is available, but requires a newer application version, due to breaking changes - please update the application. No more data updates will be given for this application version, and worst-case is that future data update will break UI or functionality. Consider yourself informed 😁";
-            this.MainExcelRequiresAppUpdateBannerDismissButton.IsEnabled = true;
-            this.MainExcelRequiresAppUpdateBanner.IsVisible = true;
+            this.thisMainExcelUpdateReason = Main.MainExcelRequiresAppUpdateText;
+            this.ShowRequiresAppUpdateBanner();
         }
+
+        // The main Excel reason, as the startup and the sync raise it - for tests.
+        internal void ShowMainExcelRequiresAppUpdateBannerForTests() => this.ShowMainExcelRequiresAppUpdateBanner();
+
+        // ###########################################################################################
+        // The same dismissable banner for the server's "update CRT" answer to the submission status
+        // check (2026-10-04) - beside the main Excel reason when that is shown too.
+        // ###########################################################################################
+        private void ShowSubmissionsRequireAppUpdateBanner(string text)
+        {
+            this.thisSubmissionsUpdateReason = text;
+            this.ShowRequiresAppUpdateBanner();
+        }
+
+        // Every reason that is set, one paragraph each.
+        private void ShowRequiresAppUpdateBanner()
+        {
+            string[] reasons = new[] { this.thisMainExcelUpdateReason, this.thisSubmissionsUpdateReason }
+                .Where(reason => !string.IsNullOrWhiteSpace(reason))
+                .Select(reason => reason!)
+                .ToArray();
+
+            this.MainExcelRequiresAppUpdateBannerText.Text = string.Join(Environment.NewLine + Environment.NewLine, reasons);
+            this.MainExcelRequiresAppUpdateBannerDismissButton.IsEnabled = true;
+            this.MainExcelRequiresAppUpdateBanner.IsVisible = reasons.Length > 0;
+        }
+
+        // The banner's words while it is shown, or null - for tests.
+        internal string? RequiresAppUpdateBannerTextForTests =>
+            this.MainExcelRequiresAppUpdateBanner.IsVisible ? this.MainExcelRequiresAppUpdateBannerText.Text : null;
 
         // ###########################################################################################
         // Hides the dedicated main-Excel compatibility warning banner and clears its persisted
@@ -52,6 +96,8 @@ namespace CRT
         private void HideMainExcelRequiresAppUpdateBanner()
         {
             this.MainExcelRequiresAppUpdateBanner.IsVisible = false;
+            this.thisMainExcelUpdateReason = null;
+            this.thisSubmissionsUpdateReason = null;
         }
 
         // ###########################################################################################
@@ -106,7 +152,7 @@ namespace CRT
         {
             this._currentSyncFileRelativePath = string.Empty;
 
-            this.SetSyncBannerText($"Checking data from {AppConfig.GetOnlineSourceLabel()} - please wait...");
+            this.SetSyncBannerText($"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...");
             this.SyncBannerRefreshButton.IsVisible = false;
             this.SyncBanner.IsVisible = true;
 
@@ -203,6 +249,25 @@ namespace CRT
                 {
                     _ = DataManager.DeleteOrphanAndUnusedFilesAsync();
                 }
+
+                // ###########################################################################################
+                // *** A SYNC RETIRES PUBLISHED DRAFTS TOO (owner report, 2026-10-01). *** The project
+                // owner synced after their submission reached production and expected the draft to
+                // go; it stayed until the periodic submission check happened to run.
+                //
+                // Retirement used to hang off the status check alone (Main.axaml.cs' launch check and
+                // Main.SubmissionChecks.cs' periodic one), which a sync never performs. But a sync is
+                // precisely WHEN a draft becomes retirable: DraftRetirement refuses to retire a draft
+                // until the published board is on this machine and equals it, and the sync is what
+                // brings those bytes down. So the receipt could have said "published" for days while
+                // the local board was still the old one, and only this sync made the two agree.
+                //
+                // The receipts are not re-asked here - that is the status check's job and it has its
+                // own interval. This only re-tests the drafts against the data that just arrived,
+                // which is cheap when nothing qualifies (FindAsync returns nothing and the method
+                // falls through to its refresh).
+                // ###########################################################################################
+                await this.RetirePublishedDraftsAsync();
             }
             finally
             {
@@ -279,7 +344,7 @@ namespace CRT
                     return;
                 }
 
-                this.SyncBannerText.Text = $"Checking data from {AppConfig.GetOnlineSourceLabel()} - please wait...";
+                this.SyncBannerText.Text = $"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...";
                 this.SyncBannerRefreshButton.IsVisible = false;
                 this.SyncBanner.IsVisible = true;
 

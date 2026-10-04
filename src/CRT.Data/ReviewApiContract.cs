@@ -91,11 +91,41 @@ namespace Handlers.DataHandling
     // and POST /api/accounts/accept-invitation (anybody holding a code). The two admin answers are
     // { message }; the acceptance answers AcceptInvitationAnswer.
     // ###########################################################################################
+    // What adding or removing a maintainer answers: the request's two ids echoed back (2026-10-04 - an
+    // anonymous object with these same fields until then). The Maintainer tab reads nothing of it.
+    public sealed record MaintainerChangeAnswer(string? SystemId, long? AccountId);
+
     public sealed record MaintainerInviteRequest(string? SystemId, string? Email);
 
     public sealed record InvitationWithdrawRequest(long InvitationId);
 
     public sealed record AcceptInvitationRequest(string? Code, string? DisplayName, string? Password);
+
+    // ###########################################################################################
+    // A MAINTAINER'S OWN ACCOUNT (owner request, 2026-10-03: the maintainer "can edit his/her own
+    // email address and name"). The Maintainer tab's "Your account" window, signed in:
+    //
+    //   GET  /api/accounts/me                                           - AccountAnswer
+    //   POST /api/accounts/me/name           ChangeNameRequest          - AccountChangeAnswer
+    //   POST /api/accounts/me/email          ChangeEmailRequest         - AccountChangeAnswer
+    //   POST /api/accounts/me/email/confirm  ConfirmEmailChangeRequest  - AccountChangeAnswer
+    //   POST /api/accounts/me/password       ChangePasswordRequest      - AccountChangeAnswer
+    //
+    // A refusal is a 400 carrying { message }, or { errors: [...] } for a name or password that
+    // breaks a rule - the two shapes the password reset already answers. 429 when too many mails
+    // were asked for from one address.
+    //
+    // THE SESSION IS ENOUGH - no current password (owner decision, 2026-10-03: "as I see it as you
+    // are already logged in"). A NEW ADDRESS still needs a code mailed to it, which proves the new
+    // mailbox is the maintainer's; only the capitals changing needs no code - it is the same mailbox.
+    // ###########################################################################################
+    public sealed record ChangeNameRequest(string? DisplayName);
+
+    public sealed record ChangeEmailRequest(string? NewEmail);
+
+    public sealed record ConfirmEmailChangeRequest(string? Code);
+
+    public sealed record ChangePasswordRequest(string? NewPassword);
 
     public sealed record UnusedFilesRemoveRequest(string? Tree, IReadOnlyList<string>? Files);
 
@@ -115,6 +145,10 @@ namespace Handlers.DataHandling
 
     // A saved amendment: its version, and any warnings it raised.
     public sealed record AmendAnswer(int Version, IReadOnlyList<ValidationFinding> Findings);
+
+    // An amendment or a system's table edit that its checks refused: the sentence to show, and the
+    // findings behind it (2026-10-04 - an anonymous object with these same fields until then).
+    public sealed record FindingsRefusalAnswer(string Error, IReadOnlyList<ValidationFinding> Findings);
 
     // ###########################################################################################
     // What promoting one system from BETA to production would do. CanPublish is the one answer the
@@ -158,7 +192,16 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         IReadOnlyList<string>? UnchangedFiles = null,
         string? BetaDataUrl = null,
-        string? ProductionDataUrl = null);
+        string? ProductionDataUrl = null,
+
+        // ###########################################################################################
+        // Every file's size, by path (owner request, 2026-10-04: sizes in every file tree) - for the
+        // files Files, Removals and UnchangedFiles name: a removed one as production holds it, every
+        // other as BETA does, which is what it will be. The tree is drawn by the Maintainer tab from
+        // the plan (SystemFileEntries.ForPromotion), so the sizes travel beside it. A file missing
+        // from it shows no size. Optional: an older maintainer build ignores it.
+        // ###########################################################################################
+        IReadOnlyDictionary<string, long>? FileSizes = null);
 
     // ###########################################################################################
     // A SUBMISSION'S FILE TREE: the BETA data after approving it, against BETA now (owner request,
@@ -289,6 +332,21 @@ namespace Handlers.DataHandling
     //   - ChangesRequested / Rejected: sent back, or turned down, BY A MAINTAINER. A submission the
     //     automatic checks refused never reached anyone, and one replaced by the contributor's own
     //     newer submission is an earlier copy of the same work - neither is counted.
+    //
+    // *** THE CONTRIBUTOR'S WHOLE RECORD (owner request, 2026-09-30: "all information about the
+    // contributor, to get an honest opinion if this person can be trusted, so all data we can see
+    // for whatever he/she has contributed, and which has been accepted and rejected etc."). *** The
+    // Maintainer tab's Contributor view. Optional and trailing, so an older Maintainer tab reads
+    // this answer unchanged and an older server's answer reads as "not said":
+    //   - SignedIn: whether THIS submission was sent from an account (a verified address) or
+    //     without one (an address anybody could have typed);
+    //   - AccountCreatedUtc: since when that account exists - null without one;
+    //   - Submissions: the OTHER submissions the counts count, newest first - each one's system,
+    //     description, state in CRT's words, dates and what the contributor was told.
+    //
+    // *** PublishedToStable (owner request, 2026-10-01: "[1] published to stable") *** - how many
+    // of Published have reached the STABLE source; the rest of Published is in BETA only. Null
+    // from a server older than 3.9.0, which the Maintainer tab then words as plain "published".
     // ###########################################################################################
     public sealed record ReviewContributorFacts(
         string? Email,
@@ -296,13 +354,53 @@ namespace Handlers.DataHandling
         int Published,
         int Waiting,
         int ChangesRequested,
-        int Rejected);
+        int Rejected,
+        bool? SignedIn = null,
+        DateTimeOffset? AccountCreatedUtc = null,
+        IReadOnlyList<ContributorSubmissionEntry>? Submissions = null,
+        int? PublishedToStable = null);
+
+    // ###########################################################################################
+    // One of a contributor's other submissions, in the Contributor view (2026-09-30). State is the
+    // CONTRIBUTOR-FACING word, as SystemSubmissionEntry's is (ProductionPromotionRules
+    // .ContributorFacingState): "merged" is in BETA, "published" has reached production, "returned"
+    // was pushed back out of BETA - so a submission reads the same on every screen. DecisionComment
+    // is what the contributor was told.
+    // ###########################################################################################
+    public sealed record ContributorSubmissionEntry(
+        long Id,
+        string SystemId,
+        string? Summary,
+        string State,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset? DecidedUtc,
+        string? DecisionComment);
 
     public sealed record UnusedFilesRemoveAnswer(
         string Tree,
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> Kept,
         string? NotDoneBecause);
+
+    // ###########################################################################################
+    // POST /api/admin/manifest/rebuild - rebuilding dataChecksums.json for both data trees by hand
+    // (owner request, 2026-10-01). No request body: there is nothing to choose, the button does
+    // both trees. See CRT.Server's ManifestRebuildFlow for why it exists.
+    //
+    // `Headline` and each entry's `Message` are the SERVER's words, shown unchanged - so a server
+    // that learns a new outcome (a third tree, a new reason to skip one) says so without a CRT
+    // release. `Entries` is the number of files listed, or -1 for a failure; `Skipped` is a tree
+    // this server has not configured, which is not a failure.
+    // ###########################################################################################
+    public sealed record ManifestRebuildAnswer(
+        string Headline,
+        IReadOnlyList<ManifestRebuildEntry> Trees);
+
+    public sealed record ManifestRebuildEntry(
+        string Tree,
+        bool Skipped,
+        int Entries,
+        string Message);
 
     // ###########################################################################################
     // GET /api/review/production - the systems whose BETA is ahead of production, for this
@@ -352,6 +450,14 @@ namespace Handlers.DataHandling
     // looking. The revisions are the `systems` row's, null for a shipped board nothing has published.
     // ViewsLast30Days: how often CRT users looked at the board in the last 30 days, BETA-source views
     // left out (BoardViewStatistics, 2026-09-27); null from a server older than that.
+    // BetaContentHash: the `systems` row's record of BETA's content, which every publish to BETA and
+    // every push-back moves (2026-10-04) - so the Systems screen can tell its open table is out of
+    // date without reading the board. Null for a board nothing has published, or from an older server.
+    // ListedInBeta / ListedInStable (owner request, 2026-10-04: "I do not expect there should be cases
+    // where something can only be listed in stable? If so, it must be flagged in the left-sided menu
+    // 'Systems' list"): whether that source's newest main Excel data file lists the system in CRT's
+    // drop-down lists. Null when that list could not be read - or, for the stable one, when the server
+    // has no stable source - so a missing row is never claimed without looking.
     public sealed record SystemOverviewEntry(
         string SystemId,
         string Manufacturer,
@@ -365,9 +471,15 @@ namespace Handlers.DataHandling
         string? ProductionRevision,
         DateTimeOffset? ProductionPublishedUtc,
         int MaintainerCount,
-        int? ViewsLast30Days = null);
+        int? ViewsLast30Days = null,
+        string? BetaContentHash = null,
+        bool? ListedInBeta = null,
+        bool? ListedInStable = null);
 
-    public sealed record SystemDetailRequest(string? SystemId);
+    // `Tree` (2026-10-04) chooses the data a system's Board data and Files are read from:
+    // DataTreeNames.Production for the stable source, anything else - or none, as before - BETA.
+    // The detail route ignores it.
+    public sealed record SystemDetailRequest(string? SystemId, string? Tree = null);
 
     // Invitations: the ones not accepted yet (2026-09-27) - sent to an ADMINISTRATOR only, the one
     // person who can invite or withdraw; null for everybody else. History: what has happened to the
@@ -383,12 +495,147 @@ namespace Handlers.DataHandling
         IReadOnlyList<SystemHistoryEntry>? History = null,
         BoardViewStatistics? Views = null);
 
+    // ###########################################################################################
+    // A SYSTEM'S BOARD DATA AND FILES ON THE "SYSTEMS" SCREEN (owner request, 2026-10-03: "all the
+    // same functionalities, as the 'Contributor Submissions' has ... Board data (and I should be
+    // able to do the same edits)", and "Files (should not show changed files - just list all
+    // files)"). Each route POSTs SystemDetailRequest, because a system id carries slashes.
+    //
+    // POST /api/review/systems/table       {systemId} - SystemTableAnswer: BETA's board as rows.
+    // POST /api/review/systems/edit/check  SystemEditRequest - SystemEditCheckAnswer: what the edit
+    //                                      would remove from BETA, asked before the reason is.
+    // POST /api/review/systems/edit        SystemEditRequest - SystemEditAnswer: the edit, PUBLISHED.
+    // POST /api/review/systems/files       {systemId} - SystemFilesAnswer: every file the system uses.
+    //
+    // *** AN EDIT GOES STRAIGHT TO BETA (owner decision, 2026-10-03: "I do not think it should be
+    // necessary for that change to first go to 'Contributor Submissions' queue - instead it should go
+    // directly to the next queue, 'BETA > Stable', so it can directly be tested in BETA"). *** It
+    // replaced the same day's "Becomes a submission". The server still builds a submission from BETA's
+    // own files, from the maintainer's account, with the reason as its description - and then
+    // approves it at once as that maintainer, through the ordinary approval, so every rule an approval
+    // keeps (the files it removes, shared files, one submission in BETA per system) still holds.
+    //
+    // *** NOT WHILE THE SYSTEM WAITS IN BETA > STABLE (owner decision, same day: "If a system is
+    // already in 'BETA > Stable' queue, then it should simply disallow it, even if this is coming
+    // from a maintainer"). *** `MayEdit` is then false, with the reason.
+    //
+    // `ExpectedRemovals` is the list the check answered and the maintainer was shown; the edit is
+    // refused (409) when the publish would now remove anything else - an approval's own rule.
+    //
+    // `Fingerprint` is BETA's board as the table was opened on it, sent back with the edit: BETA
+    // published again meanwhile would otherwise be silently reverted by a table read before it.
+    // `MayEdit` is false for a system this account does not maintain (anybody may READ every system -
+    // "Everything for everyone"), with the reason in `MayNotEditReason`.
+    // ###########################################################################################
+    public sealed record SystemTableAnswer(
+        string SystemId,
+        string Fingerprint,
+        SubmissionRows Rows,
+        bool MayEdit,
+        string? MayNotEditReason = null,
+        string? BetaDataUrl = null,
+
+        // Where the STABLE source is published (2026-10-04) - set, with BetaDataUrl null, when the
+        // table is the stable source's (SystemDetailRequest.Tree), which is never editable.
+        string? ProductionDataUrl = null);
+
+    // `Summary` is the reason the maintainer gave - the submission's description. The check ignores it.
+    public sealed record SystemEditRequest(
+        string? SystemId,
+        string? Fingerprint,
+        string? Summary,
+        SubmissionRows? Rows,
+        IReadOnlyList<string>? ExpectedRemovals = null);
+
+    // What publishing the edit would remove from BETA - files only this board used, which it stops
+    // citing. Empty for nearly every edit.
+    public sealed record SystemEditCheckAnswer(IReadOnlyList<string> Removals);
+
+    // ###########################################################################################
+    // What sending the edit did. `Published`: it is in BETA at `Revision`, with `RemovedFiles` gone,
+    // and the system waits under BETA > Stable. Not published: the submission was made but the
+    // publish did not happen (`NotPublishedReason` - something changed between the check and the
+    // publish, say), so it waits under Contributor Submissions like any other, nothing lost.
+    // `Findings` are the warnings its content raised (errors refuse it instead).
+    // ###########################################################################################
+    public sealed record SystemEditAnswer(
+        long SubmissionId,
+        IReadOnlyList<ValidationFinding> Findings,
+        bool Published = false,
+        string? Revision = null,
+        IReadOnlyList<string>? RemovedFiles = null,
+        string? NotPublishedReason = null);
+
+    public sealed record SystemFilesAnswer(
+        string SystemId,
+        IReadOnlyList<SystemFileEntry> Files,
+        string? BetaDataUrl = null,
+
+        // Where the stable source is published (2026-10-04) - set when the files are the stable
+        // source's, whose entries open from there (SystemFileSource.Production).
+        string? ProductionDataUrl = null);
+
     // An invitation to maintain a system that has not been accepted yet, withdrawn, or let expire.
     public sealed record MaintainerInvitationEntry(long Id, string Email, DateTimeOffset InvitedUtc, DateTimeOffset ExpiresUtc);
 
     // What accepting an invitation did: the address the account was made for (the app fills it into
     // the sign-in box), the systems it now maintains, and the sentence to show.
     public sealed record AcceptInvitationAnswer(string Email, IReadOnlyList<string> SystemIds, string Message);
+
+    // ###########################################################################################
+    // The signed-in account, as GET /api/accounts/me answers it (2026-10-03 - an anonymous object
+    // with these same fields until then, read by nothing). MaintainerOf: the systems whose pools it
+    // is in - empty for an administrator, who is in every pool by definition. *** NO PASSWORD
+    // HASH, NO SESSION, NO TOKEN. ***
+    // ###########################################################################################
+    public sealed record AccountAnswer(
+        long Id,
+        string Email,
+        string DisplayName,
+        bool IsVerified,
+        bool IsAdministrator,
+        IReadOnlyList<string> MaintainerOf,
+        DateTimeOffset CreatedUtc,
+        DateTimeOffset? LastLoginUtc = null);
+
+    // What a change to the account did: the sentence to show, and the account as it is now. While a
+    // new address waits for its code, Account is null and CodeSent is true - the address has NOT
+    // changed yet.
+    public sealed record AccountChangeAnswer(string Message, AccountAnswer? Account = null, bool CodeSent = false);
+
+    // ###########################################################################################
+    // A session, as signing in and refreshing answer it (2026-10-04 - an anonymous object with these
+    // same fields until then, so nothing held the server's names to ReviewApiParser.ParseLogin's).
+    // *** RefreshToken IS THE BEARER TOKEN *** - see ReviewSession's header for that naming trap.
+    // ###########################################################################################
+    public sealed record SessionAnswer(string RefreshToken, DateTimeOffset ExpiresUtc, SessionAccountAnswer Account);
+
+    public sealed record SessionAccountAnswer(long Id, string Email, string DisplayName, bool IsVerified);
+
+    // ###########################################################################################
+    // One submission's detail, as GET /api/review/submissions/{id} answers it and
+    // ReviewApiParser.ParseSubmission reads it (2026-10-04 - an anonymous object with these same
+    // fields until then, so the API compatibility check could not see it). Changes is null when the
+    // submission's payload could not be loaded, which a maintainer must still be able to open;
+    // Amendment is null until a maintainer has changed the submission in the table.
+    // ###########################################################################################
+    public sealed record SubmissionDetailAnswer(
+        bool CanPublish,
+        ApprovalStatus Approval,
+        ReviewQueueEntry Submission,
+        SubmissionManifest? Manifest,
+        ReviewContributorFacts Contributor,
+        IReadOnlyList<ValidationFinding> Findings,
+        ReviewChangeSummary? Changes,
+        IReadOnlyList<string> PublishedFiles,
+        IReadOnlyDictionary<string, string> PublishedHashes,
+        IReadOnlyDictionary<string, string> SchematicImages,
+        IReadOnlyList<SubmittedFileFact> SubmittedFiles,
+        FileRemovalPreview Removals,
+        SubmissionAmendmentFact? Amendment);
+
+    // Who last changed a submission in the Maintainer tab's table, and to which version.
+    public sealed record SubmissionAmendmentFact(int Version, string By, DateTimeOffset AtUtc);
 
     // ###########################################################################################
     // One contributor to ONE system, and how their submissions to it went - the same person as
@@ -417,6 +664,9 @@ namespace Handlers.DataHandling
     //
     // DraftDiscardedUtc (owner request, 2026-09-28): when the contributor discarded their own draft
     // in CRT after sending this - see DraftDiscardContract.
+    //
+    // Changes (owner request, 2026-10-04): what it changed as it went into BETA - SubmissionChanges,
+    // recorded by the publish. Null for one never published, or published before they were kept.
     public sealed record SystemSubmissionEntry(
         long Id,
         string? ContactEmail,
@@ -425,7 +675,8 @@ namespace Handlers.DataHandling
         DateTimeOffset CreatedUtc,
         DateTimeOffset? DecidedUtc,
         string? DecisionComment,
-        DateTimeOffset? DraftDiscardedUtc = null);
+        DateTimeOffset? DraftDiscardedUtc = null,
+        SubmissionChanges? Changes = null);
 
     // ###########################################################################################
     // WHERE A NEW SYSTEM GOES IN THE DROP-DOWN LISTS (owner request, 2026-09-27): "The maintainer
@@ -479,6 +730,23 @@ namespace Handlers.DataHandling
     // board is already there. Otherwise it is written when the system is published to BETA.
     public sealed record SetPlacementAnswer(SystemPlacement Placement, bool ListedInBeta, string Message);
 
+    // ###########################################################################################
+    // THE ORDER OF THE DROP-DOWN LISTS, SET BY THE ADMINISTRATOR (owner request, 2026-10-04: "a
+    // possibility to be able to sort the list of systems, which then gets saved to both sources
+    // (BETA + stable) after my save"). POST /api/admin/systems/order.
+    //
+    // The request is every system BETA's list holds, by id, in the order wanted - all of them, so
+    // a list that changed since it was read (a system placed meanwhile) is refused, not half
+    // applied. The stable source's list follows the same order (MasterListing.ArrangeAs).
+    //
+    // The answer: whether each list was rewritten - StableChanged null when the server has no stable
+    // source - and, when BETA's list was saved but something after it was not (the stable list, a
+    // checksum manifest), what. CRT then shows that as well as the save.
+    // ###########################################################################################
+    public sealed record SystemOrderRequest(IReadOnlyList<string>? SystemIds);
+
+    public sealed record SystemOrderAnswer(bool BetaChanged, bool? StableChanged, string? Problem = null);
+
     // GET /api/admin/systems - every system with its maintainers, for the administrator's Maintainers
     // window.
     public sealed record MaintainerSystemsAnswer(IReadOnlyList<MaintainerSystemEntry> Systems);
@@ -508,4 +776,171 @@ namespace Handlers.DataHandling
         bool IsAdministrator,
         bool IsVerified,
         bool IsLocked);
+
+    // ###########################################################################################
+    // DELETING A SYSTEM COMPLETELY (owner request, 2026-10-03: "as admin, I should be able to have
+    // a possibility to delete a system completely, which then will remove it from everywhere -
+    // including BETA and stable sources ... part of the 'Admin' menu ... with a confirmation box").
+    // Administrator only - CRT.Server's SystemDeletionFlow.
+    //
+    // POST /api/admin/systems/delete/plan  SystemDetailRequest - SystemDeletePlanAnswer: what would go.
+    // POST /api/admin/systems/delete       SystemDeleteRequest - SystemDeleteAnswer: what went.
+    //
+    // *** WHAT WAS CONFIRMED IS WHAT IS DELETED. *** Fingerprint covers every file in the system's
+    // folder in both trees, its rows in both drop-down lists and its submissions. The delete sends it
+    // back and is refused (409) when the server would now delete something else - a publish or a new
+    // submission in between - so nothing goes that the administrator was not shown.
+    //
+    // BlockedBecause: why it cannot be deleted at all, in the server's words (an older main Excel
+    // data file lists it, or another board uses a file in its folder). Null when it can.
+    //
+    // OpenSubmissions: those still in play - waiting for review, approved once, or in BETA. Their
+    // contributors are mailed (owner decision, 2026-10-03: "Delete them and mail the contributors"),
+    // so Reason is REQUIRED when there are any: it is quoted in that mail. State is the word the
+    // contributor is told (SubmissionReceiptPresenter.DescribeState reads it).
+    // ###########################################################################################
+    public sealed record SystemDeleteRequest(string? SystemId, string? Fingerprint, string? Reason = null);
+
+    public sealed record SystemDeletePlanAnswer(
+        string SystemId,
+        string Manufacturer,
+        string Hardware,
+        string Board,
+        string Fingerprint,
+        int BetaFiles,
+        int ProductionFiles,
+        bool ListedInBeta,
+        bool ListedInProduction,
+        bool HasRecord,
+        int Submissions,
+        int Maintainers,
+        int Invitations,
+        IReadOnlyList<SystemDeleteOpenSubmission> OpenSubmissions,
+        string? BlockedBecause = null);
+
+    public sealed record SystemDeleteOpenSubmission(
+        long Id,
+        string State,
+        string Contributor,
+        string? Summary,
+        DateTimeOffset CreatedUtc);
+
+    public sealed record SystemDeleteAnswer(
+        string SystemId,
+        int BetaFilesRemoved,
+        int ProductionFilesRemoved,
+        int SubmissionsDeleted,
+        int ContributorsMailed);
+
+    // ###########################################################################################
+    // RESETTING THE CONTRIBUTION DATA (owner request, 2026-10-04: "When I go-live with this, it
+    // should not have old data visible ... the real sources of BETA and stable must not be touched,
+    // but all contributor and maintainer data should go away"). Administrator only - CRT.Server's
+    // DataResetFlow - and only while the server's AllowDataReset setting is on.
+    //
+    // GET  /api/admin/reset  - DataResetPlanAnswer: what a reset would delete, and whether it may.
+    // POST /api/admin/reset  DataResetRequest - DataResetAnswer: what was deleted.
+    //
+    // *** WHAT WAS SHOWN IS WHAT IS DELETED. *** Fingerprint covers the submissions, accounts,
+    // maintainers, invitations and system records; the reset sends it back and is refused (409) when
+    // any of them changed since - a new submission, a new account. The history, the board views and
+    // the API usage counts are counted but NOT in it: they grow by themselves, every few minutes, and
+    // would make every reset refuse.
+    //
+    // Accounts counts the accounts that go - every one but the administrators. Administrators counts
+    // those kept, with their sessions: somebody must be able to sign in afterwards, and the
+    // administrator pressing the button stays signed in.
+    //
+    // Systems counts the system RECORDS that go - all of them. What a record holds about the data
+    // trees (BETA's and the stable source's content hashes, a new system's place in the drop-down
+    // lists) is re-made by the next publish; every flow already treats a system with no record as
+    // one the pipeline has never touched, which after a reset is what every system is.
+    //
+    // NotEnabledBecause: the server's words for why the reset is switched off; null when it is on.
+    // ###########################################################################################
+    public sealed record DataResetRequest(string? Fingerprint);
+
+    public sealed record DataResetPlanAnswer(
+        bool IsEnabled,
+        string Fingerprint,
+        int Submissions,
+        int Accounts,
+        int Administrators,
+        int Maintainers,
+        int Invitations,
+        int Systems,
+        int HistoryEntries,
+        int BoardViews,
+        int ApiUsageRows,
+        string? NotEnabledBecause = null);
+
+    public sealed record DataResetAnswer(
+        int SubmissionsDeleted,
+        int AccountsDeleted,
+        int MaintainersDeleted,
+        int InvitationsDeleted,
+        int SystemsDeleted,
+        int HistoryEntriesDeleted,
+        int BoardViewsDeleted,
+        int ApiUsageRowsDeleted,
+        int StoredFilesRemoved);
+
+    // ###########################################################################################
+    // WHICH CRT VERSIONS CALL WHICH ROUTE (owner request, 2026-10-04: "how about tracking the API
+    // end-points, to see if it is possible to retire any, if almost no versions uses it any more").
+    // Administrator only - CRT.Server's ApiUsageFlow.
+    //
+    // GET /api/admin/api-usage?days=90 - ApiUsageAnswer.
+    //
+    // Routes: EVERY route the server maps, called or not - a route nobody called is the answer most
+    // worth seeing. Method and Route are the route's pattern ("POST", "/api/review/systems/edit"),
+    // never a real path, so no id is ever counted. Area is ClientVersionPolicy's ("Forever",
+    // "Submissions", "Maintainer"), sent as text so a new area never breaks an older reader;
+    // NeverRetired is true for the routes every CRT ever released sends (owner decision, 2026-10-04:
+    // the check-in, feedback, board views, the health check and the 2.x contribution address).
+    //
+    // Versions: per CRT version that called it in the window - the version a User-Agent names, or
+    // ApiUsageVersion.NotCrt for a request naming none (a browser, an uptime check).
+    //
+    // Installations: per CRT version, how many installations launched it in the window (distinct
+    // addresses in the launch check-ins) and how many launches - so "who still runs 3.0.0" can be
+    // read beside "who still calls this route". The addresses never leave the server.
+    // ###########################################################################################
+    public sealed record ApiUsageAnswer(
+        int Days,
+        IReadOnlyList<ApiUsageRoute> Routes,
+        IReadOnlyList<ApiUsageInstallations> Installations);
+
+    public sealed record ApiUsageRoute(
+        string Method,
+        string Route,
+        string Area,
+        bool NeverRetired,
+        long Calls,
+        DateTimeOffset? LastUtc,
+        IReadOnlyList<ApiUsageVersion> Versions);
+
+    public sealed record ApiUsageVersion(string Version, long Calls, DateTimeOffset LastUtc)
+    {
+        // A request whose User-Agent names no CRT version.
+        public const string NotCrt = "(not CRT)";
+
+        // More different versions than the server counts apart in a day - see ApiUsageCounter.
+        public const string Other = "(other)";
+    }
+
+    public sealed record ApiUsageInstallations(string Version, int Installations, int Launches);
+
+    // ###########################################################################################
+    // What GET /api/health answers with - {"status":"ok","version":"4.3.2","utc":"..."}. Built by
+    // CRT.Server's HealthReport; read by the Maintainer tab, which shows the version under
+    // Account > "Server version" (owner request, 2026-10-04: "I would like to see the server version
+    // listed, so it is clear to me what has been deployed"). Here, not in CRT.Server, since 2026-10-04
+    // so both ends use the one record (ReviewWireContractTests).
+    //
+    // ApiRevision (server 4.6.0) is the server's ClientVersionContract.ApiRevision, which the tab shows
+    // beside its own under Account > "Server version" - so a maintainer sees whether CRT or the
+    // server is behind. Null from an older server.
+    // ###########################################################################################
+    public sealed record HealthStatus(string Status, string Version, DateTimeOffset Utc, int? ApiRevision = null);
 }

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Handlers.MaintainerHandling;
 using Handlers.DataHandling;
 using CRT;
@@ -34,11 +35,12 @@ public sealed class SystemViewTests
     }
 
     // ###########################################################################################
-    // The order a maintainer asks in: which system and where its data is, who maintains it, who has
-    // contributed and how it went, then the submissions - each with what the contributor was told.
+    // Every view's words, in the order TextsForTests reads them: which system and what is off about
+    // it, who maintains it, its statistics (none counted here, and SAID so), who has contributed and
+    // how it went, then its history - a card per submission, with what the contributor was told.
     // ###########################################################################################
     [Fact]
-    public void A_system_reads_as_its_state_then_maintainers_contributors_and_submissions()
+    public void A_system_reads_as_its_state_then_maintainers_contributors_and_history()
     {
         UiTest.Run(() =>
         {
@@ -53,31 +55,43 @@ public sealed class SystemViewTests
             Assert.Equal(
                 [
                     "Commodore / C64 / 250407",
-                    "BETA ahead of production - 1 maintainer",
-                    "BETA revision 2026-September-25",
+                    "BETA ahead of the stable source - 1 maintainer",
                     "Maintainer",
                     "Anna (anna@example.com)",
+                    SystemsDisplay.NoViewCountsLine,
                     "Contributor",
                     "hest@mailscan.dk",
                     "2 accepted - last sent 2026-September-25",
-                    "Recent submissions",
-                    "Corrected U8.",
-                    "#41 - Taken back out of BETA - waiting for review again - sent 2026-September-25 - hest@mailscan.dk",
+                    "History - 1 submission, newest first",
+                    "September 2026",
+                    "25 Sep",
+                    "#41 - Corrected U8.",
+                    "Taken back out of BETA - waiting for review again",
+                    "2026-September-25 - sent by hest@mailscan.dk",
                     "Told the contributor: U7 is the wrong revision."
                 ],
                 view.TextsForTests());
+
+            // The revisions are the stage line's since 2026-10-04 - with the newest submission, and
+            // where BETA waits.
+            Assert.Equal(
+                [
+                    $"Submitted: #41 Taken back out of BETA - waiting for review again - sent {SubmissionReceiptPresenter.FormatDate(SystemViewTests.Noon)}",
+                    $"BETA: Revision 2026-September-25 - ahead of stable - waiting under {MaintainerScreenWording.BetaQueueQuoted}",
+                    "Stable: In the stable source"
+                ],
+                view.StagesForTests());
 
             Assert.Equal("Commodore/C64/250407", view.ShownSystem!.SystemId);
         });
     }
 
     // ###########################################################################################
-    // Board views (owner request, 2026-09-27): after the maintainers, before the contributors - and
-    // no section at all when the server sent no counts, since "no views" would be a claim about the
-    // board the server never made.
+    // Board views (owner request, 2026-09-27) are the STATISTICS view's since 2026-10-03 - and no
+    // longer on the system's status line ("remove the 'no views in 30 days' from the data").
     // ###########################################################################################
     [Fact]
-    public void A_systems_views_sit_between_its_maintainers_and_its_contributors()
+    public void A_systems_board_views_are_its_Statistics_view_and_not_on_its_status_line()
     {
         UiTest.Run(() =>
         {
@@ -90,12 +104,6 @@ public sealed class SystemViewTests
                 [],
                 Views: new BoardViewStatistics(12, 48, 310, 3, [new("DK", "Denmark", 120)])));
 
-            IReadOnlyList<string> texts = view.TextsForTests();
-
-            int maintainer = texts.ToList().IndexOf("Anna (anna@example.com)");
-            int heading = texts.ToList().IndexOf("Views in CRT");
-
-            Assert.True(maintainer >= 0 && heading == maintainer + 1, string.Join(" | ", texts));
             Assert.Equal(
                 [
                     "Views in CRT",
@@ -104,13 +112,17 @@ public sealed class SystemViewTests
                     "Not counted above: [3] from CRTs downloading BETA data in the last 30 days.",
                     "A view is this board on screen in CRT for at least 10 seconds, counted every time."
                 ],
-                texts.Skip(heading).Take(5));
-            Assert.Contains("BETA ahead of production - 1 maintainer - 48 views in 30 days", texts);
+                view.SectionTextsForTests("ViewsSection"));
+
+            Assert.Contains("BETA ahead of the stable source - 1 maintainer", view.TextsForTests());
+            Assert.DoesNotContain(view.TextsForTests(), text => text.Contains("views in 30 days", StringComparison.Ordinal));
         });
     }
 
+    // No counts from the server: the view says so - never "no views", which would be a claim about
+    // the board the server never made.
     [Fact]
-    public void Without_counts_from_the_server_there_is_no_views_section()
+    public void Without_counts_from_the_server_the_Statistics_view_says_none_were_sent()
     {
         UiTest.Run(() =>
         {
@@ -118,10 +130,8 @@ public sealed class SystemViewTests
 
             view.ShowDetailForTests(new SystemDetailAnswer(SystemViewTests.System(), [], [], []));
 
-            IReadOnlyList<string> texts = view.TextsForTests();
-
-            Assert.DoesNotContain("Views in CRT", texts);
-            Assert.DoesNotContain(texts, text => text.StartsWith("No views", StringComparison.Ordinal) || text.Contains(" in 30 days", StringComparison.Ordinal));
+            Assert.Equal([SystemsDisplay.NoViewCountsLine], view.SectionTextsForTests("ViewsSection"));
+            Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("No views", StringComparison.Ordinal));
         });
     }
 
@@ -140,7 +150,7 @@ public sealed class SystemViewTests
 
             Assert.Contains("Nobody maintains this system - its submissions go to the administrator.", texts);
             Assert.Contains("Nobody has contributed to this system through CRT yet.", texts);
-            Assert.Contains("No submissions yet.", texts);
+            Assert.Contains("Nothing has happened to this system yet", texts);
         });
     }
 
@@ -161,8 +171,9 @@ public sealed class SystemViewTests
     }
 
     // ###########################################################################################
-    // A system not in CRT's drop-down lists gets the placement panel above its sections (owner
-    // request, 2026-09-27); a listed one names the entry CRT shows it under instead.
+    // A system not in CRT's drop-down lists gets the placement panel in its Maintainer view (owner
+    // request, 2026-09-27), and a line above the views saying where it is; a listed one names the
+    // entry CRT shows it under instead.
     // ###########################################################################################
     private static SystemListingAnswer Listing() =>
         new(
@@ -190,11 +201,13 @@ public sealed class SystemViewTests
             Assert.True(view.PlacementForTests.IsVisible);
             Assert.Equal("Commodore/C128/310378 Open128", view.PlacementForTests.ShownSystemId);
             Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("In CRT's drop-down lists", StringComparison.Ordinal));
+            Assert.Contains("Needs a place in the drop-down lists - give it one under Maintainer", view.TextsForTests());
 
             view.ShowDetailForTests(SystemViewTests.Detail(SystemViewTests.System()));
 
             Assert.False(view.PlacementForTests.IsVisible);
             Assert.Contains("In CRT's drop-down lists as Commodore 64 / 250407 (long board)", view.TextsForTests());
+            Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("Needs a place", StringComparison.Ordinal));
         });
     }
 
@@ -230,245 +243,91 @@ public sealed class SystemViewTests
             List<Avalonia.Controls.Documents.Run> runs = state.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
 
             Assert.Equal(
-                ["not in production yet", "nobody assigned"],
+                ["not in the stable source yet", "nobody assigned"],
                 runs.Where(run => run.FontWeight == Avalonia.Media.FontWeight.Bold).Select(run => run.Text));
-            Assert.Contains("In BETA - not in production yet - nobody assigned", view.TextsForTests());
+            Assert.Contains("In BETA - not in the stable source yet - nobody assigned", view.TextsForTests());
         });
     }
 
-    // -----------------------------------------------------------------------------------
-    // Setting maintainers (owner request, 2026-09-27: moved here from Admin - "either select an
-    // existing maintainer or invite a new maintainer via email").
-    // -----------------------------------------------------------------------------------
-
-    private static SystemDetailAnswer PoolDetail(IReadOnlyList<MaintainerInvitationEntry>? invitations = null) =>
-        new(
-            SystemViewTests.System(),
-            [new PoolMaintainerEntry(7, "Anna", "anna@example.com")],
-            [],
-            [],
-            invitations);
-
-    private static readonly IReadOnlyList<ReviewAccountRow> Accounts =
-    [
-        new(7, "anna@example.com", "Anna", false, true, false),
-        new(8, "bo@example.com", "Bo", false, true, false),
-        new(9, "cy@example.com", "Cy", false, false, false),
-    ];
-
-    // The administrator's view, with every change answered by the test and remembered.
-    private static (SystemView View, List<PoolAction> Sent) AdminView(IReadOnlyList<MaintainerInvitationEntry>? invitations = null)
-    {
-        var view = new SystemView();
-        var sent = new List<PoolAction>();
-
-        view.PoolActionOverrideForTests = action =>
-        {
-            sent.Add(action);
-            return Task.FromResult(ReviewApiResult<string>.Ok(action.Kind == PoolActionKind.Invite ? "An invitation is on its way to x." : "Done."));
-        };
-
-        view.SetAdministrator(true);
-        view.ShowDetailForTests(SystemViewTests.PoolDetail(invitations));
-        view.UseAccountsForTests(SystemViewTests.Accounts);
-
-        return (view, sent);
-    }
-
-    private static Button[] Buttons(SystemView view, string buttonClass) =>
-        view.FindControl<StackPanel>("MaintainersSection")!.Children
-            .OfType<Grid>()
-            .SelectMany(grid => grid.Children.OfType<Button>())
-            .Where(button => button.Classes.Contains(buttonClass))
-            .ToArray();
-
-    private static void Click(Button button) =>
-        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
-    // A maintainer who is not an administrator reads the section as before - no buttons, no fields.
+    // ###########################################################################################
+    // THE HISTORY VIEW (owner request, 2026-10-04: "the full history of what has happened with this
+    // board, in an 'easy to overview' way"): by month, newest first, the day in its own column, one
+    // card per submission - its steps oldest first, where it stands now, and WHAT IT CHANGED - and a
+    // line for anything else. The grouping and words are SystemHistoryDisplay's, tested there; this
+    // pins what the view puts where.
+    // ###########################################################################################
     [Fact]
-    public void Only_an_administrator_gets_the_maintainer_controls()
+    public void The_history_view_shows_a_card_per_submission_with_what_it_changed_and_other_events_as_lines()
     {
         UiTest.Run(() =>
         {
             var view = new SystemView();
-            view.ShowDetailForTests(SystemViewTests.PoolDetail([new MaintainerInvitationEntry(3, "new@example.com", SystemViewTests.Noon, SystemViewTests.Noon.AddDays(14))]));
 
-            Assert.False(view.FindControl<StackPanel>("MaintainerAdminPanel")!.IsVisible);
-            Assert.Empty(SystemViewTests.Buttons(view, "RemoveMaintainer"));
-            Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("Invited", StringComparison.Ordinal));
-
-            view.SetAdministrator(true);
-
-            Assert.True(view.FindControl<StackPanel>("MaintainerAdminPanel")!.IsVisible);
-            Assert.Single(SystemViewTests.Buttons(view, "RemoveMaintainer"));
-            Assert.Contains("Invited: new@example.com", view.TextsForTests());
-        });
-    }
-
-    // The list offers everybody not already maintaining this system; choosing one and pressing Add
-    // sends that account for this system.
-    [Fact]
-    public async Task Adding_sends_the_chosen_account_for_this_system()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            (SystemView view, List<PoolAction> sent) = SystemViewTests.AdminView();
-
-            ComboBox combo = view.FindControl<ComboBox>("AddAccountCombo")!;
-            Assert.Equal(2, combo.ItemCount);
-
-            combo.SelectedIndex = 0;
-            await view.AddChosenAccountAsync();
-
-            Assert.Equal([new PoolAction(PoolActionKind.Add, "Commodore/C64/250407", AccountId: 8, Who: "Bo")], sent);
-            Assert.Equal("Bo now maintains Commodore/C64/250407.", view.FindControl<TextBlock>("PoolMessageText")!.Text);
-        });
-    }
-
-    // An account that cannot be granted is refused here, in the list's own words, before anything is sent.
-    [Fact]
-    public async Task An_account_that_cannot_be_a_maintainer_is_refused_before_anything_is_sent()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            (SystemView view, List<PoolAction> sent) = SystemViewTests.AdminView();
-
-            view.FindControl<ComboBox>("AddAccountCombo")!.SelectedIndex = 1;
-            await view.AddChosenAccountAsync();
-
-            Assert.Empty(sent);
-            Assert.StartsWith("cy@example.com cannot be a maintainer:", view.FindControl<TextBlock>("PoolMessageText")!.Text, StringComparison.Ordinal);
-
-            view.FindControl<ComboBox>("AddAccountCombo")!.SelectedIndex = -1;
-            await view.AddChosenAccountAsync();
-            Assert.Equal("Choose an account first.", view.FindControl<TextBlock>("PoolMessageText")!.Text);
-        });
-    }
-
-    // ###########################################################################################
-    // Inviting sends the typed address and shows the server's sentence; an address that already
-    // has an account is pointed at the list instead, without a round trip.
-    // ###########################################################################################
-    [Fact]
-    public async Task Inviting_sends_the_typed_address_and_an_existing_account_is_pointed_at_the_list()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            (SystemView view, List<PoolAction> sent) = SystemViewTests.AdminView();
-            TextBox box = view.FindControl<TextBox>("InviteEmailBox")!;
-
-            box.Text = "BO@example.com";
-            await view.InviteTypedAddressAsync();
-
-            Assert.Empty(sent);
-            Assert.Equal("bo@example.com already has an account - choose it in the list above instead.", view.FindControl<TextBlock>("PoolMessageText")!.Text);
-
-            box.Text = "  new@example.com ";
-            await view.InviteTypedAddressAsync();
-
-            Assert.Equal([new PoolAction(PoolActionKind.Invite, "Commodore/C64/250407", Email: "new@example.com", Who: "new@example.com")], sent);
-            Assert.Equal("An invitation is on its way to x.", view.FindControl<TextBlock>("PoolMessageText")!.Text);
-            Assert.Equal(string.Empty, box.Text);
-        });
-    }
-
-    [Fact]
-    public void Remove_and_withdraw_send_the_maintainer_and_the_invitation_they_sit_beside()
-    {
-        UiTest.Run(() =>
-        {
-            (SystemView view, List<PoolAction> sent) = SystemViewTests.AdminView(
-                [new MaintainerInvitationEntry(3, "new@example.com", SystemViewTests.Noon, SystemViewTests.Noon.AddDays(14))]);
-
-            SystemViewTests.Click(Assert.Single(SystemViewTests.Buttons(view, "RemoveMaintainer")));
-            SystemViewTests.Click(Assert.Single(SystemViewTests.Buttons(view, "WithdrawInvitation")));
-
-            Assert.Equal(
-                [
-                    new PoolAction(PoolActionKind.Remove, "Commodore/C64/250407", AccountId: 7, Who: "Anna"),
-                    new PoolAction(PoolActionKind.Withdraw, "Commodore/C64/250407", InvitationId: 3, Who: "new@example.com"),
-                ],
-                sent);
-        });
-    }
-
-    // A refusal is the server's sentence, in red, and nothing is re-read.
-    [Fact]
-    public async Task A_refused_change_shows_the_servers_words()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            (SystemView view, _) = SystemViewTests.AdminView();
-
-            view.PoolActionOverrideForTests = _ => Task.FromResult(
-                ReviewApiResult<string>.Failed(ReviewApiFailure.Refused, "That does not look like an email address."));
-
-            view.FindControl<TextBox>("InviteEmailBox")!.Text = "nonsense";
-            await view.InviteTypedAddressAsync();
-
-            Assert.Equal("That does not look like an email address.", view.FindControl<TextBlock>("PoolMessageText")!.Text);
-            Assert.Equal("nonsense", view.FindControl<TextBox>("InviteEmailBox")!.Text);
-        });
-    }
-
-    // ###########################################################################################
-    // THE HISTORY REPLACES THE BARE SUBMISSION LIST when the server sends one (2026-09-27): date
-    // first, newest first, as the server ordered it.
-    // ###########################################################################################
-    [Fact]
-    public void A_systems_history_is_shown_date_first_in_the_servers_order()
-    {
-        UiTest.Run(() =>
-        {
-            var view = new SystemView();
+            var changes = new SubmissionChanges(
+                false,
+                [new SectionChanges("Components", 0, 1, 0, 0, [], [new ChangedRowFact("U8", ["Part-number"])], [], [])],
+                FileChanges.None);
 
             view.ShowDetailForTests(new SystemDetailAnswer(
                 SystemViewTests.System(),
                 [],
                 [],
-                [new SystemSubmissionEntry(9, "hest@mailscan.dk", "Corrected U8.", "merged", SystemViewTests.Noon, SystemViewTests.Noon, null)],
+                [new SystemSubmissionEntry(9, "hest@mailscan.dk", "Corrected U8.", "merged", SystemViewTests.Noon.AddDays(-1), SystemViewTests.Noon, null, Changes: changes)],
                 null,
                 [
+                    new SystemHistoryEntry(SystemViewTests.Noon.AddDays(2), SystemHistoryEvents.PublishedToProduction, "Dennis", null, "revision 2026-September-27"),
                     new SystemHistoryEntry(SystemViewTests.Noon, SystemHistoryEvents.Decided, "Anna", 9, "merged"),
                     new SystemHistoryEntry(SystemViewTests.Noon.AddDays(-1), SystemHistoryEvents.Sent, "hest@mailscan.dk", 9, "Corrected U8."),
                 ]));
 
-            IReadOnlyList<string> texts = view.TextsForTests();
-
-            int heading = texts.ToList().IndexOf("History");
-            Assert.True(heading >= 0);
             Assert.Equal(
-                ["History", "2026-September-25 - #9 - Published to BETA source", "by Anna", "2026-September-24 - #9 sent", "from hest@mailscan.dk - Corrected U8."],
-                texts.Skip(heading).Take(5));
-            Assert.DoesNotContain("Recent submissions", texts);
+                [
+                    "History - 1 submission and 1 other event, newest first",
+                    "September 2026",
+                    "27 Sep",
+                    "Published to the stable source",
+                    "by Dennis - revision 2026-September-27",
+                    "25 Sep",
+                    "#9 - Corrected U8.",
+                    "Published to the BETA source",
+                    "2026-September-24 - sent by hest@mailscan.dk",
+                    "2026-September-25 - Published to the BETA source by Anna",
+                    SystemHistoryDisplay.ChangesHeading,
+                    "Components",
+                    "[1] changed: U8 (Part-number)"
+                ],
+                view.SectionTextsForTests("HistoryItemsSection"));
+
+            // A submission is ONE card - its sending and its decision are not lines of their own.
+            Assert.Single(view.FindControl<StackPanel>("HistoryItemsSection")!.GetLogicalDescendants().OfType<Border>(), border => border.Classes.Contains("HistoryCard"));
         });
     }
 
-    // *** SEVERAL MAINTAINERS PER SYSTEM (owner request, 2026-09-27) *** - one line and one Remove
-    // each, the list offering everybody not already among them, and the hint saying so.
+    // ###########################################################################################
+    // The Maintainer view is the maintainers and nothing more (owner request, 2026-10-04) - adding,
+    // inviting and removing them is Account > Maintainers (MaintainerPoolViewTests).
+    // ###########################################################################################
     [Fact]
-    public void A_system_can_show_and_keep_adding_several_maintainers()
+    public void The_maintainer_view_lists_every_maintainer_and_offers_no_controls()
     {
         UiTest.Run(() =>
         {
             var view = new SystemView();
-            view.SetAdministrator(true);
 
             view.ShowDetailForTests(new SystemDetailAnswer(
                 SystemViewTests.System(),
                 [new PoolMaintainerEntry(7, "Anna", "anna@example.com"), new PoolMaintainerEntry(8, "Bo", "bo@example.com")],
                 [],
-                []));
-            view.UseAccountsForTests(SystemViewTests.Accounts);
+                [],
+                [new MaintainerInvitationEntry(3, "new@example.com", SystemViewTests.Noon, SystemViewTests.Noon.AddDays(14))]));
 
-            Assert.Equal(2, SystemViewTests.Buttons(view, "RemoveMaintainer").Length);
-            Assert.Contains("Maintainers (2)", view.TextsForTests());
+            Assert.Equal(
+                ["Maintainers (2)", "Anna (anna@example.com)", "Bo (bo@example.com)"],
+                view.SectionTextsForTests("MaintainersSection"));
 
-            // Only Cy is left to add - and adding is the same button however many there are.
-            Assert.Equal(1, view.FindControl<ComboBox>("AddAccountCombo")!.ItemCount);
-            Assert.True(view.FindControl<Button>("AddAccountButton")!.IsEnabled);
-            Assert.True(view.FindControl<TextBlock>("SeveralMaintainersHint")!.IsVisible);
+            Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("Invited", StringComparison.Ordinal));
+            Assert.Null(view.FindControl<ComboBox>("AddAccountCombo"));
+            Assert.Null(view.FindControl<Button>("InviteButton"));
         });
     }
 }

@@ -209,7 +209,8 @@ namespace CRT.Server.Handlers.Submissions
             MasterListingEdit edit = MasterListing.Insert(
                 master,
                 SystemListingRules.RowFor(placement, betaRoot, board.WorkbookPath),
-                placement.AfterExcelDataFile);
+                placement.AfterExcelDataFile,
+                nowUtc);
 
             if (!edit.IsDone)
             {

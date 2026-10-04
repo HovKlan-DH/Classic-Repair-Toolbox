@@ -99,14 +99,16 @@ namespace CRT
             this.UpdateRowsDraggable();
         }
 
-        // Rows can be moved - and show their grips - except while "Show changes only" hides some:
-        // a place among rows that cannot be seen means nothing.
+        // Rows can be moved - and show their grips - except while a picked pill in the colour key
+        // or the search box hides some (BoardTableRowFilter, BoardTableSearch): a place among rows
+        // that cannot be seen means nothing. Never in a read-only table (IsReadOnly).
         private void UpdateRowsDraggable() =>
-            this.TableGrid.Classes.Set(BoardTableEditor.RowsDraggableClass, !this.thisOnlyChanges);
+            this.TableGrid.Classes.Set(BoardTableEditor.RowsDraggableClass, !this.IsNarrowed && !this.thisIsReadOnly);
 
         private void OnRowDragPointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            if (this.thisOnlyChanges ||
+            if (this.IsNarrowed ||
+                this.thisIsReadOnly ||
                 this.thisCurrentSheet is null ||
                 !e.GetCurrentPoint(this.TableGrid).Properties.IsLeftButtonPressed ||
                 e.Source is not Visual source)

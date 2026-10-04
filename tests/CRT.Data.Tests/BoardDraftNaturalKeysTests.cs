@@ -85,4 +85,101 @@ public sealed class BoardDraftNaturalKeysTests
         Assert.NotEqual("U8", pal);
         Assert.Equal("U8", pal.Split(BoardDraftNaturalKeys.Separator)[0]);
     }
+
+    // ###########################################################################################
+    // ColumnsOf names the columns each sheet's key is built from - for the duplicate warning's words
+    // (2026-10-03: "the same Board label, Region, Pin and Name"). It must name EXACTLY what ForRow
+    // reads, or the warning tells a contributor two rows share something that is not what makes
+    // them collide. So every column of every sheet is changed alone: a named one must move the
+    // key, any other must not.
+    // ###########################################################################################
+    [Fact]
+    public void ColumnsOf_names_exactly_the_columns_each_sheets_key_is_built_from()
+    {
+        foreach (BoardWorkbookSchema.SheetDefinition sheet in BoardWorkbookSchema.AllSheets)
+        {
+            Dictionary<string, string> row = sheet.ColumnOrder.ToDictionary(column => column, column => $"value of {column}", StringComparer.OrdinalIgnoreCase);
+            string key = KeyOf(sheet, row);
+            IReadOnlyList<string> named = BoardDraftNaturalKeys.ColumnsOf(sheet.SheetName);
+
+            foreach (string column in sheet.ColumnOrder)
+            {
+                var changed = new Dictionary<string, string>(row, StringComparer.OrdinalIgnoreCase) { [column] = "something else" };
+                bool moved = KeyOf(sheet, changed) != key;
+
+                Assert.True(moved == named.Contains(column), $"[{sheet.SheetName}] / [{column}]: {(moved ? "moves the key but is not named" : "is named but does not move the key")}");
+            }
+        }
+    }
+
+    // ###########################################################################################
+    // PropertiesOf is ColumnsOf's twin on the entry side, and decides which cells a row may change
+    // and still be the same row (BoardDataDiffer.PairRenamedRows, 2026-10-04). Named one too many,
+    // two rows differing in that cell pair as a "rename"; one too few, a key change counts as
+    // "something else changed" and never pairs. So every property of every row type is changed
+    // alone: a named one must move the key, any other must not.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(typeof(BoardSchematicEntry))]
+    [InlineData(typeof(ComponentEntry))]
+    [InlineData(typeof(ComponentImageEntry))]
+    [InlineData(typeof(ComponentHighlightEntry))]
+    [InlineData(typeof(ComponentLocalFileEntry))]
+    [InlineData(typeof(ComponentLinkEntry))]
+    [InlineData(typeof(BoardLocalFileEntry))]
+    [InlineData(typeof(BoardLinkEntry))]
+    [InlineData(typeof(CreditEntry))]
+    [InlineData(typeof(KiCadImportantSignalEntry))]
+    [InlineData(typeof(KiCadCalibrationEntry))]
+    public void PropertiesOf_names_exactly_the_properties_each_rows_key_is_built_from(System.Type rowType)
+    {
+        IReadOnlyList<string> named = BoardDraftNaturalKeys.PropertiesOf(rowType);
+        Assert.NotEmpty(named);
+
+        string key = BoardDraftNaturalKeys.ForRow(EveryPropertySet(rowType, changed: null));
+
+        foreach (System.Reflection.PropertyInfo property in rowType.GetProperties())
+        {
+            bool moved = BoardDraftNaturalKeys.ForRow(EveryPropertySet(rowType, changed: property.Name)) != key;
+
+            Assert.True(moved == named.Contains(property.Name), $"[{rowType.Name}] / [{property.Name}]: {(moved ? "moves the key but is not named" : "is named but does not move the key")}");
+        }
+    }
+
+    // A row type with no key rule has no key properties - ForRow throws for it, so nothing pairs it.
+    [Fact]
+    public void A_type_with_no_key_rule_has_no_key_properties()
+    {
+        Assert.Empty(BoardDraftNaturalKeys.PropertiesOf(typeof(string)));
+    }
+
+    // A row with every writable property set to a value of its own, and `changed` set to another.
+    private static object EveryPropertySet(System.Type rowType, string? changed)
+    {
+        object row = System.Activator.CreateInstance(rowType)!;
+
+        foreach (System.Reflection.PropertyInfo property in rowType.GetProperties().Where(property => property.CanWrite))
+        {
+            bool other = property.Name == changed;
+
+            object value = property.PropertyType == typeof(string) ? $"{(other ? "other" : "value")} of {property.Name}"
+                : property.PropertyType == typeof(double) ? (other ? 2.5 : 1.5)
+                : property.PropertyType == typeof(bool) ? other
+                : throw new System.NotSupportedException(property.PropertyType.Name);
+
+            property.SetValue(row, value);
+        }
+
+        return row;
+    }
+
+    // A key as words, never with the separator, which renders as a box.
+    [Fact]
+    public void A_key_is_described_with_its_parts_and_without_the_separator()
+    {
+        Assert.Equal("R307 / Pinout (secondary)", BoardDraftNaturalKeys.Describe(BoardDraftNaturalKeys.ForComponentImage("R307", "", "", "Pinout (secondary)")));
+    }
+
+    private static string KeyOf(BoardWorkbookSchema.SheetDefinition sheet, IReadOnlyDictionary<string, string> row) =>
+        BoardDraftNaturalKeys.ForRow(BoardWorkbookSchema.MapRows(sheet, [row]).Single());
 }

@@ -90,6 +90,10 @@ namespace CRT.Server.Tests
             Assert.Equal(UnusedFileFlowsTests.Orphan, entry.Path);
             Assert.Equal(new FileInfo(DataTreeBuilder.Full(this.thisData, UnusedFileFlowsTests.Orphan)).Length, entry.SizeBytes);
             Assert.Equal("beta", listing.Tree);
+
+            // Where the tree is published, so the Maintainer tab's tree can show and open the file
+            // (2026-10-04).
+            Assert.Equal(this.Beta().PublicBaseUrl, listing.PublicDataUrl);
         }
 
         // Clients are told by the manifest: until it is rewritten they keep being offered a file

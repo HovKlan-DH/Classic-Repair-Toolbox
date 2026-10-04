@@ -17,15 +17,20 @@ namespace Handlers.DataHandling
     //   - a row's identity is BoardDraftNaturalKeys.ForRow, on the entry the schema's own mapper
     //     builds from the cells - never a second opinion about which columns form a key;
     //   - keys compare case-INSENSITIVELY, cell values trimmed and case-SENSITIVELY;
-    //   - the FIRST row per key pairs, on both sides; a later one is a Duplicate and not counted.
+    //   - the FIRST row per key pairs, on both sides; a later one is a Duplicate and not counted
+    //     (both are MARKED since 2026-10-02 - see MarkFirstRowsOfDuplicates).
     //
     // BoardTableDocumentTests asserts ChangeCount against BoardDataDiffer on the saved board, so a
     // drift between the two fails a test rather than a contributor's trust.
     //
-    // *** A KEY EDIT IS A DELETE PLUS AN ADD, deliberately. *** Changing a Board label from U8 to
-    // U9 shows U9 as added and the old U8 as a deleted ghost. That is how BoardDataDiffer, the
-    // submission and the maintainer all see it, and the table showing anything friendlier would be
-    // describing a change nobody downstream agrees happened.
+    // *** A KEY EDIT IS ONE ROW EDITED WHEN NOTHING ELSE CHANGED (owner decision, 2026-10-04). ***
+    // It was always a delete plus an add - changing a credit's "Name or handle" showed the row red
+    // and a new one green, which "seems weird to me". A row no published row shares a key with,
+    // and a published row no row shares its key with, are paired by BoardDataDiffer.PairRenamedRows
+    // - nothing but their identifying cells different - and shown as one Modified row, the changed
+    // key cell orange with the old value in its tooltip. Changing a label AND another cell is still
+    // a new row and a deleted ghost. The rule is the differ's, so BoardDataDiffer, the submission
+    // and the maintainer see the same.
     //
     // *** DELETED ROWS ARE SHOWN WHERE THEY WERE. *** Each ghost is placed straight after the
     // nearest EARLIER published row that still exists in the draft, or at the top when none does
@@ -35,8 +40,8 @@ namespace Handlers.DataHandling
     //
     // With NO published board (a system created with "Add a new system") nothing is coloured
     // green, orange or red: every row would be green, which says nothing. Duplicates and incomplete
-    // rows are still FLAGGED - "!" and violet - since those are about the data rather than about
-    // publishing.
+    // rows are still WARNED about - since 2026-10-03 by the checks' corner mark, until then "!" and
+    // violet - since those are about the data rather than about publishing.
     // ###########################################################################################
     public sealed class BoardTableSheet
     {
@@ -47,6 +52,10 @@ namespace Handlers.DataHandling
         private readonly IReadOnlyList<IReadOnlyList<string>> thisPublishedRows;
         private readonly Dictionary<string, int> thisPublishedFirstIndexByKey =
             new(StringComparer.OrdinalIgnoreCase);
+
+        // The published rows as entries, index for index with thisPublishedRows - what a row whose
+        // key changed is paired with (BoardDataDiffer.PairRenamedRows).
+        private readonly IReadOnlyList<object> thisPublishedEntries = [];
 
         // Ghost rows by the published index they show, reused across refreshes so a grid does not
         // see a deleted row vanish and reappear every time a cell elsewhere is edited.
@@ -67,6 +76,7 @@ namespace Handlers.DataHandling
             {
                 IReadOnlyList<IReadOnlyDictionary<string, string>> rows = BoardWorkbookSchema.BuildRows(definition, published);
                 IReadOnlyList<object> entries = BoardWorkbookSchema.EntriesOf(definition, published);
+                this.thisPublishedEntries = entries;
 
                 for (int i = 0; i < rows.Count; i++)
                 {
@@ -98,6 +108,10 @@ namespace Handlers.DataHandling
         public event EventHandler<BoardTableCell>? CellEdited;
 
         public BoardWorkbookSchema.SheetDefinition Definition { get; }
+
+        // A row of this sheet was mapped by the schema afresh - counted on the document, for tests
+        // (BoardTableRow.MappedForChecks).
+        internal void CountRowMapped() => this.thisDocument.RowsMapped++;
 
         public string Name => this.Definition.SheetName;
 
@@ -133,20 +147,41 @@ namespace Handlers.DataHandling
 
         public int DeletedCount { get; private set; }
 
-        // Rows marked "!" - duplicates and incomplete rows - for the colour key's fourth badge. NOT
-        // part of ChangeCount: BoardDataDiffer counts neither (a duplicate is ignored, an
-        // incomplete row is dropped on save), and the tab's number must keep agreeing with it.
-        public int FlaggedCount { get; private set; }
+        // Rows with an error, and rows with a warning - BoardDataChecks' problems, for the colour
+        // key's last two counts (owner request, 2026-10-02). A duplicate row and a row the save
+        // leaves out are WARNINGS since 2026-10-03 - they had a count of their own, "Flagged",
+        // until then.
+        //
+        // *** COUNTED WHEN THE PROBLEMS ARE PLACED, NOT ON EVERY READ (code review, 2026-10-04). ***
+        // Problems change only in BoardTableDocument.RefreshProblems, which sets these; read live,
+        // the toolbar walked every cell of every sheet twice on each cursor move.
+        public int ErrorRowCount { get; private set; }
 
-        // Whether a row is one the "Show changes only" view shows: anything not plainly unchanged - an
-        // added, changed or deleted row, and also a row that needs a second look (blank, duplicate
-        // or incomplete), since those are the contributor's own unfinished work.
-        public static bool IsChangeRow(BoardTableRow row) =>
-            row is not null && row.State != BoardTableRowState.Unchanged;
+        public int WarningRowCount { get; private set; }
 
-        // Whether "Show changes only" shows anything of this sheet - and so whether its tab shows
-        // (BoardTableDocument.SheetsShown). Read live: an edit can add or remove the last such row.
-        public bool HasChangeRows => this.Rows.Any(BoardTableSheet.IsChangeRow);
+        internal void CountProblemRows()
+        {
+            this.ErrorRowCount = this.Rows.Count(row => row.HasErrors);
+            this.WarningRowCount = this.Rows.Count(row => row.HasWarnings);
+        }
+
+        // ###########################################################################################
+        // Whether the colour key's picked kinds show anything of this sheet - and so whether its tab
+        // shows (BoardTableDocument.SheetsShown). False with nothing picked: there is then nothing to
+        // narrow down to. Read live: an edit can add or remove the last such row. A new, still empty
+        // row counts, as BoardTableRowFilter always shows it.
+        // ###########################################################################################
+        public bool HasRowsShownBy(BoardTableRowKinds kinds) => this.HasRowsShownBy(kinds, BoardTableSearch.None);
+
+        // The same with the search box's search too (2026-10-02): a row both show. False with
+        // neither in use.
+        public bool HasRowsShownBy(BoardTableRowKinds kinds, BoardTableSearch search)
+        {
+            ArgumentNullException.ThrowIfNull(search);
+
+            return (kinds != BoardTableRowKinds.None || search.IsActive) &&
+                this.Rows.Any(row => BoardTableRowFilter.Shows(kinds, row) && search.Shows(row));
+        }
 
         // True between a cell edit and the Refresh that re-pairs the sheet.
         public bool NeedsRefresh { get; private set; }
@@ -317,37 +352,76 @@ namespace Handlers.DataHandling
         public bool DeleteRow(BoardTableRow row, out BoardTableDeletedWith? deletedWith)
         {
             ArgumentNullException.ThrowIfNull(row);
+            return this.DeleteRows([row], out deletedWith) > 0;
+        }
+
+        // ###########################################################################################
+        // *** SEVERAL ROWS AT ONCE (owner request, 2026-10-02: "mark multiple rows and then delete
+        // those in one go" - the eight Pinout rows of a sheet, say). *** Every live row of `rows`
+        // that is on this sheet goes, as DeleteRow does one: a published row comes back as a red
+        // ghost in its place, an added one simply goes. Ghosts among them are skipped - already
+        // deleted. Returns how many went; none leaves no undo step.
+        //
+        // It is ONE change: one undo step, one refresh. On the Components sheet each deleted
+        // component's rows on the other sheets go too, inside the same step, and `deletedWith` says
+        // what went with all of them together (BoardTableDeletedWith.Combine).
+        //
+        // The selected rows are ALL removed before any component's other rows are looked for, so
+        // two regional variants deleted together are judged as both gone - their shared files and
+        // links go - rather than each as the other's surviving twin.
+        // ###########################################################################################
+        public int DeleteRows(IReadOnlyList<BoardTableRow> rows, out BoardTableDeletedWith? deletedWith)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
             deletedWith = null;
 
-            int index = this.Rows.IndexOf(row);
-            if (row.IsDeleted || index < 0)
+            var wanted = new HashSet<BoardTableRow>(rows, ReferenceEqualityComparer.Instance);
+            List<BoardTableRow> live = this.Rows.Where(row => !row.IsDeleted && wanted.Contains(row)).ToList();
+
+            if (live.Count == 0)
             {
-                return false;
+                return 0;
             }
 
             if (!string.Equals(this.Name, BoardWorkbookSchema.SheetComponents, StringComparison.Ordinal))
             {
-                this.RemoveLiveRows([row]);
-                return true;
+                this.RemoveLiveRows(live);
+                return live.Count;
             }
 
-            string label = this.CellText(row, BoardWorkbookSchema.ColBoardLabel);
-            string region = this.CellText(row, BoardWorkbookSchema.ColRegion);
+            var components = live
+                .Select(row => (Label: this.CellText(row, BoardWorkbookSchema.ColBoardLabel), Region: this.CellText(row, BoardWorkbookSchema.ColRegion)))
+                .ToList();
 
             BoardTableHistory history = this.thisDocument.History;
+
+            // Several sheets refresh below; the board is checked once, at the end (DeferProblems).
+            using IDisposable checkedOnce = this.thisDocument.DeferProblems();
+
             history.BeginGroup();
 
             try
             {
-                this.RemoveLiveRows([row]);
-                deletedWith = this.thisDocument.DeleteRowsOfComponent(label, region);
+                this.RemoveLiveRows(live);
+
+                var went = new List<BoardTableDeletedWith>();
+
+                foreach ((string label, string region) in components)
+                {
+                    if (this.thisDocument.DeleteRowsOfComponent(label, region) is { } part)
+                    {
+                        went.Add(part);
+                    }
+                }
+
+                deletedWith = BoardTableDeletedWith.Combine(went);
             }
             finally
             {
                 history.EndGroup(this);
             }
 
-            return true;
+            return live.Count;
         }
 
         // ###########################################################################################
@@ -446,9 +520,14 @@ namespace Handlers.DataHandling
             bool hasBaseline = this.HasBaseline;
             var liveRows = this.Rows.Where(row => !row.IsDeleted).ToList();
 
-            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // The first row per key: the one BoardDataDiffer pairs, as here.
+            var firstRowByKey = new Dictionary<string, BoardTableRow>(StringComparer.OrdinalIgnoreCase);
             var liveByPublishedIndex = new Dictionary<int, BoardTableRow>();
             int changes = 0;
+
+            // The rows no published row shares a key with, and their entries - added, unless one
+            // turns out to be a published row with its identifying cells changed (below the loop).
+            var unpaired = new List<(BoardTableRow Row, object Entry)>();
 
             foreach (BoardTableRow row in liveRows)
             {
@@ -460,20 +539,31 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
+                // ###########################################################################################
+                // *** NEITHER OF THE NEXT TWO IS COLOURED ANY MORE (owner request, 2026-10-03: "Should
+                // flagged now be treated as warnings?"; cases agreed with the project owner). *** They
+                // were violet ("Flagged"). Each is a WARNING now - the cell's corner mark, placed by
+                // BoardTableDocument.RefreshProblems - and the colours mean only what changed.
+                // ###########################################################################################
+
                 // The entry the schema builds from these cells is what is saved, and what the key
-                // is built from. None at all means the mapper drops the row on save.
-                IReadOnlyList<object> mapped = BoardWorkbookSchema.MapRows(this.Definition, [row.ToDictionary()]);
+                // is built from. None at all means the mapper drops the row on save: shown like a
+                // new row still being filled in, since that is what it nearly always is. Remembered
+                // by the row until one of its cells changes (BoardTableRow.MappedForChecks).
+                IReadOnlyList<object> mapped = row.MappedForChecks();
                 if (mapped.Count == 0)
                 {
-                    BoardTableSheet.Colour(row, BoardTableRowState.Incomplete, BoardTableCellState.Flagged);
+                    BoardTableSheet.Colour(row, BoardTableRowState.Incomplete, hasBaseline ? BoardTableCellState.Added : BoardTableCellState.Unchanged);
                     continue;
                 }
 
                 string key = BoardDraftNaturalKeys.ForRow(mapped[0]);
 
-                if (!seenKeys.Add(key))
+                // A later row with the key of one above: saved, but never paired or counted - so
+                // uncoloured, as it is no change BoardDataDiffer would show.
+                if (!firstRowByKey.TryAdd(key, row))
                 {
-                    BoardTableSheet.Colour(row, BoardTableRowState.Duplicate, BoardTableCellState.Flagged);
+                    BoardTableSheet.Colour(row, BoardTableRowState.Duplicate, BoardTableCellState.Unchanged);
                     continue;
                 }
 
@@ -485,8 +575,7 @@ namespace Handlers.DataHandling
 
                 if (!this.thisPublishedFirstIndexByKey.TryGetValue(key, out int publishedIndex))
                 {
-                    BoardTableSheet.Colour(row, BoardTableRowState.Added, BoardTableCellState.Added);
-                    changes++;
+                    unpaired.Add((row, mapped[0]));
                     continue;
                 }
 
@@ -499,6 +588,8 @@ namespace Handlers.DataHandling
                 }
             }
 
+            changes += this.PairOrAdd(unpaired, liveByPublishedIndex);
+
             int deleted = this.PlaceGhosts(liveRows, liveByPublishedIndex, hasBaseline);
             changes += deleted;
 
@@ -506,8 +597,12 @@ namespace Handlers.DataHandling
             this.AddedCount = liveRows.Count(row => row.State == BoardTableRowState.Added);
             this.ModifiedCount = liveRows.Count(row => row.State == BoardTableRowState.Modified);
             this.DeletedCount = deleted;
-            this.FlaggedCount = liveRows.Count(row => row.State is BoardTableRowState.Duplicate or BoardTableRowState.Incomplete);
             this.NeedsRefresh = false;
+
+            // The checks look across sheets (an image for a component that is gone, a highlight
+            // for a renamed schematic), so any sheet changing re-checks the whole board - before
+            // Changed, so whatever repaints for it reads the new problems.
+            this.thisDocument.OnSheetRefreshed();
 
             this.Changed?.Invoke(this, EventArgs.Empty);
         }
@@ -596,6 +691,54 @@ namespace Handlers.DataHandling
             this.thisDocument.MarkDirty();
 
             this.CellEdited?.Invoke(this, cell);
+        }
+
+        // ###########################################################################################
+        // The rows no published row shares a key with: each is the published row it became when
+        // BoardDataDiffer.PairRenamedRows says so - only its identifying cells changed (owner
+        // decision, 2026-10-04) - and is then compared with it like any paired row, the changed key
+        // cells orange. The rest are added. The published rows offered are the ones no live row
+        // took by key, in published order, as the differ offers them. Returns the changes counted.
+        // ###########################################################################################
+        private int PairOrAdd(List<(BoardTableRow Row, object Entry)> unpaired, Dictionary<int, BoardTableRow> liveByPublishedIndex)
+        {
+            if (unpaired.Count == 0)
+            {
+                return 0;
+            }
+
+            List<int> lostKey = this.thisPublishedFirstIndexByKey.Values
+                .Where(index => !liveByPublishedIndex.ContainsKey(index))
+                .Order()
+                .ToList();
+
+            var pairedWith = new Dictionary<int, int>();
+
+            foreach (BoardRowRename rename in BoardDataDiffer.PairRenamedRows(
+                         lostKey.Select(index => this.thisPublishedEntries[index]).ToList(),
+                         unpaired.Select(item => item.Entry).ToList()))
+            {
+                pairedWith[rename.Added] = lostKey[rename.Removed];
+            }
+
+            for (int i = 0; i < unpaired.Count; i++)
+            {
+                BoardTableRow row = unpaired[i].Row;
+
+                if (pairedWith.TryGetValue(i, out int publishedIndex))
+                {
+                    row.PublishedIndex = publishedIndex;
+                    liveByPublishedIndex[publishedIndex] = row;
+                    this.ComparePaired(row, this.thisPublishedRows[publishedIndex]);
+                }
+                else
+                {
+                    BoardTableSheet.Colour(row, BoardTableRowState.Added, BoardTableCellState.Added);
+                }
+            }
+
+            // Every one is a change: an added row, or a row whose key changed.
+            return unpaired.Count;
         }
 
         // Compares a paired row cell by cell. True when anything differs.

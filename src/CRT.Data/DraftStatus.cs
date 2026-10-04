@@ -244,6 +244,110 @@ namespace Handlers.DataHandling
 
         private readonly record struct CachedCount(string Stamp, int Count);
 
+        // ###########################################################################################
+        // *** THE DRAFT'S ERRORS AND WARNINGS, FOR ITS ROW ON THE DRAFTS TAB (owner report,
+        // 2026-10-02: "It must check for errors when creating the draft, and if the board changes
+        // "offline", outside of app"). *** The checks were only in the table, so a draft with
+        // errors looked fine until its table was opened. This is the table's own count -
+        // BoardDataChecks in its Everything scope, over the draft workbook and its sidecar, its files
+        // looked for where a submit looks (DiskFileLookup) - so the row and the table agree.
+        //
+        // Remembered per draft like CountChangesCached, keyed on the workbook's and the sidecar's
+        // length and last-write time: an edit in Excel is counted afresh the next time the tab
+        // refreshes, an untouched draft costs nothing.
+        //
+        // *** A CITED FILE THAT WAS NOT THERE IS LOOKED FOR AGAIN (code review, 2026-10-04). *** The
+        // stamp cannot see a picture arriving on its own - the background image sync finishing, or a
+        // file dropped into the draft folder by hand - so a "file missing" error stayed on the row
+        // for the session while the table and Submit no longer found it. Every path the check did
+        // not find as cited is remembered with the count and asked about again on a cache hit:
+        // usually none, so it costs nothing. A file that VANISHES is still only seen when the
+        // workbook changes or the table opens - re-asking every found file (thousands on a large
+        // board) on every refresh is the cost the cache exists to avoid.
+        // ###########################################################################################
+        public static BoardProblemCounts CountProblemsCached(DraftStatus? status, string dataRoot, string draftSystemFolder)
+        {
+            if (status is null || string.IsNullOrWhiteSpace(status.WorkbookPath))
+            {
+                return BoardProblemCounts.None;
+            }
+
+            string stamp = string.Join(
+                "|",
+                DraftStatusReader.FileStamp(status.WorkbookPath),
+                DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(status.WorkbookPath)),
+                dataRoot,
+                draftSystemFolder);
+
+            if (DraftStatusReader.ProblemCache.TryGetValue(status.WorkbookPath, out CachedProblems cached)
+                && string.Equals(cached.Stamp, stamp, StringComparison.Ordinal)
+                && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftSystemFolder))
+            {
+                return cached.Counts;
+            }
+
+            BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
+            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftSystemFolder));
+
+            BoardProblemCounts counts = draft is null
+                ? BoardProblemCounts.None
+                : BoardProblemCounts.Of(BoardDataChecks.Check(
+                    BoardCheckRows.From(draft),
+                    lookup,
+                    BoardCheckScope.Everything));
+
+            DraftStatusReader.ProblemCache[status.WorkbookPath] = new CachedProblems(stamp, counts, lookup.NotFound);
+
+            return counts;
+        }
+
+        // Whether every path remembered as not found (or found under other capitals) still answers
+        // exactly so - the cached count is good only while it does.
+        private static bool StillNotFound(
+            IReadOnlyDictionary<string, BoardFileLookupResult> notFound,
+            string dataRoot,
+            string draftSystemFolder)
+        {
+            if (notFound.Count == 0)
+            {
+                return true;
+            }
+
+            var lookup = new DiskFileLookup(dataRoot, draftSystemFolder);
+
+            return notFound.All(item => lookup.Check(item.Key) == item.Value);
+        }
+
+        private readonly record struct CachedProblems(
+            string Stamp,
+            BoardProblemCounts Counts,
+            IReadOnlyDictionary<string, BoardFileLookupResult> NotFound);
+
+        // The checks' file lookup, remembering every answer that was not a plain "found".
+        private sealed class RememberingLookup(IBoardFileLookup inner) : IBoardFileLookup
+        {
+            private readonly Dictionary<string, BoardFileLookupResult> thisNotFound = new(StringComparer.Ordinal);
+
+            public IReadOnlyDictionary<string, BoardFileLookupResult> NotFound => this.thisNotFound;
+
+            public string Where => inner.Where;
+
+            public BoardFileLookupResult Check(string path)
+            {
+                BoardFileLookupResult result = inner.Check(path);
+
+                if (result.State != BoardFileState.Found)
+                {
+                    this.thisNotFound[path] = result;
+                }
+
+                return result;
+            }
+        }
+
+        private static readonly ConcurrentDictionary<string, CachedProblems> ProblemCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
         // Keyed by the draft workbook's path; case-insensitive to match how BoardDataReader keys
         // the same files. Thread-safe because RefreshDrafts is not the only possible caller.
         private static readonly ConcurrentDictionary<string, CachedCount> CountCache =

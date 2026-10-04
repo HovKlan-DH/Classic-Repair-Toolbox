@@ -225,4 +225,29 @@ public sealed class BoardWorkbookSchemaTests
             ],
             BoardWorkbookSchema.AllSheets.Select(sheet => sheet.SheetName));
     }
+
+    // ###########################################################################################
+    // RequiredColumns names the columns a row cannot be saved without - for the table's warning on
+    // a row the save leaves out (2026-10-03). It must agree with what MapRows really DROPS: on every
+    // sheet, a full row survives, and it stops surviving exactly when one named column is emptied.
+    // ###########################################################################################
+    [Fact]
+    public void RequiredColumns_are_exactly_the_columns_whose_emptiness_makes_the_save_drop_a_row()
+    {
+        foreach (BoardWorkbookSchema.SheetDefinition sheet in BoardWorkbookSchema.AllSheets)
+        {
+            Dictionary<string, string> full = sheet.ColumnOrder.ToDictionary(column => column, column => $"value of {column}", StringComparer.OrdinalIgnoreCase);
+            Assert.Single(BoardWorkbookSchema.MapRows(sheet, [full]));
+
+            IReadOnlyList<string> required = BoardWorkbookSchema.RequiredColumns(sheet.SheetName);
+
+            foreach (string column in sheet.ColumnOrder)
+            {
+                var emptied = new Dictionary<string, string>(full, StringComparer.OrdinalIgnoreCase) { [column] = string.Empty };
+                bool dropped = BoardWorkbookSchema.MapRows(sheet, [emptied]).Count == 0;
+
+                Assert.True(dropped == required.Contains(column), $"[{sheet.SheetName}] / [{column}]: {(dropped ? "drops the row but is not named" : "is named but does not drop the row")}");
+            }
+        }
+    }
 }

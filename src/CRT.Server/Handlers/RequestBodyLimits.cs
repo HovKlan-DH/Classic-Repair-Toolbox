@@ -47,6 +47,15 @@ namespace CRT.Server.Handlers
 
         public const long PathListBytes = 2L * 1024 * 1024;
 
+        // Feedback from CRT (2026-10-03): the text and a zip of the attached files, up to the limit
+        // CRT itself checks before sending - one number in CRT.Data, so the two cannot drift.
+        public const long FeedbackBytes = FeedbackContract.MaximumRequestBytes;
+
+        // CRT 2.x's contribution upload (2026-10-04): a zip of the component's rows and images, read
+        // to the end only so the "please update" answer reaches it - see LegacyContributionEndpoints.
+        // As much as feedback allows, so no 2.x contribution is too large to be told.
+        public const long LegacyContributionBytes = FeedbackContract.MaximumRequestBytes;
+
         public const long DefaultBytes = 64L * 1024;
 
         // The limit for the endpoint routing chose, or the default when it chose none.

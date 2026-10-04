@@ -312,7 +312,7 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
             FriendlyName = "PLA (my correction)",
         });
 
-        BoardWorkbookWriter.Write(workbook, board);
+        CachedWorkbooks.Write(workbook, board);
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),

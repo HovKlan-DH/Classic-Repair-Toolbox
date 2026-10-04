@@ -1,5 +1,7 @@
 using System.Reflection;
+using CRT.Server.Handlers.Compat;
 using CRT.Server.Handlers.Health;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Tests
 {
@@ -25,6 +27,17 @@ namespace CRT.Server.Tests
             Assert.Equal("ok", status.Status);
             Assert.Equal("2.6.0-alpha.2", status.Version);
             Assert.Equal(now, status.Utc);
+        }
+
+        // The API revision it serves (2026-10-04), so the Maintainer tab can say whether CRT or the
+        // server is behind - the same number the server's gate refuses older CRTs by.
+        [Fact]
+        public void A_health_report_carries_the_api_revision_the_server_serves()
+        {
+            HealthStatus status = HealthReport.Build(DateTimeOffset.UtcNow, "4.6.0");
+
+            Assert.Equal(ClientVersionContract.ApiRevision, status.ApiRevision);
+            Assert.Equal(ClientVersionContract.ApiRevision, ClientVersionPolicy.Current.ApiRevision);
         }
 
         // A blank version must not silently become an empty string in the response: a deployment
@@ -114,6 +127,10 @@ namespace CRT.Server.Tests
         // and nothing that helps someone map the box: no database state, no configuration, no
         // paths, no runtime or OS version. Adding any of those means deliberately changing this
         // test, which is the point - see HealthReport's header for the reasoning.
+        //
+        // The API revision (2026-10-04) was added deliberately, as part of "the build": it says which
+        // shape of the API is deployed, the number every published CRT build carries in its requests
+        // anyway, and nothing about the box.
         [Fact]
         public void A_health_report_reveals_nothing_beyond_liveness_and_the_build()
         {
@@ -121,10 +138,11 @@ namespace CRT.Server.Tests
 
             PropertyInfo[] properties = typeof(HealthStatus).GetProperties();
 
-            Assert.Equal(3, properties.Length);
+            Assert.Equal(4, properties.Length);
             Assert.Contains(properties, p => p.Name == nameof(HealthStatus.Status));
             Assert.Contains(properties, p => p.Name == nameof(HealthStatus.Version));
             Assert.Contains(properties, p => p.Name == nameof(HealthStatus.Utc));
+            Assert.Contains(properties, p => p.Name == nameof(HealthStatus.ApiRevision));
             Assert.NotNull(status);
         }
 

@@ -83,6 +83,13 @@ namespace CRT
                 return;
             }
 
+            // The table's own save is writing the file right now (SaveAsync) - it would read as a
+            // change from outside, and the save re-reads the file when it is done anyway.
+            if (this.thisSaveInFlight)
+            {
+                return;
+            }
+
             DraftFileStatus status = session.CheckFile();
 
             // Gone altogether is not a change to warn about: the Drafts tab closes such a table.
@@ -106,6 +113,26 @@ namespace CRT
             }
 
             this.ShowOpenElsewhere(status);
+        }
+
+        // ###########################################################################################
+        // *** THE CHECKS AGAIN, WITH NOTHING EDITED (code review, 2026-10-04). *** A picture the
+        // table marked "missing" may have been put in the draft folder meanwhile - which the watch
+        // above cannot see, since the workbook did not change - and the mark stayed while the draft's
+        // row and Submit found nothing wrong. The host calls this when the table comes back into
+        // view (the Drafts tab shown, CRT's window in front again): the file lookup looks again for
+        // every file it did not find (DiskFileLookup), so only those cost anything. Not under a cell
+        // being typed in or a row being dragged - the next time decides.
+        // ###########################################################################################
+        public void RecheckFiles()
+        {
+            if (this.thisDocument is null || this.thisIsEditingCell || this.thisRowDrag is not null)
+            {
+                return;
+            }
+
+            this.thisDocument.RefreshProblems();
+            this.OnDocumentChanged(this, EventArgs.Empty);
         }
 
         // The notice, and Save, as the file is open elsewhere or not.

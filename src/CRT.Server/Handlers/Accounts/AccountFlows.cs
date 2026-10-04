@@ -747,18 +747,33 @@ namespace CRT.Server.Handlers.Accounts
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
+            return (await AccountFlows.CheckMailBudgetAsync(ipAddress, store, now, cancellationToken)).IsAllowed;
+        }
+
+        // The same check with its verdict, for a caller that answers a refusal with 429 and
+        // Retry-After rather than silently - the signed-in email change (AccountSelfServiceFlows),
+        // whose answer must not pretend a code was sent. Counts the request as it allows it, for
+        // the reason above.
+        internal static async Task<RateLimitVerdict> CheckMailBudgetAsync(
+            string? ipAddress,
+            IAccountStore store,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
             if (string.IsNullOrWhiteSpace(ipAddress))
-                return true;
+                return RateLimitVerdict.Allowed();
 
             IReadOnlyList<DateTimeOffset> recent = await store.GetRecentMailRequestsAsync(
                 ipAddress, now - AuthRateLimitPolicy.MailWindow, cancellationToken);
 
-            if (!AuthRateLimitPolicy.CheckMailRequest(recent, now).IsAllowed)
-                return false;
+            RateLimitVerdict verdict = AuthRateLimitPolicy.CheckMailRequest(recent, now);
+
+            if (!verdict.IsAllowed)
+                return verdict;
 
             await store.RecordMailRequestAsync(ipAddress, now, cancellationToken);
 
-            return true;
+            return verdict;
         }
 
         // ###########################################################################################

@@ -17,9 +17,8 @@
             <SolidColorBrush x:Key="BoardTable_Added_Bg">#CDEFCF</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Modified_Bg">#FFD9A8</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Deleted_Bg">#F6C4C4</SolidColorBrush>
-            <!-- A row marked "!" (a duplicate, or incomplete). Violet because it is the one hue
-                 nowhere near the other three - yellow would sit beside the orange. -->
-            <SolidColorBrush x:Key="BoardTable_Flagged_Bg">#E3D5F6</SolidColorBrush>
+            <!-- There was a violet for "Flagged" rows (a duplicate, or one the save leaves out)
+                 until 2026-10-03, when both became warnings - the colours mean only what changed. -->
             <!-- The current cell's dashed frame. A strong red, so it still stands out on the pale
                  red of a deleted row. -->
             <SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#D32F2F</SolidColorBrush>
@@ -35,6 +34,30 @@
             <SolidColorBrush x:Key="BoardTable_Header_Fg">#1F1F1F</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Separator">#CFCFCF</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Line">#8A8A8A</SolidColorBrush>
+            <!-- The checks (owner request, 2026-10-02): the triangle in a problem cell's top-left
+                 corner, and the sheet tab's pill counting such rows - a strong red for an error,
+                 which blocks a submission, and an amber for a warning, which does not. Strong
+                 colours on purpose: the mark is small, and sits on the pale change washes. -->
+            <SolidColorBrush x:Key="BoardTable_Error_Mark">#D32F2F</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Error_Fg">#FFFFFF</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Mark">#E09B00</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Fg">#1F1F1F</SolidColorBrush>
+            <!-- The outline of a picked pill in the colour key - the filter that is on. -->
+            <SolidColorBrush x:Key="BoardTable_Pill_Selected_Border">#1F1F1F</SolidColorBrush>
+            <!-- The colour key's pills (owner request, 2026-10-03): each one's outline, a stronger
+                 shade of its wash - a pill counting nothing is this line alone, and the pale wash
+                 as a line would all but vanish on white. The Errors and Warnings pills are outlined
+                 in their corner mark's colour, and filled with a pale wash of it. -->
+            <SolidColorBrush x:Key="BoardTable_Added_Edge">#5FB565</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Modified_Edge">#E89A45</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Deleted_Edge">#DE6E6E</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Error_Bg">#FCE0E0</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Bg">#FFF0C4</SolidColorBrush>
+            <!-- Several cells selected (owner request, 2026-10-02: "mark multiple rows and then
+                 delete those in one go"): a light blue-grey veil laid OVER each selected cell, as
+                 Excel shades a selected range - translucent, so the green, orange or red
+                 underneath still shows. One selected cell keeps the dashed frame alone. -->
+            <SolidColorBrush x:Key="BoardTable_Selection_Fill">#330B5CAD</SolidColorBrush>
         </ResourceDictionary>
 
         <!-- The same meanings as deep tints the light foreground stays readable on. -->
@@ -42,7 +65,6 @@
             <SolidColorBrush x:Key="BoardTable_Added_Bg">#1F4A26</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Modified_Bg">#5A3A10</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Deleted_Bg">#5A2222</SolidColorBrush>
-            <SolidColorBrush x:Key="BoardTable_Flagged_Bg">#44305F</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_CurrentCell_Border">#FF6B6B</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Notice_Bg">#3D3214</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Notice_Border">#8A6D1F</SolidColorBrush>
@@ -50,6 +72,17 @@
             <SolidColorBrush x:Key="BoardTable_Header_Fg">#EDEDED</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Separator">#4A4A4A</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Line">#8A8A8A</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Error_Mark">#F44336</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Error_Fg">#FFFFFF</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Mark">#FFB300</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Fg">#1F1F1F</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Pill_Selected_Border">#EDEDED</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Added_Edge">#4E9A57</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Modified_Edge">#B07A30</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Deleted_Edge">#B05050</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Error_Bg">#4A1C1C</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Warning_Bg">#4A3A0E</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Selection_Fill">#405A9FE0</SolidColorBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

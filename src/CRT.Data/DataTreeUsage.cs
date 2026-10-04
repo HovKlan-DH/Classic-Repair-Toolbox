@@ -22,7 +22,20 @@ namespace Handlers.DataHandling
     //   5. inside a folder CRT reads by NAME rather than through a workbook (FoldersReadByName -
     //      today only the MiniPro IC tests, which a plain "no workbook cites it" count calls unused
     //      and a sweep on it would delete);
-    //   6. a documentation file whose name starts with "!" (the "!README.txt" convention).
+    //   6. a documentation file whose name starts with "!" (the "!README.txt" convention);
+    //   7. named in a master's "KiCad data file" column - the legacy master's, which CRT 1.x reads
+    //      for a board's KiCad traces (2026-10-04; today every such file is inside 4. anyway).
+    //
+    // *** A BOARD WORKBOOK IS READ AT ITS SPELLING ON DISK (2026-10-04). *** A master naming it in
+    // another case ("Data c64 250407.xlsx" for "Data C64 250407.xlsx") works on every Windows and
+    // macOS CRT, which then shows what it cites. Opened by the MASTER's spelling on the Linux server
+    // it was not found - and a missing workbook cites nothing - so the rule called everything only
+    // it cites unused while CRTs still used it. Every spelling the tree holds is read now, and one
+    // gone between the listing and the read makes the result incomplete.
+    //
+    // *** A CITED PATH COUNTS AS WRITTEN AND AS RESOLVED (2026-10-04). *** "Board/./U8.png",
+    // "Board//U8.png" or "Board/x/../U8.png" in a hand-edited row is found by every client's
+    // operating system as "Board/U8.png", so that file is used too (Resolved).
     //
     // *** A BOARD FOUND IN THE TREE COUNTS EVEN WHEN NO MASTER LISTS IT. *** A new system the
     // server publishes is not added to the master workbook (a known gap, done by hand), so a rule
@@ -51,6 +64,11 @@ namespace Handlers.DataHandling
         // the server's new-system row all read.
         public const string MasterSheetName = MasterWorkbookSchema.SheetName;
         public const string ExcelDataFileColumn = MasterWorkbookSchema.ColExcelDataFile;
+
+        // The legacy master's column naming a board's KiCad traces file, which CRT 1.x reads. A
+        // master without it is not a problem - the newer ones have none.
+        public const string LegacyKiCadDataFileColumn = "KiCad data file";
+
         public const string KiCadFolderName = "KiCad data";
         public const string DocumentationPrefix = "!";
 
@@ -116,14 +134,18 @@ namespace Handlers.DataHandling
             {
                 used.Add(master);
 
-                if (!DataTreeUsage.TryReadListed(Path.Combine(root, master), cache, out IReadOnlyCollection<string> listed, out string why))
+                if (!DataTreeUsage.TryReadListed(Path.Combine(root, master), cache, out MasterWorkbookRead listed, out string why))
                 {
                     problems.Add($"The master workbook [{master}] could not be read: {why}");
                     continue;
                 }
 
-                foreach (string workbook in listed)
+                foreach (string workbook in listed.Workbooks)
                     boardWorkbooks.TryAdd(workbook, master);
+
+                // ---- 1b. The files a master names itself (7. - the legacy "KiCad data file") -----
+                foreach (string file in listed.Named)
+                    DataTreeUsage.AddCited(used, file);
             }
 
             // ---- 2. Board workbooks found in board folders, whoever lists them -----------------
@@ -134,7 +156,8 @@ namespace Handlers.DataHandling
             foreach (string path in overrides.Keys)
                 boardWorkbooks.TryAdd(path, null);
 
-            var existing = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
+            // Each path's spellings in the tree, ignoring case - what a board workbook is READ at.
+            ILookup<string, string> onDisk = files.ToLookup(path => path, StringComparer.OrdinalIgnoreCase);
 
             foreach ((string workbook, string? listedBy) in boardWorkbooks)
             {
@@ -148,12 +171,14 @@ namespace Handlers.DataHandling
                 if (overrides.TryGetValue(workbook, out IReadOnlyCollection<string>? after))
                 {
                     foreach (string cited in after)
-                        DataTreeUsage.AddNormalised(used, cited);
+                        DataTreeUsage.AddCited(used, cited);
 
                     continue;
                 }
 
-                if (!existing.Contains(workbook))
+                IReadOnlyList<string> spellings = DataTreeUsage.SpellingsOnDisk(workbook, onDisk);
+
+                if (spellings.Count == 0)
                 {
                     problems.Add(listedBy is null
                         ? $"The board workbook [{workbook}] is not in the data."
@@ -161,16 +186,21 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                string full = Path.Combine(root, workbook.Replace('/', Path.DirectorySeparatorChar));
-
-                if (!DataTreeUsage.TryReadCitations(full, cache, out IReadOnlyCollection<string> cites))
+                foreach (string spelling in spellings)
                 {
-                    problems.Add($"The board workbook [{workbook}] could not be read.");
-                    continue;
-                }
+                    string full = Path.Combine(root, spelling.Replace('/', Path.DirectorySeparatorChar));
 
-                foreach (string cited in cites)
-                    DataTreeUsage.AddNormalised(used, cited);
+                    // Gone since the tree was listed: it cites an UNKNOWN set of files, not none -
+                    // the reader alone would answer "read, cites nothing" for a missing file.
+                    if (!File.Exists(full) || !DataTreeUsage.TryReadCitations(full, cache, out IReadOnlyCollection<string> cites))
+                    {
+                        problems.Add($"The board workbook [{spelling}] could not be read.");
+                        continue;
+                    }
+
+                    foreach (string cited in cites)
+                        DataTreeUsage.AddCited(used, cited);
+                }
             }
 
             return new DataTreeUsageResult(files, used, usedFolders, problems, masters.Count, boardWorkbooks.Count);
@@ -227,7 +257,7 @@ namespace Handlers.DataHandling
         }
 
         // A master's listing and a board's citations, through the cache when there is one.
-        private static bool TryReadListed(string masterPath, WorkbookReadCache? cache, out IReadOnlyCollection<string> listed, out string why)
+        private static bool TryReadListed(string masterPath, WorkbookReadCache? cache, out MasterWorkbookRead listed, out string why)
         {
             if (cache is not null)
                 return cache.TryGetListing(masterPath, DataTreeUsage.ReadListed, out listed, out why);
@@ -235,11 +265,50 @@ namespace Handlers.DataHandling
             return DataTreeUsage.ReadListed(masterPath, out listed, out why);
         }
 
-        private static bool ReadListed(string masterPath, out IReadOnlyCollection<string> listed, out string why)
+        private static bool ReadListed(string masterPath, out MasterWorkbookRead listed, out string why)
         {
-            bool ok = DataTreeUsage.TryReadListedWorkbooks(masterPath, out IReadOnlyList<string> paths, out why);
-            listed = paths;
+            bool ok = DataTreeUsage.TryReadMaster(masterPath, out IReadOnlyList<string> paths, out IReadOnlyList<string> named, out why);
+            listed = new MasterWorkbookRead(paths, named);
             return ok;
+        }
+
+        // ###########################################################################################
+        // Every spelling `path` has in the tree, compared ignoring case: what a board workbook is READ
+        // at. Usually one; two only on a case-sensitive file system holding both, and then both are
+        // read, since a client may download either. None: not in the tree.
+        // ###########################################################################################
+        internal static IReadOnlyList<string> SpellingsOnDisk(string path, ILookup<string, string> onDisk) =>
+            onDisk[DataTreeUsage.Normalise(path)].ToList();
+
+        // ###########################################################################################
+        // A cited path as the operating system finds it: empty and "." segments dropped, ".." taking
+        // the segment before it, and - as Windows does - trailing dots and spaces trimmed off each
+        // segment. Null when ".." climbs out of the tree, which no client can reach a file through.
+        // `path` is Normalise's.
+        // ###########################################################################################
+        internal static string? Resolved(string path)
+        {
+            var segments = new List<string>();
+
+            foreach (string raw in path.Split('/'))
+            {
+                if (raw.Length == 0 || raw == ".")
+                    continue;
+
+                if (raw == "..")
+                {
+                    if (segments.Count == 0)
+                        return null;
+
+                    segments.RemoveAt(segments.Count - 1);
+                    continue;
+                }
+
+                string trimmed = raw.TrimEnd('.', ' ');
+                segments.Add(trimmed.Length == 0 ? raw : trimmed);
+            }
+
+            return string.Join('/', segments);
         }
 
         private static bool TryReadCitations(string workbookPath, WorkbookReadCache? cache, out IReadOnlyCollection<string> cites)
@@ -253,13 +322,16 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The master's "Excel data file" column, normalised. False (with a reason) when the sheet or
-        // its header is missing or the file cannot be opened - never an empty list, which would read
-        // as "this master lists nothing" and fail open.
+        // The master's "Excel data file" column, normalised - and its "KiCad data file" column, when
+        // it has one (the legacy master's; `named`). False (with a reason) when the sheet or the
+        // "Excel data file" header is missing or the file cannot be opened - never an empty list,
+        // which would read as "this master lists nothing" and fail open. The KiCad column is looked
+        // for on the same header row.
         // ###########################################################################################
-        private static bool TryReadListedWorkbooks(string masterPath, out IReadOnlyList<string> listed, out string why)
+        private static bool TryReadMaster(string masterPath, out IReadOnlyList<string> listed, out IReadOnlyList<string> named, out string why)
         {
             listed = [];
+            named = [];
             why = string.Empty;
 
             EpplusLicense.Ensure();
@@ -267,7 +339,7 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = new FileStream(masterPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var package = new ExcelPackage(stream);
+                using var package = EpplusLicense.OpenPackage(stream);
                 ExcelWorksheet? sheet = package.Workbook.Worksheets[DataTreeUsage.MasterSheetName];
 
                 if (sheet?.Dimension is null)
@@ -300,7 +372,16 @@ namespace Handlers.DataHandling
                     return false;
                 }
 
+                int kiCadColumn = -1;
+
+                for (int col = 1; col <= lastColumn && kiCadColumn < 0; col++)
+                {
+                    if (string.Equals(sheet.Cells[headerRow, col].Text?.Trim(), DataTreeUsage.LegacyKiCadDataFileColumn, StringComparison.OrdinalIgnoreCase))
+                        kiCadColumn = col;
+                }
+
                 var paths = new List<string>();
+                var files = new List<string>();
 
                 for (int row = headerRow + 1; row <= lastRow; row++)
                 {
@@ -308,9 +389,13 @@ namespace Handlers.DataHandling
 
                     if (path.Length > 0)
                         paths.Add(path);
+
+                    if (kiCadColumn > 0 && DataTreeUsage.Normalise(sheet.Cells[row, kiCadColumn].Text) is { Length: > 0 } file)
+                        files.Add(file);
                 }
 
                 listed = paths;
+                named = files;
                 return true;
             }
             catch (Exception ex)
@@ -350,12 +435,18 @@ namespace Handlers.DataHandling
             }
         }
 
-        private static void AddNormalised(HashSet<string> set, string? path)
+        // A cited path, as written and as resolved - both are used (see the header).
+        private static void AddCited(HashSet<string> set, string? path)
         {
             string normalised = DataTreeUsage.Normalise(path);
 
-            if (normalised.Length > 0)
-                set.Add(normalised);
+            if (normalised.Length == 0)
+                return;
+
+            set.Add(normalised);
+
+            if (DataTreeUsage.Resolved(normalised) is { Length: > 0 } resolved)
+                set.Add(resolved);
         }
 
         // The app's own normalisation (DataManager, BoardDataReader): trimmed, "/" separators, no
@@ -369,6 +460,15 @@ namespace Handlers.DataHandling
             return slash < 0 ? string.Empty : path[..slash];
         }
     }
+
+    // ###########################################################################################
+    // A master's answer: the board workbooks it lists, and the files it names itself beside them
+    // (the legacy master's "KiCad data file" - rule 7), so ONE read of the master, cached as one
+    // (WorkbookReadCache), gives both. Its own type rather than a collection carrying a second list
+    // recovered by a downcast (code review, 2026-10-04): there is no way left for the named files to
+    // go missing silently - the fail-open direction DataTreeUsage must never take.
+    // ###########################################################################################
+    internal sealed record MasterWorkbookRead(IReadOnlyList<string> Workbooks, IReadOnlyList<string> Named);
 
     // ###########################################################################################
     // The answer for one tree. `IsUsed` is the rule; `UnusedFiles` and `RemovableFrom` are what may

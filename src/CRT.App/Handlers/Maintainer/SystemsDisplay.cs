@@ -15,7 +15,7 @@ namespace Handlers.MaintainerHandling
     // *** A SUBMISSION'S STATE IS SAID IN CRT's OWN WORDS. *** The server sends the word its
     // contributor is told, and it is put into words by CRT.Data's SubmissionReceiptPresenter - the
     // very function CRT's "My submissions" uses - so the maintainer and the contributor describe one
-    // submission identically ("Published to BETA source", "Taken back out of BETA - waiting for
+    // submission identically ("Published to the BETA source", "Taken back out of BETA - waiting for
     // review again"). CLAUDE.md's "vocabulary the user reads" rule, kept by construction.
     // ###########################################################################################
     public static class SystemsDisplay
@@ -35,16 +35,24 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // Where the system's data is, in one phrase:
+        // Where the system's data is, in one phrase - and NOTHING in the ordinary case (owner
+        // request, 2026-10-03: "There is no need to always see 'In BETA and stable source', as this
+        // will be default for all - only show where there is something odd/off"):
         //
-        //   "In BETA and production"           - the ordinary case
-        //   "BETA ahead of production"         - published to BETA, waiting for the BETA screen
-        //   "In BETA - not in production yet"  - never promoted
-        //   "Not published yet"                - a new system whose first submission is still in
-        //                                        review, or was turned down
+        //   ""                                        - in BETA and the stable source, as every
+        //                                               system should be; or published where the
+        //                                               server has no stable tree to look in
+        //   "BETA ahead of the stable source"         - published to BETA, waiting for Beta > Stable
+        //   "In BETA - not in the stable source yet"  - never promoted
+        //   "In the stable source - not in BETA"      - BETA lacks what the stable source holds
+        //   "Not published yet"                       - a new system whose first submission is still
+        //                                               in review, or was turned down
         //
-        // Production is only claimed when the server looked (InProduction not null); without a
-        // production tree it says "Published", which is all that is known.
+        // And, after any of those, what is off about CRT's DROP-DOWN LISTS (owner request,
+        // 2026-10-04: "I do not expect there should be cases where something can only be listed in
+        // stable? If so, it must be flagged") - see ListingParts.
+        //
+        // The stable source is only claimed when the server looked (InProduction not null).
         // ###########################################################################################
         public static string Where(SystemOverviewEntry system) =>
             SystemsDisplay.Joined(SystemsDisplay.WhereParts(system));
@@ -61,31 +69,72 @@ namespace Handlers.MaintainerHandling
         {
             ArgumentNullException.ThrowIfNull(system);
 
+            var parts = new List<StatusPart>(SystemsDisplay.TreeParts(system));
+            IReadOnlyList<StatusPart> listing = SystemsDisplay.ListingParts(system);
+
+            if (parts.Count > 0 && listing.Count > 0)
+                parts.Add(new(" - ", false));
+
+            parts.AddRange(listing);
+            return parts;
+        }
+
+        // ###########################################################################################
+        // WHAT IS OFF ABOUT THE DROP-DOWN LISTS (2026-10-04), both marked as still to be DONE:
+        //
+        //   "listed only in the stable source's drop-down list"  - the stable list names it and
+        //       BETA's does not: the next promotion would not keep it, and BETA's CRT users cannot
+        //       reach it. Not said for a board BETA does not hold at all - "not in BETA" says that.
+        //   "missing from the stable source's drop-down list"    - the stable source holds the board
+        //       and BETA's list names it, but the stable list does not: stable CRT users cannot
+        //       reach a board that is there.
+        //
+        // Nothing when either list is unknown (null) - never "not listed" without looking. A new
+        // system in BETA only, waiting for its first promotion, is listed in BETA alone, as it
+        // should be, and says nothing.
+        // ###########################################################################################
+        public static IReadOnlyList<StatusPart> ListingParts(SystemOverviewEntry system)
+        {
+            ArgumentNullException.ThrowIfNull(system);
+
+            if (system.ListedInStable == true && system.ListedInBeta == false && !(system.InProduction == true && !system.InBeta))
+                return [new("listed only in the stable source's drop-down list", true)];
+
+            if (system.ListedInStable == false && system.ListedInBeta == true && system.InProduction == true)
+                return [new("missing from the stable source's drop-down list", true)];
+
+            return [];
+        }
+
+        // Where the board's data is - the trees. See WhereParts.
+        private static IReadOnlyList<StatusPart> TreeParts(SystemOverviewEntry system)
+        {
             if (!system.InBeta)
             {
                 return system.InProduction == true
-                    ? [new("In production - ", false), new("not in BETA", true)]
+                    ? [new("In the stable source - ", false), new("not in BETA", true)]
                     : [new("Not published yet", false)];
             }
 
             if (system.IsAwaitingProduction)
             {
                 return system.InProduction == true
-                    ? [new("BETA ahead of production", true)]
-                    : [new("In BETA - ", false), new("not in production yet", true)];
+                    ? [new("BETA ahead of the stable source", true)]
+                    : [new("In BETA - ", false), new("not in the stable source yet", true)];
             }
 
-            return system.InProduction switch
-            {
-                true => [new("In BETA and production", false)],
-                false => [new("In BETA - ", false), new("not in production yet", true)],
-                _ => [new("Published", false)]
-            };
+            // The ordinary case says nothing - the list and the panel show only what is off.
+            return system.InProduction == false
+                ? [new("In BETA - ", false), new("not in the stable source yet", true)]
+                : [];
         }
 
         // ###########################################################################################
-        // The grey line under a system in the list: where its data is, how many maintain it, and -
-        // only when it is the case - that it is closed to contributions.
+        // The grey line under a system in the list: where its data is when that is anything but the
+        // ordinary (WhereParts), how many maintain it, and - only when it is the case - that it is
+        // closed to contributions. No view count any more (owner request, 2026-10-03: "remove the
+        // 'no views in 30 days' from the data in the left-side list") - the views are the
+        // system's Statistics view.
         // ###########################################################################################
         public static string ListLine(SystemOverviewEntry system) =>
             SystemsDisplay.Joined(SystemsDisplay.ListLineParts(system));
@@ -96,18 +145,15 @@ namespace Handlers.MaintainerHandling
         {
             ArgumentNullException.ThrowIfNull(system);
 
-            var parts = new List<StatusPart>(SystemsDisplay.WhereParts(system))
-            {
-                new(" - ", false),
-                new(MaintainerAssignmentDisplay.CountPhrase(system.MaintainerCount), system.MaintainerCount == 0)
-            };
+            var parts = new List<StatusPart>(SystemsDisplay.WhereParts(system));
+
+            if (parts.Count > 0)
+                parts.Add(new(" - ", false));
+
+            parts.Add(new(MaintainerAssignmentDisplay.CountPhrase(system.MaintainerCount), system.MaintainerCount == 0));
 
             if (!system.IsAccepting)
                 parts.Add(new(" - closed to contributions", false));
-
-            // How often CRT users look at it (2026-09-27) - absent from an older server.
-            if (system.ViewsLast30Days is int views)
-                parts.Add(new(" - " + SystemsDisplay.ViewsPhrase(views), false));
 
             return parts;
         }
@@ -119,15 +165,6 @@ namespace Handlers.MaintainerHandling
         // checking their own work - are counted apart, so they cannot make a board look used.
         // ###########################################################################################
 
-        // The list's phrase: "48 views in 30 days", "1 view in 30 days", "no views in 30 days".
-        public static string ViewsPhrase(int views) =>
-            views switch
-            {
-                <= 0 => "no views in 30 days",
-                1 => "1 view in 30 days",
-                _ => $"{views.ToString(CultureInfo.InvariantCulture)} views in 30 days"
-            };
-
         // The section's heading - or, with nothing counted at all, the whole section.
         public static string ViewsHeading(BoardViewStatistics views)
         {
@@ -137,6 +174,10 @@ namespace Handlers.MaintainerHandling
                 ? "No views of this board in CRT counted in the last 12 months."
                 : "Views in CRT";
         }
+
+        // The Statistics view when the server sent no counts at all - an older server, or counts it
+        // could not read. Not "no views", which would be a claim about the board.
+        public const string NoViewCountsLine = "The server sent no view counts for this board.";
 
         public static bool HasNoViews(BoardViewStatistics views) =>
             views.Last365Days <= 0 && views.FromBetaLast30Days <= 0;
@@ -196,52 +237,22 @@ namespace Handlers.MaintainerHandling
 
         private static string Joined(IEnumerable<StatusPart> parts) => string.Concat(parts.Select(part => part.Text));
 
-        // ###########################################################################################
-        // The revisions, under the system's name on the right: "BETA revision 2026-September-20 -
-        // production revision 2026-May-14, published there 2026-May-14". Null for a shipped board
-        // nothing has been published through yet - it has no revision on record to name.
-        // ###########################################################################################
-        public static string? Revisions(SystemOverviewEntry system)
-        {
-            ArgumentNullException.ThrowIfNull(system);
-
-            var parts = new List<string>();
-
-            if (!string.IsNullOrWhiteSpace(system.BetaRevision))
-                parts.Add($"BETA revision {system.BetaRevision.Trim()}");
-
-            if (!string.IsNullOrWhiteSpace(system.ProductionRevision))
-            {
-                string production = $"production revision {system.ProductionRevision.Trim()}";
-
-                if (system.ProductionPublishedUtc is DateTimeOffset published)
-                    production += $", published there {SubmissionReceiptPresenter.FormatDate(published)}";
-
-                parts.Add(production);
-            }
-
-            if (parts.Count == 0)
-                return null;
-
-            string line = string.Join(" - ", parts);
-            return char.ToUpperInvariant(line[0]) + line[1..];
-        }
-
         // The maintainers section's heading - and, with nobody assigned, where its submissions go.
         public static string MaintainersHeading(int count) =>
             count == 0
                 ? "Nobody maintains this system - its submissions go to the administrator."
                 : count == 1 ? "Maintainer" : $"Maintainers ({count.ToString(CultureInfo.InvariantCulture)})";
 
-        // "Anna (anna@example.com)".
         // ###########################################################################################
-        // THE SYSTEM'S HISTORY (owner request, 2026-09-27: "I would like to see the date, newest
-        // first, to understand what has happened to a system"). One line per event, the DATE FIRST
-        // so the column reads down as a timeline, then what happened; a grey line under it says by
-        // whom and anything more. A decision is said in CRT's own state words (DescribeState), the
-        // ones "My submissions" uses - so "merged" reads "Published to BETA source" here too.
+        // ONE EVENT OF THE SYSTEM'S HISTORY (owner request, 2026-09-27: "I would like to see the date,
+        // newest first, to understand what has happened to a system"): what happened; a grey line
+        // under it says by whom and anything more. The History view puts the date in a column of its
+        // own and gathers a submission's events onto one card (SystemHistoryDisplay, 2026-10-04) -
+        // these words are for every other event. A decision is said in CRT's own state words
+        // (DescribeState), the ones "My submissions" uses - so "merged" reads "Published to the BETA
+        // source" here too.
         // ###########################################################################################
-        public static string HistoryLine(SystemHistoryEntry entry)
+        public static string HistoryWhat(SystemHistoryEntry entry)
         {
             ArgumentNullException.ThrowIfNull(entry);
 
@@ -253,8 +264,8 @@ namespace Handlers.MaintainerHandling
                 SystemHistoryEvents.Sent => $"{number} sent",
                 SystemHistoryEvents.Decided => $"{number} - {SubmissionReceiptPresenter.DescribeState(detail)}",
                 SystemHistoryEvents.Amended => $"{number} changed by a maintainer",
-                SystemHistoryEvents.PublishedToProduction => "Published to production",
-                SystemHistoryEvents.FoundInProduction => "Found already in production (copied there outside CRT)",
+                SystemHistoryEvents.PublishedToProduction => "Published to the stable source",
+                SystemHistoryEvents.FoundInProduction => "Found already in the stable source (copied there outside CRT)",
                 SystemHistoryEvents.PushedBack => "Pushed back from BETA to the queue",
                 SystemHistoryEvents.RejectedFromBeta => "Rejected in BETA and taken out of it",
                 SystemHistoryEvents.MaintainerAdded => $"{SystemsDisplay.Or(detail, "Somebody")} made a maintainer",
@@ -264,10 +275,11 @@ namespace Handlers.MaintainerHandling
                 SystemHistoryEvents.InvitationAccepted => $"{SystemsDisplay.Or(detail, "Somebody")} accepted the invitation and became a maintainer",
                 SystemHistoryEvents.Placed => "Placed in the drop-down lists",
                 SystemHistoryEvents.DraftDiscarded => DraftDiscardWording.HistoryWhat(number),
+                SystemHistoryEvents.Deleted => "Deleted from the BETA and stable data and the database",
                 _ => entry.Event
             };
 
-            return $"{SubmissionReceiptPresenter.FormatDate(entry.AtUtc)} - {what}";
+            return what;
         }
 
         // The grey line: who, and what the line itself did not say - a submission's description, a
@@ -284,7 +296,7 @@ namespace Handlers.MaintainerHandling
                 SystemHistoryEvents.Sent => detail.Length > 0 ? detail : "(no description given)",
                 SystemHistoryEvents.Amended or SystemHistoryEvents.PublishedToProduction or SystemHistoryEvents.FoundInProduction or
                     SystemHistoryEvents.PushedBack or SystemHistoryEvents.RejectedFromBeta or
-                    SystemHistoryEvents.Placed => detail.Length > 0 ? detail : null,
+                    SystemHistoryEvents.Placed or SystemHistoryEvents.Deleted => detail.Length > 0 ? detail : null,
                 _ => null
             };
 
@@ -304,9 +316,6 @@ namespace Handlers.MaintainerHandling
 
             return string.IsNullOrWhiteSpace(entry.Note) ? null : $"Told the contributor: {entry.Note.Trim()}";
         }
-
-        public static string HistoryHeading(int count) =>
-            count == 0 ? "Nothing has happened to this system yet" : "History";
 
         private static string Or(string text, string fallback) => text.Length > 0 ? text : fallback;
 
@@ -388,38 +397,12 @@ namespace Handlers.MaintainerHandling
             return line.Length == 0 ? line : char.ToUpperInvariant(line[0]) + line[1..];
         }
 
-        public static string SubmissionsHeading(int count) =>
-            count == 0 ? "No submissions yet." : "Recent submissions";
-
         // What the contributor wrote about it, or that they wrote nothing.
         public static string SubmissionTitle(SystemSubmissionEntry submission)
         {
             ArgumentNullException.ThrowIfNull(submission);
 
             return string.IsNullOrWhiteSpace(submission.Summary) ? "(no description given)" : submission.Summary.Trim();
-        }
-
-        // ###########################################################################################
-        // The grey line under it: "#12 - Published to BETA source - sent 2026-September-25 -
-        // anna@example.com". The state in CRT's words (see the header).
-        // ###########################################################################################
-        public static string SubmissionFooter(SystemSubmissionEntry submission)
-        {
-            ArgumentNullException.ThrowIfNull(submission);
-
-            var parts = new List<string>
-            {
-                $"#{submission.Id.ToString(CultureInfo.InvariantCulture)}",
-                SubmissionReceiptPresenter.DescribeState(submission.State)
-            };
-
-            if (submission.CreatedUtc != default)
-                parts.Add($"sent {SubmissionReceiptPresenter.FormatDate(submission.CreatedUtc)}");
-
-            if (!string.IsNullOrWhiteSpace(submission.ContactEmail))
-                parts.Add(submission.ContactEmail.Trim());
-
-            return string.Join(" - ", parts);
         }
 
         // ###########################################################################################

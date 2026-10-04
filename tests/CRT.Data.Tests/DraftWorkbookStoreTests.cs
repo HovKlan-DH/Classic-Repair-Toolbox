@@ -400,6 +400,66 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
     }
 
+    // ###########################################################################################
+    // *** A DISCARD STOPPED BY ANY OTHER FILE LEAVES THE DRAFT WHOLE (owner report, 2026-10-02). ***
+    // The folder was emptied in NAME order, and "Data ... .xlsx" sorts before "Issue 4.B.png" - so
+    // a published draft being tidied away lost its workbook and sidecar and then stopped at an image
+    // something had open. What was left - a marker and three images - could never be retired (there
+    // was no workbook to compare) and read as a draft "0 rows changed" with the official data moved
+    // under it, for good. The workbook now goes after every other file, so a stop leaves a draft.
+    // ###########################################################################################
+    [Fact]
+    public void A_discard_stopped_by_an_open_image_keeps_the_workbook_and_its_sidecar()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        string sidecar = BoardComponentHighlightStorage.GetJsonPath(this.WorkbookPath);
+        File.WriteAllText(sidecar, "{}");
+
+        // Sorts AFTER the workbook, as the real board's images did.
+        string image = Path.Combine(
+            DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey),
+            "Issue 4.B.png");
+
+        File.WriteAllText(image, "image bytes");
+
+        // Held the way an ordinary reader holds a file - reading, sharing reads only.
+        using (new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        }
+
+        Assert.True(File.Exists(this.WorkbookPath));
+        Assert.True(File.Exists(sidecar));
+        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+
+        // Nothing holding it: discarding again finishes it.
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+    }
+
+    // The workbook goes BEFORE its sidecar: held open in Excel - the usual stop - it must not be
+    // left without the highlights and calibrations beside it, which would then read as changes.
+    [Fact]
+    public void A_discard_stopped_by_an_open_workbook_keeps_its_sidecar()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        string sidecar = BoardComponentHighlightStorage.GetJsonPath(this.WorkbookPath);
+        File.WriteAllText(sidecar, "{}");
+
+        using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        }
+
+        Assert.True(File.Exists(sidecar));
+    }
+
     [Fact]
     public void Discarding_a_system_with_NO_draft_answers_false_rather_than_throwing()
     {

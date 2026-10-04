@@ -46,7 +46,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The receipts a discard of this system's draft is reported for: sent FROM THIS DRAFT (at or
         // after draftCreatedUtc, the marker's - an older submission belongs to an earlier draft that
-        // was retired, and its board has moved on), still worth reporting, and not reported already.
+        // was retired, and its board has moved on), still worth reporting, still known to the server
+        // (2026-10-04), and not reported already.
         // Matched on the system id exactly as LatestForSystem matches the Drafts tab's badge, so the
         // dialog warns about precisely the submissions the row shows.
         // ###########################################################################################
@@ -65,6 +66,9 @@ namespace Handlers.DataHandling
                 .Where(receipt => draftCreatedUtc is null || receipt.SentUtc >= draftCreatedUtc.Value)
                 .Where(receipt => DraftDiscardContract.IsWorthReporting(receipt.LastKnownState))
                 .Where(receipt => receipt.DraftDiscardedUtc is null)
+                // A submission the server no longer knows (2026-10-04: deleted with its system, or
+                // by the reset at go-live) has nobody to tell, and is not "still open".
+                .Where(receipt => receipt.NotFoundUtc is null)
                 .OrderBy(receipt => receipt.SubmissionId)
                 .ToList();
         }

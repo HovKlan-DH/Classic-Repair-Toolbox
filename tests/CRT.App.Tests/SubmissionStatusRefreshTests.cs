@@ -170,7 +170,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
     // ###########################################################################################
     // *** A BETA ROLLBACK REACHES THE CONTRIBUTOR (code review, 2026-09-27). *** The server answers
     // "returned" for a merged submission a maintainer pushed back, and the receipt takes it - with
-    // the maintainer's reason - so "My submissions" stops saying "Published to BETA source" and the
+    // the maintainer's reason - so "My submissions" stops saying "Published to the BETA source" and the
     // badge tells the contributor to look.
     // ###########################################################################################
     [Fact]
@@ -274,6 +274,160 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
 
         Assert.Equal(0, changed);
         Assert.Equal("pending", SubmissionReceiptStore.All.Single().LastKnownState);
+    }
+
+    // ###########################################################################################
+    // *** AN UNCHANGED ANSWER WRITES NOTHING, OR NEARLY (code review, 2026-10-04). *** The minute
+    // check saved the whole receipts file once per open receipt, every minute, only to move "last
+    // checked" - which nothing shows. Now that date is written only once it is
+    // CheckedSaveInterval stale; observed here through the file itself.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_unchanged_answer_does_not_write_the_receipts_file_again_within_the_interval()
+    {
+        SubmissionStatusRefreshTests.Record(42, "pending");
+        await SubmissionStatusRefresh.RefreshAsync(SubmissionStatusRefreshTests.Answering("pending", string.Empty), SubmissionStatusRefreshTests.Now);
+
+        string file = Path.Combine(this.thisWorkspace.Root, "submissions.json");
+        File.Delete(file);
+
+        await SubmissionStatusRefresh.RefreshAsync(
+            SubmissionStatusRefreshTests.Answering("pending", string.Empty),
+            SubmissionStatusRefreshTests.Now.AddMinutes(1));
+
+        Assert.False(File.Exists(file));
+        Assert.Equal(SubmissionStatusRefreshTests.Now, SubmissionReceiptStore.All.Single().LastCheckedUtc);
+
+        // Stale enough, the date is written again - a weekly re-check of a receipt in BETA reads it.
+        await SubmissionStatusRefresh.RefreshAsync(
+            SubmissionStatusRefreshTests.Answering("pending", string.Empty),
+            SubmissionStatusRefreshTests.Now + SubmissionReceiptStore.CheckedSaveInterval);
+
+        Assert.True(File.Exists(file));
+        Assert.Equal(SubmissionStatusRefreshTests.Now + SubmissionReceiptStore.CheckedSaveInterval, SubmissionReceiptStore.All.Single().LastCheckedUtc);
+    }
+
+    // A change the row does not count as news - a decision date arriving - is still written at once.
+    [Fact]
+    public async Task A_decision_date_arriving_on_an_unchanged_state_is_written_at_once()
+    {
+        SubmissionStatusRefreshTests.Record(42, "changes_requested");
+        DateTimeOffset decided = SubmissionStatusRefreshTests.Now.AddHours(-3);
+
+        await SubmissionStatusRefresh.RefreshAsync(
+            (id, _, _) => Task.FromResult<SubmissionStatus?>(new SubmissionStatus { Id = id, State = "changes_requested", DecidedUtc = decided }),
+            SubmissionStatusRefreshTests.Now);
+
+        Assert.Equal(decided, SubmissionReceiptStore.All.Single().DecidedUtc);
+    }
+
+    // ###########################################################################################
+    // *** A SUBMISSION THE SERVER NO LONGER KNOWS (code review, 2026-10-04). *** One deleted with
+    // its system answers 404, and was asked about every minute for ever. Now it is marked, keeps its
+    // last state, and is asked about once a day - and any later answer clears the mark.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_submission_the_server_does_not_know_is_asked_about_once_a_day_and_keeps_its_state()
+    {
+        SubmissionStatusRefreshTests.Record(42, "pending");
+        var asked = new List<long>();
+
+        SubmissionStatusRefresh.StatusLookup notFound = (id, _, _) =>
+        {
+            asked.Add(id);
+            throw new SubmissionNotFoundException(id);
+        };
+
+        int changed = await SubmissionStatusRefresh.RefreshAsync(notFound, SubmissionStatusRefreshTests.Now);
+
+        // A CHANGE (code review, 2026-10-04 - it was 0): the row now reads "No longer on the
+        // server", so the Drafts tab has to be drawn again.
+        Assert.Equal(1, changed);
+        SubmissionReceipt receipt = SubmissionReceiptStore.All.Single();
+        Assert.Equal("pending", receipt.LastKnownState);
+        Assert.Equal(SubmissionStatusRefreshTests.Now, receipt.NotFoundUtc);
+
+        // A minute later, and an hour later: not asked.
+        await SubmissionStatusRefresh.RefreshAsync(notFound, SubmissionStatusRefreshTests.Now.AddMinutes(1));
+        await SubmissionStatusRefresh.RefreshAsync(notFound, SubmissionStatusRefreshTests.Now.AddHours(1));
+        Assert.Single(asked);
+        Assert.False(SubmissionStatusRefresh.ChecksPeriodically(SubmissionReceiptStore.All, SubmissionStatusRefreshTests.Now.AddHours(1), windowMinimised: false));
+
+        // A day later: asked again - and an answer clears the mark, which is a change too.
+        int knownAgain = await SubmissionStatusRefresh.RefreshAsync(
+            SubmissionStatusRefreshTests.Answering("pending", string.Empty),
+            SubmissionStatusRefreshTests.Now + SubmissionReceiptPresenter.NotFoundRecheckInterval);
+
+        Assert.Equal(1, knownAgain);
+        Assert.Null(SubmissionReceiptStore.All.Single().NotFoundUtc);
+    }
+
+    // ###########################################################################################
+    // *** "NOT FOUND" IS NEWS ONCE (code review, 2026-10-04). *** The minute check only redraws the
+    // Drafts tab when something changed, and a receipt turning "not found" did not count - so its
+    // row kept saying "Submitted - awaiting feedback", with Submit greyed out, until the tab was
+    // shown again. The first "not found" counts; the daily re-ask that finds the same does not.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_submission_turning_not_found_counts_as_a_change_once()
+    {
+        SubmissionStatusRefreshTests.Record(42, "pending");
+        SubmissionStatusRefresh.StatusLookup notFound = (id, _, _) => throw new SubmissionNotFoundException(id);
+        int changedSeen = 0;
+
+        await SubmissionStatusRefresh.RefreshQuietlyAsync(
+            notFound, SubmissionStatusRefreshTests.Now, onFinished: changed => changedSeen = changed);
+
+        Assert.Equal(1, changedSeen);
+
+        await SubmissionStatusRefresh.RefreshQuietlyAsync(
+            notFound,
+            SubmissionStatusRefreshTests.Now + SubmissionReceiptPresenter.NotFoundRecheckInterval,
+            onFinished: changed => changedSeen = changed);
+
+        Assert.Equal(0, changedSeen);
+    }
+
+    // ###########################################################################################
+    // *** "UPDATE CRT" IS SAID, NOT SWALLOWED (code review, 2026-10-04). *** A server that no longer
+    // serves this CRT answers every submission with 426. It used to be read as "unreachable": every
+    // receipt froze and nothing said why. The round stops at the first such answer - the rest would
+    // only hear the same - and the server's sentence is handed on to be shown; the follow-up after
+    // the check still runs.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_update_CRT_answer_stops_the_check_and_hands_on_the_servers_words()
+    {
+        SubmissionStatusRefreshTests.Record(41, "pending");
+        SubmissionStatusRefreshTests.Record(42, "pending");
+
+        var asked = new List<long>();
+        var outdated = new List<string>();
+        bool finished = false;
+
+        await SubmissionStatusRefresh.RefreshQuietlyAsync(
+            (id, _, _) =>
+            {
+                asked.Add(id);
+                throw new ClientOutdatedException("Please update CRT to version [3.2.0] or newer.");
+            },
+            SubmissionStatusRefreshTests.Now,
+            onFinished: _ => finished = true,
+            onOutdated: outdated.Add);
+
+        Assert.Single(asked);
+        Assert.Equal(["Please update CRT to version [3.2.0] or newer."], outdated);
+        Assert.True(finished);
+        Assert.All(SubmissionReceiptStore.All, receipt => Assert.Equal("pending", receipt.LastKnownState));
+    }
+
+    // Where the words are shown, they say what could not be done.
+    [Fact]
+    public void The_update_CRT_words_are_shown_as_the_reason_the_status_could_not_be_checked()
+    {
+        Assert.Equal(
+            "The status of your submissions could not be checked: Please update CRT to version [3.2.0] or newer.",
+            SubmissionStatusRefresh.DescribeOutdated(" Please update CRT to version [3.2.0] or newer. "));
     }
 
     // -----------------------------------------------------------------------------------
