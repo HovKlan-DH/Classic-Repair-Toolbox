@@ -438,7 +438,7 @@
 					</Grid>
 				</Border>
 
-				<!-- "Your submission is now in the online source - switch back from BETA" (owner request,
+				<!-- "Your submission is now in the stable source - switch back from BETA" (owner request,
 				     2026-09-27). See Main.SourceSwitchNotice.cs. -->
 				<Border x:Name="SourceSwitchBanner"
 						Grid.Row="3"
@@ -653,11 +653,32 @@
 					     draft is temporary - local work waiting to be submitted and published -
 					     and the tab says so at a glance. A TextBlock with its own Foreground, since
 					     the tab's selected and hover states would otherwise recolour a plain header. -->
+					<!-- ITS BADGE (owner request, 2026-09-30: "Like the "Maintainer" tab now has a
+					     badge, then I think the "Draft" also should have same functionality, as the
+					     contributor likewise can receive an update") counts the submissions with news
+					     the contributor has not seen - the same number as the "My submissions"
+					     button's badge inside the tab (Main.SubmissionChecks.cs). -->
 					<TabItem x:Name="DraftsTabItem" IsVisible="False">
 						<TabItem.Header>
-							<TextBlock x:Name="DraftsTabHeaderText"
-							           Text="Drafts"
-							           Foreground="{DynamicResource Main_TabHeader_Drafts_Fg}" />
+							<StackPanel Orientation="Horizontal" Spacing="5">
+								<TextBlock x:Name="DraftsTabHeaderText"
+								           Text="Drafts"
+								           VerticalAlignment="Center"
+								           Foreground="{DynamicResource Main_TabHeader_Drafts_Fg}" />
+								<Border x:Name="DraftsTabBadge"
+								        IsVisible="False"
+								        Background="{DynamicResource Badge_Attention_Bg}"
+								        CornerRadius="8"
+								        Padding="4,0"
+								        MinWidth="16"
+								        VerticalAlignment="Center">
+									<TextBlock x:Name="DraftsTabBadgeText"
+									           FontSize="11"
+									           FontWeight="SemiBold"
+									           HorizontalAlignment="Center"
+									           Foreground="{DynamicResource Badge_Attention_Fg}" />
+								</Border>
+							</StackPanel>
 						</TabItem.Header>
 						<local:TabDrafts x:Name="TabDrafts" />
 					</TabItem>
@@ -667,8 +688,35 @@
 					     maintainer account, which almost nobody running CRT has. IsVisible starts False so
 					     a launch with it off never flashes the tab; ApplyMaintainerTabVisibility sets the
 					     real value in the constructor and whenever the setting is toggled. While it is
-					     selected, Main.Maintainer.cs collapses the sidebar and the worklog bar. -->
-					<TabItem x:Name="MaintainerTabItem" Header="Maintainer" IsVisible="False">
+					     selected, Main.Maintainer.cs collapses the sidebar and the worklog bar.
+
+					     ITS BADGE (owner request, 2026-09-30) counts what waits for the signed-in
+					     maintainer - the "Contributor Submissions" and "Beta > Prod" badges added up,
+					     kept current off screen too (Main.Maintainer.cs). The title binds the TabItem's
+					     own Foreground: CRT's app-wide TextBlock style would otherwise paint it the one
+					     text colour whether the tab is selected, pointed at or neither. -->
+					<TabItem x:Name="MaintainerTabItem" IsVisible="False">
+						<TabItem.Header>
+							<StackPanel Orientation="Horizontal" Spacing="5">
+								<TextBlock x:Name="MaintainerTabHeaderText"
+								           Text="Maintainer"
+								           VerticalAlignment="Center"
+								           Foreground="{Binding $parent[TabItem].Foreground}" />
+								<Border x:Name="MaintainerTabBadge"
+								        IsVisible="False"
+								        Background="{DynamicResource Badge_Attention_Bg}"
+								        CornerRadius="8"
+								        Padding="4,0"
+								        MinWidth="16"
+								        VerticalAlignment="Center">
+									<TextBlock x:Name="MaintainerTabBadgeText"
+									           FontSize="11"
+									           FontWeight="SemiBold"
+									           HorizontalAlignment="Center"
+									           Foreground="{DynamicResource Badge_Attention_Fg}" />
+								</Border>
+							</StackPanel>
+						</TabItem.Header>
 						<local:TabMaintainer x:Name="TabMaintainer" />
 					</TabItem>
 

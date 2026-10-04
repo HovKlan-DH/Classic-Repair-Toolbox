@@ -97,8 +97,8 @@ public sealed class SubmissionReceiptPresenterTests
     [InlineData("changes_requested", "Changes requested")]
     [InlineData("approved", "Approved, waiting to be published")]
     // "merged" is the BETA data since the two-stage publish (2026-09-25); "published" is everyone's.
-    [InlineData("merged", "Published to BETA source")]
-    [InlineData("published", "Published to source")]
+    [InlineData("merged", "Published to the BETA source")]
+    [InlineData("published", "Published to the stable source")]
     // The server's word for a submission its contributor's newer one replaced (2026-09-26).
     [InlineData("withdrawn", "Replaced by a newer submission")]
     public void Each_REVIEW_state_is_described_in_the_contributors_own_terms(string state, string expected)
@@ -319,7 +319,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // *** PAST THE WINDOW, NOW AND THEN - NEVER NEVER (code review, 2026-09-27). *** A merged
     // submission can be taken back out of BETA long after it merged, and the old hard stop meant a
-    // rollback on day 31 never reached "My submissions": the row said "Published to BETA source"
+    // rollback on day 31 never reached "My submissions": the row said "Published to the BETA source"
     // for good while the server said otherwise. Now it is asked about once a
     // MergedLateRecheckInterval. Fails against the version that answered false past the window.
     // ###########################################################################################
@@ -988,7 +988,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // *** A NEW DRAFT DOES NOT WEAR AN OLDER SUBMISSION'S STATE (code review, 2026-09-27). *** The
     // first submission reached production and its draft was retired; the contributor starts a new
-    // draft of the same board. Its row showed "Published to source" beside changes never sent.
+    // draft of the same board. Its row showed "Published to the stable source" beside changes never sent.
     // Only submissions sent since the draft was created describe it - and the next one it sends does.
     // ###########################################################################################
     [Fact]
@@ -1057,7 +1057,7 @@ public sealed class SubmissionReceiptPresenterTests
     // ###########################################################################################
     // "There should be some kind of notification for the user, when/if this gets promoted from BETA
     // to production, so the user can know he should now change the source from BETA to the normal
-    // online source" (owner, 2026-09-27). Only published submissions, only undismissed ones, and
+    // stable source" (owner, 2026-09-27). Only published submissions, only undismissed ones, and
     // only for someone actually downloading BETA.
     // ###########################################################################################
     private static SubmissionReceipt Sent(long id, string state, bool dismissed = false) => new()
@@ -1078,7 +1078,7 @@ public sealed class SubmissionReceiptPresenterTests
                 .Select(receipt => receipt.SubmissionId));
     }
 
-    // In BETA only, it is not yet in the online source - switching back would lose sight of it.
+    // In BETA only, it is not yet in the stable source - switching back would lose sight of it.
     [Theory]
     [InlineData("merged")]
     [InlineData("pending")]
@@ -1107,7 +1107,7 @@ public sealed class SubmissionReceiptPresenterTests
     {
         string text = SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(8, "published")]);
 
-        Assert.StartsWith("Your submission for Commodore C128 310378 Open128 is now published to the online source.", text, StringComparison.Ordinal);
+        Assert.StartsWith("Your submission for Commodore C128 310378 Open128 is now published to the stable source.", text, StringComparison.Ordinal);
         Assert.Contains("BETA source", text, StringComparison.Ordinal);
         Assert.Contains("Configuration tab", text, StringComparison.Ordinal);
     }
@@ -1132,5 +1132,223 @@ public sealed class SubmissionReceiptPresenterTests
             "Your submissions for Commodore C128 310378 Open128 and Commodore C64 250407 are",
             SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(8, "published"), other]),
             StringComparison.Ordinal);
+    }
+
+    // ------------------------------------------------------------------ Try it in BETA (2026-10-03)
+
+    // ###########################################################################################
+    // *** THE "TRY IT IN BETA" NOTICE (owner request, 2026-10-03). *** A submission accepted into the
+    // BETA source, while this machine downloads from the STABLE source and the notice was not closed
+    // for it - the twin of the switch-back notice above, for the step before it.
+    // ###########################################################################################
+    private static SubmissionReceipt InBeta(long id, string state = "merged", bool dismissed = false, string system = "Commodore/C128/310378 Open128") => new()
+    {
+        SubmissionId = id,
+        SystemId = system,
+        LastKnownState = state,
+        SentUtc = new DateTimeOffset(2026, 10, 3, 10, 0, 0, TimeSpan.Zero).AddMinutes(id),
+        BetaNoticeDismissed = dismissed,
+    };
+
+    [Fact]
+    public void A_submission_in_BETA_is_noticed_while_downloading_from_the_stable_source()
+    {
+        Assert.Equal(
+            [8L],
+            SubmissionReceiptPresenter.NeedingBetaTryNotice([InBeta(8), InBeta(9, state: "pending")], downloadingFromBeta: false)
+                .Select(receipt => receipt.SubmissionId));
+    }
+
+    // Already downloading from BETA: nothing to tick - the data comes with the next data check.
+    // Closed for it: not again. Moved on (published, taken back out, rejected): gone.
+    [Theory]
+    [InlineData("merged", true, false)]
+    [InlineData("merged", false, true)]
+    [InlineData("published", false, false)]
+    [InlineData("returned", false, false)]
+    [InlineData("rejected", false, false)]
+    public void The_BETA_notice_is_not_shown_on_BETA_once_closed_or_once_the_state_moved_on(string state, bool onBeta, bool dismissed)
+    {
+        Assert.Empty(SubmissionReceiptPresenter.NeedingBetaTryNotice([InBeta(8, state, dismissed)], onBeta));
+    }
+
+    [Fact]
+    public void The_BETA_notice_names_the_system_and_the_check_box_as_CRT_writes_it()
+    {
+        Assert.Equal(
+            "Your submission for Commodore C128 310378 Open128 is now in the BETA source. To try it before everyone else, " +
+            "tick \"Download data from the BETA source instead of the stable source\" on the Configuration tab.",
+            SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8)], checkDataOnLaunch: true));
+
+        Assert.StartsWith(
+            "Your submissions for Commodore C128 310378 Open128 and Commodore C64 250407 are now in the BETA source.",
+            SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8), InBeta(9, system: "Commodore/C64/250407")], checkDataOnLaunch: true),
+            StringComparison.Ordinal);
+    }
+
+    // With "Check for new or updated data at application launch" off, the BETA check box is greyed
+    // out - so the notice names that one first.
+    [Fact]
+    public void With_data_checks_off_the_BETA_notice_says_to_tick_that_box_first()
+    {
+        Assert.Contains(
+            "tick \"Check for new or updated data at application launch\" and then \"Download data from the BETA source instead of the stable source\"",
+            SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8)], checkDataOnLaunch: false),
+            StringComparison.Ordinal);
+    }
+
+    // The line under the submission in "My submissions", while it is in BETA and only then.
+    [Fact]
+    public void My_submissions_says_how_to_try_a_submission_while_it_is_in_BETA()
+    {
+        Assert.Equal(SubmissionReceiptPresenter.BetaTryLine, SubmissionReceiptPresenter.DescribeBetaTry(" Merged "));
+        Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeBetaTry("published"));
+        Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeBetaTry(null));
+    }
+
+    // ------------------------------------------------------------------ Already sent as it is (2026-10-03)
+
+    // ###########################################################################################
+    // *** THE SAME DRAFT CANNOT BE SENT TWICE (owner request, 2026-10-03: "It should not be
+    // possible to submit the same data again"; cases agreed with the project owner). *** A receipt
+    // remembers the draft's fingerprint at sending; while the draft still gives it, Submit is
+    // greyed out - unless that submission never finished sending. Each test that says "not
+    // blocked" also shows the blocked side, so a rule that never blocks cannot pass it.
+    // ###########################################################################################
+    private const string C64 = "Commodore/C64/250407";
+
+    private static SubmissionReceipt SentAs(string fingerprint, string state, string sentUtc = "2026-10-03T10:00:00Z", long id = 1) => new()
+    {
+        SubmissionId = id,
+        SystemId = C64,
+        LastKnownState = state,
+        DraftFingerprint = fingerprint,
+        SentUtc = DateTimeOffset.Parse(sentUtc, CultureInfo.InvariantCulture),
+    };
+
+    // Case 1, its words.
+    [Fact]
+    public void The_reason_says_when_it_was_sent_and_that_something_must_change_first()
+    {
+        Assert.Equal(
+            "You have already sent this draft as it is now, on 2026-October-3. Change something to send it again.",
+            SubmissionReceiptPresenter.DescribeAlreadySent(SentAs("v1:sent", "pending")));
+    }
+
+    // Case 6.
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("approved")]
+    [InlineData("merged")]
+    [InlineData("returned")]
+    [InlineData("changes_requested")]
+    [InlineData("rejected")]
+    public void A_draft_sent_as_it_is_now_cannot_be_sent_again_whatever_has_happened_to_it(string state)
+    {
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", state), "v1:sent"));
+    }
+
+    // Case 7: cancelled, the connection lost, or never confirmed by the server ("" - the receipt
+    // is written before the upload, and the state only after the server confirms it).
+    [Theory]
+    [InlineData("")]
+    [InlineData("uploading")]
+    [InlineData("abandoned")]
+    public void A_submission_that_never_finished_sending_does_not_stop_the_same_draft_being_sent(string state)
+    {
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", state), "v1:sent"));
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", "pending"), "v1:sent"));
+    }
+
+    // Case 8.
+    [Fact]
+    public void A_submission_sent_by_an_older_CRT_never_stops_a_draft_being_sent()
+    {
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(SentAs(string.Empty, "pending"), "v1:sent"));
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", "pending"), "v1:sent"));
+    }
+
+    // Case 9: send A, change, send B, change back to exactly A - A's fingerprint, but B is the
+    // latest, and the draft differs from B.
+    [Fact]
+    public void Only_the_latest_submission_counts_so_a_draft_changed_back_to_an_earlier_one_can_be_sent()
+    {
+        SubmissionReceipt[] receipts =
+        [
+            SentAs("v1:A", "withdrawn", "2026-10-03T10:00:00Z", id: 1),
+            SentAs("v1:B", "pending", "2026-10-03T11:00:00Z", id: 2),
+        ];
+
+        SubmissionReceipt? latest = SubmissionReceiptPresenter.LatestForSystem(receipts, C64);
+
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(latest, "v1:A"));
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(latest, "v1:B"));
+    }
+
+    // Case 10: the draft was discarded and a new one of the same board started - only what was
+    // sent FROM this draft counts, as for the badge.
+    [Fact]
+    public void A_submission_sent_before_this_draft_was_started_does_not_stop_it_being_sent()
+    {
+        SubmissionReceipt[] receipts = [SentAs("v1:sent", "pending", "2026-09-01T10:00:00Z")];
+        var draftCreated = DateTimeOffset.Parse("2026-10-01T10:00:00Z", CultureInfo.InvariantCulture);
+
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(
+            SubmissionReceiptPresenter.LatestForSystem(receipts, C64, draftCreated), "v1:sent"));
+
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(
+            SubmissionReceiptPresenter.LatestForSystem(receipts, C64), "v1:sent"));
+    }
+
+    // Not a case of its own: a draft whose fingerprint could not be worked out (unreadable) is
+    // never blocked - an unknown answer must not stop a contributor sending.
+    [Fact]
+    public void A_draft_whose_fingerprint_is_unknown_is_never_blocked()
+    {
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(SentAs(string.Empty, "pending"), string.Empty));
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(null, "v1:sent"));
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", "pending"), "v1:sent"));
+    }
+
+    // ###########################################################################################
+    // *** A SUBMISSION THE SERVER NO LONGER KNOWS (2026-10-04). *** Deleted with its system, or by
+    // the reset of the contribution data at go-live. The receipt keeps its last state, which used to
+    // be shown for ever ("Submitted - awaiting feedback ..." about a submission nobody will see) and
+    // kept the same draft from being sent again. Each test shows the known side too, so a rule that
+    // ignores the mark cannot pass.
+    // ###########################################################################################
+    private static SubmissionReceipt Gone(string state, string fingerprint = "v1:sent") =>
+        SentAs(fingerprint, state) with { NotFoundUtc = DateTimeOffset.Parse("2026-10-04T08:00:00Z", CultureInfo.InvariantCulture) };
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("merged")]
+    [InlineData("changes_requested")]
+    public void A_submission_the_server_no_longer_knows_says_so_in_the_neutral_colour(string state)
+    {
+        Assert.Equal(SubmissionReceiptPresenter.NotOnServerWording, SubmissionReceiptPresenter.DescribeReceiptState(Gone(state)));
+        Assert.Equal(SubmissionOutcomeKind.Waiting, SubmissionReceiptPresenter.ClassifyReceipt(Gone(state)));
+
+        Assert.Equal(SubmissionReceiptPresenter.DescribeState(state), SubmissionReceiptPresenter.DescribeReceiptState(SentAs("v1:sent", state)));
+        Assert.Equal(SubmissionReceiptPresenter.ClassifyState(state), SubmissionReceiptPresenter.ClassifyReceipt(SentAs("v1:sent", state)));
+    }
+
+    // What was sent is gone, so the same draft is exactly what should be sent again.
+    [Fact]
+    public void A_submission_the_server_no_longer_knows_does_not_stop_the_same_draft_being_sent()
+    {
+        Assert.False(SubmissionReceiptPresenter.IsAlreadySent(Gone("pending"), "v1:sent"));
+        Assert.True(SubmissionReceiptPresenter.IsAlreadySent(SentAs("v1:sent", "pending"), "v1:sent"));
+    }
+
+    // Nor is it in the BETA source any more: no "try it in BETA" line, and no notice.
+    [Fact]
+    public void A_submission_the_server_no_longer_knows_is_not_offered_to_try_in_BETA()
+    {
+        Assert.Equal(string.Empty, SubmissionReceiptPresenter.DescribeReceiptBetaTry(Gone("merged")));
+        Assert.Equal(SubmissionReceiptPresenter.BetaTryLine, SubmissionReceiptPresenter.DescribeReceiptBetaTry(SentAs("v1:sent", "merged")));
+
+        Assert.Empty(SubmissionReceiptPresenter.NeedingBetaTryNotice([Gone("merged")], downloadingFromBeta: false));
+        Assert.Single(SubmissionReceiptPresenter.NeedingBetaTryNotice([SentAs("v1:sent", "merged")], downloadingFromBeta: false));
     }
 }

@@ -28,6 +28,7 @@
 
 ### Contributing
 - [Via CRT](Contribute-data-via-CRT)
+  - [View boards from online source](View-boards-from-online-source)
 - [Via GitHub](Contribute-data-via-GitHub)
 - [Add a board (KiCad)](Add-new-board-with-KiCad-data)
 

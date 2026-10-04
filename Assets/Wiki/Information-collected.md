@@ -39,6 +39,12 @@ When the views arrive, the server looks up which country your IP address belongs
 
 I use this for the [CRT Fun facts](https://classic-repair-toolbox.dk/funfacts/) page, to see which boards are used and in which countries, and it shows the maintainers of each board how much their board is used.
 
+## Which CRT versions use which part of the server
+
+Every time CRT talks to the server - the check-in, sending board views or feedback, submitting a contribution - it says which CRT version it is. The server counts, per day, how many times each CRT version used each part of the server. Nothing else is kept: no IP address, no account and no user or installation ID.
+
+I use this to see when an old part of the server is no longer used by anybody, so it can be retired. A CRT version that still uses a retired part is told to update, instead of failing.
+
 ## When you discard a draft you have submitted
 
 If you discard a draft on the "Drafts" tab while something you sent from it is still being reviewed - waiting, or published to the BETA source but not yet to everyone - CRT tells the server that you discarded your draft. The maintainers of that board then see it beside your contribution, so they can check with you before publishing it. It does not withdraw what you sent.

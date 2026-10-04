@@ -49,6 +49,16 @@ namespace Handlers.DataHandling
         public static string DownloadingUpdateAt(int percent) =>
             string.Create(CultureInfo.InvariantCulture, $"Downloading the update: {percent}%");
 
+        // ###########################################################################################
+        // The feedback upload as it goes, then - once every byte is sent - what is waited for: the
+        // server unpacks the attached files and mails them before it answers, which for a large zip
+        // takes a while with nothing more to report (code review, 2026-10-04).
+        // ###########################################################################################
+        public static string SendingFeedbackAt(int percent) =>
+            percent >= 100
+                ? "Sent - waiting for the server to save the files and mail the feedback..."
+                : string.Create(CultureInfo.InvariantCulture, $"Sending to server... {percent}%");
+
         // ---- After the limit ------------------------------------------------------------------
 
         // Feedback: nothing can be read back, so it may or may not have arrived. The text is kept.

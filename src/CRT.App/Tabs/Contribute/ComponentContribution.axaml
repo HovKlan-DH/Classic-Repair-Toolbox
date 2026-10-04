@@ -409,7 +409,7 @@
 														         PointerReleased="OnFileTextBoxPointerReleased" />
 														<Button Grid.Column="2"
 														        Classes="BrowseFileButton"
-														        Content="..."
+														        Content="Browse"
 														        Tag="{Binding}"
 														        ToolTip.Tip="Select the file to contribute"
 														        Click="OnBrowseFileClick" />
@@ -532,7 +532,7 @@
 													         PointerReleased="OnFileTextBoxPointerReleased" />
 													<Button Grid.Column="2"
 													        Classes="BrowseFileButton"
-													        Content="..."
+													        Content="Browse"
 													        Tag="{Binding}"
 													        ToolTip.Tip="Select the file to contribute"
 													        Click="OnBrowseFileClick" />
@@ -690,7 +690,7 @@
 													         PointerReleased="OnFileTextBoxPointerReleased" />
 													<Button Grid.Column="2"
 													        Classes="BrowseFileButton"
-													        Content="..."
+													        Content="Browse"
 													        Tag="{Binding}"
 													        ToolTip.Tip="Select the file to contribute"
 													        Click="OnBrowseFileClick" />

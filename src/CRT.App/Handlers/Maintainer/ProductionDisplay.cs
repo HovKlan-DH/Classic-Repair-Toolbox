@@ -68,8 +68,8 @@ namespace Handlers.MaintainerHandling
             string beta = string.IsNullOrWhiteSpace(system.BetaRevision) ? "BETA ahead" : $"BETA {system.BetaRevision}";
 
             string production = string.IsNullOrWhiteSpace(system.ProductionRevision)
-                ? "never published to production"
-                : $"production {system.ProductionRevision}";
+                ? "never published to the stable source"
+                : $"stable {system.ProductionRevision}";
 
             return $"{beta}, {production}";
         }
@@ -197,7 +197,7 @@ namespace Handlers.MaintainerHandling
         public static string RollBackHeadline(BetaRollbackPlanView? plan) =>
             plan?.Kind == BetaRollbackKind.RemoveFromBeta
                 ? "Remove this board from BETA and push it back to the queue?"
-                : "Roll this board back to what production has, and push it back to the queue?";
+                : "Roll this board back to what the stable source has, and push it back to the queue?";
 
         public static string RollBackExplanation(BetaRollbackPlanView? plan)
         {
@@ -224,8 +224,8 @@ namespace Handlers.MaintainerHandling
             plan.Kind == BetaRollbackKind.RemoveFromBeta
 
                 // Nothing of it has ever been published, so there is no earlier state to return to.
-                ? "Nothing of this system is in production, so its data is removed from BETA entirely."
-                : $"BETA goes back to the data production already has: " +
+                ? "Nothing of this system is in the stable source, so its data is removed from BETA entirely."
+                : $"BETA goes back to the data the stable source already has: " +
                     $"{ProductionDisplay.Count(plan.Restored.Count, "file", "restored")}, " +
                     $"{ProductionDisplay.Count(plan.Removed.Count, "file", "removed")}.";
 
@@ -239,7 +239,7 @@ namespace Handlers.MaintainerHandling
         public static string RejectHeadline(BetaRollbackPlanView? plan) =>
             plan?.Kind == BetaRollbackKind.RemoveFromBeta
                 ? "Reject this system and remove it from BETA?"
-                : "Reject this, and roll the board back to what production has?";
+                : "Reject this, and roll the board back to what the stable source has?";
 
         public static string RejectExplanation(BetaRollbackPlanView? plan)
         {
@@ -253,7 +253,7 @@ namespace Handlers.MaintainerHandling
                 : rejected == 1
                     ? "The submission below is rejected: its contributor is told why, and it does not come back to the queue."
                     : $"ALL {rejected.ToString(CultureInfo.InvariantCulture)} submissions below are rejected - a board cannot be " +
-                        "taken out of BETA one contribution at a time. Their contributors are told why.";
+                        "taken out of BETA one contribution at a time. Each contributor is told why.";
 
             return $"{ProductionDisplay.WhatBetaGetsBack(plan)} {who}";
         }
@@ -264,7 +264,7 @@ namespace Handlers.MaintainerHandling
                 : "Reject";
 
         public static string RejectingWait(string systemId) =>
-            $"Rejecting {systemId}. BETA's data is being put back as production has it - please wait until it is done.";
+            $"Rejecting {systemId}. BETA's data is being put back as the stable source has it - please wait until it is done.";
 
         // What a finished rejection says, as RolledBack does for a push-back.
         public static string Rejected(BetaRollbackResult result)
@@ -288,7 +288,7 @@ namespace Handlers.MaintainerHandling
             return $"The server is older than this CRT and PUSHED {result.SystemId} BACK instead of rejecting it: " +
                 $"{ProductionDisplay.FilesMoved(result)}, " +
                 $"{ProductionDisplay.Count(result.SubmissionsReturned, "submission", "back in the queue")}. " +
-                "Reject it from Contributor Submissions.";
+                "Reject it from " + MaintainerScreenWording.ContributorQueueQuoted + ".";
         }
 
         // ###########################################################################################
@@ -306,8 +306,8 @@ namespace Handlers.MaintainerHandling
                 return null;
 
             string count = restored == 1
-                ? "1 goes back to production's version"
-                : $"{restored.ToString(CultureInfo.InvariantCulture)} go back to production's version";
+                ? "1 goes back to the stable source's version"
+                : $"{restored.ToString(CultureInfo.InvariantCulture)} go back to the stable source's version";
 
             return $"Shared files, used by every board that cites them: {count}.";
         }
@@ -328,10 +328,10 @@ namespace Handlers.MaintainerHandling
         // of a whole board, then the lists read again.
         // ###########################################################################################
         public static string PushingBackWait(string systemId) =>
-            $"Pushing {systemId} back to the queue. BETA's data is being put back as production has it - please wait until it is done.";
+            $"Pushing {systemId} back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.";
 
         public static string PublishingWait(string systemId) =>
-            $"Publishing {systemId} to production. Its files are being copied from BETA - please wait until it is done.";
+            $"Publishing {systemId} to the stable source. Its files are being copied from BETA - please wait until it is done.";
 
         // ###########################################################################################
         // What a finished rollback says. Named counts rather than "done", because the maintainer

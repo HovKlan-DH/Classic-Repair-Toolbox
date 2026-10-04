@@ -177,8 +177,13 @@ public sealed class TabMaintainerQueueTests
             ListBoxItem heading = items.First(item => item.Classes.Contains("QueueHeading"));
             Assert.False(heading.IsEnabled);
 
+            // Showing the tab opened the first submission (owner request, 2026-09-30,
+            // TabMaintainer.OpenOnEntry.cs); a click on a heading leaves it as it is.
+            Assert.Equal(41, main.SelectedQueueRowForTests?.Id);
+
             Click(window, heading);
-            Assert.Null(main.SelectedQueueRowForTests);
+            Assert.Equal(41, main.SelectedQueueRowForTests?.Id);
+            Assert.NotSame(heading, queue.SelectedItem);
 
             ListBoxItem c65 = items.Single(item => (item.Tag as ReviewQueueRow)?.Id == 50);
             Click(window, c65);
@@ -219,11 +224,13 @@ public sealed class TabMaintainerQueueTests
         block.Text ?? string.Concat(block.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text));
 
     // ###########################################################################################
-    // Who sent it, and how their other submissions went, above the table (2026-09-26) - gone
-    // again when nothing is selected.
+    // *** WHO SENT IT IS THE CONTRIBUTOR VIEW'S ALONE (owner request, 2026-09-30: "I do not need to
+    // see highlighted data, as this should be available under "Contributor""). *** The one-line
+    // "From dh@hinet.dk - [3] other submissions: ..." above the table is gone; the same name and
+    // counts open the Contributor view.
     // ###########################################################################################
     [Fact]
-    public void The_contributor_and_their_record_are_shown_above_the_table()
+    public void The_contributor_is_not_repeated_above_the_table_but_opens_the_Contributor_view()
     {
         UiTest.Run(() =>
         {
@@ -231,18 +238,13 @@ public sealed class TabMaintainerQueueTests
             ReviewQueueRow row = Row();
             Select(main, row);
 
-            TextBlock line = main.FindControl<TextBlock>("ContributorText")!;
-
             main.ShowDetail(Detail(row) with { Contributor = new ReviewContributorFacts("dh@hinet.dk", null, 2, 0, 0, 1) });
 
-            Assert.True(line.IsVisible);
-            Assert.Equal("From dh@hinet.dk - [3] other submissions: [2] published, [1] rejected", ShownText(line));
+            Assert.Null(main.FindControl<TextBlock>("ContributorText"));
 
-            main.ShowDetail(Detail(row) with { Contributor = new ReviewContributorFacts("dh@hinet.dk", null, 0, 0, 0, 0) });
-            Assert.Equal("From dh@hinet.dk - no other submissions", ShownText(line));
-
-            Select(main, row);
-            Assert.False(line.IsVisible);
+            IReadOnlyList<string> texts = main.ContributorViewTextsForTests();
+            Assert.Equal("dh@hinet.dk", texts[0]);
+            Assert.Contains("[3] submissions in total whereof [2] published and [1] rejected", texts);
         });
     }
 
@@ -282,13 +284,22 @@ public sealed class TabMaintainerQueueTests
 
             StackPanel panel = main.FindControl<StackPanel>("NotInTablePanel")!;
             Assert.True(panel.IsVisible);
+
+            // The new KiCad file is NOT a line here any more (owner request, 2026-09-30) - it is
+            // the Files button's count, the view that shows it.
+            // A section's changes one a line under a counted heading, set in under it (owner
+            // request, 2026-10-04).
             Assert.Equal(
                 [
-                    "Component highlights: [1] changed (Schematic 1 / U8)",
-                    "KiCad data included: [1] file ([1] new)",
+                    "Component highlights have [1] change:",
+                    "Changed component [U8] on schematic \"Schematic 1\"",
                     "Warning from the automatic checks: The picture is very large. [U8]"
                 ],
                 panel.Children.OfType<TextBlock>().Select(ShownText));
+            Assert.Equal(
+                [0d, 16d, 0d],
+                panel.Children.OfType<TextBlock>().Select(block => block.Margin.Left));
+            Assert.Equal("1", main.FilesCountForTests);
 
             // The count's number alone is bold - a Run of its own inside the line.
             TextBlock counted = panel.Children.OfType<TextBlock>().First();
@@ -417,8 +428,8 @@ public sealed class TabMaintainerQueueTests
 
     // ------------------------------------------------------------------ The look (2026-09-26)
 
-    // The account, named without "Signed in as" - somebody with two accounts still sees which one
-    // is acting.
+    // The account, named under "Logged in as:" (owner request, 2026-10-04) - somebody with two
+    // accounts still sees which one is acting.
     [Fact]
     public void The_footer_names_the_account_and_nothing_more()
     {
@@ -430,7 +441,7 @@ public sealed class TabMaintainerQueueTests
                 .SetValue(main, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
             typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(main, null);
 
-            Assert.Equal("Dennis (dh@example.com)", main.FindControl<TextBlock>("SignedInAsText")!.Text);
+            Assert.Equal("Dennis (dh@example.com)", TabMaintainer.TextOf(main.FindControl<TextBlock>("SignedInAsText")!));
         });
     }
 
@@ -489,14 +500,13 @@ public sealed class TabMaintainerQueueTests
     }
 
     // ###########################################################################################
-    // *** THE REPORTED OVERLAP, AND THE ROWS. *** Title and four buttons in one row of Auto columns
-    // were wider than the queue's column, so for an administrator they ran out of it and over the
-    // panel beside it. Every button now ends inside the column, and so does every line of a row -
-    // a long description wraps rather than running off, at the window's own size. (The buttons are
-    // the four screens' since 2026-09-27; who sees Admin is TabMaintainerModesTests'.)
+    // *** THE ROWS STAY IN THE QUEUE'S COLUMN. *** Every line of a row ends inside the column - a
+    // long description wraps rather than running off over the panel beside it, at the window's own
+    // size. (The four screen buttons were checked here too while they sat in this column; since
+    // 2026-10-01 they are a tab strip across the whole tab - TabMaintainerScreenTabsTests.)
     // ###########################################################################################
     [Fact]
-    public void The_queue_buttons_and_rows_stay_inside_the_queue_column()
+    public void The_queue_rows_stay_inside_the_queue_column()
     {
         UiTest.Run(() =>
         {
@@ -515,9 +525,9 @@ public sealed class TabMaintainerQueueTests
             ListBox queue = main.FindControl<ListBox>("QueueList")!;
             double columnRight = queue.TranslatePoint(new Point(queue.Bounds.Width, 0), window)!.Value.X;
 
-            IEnumerable<Control> checkedControls = new[] { "ReviewModeButton", "BetaModeButton", "SystemsModeButton", "AdminModeButton" }
-                .Select(name => (Control)main.FindControl<Button>(name)!)
-                .Concat(queue.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible));
+            List<TextBlock> checkedControls = queue.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible).ToList();
+
+            Assert.NotEmpty(checkedControls);
 
             foreach (Control control in checkedControls)
             {
@@ -532,8 +542,8 @@ public sealed class TabMaintainerQueueTests
 
     // ###########################################################################################
     // *** ONE SUBMISSION IN BETA PER SYSTEM, ON SCREEN (owner decision, 2026-09-27). *** With an
-    // earlier submission of the system waiting in "Beta > Prod", Approve is off - its tooltip and a
-    // line above the table say why, in the server's own words - while Reject and Request changes
+    // earlier submission of the system waiting in "Beta > Prod", Approve is off - a line above the
+    // submission's three views says why, in the server's own words - while Reject and Request changes
     // stay on. Another system in BETA is no reason.
     // ###########################################################################################
     [Fact]
@@ -555,11 +565,24 @@ public sealed class TabMaintainerQueueTests
 
             Button approve = main.FindControl<Button>("ApproveButton")!;
             Assert.False(approve.IsEnabled);
-            Assert.Equal(OneSubmissionInBeta.BusyMessage("Commodore/C64/250407"), ToolTip.GetTip(approve));
+            // The reason is said above the views, not in a tooltip on the button: a tooltip at the
+            // bottom of the window lands over the pointer and takes the click (2026-09-30).
+            Assert.Null(ToolTip.GetTip(approve));
             Assert.True(main.FindControl<Button>("RejectButton")!.IsEnabled);
             Assert.Contains(
                 OneSubmissionInBeta.BusyMessage("Commodore/C64/250407"),
-                main.FindControl<StackPanel>("NotInTablePanel")!.Children.OfType<TextBlock>().Select(ShownText));
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(ShownText));
+
+            // *** AND IT STAYS SAID ON THE FILES AND CONTRIBUTOR VIEWS (code review, 2026-10-01). ***
+            // It was a line inside the Board data view, hidden with it - Approve greyed out with no
+            // reason anywhere. The panel must sit outside every one of the three views.
+            StackPanel reason = main.FindControl<StackPanel>("BeforeApprovingPanel")!;
+            foreach (string view in new[] { "BoardDataView", "FilesView", "ContributorView" })
+            {
+                Control panel = main.FindControl<Control>(view)!;
+                for (StyledElement? parent = reason.Parent; parent is not null; parent = parent.Parent)
+                    Assert.NotSame(panel, parent);
+            }
 
             // Another system's submission is not held back.
             ReviewQueueRow other = Row(id: 43, systemId: "Commodore/C128/310378");
@@ -599,7 +622,7 @@ public sealed class TabMaintainerQueueTests
             Assert.False(approve.IsEnabled);
             Assert.Contains(
                 OneSubmissionInBeta.BusyMessage("Commodore/C64/250407"),
-                main.FindControl<StackPanel>("NotInTablePanel")!.Children.OfType<TextBlock>().Select(ShownText));
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(ShownText));
 
             // Promoted by somebody else: the next check's list no longer has it.
             main.ApplyBetaListAsync(new ProductionListResponse(true, []), background: true).GetAwaiter().GetResult();
@@ -607,7 +630,7 @@ public sealed class TabMaintainerQueueTests
             Assert.True(approve.IsEnabled);
             Assert.DoesNotContain(
                 OneSubmissionInBeta.BusyMessage("Commodore/C64/250407"),
-                main.FindControl<StackPanel>("NotInTablePanel")!.Children.OfType<TextBlock>().Select(ShownText));
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(ShownText));
         });
     }
 
@@ -749,6 +772,120 @@ public sealed class TabMaintainerQueueTests
                 "The server did not answer within 2 minutes, but it did finish: the submission is published to BETA.",
                 main.FindControl<TextBlock>("DecisionMessageText")!.Text);
             Assert.False(overlay.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE DECISION COMMENT BELONGS TO ONE SUBMISSION (owner report, 2026-10-02: "I can see my
+    // last rejection comment in the textarea field. This field should be blanked when
+    // submitted/rejected"). *** Never emptied, the comment written for one contributor sat ready to
+    // go to the next with one click. Moving between submissions keeps each one's own comment, so a
+    // half-written one is still there on coming back.
+    // ###########################################################################################
+    [Fact]
+    public void A_comment_typed_for_one_submission_is_not_shown_on_another_and_is_back_on_returning()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow first = Row(id: 42);
+            ReviewQueueRow second = Row(id: 43);
+            Queue(main, first, second);
+            TextBox comment = main.FindControl<TextBox>("DecisionCommentTextBox")!;
+
+            Select(main, first);
+            comment.Text = "The U8 picture is of the wrong board revision.";
+
+            Select(main, second);
+            Assert.True(string.IsNullOrEmpty(comment.Text));
+            comment.Text = "Please add the pin numbers.";
+
+            Select(main, first);
+            Assert.Equal("The U8 picture is of the wrong board revision.", comment.Text);
+
+            Select(main, second);
+            Assert.Equal("Please add the pin numbers.", comment.Text);
+        });
+    }
+
+    // The reported case: a rejection goes through, the queue empties, and the next submission to
+    // arrive opens with an EMPTY box - not the rejection just sent.
+    [Fact]
+    public async Task A_rejection_that_went_through_empties_the_comment_box_for_the_next_submission()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row(id: 15);
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+            MaintainerTabHost.AddOverlay(main);
+
+            TextBox comment = main.FindControl<TextBox>("DecisionCommentTextBox")!;
+            comment.Text = "The schematic image is the wrong board revision.";
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                string path = request.RequestUri!.AbsolutePath;
+
+                if (path.EndsWith("/reject", StringComparison.Ordinal))
+                    return AnsweringHttpHandler.Json("""{"state":"rejected"}""");
+
+                if (path.EndsWith("/queue", StringComparison.Ordinal))
+                    return AnsweringHttpHandler.Json("""{"canPublish":true,"isAdministrator":true,"submissions":[]}""");
+
+                return AnsweringHttpHandler.Refused();
+            });
+
+            typeof(TabMaintainer).GetField("thisClient", Any)!
+                .SetValue(main, new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            typeof(TabMaintainer).GetField("thisSession", Any)!
+                .SetValue(main, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Reject])!;
+
+            Assert.True(string.IsNullOrEmpty(comment.Text));
+
+            // The next submission arrives and is opened.
+            ReviewQueueRow next = Row(id: 16);
+            Queue(main, next);
+            Select(main, next);
+
+            Assert.True(string.IsNullOrEmpty(comment.Text));
+
+            // Nor does the sent comment come back if the rejected one is ever shown again.
+            Select(main, row);
+            Assert.True(string.IsNullOrEmpty(comment.Text));
+        });
+    }
+
+    // A decision the server refused keeps the comment, so it can be sent again.
+    [Fact]
+    public async Task A_refused_rejection_keeps_the_comment()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row(id: 15);
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+            MaintainerTabHost.AddOverlay(main);
+
+            TextBox comment = main.FindControl<TextBox>("DecisionCommentTextBox")!;
+            comment.Text = "The schematic image is the wrong board revision.";
+
+            var server = new AnsweringHttpHandler(_ => AnsweringHttpHandler.Refused());
+
+            typeof(TabMaintainer).GetField("thisClient", Any)!
+                .SetValue(main, new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            typeof(TabMaintainer).GetField("thisSession", Any)!
+                .SetValue(main, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Reject])!;
+
+            Assert.Equal("The schematic image is the wrong board revision.", comment.Text);
         });
     }
 }

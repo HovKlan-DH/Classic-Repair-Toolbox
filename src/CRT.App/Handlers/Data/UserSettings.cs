@@ -74,9 +74,33 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? EnableMaintainerTab { get; set; }
 
+        // "Show changes only" until 2026-10-02 - read once, as MaintainerTableFilter's starting
+        // value, and cleared when that is first written.
         [JsonPropertyName("maintainerShowChangesOnly")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? MaintainerShowChangesOnly { get; set; }
+
+        // The table's colour-key pills picked as its filter - BoardTableRowFilter.Format.
+        [JsonPropertyName("maintainerTableFilter")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MaintainerTableFilter { get; set; }
+
+        // Whether the Maintainer tab hides itself when nothing is waiting (2026-10-01).
+        [JsonPropertyName("showMaintainerTabOnlyWhenWorkWaiting")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? ShowMaintainerTabOnlyWhenWorkWaiting { get; set; }
+
+        [JsonPropertyName("maintainerLastSubmissionId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public long? MaintainerLastSubmissionId { get; set; }
+
+        [JsonPropertyName("maintainerLastBetaSystemId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MaintainerLastBetaSystemId { get; set; }
+
+        [JsonPropertyName("maintainerLastSystemId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MaintainerLastSystemId { get; set; }
 
         [JsonPropertyName("workbooksScope")] public string WorkbooksScope { get; set; } = "CurrentBoard";
 
@@ -764,21 +788,98 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The Maintainer tab's table: "Show changes only", as the maintainer last chose it (the
-        // CHOICE, BoardTableEditor.OnlyChangesWanted - not whether the filter happens to be on for
-        // the table open now). Carried over once from the separate application's own settings file
-        // by MaintainerSettingsMigration.
+        // *** HIDE THE MAINTAINER TAB WHILE NOTHING IS WAITING (owner request, 2026-10-01). *** With
+        // this on, the tab is shown only while its badge has a number - the badge counts exactly the
+        // work this account has to do (MaintainerModes.TabAttention: the review queue plus BETA >
+        // Prod), so no badge means nothing to do and a tab that is only in the way.
+        //
+        // OFF by default, and it does nothing at all unless EnableMaintainerTab is on too - this
+        // narrows that setting rather than replacing it. A maintainer who wants the tab permanently
+        // leaves this unticked.
         // ###########################################################################################
-        public static bool MaintainerShowChangesOnly
+        public static bool ShowMaintainerTabOnlyWhenWorkWaiting
         {
-            get => _data.MaintainerShowChangesOnly ?? false; // Default is false
+            get => _data.ShowMaintainerTabOnlyWhenWorkWaiting ?? false; // Default is false
             set
             {
-                if (_data.MaintainerShowChangesOnly == value)
+                _data.ShowMaintainerTabOnlyWhenWorkWaiting = value;
+                Logger.Info($"Setting changed: [ShowMaintainerTabOnlyWhenWorkWaiting] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The Maintainer tab's table: the colour-key pills picked as its filter, as the maintainer
+        // last picked them (the PICK, BoardTableEditor.FilterWanted - not what the table open now
+        // happens to show). It was a "Show changes only" check box until 2026-10-02 (owner request:
+        // the pills became the filter); a saved "on" reads as the same rows - Added, Modified and
+        // Deleted (BoardTableRowFilter.Changes) - and a saved "Flagged" as Warnings, which is what
+        // those rows became on 2026-10-03. Carried over once from the separate
+        // application's own settings file by MaintainerSettingsMigration.
+        // ###########################################################################################
+        public static BoardTableRowKinds MaintainerTableFilter
+        {
+            get => _data.MaintainerTableFilter is string saved
+                ? BoardTableRowFilter.Parse(saved)
+                : _data.MaintainerShowChangesOnly == true ? BoardTableRowFilter.Changes : BoardTableRowKinds.None;
+            set
+            {
+                if (_data.MaintainerTableFilter is not null && MaintainerTableFilter == value)
                     return;
 
-                _data.MaintainerShowChangesOnly = value;
-                Logger.Info($"Setting changed: [MaintainerShowChangesOnly] [{value}]");
+                _data.MaintainerTableFilter = BoardTableRowFilter.Format(value);
+                _data.MaintainerShowChangesOnly = null;
+                Logger.Info($"Setting changed: [MaintainerTableFilter] [{_data.MaintainerTableFilter}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The Maintainer tab's two queue screens open on the entry
+        // looked at last, while it is still listed (owner request, 2026-09-30; MaintainerModes
+        // .EntryToOpen): the submission's id and the BETA system's id. Null for none. Not logged -
+        // they change on every click in either list.
+        // ###########################################################################################
+        public static long? MaintainerLastSubmissionId
+        {
+            get => _data.MaintainerLastSubmissionId;
+            set
+            {
+                if (_data.MaintainerLastSubmissionId == value)
+                    return;
+
+                _data.MaintainerLastSubmissionId = value;
+                Save();
+            }
+        }
+
+        public static string? MaintainerLastBetaSystemId
+        {
+            get => _data.MaintainerLastBetaSystemId;
+            set
+            {
+                if (string.Equals(_data.MaintainerLastBetaSystemId, value, StringComparison.Ordinal))
+                    return;
+
+                _data.MaintainerLastBetaSystemId = value;
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The system the Maintainer tab's Systems screen was last on, which the tab opens on when
+        // nothing waits in either queue (owner request, 2026-10-04: "go to "Systems" and show the
+        // last selected system"). Null for none. Not logged, like the two above.
+        // ###########################################################################################
+        public static string? MaintainerLastSystemId
+        {
+            get => _data.MaintainerLastSystemId;
+            set
+            {
+                if (string.Equals(_data.MaintainerLastSystemId, value, StringComparison.Ordinal))
+                    return;
+
+                _data.MaintainerLastSystemId = value;
                 Save();
             }
         }
@@ -1509,6 +1610,7 @@ namespace Handlers.DataHandling
                     Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
                     Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
                     Logger.Info($"        [EnableMaintainerTab] [{EnableMaintainerTab}]");
+                    Logger.Info($"        [ShowMaintainerTabOnlyWhenWorkWaiting] [{ShowMaintainerTabOnlyWhenWorkWaiting}]");
                     Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
                     Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
                     Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");

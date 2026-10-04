@@ -86,6 +86,15 @@ namespace Handlers.DataHandling
         public const int MaximumSummaryLength = 500;
 
         public const int MaximumRevisionLength = 64;
+
+        // ###########################################################################################
+        // The header carrying a submission's capability token on every contributor route (2026-10-04 -
+        // a private constant in CRT's SubmissionClient AND in the server's SubmissionEndpoints until
+        // then, two copies of a wire name nothing held together). A header rather than a query
+        // parameter: query strings are written to access logs by default, and this value authorises
+        // writing to a submission.
+        // ###########################################################################################
+        public const string UploadTokenHeader = "X-Submission-Token";
     }
 
     // ###########################################################################################
@@ -295,6 +304,17 @@ namespace Handlers.DataHandling
 
         public long TotalBytesToUpload { get; set; }
     }
+
+    // ###########################################################################################
+    // How much of one blob the server holds - the answer to a chunk upload and to the resume query
+    // (GET .../blobs/{hash}), which SubmissionClient reads `uploaded` from. An anonymous object with
+    // these same fields until 2026-10-04; a record so the API compatibility check sees it.
+    // ###########################################################################################
+    public sealed record BlobUploadAnswer(long Uploaded, bool Complete);
+
+    // The 416 answer to a chunk sent at the wrong offset: why, and where to resume. CRT re-asks with
+    // the resume query rather than reading ResumeFrom here, but an installed CRT may come to.
+    public sealed record BlobChunkRejectedAnswer(string? Message, long ResumeFrom);
 
     // ###########################################################################################
     // Step 3: the outcome of finalising.

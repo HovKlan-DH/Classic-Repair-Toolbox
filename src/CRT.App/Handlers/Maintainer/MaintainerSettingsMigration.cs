@@ -11,7 +11,8 @@ namespace Handlers.MaintainerHandling
     // That application kept "CRT-Maintainer-Settings.json" beside CRT's own settings: its window
     // placement and "Show changes only". The placement is NOT carried over - the tab lives in CRT's
     // window, which remembers its own. "Show changes only" is handed to `setShowChangesOnly` (CRT
-    // passes UserSettings.MaintainerShowChangesOnly's setter) and the file is then DELETED, so
+    // passes a setter of UserSettings.MaintainerTableFilter - "on" is BoardTableRowFilter.Changes,
+    // the rows that check box showed) and the file is then DELETED, so
     // nothing is left behind that no program reads.
     //
     // *** SOFT ON EVERY FAILURE, like the file it reads. *** It was a convenience; losing it costs a

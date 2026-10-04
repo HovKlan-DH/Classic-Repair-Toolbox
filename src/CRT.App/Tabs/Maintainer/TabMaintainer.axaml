@@ -10,6 +10,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:CRT"
+             xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
              x:Class="CRT.TabMaintainer">
 
     <UserControl.Styles>
@@ -55,26 +56,87 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
             <Setter Property="Padding" Value="22,5,10,6" />
         </Style>
 
-        <!-- A row in the BETA, Systems and Admin lists: not under a heading, so not indented. -->
+        <!-- A row in the BETA, Systems and Account lists: not under a heading, so not indented. -->
         <Style Selector="ListBoxItem.ListEntry">
             <Setter Property="Padding" Value="10,6,10,7" />
         </Style>
 
         <!--
-        THE FOUR SCREEN BUTTONS AT THE TOP LEFT (owner request, 2026-09-27; TabMaintainer.Modes.cs).
-        The chosen one is filled and outlined, and stays so under the pointer: the style is a
-        trigger (it names classes) set in the TAB's own styles, so it outranks the theme's own
-        pointer-over look. Colours from CRT's App.axaml, per theme.
+        THE FOUR SCREENS' TAB STRIP (owner request, 2026-10-01; TabMaintainer.Modes.cs). Drawn as
+        tabs under CRT's own: plain text on the strip's line, the chosen one with CRT's red
+        underline (Main_TabUnderline_Selected) and the others greyed, a faint underline under the
+        pointer (Main_TabUnderline_Hover) - the main tabs' own colours, so the two rows read as one
+        family. The label is not made bold when chosen: a bolder label is wider, and every tab after
+        it would move. Every look under the pointer is set here, in the TAB's styles, so the
+        theme's button hover (a grey fill) never shows. Colours from CRT's App.axaml, per theme.
         -->
-        <Style Selector="Button.Mode">
-            <Setter Property="Padding" Value="8,4" />
+        <Style Selector="Border.ScreenTabStrip">
+            <Setter Property="BorderBrush" Value="{DynamicResource Queue_Divider}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
 
-        <Style Selector="Button.Mode.Selected">
-            <Setter Property="FontWeight" Value="SemiBold" />
+        <!-- The underline sits ON the strip's line: 1px down, over it. -->
+        <Style Selector="Button.ScreenTab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,3" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="10,6,10,6" />
+            <Setter Property="Margin" Value="0,0,0,-1" />
         </Style>
 
-        <Style Selector="Button.Mode.Selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button.ScreenTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Main_TabUnderline_Hover}" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        </Style>
+
+        <Style Selector="Button.ScreenTab:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+        </Style>
+
+        <Style Selector="Button.ScreenTab.Selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource Main_TabUnderline_Selected}" />
+        </Style>
+
+        <!-- A tab not chosen is greyed - its LABEL only, so a red badge on it keeps its colour. -->
+        <Style Selector="Button.ScreenTab:not(.Selected) TextBlock.ScreenTabLabel">
+            <Setter Property="Opacity" Value="0.65" />
+        </Style>
+
+        <Style Selector="Button.ScreenTab:not(.Selected):pointerover TextBlock.ScreenTabLabel">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!--
+        A SUBMISSION'S THREE VIEWS, AS ONE JOINED SWITCH (2026-10-01; TabMaintainer.SubmissionViews.cs)
+        - a different look from the tab strip on purpose. Square inner corners, rounded outer ones,
+        neighbours sharing one border line (each after the first pulled 1px left); the chosen one is
+        filled and outlined in front of its neighbours, and stays so under the pointer.
+        -->
+        <Style Selector="Button.Segment">
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+            <Setter Property="Margin" Value="-1,0,0,0" />
+        </Style>
+
+        <Style Selector="Button.Segment.First">
+            <Setter Property="CornerRadius" Value="4,0,0,4" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
+
+        <Style Selector="Button.Segment.Last">
+            <Setter Property="CornerRadius" Value="0,4,4,0" />
+        </Style>
+
+        <Style Selector="Button.Segment.Selected">
+            <Setter Property="ZIndex" Value="1" />
+        </Style>
+
+        <Style Selector="Button.Segment.Selected /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Mode_Selected_Bg}" />
             <Setter Property="BorderBrush" Value="{DynamicResource Mode_Selected_Border}" />
         </Style>
@@ -126,180 +188,193 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
     <Grid Margin="16">
 
         <!-- ================= Sign in ================= -->
+        <!--
+        TWO VIEWS, ONE AT A TIME (owner request, 2026-10-04): the sign-in form, or - after "I have an
+        invitation" - the invitation ALONE. Shown under the form, the invitation sat below a second
+        set of email and password boxes and a "Sign in" button that had nothing to do with it, which
+        was confusing. Cancel goes back to the form as it was (TabMaintainer.Invitation.cs).
+        -->
         <StackPanel x:Name="SignInPanel"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Width="360"
-                    Spacing="8">
+                    Width="360">
 
-            <!--
-            *** WHAT THIS TAB IS, said before anything is asked of the reader. ***
+            <StackPanel x:Name="SignInFormPanel"
+                        Spacing="8">
 
-            Somebody who ticked "Enable Maintainer tab" out of curiosity finds a sign-in screen for an
-            account they do not have and cannot create. Saying so here costs a few lines and saves
-            that person guessing - and tells them how to put the tab away again.
+                <!--
+                *** WHAT THIS TAB IS, said before anything is asked of the reader. ***
 
-            No "CRT Maintainer" heading any more (2026-09-29): the tab's own header already says
-            "Maintainer", and the application that heading named is now this tab.
+                Somebody who ticked "Enable Maintainer tab" out of curiosity finds a sign-in screen for an
+                account they do not have and cannot create. Saying so here costs a few lines and saves
+                that person guessing - and tells them how to put the tab away again.
 
-            It sits ABOVE the fields rather than below them, because an explanation under a form is
-            read after the reader has already decided they are in the wrong place.
-            -->
-            <Border Background="#20808080"
-                    CornerRadius="4"
-                    Padding="10"
-                    Margin="0,4,0,8">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="For maintainers of the hardware data only."
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap" />
+                No "CRT Maintainer" heading any more (2026-09-29): the tab's own header already says
+                "Maintainer", and the application that heading named is now this tab.
 
-                    <TextBlock TextWrapping="Wrap"
-                               Opacity="0.85"
-                               Text="This tab reviews and publishes contributions to the shared hardware data. It needs a maintainer account, given by the administrator through an invitation, and does nothing without one." />
-
-                    <TextBlock TextWrapping="Wrap"
-                               Opacity="0.85"
-                               Text="You can hide this tab again in the Configuration tab." />
-                </StackPanel>
-            </Border>
-
-            <!--
-            NO SERVER FIELD. The Maintainer tab talks to exactly one service and always will, so asking
-            for it on every launch was a question whose answer never changes - and one that broke
-            the moment somebody typed a trailing slash or omitted the scheme. The address is
-            ReviewApiRoutes.DefaultBaseAddress.
-            -->
-
-            <TextBlock Text="Email"
-                       Opacity="0.7"
-                       Margin="0,4,0,0" />
-            <TextBox x:Name="EmailTextBox" />
-
-            <TextBlock Text="Password"
-                       Opacity="0.7"
-                       Margin="0,4,0,0" />
-            <!--
-            PasswordChar, so a shoulder-surfer at a bench cannot read a maintainer credential -
-            this account can publish to every user of a system.
-            -->
-            <TextBox x:Name="PasswordTextBox"
-                     PasswordChar="*"
-                     KeyDown="OnPasswordKeyDown" />
-
-            <Button x:Name="SignInButton"
-                    Content="Sign in"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    Margin="0,8,0,0"
-                    Click="OnSignInClick" />
-
-            <!--
-            FORGOT PASSWORD. A plain text button rather than a second screen: the whole interaction
-            is one request and one sentence, and a maintainer locked out of the only tool that can
-            publish should not have to go looking for how to get back in.
-            -->
-            <Button x:Name="ForgotPasswordButton"
-                    Content="I forgot my password"
-                    HorizontalAlignment="Left"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Foreground="SteelBlue"
-                    Click="OnForgotPasswordClick" />
-
-            <!--
-            ACCEPTING AN INVITATION (2026-09-27). The one way a new maintainer's account is made: the
-            administrator invites an address, the mail carries a code, and it is redeemed here. Same
-            plain text button as the one above, and it reveals its panel the same way.
-            -->
-            <Button x:Name="HaveInvitationButton"
-                    Content="I have an invitation"
-                    HorizontalAlignment="Left"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Foreground="SteelBlue"
-                    Click="OnHaveInvitationClick" />
-
-            <!--
-            The failure message. Its own block rather than a dialog, so a wrong password does not
-            cost a click to dismiss before trying again.
-
-            NOT always red: the password-reset answer is good news, and colouring it as an error
-            would read as a failure to somebody who has just asked for help.
-            -->
-            <TextBlock x:Name="SignInMessageText"
-                       Foreground="IndianRed"
-                       TextWrapping="Wrap"
-                       IsVisible="False" />
-
-            <!--
-            ================= Completing a password reset =================
-
-            HIDDEN UNTIL A CODE HAS BEEN ASKED FOR, so the ordinary sign-in screen stays two
-            fields and a button. It is revealed by "I forgot my password" - the moment the code
-            is on its way and the next thing the person needs is somewhere to put it.
-
-            *** THE MAIL CARRIES A CODE, NOT A LINK, AND THIS PANEL IS WHY. *** Completing a reset
-            needs the new PASSWORD, so it cannot be a click: the URL the mail used to print
-            ("/api/accounts/reset?token=...") was mapped to nothing and 404'd for every user who
-            clicked it. A pasted code is also the safer shape, since a prefetching mail client
-            cannot burn a single-use token by following a link.
-            -->
-            <StackPanel x:Name="ResetPanel"
-                        IsVisible="False"
-                        Spacing="4"
-                        Margin="0,12,0,0">
-
-                <Border Background="#1F4F7FBF"
-                        BorderBrush="#4F7FBF"
-                        BorderThickness="1"
+                It sits ABOVE the fields rather than below them, because an explanation under a form is
+                read after the reader has already decided they are in the wrong place.
+                -->
+                <Border Background="#20808080"
                         CornerRadius="4"
-                        Padding="10">
+                        Padding="10"
+                        Margin="0,4,0,8">
                     <StackPanel Spacing="4">
-                        <TextBlock Text="Check your email for a reset code"
+                        <TextBlock Text="For maintainers of the hardware data only."
                                    FontWeight="SemiBold"
                                    TextWrapping="Wrap" />
 
                         <TextBlock TextWrapping="Wrap"
                                    Opacity="0.85"
-                                   Text="Paste the code below and choose the password you want. The code works for 2 hours and can only be used once." />
+                                   Text="This tab reviews and publishes contributions to the shared hardware data. It needs a maintainer account, given by the administrator through an invitation, and does nothing without one." />
+
+                        <TextBlock TextWrapping="Wrap"
+                                   Opacity="0.85"
+                                   Text="You can hide this tab again in the Configuration tab." />
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Reset code"
-                           Opacity="0.7"
-                           Margin="0,4,0,0" />
-                <TextBox x:Name="ResetCodeTextBox" />
+                <!--
+                NO SERVER FIELD. The Maintainer tab talks to exactly one service and always will, so asking
+                for it on every launch was a question whose answer never changes - and one that broke
+                the moment somebody typed a trailing slash or omitted the scheme. The address is
+                ReviewApiRoutes.DefaultBaseAddress.
+                -->
 
-                <TextBlock Text="New password"
+                <TextBlock Text="Email"
                            Opacity="0.7"
                            Margin="0,4,0,0" />
-                <TextBox x:Name="NewPasswordTextBox"
+                <TextBox x:Name="EmailTextBox" />
+
+                <TextBlock Text="Password"
+                           Opacity="0.7"
+                           Margin="0,4,0,0" />
+                <!--
+                PasswordChar, so a shoulder-surfer at a bench cannot read a maintainer credential -
+                this account can publish to every user of a system.
+                -->
+                <TextBox x:Name="PasswordTextBox"
                          PasswordChar="*"
-                         KeyDown="OnNewPasswordKeyDown" />
+                         KeyDown="OnPasswordKeyDown" />
 
-                <Button x:Name="SetPasswordButton"
-                        Content="Set password"
+                <Button x:Name="SignInButton"
+                        Content="Sign in"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center"
                         Margin="0,8,0,0"
-                        Click="OnSetPasswordClick" />
+                        Click="OnSignInClick" />
+
+                <!--
+                FORGOT PASSWORD. A plain text button rather than a second screen: the whole interaction
+                is one request and one sentence, and a maintainer locked out of the only tool that can
+                publish should not have to go looking for how to get back in.
+                -->
+                <Button x:Name="ForgotPasswordButton"
+                        Content="I forgot my password"
+                        HorizontalAlignment="Left"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="SteelBlue"
+                        Click="OnForgotPasswordClick" />
+
+                <!--
+                ACCEPTING AN INVITATION (2026-09-27). The one way a new maintainer's account is made: the
+                administrator invites an address, the mail carries a code, and it is redeemed here. Same
+                plain text button as the one above; it REPLACES this form with the invitation view rather
+                than opening a panel under it (2026-10-04).
+                -->
+                <Button x:Name="HaveInvitationButton"
+                        Content="I have an invitation"
+                        HorizontalAlignment="Left"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="SteelBlue"
+                        Click="OnHaveInvitationClick" />
+
+                <!--
+                The failure message. Its own block rather than a dialog, so a wrong password does not
+                cost a click to dismiss before trying again.
+
+                NOT always red: the password-reset answer is good news, and colouring it as an error
+                would read as a failure to somebody who has just asked for help.
+                -->
+                <TextBlock x:Name="SignInMessageText"
+                           Foreground="IndianRed"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+
+                <!--
+                ================= Completing a password reset =================
+
+                HIDDEN UNTIL A CODE HAS BEEN ASKED FOR, so the ordinary sign-in screen stays two
+                fields and a button. It is revealed by "I forgot my password" - the moment the code
+                is on its way and the next thing the person needs is somewhere to put it.
+
+                *** THE MAIL CARRIES A CODE, NOT A LINK, AND THIS PANEL IS WHY. *** Completing a reset
+                needs the new PASSWORD, so it cannot be a click: the URL the mail used to print
+                ("/api/accounts/reset?token=...") was mapped to nothing and 404'd for every user who
+                clicked it. A pasted code is also the safer shape, since a prefetching mail client
+                cannot burn a single-use token by following a link.
+                -->
+                <StackPanel x:Name="ResetPanel"
+                            IsVisible="False"
+                            Spacing="4"
+                            Margin="0,12,0,0">
+
+                    <Border Background="#1F4F7FBF"
+                            BorderBrush="#4F7FBF"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Check your email for a reset code"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+
+                            <TextBlock TextWrapping="Wrap"
+                                       Opacity="0.85"
+                                       Text="Paste the code below and choose the password you want. The code works for 2 hours and can only be used once." />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="Reset code"
+                               Opacity="0.7"
+                               Margin="0,4,0,0" />
+                    <TextBox x:Name="ResetCodeTextBox" />
+
+                    <TextBlock Text="New password"
+                               Opacity="0.7"
+                               Margin="0,4,0,0" />
+                    <TextBox x:Name="NewPasswordTextBox"
+                             PasswordChar="*"
+                             KeyDown="OnNewPasswordKeyDown" />
+
+                    <Button x:Name="SetPasswordButton"
+                            Content="Set password"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Margin="0,8,0,0"
+                            Click="OnSetPasswordClick" />
+                </StackPanel>
             </StackPanel>
 
             <!--
             ================= Accepting an invitation =================
 
-            Hidden until "I have an invitation" is pressed. The code comes from the invitation mail;
-            the name is what other maintainers and contributors see. Accepting makes the account -
-            the address is the one invited, so it is not asked for - and fills the sign-in fields,
-            one click from signing in (TabMaintainer.Invitation.cs).
+            Hidden until "I have an invitation" is pressed, and then shown INSTEAD of the sign-in form
+            above, never under it. The code comes from the invitation mail; the name is what other
+            maintainers and contributors see. Accepting makes the account - the address is the one
+            invited, so it is not asked for - and goes back to the sign-in form with its fields
+            filled, one click from signing in (TabMaintainer.Invitation.cs).
+
+            Its OWN message line, under its buttons: the form's one is hidden with the form.
             -->
             <StackPanel x:Name="InvitationPanel"
                         IsVisible="False"
                         Spacing="4"
-                        Margin="0,12,0,0">
+                        Margin="0,4,0,0">
 
                 <Border Background="#1F4F7FBF"
                         BorderBrush="#4F7FBF"
@@ -334,108 +409,125 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                          PasswordChar="*"
                          KeyDown="OnInvitationPasswordKeyDown" />
 
-                <Button x:Name="AcceptInvitationButton"
-                        Content="Create my account"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Center"
-                        Margin="0,8,0,0"
-                        Click="OnAcceptInvitationClick" />
+                <!-- Cancel first and the action last, as in CRT's dialogs. -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8"
+                            Margin="0,8,0,0">
+
+                    <Button x:Name="CancelInvitationButton"
+                            Content="Cancel"
+                            Click="OnCancelInvitationClick" />
+
+                    <Button x:Name="AcceptInvitationButton"
+                            Content="Create my account"
+                            Click="OnAcceptInvitationClick" />
+                </StackPanel>
+
+                <TextBlock x:Name="InvitationMessageText"
+                           Foreground="IndianRed"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"
+                           IsVisible="False" />
             </StackPanel>
         </StackPanel>
 
         <!-- ================= The queue ================= -->
         <!--
-        370 wide on the left. The four screen buttons wrap onto two rows since they were named
-        "Contributor Submissions" and "Beta > Prod" (owner request, 2026-09-27) - the WrapPanel below
-        keeps them inside the column either way.
+        The four screens' TAB STRIP across the whole width, then the list (370 wide) on the left and
+        the chosen item on the right.
         -->
         <Grid x:Name="QueuePanel"
               IsVisible="False"
+              RowDefinitions="Auto,*"
               ColumnDefinitions="370,4,*">
 
-            <DockPanel Grid.Column="0">
-                <!--
-                THE FOUR SCREENS (owner request, 2026-09-27: "it has these buttons in the top-left:
-                Review, BETA, Systems, Admin"; since named Systems, Contributor Submissions,
-                Beta > Prod and Admin, in that order). Each changes the list below AND the panel on the right
-                (TabMaintainer.Modes.cs); the "Production", "Maintainers" and "Unused files" windows
-                they replace opened over the queue instead.
+            <!--
+            THE FOUR SCREENS (owner request, 2026-09-27: "it has these buttons in the top-left:
+            Review, BETA, Systems, Admin"; since named Systems, Contributor Submissions, BETA > Stable
+            and Admin, in that order - and since 2026-10-04 "Queue: Contributor submissions", "Queue:
+            Awaiting push from BETA to stable" and "Administrator activities", from CRT.Data's
+            MaintainerScreenWording, which every message naming a screen reads too - and the last
+            renamed "Account" later that day, when it became every maintainer's). Each changes the list below AND the panel on the right
+            (TabMaintainer.Modes.cs); the "Production", "Maintainers" and "Unused files" windows they
+            replace opened over the queue instead.
 
-                A WrapPanel, so the row can never run out of this column and over the panel beside it
-                (it did once, with the old buttons - reported with a screenshot). Review and BETA carry
-                a badge counting the SYSTEMS that wait for this account; Systems a discreet one
-                counting all systems. Admin is the administrator's only, and hidden for everyone else
-                because the server would refuse them anyway (isAdministrator in the queue answer).
-                -->
-                <WrapPanel DockPanel.Dock="Top"
-                           x:Name="ModeBar"
+            *** A TAB STRIP ACROSS THE WHOLE TAB, NOT BUTTONS IN THE LEFT COLUMN (owner request,
+            2026-10-01: "It looks like bad UX design - do you have any better ideas"). *** They were
+            grey buttons wrapped onto two rows of the 370-wide list column, looking exactly like the
+            submission's Board data / Files / Contributor buttons beside them - two levels of choice
+            that could not be told apart. Now each level has its own look: CRT's tabs, these screens
+            as tabs under them (the same red underline, ScreenTab), and a submission's views as one
+            joined switch (Segment). Still Buttons, so the screens and their tests are unchanged.
+
+            Review and BETA carry a badge counting the SYSTEMS that wait for this account; Systems a
+            discreet one counting all systems. Account is every maintainer's since 2026-10-04 (owner
+            request: "make this tab available to all maintainers") - it was "Admin", hidden from all
+            but the administrator. Its administrator's entries still are hidden from everybody else,
+            the server refusing them anyway (isAdministrator in the queue answer).
+            -->
+            <Border Grid.Row="0"
+                    Grid.ColumnSpan="3"
+                    Classes="ScreenTabStrip"
+                    Margin="0,0,0,12">
+                <!-- A WrapPanel only so a window narrower than CRT's own minimum can never clip a
+                     tab off the end; at any width CRT opens at, the four sit on one line. -->
+                <WrapPanel x:Name="ModeBar"
                            Orientation="Horizontal"
-                           ItemSpacing="4"
-                           LineSpacing="6"
-                           Margin="0,0,0,10">
+                           ItemSpacing="4">
 
                     <!-- Systems FIRST (owner request, 2026-09-27); Review is still the screen a
                          sign-in opens on. -->
-                    <Button x:Name="SystemsModeButton" Classes="Mode" Click="OnModeClick">
-                        <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="Systems" VerticalAlignment="Center" />
+                    <Button x:Name="SystemsModeButton" Classes="ScreenTab" Click="OnModeClick">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Systems}" VerticalAlignment="Center" />
                             <Border x:Name="SystemsBadge" Classes="ModeBadge Count" IsVisible="False">
                                 <TextBlock x:Name="SystemsBadgeText" />
                             </Border>
                         </StackPanel>
                     </Button>
 
-                    <Button x:Name="ReviewModeButton" Classes="Mode Selected" Click="OnModeClick">
-                        <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="Contributor Submissions" VerticalAlignment="Center" />
+                    <Button x:Name="ReviewModeButton" Classes="ScreenTab Selected" Click="OnModeClick">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.ContributorQueue}" VerticalAlignment="Center" />
                             <Border x:Name="ReviewBadge" Classes="ModeBadge Attention" IsVisible="False">
                                 <TextBlock x:Name="ReviewBadgeText" />
                             </Border>
                         </StackPanel>
                     </Button>
 
-                    <Button x:Name="BetaModeButton" Classes="Mode" Click="OnModeClick">
-                        <StackPanel Orientation="Horizontal" Spacing="5">
-                            <TextBlock Text="Beta &gt; Prod" VerticalAlignment="Center" />
+                    <Button x:Name="BetaModeButton" Classes="ScreenTab" Click="OnModeClick">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.BetaQueue}" VerticalAlignment="Center" />
                             <Border x:Name="BetaBadge" Classes="ModeBadge Attention" IsVisible="False">
                                 <TextBlock x:Name="BetaBadgeText" />
                             </Border>
                         </StackPanel>
                     </Button>
 
-                    <Button x:Name="AdminModeButton" Classes="Mode" IsVisible="False" Click="OnModeClick">
-                        <TextBlock Text="Admin" />
+                    <Button x:Name="AccountModeButton" Classes="ScreenTab" Click="OnModeClick">
+                        <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Account}" />
                     </Button>
                 </WrapPanel>
+            </Border>
 
+            <DockPanel Grid.Row="1" Grid.Column="0">
                 <!--
-                Who is signed in, and the way out.
+                WHO IS LOGGED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show "Logged in
+                as:<br /><b>Dennis</b> (dennis@...dk)" in the bottom-left corner"). The name is bold,
+                on a line of its own under the words, so somebody with both a maintainer and an
+                administrator account sees which one is acting before publishing anything.
 
-                SIGN OUT IS A REAL BUTTON RATHER THAN A MENU ITEM because it is the only way to
-                clear a remembered session deliberately, and the project owner named it as the thing
-                that must forget the login. A credential that can be stored but not cleared from
-                the UI would be the wrong half of the feature.
-
-                It sits at the BOTTOM of the queue panel, well away from the decision buttons:
-                nothing here is destructive, but a maintainer reaching for "Reject" must never find
-                this under the pointer instead.
+                The "Account" and "Sign out" buttons that sat here (2026-10-03) are gone: both are
+                "My account", the first entry under the Account screen (MyAccountView).
                 -->
-                <Grid DockPanel.Dock="Bottom"
-                      ColumnDefinitions="*,Auto"
-                      Margin="0,8,0,0">
-
-                    <TextBlock x:Name="SignedInAsText"
-                               Opacity="0.6"
-                               TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
-
-                    <Button Grid.Column="1"
-                            x:Name="SignOutButton"
-                            Content="Sign out"
-                            Margin="8,0,0,0"
-                            VerticalAlignment="Center"
-                            Click="OnSignOutClick" />
-                </Grid>
+                <StackPanel DockPanel.Dock="Bottom"
+                            x:Name="SignedInAsPanel"
+                            Opacity="0.6"
+                            Margin="0,8,0,0">
+                    <TextBlock Text="Logged in as:" />
+                    <TextBlock x:Name="SignedInAsText" TextWrapping="Wrap" />
+                </StackPanel>
 
                 <!--
                 ONE LIST PER SCREEN, one shown at a time. Each keeps its selection while another screen
@@ -487,30 +579,128 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                  SelectionChanged="OnSystemsSelectionChanged" />
                     </DockPanel>
 
-                    <!-- Admin: the administrator's screens (TabMaintainer.Admin.cs). Maintainers are
-                         set on the Systems screen since 2026-09-27 (owner request). -->
-                    <ListBox x:Name="AdminList"
+                    <!--
+                    ACCOUNT (TabMaintainer.Account.cs): "My account" and "Server version" for every
+                    maintainer, then the administrator's own entries - each with the class AdminOnly,
+                    taken OUT of the list for everybody else (ShowAdministratorEntries - not
+                    IsVisible, which the list's panel sets back to true), and each marked with the
+                    padlock after its name (owner request, 2026-10-04; App.axaml's AdminLock style,
+                    CRT's one padlock for anything only the administrator can use). It was "Admin", the administrator's
+                    alone, until then. Maintainers are set here again since 2026-10-04 (owner
+                    request) - they were on the Systems screen from 2026-09-27.
+                    -->
+                    <ListBox x:Name="AccountList"
                              IsVisible="False"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             SelectionChanged="OnAdminSelectionChanged">
+                             SelectionChanged="OnAccountSelectionChanged">
 
-                        <ListBoxItem x:Name="UnusedFilesItem" Classes="ListEntry">
+                        <!-- First, and what the screen opens on: the name, the address, the
+                             password and signing out (the "Your account" window and the two buttons
+                             under the lists until 2026-10-04). -->
+                        <ListBoxItem x:Name="MyAccountItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <TextBlock Text="Unused files" FontSize="13" />
-                                <TextBlock Text="Files no workbook uses, in BETA or production" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Static data:MaintainerScreenWording.MyAccount}" FontSize="13" />
+                                <TextBlock Text="Your name, email address and password, and signing out" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- What is deployed (owner request, 2026-10-04 - it was a line above the
+                             account row until then; every maintainer's since the same day). -->
+                        <ListBoxItem x:Name="ServerVersionItem" Classes="ListEntry">
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="Server version" FontSize="13" />
+                                <TextBlock Text="What is deployed, and the API revision it and this CRT speak" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- ===== The administrator's own, each AdminOnly and padlocked ===== -->
+
+                        <ListBoxItem x:Name="MaintainersItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Maintainers" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="Who maintains each system - add, invite or remove" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- The order of CRT's drop-down lists, in BETA and the stable source
+                             (owner request, 2026-10-04). -->
+                        <ListBoxItem x:Name="SystemOrderItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Order of systems" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="The order of CRT's drop-down lists, in BETA and the stable source" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <ListBoxItem x:Name="UnusedFilesItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Unused files" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="Files no workbook uses, in the BETA or the stable data" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <ListBoxItem x:Name="RebuildManifestsItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Rebuild checksum manifests" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="After data files were changed on the server by hand" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Deleting a system completely (owner request, 2026-10-03). -->
+                        <ListBoxItem x:Name="DeleteSystemItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Delete a system" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="From the BETA and the stable data and the database, for good" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Which CRT versions call which route (owner request, 2026-10-04). -->
+                        <ListBoxItem x:Name="ApiUsageItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="API usage" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="Which CRT versions still call each route of the server" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Resetting the contribution data for going live (owner request,
+                             2026-10-04). Last: it is used once, and it deletes the most. -->
+                        <ListBoxItem x:Name="ResetDataItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Reset contribution data" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="For going live: every submission, account, maintainer and the history, for good" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
                     </ListBox>
                 </Panel>
             </DockPanel>
 
-            <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+            <GridSplitter Grid.Row="1" Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
 
             <!--
             THE RIGHT-HAND SIDE, one panel per screen - "will show everything in the right-side menu"
             for each of the four. Only the chosen screen's is shown; the others keep what they hold.
             -->
-            <Panel Grid.Column="2" Margin="12,0,0,0">
+            <Panel Grid.Row="1" Grid.Column="2" Margin="12,0,0,0">
 
                 <DockPanel x:Name="ReviewPanel">
                     <!--
@@ -580,7 +770,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                  MinHeight="60"
                                  MaxHeight="120"
                                  TextWrapping="Wrap"
-                                 PlaceholderText="Why? The contributor sees this - it is the only message they get." />
+                                 PlaceholderText="Why? This is the only message the contributor receives." />
 
                         <!--
                         APPROVE IS LAST AND SEPARATED - at the far RIGHT (owner request, 2026-09-26), the
@@ -629,16 +819,31 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                     </StackPanel>
 
                     <!--
-                    THE TABLE IS THE SUBMISSION (owner request, 2026-09-26: "make the table the default
-                    first view, as this is the most helpful one ... just scrap that information" - the
-                    change summary that used to fill this panel). It opens with the submission; there is
-                    no other view. See TabMaintainer.Table.cs.
+                    THE SUBMISSION, IN THREE VIEWS (owner request, 2026-09-30: "The "Files..." button
+                    ... can easily be missed ... Maybe one row with "Contributor info", "Board data",
+                    and then "Files"?"). TabMaintainer.SubmissionViews.cs; the words are
+                    SubmissionViews'.
 
-                    Above it, only when there is something to say, what the table CANNOT show:
-                    highlights, calibration points, the automatic checks' warnings (ReviewNotInTable).
+                      Board data  - THE TABLE (owner request, 2026-09-26: "make the table the default
+                                    first view, as this is the most helpful one"), and above it, only
+                                    when there is something to say, what the table CANNOT show:
+                                    highlights, calibration points, the automatic checks' warnings
+                                    (ReviewNotInTable). A submission always opens on it.
+                      Files       - the system's files after approving (TabMaintainer.Files.cs). Its
+                                    button counts the files the submission adds, replaces or removes.
+                      Contributor - who sent it and everything they sent before
+                                    (TabMaintainer.Contributor.cs).
 
-                    *** THE TABLE IS NEVER INSIDE A SCROLLVIEWER. *** A grid measured with unlimited
-                    height realises every row - the Drafts tab's rule, for the same grid.
+                    Who sent it is the Contributor view's alone (owner request, 2026-09-30) - there was
+                    a one-line summary beside the buttons until then. The decision bar stays below all
+                    three.
+
+                    SWITCHING VIEW HIDES, IT NEVER CLOSES - the tab's own rule: the table, unsaved
+                    changes and all, is exactly where it was on coming back to Board data.
+
+                    *** NEITHER THE TABLE NOR THE FILE TREE IS INSIDE A SCROLLVIEWER. *** A list
+                    measured with unlimited height realises every row - the Drafts tab's rule, for the
+                    same grid, and FileTreeView's own.
                     -->
                     <DockPanel x:Name="TablePanel" IsVisible="False">
                         <TextBlock DockPanel.Dock="Top"
@@ -647,34 +852,80 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                    IsVisible="False"
                                    Margin="0,0,0,8" />
 
-                        <!-- Who sent it, and how their other submissions went (ReviewContributorLine,
-                             owner request 2026-09-26) - and beside it, the system's files after
-                             approving it (owner request, 2026-09-28; TabMaintainer.Files.cs). -->
-                        <Grid DockPanel.Dock="Top"
-                              ColumnDefinitions="*,Auto"
-                              Margin="0,0,0,4">
-                            <TextBlock Grid.Column="0"
-                                       x:Name="ContributorText"
-                                       FontSize="12"
-                                       TextWrapping="Wrap"
-                                       IsVisible="False"
-                                       VerticalAlignment="Center" />
-                            <Button Grid.Column="1"
-                                    x:Name="SubmissionFilesButton"
-                                    Content="Files..."
-                                    Margin="12,0,0,0"
-                                    VerticalAlignment="Top"
-                                    ToolTip.Tip="The system's files in BETA after approving this - what is new, changed or removed, with the rest around them. Double-click a file there to open it."
-                                    Click="OnSubmissionFilesClick" />
-                        </Grid>
-
+                        <!-- WHAT TO SETTLE BEFORE APPROVING, above all three views (code review,
+                             2026-10-01): why Approve is off (ApprovalGate) and the contributor's
+                             discarded draft. They were the first lines above the TABLE, inside the
+                             Board data view - so on Files or Contributor, Approve was greyed out
+                             with no reason anywhere. Still above everything else, as the owner
+                             asked of the discarded-draft warning (2026-09-28). -->
                         <StackPanel DockPanel.Dock="Top"
-                                    x:Name="NotInTablePanel"
+                                    x:Name="BeforeApprovingPanel"
                                     Spacing="2"
                                     IsVisible="False"
                                     Margin="0,0,0,8" />
 
-                        <local:BoardTableEditor x:Name="SubmissionTable" />
+                        <!-- No one-line "From ... - [4] other submissions" beside the buttons any
+                             more (owner request, 2026-09-30: "I do not need to see highlighted
+                             data, as this should be available under "Contributor""). -->
+                        <!-- ONE JOINED SWITCH (2026-10-01) - a different look from the screens' tab
+                             strip above, so the two levels of choice cannot be mistaken for each
+                             other (see the tab strip's note). Spacing 0 and each segment after the
+                             first pulled 1px left, so neighbouring borders are one line. -->
+                        <StackPanel DockPanel.Dock="Top"
+                                    x:Name="SubmissionViewBar"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Left"
+                                    Spacing="0"
+                                    Margin="0,0,0,10">
+                                <Button x:Name="BoardDataViewButton"
+                                        Classes="Segment First Selected"
+                                        Content="Board data"
+                                        Click="OnSubmissionViewClick" />
+
+                                <Button x:Name="FilesViewButton" Classes="Segment" Click="OnSubmissionViewClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <TextBlock Text="Files" VerticalAlignment="Center" />
+                                        <Border x:Name="FilesViewBadge" Classes="ModeBadge Count" IsVisible="False">
+                                            <TextBlock x:Name="FilesViewBadgeText" />
+                                        </Border>
+                                    </StackPanel>
+                                </Button>
+
+                                <Button x:Name="ContributorViewButton"
+                                        Classes="Segment Last"
+                                        Content="Contributor"
+                                        Click="OnSubmissionViewClick" />
+                        </StackPanel>
+
+                        <Panel>
+                            <DockPanel x:Name="BoardDataView">
+                                <StackPanel DockPanel.Dock="Top"
+                                            x:Name="NotInTablePanel"
+                                            Spacing="2"
+                                            IsVisible="False"
+                                            Margin="0,0,0,8" />
+
+                                <local:BoardTableEditor x:Name="SubmissionTable" />
+                            </DockPanel>
+
+                            <DockPanel x:Name="FilesView" IsVisible="False">
+                                <TextBlock DockPanel.Dock="Top"
+                                           x:Name="FilesViewHeadingText"
+                                           TextWrapping="Wrap"
+                                           Opacity="0.75"
+                                           Margin="0,0,0,8" />
+
+                                <local:FileTreeView x:Name="SubmissionFileTree" />
+                            </DockPanel>
+
+                            <ScrollViewer x:Name="ContributorView"
+                                          IsVisible="False"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="ContributorSection"
+                                            Spacing="10"
+                                            Margin="0,0,12,0" />
+                            </ScrollViewer>
+                        </Panel>
                     </DockPanel>
                 </DockPanel>
 
@@ -684,8 +935,33 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                 <!-- Systems: one system's maintainers, contributors and submissions. -->
                 <local:SystemView x:Name="SystemDetailView" IsVisible="False" />
 
-                <!-- Admin: whichever is chosen on the left. -->
+                <!-- Account: whichever is chosen on the left - "My account" for everybody, then the
+                     administrator's own panels. -->
+                <local:MyAccountView x:Name="MyAccountPanel" IsVisible="False" />
+                <local:MaintainerPoolView x:Name="MaintainerPoolAdminView" IsVisible="False" />
+                <local:SystemOrderView x:Name="SystemOrderAdminView" IsVisible="False" />
                 <local:UnusedFilesView x:Name="UnusedFilesAdminView" IsVisible="False" />
+                <local:RebuildManifestsView x:Name="RebuildManifestsAdminView" IsVisible="False" />
+                <local:SystemDeletionView x:Name="SystemDeletionAdminView" IsVisible="False" />
+                <local:ApiUsageView x:Name="ApiUsageAdminView" IsVisible="False" />
+                <local:DataResetView x:Name="DataResetAdminView" IsVisible="False" />
+
+                <!-- "Server version" (owner request, 2026-10-04; every maintainer's since the same
+                     day): three lines, each value bold in brackets - ServerVersionDisplay words them,
+                     TabMaintainer.Account.cs reads them. -->
+                <StackPanel x:Name="ServerVersionView" IsVisible="False">
+                    <TextBlock Text="Server version"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Margin="0,0,0,8" />
+
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.8"
+                               Margin="0,0,0,12"
+                               Text="What is deployed on the server, and the API revision it and this CRT speak. The API revision changes only when the server changes in a way an older CRT cannot follow: when the server's is higher, CRT is behind and has to be updated - the server turns it away from submitting and from this tab, saying so - and when this CRT's is higher, the newer server has not been deployed yet." />
+
+                    <StackPanel x:Name="ServerVersionLines" Spacing="4" />
+                </StackPanel>
             </Panel>
         </Grid>
 

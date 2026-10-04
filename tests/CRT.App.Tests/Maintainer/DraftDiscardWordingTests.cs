@@ -16,7 +16,7 @@ public sealed class DraftDiscardWordingTests
     [Fact]
     public void The_mark_names_the_day_in_the_one_submission_date_format()
     {
-        Assert.Equal("Contributor discarded their draft on 2026-September-28", DraftDiscardWording.Mark(Discarded));
+        Assert.Equal("Contributor discarded the draft on 2026-September-28", DraftDiscardWording.Mark(Discarded));
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public sealed class DraftDiscardWordingTests
         string text = DraftDiscardWording.SubmissionWarning(Discarded, " dennis@example.com ");
 
         Assert.Contains("2026-September-28", text, StringComparison.Ordinal);
-        Assert.Contains("check with them (dennis@example.com) before approving", text, StringComparison.Ordinal);
+        Assert.Contains("check with the contributor (dennis@example.com) before approving", text, StringComparison.Ordinal);
         Assert.Contains("does not withdraw", text, StringComparison.Ordinal);
     }
 
@@ -35,7 +35,7 @@ public sealed class DraftDiscardWordingTests
     {
         string text = DraftDiscardWording.SubmissionWarning(Discarded, null);
 
-        Assert.Contains("check with them before approving", text, StringComparison.Ordinal);
+        Assert.Contains("check with the contributor before approving", text, StringComparison.Ordinal);
         Assert.DoesNotContain("()", text, StringComparison.Ordinal);
     }
 
@@ -46,8 +46,8 @@ public sealed class DraftDiscardWordingTests
         string text = DraftDiscardWording.BetaWarning(
             new CarriedSubmission(41, "dennis@example.com", "Change", Discarded.AddDays(-1), DraftDiscardedUtc: Discarded));
 
-        Assert.StartsWith("dennis@example.com discarded their own draft of this board on 2026-September-28", text, StringComparison.Ordinal);
-        Assert.Contains("pushing it back to the queue and checking with them", text, StringComparison.Ordinal);
+        Assert.StartsWith("dennis@example.com discarded the draft of this board on 2026-September-28", text, StringComparison.Ordinal);
+        Assert.Contains("pushing it back to the queue and checking with the contributor", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -62,8 +62,8 @@ public sealed class DraftDiscardWordingTests
     public void The_systems_history_says_which_submission()
     {
         Assert.Equal(
-            "2026-September-28 - #41 - the contributor discarded their own draft",
-            SystemsDisplay.HistoryLine(new SystemHistoryEntry(Discarded, SystemHistoryEvents.DraftDiscarded, "dennis@example.com", 41, null)));
+            "#41 - the contributor discarded the draft",
+            SystemsDisplay.HistoryWhat(new SystemHistoryEntry(Discarded, SystemHistoryEvents.DraftDiscarded, "dennis@example.com", 41, null)));
     }
 
     [Fact]
@@ -79,6 +79,28 @@ public sealed class DraftDiscardWordingTests
         {
             Assert.DoesNotContain("withdrew", text, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("withdrawn", text, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    // ###########################################################################################
+    // *** NEVER "THEIR" OR "THEM" FOR THE CONTRIBUTOR (owner request, 2026-10-01: "never refer to
+    // a contributor as "their""). *** Every sentence here is about one contributor.
+    // ###########################################################################################
+    [Fact]
+    public void No_sentence_refers_to_the_contributor_as_their_or_them()
+    {
+        foreach (string text in new[]
+        {
+            DraftDiscardWording.Mark(Discarded),
+            DraftDiscardWording.ListMark,
+            DraftDiscardWording.SubmissionWarning(Discarded, "a@b.c"),
+            DraftDiscardWording.SubmissionWarning(Discarded, null),
+            DraftDiscardWording.BetaWarning(new CarriedSubmission(1, "a@b.c", null, null, Discarded)),
+            DraftDiscardWording.BetaWarning(new CarriedSubmission(1, "", null, null, Discarded)),
+            DraftDiscardWording.HistoryWhat("#1")
+        })
+        {
+            Assert.DoesNotMatch(@"(?i)\b(their|theirs|them|they)\b", text);
         }
     }
 }

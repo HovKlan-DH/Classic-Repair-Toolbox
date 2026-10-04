@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 
 namespace CRT.Server.Handlers.Submissions
 {
@@ -28,8 +29,24 @@ namespace CRT.Server.Handlers.Submissions
                 : submission.ContactEmail?.Trim() ?? string.Empty;
         }
 
+        // ###########################################################################################
+        // The address AND the name to greet by (2026-10-03: "if {name} is known, use that, otherwise
+        // just "Hi there.""). The name is the account's display name, so only a contributor who sent
+        // while signed in has one - a contact address typed into the Submit dialog comes with no name.
+        // ###########################################################################################
+        public static MailRecipient RecipientOf(SubmissionRecord submission, AccountRecord? account) =>
+            new(ContributorAddresses.AddressOf(submission, account), account?.DisplayName?.Trim() ?? string.Empty);
+
         // The address for each of `submissions`, by submission id - one account lookup per account.
         public static async Task<IReadOnlyDictionary<long, string>> ResolveAsync(
+            IAccountStore accounts,
+            IEnumerable<SubmissionRecord> submissions,
+            CancellationToken cancellationToken = default) =>
+            (await ContributorAddresses.ResolveRecipientsAsync(accounts, submissions, cancellationToken))
+                .ToDictionary(pair => pair.Key, pair => pair.Value.Email);
+
+        // The recipient for each of `submissions`, by submission id - one account lookup per account.
+        public static async Task<IReadOnlyDictionary<long, MailRecipient>> ResolveRecipientsAsync(
             IAccountStore accounts,
             IEnumerable<SubmissionRecord> submissions,
             CancellationToken cancellationToken = default)
@@ -45,7 +62,7 @@ namespace CRT.Server.Handlers.Submissions
 
             return list.ToDictionary(
                 submission => submission.Id,
-                submission => ContributorAddresses.AddressOf(
+                submission => ContributorAddresses.RecipientOf(
                     submission,
                     submission.AccountId is long id ? byAccount.GetValueOrDefault(id) : null));
         }

@@ -51,6 +51,16 @@ public sealed class CrtWaitWordingTests
     {
         Assert.Equal("Checking your contributions with the server (2 of 5)...", CrtWaitWording.CheckingSubmission(2, 5));
         Assert.Equal("Downloading the update: 40%", CrtWaitWording.DownloadingUpdateAt(40));
+        Assert.Equal("Sending to server... 40%", CrtWaitWording.SendingFeedbackAt(40));
+    }
+
+    // Once every byte is sent, the server still unpacks and mails before it answers - the line says
+    // that is what is waited for, rather than sitting on "100%" (code review, 2026-10-04).
+    [Fact]
+    public void A_fully_sent_feedback_says_it_waits_for_the_server()
+    {
+        Assert.Equal("Sent - waiting for the server to save the files and mail the feedback...", CrtWaitWording.SendingFeedbackAt(100));
+        Assert.DoesNotContain("100%", CrtWaitWording.SendingFeedbackAt(100), StringComparison.Ordinal);
     }
 
     // ###########################################################################################

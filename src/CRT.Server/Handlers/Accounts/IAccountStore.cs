@@ -41,6 +41,14 @@ namespace CRT.Server.Handlers.Accounts
 
         Task SetLastLoginAsync(long accountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
+        // The maintainer's own changes (2026-10-03) - see AccountSelfServiceFlows. The name is
+        // already validated and trimmed.
+        Task SetDisplayNameAsync(long accountId, string displayName, CancellationToken cancellationToken = default);
+
+        // False - and nothing written - when another account holds the normalised address: the
+        // unique index decides, so two accounts racing for one address cannot both win.
+        Task<bool> SetEmailAsync(long accountId, string email, string normalisedEmail, CancellationToken cancellationToken = default);
+
         // -----------------------------------------------------------------------------------
         // One-shot tokens (verification, password reset).
         // -----------------------------------------------------------------------------------
@@ -80,6 +88,11 @@ namespace CRT.Server.Handlers.Accounts
         // Revokes every live session for an account. Used on reuse detection and on password
         // change - both cases where every outstanding credential must stop working at once.
         Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // Revokes every live session for an account EXCEPT the one making the request - a password
+        // or address changed from the Maintainer tab signs out CRT on every other computer, and
+        // leaves the one the maintainer is sitting at signed in.
+        Task RevokeOtherSessionsAsync(long accountId, long keepSessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // -----------------------------------------------------------------------------------
         // Maintainer pools (Phase 6 roles, 2026-09-25). One row per (system, account) in the
@@ -247,13 +260,17 @@ namespace CRT.Server.Handlers.Accounts
         DateTimeOffset CreatedUtc);
 
     // ###########################################################################################
-    // The two purposes a one-shot token can have. Strings rather than an enum because they are
+    // The purposes a one-shot token can have. Strings rather than an enum because they are
     // stored as text and read in a log line; the constants stop them being mistyped.
+    //
+    // EmailChange (2026-10-03, migration 0016): the code mailed to a maintainer's NEW address. It
+    // is the only purpose that carries a PendingEmail - the address the code is for.
     // ###########################################################################################
     public static class TokenPurpose
     {
         public const string EmailVerification = "email_verification";
         public const string PasswordReset = "password_reset";
+        public const string EmailChange = "email_change";
     }
 
     public sealed record NewAccountToken(
@@ -261,7 +278,9 @@ namespace CRT.Server.Handlers.Accounts
         string Purpose,
         string TokenHash,
         DateTimeOffset CreatedUtc,
-        DateTimeOffset ExpiresUtc);
+        DateTimeOffset ExpiresUtc,
+        string? PendingEmail = null,
+        string? PendingEmailNormalised = null);
 
     public sealed record AccountTokenRecord(
         long Id,
@@ -269,7 +288,9 @@ namespace CRT.Server.Handlers.Accounts
         string Purpose,
         DateTimeOffset CreatedUtc,
         DateTimeOffset ExpiresUtc,
-        DateTimeOffset? ConsumedUtc);
+        DateTimeOffset? ConsumedUtc,
+        string? PendingEmail = null,
+        string? PendingEmailNormalised = null);
 
     public sealed record NewSession(
         long AccountId,

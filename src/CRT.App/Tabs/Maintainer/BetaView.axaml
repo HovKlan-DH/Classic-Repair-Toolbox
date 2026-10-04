@@ -97,7 +97,7 @@
 
                 <Button Grid.Column="3"
                         x:Name="PublishButton"
-                        Content="Publish to production"
+                        Content="Publish to stable"
                         Foreground="{DynamicResource Button_Ok_Fg}"
                         Background="{DynamicResource Button_Ok_Bg}"
                         BorderBrush="{DynamicResource Button_Ok_Border}"

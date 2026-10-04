@@ -40,9 +40,11 @@ namespace CRT
         //   Main.NewSystem.cs         - "Add a new system": the create dialog, draft creation, navigation
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
         //   Main.DraftBadges.cs       - the "Draft" chip on Hardware and Board drop-down entries
-        //   Main.SourceSwitchNotice.cs - "now in the online source - switch back from BETA" banner
+        //   Main.SourceSwitchNotice.cs - the banner about the source: "now in BETA - tick BETA to try
+        //                                it" or "now in the stable source - switch back from BETA"
         //   Main.BoardViews.cs        - counting a board as viewed after ten seconds, sending views home
-        //   Main.Maintainer.cs        - the Maintainer tab: shown or not, and the layout while selected
+        //   Main.Maintainer.cs        - the Maintainer tab: shown or not, its badge, and the layout while selected
+        //   Main.SubmissionChecks.cs  - the Drafts tab's badge, and asking about sent submissions while CRT runs
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -232,8 +234,17 @@ namespace CRT
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
             this.TabMaintainer.UseRememberedChoices(
-                UserSettings.MaintainerShowChangesOnly,
-                showChangesOnly => UserSettings.MaintainerShowChangesOnly = showChangesOnly);
+                UserSettings.MaintainerTableFilter,
+                filter => UserSettings.MaintainerTableFilter = filter);
+            this.TabMaintainer.UseRememberedSelections(
+                UserSettings.MaintainerLastSubmissionId,
+                UserSettings.MaintainerLastBetaSystemId,
+                id => UserSettings.MaintainerLastSubmissionId = id,
+                systemId => UserSettings.MaintainerLastBetaSystemId = systemId,
+                UserSettings.MaintainerLastSystemId,
+                systemId => UserSettings.MaintainerLastSystemId = systemId);
+            this.TabMaintainer.UseTabBadge(() => this.MaintainerTabBadgeCanBeSeen, this.ShowMaintainerTabBadge);
+            this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
 
             this.MainTabControl.SelectionChanged += this.OnMainTabControlSelectionChanged;
 
@@ -491,11 +502,20 @@ namespace CRT
                 _ = SubmissionStatusRefresh.RefreshQuietlyAsync(
                     new SubmissionClient().GetStatusAsync,
                     DateTimeOffset.UtcNow,
-                    onFinished: changedCount => Dispatcher.UIThread.Post(() => _ = this.RetirePublishedDraftsAsync()));
+                    onFinished: changedCount => Dispatcher.UIThread.Post(() => _ = this.RetirePublishedDraftsAsync()),
+                    onOutdated: message => Dispatcher.UIThread.Post(() => this.ShowSubmissionChecksOutdated(message)));
 
                 // A discarded draft the server was not told about yet - discarded with no network -
                 // is reported now (owner request, 2026-09-28; see DraftDiscardReporter).
                 _ = DraftDiscardReporter.ReportPendingAsync(new SubmissionClient().ReportDraftDiscardedAsync);
+
+                // The Maintainer tab's badge: the remembered sign-in, restored quietly now rather
+                // than when the tab is first opened (owner request, 2026-09-30; Main.Maintainer.cs).
+                this.StartMaintainerBadge();
+
+                // The Drafts tab's badge: the launch check above, again every minute while CRT runs
+                // (owner request, 2026-09-30; Main.SubmissionChecks.cs).
+                this.StartSubmissionChecks();
             }
             catch (Exception ex)
             {
@@ -744,8 +764,12 @@ namespace CRT
             //
             // The reverse is deliberately NOT true: no feedback and no drafts still hides the tab,
             // so somebody who has never contributed sees no trace of the feature.
-            bool hasUnreadFeedback = SubmissionReceiptStore.UnreadCommentCount() > 0;
+            int unread = SubmissionReceiptStore.UnreadCommentCount();
+            bool hasUnreadFeedback = unread > 0;
             bool hasAnyDrafts = this.TabDrafts.Drafts.Count > 0;
+
+            // The tab's own badge: the same count as "My submissions" inside it (Main.SubmissionChecks.cs).
+            this.ShowDraftsTabBadge(unread);
 
             bool shouldShow = hasAnyDrafts || hasUnreadFeedback;
             this.DraftsTabItem.IsVisible = shouldShow;
@@ -787,8 +811,15 @@ namespace CRT
         //
         // Called after the launch status check and after "My submissions" closes (its Refresh can
         // mark a submission published), and always ends by refreshing the Drafts tab and chips.
+        //
+        // *** EXCEPT FROM THE MINUTE CHECK, WHEN NOTHING CHANGED (code review, 2026-10-04). ***
+        // `refreshDraftsTab` false skips that refresh unless a draft was retired: rebuilding every
+        // draft row (a directory listing per sent draft) and both drop-down templates once a minute,
+        // for a receipt that has said "changes requested" for weeks, bought nothing. The minute
+        // check passes whether a receipt moved; retirement itself still runs every time - it
+        // depends on a state, not a change (Main.SubmissionChecks.cs).
         // ###########################################################################################
-        internal async Task RetirePublishedDraftsAsync()
+        internal async Task RetirePublishedDraftsAsync(bool refreshDraftsTab = true)
         {
             // The receipts have just been brought up to date (this runs after every status check),
             // so this is where a submission reaching production is first seen. Before the retiring
@@ -822,6 +853,9 @@ namespace CRT
 
                 if (candidates.Count > 0)
                 {
+                    // Anything found is a change worth drawing, whatever the caller asked.
+                    refreshDraftsTab = true;
+
                     DraftRetirementOutcome outcome = PublishedDraftRetirer.Retire(
                         candidates,
                         // Each draft is named by its WORKBOOK path (RetirableDraft.ExcelDataFile),
@@ -863,7 +897,7 @@ namespace CRT
                 Logger.Warning($"Could not retire published drafts: [{ex.Message}]");
             }
 
-            if (refreshed)
+            if (refreshed || !refreshDraftsTab)
             {
                 return;
             }

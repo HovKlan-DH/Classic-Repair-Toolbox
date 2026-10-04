@@ -38,21 +38,35 @@ public sealed class PublishedDraftRetirerTests : IDisposable
         return new RetirableDraft(PublishedDraftRetirerTests.SystemKey, folder, DraftRetirement.FolderStamp(folder));
     }
 
+    // ###########################################################################################
+    // *** CALLED FROM A THREAD OF ITS OWN THAT STAYS BUSY, as the UI thread does. *** Called from
+    // the test's own thread - a POOL thread under xunit v3 - it failed now and then (2026-10-03, a
+    // full run): the test's await handed its thread back to the pool, which could then run the
+    // check on that very thread, and the two ids matched although nothing was wrong.
+    // ###########################################################################################
     [Fact]
-    public async Task The_check_runs_OFF_the_calling_thread()
+    public void The_check_runs_OFF_the_calling_thread()
     {
         // It parses two workbooks and reads every file per draft. Run on the UI thread, as it
         // used to be inside Dispatcher.UIThread.Post, that froze the window.
-        int callingThread = Environment.CurrentManagedThreadId;
+        int callingThread = 0;
         int? checkingThread = null;
 
-        await PublishedDraftRetirer.FindAsync(
-            [new SubmissionReceipt { SubmissionId = 1, SystemId = PublishedDraftRetirerTests.SystemKey, LastKnownState = "published" }],
-            _ =>
-            {
-                checkingThread = Environment.CurrentManagedThreadId;
-                return null;
-            });
+        var caller = new Thread(() =>
+        {
+            callingThread = Environment.CurrentManagedThreadId;
+
+            PublishedDraftRetirer.FindAsync(
+                [new SubmissionReceipt { SubmissionId = 1, SystemId = PublishedDraftRetirerTests.SystemKey, LastKnownState = "published" }],
+                _ =>
+                {
+                    checkingThread = Environment.CurrentManagedThreadId;
+                    return null;
+                }).GetAwaiter().GetResult();
+        });
+
+        caller.Start();
+        Assert.True(caller.Join(TimeSpan.FromSeconds(30)), "the check never finished");
 
         Assert.NotNull(checkingThread);
         Assert.NotEqual(callingThread, checkingThread);

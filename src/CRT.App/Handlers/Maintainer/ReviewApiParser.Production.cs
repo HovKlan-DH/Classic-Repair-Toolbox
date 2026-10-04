@@ -81,7 +81,28 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.ParseCarrying(root),
                 ReviewApiParser.ParseStrings(root, "unchangedFiles"),
                 ReviewApiParser.String(root, "betaDataUrl"),
-                ReviewApiParser.String(root, "productionDataUrl"));
+                ReviewApiParser.String(root, "productionDataUrl"),
+                ReviewApiParser.ParseSizes(root, "fileSizes"));
+        }
+
+        // ###########################################################################################
+        // Path -> bytes (2026-10-04, the plan's FileSizes). Null when absent - an older server - and
+        // an entry that is not a whole, non-negative number is left out rather than shown wrong.
+        // ###########################################################################################
+        private static IReadOnlyDictionary<string, long>? ParseSizes(JsonElement root, string property)
+        {
+            if (!root.TryGetProperty(property, out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            var sizes = new Dictionary<string, long>(StringComparer.Ordinal);
+
+            foreach (JsonProperty entry in raw.EnumerateObject())
+            {
+                if (entry.Value.ValueKind == JsonValueKind.Number && entry.Value.TryGetInt64(out long size) && size >= 0)
+                    sizes[entry.Name] = size;
+            }
+
+            return sizes;
         }
 
         // ###########################################################################################
@@ -262,6 +283,46 @@ namespace Handlers.MaintainerHandling
                     ReviewApiParser.ParseStrings(root, "removed"),
                     ReviewApiParser.ParseStrings(root, "kept"),
                     ReviewApiParser.String(root, "notDoneBecause"));
+        }
+
+        // ###########################################################################################
+        // POST /api/admin/manifest/rebuild (2026-10-01). Every word shown comes from the server, so
+        // a server that gains a third tree or a new reason to skip one says so with no CRT release.
+        // A missing headline is the only thing refused: an answer with nothing to say is not one.
+        // ###########################################################################################
+        public static ManifestRebuildResult? ParseManifestRebuild(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            string? headline = ReviewApiParser.String(root, "headline");
+
+            if (string.IsNullOrWhiteSpace(headline))
+                return null;
+
+            var trees = new List<ManifestRebuildTreeResult>();
+
+            if (root.TryGetProperty("trees", out JsonElement listed) && listed.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement entry in listed.EnumerateArray())
+                {
+                    if (entry.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    string tree = ReviewApiParser.String(entry, "tree") ?? string.Empty;
+                    string message = ReviewApiParser.String(entry, "message") ?? string.Empty;
+
+                    trees.Add(new ManifestRebuildTreeResult(
+                        tree,
+                        ReviewApiParser.Bool(entry, "skipped") ?? false,
+                        (int)(ReviewApiParser.Long(entry, "entries") ?? -1),
+                        message));
+                }
+            }
+
+            return new ManifestRebuildResult(headline, trees);
         }
     }
 }

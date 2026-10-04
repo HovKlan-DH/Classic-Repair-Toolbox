@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
 using Handlers.Online;
 using System;
 using System.Collections.Generic;
@@ -37,8 +38,15 @@ namespace CRT
         private SubmissionIdentity? thisIdentity;
         private BoardData? thisMergedData;
 
+        // The signed-in maintainer this submission goes with, or null for the ordinary contributor
+        // (2026-10-01) - see Initialize. Set on the UI thread before the send starts; immutable.
+        private ReviewSession? thisAccount;
+
         // The draft's KiCad calibrations, which BoardData cannot carry - see Initialize.
         private IReadOnlyList<KiCadCalibrationEntry> thisCalibrations = [];
+
+        // What the draft held when Submit was pressed - see Initialize and NewReceipt.
+        private string thisDraftFingerprint = string.Empty;
 
         // TWO roots, because a system's files live in two places - see SubmissionFileLocator.
         // thisSystemFolder is the DRAFT folder for this system; thisDataRoot is the synced Data/
@@ -99,11 +107,19 @@ namespace CRT
             // calibration section at all - so they travel separately. Optional and trailing, so
             // existing callers and tests are unaffected; a caller that omits them submits none,
             // which is what happened for every submission before 2026-09-22.
-            IReadOnlyList<KiCadCalibrationEntry>? calibrations = null)
+            IReadOnlyList<KiCadCalibrationEntry>? calibrations = null,
+
+            // The maintainer signed in on the Maintainer tab, or null (2026-10-01) - see below.
+            ReviewSession? signedIn = null,
+
+            // What the draft holds as it is sent (DraftFingerprint, 2026-10-03), kept on the
+            // receipt so the Drafts tab can grey Submit out while the draft stays the same.
+            string draftFingerprint = "")
         {
             ArgumentNullException.ThrowIfNull(mergedData);
             ArgumentNullException.ThrowIfNull(identity);
 
+            this.thisDraftFingerprint = draftFingerprint ?? string.Empty;
             this.thisSystemDisplayName = systemDisplayName;
             this.thisMergedData = mergedData;
             this.thisIdentity = identity;
@@ -128,9 +144,25 @@ namespace CRT
             // Not overwritten if something is already in the box - Initialize could be called on a
             // dialog a caller has pre-populated, and silently replacing a caller's value would be
             // the kind of surprise that is very hard to see in a UI.
-            if (string.IsNullOrWhiteSpace(this.EmailTextBox.Text))
+            //
+            // *** EXCEPT BY A SIGNED-IN MAINTAINER'S ACCOUNT (owner request, 2026-10-01: "When I am
+            // a maintainer, and I have logged in, then I want to use that email address everywhere
+            // in the CRT app"). *** The submission then goes WITH the account (SubmitAsync sends its
+            // token), so the account's address is the one the server records whatever the box says
+            // - the box shows it, read only, and the note under it says why and how to change it.
+            ContactAddress address = ContactAddress.Choose(signedIn, UserSettings.ContactEmail, DateTimeOffset.UtcNow);
+
+            this.thisAccount = address.Account;
+
+            if (address.IsFromAccount)
             {
-                this.EmailTextBox.Text = UserSettings.ContactEmail;
+                this.EmailTextBox.Text = address.Email;
+                this.EmailTextBox.IsReadOnly = true;
+                this.EmailNoteText.Text = ContactAddress.SubmitNote;
+            }
+            else if (string.IsNullOrWhiteSpace(this.EmailTextBox.Text))
+            {
+                this.EmailTextBox.Text = address.Email;
             }
 
             this.BuildSummary();
@@ -315,7 +347,11 @@ namespace CRT
 
             var client = new SubmissionClient();
 
-            HashNegotiationResponse negotiation = await client.CreateAsync(manifest.Manifest, token);
+            // With a signed-in maintainer's token the submission is the account's (2026-10-01). A
+            // token the server no longer accepts makes it an ordinary submission from the same
+            // address - never a refusal.
+            HashNegotiationResponse negotiation = await client.CreateAsync(
+                manifest.Manifest, token, bearerToken: this.thisAccount?.BearerToken);
 
             // ###########################################################################################
             // THE RECEIPT IS WRITTEN HERE, NOT AT FINALISE.
@@ -329,14 +365,7 @@ namespace CRT
             //
             // Written before any byte is uploaded, so a crash mid-upload still leaves a receipt.
             // ###########################################################################################
-            SubmissionReceiptStore.Record(new SubmissionReceipt
-            {
-                SubmissionId = negotiation.SubmissionId,
-                UploadToken = negotiation.UploadToken,
-                SystemId = identity.SystemId,
-                Summary = this.SummaryText,
-                SentUtc = DateTimeOffset.UtcNow
-            });
+            SubmissionReceiptStore.Record(this.NewReceipt(negotiation.SubmissionId, negotiation.UploadToken, DateTimeOffset.UtcNow));
 
             // Upload only what the server asked for.
             var byHash = manifest.Manifest.Files
@@ -396,6 +425,20 @@ namespace CRT
             return result;
         }
 
+        // ###########################################################################################
+        // The receipt kept for a submission the server has just created - see SubmitAsync for why
+        // it is written then. It carries what the draft held as it was sent (2026-10-03).
+        // ###########################################################################################
+        internal SubmissionReceipt NewReceipt(long submissionId, string uploadToken, DateTimeOffset sentUtc) => new()
+        {
+            SubmissionId = submissionId,
+            UploadToken = uploadToken,
+            SystemId = this.thisIdentity?.SystemId ?? string.Empty,
+            Summary = this.SummaryText,
+            SentUtc = sentUtc,
+            DraftFingerprint = this.thisDraftFingerprint
+        };
+
         // Read on the UI thread before the work starts, because a TextBox cannot be touched from
         // the thread pool.
         private string SummaryText => this.thisSummaryText;
@@ -439,7 +482,10 @@ namespace CRT
             // Written on SEND rather than on every keystroke, so a half-typed address abandoned by
             // closing the dialog is never persisted. Only a plausible one is kept - saving
             // "dennis@" would quietly poison the prefill on every other screen.
-            if (EmailAddressRules.IsPlausible(this.thisEmailText))
+            //
+            // Never a signed-in maintainer's account address (2026-10-01): that one is the
+            // account's, and signing out must bring back what the user typed (ContactAddress).
+            if (this.thisAccount is null && EmailAddressRules.IsPlausible(this.thisEmailText))
             {
                 UserSettings.ContactEmail = this.thisEmailText;
             }

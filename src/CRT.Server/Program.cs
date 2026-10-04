@@ -2,8 +2,10 @@ using System.Reflection;
 using System.Text.Json;
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Compat;
 using CRT.Server.Handlers.Database;
 using CRT.Server.Handlers.Email;
+using CRT.Server.Handlers.Feedback;
 using CRT.Server.Handlers.Health;
 using CRT.Server.Handlers.Submissions;
 using CRT.Server.Handlers.Usage;
@@ -188,6 +190,21 @@ namespace CRT.Server
             app.UseRouting();
 
             // ---------------------------------------------------------------------------------
+            // Which CRT versions call which route (owner request, 2026-10-04) - counted in memory
+            // here, after routing named the route and BEFORE anything can refuse the request: a CRT
+            // turned away as outdated or over its rate limit still called the route, and is exactly
+            // what retiring one has to know about. ApiUsageFlusher writes the counts every few
+            // minutes; a request matching no route is not counted (ApiUsageRules).
+            // ---------------------------------------------------------------------------------
+            ApiUsageCounter apiUsage = app.Services.GetRequiredService<ApiUsageCounter>();
+
+            app.Use(async (context, next) =>
+            {
+                ApiUsageRules.Count(apiUsage, context.GetEndpoint(), context.Request.Headers.UserAgent.ToString(), DateTimeOffset.UtcNow);
+                await next(context);
+            });
+
+            // ---------------------------------------------------------------------------------
             // A body-size limit for every request, taken from the ROUTE routing chose - each route
             // carries its own, written where it is mapped (`.WithBodyLimit(...)`) - BEFORE the
             // endpoint reads a byte (security review, 2026-09-25; on the routes themselves since the
@@ -208,8 +225,18 @@ namespace CRT.Server
                 await next(context);
             });
 
-            // Board views' per-address limit (BoardViewEndpoints) - after routing, which names the
-            // route's policy, and before the endpoint runs.
+            // ---------------------------------------------------------------------------------
+            // A CRT older than the part of the API it calls is told to update - HTTP 426 with
+            // CRT.Data's ClientOutdatedAnswer - rather than failing in a way nobody can read
+            // (2026-10-04). ClientVersionPolicy.Current serves this server's API revision and newer
+            // and sets no minimum version; the check-in, feedback and board views are never refused. After the body-size
+            // limit, which bounds the body it reads before answering, and before the rate limiter,
+            // so a refused CRT spends none of its address's allowance.
+            // ---------------------------------------------------------------------------------
+            app.UseClientVersionGate(ClientVersionPolicy.Current);
+
+            // Board views', feedback's and the check-in's per-address limits - after routing, which
+            // names the route's policy, and before the endpoint runs.
             app.UseRateLimiter();
 
             Program.MapServerEndpoints(app);
@@ -277,9 +304,9 @@ namespace CRT.Server
             // Publishing (Phase 5, tasks 5 and 6). Singletons for the same reason: neither holds
             // per-request state, and both take their inputs as arguments rather than as fields.
             //
-            // ApprovePublishFlow is the ONLY irreversible operation the service exposes - it
+            // ApprovePublishFlow is one of the two irreversible operations the service exposes - it
             // overwrites a published board with no retained revision behind it - so its own header
-            // is worth reading before changing anything it touches.
+            // is worth reading before changing anything it touches. The other is SystemDeletionFlow.
             services.AddSingleton<PublishExecutor>();
 
             // The one lock every write to a published tree takes - the BETA publish and the
@@ -294,6 +321,10 @@ namespace CRT.Server
             // Rolling a BETA board back to production's state, returning its submissions to the
             // queue (owner decision, 2026-09-27) - the production promotion's mirror image.
             services.AddSingleton<BetaRollbackFlow>();
+
+            // Deleting a system from both trees and the database (owner request, 2026-10-03) - the
+            // administrator's. Takes the publish lock: it writes both trees and their manifests.
+            services.AddSingleton<SystemDeletionFlow>();
 
             // Placing a new system in the drop-down lists (owner request, 2026-09-27). Takes the
             // publish lock too: placing a system already in BETA writes BETA's main Excel data file.
@@ -314,6 +345,36 @@ namespace CRT.Server
             services.AddSingleton<ICountryLookup, IpApiCountryLookup>();
             services.AddSingleton<BoardViewNameDirectory>();
             services.AddBoardViewRateLimit();
+
+            // Feedback from CRT's Feedback tab (2026-10-03) - the old PHP page's job. Anonymous,
+            // limited per address in memory like board views. FeedbackStorage is what every
+            // feedback with files shares: one unpack at a time, and the folder's remembered total.
+            services.AddFeedbackRateLimit();
+            services.AddSingleton(new FeedbackStorage(() => FeedbackFlow.StoredBytesUnder(options.FeedbackRoot!)));
+
+            // CRT's launch check-in (2026-10-03) - the old app-checkin PHP page's job, into the
+            // crt_update table it wrote. Shares the board views' country lookup.
+            services.AddSingleton<ICheckInStore, MySqlCheckInStore>();
+            services.AddCheckInRateLimit();
+
+            // CRT 2.x's contribution upload (2026-10-04), answered "please update" - anonymous,
+            // limited per address in memory like feedback.
+            services.AddLegacyContributionRateLimit();
+
+            // ---------------------------------------------------------------------------------
+            // Which CRT versions call which route (owner request, 2026-10-04): counted in memory by
+            // the pipeline (Main), written into crt_api_calls by the flusher every few minutes and
+            // as the service stops, shown under Account > "API usage" with every mapped route
+            // (ApiRouteList, handed the route table by MapServerEndpoints).
+            // ---------------------------------------------------------------------------------
+            services.AddSingleton<ApiUsageCounter>();
+            services.AddSingleton<IApiUsageStore, MySqlApiUsageStore>();
+            services.AddSingleton<ApiRouteList>();
+            services.AddHostedService<ApiUsageFlusher>();
+
+            // Resetting the contribution data for going live (owner request, 2026-10-04) - see
+            // DataResetFlow. Its one store empties every table in a single transaction.
+            services.AddSingleton<IDataResetStore, MySqlDataResetStore>();
         }
 
         // ###########################################################################################
@@ -348,6 +409,22 @@ namespace CRT.Server
 
             // Board views from CRT - anonymous, rate limited per address in memory.
             app.MapBoardViewEndpoints();
+
+            // Feedback from CRT's Feedback tab, and from older CRTs through Apache's forward of
+            // /app-feedback/ - anonymous, rate limited per address in memory.
+            app.MapFeedbackEndpoints();
+
+            // CRT's launch check-in, and older CRTs' through Apache's forward of /app-checkin/ -
+            // anonymous, rate limited per address in memory.
+            app.MapCheckInEndpoints();
+
+            // CRT 2.x's contribution upload, through Apache's forward of /app-contribution/api/ once
+            // the old PHP page is gone - answered "please update" in the words 2.5.0 understands.
+            app.MapLegacyContributionEndpoints();
+
+            // Every route above, for Account > "API usage" - read when it is asked for, so the list is
+            // the route table as it is, never a copy kept by hand.
+            app.Services.GetRequiredService<ApiRouteList>().Use(((IEndpointRouteBuilder)app).DataSources);
         }
 
         // ###########################################################################################
@@ -358,7 +435,7 @@ namespace CRT.Server
         // the case the reserve exists for. Null on failure rather than zero, so a transient error
         // reading the mount table does not refuse every upload - see BlobStore.HasRoomFor.
         // ###########################################################################################
-        private static long? FreeBytesAt(string directory)
+        internal static long? FreeBytesAt(string directory)
         {
             try
             {

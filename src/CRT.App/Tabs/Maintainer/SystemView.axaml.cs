@@ -11,17 +11,32 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // The right-hand side of the "Systems" screen (owner request, 2026-09-27): one system's
-    // maintainers, contributors and recent submissions, as the server's SystemOverviewFlow gives
-    // them. The list it sits beside is TabMaintainer.Systems.cs.
+    // The right-hand side of the "Systems" screen (owner request, 2026-09-27): one system, as the
+    // server's SystemOverviewFlow gives it. The list it sits beside is TabMaintainer.Systems.cs.
     //
-    // *** THE WORDS ARE SystemsDisplay's, AND THE FACTS THE SERVER's. *** This file fetches one
-    // answer and lays it out in three sections; nothing here decides anything.
+    // *** IN SIX VIEWS *** (five since 2026-10-03 - owner request: "all the same functionalities, as
+    // the 'Contributor Submissions' has" - and History since 2026-10-04) - SystemSections says what
+    // each is and why:
     //
-    // A system not in CRT's drop-down lists yet gets SystemPlacementView above those sections
+    //   SystemView.axaml.cs         - the header, reading one system, and the Contributor and
+    //                                 Statistics views
+    //   SystemView.Sections.cs      - which view is shown, and reading the one that needs the server
+    //   SystemView.Table.cs         - Board data: BETA's board, and publishing a change straight to
+    //                                 BETA (the reason asked in PublishSystemChangeWindow)
+    //   SystemView.Files.cs         - Files: every file the system uses in BETA
+    //   SystemView.Maintainers.cs   - Maintainer: who maintains it, a list (changing that is the
+    //                                 administrator's, Account > Maintainers - MaintainerPoolView)
+    //   SystemView.History.cs       - History: a card per submission, with what it changed
+    //   SystemView.Stages.cs        - the stage line under the name: its newest submission, BETA
+    //                                 and the stable source (2026-10-04)
+    //   SystemView.Stable.cs        - the BETA / Stable switch on Board data and Files, and the
+    //                                 stable source's read-only table and file tree (2026-10-04)
+    //
+    // *** THE WORDS ARE SystemsDisplay's AND SystemSections', AND THE FACTS THE SERVER's. *** Nothing
+    // here decides anything.
+    //
+    // A system not in CRT's drop-down lists yet gets SystemPlacementView in its Maintainer view
     // (2026-09-27), from the listing the Systems screen reads beside its list (UseListing).
-    //
-    // An ADMINISTRATOR sets the maintainers here too (2026-09-27) - SystemView.Maintainers.cs.
     // ###########################################################################################
     public partial class SystemView : UserControl
     {
@@ -34,6 +49,7 @@ namespace CRT
         public SystemView()
         {
             this.InitializeComponent();
+            this.WireTable();
         }
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
@@ -78,6 +94,14 @@ namespace CRT
                 listed.IsVisible = line is not null;
             }
 
+            // Not in the lists: said above the views, since the placement is in one of them.
+            if (this.FindControl<TextBlock>("SystemPlacementText") is TextBlock placement)
+            {
+                string? line = SystemSections.PlacementLine(this.thisListing, systemId);
+                placement.Text = line ?? string.Empty;
+                placement.IsVisible = line is not null;
+            }
+
             this.GetControl<SystemPlacementView>("PlacementView").Show(this.thisListing, systemId);
         }
 
@@ -85,18 +109,30 @@ namespace CRT
         public SystemOverviewEntry? ShownSystem { get; private set; }
 
         // ###########################################################################################
-        // Shows one system: what the list already knows at once, the rest when it arrives. Null
+        // Shows one system: what the list already knows at once, the rest when it arrives - its detail,
+        // then the view on show when that view is read from the server (Board data, Files). Null
         // empties the panel. An answer for a system no longer chosen is dropped.
         //
         // `keepShown` is the queue's own check re-reading the system already on screen: what is
-        // shown stays until the new answer replaces it, rather than blanking every minute.
+        // shown stays until the new answer replaces it, rather than blanking every minute - and the
+        // table and the file list are read again only when BETA moved under them (2026-10-04), the
+        // table never while it holds a change not published yet.
+        //
+        // *** ANOTHER SYSTEM EMPTIES THE TABLE AND THE FILES. *** The caller has asked about unsaved
+        // table changes first (TabMaintainer.OnSystemsSelectionChanged); the same system shown again
+        // keeps both.
         // ###########################################################################################
         public async Task ShowSystemAsync(SystemOverviewEntry? system, bool keepShown = false)
         {
             int request = ++this.thisRequest;
 
-            bool quiet = keepShown && system is not null && string.Equals(
-                this.ShownSystem?.SystemId, system.SystemId, System.StringComparison.Ordinal);
+            bool sameSystem = system is not null && string.Equals(
+                this.ShownSystem?.SystemId, system.SystemId, StringComparison.Ordinal);
+
+            bool quiet = keepShown && sameSystem;
+
+            if (!sameSystem)
+                this.ForgetSystemContent();
 
             if (!quiet)
             {
@@ -128,10 +164,15 @@ namespace CRT
             this.ShowMessage(null, isError: false);
             this.ShowDetail(detail.Value!);
 
-            // An administrator's list of accounts to add from - read with a system freshly opened,
-            // so an account made by accepting an invitation meanwhile is there to choose.
-            if (!quiet)
-                await this.ReadAccountsAsync();
+            // The table or the files read before BETA moved are read again (owner report,
+            // 2026-10-04) - see CatchUpWithBetaAsync. Nothing is held yet for another system.
+            await this.CatchUpWithBetaAsync(detail.Value!.System);
+
+            if (quiet)
+                return;
+
+            if (request == this.thisRequest)
+                await this.LoadShownSectionAsync();
         }
 
         // Signed out: empty, with nothing of the previous account's on screen.
@@ -139,8 +180,7 @@ namespace CRT
         {
             this.thisRequest++;
             this.thisListing = null;
-            this.thisAccounts.Clear();
-            this.ShowPoolMessage(null, isError: false);
+            this.ForgetSystemContent();
             this.ShowSummary(null);
             this.ShowSections(null);
             this.ShowMessage(null, isError: false);
@@ -155,12 +195,22 @@ namespace CRT
 
         private void ShowDetail(SystemDetailAnswer detail)
         {
+            // Who maintains it, for whether a table read earlier is out of date (CatchUpWithBetaAsync).
+            this.thisShownMaintainers = detail.Maintainers.Select(maintainer => maintainer.AccountId).ToList();
+
+            // Its submissions, for the stage line's "Submitted" (SystemView.Stages.cs).
+            this.UseStageSubmissions(detail);
+
             // The detail's own facts - newer than the list's, if anything moved between the two.
             this.ShowSummary(detail.System);
             this.ShowSections(detail);
         }
 
-        // The name, where its data is, and its revisions - or, with nothing chosen, what to do.
+        // ###########################################################################################
+        // The name, and - only when it is so - where its data is, who maintains it and that it is
+        // closed (owner request, 2026-10-03: "only show where there is something odd/off"), and its
+        // revisions; or, with nothing chosen, what to do. The views show once a system is chosen.
+        // ###########################################################################################
         private void ShowSummary(SystemOverviewEntry? system)
         {
             this.ShownSystem = system;
@@ -179,40 +229,41 @@ namespace CRT
                 state.IsVisible = system is not null;
             }
 
-            if (this.FindControl<TextBlock>("SystemRevisionsText") is TextBlock revisions)
-            {
-                string? line = system is null ? null : SystemsDisplay.Revisions(system);
-                revisions.Text = line ?? string.Empty;
-                revisions.IsVisible = line is not null;
-            }
+            // Where it is: its submission, BETA, the stable source (SystemView.Stages.cs) - which
+            // replaced the revisions line, whose revisions it carries.
+            this.ShowStages(system);
+
+            this.SetShown("SystemSectionBar", system is not null);
+            this.SetShown("SectionsPanel", system is not null);
+
+            // Which half of Board data and Files the system can show (SystemView.Stable.cs).
+            this.ApplyTree();
 
             this.ShowListing();
         }
 
         // ###########################################################################################
-        // The three sections. Each says so when it is empty - "Nobody maintains this system" is the
-        // very thing somebody opens this screen to find, and a blank space would hide it.
+        // What the detail answers, each in its view. Each says so when it is empty - "Nobody
+        // maintains this system" is the very thing somebody opens this screen to find, and a blank
+        // space would hide it.
         // ###########################################################################################
         private void ShowSections(SystemDetailAnswer? detail)
         {
-            var contributors = this.FindControl<StackPanel>("ContributorsSection");
-            var submissions = this.FindControl<StackPanel>("SubmissionsSection");
-
-            if (contributors is null || submissions is null)
+            if (this.FindControl<StackPanel>("ContributorsSection") is not StackPanel contributors)
                 return;
 
-            // The maintainers - with the administrator's controls - are SystemView.Maintainers.cs'.
-            this.thisDetail = detail;
+            // The maintainers are SystemView.Maintainers.cs', the history SystemView.History.cs'.
             this.ShowMaintainers(detail);
+            this.ShowHistory(detail);
 
             contributors.Children.Clear();
-            submissions.Children.Clear();
 
-            this.ShowViews(detail?.Views);
+            this.ShowViews(detail);
 
             if (detail is null)
                 return;
 
+            // ---- Contributor ------------------------------------------------------------------
             contributors.Children.Add(SystemView.Heading(SystemsDisplay.ContributorsHeading(detail.Contributors.Count), detail.Contributors.Count == 0));
 
             foreach (SystemContributorEntry contributor in detail.Contributors)
@@ -222,68 +273,30 @@ namespace CRT
                     SystemsDisplay.ContributorRecord(contributor),
                     note: null));
             }
-
-            // What has happened to it, newest first and date first (owner request, 2026-09-27) - its
-            // submissions' sending and decisions among everything else. An older server sends no
-            // history, and then the submissions are listed on their own as before.
-            if (detail.History is IReadOnlyList<SystemHistoryEntry> history)
-            {
-                submissions.Children.Add(SystemView.Heading(SystemsDisplay.HistoryHeading(history.Count), history.Count == 0));
-
-                foreach (SystemHistoryEntry entry in history)
-                {
-                    submissions.Children.Add(SystemView.TwoLines(
-                        SystemsDisplay.HistoryLine(entry),
-                        SystemsDisplay.HistoryFooter(entry),
-                        SystemsDisplay.HistoryNote(entry)));
-                }
-
-                return;
-            }
-
-            submissions.Children.Add(SystemView.Heading(SystemsDisplay.SubmissionsHeading(detail.Submissions.Count), detail.Submissions.Count == 0));
-
-            foreach (SystemSubmissionEntry submission in detail.Submissions)
-            {
-                StackPanel lines = SystemView.TwoLines(
-                    SystemsDisplay.SubmissionTitle(submission),
-                    SystemsDisplay.SubmissionFooter(submission),
-                    SystemsDisplay.SubmissionComment(submission));
-
-                // Its contributor discarded their own draft since sending it (owner request,
-                // 2026-09-28) - in the failure colour, as on the queue row.
-                if (submission.DraftDiscardedUtc is DateTimeOffset discarded)
-                {
-                    lines.Children.Add(new TextBlock
-                    {
-                        Text = DraftDiscardWording.Mark(discarded),
-                        FontSize = 11,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = Brushes.IndianRed,
-                        TextWrapping = TextWrapping.Wrap
-                    });
-                }
-
-                submissions.Children.Add(lines);
-            }
         }
 
         // ###########################################################################################
-        // How often CRT users look at the board (owner request, 2026-09-27): the counts, the countries
-        // most views come from, the BETA-source views counted apart, and what a view is. No counts
-        // from the server (an older one, or counts it could not read): no section at all - never
-        // "no views", which would be a claim about the board.
+        // THE STATISTICS VIEW (owner request, 2026-10-03; graphs "we can take this later"): how often
+        // CRT users look at the board (2026-09-27) - the counts, the countries most views come from,
+        // the BETA-source views counted apart, and what a view is. No counts from the server (an
+        // older one, or counts it could not read): said so - never "no views", which would be a
+        // claim about the board.
         // ###########################################################################################
-        private void ShowViews(BoardViewStatistics? views)
+        private void ShowViews(SystemDetailAnswer? detail)
         {
             if (this.FindControl<StackPanel>("ViewsSection") is not StackPanel section)
                 return;
 
             section.Children.Clear();
-            section.IsVisible = views is not null;
 
-            if (views is null)
+            if (detail is null)
                 return;
+
+            if (detail.Views is not BoardViewStatistics views)
+            {
+                section.Children.Add(SystemView.Heading(SystemsDisplay.NoViewCountsLine, isEmpty: true));
+                return;
+            }
 
             bool none = SystemsDisplay.HasNoViews(views);
             section.Children.Add(SystemView.Heading(SystemsDisplay.ViewsHeading(views), none));
@@ -355,15 +368,25 @@ namespace CRT
             return panel;
         }
 
-        // Every text the panel shows, top to bottom - for tests.
+        private void SetShown(string name, bool shown)
+        {
+            if (this.FindControl<Control>(name) is Control control)
+                control.IsVisible = shown;
+        }
+
+        // Every text the panel shows, top to bottom, in every view - for tests.
         internal IReadOnlyList<string> TextsForTests() =>
-            new[] { "SystemTitleText", "SystemStateText", "SystemRevisionsText", "SystemListingText", "MessageText" }
+            new[] { "SystemTitleText", "SystemStateText", "SystemListingText", "SystemPlacementText", "MessageText" }
                 .Select(name => this.FindControl<TextBlock>(name))
                 .Where(block => block is { IsVisible: true })
                 .Select(block => TabMaintainer.TextOf(block!))
-                .Concat(new[] { "MaintainersSection", "ViewsSection", "ContributorsSection", "SubmissionsSection" }
+                .Concat(new[] { "MaintainersSection", "ViewsSection", "ContributorsSection", "HistoryItemsSection" }
                     .SelectMany(name => SystemView.TextsIn(this.FindControl<StackPanel>(name))))
                 .ToList();
+
+        // The texts of one view's panel, top to bottom - for tests.
+        internal IReadOnlyList<string> SectionTextsForTests(string panelName) =>
+            SystemView.TextsIn(this.FindControl<StackPanel>(panelName)).ToList();
 
         private static IEnumerable<string> TextsIn(Panel? panel)
         {
@@ -372,13 +395,29 @@ namespace CRT
 
             foreach (Control child in panel.Children)
             {
-                if (child is TextBlock block)
+                foreach (string text in SystemView.TextsOf(child))
+                    yield return text;
+            }
+        }
+
+        // A control's texts - through a card's border too (the History view's).
+        private static IEnumerable<string> TextsOf(Control? control)
+        {
+            switch (control)
+            {
+                case TextBlock block:
                     yield return TabMaintainer.TextOf(block);
-                else if (child is Panel inner)
-                {
+                    break;
+
+                case Panel inner:
                     foreach (string text in SystemView.TextsIn(inner))
                         yield return text;
-                }
+                    break;
+
+                case Decorator decorator:
+                    foreach (string text in SystemView.TextsOf(decorator.Child))
+                        yield return text;
+                    break;
             }
         }
 

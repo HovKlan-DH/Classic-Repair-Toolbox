@@ -43,12 +43,20 @@ namespace CRT
     // itself - anything that set a cell's colour directly would paint the wrong row the moment a
     // container was reused.
     //
-    // Deliberately simple for now, as the project owner asked: one cell at a time. Copy and paste
-    // work inside a cell being edited (it is an ordinary text box) and on a selected cell via
-    // Ctrl+C / Ctrl+V (BoardTableClipboard). Pasting blocks of cells is a later feature. Ctrl+Z and
-    // Ctrl+Y undo and redo through the model's own history (BoardTableHistory).
+    // Editing is one cell at a time, as the project owner asked. Copy and paste work inside a cell
+    // being edited (it is an ordinary text box) and on the current cell via Ctrl+C / Ctrl+V
+    // (BoardTableClipboard). Pasting blocks of cells is a later feature. Several ROWS can be selected
+    // and deleted at once (2026-10-02). Ctrl+Z and Ctrl+Y undo and redo through the model's own
+    // history (BoardTableHistory).
     //
-    // FILE MAP: this file (loading, sheets, toolbar, keys, colours, the filter),
+    // FILE MAP: this file (loading, sheets, toolbar, keys, columns),
+    // BoardTableEditor.Filter.cs (the colour key's pills as the filter),
+    // BoardTableEditor.CellColours.cs (each cell's background and tooltip - its state's wash and
+    // its problem's corner mark),
+    // BoardTableEditor.Selection.cs (several rows selected, "Delete row" on all of them),
+    // BoardTableEditor.Search.cs (the search box, and its marks through BoardTableSearchAdapter),
+    // BoardTableEditor.TextWrap.cs (cells that always wrap, columns dragged wider than they size
+    // themselves, and a double-click on a heading's edge fitting a column to its text),
     // BoardTableEditor.RowDrag.cs (dragging a row by its grip, with the worklog-style placeholder),
     // BoardTableEditor.FileWatch.cs (noticing the draft being changed, or open, in Excel) and
     // BoardTableEditor.FilePreview.cs (the hover card on a file cell - its content is
@@ -66,6 +74,9 @@ namespace CRT
         private string thisDraftsRoot = string.Empty;
         private string thisExcelDataFile = string.Empty;
 
+        // The downloaded data, so the checks can look for the files a row names (DraftTableSession).
+        private string thisDataRoot = string.Empty;
+
         // The table's text size - smaller than the grid's default so a sheet shows more rows at
         // once (owner request, 2026-09-24). The grid, its headers and every column use it.
         internal const double CellFontSize = 12;
@@ -73,30 +84,27 @@ namespace CRT
         // Coalesces a burst of cell edits (a paste, a fast typist) into one refresh.
         private bool thisRefreshPosted;
 
-        // What the grid shows: the current sheet's rows through a view, so "Show changes only" can
-        // filter them without touching the sheet's own list.
+        // What the grid shows: the current sheet's rows through a view, so the colour key's picked
+        // kinds can filter them without touching the sheet's own list.
         private DataGridCollectionView? thisView;
-
-        private bool thisOnlyChanges;
-
-        // What the user chose for "Show changes only". The filter itself is OFF for a table with
-        // nothing published (every row is unchanged there, and the box is hidden) - and comes back
-        // on for the next table that has something to compare against, rather than staying off
-        // because one new system was looked at in between (2026-09-26).
-        private bool thisOnlyChangesWanted;
 
         // True while code - not the user - is moving the sheet tabs' selection, so the selection
         // handler does not treat it as a click and steal keyboard focus into the grid.
         private bool thisSyncingSheetTabs;
 
-        // Maps a cell state to its wash. Rebuilt with the columns, so a theme switch repaints.
-        private readonly IValueConverter thisStateToBrush;
-
         public BoardTableEditor()
         {
             this.InitializeComponent();
 
-            this.thisStateToBrush = new FuncValueConverter<BoardTableCellState, IBrush?>(BoardTableEditor.BrushFor);
+            this.thisCellToBrush = new FuncMultiValueConverter<object?, IBrush?>(values =>
+            {
+                object?[] both = values.ToArray();
+
+                BoardTableCellState state = both.Length > 0 && both[0] is BoardTableCellState s ? s : BoardTableCellState.Unchanged;
+                BoardProblemLevel problem = both.Length > 1 && both[1] is BoardProblemLevel p ? p : BoardProblemLevel.None;
+
+                return this.CachedCellBrush(state, problem);
+            });
 
             // *** EXCEL'S EDITING GESTURES, NOT THE GRID'S DEFAULT. *** The grid's default starts
             // editing on a SINGLE click, which would make "select a cell, press Ctrl+V" impossible
@@ -118,6 +126,15 @@ namespace CRT
             this.TableGrid.BeginningEdit += BoardTableEditor.OnBeginningEdit;
             this.WireDraftFileWatching();
             this.TableGrid.CurrentCellChanged += (_, _) => this.UpdateToolbar();
+
+            // Several rows selected and deleted at once (BoardTableEditor.Selection.cs), and the
+            // search box (BoardTableEditor.Search.cs).
+            this.WireSelection();
+            this.WireSearch();
+
+            // Columns dragged wider than they size themselves, and fitted to their text by a
+            // double-click on a heading's edge (BoardTableEditor.TextWrap.cs).
+            this.WireColumnWidths();
 
             // Tunnel, so a selected-but-not-editing cell sees Ctrl+C/Ctrl+V before the grid's own
             // row-copy handling does. While a cell IS being edited, the text box inside it is the
@@ -167,6 +184,7 @@ namespace CRT
             this.thisDraftsRoot = string.Empty;
             this.thisExcelDataFile = string.Empty;
             this.thisPublished = null;
+            this.thisDataRoot = string.Empty;
 
             this.Attach(document, session: null, keepSheet);
             this.ShowStatus(message ?? string.Empty);
@@ -174,6 +192,28 @@ namespace CRT
 
         // Raised by "Save changes" in document mode - see Open.
         public event EventHandler? SaveRequested;
+
+        // ###########################################################################################
+        // READ-ONLY (2026-10-03): the Maintainer tab's Systems screen shows the board of a system the
+        // account may not change. The table is there to look at - sheets, search, the colour key,
+        // copying a cell, the file cards - but nothing in it can be typed, pasted, moved, inserted
+        // or deleted, and there is no "Save changes": an edit that could never be sent is worse than
+        // none. The host says why (ShowMessage). Off by default; the Drafts tab never sets it.
+        // ###########################################################################################
+        public bool IsReadOnly
+        {
+            get => this.thisIsReadOnly;
+            set
+            {
+                this.thisIsReadOnly = value;
+                this.TableGrid.CommitEdit();
+                this.TableGrid.IsReadOnly = value;
+                this.UpdateRowsDraggable();
+                this.UpdateToolbar();
+            }
+        }
+
+        private bool thisIsReadOnly;
 
         // Whether a draft FILE is behind the table (the Drafts tab) or only a document (review).
         public bool IsFileBacked => this.thisSession is not null;
@@ -203,17 +243,30 @@ namespace CRT
         // Opens a draft as a table. `published` is what differences are coloured against - null
         // for a system with nothing published. Returns false when the draft cannot be read.
         // ###########################################################################################
-        public bool Load(string draftsRoot, string excelDataFile, BoardData? published)
+        //
+        // `dataRoot` is the downloaded data, where the checks look for the files a row names after
+        // the draft's own folder (owner request, 2026-10-02) - the host's to hand over, since this
+        // control knows nothing of DataManager. Empty: files are not looked for.
+        public bool Load(string draftsRoot, string excelDataFile, BoardData? published, string dataRoot = "")
         {
-            DraftTableSession? session = DraftTableSession.Open(draftsRoot, excelDataFile, published);
+            DraftTableSession? session = DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot);
             if (session is null)
             {
                 return false;
             }
 
+            // Another draft starts with an empty search (agreed, 2026-10-02); the same one - read
+            // again - keeps it.
+            if (!string.Equals(excelDataFile, this.thisExcelDataFile, StringComparison.OrdinalIgnoreCase))
+            {
+                this.thisSearchText = string.Empty;
+                this.SearchBox.Text = string.Empty;
+            }
+
             this.thisDraftsRoot = draftsRoot;
             this.thisExcelDataFile = excelDataFile;
             this.thisPublished = published;
+            this.thisDataRoot = dataRoot ?? string.Empty;
 
             this.Attach(session.Document, session, keepSheet: null);
             this.ShowStatus(session.Document.HasBaseline
@@ -238,6 +291,9 @@ namespace CRT
             this.TableGrid.Columns.Clear();
             this.ClearSheetTabs();
             this.ShowStatus(string.Empty);
+
+            // A closed table's search goes with it (agreed, 2026-10-02).
+            this.SearchText = string.Empty;
             this.OpenElsewhereBar.IsVisible = false;
             this.SetChangedOnDisk(false);
             this.UpdateFileWatching();
@@ -245,11 +301,12 @@ namespace CRT
 
         // ###########################################################################################
         // Writes the table into the draft and re-reads it, so what is on screen afterwards is
-        // exactly what the file now holds (a blank row is gone, for instance).
+        // exactly what the file now holds (a blank row is gone, for instance). Refused - and said
+        // why - when the file changed since it was read; see DraftTableSession for why the table may
+        // never write over such a change.
         //
-        // Synchronous on purpose: it is one workbook write, and the contributor has just asked for
-        // it. Refused - and said why - when the file changed since it was read; see
-        // DraftTableSession for why the table may never write over such a change.
+        // This one is synchronous, all on the calling thread - what the tests drive. "Save changes"
+        // and the unsaved-edits prompts use SaveAsync.
         // ###########################################################################################
         public DraftWorkbookEditOutcome Save()
         {
@@ -266,11 +323,115 @@ namespace CRT
             bool placesNewComponents = this.thisSession.Document.Sheets.Any(sheet => sheet.HasRowsToPlaceOnSave);
 
             DraftWorkbookEditOutcome outcome = this.thisSession.Save();
+            this.AfterSave(outcome, placesNewComponents, reread: null);
 
+            return outcome;
+        }
+
+        // ###########################################################################################
+        // *** THE SAME SAVE, UNDER "PLEASE WAIT" (owner question, 2026-09-30: "When in "Draft" and I
+        // have changed something in the table and I click the button "Save changes", shouldn't it
+        // then show that standard "Wait" thing?"). *** Measured: the largest shipped board (C128
+        // 310378) takes about two seconds the first time and 0.6-1 s after - read, write, read
+        // back - and ran ON the UI thread, so the window froze with nothing drawn. The overlay
+        // could not have shown then even had it been asked to.
+        //
+        // So the table's rows are taken on the UI thread (DraftTableSession.PrepareSave), and the
+        // workbook work - and the re-read the table reopens on - runs on the pool under the window's
+        // overlay (BusyOverlay.RunLocalAsync: local work that cannot be stopped halfway). The file
+        // watch leaves the file alone meanwhile (thisSaveInFlight): the save's own write would
+        // read as a change from outside.
+        // ###########################################################################################
+        public async Task<DraftWorkbookEditOutcome> SaveAsync()
+        {
+            if (this.thisSession is not DraftTableSession session)
+            {
+                return DraftWorkbookEditOutcome.NoDraft;
+            }
+
+            this.TableGrid.CommitEdit();
+
+            bool placesNewComponents = session.Document.Sheets.Any(sheet => sheet.HasRowsToPlaceOnSave);
+
+            Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
+            string draftsRoot = this.thisDraftsRoot;
+            string excelDataFile = this.thisExcelDataFile;
+            BoardData? published = this.thisPublished;
+            string dataRoot = this.thisDataRoot;
+
+            (DraftWorkbookEditOutcome Outcome, DraftTableSession? Reread) result;
+            this.thisSaveInFlight = true;
+
+            // ###########################################################################################
+            // *** PAST THE LIMIT THE TABLE IS LOCKED, NOT LEFT LIVE (code review, 2026-10-01). ***
+            // RunLocalAsync lifts the overlay when the write is still going after two minutes and
+            // carries on waiting - which unblocks the keyboard and mouse over a grid that still holds
+            // the pre-save document. A contributor who then typed had those edits thrown away
+            // without a word when the save finished and the table reopened on the re-read file.
+            // `stillRunning` is told at exactly that moment, so the editor is disabled until the
+            // write ends: nothing can be typed that the save would then discard.
+            // ###########################################################################################
+            bool wasEnabled = this.IsEnabled;
+            bool lockedForSave = false;
+
+            try
+            {
+                result = await BusyOverlay.RunLocalAsync(this, BoardTableEditor.SavingWait, () => Task.Run(() =>
+                {
+                    DraftWorkbookEditOutcome outcome = write();
+
+                    return (outcome, outcome == DraftWorkbookEditOutcome.Saved
+                        ? DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot)
+                        : null);
+                }), stillRunning: () =>
+                {
+                    lockedForSave = true;
+                    this.IsEnabled = false;
+                    this.ShowStatus(BoardTableEditor.StillSaving);
+                    this.LockedForSaveForTests?.Invoke();
+                });
+            }
+            finally
+            {
+                this.thisSaveInFlight = false;
+
+                if (lockedForSave)
+                    this.IsEnabled = wasEnabled;
+            }
+
+            // Another table opened, or this one closed, while it saved: nothing of it to update.
+            if (!ReferenceEquals(this.thisSession, session))
+            {
+                return result.Outcome;
+            }
+
+            // The re-read already hashed the saved file on the pool - no second hash here, on the UI
+            // thread (DraftTableSession.CompleteSave).
+            session.CompleteSave(result.Outcome, result.Reread?.Fingerprint);
+            this.AfterSave(result.Outcome, placesNewComponents, result.Reread);
+
+            return result.Outcome;
+        }
+
+        public const string SavingWait = "Saving the table into your draft...";
+
+        // Said while the table is locked past the wait limit - see SaveAsync.
+        public const string StillSaving =
+            "Still saving - the table is locked until the write finishes, so nothing you type is lost.";
+
+        // Told, for a test, at the moment the table is locked (the editor is disabled by then).
+        internal Action? LockedForSaveForTests { get; set; }
+
+        // True while SaveAsync is writing the draft.
+        private bool thisSaveInFlight;
+
+        // What a save leaves on screen - the table read again, and a sentence saying how it went.
+        private void AfterSave(DraftWorkbookEditOutcome outcome, bool placesNewComponents, DraftTableSession? reread)
+        {
             switch (outcome)
             {
                 case DraftWorkbookEditOutcome.Saved:
-                    this.ReloadKeepingPlace();
+                    this.ReloadKeepingPlace(reread);
                     this.ShowStatus(placesNewComponents
                         ? "Saved. New components were put into their category, in label order - move them if you want them elsewhere."
                         : "Saved.");
@@ -297,8 +458,6 @@ namespace CRT
             }
 
             this.UpdateToolbar();
-
-            return outcome;
         }
 
         // ###########################################################################################
@@ -332,13 +491,14 @@ namespace CRT
             this.thisCurrentSheet = sheet;
             this.RebuildColumns();
 
-            // The filter is (re)applied once the grid has the view - see ApplyOnlyChangesFilter.
+            // The filter is (re)applied once the grid has the view - see ApplyViewFilter.
             this.thisView = new DataGridCollectionView(sheet.Rows);
             this.TableGrid.ItemsSource = this.thisView;
-            this.ApplyOnlyChangesFilter();
+            this.ApplyViewFilter();
 
             this.UpdateSheetTabs();
             this.UpdateToolbar();
+            this.UpdateSearchMarks();
         }
 
         // The cell the grid's cursor is on, or null (no cell, or the marker column).
@@ -360,6 +520,7 @@ namespace CRT
         internal BoardTableRow? CurrentRow =>
             this.TableGrid.CurrentCell is { IsValid: true, Item: BoardTableRow row } ? row : null;
 
+
         // Puts the grid's cursor on one cell and scrolls to it.
         internal void SelectCell(BoardTableRow row, int columnIndex)
         {
@@ -379,7 +540,14 @@ namespace CRT
                 return;
             }
 
-            this.TableGrid.CurrentCell = new DataGridCellInfo(row, column, rowIndex, column.DisplayIndex, true);
+            var cell = new DataGridCellInfo(row, column, rowIndex, column.DisplayIndex, true);
+            this.TableGrid.CurrentCell = cell;
+
+            // And that one cell is the selection: a selection of several rows left behind where the
+            // cursor was (an undo, a delete, Tab) is not what "Delete row" should act on next
+            // (BoardTableEditor.Selection.cs). Moving the cursor does not change the grid's
+            // selection by itself.
+            this.TableGrid.SelectedCells = [cell];
             this.TableGrid.ScrollIntoView(row, column);
             this.UpdateToolbar();
         }
@@ -387,13 +555,11 @@ namespace CRT
         // ###########################################################################################
         // Toolbar actions. Each is a thin call into BoardTableSheet, which owns the rule.
         // ###########################################################################################
-        // "Insert row below" and "Insert row above" (owner request, 2026-09-24): an empty row
-        // beside the selected one, with the cursor on it ready for typing.
-        internal void InsertRowBelow() => this.InsertRowBeside(above: false);
-
-        internal void InsertRowAbove() => this.InsertRowBeside(above: true);
-
-        private void InsertRowBeside(bool above)
+        // "Insert row": an empty row below the selected one, with the cursor on it ready for typing.
+        // There was an "Insert row above" beside it until 2026-10-02 (owner request: "We can of
+        // course remove one of the "Insert row" buttons, as that can be moved afterwards") - a row
+        // is moved by its grip. BoardTableSheet.InsertRowAbove stays in the model.
+        internal void InsertRowBelow()
         {
             if (this.thisCurrentSheet is null)
             {
@@ -402,38 +568,11 @@ namespace CRT
 
             this.TableGrid.CommitEdit();
 
-            BoardTableRow inserted = above
-                ? this.thisCurrentSheet.InsertRowAbove(this.CurrentRow)
-                : this.thisCurrentSheet.InsertRow(this.CurrentRow);
+            BoardTableRow inserted = this.thisCurrentSheet.InsertRow(this.CurrentRow);
             this.SelectCell(inserted, 0);
         }
 
-        internal void DeleteRow()
-        {
-            if (this.thisCurrentSheet is null || this.CurrentRow is not { IsDeleted: false } row)
-            {
-                return;
-            }
-
-            this.TableGrid.CommitEdit();
-
-            int index = this.thisCurrentSheet.Rows.IndexOf(row);
-            int column = this.CurrentCell?.ColumnIndex ?? 0;
-
-            if (this.thisCurrentSheet.DeleteRow(row, out BoardTableDeletedWith? deletedWith) && this.thisCurrentSheet.Rows.Count > 0)
-            {
-                this.SelectCell(this.thisCurrentSheet.Rows[Math.Min(index, this.thisCurrentSheet.Rows.Count - 1)], column);
-            }
-
-            // A deleted component takes its rows on other sheets and its highlights with it
-            // (2026-09-25) - said here, since those sheets are not the one on screen.
-            if (deletedWith is not null)
-            {
-                this.ShowStatus(deletedWith.Describe());
-            }
-
-            this.UpdateToolbar();
-        }
+        // "Delete row" - every selected row: BoardTableEditor.Selection.cs.
 
         // ###########################################################################################
         // Tab / Shift+Tab: one cell right or left, wrapping to the next or previous row at the end
@@ -500,112 +639,6 @@ namespace CRT
         private List<BoardTableRow> ShownRows() =>
             this.thisView?.Cast<BoardTableRow>().ToList() ?? this.thisCurrentSheet?.Rows.ToList() ?? [];
 
-        // ###########################################################################################
-        // "Show changes only": hide every plainly unchanged row (owner request, 2026-09-24).
-        // Moving rows is switched off meanwhile - a position among rows that cannot be seen means
-        // nothing.
-        // ###########################################################################################
-        // The user's own choice of "Show changes only", which the filter follows wherever there is
-        // something published - what a host remembers between runs (CRT's Maintainer tab).
-        internal bool OnlyChangesWanted => this.thisOnlyChangesWanted;
-
-        internal bool OnlyChanges
-        {
-            get => this.thisOnlyChanges;
-            set
-            {
-                bool changed = this.thisOnlyChangesWanted != value;
-
-                this.thisOnlyChangesWanted = value;
-                this.ApplyOnlyChanges(value);
-
-                if (changed)
-                    this.OnlyChangesWantedChanged?.Invoke(this, EventArgs.Empty);
-            }
-        }
-
-        // ###########################################################################################
-        // The user's CHOICE of "Show changes only" changed - so a host can remember it (CRT's
-        // Maintainer tab does, 2026-09-29). Raised HERE ONLY, where the choice changes: the check
-        // box routes through this setter, while ApplyOnlyChanges and the Attach path change the
-        // FILTER alone. Raising it from those would write "off" back as the user's choice every time
-        // a table with nothing published turned the filter off for itself. The Drafts tab does not
-        // listen.
-        // ###########################################################################################
-        internal event EventHandler? OnlyChangesWantedChanged;
-
-        // ###########################################################################################
-        // Turns the filter on or off without touching the user's choice (thisOnlyChangesWanted).
-        //
-        // *** IT ALSO HIDES THE TABS OF SHEETS IT WOULD SHOW NOTHING OF *** (owner request,
-        // 2026-09-26) - BoardTableDocument.SheetsShown. Ticked while on such a sheet, the table moves
-        // to the first sheet that still has a tab.
-        // ###########################################################################################
-        private void ApplyOnlyChanges(bool value)
-        {
-            if (this.thisOnlyChanges == value)
-            {
-                return;
-            }
-
-            this.thisOnlyChanges = value;
-            this.OnlyChangesCheckBox.IsChecked = value;
-            this.TableGrid.CommitEdit();
-            this.UpdateRowsDraggable();
-
-            this.ApplyOnlyChangesFilter();
-
-            // Only a sheet of the document on screen - Attach calls this before the new document's
-            // sheet is chosen.
-            if (value &&
-                this.thisDocument is not null &&
-                this.thisCurrentSheet is not null &&
-                this.thisDocument.Sheets.Contains(this.thisCurrentSheet) &&
-                !this.thisDocument.SheetsShown(onlyChanges: true, current: null).Contains(this.thisCurrentSheet))
-            {
-                this.SelectSheet(this.thisDocument.SheetToShow(this.thisCurrentSheet.Name, onlyChanges: true));
-            }
-
-            this.UpdateSheetTabs();
-            this.UpdateToolbar();
-        }
-
-        // ###########################################################################################
-        // *** THE GRID MUST BE TOLD THE VIEW'S FILTER IS OURS. *** Its column-filtering model
-        // (FilteringModel) owns a view's Filter by default and writes its own - empty - predicate
-        // over it whenever it takes the view or is attached again. So "Show changes only" was lost,
-        // with the box still ticked, first on every sheet switch and then on every switch of the
-        // MAIN tabs (Drafts -> Contribute -> Drafts), both reported. OwnsViewFilter = false makes
-        // it leave the filter alone; the table uses none of its column filtering.
-        // ###########################################################################################
-        private void ApplyOnlyChangesFilter()
-        {
-            if (this.TableGrid.FilteringModel is { } model)
-            {
-                model.OwnsViewFilter = false;
-            }
-
-            if (this.thisView is not null)
-            {
-                this.thisView.Filter = this.thisOnlyChanges ? BoardTableEditor.ShowsInOnlyChanges : null;
-            }
-        }
-
-        // Only a real change of the box counts as the user's choice - ApplyOnlyChanges setting it to
-        // match the filter must not overwrite the choice it is keeping.
-        private void OnOnlyChangesChanged(object? sender, RoutedEventArgs e)
-        {
-            bool isChecked = this.OnlyChangesCheckBox.IsChecked == true;
-
-            if (isChecked != this.thisOnlyChanges)
-            {
-                this.OnlyChanges = isChecked;
-            }
-        }
-
-        private static bool ShowsInOnlyChanges(object item) =>
-            item is BoardTableRow row && BoardTableSheet.IsChangeRow(row);
-
         internal void MoveRowUp() => this.MoveCurrentRow(up: true);
 
         internal void MoveRowDown() => this.MoveCurrentRow(up: false);
@@ -613,7 +646,7 @@ namespace CRT
         // Moves the row under the cursor and keeps the cursor on it, in the same column.
         private void MoveCurrentRow(bool up)
         {
-            if (this.thisOnlyChanges || this.thisCurrentSheet is null || this.CurrentRow is not { IsDeleted: false } row)
+            if (this.IsNarrowed || this.thisIsReadOnly || this.thisCurrentSheet is null || this.CurrentRow is not { IsDeleted: false } row)
             {
                 return;
             }
@@ -638,7 +671,7 @@ namespace CRT
         // ###########################################################################################
         internal bool PasteIntoCurrentCell(string? clipboardText)
         {
-            if (this.CurrentCell is not { } cell || cell.Row.IsDeleted)
+            if (this.thisIsReadOnly || this.CurrentCell is not { } cell || cell.Row.IsDeleted)
             {
                 return false;
             }
@@ -809,8 +842,6 @@ namespace CRT
         // Ctrl+Z straight after then reached no handler at all (caught by
         // BoardTableEditorTests.Ctrl_Z_works_right_after_a_toolbar_button_was_used).
         // ###########################################################################################
-        private void OnInsertRowAboveClick(object? sender, RoutedEventArgs e) => this.ThenFocusGrid(this.InsertRowAbove);
-
         private void OnInsertRowBelowClick(object? sender, RoutedEventArgs e) => this.ThenFocusGrid(this.InsertRowBelow);
 
         private void OnDeleteRowClick(object? sender, RoutedEventArgs e) => this.ThenFocusGrid(this.DeleteRow);
@@ -821,7 +852,7 @@ namespace CRT
             this.FocusGrid();
         }
 
-        private void OnSaveClick(object? sender, RoutedEventArgs e)
+        private async void OnSaveClick(object? sender, RoutedEventArgs e)
         {
             // Document mode: the host saves - see Open.
             if (this.thisSession is null && this.thisDocument is not null)
@@ -831,7 +862,7 @@ namespace CRT
                 return;
             }
 
-            this.Save();
+            await this.SaveAsync();
         }
 
         private async void OnReloadClick(object? sender, RoutedEventArgs e)
@@ -890,18 +921,25 @@ namespace CRT
                 sheet.CellEdited += this.OnCellEdited;
             }
 
-            // *** NOTHING PUBLISHED, NO FILTER. *** The box is hidden then, and every row is
-            // "unchanged" - so a filter left on from another draft's table (this editor is reused)
-            // hid EVERY row with no visible reason: reported as a "Board schematics" sheet showing
-            // empty although the draft had three schematic images. The CHOICE is kept, and applies
-            // again to the next table with something published.
-            bool onlyChanges = document.HasBaseline && this.thisOnlyChangesWanted;
+            // *** A PICK THAT SHOWS NOTHING HERE IS NOT APPLIED. *** A filter left on from another
+            // table (this editor is reused) that matches no row of this one hid EVERY row with no
+            // visible reason: reported, with "Show changes only", as a "Board schematics" sheet
+            // showing empty although the draft had three schematic images - a table with nothing
+            // published, where nothing is added, changed or deleted. The PICK is kept, and applies
+            // again to the next table with such rows.
+            BoardTableRowKinds filter = document.HasRowsShownBy(this.thisFilterWanted)
+                ? this.thisFilterWanted
+                : BoardTableRowKinds.None;
 
-            this.ApplyOnlyChanges(onlyChanges);
+            // The search box's text, worked out on this document's rows (BoardTableEditor.Search.cs).
+            this.ReapplySearchTo(document);
+
+            this.ApplyFilter(filter);
             this.BuildSheetTabs();
 
-            // The sheet asked for, unless the filter hides its tab (BoardTableDocument.SheetToShow).
-            this.SelectSheet(document.SheetToShow(keepSheet, onlyChanges));
+            // The sheet asked for, unless the filter or the search hides its tab
+            // (BoardTableDocument.SheetToShow).
+            this.SelectSheet(document.SheetToShow(keepSheet, filter, this.thisSearch));
 
             // A fresh read of the file: whatever the warning bar said is no longer true.
             this.SetChangedOnDisk(false);
@@ -918,12 +956,11 @@ namespace CRT
             this.UpdateFileWatching();
 
             // With nothing published there is nothing to be added, changed or deleted against, so
-            // only the flagged pill stays - a duplicate is a duplicate either way.
+            // only the Errors and Warnings pills stay - a duplicate is a duplicate either way.
             bool hasBaseline = document.HasBaseline;
             this.AddedPill.IsVisible = hasBaseline;
             this.ModifiedPill.IsVisible = hasBaseline;
             this.DeletedPill.IsVisible = hasBaseline;
-            this.OnlyChangesCheckBox.IsVisible = hasBaseline;
         }
 
         private void Detach()
@@ -945,7 +982,9 @@ namespace CRT
         }
 
         // Re-opens the draft on the same sheet, with the cursor back on (roughly) the same row.
-        private bool ReloadKeepingPlace()
+        // `reread` is the draft already read again off the UI thread (SaveAsync); without one it is
+        // read here.
+        private bool ReloadKeepingPlace(DraftTableSession? reread = null)
         {
             string? sheetName = this.thisCurrentSheet?.Name;
             int rowIndex = this.thisCurrentSheet is null || this.CurrentRow is null
@@ -958,7 +997,7 @@ namespace CRT
             // finding a different row under the cursor.
             List<string>? currentValues = this.CurrentRow?.Cells.Select(cell => cell.Text).ToList();
 
-            DraftTableSession? session = DraftTableSession.Open(this.thisDraftsRoot, this.thisExcelDataFile, this.thisPublished);
+            DraftTableSession? session = reread ?? DraftTableSession.Open(this.thisDraftsRoot, this.thisExcelDataFile, this.thisPublished, this.thisDataRoot);
             if (session is null)
             {
                 return false;
@@ -1023,11 +1062,18 @@ namespace CRT
             this.UpdateSheetTabs();
             this.UpdateToolbar();
 
-            // A row whose last change was just reverted drops out of "Show changes only", and a newly
-            // changed one joins it - the filter only re-reads states when asked.
-            if (this.thisOnlyChanges && this.thisView is not null && !this.thisView.IsEditingItem)
+            // A row whose last change was just reverted - or whose last error was just fixed - drops
+            // out of the filter, and a newly changed one joins it: the view only re-reads states
+            // when asked.
+            if (this.thisFilter != BoardTableRowKinds.None && this.thisView is not null && !this.thisView.IsEditingItem)
             {
                 this.thisView.Refresh();
+            }
+
+            // An edit moves the runs the search found, though not which rows it shows.
+            if (this.thisSearch.IsActive)
+            {
+                this.UpdateSearchMarks();
             }
         }
 
@@ -1050,7 +1096,7 @@ namespace CRT
             {
                 foreach (BoardTableSheet sheet in this.thisDocument.Sheets)
                 {
-                    this.SheetTabs.Items.Add(new TabItem { Tag = sheet, HeaderTemplate = BoardTableSheetTabHeader.Template });
+                    this.SheetTabs.Items.Add(new TabItem { Tag = sheet });
                 }
             }
             finally
@@ -1082,7 +1128,7 @@ namespace CRT
             try
             {
                 IReadOnlyList<BoardTableSheet> shown =
-                    this.thisDocument?.SheetsShown(this.thisOnlyChanges, this.thisCurrentSheet) ?? [];
+                    this.thisDocument?.SheetsShown(this.thisFilter, this.thisSearch, this.thisCurrentSheet) ?? [];
 
                 foreach (TabItem tab in this.SheetTabs.Items.OfType<TabItem>())
                 {
@@ -1091,7 +1137,12 @@ namespace CRT
                         continue;
                     }
 
-                    tab.Header = new BoardTableSheetTabHeader(BoardTableEditor.SheetTabText(sheet), sheet.FlaggedCount);
+                    // *** ITS NAME AND CHANGE COUNT, NOTHING MORE (owner request, 2026-10-02: "the
+                    // tabs ... should not show "2 flagged" and "8 error" - the tabs will be obvious
+                    // when you click those badges"). *** A picked pill hides every tab with none
+                    // of its rows, so the tabs left ARE the answer. The flagged, error and warning
+                    // pills the tabs carried from 2026-09-26 and 2026-10-02 are gone.
+                    tab.Header = BoardTableEditor.SheetTabText(sheet);
                     tab.IsVisible = shown.Contains(sheet);
 
                     if (ReferenceEquals(sheet, this.thisCurrentSheet) && !ReferenceEquals(this.SheetTabs.SelectedItem, tab))
@@ -1170,25 +1221,61 @@ namespace CRT
 
         private void UpdateToolbar()
         {
-            BoardTableRow? row = this.CurrentRow;
-
-            this.InsertRowAboveButton.IsEnabled = this.thisCurrentSheet is not null;
             this.InsertRowBelowButton.IsEnabled = this.thisCurrentSheet is not null;
-            this.DeleteRowButton.IsEnabled = row is { IsDeleted: false };
+            this.UpdateDeleteButton();
 
-            // The colour key's pills count the sheet on screen. The first three add up to its tab's
-            // number; the flagged one is counted apart, as the tab's number does not include it.
-            this.AddedCountText.Text = (this.thisCurrentSheet?.AddedCount ?? 0).ToString(CultureInfo.InvariantCulture);
-            this.ModifiedCountText.Text = (this.thisCurrentSheet?.ModifiedCount ?? 0).ToString(CultureInfo.InvariantCulture);
-            this.DeletedCountText.Text = (this.thisCurrentSheet?.DeletedCount ?? 0).ToString(CultureInfo.InvariantCulture);
-            this.FlaggedCountText.Text = (this.thisCurrentSheet?.FlaggedCount ?? 0).ToString(CultureInfo.InvariantCulture);
+            // A read-only table offers nothing that changes it (see IsReadOnly).
+            this.InsertRowBelowButton.IsVisible = !this.thisIsReadOnly;
+            this.DeleteRowButton.IsVisible = !this.thisIsReadOnly;
+            this.SaveButton.IsVisible = !this.thisIsReadOnly;
 
-            // A pill with nothing to count fades back, like a disabled control (owner request,
-            // 2026-09-24), so the eye goes to the kinds that are actually there.
-            this.AddedPill.Classes.Set("Empty", (this.thisCurrentSheet?.AddedCount ?? 0) == 0);
-            this.ModifiedPill.Classes.Set("Empty", (this.thisCurrentSheet?.ModifiedCount ?? 0) == 0);
-            this.DeletedPill.Classes.Set("Empty", (this.thisCurrentSheet?.DeletedCount ?? 0) == 0);
-            this.FlaggedPill.Classes.Set("Empty", (this.thisCurrentSheet?.FlaggedCount ?? 0) == 0);
+            // *** THE COLOUR KEY COUNTS THE WHOLE DRAFT (owner decision, 2026-10-02: "Added,
+            // Modified and Deleted should work per system like Error and Warning"). *** Every
+            // sheet together, whichever is on screen - BoardTableDocument's counts. It counted the
+            // sheet on screen, which read "0 Errors" while the draft's row said "8 errors"; picking
+            // a pill takes the table to the sheets that have them. A sheet's own change count is on
+            // its tab.
+            int added = this.thisDocument?.AddedCount ?? 0;
+            int modified = this.thisDocument?.ModifiedCount ?? 0;
+            int deleted = this.thisDocument?.DeletedCount ?? 0;
+            int errors = this.thisDocument?.ErrorRowCount ?? 0;
+            int warnings = this.thisDocument?.WarningRowCount ?? 0;
+
+            this.AddedCountText.Text = added.ToString(CultureInfo.InvariantCulture);
+            this.ModifiedCountText.Text = modified.ToString(CultureInfo.InvariantCulture);
+            this.DeletedCountText.Text = deleted.ToString(CultureInfo.InvariantCulture);
+            this.ErrorsCountText.Text = errors.ToString(CultureInfo.InvariantCulture);
+            this.WarningsCountText.Text = warnings.ToString(CultureInfo.InvariantCulture);
+
+            // A pill with nothing to count is outlined, with no fill (owner request, 2026-10-03 -
+            // it faded back instead from 2026-09-24); every pill not picked is dimmed. See the
+            // LegendPill styles.
+            this.AddedPill.Classes.Set("Empty", added == 0);
+            this.ModifiedPill.Classes.Set("Empty", modified == 0);
+            this.DeletedPill.Classes.Set("Empty", deleted == 0);
+            this.ErrorsPill.Classes.Set("Empty", errors == 0);
+            this.WarningsPill.Classes.Set("Empty", warnings == 0);
+
+            // A picked pill is at full strength with a firm outline: the filter that is on.
+            this.AddedPill.Classes.Set("Selected", this.thisFilter.HasFlag(BoardTableRowKinds.Added));
+            this.ModifiedPill.Classes.Set("Selected", this.thisFilter.HasFlag(BoardTableRowKinds.Modified));
+            this.DeletedPill.Classes.Set("Selected", this.thisFilter.HasFlag(BoardTableRowKinds.Deleted));
+            this.ErrorsPill.Classes.Set("Selected", this.thisFilter.HasFlag(BoardTableRowKinds.Errors));
+            this.WarningsPill.Classes.Set("Selected", this.thisFilter.HasFlag(BoardTableRowKinds.Warnings));
+
+            // The problems no cell can carry - a highlight, drawn on a schematic - in the colour of
+            // the worst of them.
+            IReadOnlyList<BoardDataProblem> outside = this.thisDocument?.ProblemsOutsideSheets ?? [];
+            string? outsideText = BoardTableProblemWording.OutsideSheets(outside);
+
+            this.OutsideProblemsText.Text = outsideText ?? string.Empty;
+            this.OutsideProblemsText.IsVisible = outsideText is not null;
+            this.OutsideProblemsText.Foreground = BoardTableEditor.MarkBrushFor(BoardDataChecks.Worst(outside));
+
+            // A search finding nothing in any sheet: why the one sheet left is empty (2026-10-03).
+            string? nothingFound = this.thisDocument is null ? null : this.thisSearch.NothingFoundLine(this.thisDocument, this.thisFilter);
+            this.NoSearchMatchText.Text = nothingFound ?? string.Empty;
+            this.NoSearchMatchText.IsVisible = nothingFound is not null;
             // Reload re-reads the draft FILE, so it exists only when there is one.
             this.ReloadButton.IsEnabled = this.thisSession is not null;
             this.ReloadButton.IsVisible = this.thisSession is not null || this.thisDocument is null;
@@ -1210,6 +1297,10 @@ namespace CRT
         private void RebuildColumns()
         {
             this.TableGrid.Columns.Clear();
+            this.thisCellBrushes.Clear();
+
+            // Built capped again - see BoardTableEditor.TextWrap.cs.
+            this.thisColumnWidthsFreed = false;
 
             if (this.thisCurrentSheet is null)
             {
@@ -1219,7 +1310,7 @@ namespace CRT
             var markerTheme = new ControlTheme(typeof(DataGridCell)) { BasedOn = BoardTableEditor.DefaultCellTheme() };
             markerTheme.Setters.Add(new Setter(DataGridCell.MinHeightProperty, 0d));
             markerTheme.Setters.Add(new Setter(ToolTip.TipProperty, new Binding(nameof(BoardTableRow.MarkerToolTip))));
-            markerTheme.Setters.Add(new Setter(ToolTip.ShowDelayProperty, BoardTableEditor.CellToolTipDelay));
+            BoardTableEditor.AddCellToolTipSetters(markerTheme);
 
             var markerSelected = new Style(selector => selector.Nesting().Class(":selected"));
             markerSelected.Setters.Add(new Setter(DataGridCell.BackgroundProperty, Brushes.Transparent));
@@ -1258,74 +1349,16 @@ namespace CRT
                     // grid's FontSize alone shrank only the headers (caught by rendering it).
                     FontSize = BoardTableEditor.CellFontSize,
 
+                    // Sized to the text, up to a limit a drag or a double-click on the heading's
+                    // edge can go past (BoardTableEditor.TextWrap.cs).
                     Width = DataGridLength.Auto,
                     MinWidth = 60,
-                    MaxWidth = 420,
+                    MaxWidth = BoardTableEditor.MaxColumnWidth,
                     CellTheme = this.BuildCellTheme(i),
                     Tag = i,
                 });
             }
         }
 
-        private ControlTheme BuildCellTheme(int columnIndex)
-        {
-            var theme = new ControlTheme(typeof(DataGridCell)) { BasedOn = BoardTableEditor.DefaultCellTheme() };
-
-            // The grid theme's cells are taller than the table's denser rows (RowHeight in the
-            // markup), which clipped the current cell's frame to its left and right edges.
-            theme.Setters.Add(new Setter(DataGridCell.MinHeightProperty, 0d));
-
-            theme.Setters.Add(new Setter(
-                DataGridCell.BackgroundProperty,
-                new Binding($"Cells[{columnIndex}].State") { Converter = this.thisStateToBrush }));
-
-            // *** A SELECTED CELL KEEPS ITS OWN COLOUR (owner request, 2026-09-24). *** The
-            // grid theme fills a selected cell with the accent colour, which read as one more
-            // state - a green that could be taken for "added" - and hid the orange, green or red
-            // of the cell underneath. The current cell is marked by its dashed frame instead (see
-            // the markup). A trigger of our own, added after the grid theme's, outranks it.
-            var selected = new Style(selector => selector.Nesting().Class(":selected"));
-            selected.Setters.Add(new Setter(
-                DataGridCell.BackgroundProperty,
-                new Binding($"Cells[{columnIndex}].State") { Converter = this.thisStateToBrush }));
-            theme.Children.Add(selected);
-
-            // A file column shows the hover card instead, which says everything the text did - see
-            // BoardTableEditor.FilePreview.cs. Two popups over one cell would cover each other.
-            if (!this.PreviewsFilesIn(columnIndex))
-            {
-                theme.Setters.Add(new Setter(
-                    ToolTip.TipProperty,
-                    new Binding($"Cells[{columnIndex}].ToolTip")));
-
-                theme.Setters.Add(new Setter(ToolTip.ShowDelayProperty, BoardTableEditor.CellToolTipDelay));
-            }
-
-            return theme;
-        }
-
-        // ###########################################################################################
-        // A cell's text tooltip - the value it replaced (BoardTableDocument.BaselineLabel names it,
-        // "Published value" by default), a flagged row's reason, what a marker means - shows AT ONCE (owner request, 2026-09-26: "the instant-show should also work for
-        // texts - not only images"), as the file hover card does. The theme's default waits 400 ms.
-        // It closes the moment the pointer leaves the cell, as every tooltip does.
-        // ###########################################################################################
-        internal const int CellToolTipDelay = 0;
-
-        // The grid theme's own cell theme, so ours only ADDS the background and tooltip rather than
-        // replacing the cell's whole template.
-        private static ControlTheme? DefaultCellTheme() =>
-            Application.Current?.TryGetResource(typeof(DataGridCell), Application.Current.ActualThemeVariant, out object? theme) == true
-                ? theme as ControlTheme
-                : null;
-
-        internal static IBrush? BrushFor(BoardTableCellState state) => state switch
-        {
-            BoardTableCellState.Added => ThemeResources.Resolve<IBrush>("BoardTable_Added_Bg", Brushes.LightGreen),
-            BoardTableCellState.Modified => ThemeResources.Resolve<IBrush>("BoardTable_Modified_Bg", Brushes.Orange),
-            BoardTableCellState.Deleted => ThemeResources.Resolve<IBrush>("BoardTable_Deleted_Bg", Brushes.LightPink),
-            BoardTableCellState.Flagged => ThemeResources.Resolve<IBrush>("BoardTable_Flagged_Bg", Brushes.Lavender),
-            _ => Brushes.Transparent,
-        };
     }
 }

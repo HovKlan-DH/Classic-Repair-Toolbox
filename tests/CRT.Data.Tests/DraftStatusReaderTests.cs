@@ -73,6 +73,112 @@ public sealed class DraftStatusReaderTests : IDisposable
         Assert.Equal(2, DraftStatusReader.CountChangesCached(status));
     }
 
+    // ###########################################################################################
+    // *** A DRAFT'S ERRORS AND WARNINGS, FOR ITS ROW (owner report, 2026-10-02: "It must check for
+    // errors when creating the draft, and if the board changes "offline", outside of app"). *** The
+    // table's own checks, counted without opening the table - and counted again after an edit in
+    // Excel, like the change count.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafts_errors_and_warnings_are_counted_and_follow_an_edit_in_Excel()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+
+        // Every component is unmarked on any schematic: one warning each.
+        this.WriteDraft(DraftStatusReaderTests.BoardWith(2));
+
+        DraftStatus? status = this.Status();
+        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+
+        Assert.Equal(new BoardProblemCounts(0, 2), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+
+        // In Excel: a link that is not a web address - an error.
+        BoardData edited = DraftStatusReaderTests.BoardWith(2);
+        edited.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" });
+        this.WriteDraft(edited);
+        File.SetLastWriteTimeUtc(status!.WorkbookPath, DateTime.UtcNow.AddMinutes(1));
+
+        Assert.Equal(new BoardProblemCounts(1, 2), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+    }
+
+    // ###########################################################################################
+    // Case 18 (owner request, 2026-10-03: "Flagged" became warnings; cases agreed with the project
+    // owner). A draft's row counts its duplicate rows as warnings, one per row. A row the save
+    // leaves out (an important signal missing its net) is never in the FILE as such - reading the
+    // workbook drops it, exactly as saving does - so only an open table can count it.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafts_row_counts_its_duplicate_rows_as_warnings_but_not_a_row_the_save_leaves_out()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+
+        // One component, unmarked on any schematic: one warning.
+        BoardData draft = DraftStatusReaderTests.BoardWith(1);
+
+        // Its pinout twice - note rows, so no file is looked for.
+        draft.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U0", Name = "Pinout", Note = "Same as 74LS08" });
+        draft.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U0", Name = "Pinout", Note = "Same as 7408" });
+        draft.KiCadImportantSignals.Add(new KiCadImportantSignalEntry { DisplayName = "CLK", KiCadNetName = string.Empty });
+
+        this.WriteDraft(draft);
+
+        DraftStatus? status = this.Status();
+        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+
+        Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+    }
+
+    // The same answer the table gives, and remembered: a draft nobody touched is not read again.
+    [Fact]
+    public void An_untouched_drafts_problems_are_answered_from_the_cache()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+        this.WriteDraft(DraftStatusReaderTests.BoardWith(3));
+
+        DraftStatus? status = this.Status();
+        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+
+        string workbook = status!.WorkbookPath;
+        long length = new FileInfo(workbook).Length;
+        DateTime written = File.GetLastWriteTimeUtc(workbook);
+
+        File.WriteAllBytes(workbook, new byte[length]);
+        File.SetLastWriteTimeUtc(workbook, written);
+
+        Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+    }
+
+    // ###########################################################################################
+    // A picture the draft cites arriving on its own - the background image sync finishing, or a file
+    // dropped into the draft folder by hand - changes neither stamped file. The row kept "1 error"
+    // for the session while the table and Submit found the file (code review, 2026-10-04); a path
+    // the check did not find is now looked for again.
+    // ###########################################################################################
+    [Fact]
+    public void A_cited_file_arriving_later_takes_its_error_off_the_drafts_row()
+    {
+        const string Picture = "Commodore/C64/250407/Images/U0 pinout.png";
+
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+
+        BoardData draft = DraftStatusReaderTests.BoardWith(1);
+        draft.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U0", Name = "Pinout", File = Picture });
+        this.WriteDraft(draft);
+
+        DraftStatus? status = this.Status();
+        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+
+        BoardProblemCounts before = DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder);
+        Assert.True(before.Errors >= 1);
+
+        string arrived = Path.Combine(this.DataRoot, Picture.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(arrived)!);
+        File.WriteAllBytes(arrived, [0x89, 0x50, 0x4E, 0x47]);
+
+        Assert.Equal(before.Errors - 1, DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder).Errors);
+    }
+
     [Fact]
     public void A_draft_edited_since_the_last_count_is_counted_afresh()
     {

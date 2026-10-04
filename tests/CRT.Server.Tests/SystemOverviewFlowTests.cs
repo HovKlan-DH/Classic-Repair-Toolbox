@@ -176,6 +176,126 @@ namespace CRT.Server.Tests
             Assert.False(vic.InProduction);
         }
 
+        // ###########################################################################################
+        // BETA's content hash rides on each system (2026-10-04) - the row's record of what BETA holds,
+        // which every publish to BETA and every push-back moves. The Maintainer tab's Systems screen
+        // reads its open table again when it moves; a board no row records has none to say.
+        // ###########################################################################################
+        [Fact]
+        public void Each_system_carries_BETA_s_content_hash_from_its_row()
+        {
+            SystemRecord row = new(SystemOverviewFlowTests.C64, "Commodore", "C64", "250407", "2026-September-20", true, "beta-hash", "2026-May-14", "prod-hash", null);
+
+            Assert.Equal("beta-hash", SystemOverviewFlow.Entry(SystemOverviewFlowTests.C64, row, SystemOverviewFlowTests.Beta[0], null, 0).BetaContentHash);
+            Assert.Null(SystemOverviewFlow.Entry(SystemOverviewFlowTests.C128, null, SystemOverviewFlowTests.Beta[1], null, 0).BetaContentHash);
+        }
+
+        // ###########################################################################################
+        // *** WHAT THE STABLE SOURCE ALONE HOLDS OR LISTS IS ON THE LIST (owner request, 2026-10-04:
+        // "I do not expect there should be cases where something can only be listed in stable? If so,
+        // it must be flagged in the left-sided menu 'Systems' list"). *** Such a system used to be
+        // missing from the screen altogether, so nothing could flag it. Each entry also says whether
+        // each source's drop-down list names it.
+        // ###########################################################################################
+        [Fact]
+        public void The_list_carries_what_each_drop_down_list_names_and_what_only_stable_has()
+        {
+            const string Pet = "Commodore/PET/2001";
+
+            IReadOnlyList<PublishedSystemLister.KnownSystem> stableTree =
+            [
+                new(SystemOverviewFlowTests.C64, "Commodore", "C64", "250407"),
+                new(SystemOverviewFlowTests.Vic, "Commodore", "VIC-20", "250403")
+            ];
+
+            var listings = new SystemListings(
+                new HashSet<string>([SystemOverviewFlowTests.C64], StringComparer.OrdinalIgnoreCase),
+                new HashSet<string>([SystemOverviewFlowTests.C64, SystemOverviewFlowTests.C128, SystemOverviewFlowTests.Vic, Pet], StringComparer.OrdinalIgnoreCase));
+
+            IReadOnlyList<SystemOverviewEntry> list = SystemOverviewFlow.Entries([], SystemOverviewFlowTests.Beta, stableTree, [], listings);
+
+            Assert.Equal([SystemOverviewFlowTests.C128, SystemOverviewFlowTests.C64, Pet, SystemOverviewFlowTests.Vic], list.Select(entry => entry.SystemId));
+
+            SystemOverviewEntry c128 = list.Single(entry => entry.SystemId == SystemOverviewFlowTests.C128);
+            Assert.Equal((false, true), (c128.ListedInBeta, c128.ListedInStable));
+
+            // In the stable source's tree only: on the list, named from that tree, not in BETA.
+            SystemOverviewEntry vic = list.Single(entry => entry.SystemId == SystemOverviewFlowTests.Vic);
+            Assert.False(vic.InBeta);
+            Assert.True(vic.InProduction);
+            Assert.Equal("VIC-20", vic.Hardware);
+
+            // In the stable source's drop-down list only, no board anywhere: named from its id.
+            SystemOverviewEntry pet = list.Single(entry => entry.SystemId == Pet);
+            Assert.Equal(("Commodore", "PET", "2001"), (pet.Manufacturer, pet.Hardware, pet.Board));
+            Assert.Equal((false, true), (pet.ListedInBeta, pet.ListedInStable));
+        }
+
+        // A list that could not be read says nothing - never "not listed" without looking.
+        [Fact]
+        public void A_list_that_could_not_be_read_says_nothing_about_listing()
+        {
+            IReadOnlyList<SystemOverviewEntry> list = SystemOverviewFlow.Entries(
+                [], SystemOverviewFlowTests.Beta, null, [], new SystemListings(null, null));
+
+            Assert.All(list, entry => Assert.Equal((null, null), (entry.ListedInBeta, entry.ListedInStable)));
+        }
+
+        // ###########################################################################################
+        // The listings are read from each source's newest main Excel data file - the real files, by
+        // system id in any case; a source with no such file is null. Read once per version of the
+        // file: a rewrite is read afresh.
+        // ###########################################################################################
+        [Fact]
+        public void The_listings_are_read_from_each_sources_main_Excel_data_file()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "crt-listings", Guid.NewGuid().ToString("N"));
+            string beta = Path.Combine(root, "beta");
+            string stable = Path.Combine(root, "stable");
+
+            Directory.CreateDirectory(beta);
+            Directory.CreateDirectory(stable);
+
+            try
+            {
+                DataTreeBuilder.Master(beta, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx");
+                DataTreeBuilder.Master(stable, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
+
+                SystemListings listings = SystemOverviewFlow.ReadListings(beta, stable);
+
+                Assert.Equal([SystemOverviewFlowTests.C64], listings.Beta!);
+                Assert.True(listings.Stable!.SetEquals([SystemOverviewFlowTests.C64, "commodore/c128/310378"]));
+                Assert.Null(SystemOverviewFlow.ReadListings(beta, Path.Combine(root, "none")).Stable);
+
+                // Rewritten with another system: read again.
+                File.SetLastWriteTimeUtc(Path.Combine(beta, "Classic-Repair-Toolbox.v2.0.0.xlsx"), DateTime.UtcNow.AddDays(-1));
+                DataTreeBuilder.Master(beta, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
+
+                Assert.Equal(2, SystemOverviewFlow.ReadListings(beta, null).Beta!.Count);
+            }
+            finally
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        // A system the stable source alone holds can be opened - it is on the list, and a list entry
+        // that answers "no such system" would be a dead end.
+        [Fact]
+        public async Task A_system_only_the_stable_source_holds_has_a_detail()
+        {
+            (FakeAccountStore accounts, ReviewAccess anna, _, _) = await SystemOverviewFlowTests.MaintainersAsync();
+
+            IReadOnlyList<PublishedSystemLister.KnownSystem> stableTree = [new(SystemOverviewFlowTests.Vic, "Commodore", "VIC-20", "250403")];
+
+            SystemOverviewOutcome outcome = await SystemOverviewFlow.DetailAsync(
+                anna, SystemOverviewFlowTests.Vic, SystemOverviewFlowTests.Beta, stableTree, new FakeSubmissionStore(), accounts,
+                listings: new SystemListings(new HashSet<string>(), new HashSet<string>([SystemOverviewFlowTests.Vic])));
+
+            Assert.False(outcome.IsNotFound);
+            Assert.Equal(("VIC-20", false, true), (outcome.Detail!.System.Hardware, outcome.Detail.System.InBeta, outcome.Detail.System.ListedInStable));
+        }
+
         // With no production tree to ask, the list never claims a board is not in production.
         [Fact]
         public void Without_a_production_tree_nothing_is_said_about_production()
@@ -365,6 +485,38 @@ namespace CRT.Server.Tests
 
             Assert.Equal(SystemOverviewFlowTests.C64, detail.System.SystemId);
             Assert.True(detail.System.InProduction);
+        }
+
+        // ###########################################################################################
+        // What each submission changed as it went into BETA (owner request, 2026-10-04) rides on its
+        // entry, for the History view - and one never published, or published before the record was
+        // kept, carries none.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_detail_carries_what_each_published_submission_changed()
+        {
+            (FakeAccountStore accounts, ReviewAccess anna, _, _) = await SystemOverviewFlowTests.MaintainersAsync();
+            var store = new FakeSubmissionStore();
+
+            await store.EnsureSystemAsync(SystemOverviewFlowTests.C64, "Commodore", "C64", "250407", "shipped", SystemOverviewFlowTests.Now);
+
+            store.Submissions[1] = SystemOverviewFlowTests.Record(1, state: SubmissionState.Merged);
+            store.Submissions[2] = SystemOverviewFlowTests.Record(2, state: SubmissionState.Merged);
+            store.Submissions[3] = SystemOverviewFlowTests.Record(3);
+
+            var changes = new SubmissionChanges(
+                false,
+                [new SectionChanges("Components", 0, 1, 0, 0, [], [new ChangedRowFact("U8", ["Part-number"])], [], [])],
+                FileChanges.None);
+
+            await store.SetChangesAsync(1, changes, SystemOverviewFlowTests.Now, CancellationToken.None);
+
+            SystemDetailAnswer detail = (await SystemOverviewFlow.DetailAsync(
+                anna, SystemOverviewFlowTests.C64, SystemOverviewFlowTests.Beta, null, store, accounts)).Detail!;
+
+            Assert.Same(changes, detail.Submissions.Single(entry => entry.Id == 1).Changes);
+            Assert.Null(detail.Submissions.Single(entry => entry.Id == 2).Changes);
+            Assert.Null(detail.Submissions.Single(entry => entry.Id == 3).Changes);
         }
 
         // -----------------------------------------------------------------------------------

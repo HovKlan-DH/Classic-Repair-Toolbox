@@ -90,7 +90,7 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
         string workbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, this.thisExcelDataFile);
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
 
-        BoardWorkbookWriter.Write(workbook, board);
+        CachedWorkbooks.Write(workbook, board);
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(this.DraftsRoot, this.thisExcelDataFile),
@@ -185,7 +185,7 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
             this.DraftsRoot, "Commodore/C64/250425/Data C64 250425 v1.0.0.xlsx");
 
         Directory.CreateDirectory(Path.GetDirectoryName(otherWorkbook)!);
-        BoardWorkbookWriter.Write(
+        CachedWorkbooks.Write(
             otherWorkbook,
             DataManagerDraftOverlayTests.BoardWithComponent("U1", "Should not appear here"));
 

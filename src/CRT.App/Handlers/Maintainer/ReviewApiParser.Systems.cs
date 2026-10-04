@@ -41,6 +41,95 @@ namespace Handlers.MaintainerHandling
             return new SystemOverviewAnswer(rows);
         }
 
+        // ###########################################################################################
+        // A system's Board data and Files views (2026-10-03). The table is read into CRT.Data's own
+        // record, as a submission's table is (ParseTable) - its rows are the board's - and refused
+        // without a fingerprint, which a change could not be sent back with. The files are the
+        // submission tree's own entries (ParseSubmissionFiles' rule: entries with no path dropped).
+        // ###########################################################################################
+        public static SystemTableAnswer? ParseSystemTable(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                SystemTableAnswer? table = root.Deserialize<SystemTableAnswer>(ReviewApiParser.FactOptions);
+
+                return table is null || table.Rows is null ||
+                       string.IsNullOrWhiteSpace(table.SystemId) || string.IsNullOrWhiteSpace(table.Fingerprint)
+                    ? null
+                    : table;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // ###########################################################################################
+        // What checking a change answered: the files publishing it would remove. Refused without the
+        // list - an answer that does not say is not "nothing", and the maintainer must be shown it.
+        // ###########################################################################################
+        public static SystemEditCheckAnswer? ParseSystemEditCheck(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("removals", out JsonElement removals) ||
+                removals.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            return new SystemEditCheckAnswer(ReviewApiParser.ParseStrings(root, "removals"));
+        }
+
+        // What sending a change answered: the submission it became, its warnings, and whether it was
+        // published to BETA - at which revision and removing what - or why not.
+        public static SystemEditResult? ParseSystemEdit(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object || ReviewApiParser.Long(root, "submissionId") is not long id || id < 1)
+                return null;
+
+            return new SystemEditResult(
+                id,
+                ReviewApiParser.ParseFindings(root),
+                ReviewApiParser.Bool(root, "published") == true,
+                ReviewApiParser.String(root, "revision"),
+                ReviewApiParser.ParseStrings(root, "removedFiles"),
+                ReviewApiParser.String(root, "notPublishedReason"));
+        }
+
+        public static SystemFilesAnswer? ParseSystemFiles(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                SystemFilesAnswer? answer = root.Deserialize<SystemFilesAnswer>(ReviewApiParser.FactOptions);
+
+                if (answer is null || string.IsNullOrWhiteSpace(answer.SystemId))
+                    return null;
+
+                return answer with
+                {
+                    Files = (answer.Files ?? []).Where(file => file is not null && !string.IsNullOrWhiteSpace(file.Path)).ToList()
+                };
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
         public static SystemDetailAnswer? ParseSystemDetail(string? json)
         {
             JsonElement root = ReviewApiParser.Root(json);
@@ -100,7 +189,10 @@ namespace Handlers.MaintainerHandling
                     ReviewApiParser.String(submission, "decisionComment"),
 
                     // Its contributor discarded their own draft since (2026-09-28).
-                    ReviewApiParser.Time(submission, "draftDiscardedUtc")));
+                    ReviewApiParser.Time(submission, "draftDiscardedUtc"),
+
+                    // What it changed as it went into BETA (2026-10-04) - none when not recorded.
+                    ReviewApiParser.ParseChanges(submission)));
             }
 
             // The invitations nobody has accepted - sent to an administrator only; absent is none.
@@ -154,6 +246,65 @@ namespace Handlers.MaintainerHandling
             }
 
             return new SystemDetailAnswer(entry, maintainers, contributors, submissions, invitations, history, ReviewApiParser.ParseViewStatistics(root));
+        }
+
+        // ###########################################################################################
+        // What a submission changed as it went into BETA (2026-10-04) - CRT.Data's SubmissionChanges,
+        // read whole. One that does not read is no summary rather than a failed screen; the lists a
+        // missing field leaves null are read as empty, so the History view never meets a null.
+        // ###########################################################################################
+        private static SubmissionChanges? ParseChanges(JsonElement submission)
+        {
+            if (!submission.TryGetProperty("changes", out JsonElement element) || element.ValueKind != JsonValueKind.Object)
+                return null;
+
+            try
+            {
+                SubmissionChanges? changes = element.Deserialize<SubmissionChanges>(ReviewApiParser.FactOptions);
+
+                if (changes is null)
+                    return null;
+
+                FileChanges files = changes.Files ?? FileChanges.None;
+
+                return changes with
+                {
+                    Sections = (changes.Sections ?? [])
+                        .Where(section => section is not null && !string.IsNullOrWhiteSpace(section.Section))
+                        .Select(section => section with
+                        {
+                            Added = section.Added ?? [],
+                            Changed = (section.Changed ?? []).Where(row => row is not null).Select(row => row with { Fields = row.Fields ?? [] }).ToList(),
+                            Removed = section.Removed ?? [],
+                            Renamed = (section.Renamed ?? []).Where(row => row is not null).ToList()
+                        })
+                        .ToList(),
+                    Files = files with
+                    {
+                        Added = files.Added ?? [],
+                        Replaced = files.Replaced ?? [],
+                        Removed = files.Removed ?? []
+                    }
+                };
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        // What ordering the drop-down lists did (2026-10-04). Without BETA's answer it is not one.
+        public static SystemOrderAnswer? ParseSystemOrder(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object || ReviewApiParser.Bool(root, "betaChanged") is not bool betaChanged)
+                return null;
+
+            return new SystemOrderAnswer(
+                betaChanged,
+                ReviewApiParser.Bool(root, "stableChanged"),
+                ReviewApiParser.String(root, "problem"));
         }
 
         // What accepting an invitation did. Without the address it cannot fill the sign-in box and
@@ -296,7 +447,16 @@ namespace Handlers.MaintainerHandling
 
                 // How often CRT users looked at it in 30 days (2026-09-27); absent from an older
                 // server, or when the server could not count - kept as null, never shown as 0.
-                ReviewApiParser.Long(element, "viewsLast30Days") is long views ? (int)views : null);
+                ReviewApiParser.Long(element, "viewsLast30Days") is long views ? (int)views : null,
+
+                // What BETA holds (2026-10-04) - the Systems screen's table is read again when it
+                // moves. Absent from an older server, or for a board nothing has published.
+                ReviewApiParser.String(element, "betaContentHash"),
+
+                // Whether each source's drop-down list names it (2026-10-04) - absent (null) when
+                // the server could not read that list, which is never said to be "not listed".
+                ReviewApiParser.Bool(element, "listedInBeta"),
+                ReviewApiParser.Bool(element, "listedInStable"));
         }
 
         // ###########################################################################################

@@ -16,10 +16,13 @@ namespace CRT.Server.Tests.Fakes
 
         public EmailMessage? Last => this.Sent.Count == 0 ? null : this.Sent[^1];
 
-        public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        // False makes every send report that postfix refused it - the feedback route's failure.
+        public bool Delivers { get; set; } = true;
+
+        public Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             this.Sent.Add(message);
-            return Task.CompletedTask;
+            return Task.FromResult(this.Delivers);
         }
 
         // ###########################################################################################

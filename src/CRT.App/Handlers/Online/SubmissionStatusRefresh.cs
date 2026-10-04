@@ -30,10 +30,39 @@ namespace Handlers.Online
     // *** EVERY FAILURE IS SILENT AND HARMLESS. *** This runs unattended at launch, so an
     // unreachable server, an expired token or a rate limit must cost nothing but a stale row -
     // never a dialog, never a delayed start, never a failed launch. The receipt simply keeps its
-    // last known state, exactly as it would if the check had not run.
+    // last known state, exactly as it would if the check had not run. The ONE exception is the
+    // server answering "update CRT" (2026-10-04): that is handed back to be shown, since nothing
+    // would otherwise ever say why the receipts stopped moving.
     // ###########################################################################################
     public static class SubmissionStatusRefresh
     {
+        // ###########################################################################################
+        // *** AND AGAIN WHILE CRT RUNS, FOR THE DRAFTS TAB'S BADGE (owner request, 2026-09-30: "Like
+        // the "Maintainer" tab now has a badge, then I think the "Draft" also should have same
+        // functionality, as the contributor likewise can receive an update"). ***
+        //
+        // Every PeriodicInterval, the same question as at launch - only about what is still open.
+        //
+        // *** ONE MINUTE, the Maintainer tab's own interval (owner decision, 2026-10-01). *** It was
+        // five, on the reasoning that a review takes hours and this runs in every contributor's CRT
+        // rather than in a handful of maintainers'. The project owner weighed that against the cost
+        // and chose one minute anyway - "this is not a high volume thing ... not that many users
+        // globally" - because the check is what retires a published draft, and a contributor
+        // watching their draft disappear should not wait five minutes for it. ChecksPeriodically
+        // still means nobody without an open submission asks anything at all.
+        // ###########################################################################################
+        public static readonly TimeSpan PeriodicInterval = TimeSpan.FromMinutes(1);
+
+        // Whether a periodic check asks anything: not while CRT's window is minimised (no tab badge to
+        // see), and not when nothing sent is still open - a contributor with nothing waiting, and
+        // everybody who has never contributed, sends nothing at all.
+        public static bool ChecksPeriodically(IEnumerable<SubmissionReceipt> receipts, DateTimeOffset now, bool windowMinimised)
+        {
+            ArgumentNullException.ThrowIfNull(receipts);
+
+            return !windowMinimised && receipts.Any(receipt => SubmissionReceiptPresenter.IsStillOpen(receipt, now));
+        }
+
         // ###########################################################################################
         // The lookup used to ask about one submission. Injected so tests drive this with no network
         // (CLAUDE.md test rule 6), and so the caller decides whether that is a real client.
@@ -49,12 +78,19 @@ namespace Handlers.Online
         // Returns how many receipts actually CHANGED - not how many were checked. The caller uses
         // that to decide whether anything on screen needs rebuilding, and "changed" is the only
         // honest answer to that question: a check that confirmed six unchanged rows should not
-        // cause a refresh of anything.
+        // cause a refresh of anything. A receipt the server stopped knowing, or knows again, is a
+        // change too: its row now reads "No longer on the server", or no longer does.
+        //
+        // *** "UPDATE CRT" STOPS THE ROUND (code review, 2026-10-04). *** The server answered every
+        // submission the same way, so the rest are not asked; `onOutdated` is handed the server's
+        // own sentence, for the caller to show - the one failure here that is NOT silent, because
+        // nothing else would ever tell the contributor why their receipts stopped moving.
         // ###########################################################################################
         public static async Task<int> RefreshAsync(
             StatusLookup lookup,
             DateTimeOffset now,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Action<string>? onOutdated = null)
         {
             ArgumentNullException.ThrowIfNull(lookup);
 
@@ -80,6 +116,23 @@ namespace Handlers.Online
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
+                }
+                catch (SubmissionNotFoundException)
+                {
+                    // The server does not know it any more - deleted with its system, for one. It
+                    // was asked about every minute for ever; now once a day (code review, 2026-10-04).
+                    // The first time is a change: the row now says so, and must be drawn again.
+                    if (receipt.NotFoundUtc is null)
+                        changed++;
+
+                    SubmissionReceiptStore.NoteNotFound(receipt.SubmissionId, now);
+                    continue;
+                }
+                catch (ClientOutdatedException ex)
+                {
+                    CrtLog.Warning($"The server asks for a newer CRT before it answers about submissions: [{ex.Message}]");
+                    onOutdated?.Invoke(ex.Message);
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -110,15 +163,34 @@ namespace Handlers.Online
                     (receipt.MaintainerComment ?? string.Empty).Trim(),
                     StringComparison.Ordinal);
 
-                SubmissionReceiptStore.UpdateState(
-                    receipt.SubmissionId,
-                    status.State ?? string.Empty,
-                    status.MaintainerComment ?? string.Empty,
-                    now,
-                    status.DecidedUtc,
-                    status.AmendedByMaintainer);
+                // *** AN UNCHANGED ANSWER WRITES NOTHING, OR NEARLY (code review, 2026-10-04). ***
+                // The minute check saved the whole receipts file once per open receipt, only to move
+                // its "last checked" date. Everything the row shows moved, or a "not found" to clear,
+                // is written at once; otherwise only a stale date is (NoteChecked).
+                bool knownAgain = receipt.NotFoundUtc is not null;
 
-                if (stateMoved || commentMoved)
+                bool rowMoved = stateMoved || commentMoved ||
+                    (status.DecidedUtc is not null && status.DecidedUtc != receipt.DecidedUtc) ||
+                    status.AmendedByMaintainer != receipt.AmendedByMaintainer ||
+                    knownAgain;
+
+                if (rowMoved)
+                {
+                    SubmissionReceiptStore.UpdateState(
+                        receipt.SubmissionId,
+                        status.State ?? string.Empty,
+                        status.MaintainerComment ?? string.Empty,
+                        now,
+                        status.DecidedUtc,
+                        status.AmendedByMaintainer);
+                }
+                else
+                {
+                    SubmissionReceiptStore.NoteChecked(receipt.SubmissionId, now);
+                }
+
+                // Known again after "not found" is a change too: the row stops saying so.
+                if (stateMoved || commentMoved || knownAgain)
                 {
                     changed++;
                 }
@@ -126,6 +198,11 @@ namespace Handlers.Online
 
             return changed;
         }
+
+        // The sentence CRT shows when the server answered "update CRT": the server's own words, said
+        // to be about the submissions' status, so it is clear what could not be done.
+        public static string DescribeOutdated(string serversWords) =>
+            "The status of your submissions could not be checked: " + serversWords.Trim();
 
         // ###########################################################################################
         // The launch check: fire-and-forget, and it swallows everything.
@@ -152,13 +229,17 @@ namespace Handlers.Online
         // was never retired at all. Work like that belongs on onFinished.
         //
         // Neither fires when the check is cancelled - the app is closing.
+        //
+        // onOutdated: the server answered "update CRT" - its sentence, see RefreshAsync. Called on
+        // the thread the check ran on, before onFinished.
         // ###########################################################################################
         public static async Task RefreshQuietlyAsync(
             StatusLookup lookup,
             DateTimeOffset now,
             Action? onChanged = null,
             CancellationToken cancellationToken = default,
-            Action<int>? onFinished = null)
+            Action<int>? onFinished = null,
+            Action<string>? onOutdated = null)
         {
             int changed = 0;
 
@@ -168,7 +249,7 @@ namespace Handlers.Online
                         SubmissionReceiptPresenter.IsStillOpen(receipt, now)))
                 {
                     changed = await SubmissionStatusRefresh
-                        .RefreshAsync(lookup, now, cancellationToken)
+                        .RefreshAsync(lookup, now, cancellationToken, onOutdated)
                         .ConfigureAwait(false);
 
                     if (changed > 0)
@@ -184,7 +265,8 @@ namespace Handlers.Online
             }
             catch (Exception ex)
             {
-                CrtLog.Warning($"Submission status check at launch failed: [{ex.Message}]");
+                // Not "at launch": the Drafts tab's minute check runs this too.
+                CrtLog.Warning($"Submission status check failed: [{ex.Message}]");
             }
 
             try

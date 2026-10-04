@@ -1,4 +1,5 @@
 using System.Reflection;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Health
 {
@@ -12,7 +13,8 @@ namespace CRT.Server.Handlers.Health
     //
     // WHAT THIS DELIBERATELY DOES NOT REPORT. The health endpoint is unauthenticated and reachable
     // from the public internet through the Apache proxy, so it is a reconnaissance surface. It
-    // reports only that the process is alive and which build is deployed:
+    // reports only that the process is alive and which build is deployed (its version, and the API
+    // revision it serves - ClientVersionContract.ApiRevision, which every CRT build carries anyway):
     //   - no database state (a DB-checking health endpoint hands an attacker a free way to tell
     //     whether the database is down, and turns one outage into two);
     //   - no configuration values, no paths, no connection details;
@@ -34,7 +36,11 @@ namespace CRT.Server.Handlers.Health
         // ###########################################################################################
         public static HealthStatus Build(DateTimeOffset now, string? informationalVersion)
         {
-            return new HealthStatus("ok", HealthReport.NormaliseVersion(informationalVersion), now.ToUniversalTime());
+            return new HealthStatus(
+                "ok",
+                HealthReport.NormaliseVersion(informationalVersion),
+                now.ToUniversalTime(),
+                ClientVersionContract.ApiRevision);
         }
 
         // ###########################################################################################
@@ -82,12 +88,6 @@ namespace CRT.Server.Handlers.Health
         }
     }
 
-    // ###########################################################################################
-    // The health payload as it appears on the wire. A record rather than an anonymous object so
-    // the shape is named, testable and cannot drift between the endpoint and its test.
-    //
-    // Property names are lower-cased by the JSON options configured in Program.cs, giving
-    // {"status":"ok","version":"...","utc":"..."}.
-    // ###########################################################################################
-    public sealed record HealthStatus(string Status, string Version, DateTimeOffset Utc);
+    // The payload is CRT.Data's HealthStatus - a named record, so the shape cannot drift between the
+    // endpoint, its test and the Maintainer tab, which reads the version (since 2026-10-04).
 }

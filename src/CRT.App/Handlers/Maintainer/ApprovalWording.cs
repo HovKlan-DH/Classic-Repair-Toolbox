@@ -20,8 +20,19 @@ namespace Handlers.MaintainerHandling
         // The line above the buttons, or null for an ordinary item that one approval publishes -
         // nothing to explain there.
         // ###########################################################################################
-        public static string? StatusLine(ApprovalStatus? status)
+        public static string? StatusLine(ApprovalStatus? status) => ApprovalWording.StatusLine(status, canPublish: true);
+
+        // ###########################################################################################
+        // *** AN ACCOUNT THAT MAY NOT PUBLISH IS TOLD SO IN THIS LINE (2026-09-30). *** It was the
+        // Approve button's TOOLTIP, and a tooltip at the bottom of the window is placed over the
+        // pointer and takes the click meant for the button (see TabMaintainer's ShowDecisionPanel) -
+        // so the button carries none, and the reason is said where it is always visible.
+        // ###########################################################################################
+        public static string? StatusLine(ApprovalStatus? status, bool canPublish)
         {
+            if (!canPublish)
+                return ApprovalWording.NotAMaintainer;
+
             if (status is null || status.Required.Count == 0)
                 return null;
 
@@ -68,6 +79,8 @@ namespace Handlers.MaintainerHandling
         }
 
         public static bool CanApprove(ApprovalStatus? status) => status is null || status.CanApprove;
+
+        public const string NotAMaintainer = "This account is not a maintainer of this system, so it cannot approve this. Ask the administrator.";
 
         // ###########################################################################################
         // What the maintainer is told after an approval that did NOT publish.

@@ -2,6 +2,7 @@
 using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -95,8 +96,9 @@ namespace Handlers.OnlineHandling
         }
 
         // ###########################################################################################
-        // Asks server for newest version.
-        // Reports the app version and OS details. Runs silently - failures are only logged.
+        // The launch check-in (CRT.Data's CheckInContract): the app version - as the User-Agent -
+        // and the OS details, to CRT.Server, which stores them for the Fun facts page. Runs
+        // silently - failures are only logged, and the answer is not used.
         // ###########################################################################################
         public static async Task CheckInVersionAsync()
         {
@@ -107,15 +109,8 @@ namespace Handlers.OnlineHandling
                 using var http = new HttpClient { Timeout = AppConfig.ApiTimeout };
                 http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", OnlineServices.UserAgent);
 
-                var payload = new List<KeyValuePair<string, string>>
-                {
-                    new("control", AppConfig.AppShortName),
-                    new("osHighlevel", osHighLevel),
-                    new("osVersion", osVersion),
-                    new("cpu", cpu),
-                };
-
-                using var response = await http.PostAsync(AppConfig.CheckVersionUrl, new FormUrlEncodedContent(payload));
+                using FormUrlEncodedContent form = CheckInContract.BuildForm(osHighLevel, osVersion, cpu);
+                using var response = await http.PostAsync(AppConfig.CheckInUrl, form);
                 _ = await response.Content.ReadAsStringAsync();
                 Logger.Info($"Online check-in completed:");
                 Logger.Info($"    HTTP:[{(int)response.StatusCode}]");
@@ -158,6 +153,23 @@ namespace Handlers.OnlineHandling
         // The version as the launch check-in sends it (its User-Agent), and so as crt_update.version
         // holds it: "CRT 2026.10.0".
         internal static string VersionForServer => OnlineServices.UserAgent;
+
+        // ###########################################################################################
+        // Adds the API revision this build was made for (CRT.Data's ClientVersionContract.ApiRevision)
+        // to a client's requests - the review and submission clients, whose routes the server may
+        // refuse to a CRT built for an older revision, with "update CRT". Once per client.
+        // ###########################################################################################
+        internal static void NameApiRevision(HttpClient http)
+        {
+            ArgumentNullException.ThrowIfNull(http);
+
+            if (!http.DefaultRequestHeaders.Contains(ClientVersionContract.ApiRevisionHeader))
+            {
+                http.DefaultRequestHeaders.TryAddWithoutValidation(
+                    ClientVersionContract.ApiRevisionHeader,
+                    ClientVersionContract.ApiRevision.ToString(CultureInfo.InvariantCulture));
+            }
+        }
 
         // ###########################################################################################
         // Fetches and parses the online checksum manifest. Returns null on failure.
@@ -331,7 +343,7 @@ namespace Handlers.OnlineHandling
             foreach (var (entry, localPath, downloadUri, expectedChecksum, isNew) in toDownload)
             {
                 downloadIndex++;
-                onStatus?.Invoke($"Downloading file [{downloadIndex}] of [{toDownload.Count}] from online source:");
+                onStatus?.Invoke($"Downloading file [{downloadIndex}] of [{toDownload.Count}] from the {AppConfig.GetOnlineSourceLabel()}:");
                 onFile?.Invoke(entry.File);
 
                 if (await OnlineServices.DownloadFileAsync(http, entry, localPath, downloadUri, expectedChecksum, isNew))

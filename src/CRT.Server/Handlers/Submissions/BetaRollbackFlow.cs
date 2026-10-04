@@ -53,13 +53,13 @@ namespace CRT.Server.Handlers.Submissions
         public const string RejectedAction = SystemHistoryEvents.RejectedFromBeta;
 
         public const string NothingToRollBackMessage =
-            "This system's BETA data is the same as production's, so there is nothing to roll back.";
+            "This system's BETA data is the same as the stable source's, so there is nothing to roll back.";
 
         // A promoted system whose production folder lists nothing (BetaRollbackPlan's header).
         public const string ProductionUnreadableMessage =
-            "This system was published to production, but its folder there cannot be read - it is missing, renamed, " +
-            "or the production data folder is not reachable. Nothing was changed: pushing back now would take the " +
-            "board out of BETA as if it had never been in production. Check the production data folder, then try again.";
+            "This system was published to the stable source, but its folder there cannot be read - it is missing, renamed, " +
+            "or the stable data folder is not reachable. Nothing was changed: pushing back now would take the " +
+            "board out of BETA as if it had never been in the stable source. Check the stable data folder, then try again.";
 
         public const string NotRecordedMessage =
             "BETA WAS rolled back, but recording it failed, so its submissions are not back in the queue yet and " +
@@ -138,8 +138,8 @@ namespace CRT.Server.Handlers.Submissions
             if (reason.Length == 0)
             {
                 return BetaRollbackOutcome.Refused(reject
-                    ? "Say why this is being rejected - the contributor is told, and it is the only message they get."
-                    : "Say why this is being rolled back - the contributor is told, and it is the only message they get.");
+                    ? "Say why this is being rejected - it is the only message the contributor receives."
+                    : "Say why this is being rolled back - it is the only message the contributor receives.");
             }
 
             using IDisposable held = await this.thisLock.EnterAsync(cancellationToken);

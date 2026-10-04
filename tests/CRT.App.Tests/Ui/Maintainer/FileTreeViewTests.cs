@@ -14,8 +14,8 @@ using ClassicRepairToolbox.Tests.Maintainer;
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
 // ###########################################################################################
-// The file tree as drawn (owner request, 2026-09-28) - FileTreeView, on "Beta > Prod" and in the
-// window "Files..." opens. What each row says is FileTree's and tested there; these pin what the
+// The file tree as drawn (owner request, 2026-09-28) - FileTreeView, on "Beta > Prod" and as a
+// submission's Files view (a window until 2026-09-30). What each row says is FileTree's and tested there; these pin what the
 // control does with it: folders opening and closing (one at a time and all at once), the boxed
 // plus and minus, and - with a real pointer in a shown window - the table's hover card on a file.
 // Headless drawing decodes no pixels, so a picture here proves a bitmap was made, not its look.
@@ -426,6 +426,25 @@ public sealed class FileTreeViewTests
             Assert.Contains("nothing to open yet", view.RowsForTests.Single(row => row.Name == "Data.json").ToolTip, StringComparison.Ordinal);
 
             window.Close();
+        });
+    }
+
+    // A file's row carries its size; a folder's does not (owner request, 2026-10-04).
+    [Fact]
+    public void A_files_row_shows_its_size()
+    {
+        UiTest.Run(() =>
+        {
+            var tree = new FileTreeView();
+            tree.ShowListing(
+                [FileTreeViewTests.E("Commodore/C64/250407/a.png") with { SizeBytes = 101_580 }, FileTreeViewTests.E("Commodore/C64/250407/b.pdf")],
+                openFolder: null,
+                openAll: true);
+
+            Assert.Equal(["Commodore", "C64", "250407", "a.png", "b.pdf"], tree.RowsForTests.Select(row => row.Name));
+            Assert.Equal("99.2 KB", tree.RowsForTests.Single(row => row.Name == "a.png").Size);
+            Assert.Equal(string.Empty, tree.RowsForTests.Single(row => row.Name == "b.pdf").Size);
+            Assert.Equal(string.Empty, tree.RowsForTests.Single(row => row.Name == "250407").Size);
         });
     }
 }

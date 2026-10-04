@@ -15,20 +15,38 @@ namespace CRT.Server.Handlers.Email
     // the account has still been created, and answering with an error would tell the caller
     // something about the state of the mail system while leaving them unable to retry cleanly.
     // The implementation logs and swallows; "resend verification" is the recovery path.
+    //
+    // *** IT SAYS WHETHER THE MAIL WENT (2026-10-03). *** Feedback is the one case where the mail IS
+    // the operation: a feedback whose mail never left reached nobody, and the sender must be told
+    // so and try again (the old PHP page answered "Mail sending failed"). True means postfix took
+    // the message; every other caller ignores it, as before.
     // ###########################################################################################
     public interface IEmailSender
     {
-        Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
+        Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
     }
 
     // ###########################################################################################
-    // One outbound message. Plain text only, deliberately.
+    // One outbound message: the HTML a mail client shows, and the same words as plain text.
     //
-    // NO HTML BODY. Every mail this service sends is a sentence and a link. HTML would add a
-    // second body to keep in step with the first, an escaping surface where user-supplied display
-    // names meet markup, and a reason for mail clients to mangle or hide the URL - and it buys
-    // nothing a plain-text link does not already do. A plain-text mail also renders identically
-    // everywhere, including in the terminal mail clients some of this audience genuinely use.
+    // *** HTML SINCE 2026-10-03 (owner request: "All mails should be sent in HTML format"). *** It
+    // was plain text only, to avoid a second body to keep in step and an escaping surface. Both are
+    // answered by MailBody: a template writes its blocks ONCE and both bodies are rendered from
+    // them, every typed value HTML-encoded on the way out. Body (the plain text) is kept - it is the
+    // alternative part sent beside the HTML, which spam filters expect, and what tests read.
+    // HtmlBody is null only for a message built by hand without MailBody; the sender then sends the
+    // plain text alone.
+    //
+    // ReplyToAddress: where "Reply" goes, when it is not the From address - feedback, which comes
+    // FROM the service (a mail claiming to be from the user's own address fails SPF at their
+    // provider and lands in spam) but is answered to the user (2026-10-03).
     // ###########################################################################################
-    public sealed record EmailMessage(string ToAddress, string Subject, string Body);
+    public sealed record EmailMessage(string ToAddress, string Subject, string Body, string? HtmlBody = null, string? ReplyToAddress = null);
+
+    // ###########################################################################################
+    // Somebody to write to, and the name to greet them by (2026-10-03: "Hi {name}"). The name is
+    // the one on their ACCOUNT - a maintainer's or administrator's, or a contributor who sent while
+    // signed in - and blank for anybody without one, who is greeted "Hi there,".
+    // ###########################################################################################
+    public sealed record MailRecipient(string Email, string Name = "");
 }

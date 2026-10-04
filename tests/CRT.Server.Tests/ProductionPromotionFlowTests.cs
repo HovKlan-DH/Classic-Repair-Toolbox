@@ -621,7 +621,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // *** PRODUCTION TOO REMOVES ONLY INSIDE THE SYSTEM'S OWN FOLDER (owner decision, 2026-09-27).
         // *** The older production board also cited a shared datasheet nothing else uses; the BETA
-        // board does not. It stays in production, unused, for Admin > Unused files - and is not on
+        // board does not. It stays in production, unused, for Account > Unused files - and is not on
         // the list the maintainer is shown.
         // ###########################################################################################
         [Fact]

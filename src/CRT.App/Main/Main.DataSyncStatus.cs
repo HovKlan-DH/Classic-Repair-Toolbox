@@ -233,7 +233,7 @@ namespace CRT
             ToolTip.SetTip(
                 this.DataSyncStatusIconBorder,
                 isCheckingOnline
-                    ? $"Checking data from {AppConfig.GetOnlineSourceLabel()}..."
+                    ? $"Checking data from the {AppConfig.GetOnlineSourceLabel()}..."
                     : isEnabled
                         ? "Data update is enabled. Click to refresh data now"
                         : this._isHoveringDataSyncStatusIcon

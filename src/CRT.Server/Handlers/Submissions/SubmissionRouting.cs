@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -13,11 +14,13 @@ namespace CRT.Server.Handlers.Submissions
     // to the administrator, always" falls out of the last case, since a system nobody has reviewed
     // yet has an empty pool.
     //
+    // Each comes with the name on their account, to greet them by (2026-10-03).
+    //
     // Pure over the stores, so it is tested with the fakes.
     // ###########################################################################################
     public static class SubmissionRouting
     {
-        public static async Task<IReadOnlyList<string>> RecipientsForAsync(
+        public static async Task<IReadOnlyList<MailRecipient>> RecipientsForAsync(
             SubmissionRecord submission,
             IAccountStore accounts,
             CancellationToken cancellationToken = default)
@@ -39,7 +42,7 @@ namespace CRT.Server.Handlers.Submissions
             if (required.Count == 0)
             {
                 return maintainers.Count > 0
-                    ? maintainers.Select(maintainer => maintainer.Email).ToList()
+                    ? maintainers.Select(maintainer => new MailRecipient(maintainer.Email, maintainer.DisplayName)).ToList()
                     : await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken);
             }
 
@@ -50,7 +53,7 @@ namespace CRT.Server.Handlers.Submissions
         // Everybody who approves in these roles for this system - for "your approval is needed"
         // once the other half has approved. De-duplicated, in role order.
         // ###########################################################################################
-        public static async Task<IReadOnlyList<string>> RecipientsForRolesAsync(
+        public static async Task<IReadOnlyList<MailRecipient>> RecipientsForRolesAsync(
             IEnumerable<ApproverRole> roles,
             string systemId,
             IAccountStore accounts,
@@ -59,33 +62,36 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(roles);
             ArgumentNullException.ThrowIfNull(accounts);
 
-            var addresses = new List<string>();
+            var recipients = new List<MailRecipient>();
 
             foreach (ApproverRole role in roles.Distinct())
             {
                 if (role == ApproverRole.Maintainer)
                 {
-                    addresses.AddRange((await accounts.GetMaintainersOfSystemAsync(systemId, cancellationToken))
+                    recipients.AddRange((await accounts.GetMaintainersOfSystemAsync(systemId, cancellationToken))
                         .Where(ReviewAuthority.CanGiveMaintainerApproval)
-                        .Select(maintainer => maintainer.Email));
+                        .Select(maintainer => new MailRecipient(maintainer.Email, maintainer.DisplayName)));
                 }
                 else
                 {
-                    addresses.AddRange(await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken));
+                    recipients.AddRange(await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken));
                 }
             }
 
-            return addresses.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return recipients
+                .GroupBy(recipient => recipient.Email, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList();
         }
 
         // A locked administrator is not somebody to write to; an unverified one has no proven
         // address.
-        private static async Task<IReadOnlyList<string>> AdministratorAddressesAsync(
+        private static async Task<IReadOnlyList<MailRecipient>> AdministratorAddressesAsync(
             IAccountStore accounts,
             CancellationToken cancellationToken) =>
             (await accounts.GetAdministratorsAsync(cancellationToken))
                 .Where(account => account.IsVerified && !account.IsLocked)
-                .Select(account => account.Email)
+                .Select(account => new MailRecipient(account.Email, account.DisplayName))
                 .ToList();
     }
 }

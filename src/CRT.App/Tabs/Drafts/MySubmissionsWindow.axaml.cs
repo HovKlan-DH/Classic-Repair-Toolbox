@@ -141,7 +141,7 @@ namespace CRT
             {
                 // Under this window's "please wait" overlay (2026-09-28). Each contribution asked about
                 // starts the two minutes again, so a long list is never cut off while it is moving.
-                WaitResult<(int Checked, int Updated, int Unreachable)> waited = await BusyOverlay.RunAsync(
+                WaitResult<(int Checked, int Updated, int Unreachable, int NotFound)> waited = await BusyOverlay.RunAsync(
                     this,
                     CrtWaitWording.CheckingSubmissions,
                     context => this.CheckReceiptsAsync(context, token));
@@ -155,8 +155,16 @@ namespace CRT
                     return;
                 }
 
-                (int checkedCount, int updated, int unreachable) = waited.Value;
-                this.ShowRefreshOutcome(checkedCount, updated, unreachable);
+                (int checkedCount, int updated, int unreachable, int notFound) = waited.Value;
+                this.ShowRefreshOutcome(checkedCount, updated, unreachable, notFound);
+            }
+            catch (ClientOutdatedException ex)
+            {
+                // The server answered "update CRT" (code review, 2026-10-04): its words, not "the
+                // server could not be reached" - which would send the contributor looking for a
+                // network problem that is not there. Whatever was checked before it is kept.
+                this.RebuildRows();
+                this.ShowStatus(SubmissionStatusRefresh.DescribeOutdated(ex.Message));
             }
             catch (OperationCanceledException)
             {
@@ -170,7 +178,7 @@ namespace CRT
 
         // The asking itself - one request per contribution still open. `closing` is the window's own
         // token (closed, or replaced by a newer refresh); the overlay's is its two-minute limit.
-        private async Task<(int Checked, int Updated, int Unreachable)> CheckReceiptsAsync(WaitContext context, CancellationToken closing)
+        private async Task<(int Checked, int Updated, int Unreachable, int NotFound)> CheckReceiptsAsync(WaitContext context, CancellationToken closing)
         {
             using CancellationTokenSource both = CancellationTokenSource.CreateLinkedTokenSource(closing, context.Token);
             CancellationToken token = both.Token;
@@ -179,10 +187,10 @@ namespace CRT
 
             // *** THE LAUNCH CHECK'S "which rows are worth asking about" RULE, WITHOUT ITS TIME
             // LIMIT *** (SubmissionStatusRefresh.RefreshAsync). This loop is kept rather than
-            // delegated because this screen reports "checked N, updated M, could not reach K"
-            // and the shared method deliberately returns only how many CHANGED - a count that is
-            // right for "should anything be redrawn" and wrong for a status line somebody is
-            // reading.
+            // delegated because this screen reports "checked N, updated M, could not reach K, L no
+            // longer on the server", and the shared method deliberately returns only how many
+            // CHANGED - a count that is right for "should anything be redrawn" and wrong for a
+            // status line somebody is reading.
             //
             // The launch check stops asking about a submission in BETA after
             // SubmissionReceiptPresenter.MergedRecheckWindow, so it costs nothing for ever
@@ -194,17 +202,34 @@ namespace CRT
 
             int updated = 0;
             int unreachable = 0;
+            int notFound = 0;
 
             foreach (SubmissionReceipt receipt in toCheck)
             {
                 token.ThrowIfCancellationRequested();
 
                 // Both a sentence and a sign of life: each one starts the two minutes again.
-                context.Report(CrtWaitWording.CheckingSubmission(updated + unreachable + 1, toCheck.Count));
+                context.Report(CrtWaitWording.CheckingSubmission(updated + unreachable + notFound + 1, toCheck.Count));
 
-                SubmissionStatus? status = this.StatusLookupForTests is not null
-                    ? await this.StatusLookupForTests(receipt.SubmissionId, receipt.UploadToken, token)
-                    : await client.GetStatusAsync(receipt.SubmissionId, receipt.UploadToken, token);
+                SubmissionStatus? status;
+
+                try
+                {
+                    status = this.StatusLookupForTests is not null
+                        ? await this.StatusLookupForTests(receipt.SubmissionId, receipt.UploadToken, token)
+                        : await client.GetStatusAsync(receipt.SubmissionId, receipt.UploadToken, token);
+                }
+                catch (SubmissionNotFoundException)
+                {
+                    // The server ANSWERED: it does not know it any more (deleted with its system, or
+                    // by a reset of the contribution data). The row says "No longer on the server",
+                    // and the minute check stops asking every minute. Counted apart from the rows
+                    // that could not be reached (code review, 2026-10-04): counted with them, the
+                    // status line said the server could not be reached while it was answering.
+                    SubmissionReceiptStore.NoteNotFound(receipt.SubmissionId, DateTimeOffset.UtcNow);
+                    notFound++;
+                    continue;
+                }
 
                 if (status is null)
                 {
@@ -223,7 +248,7 @@ namespace CRT
                 updated++;
             }
 
-            return (toCheck.Count, updated, unreachable);
+            return (toCheck.Count, updated, unreachable, notFound);
         }
 
         // ###########################################################################################
@@ -232,8 +257,11 @@ namespace CRT
         // "Nothing to check" is its own message rather than silence: a user who presses a button
         // and sees nothing happen assumes it is broken, when in fact every submission is already
         // decided and there is nothing left to ask about.
+        //
+        // A contribution the server no longer knows WAS answered for, so it counts as checked and
+        // is named apart - never as "could not be reached" (code review, 2026-10-04).
         // ###########################################################################################
-        private void ShowRefreshOutcome(int checkedCount, int updated, int unreachable)
+        private void ShowRefreshOutcome(int checkedCount, int updated, int unreachable, int notFound)
         {
             if (checkedCount == 0)
             {
@@ -241,13 +269,22 @@ namespace CRT
                 return;
             }
 
+            int answered = updated + notFound;
+
+            string gone = notFound switch
+            {
+                0 => string.Empty,
+                1 => " 1 is no longer on the server.",
+                _ => $" {notFound} are no longer on the server."
+            };
+
             if (unreachable == 0)
             {
-                this.ShowStatus(updated == 1 ? "Checked 1 contribution." : $"Checked {updated} contributions.");
+                this.ShowStatus((answered == 1 ? "Checked 1 contribution." : $"Checked {answered} contributions.") + gone);
                 return;
             }
 
-            if (updated == 0)
+            if (answered == 0)
             {
                 this.ShowStatus(
                     "The server could not be reached. The states below are the last ones known, " +
@@ -257,7 +294,7 @@ namespace CRT
             }
 
             this.ShowStatus(
-                $"Checked {updated}, but {unreachable} could not be reached. Those rows show their last known state.");
+                $"Checked {answered}, but {unreachable} could not be reached. Those rows show their last known state." + gone);
         }
 
         private void ShowStatus(string message)
@@ -341,6 +378,11 @@ namespace CRT
         public string AmendedText { get; }
 
         public bool HasAmendedText => !string.IsNullOrWhiteSpace(this.AmendedText);
+
+        // How to try it, while it is in the BETA source (2026-10-03) - empty otherwise.
+        public string BetaTryText { get; }
+
+        public bool HasBetaTryText => !string.IsNullOrWhiteSpace(this.BetaTryText);
 
         public bool HasSummary => !string.IsNullOrWhiteSpace(this.Summary);
         public bool HasCheckedText => !string.IsNullOrWhiteSpace(this.CheckedText);
@@ -466,7 +508,7 @@ namespace CRT
             this.SystemName = SubmissionListItem.DescribeSystem(receipt.SystemId);
 
             this.Summary = receipt.Summary ?? string.Empty;
-            this.StateText = SubmissionReceiptPresenter.DescribeState(receipt.LastKnownState);
+            this.StateText = SubmissionReceiptPresenter.DescribeReceiptState(receipt);
             this.SentText = SubmissionReceiptPresenter.DescribeSent(receipt.SentUtc);
 
             // Through the presenter like every other date on this row, so all three share one
@@ -478,6 +520,7 @@ namespace CRT
             // wording is pinned by unit tests rather than living in a data template.
             this.DecidedText = SubmissionReceiptPresenter.DescribeDecided(receipt.DecidedUtc);
             this.AmendedText = SubmissionReceiptPresenter.DescribeAmended(receipt.AmendedByMaintainer);
+            this.BetaTryText = SubmissionReceiptPresenter.DescribeReceiptBetaTry(receipt);
 
             this.MaintainerComment = receipt.MaintainerComment ?? string.Empty;
             this.HasUnreadComment = SubmissionReceiptPresenter.HasUnreadComment(receipt);
@@ -486,7 +529,7 @@ namespace CRT
             // The colour and the words both come off SubmissionReceiptPresenter, so they cannot
             // disagree about what this row's state means.
             this.StatusAccentBrush = SubmissionListItem.AccentFor(
-                SubmissionReceiptPresenter.ClassifyState(receipt.LastKnownState));
+                SubmissionReceiptPresenter.ClassifyReceipt(receipt));
 
             this.CardBackgroundBrush = SubmissionListItem.Theme("Card_Bg", Brushes.WhiteSmoke);
 

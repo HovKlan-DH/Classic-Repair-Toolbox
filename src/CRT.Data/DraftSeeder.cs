@@ -60,6 +60,28 @@ namespace Handlers.DataHandling
     public static class DraftSeeder
     {
         // ###########################################################################################
+        // *** SEEDS FROM THE PUBLISHED WORKBOOK AS IT IS ON DISK RIGHT NOW (owner report,
+        // 2026-10-02). *** The project owner edited a published workbook in Excel while CRT was
+        // open, then saved a component in the Contribute tab - and the new draft held none of the
+        // Excel edits. The save paths passed BoardDataReader.LoadAsync's CACHED board, read when the
+        // board was first shown, which knows nothing of a later edit. A draft is a copy of the FILE;
+        // so it is read here, uncached, the rule DraftWorkbookStore already keeps for a draft. Every
+        // save path that seeds calls this, so none can pass a stale board again.
+        // ###########################################################################################
+        public static DraftSeedResult SeedFromPublishedFile(string draftsRoot, string dataRoot, string excelDataFile)
+        {
+            string publishedPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
+            BoardData? published = BoardDataReader.ReadWorkbookUncached(publishedPath);
+
+            if (published is null)
+            {
+                return new DraftSeedResult { Reason = "The published board could not be read to copy it into a draft." };
+            }
+
+            return DraftSeeder.SeedFromPublished(draftsRoot, dataRoot, excelDataFile, published);
+        }
+
+        // ###########################################################################################
         // Seeds the draft folder for a system that IS published, by copying it.
         //
         // REFUSES TO OVERWRITE AN EXISTING DRAFT. Re-seeding would silently discard whatever the

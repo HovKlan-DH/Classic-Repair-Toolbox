@@ -14,27 +14,30 @@ namespace Handlers.MaintainerHandling
     // CRT.Data's DraftDiscardContract explains why CRT reports it at all.
     //
     // *** IT NEVER SAYS "WITHDRAWN". *** Discarding a draft deletes the contributor's working copy; it
-    // does not take back what they sent, and the submission is still theirs to have published. The
-    // sentence says both, so nobody rejects good work on a guess.
+    // does not take back what was sent, and the submission can still be published. The sentence
+    // says both, so nobody rejects good work on a guess.
+    //
+    // *** NEVER "THEIR" OR "THEM" FOR THE CONTRIBUTOR (owner request, 2026-10-01). *** "The
+    // contributor", "the draft" - no pronoun at all.
     //
     // Dates in the one format every submission line uses (SubmissionReceiptPresenter.FormatDate).
     // ###########################################################################################
     public static class DraftDiscardWording
     {
         // The BETA list row's mark - the row is a system, which may carry the work of more than one.
-        public const string ListMark = "Contributor discarded their draft";
+        public const string ListMark = "Contributor discarded the draft";
 
         // The short mark on a queue row and a Systems submission.
         public static string Mark(DateTimeOffset discardedUtc) =>
-            $"Contributor discarded their draft on {SubmissionReceiptPresenter.FormatDate(discardedUtc)}";
+            $"Contributor discarded the draft on {SubmissionReceiptPresenter.FormatDate(discardedUtc)}";
 
         // ###########################################################################################
         // Above an opened submission's table - before the maintainer decides on it.
         // ###########################################################################################
         public static string SubmissionWarning(DateTimeOffset discardedUtc, string? contactEmail) =>
-            $"The contributor discarded their own draft of this board on {SubmissionReceiptPresenter.FormatDate(discardedUtc)}. " +
-            "That does not withdraw what they sent, but they may have changed their mind - " +
-            $"check with them{DraftDiscardWording.Address(contactEmail)} before approving it.";
+            $"The contributor discarded the draft of this board on {SubmissionReceiptPresenter.FormatDate(discardedUtc)}. " +
+            "That does not withdraw the submission, but it may no longer be wanted - " +
+            $"check with the contributor{DraftDiscardWording.Address(contactEmail)} before approving it.";
 
         // ###########################################################################################
         // On "Beta > Prod", when the BETA state it would publish carries such a submission - the
@@ -49,13 +52,13 @@ namespace Handlers.MaintainerHandling
                 ? $" on {SubmissionReceiptPresenter.FormatDate(at)}"
                 : string.Empty;
 
-            return $"{who} discarded their own draft of this board{when}, after it was accepted into BETA. " +
-                "Consider pushing it back to the queue and checking with them before publishing it to production.";
+            return $"{who} discarded the draft of this board{when}, after it was accepted into BETA. " +
+                "Consider pushing it back to the queue and checking with the contributor before publishing it to the stable source.";
         }
 
         // The Systems screen's history line for the event.
         public static string HistoryWhat(string submissionNumber) =>
-            $"{submissionNumber} - the contributor discarded their own draft";
+            $"{submissionNumber} - the contributor discarded the draft";
 
         private static string Address(string? contactEmail) =>
             string.IsNullOrWhiteSpace(contactEmail) ? string.Empty : $" ({contactEmail.Trim()})";

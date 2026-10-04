@@ -27,10 +27,10 @@ public sealed class ProductionDisplayTests
     {
         ProductionSystemRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null);
 
-        Assert.Equal("BETA 2026-September-25, production 2026-May-14", ProductionDisplay.ListFooter(row));
-        Assert.Equal("BETA 2026-September-25, production 2026-May-14", ProductionDisplay.ListFooter(row with { AwaitsYou = true }));
+        Assert.Equal("BETA 2026-September-25, stable 2026-May-14", ProductionDisplay.ListFooter(row));
+        Assert.Equal("BETA 2026-September-25, stable 2026-May-14", ProductionDisplay.ListFooter(row with { AwaitsYou = true }));
         Assert.Equal(
-            "BETA 2026-September-25, production 2026-May-14 - with the other approver",
+            "BETA 2026-September-25, stable 2026-May-14 - with the other approver",
             ProductionDisplay.ListFooter(row with { AwaitsYou = false }));
     }
 
@@ -164,7 +164,7 @@ public sealed class ProductionDisplayTests
     public void The_headline_says_which_of_the_two_operations_this_is()
     {
         Assert.Contains(
-            "back to what production has",
+            "back to what the stable source has",
             ProductionDisplay.RollBackHeadline(ProductionDisplayTests.RollBack()),
             StringComparison.Ordinal);
 
@@ -230,7 +230,7 @@ public sealed class ProductionDisplayTests
         };
 
         Assert.Equal(
-            "Shared files, used by every board that cites them: 1 goes back to production's version.",
+            "Shared files, used by every board that cites them: 1 goes back to the stable source's version.",
             ProductionDisplay.RollBackSharedFiles(one));
 
         BetaRollbackPlanView many = ProductionDisplayTests.RollBack() with
@@ -239,7 +239,7 @@ public sealed class ProductionDisplayTests
         };
 
         Assert.Equal(
-            "Shared files, used by every board that cites them: 2 go back to production's version.",
+            "Shared files, used by every board that cites them: 2 go back to the stable source's version.",
             ProductionDisplay.RollBackSharedFiles(many));
 
         Assert.Equal(["a.png", "b.png"], ProductionDisplay.RollBackSharedPaths(many));
@@ -274,7 +274,7 @@ public sealed class ProductionDisplayTests
     {
         string one = ProductionDisplay.RejectExplanation(ProductionDisplayTests.RollBack());
 
-        Assert.Contains("BETA goes back to the data production already has", one, StringComparison.Ordinal);
+        Assert.Contains("BETA goes back to the data the stable source already has", one, StringComparison.Ordinal);
         Assert.Contains("is rejected", one, StringComparison.Ordinal);
         Assert.Contains("does not come back to the queue", one, StringComparison.Ordinal);
         Assert.Equal("Reject", ProductionDisplay.RejectConfirmButton(ProductionDisplayTests.RollBack()));
@@ -297,7 +297,7 @@ public sealed class ProductionDisplayTests
         // There is no "CRT Maintainer" any more (2026-09-29) - the Maintainer tab is CRT.
         Assert.DoesNotContain("CRT Maintainer", text, StringComparison.Ordinal);
         Assert.Contains("1 submission back in the queue", text, StringComparison.Ordinal);
-        Assert.Contains("Reject it from Contributor Submissions", text, StringComparison.Ordinal);
+        Assert.Contains("Reject it from \"Queue: Contributor submissions\"", text, StringComparison.Ordinal);
     }
 
     // The button says which operation it performs rather than a generic verb.
@@ -381,7 +381,7 @@ public sealed class ProductionDisplayTests
         var row = new ProductionSystemRow("Amstrad/CPC/464", "Amstrad", "CPC", "464", "2026-September-25", "h", null, null);
 
         Assert.Equal(
-            "Amstrad / CPC / 464  -  BETA 2026-September-25, never published to production",
+            "Amstrad / CPC / 464  -  BETA 2026-September-25, never published to the stable source",
             ProductionDisplay.SystemLine(row));
     }
 
@@ -393,7 +393,7 @@ public sealed class ProductionDisplayTests
         var row = new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "h", "2026-May-14", null);
 
         Assert.Equal(
-            "Commodore / C64 / 250407\nBETA 2026-September-25, production 2026-May-14",
+            "Commodore / C64 / 250407\nBETA 2026-September-25, stable 2026-May-14",
             ProductionDisplay.ListEntry(row));
     }
 

@@ -51,7 +51,7 @@ namespace Handlers.DataHandling
     // the bytes a returning submission carried at that path. Then it is put back to production's
     // bytes. One production never had STAYS (owner decision, 2026-09-27 - AutomaticRemovalScope):
     // nothing outside the system's own folder is removed automatically, so it becomes an unused
-    // file for Admin > Unused files. A shared file BETA holds DIFFERENT bytes for was written again
+    // file for Account > Unused files. A shared file BETA holds DIFFERENT bytes for was written again
     // by somebody later; it is theirs and is left alone.
     //
     // Leaving the submission's shared change in BETA was the first version's behaviour, and it was a
@@ -165,7 +165,7 @@ namespace Handlers.DataHandling
 
                 // A shared file the submission ADDED stays, unused (owner decision, 2026-09-27):
                 // nothing outside the system's own folder is removed automatically - see
-                // AutomaticRemovalScope. Admin > Unused files clears it on purpose.
+                // AutomaticRemovalScope. Account > Unused files clears it on purpose.
                 if (file.InProduction && !file.SameAsProduction)
                     restored.Add(path);
 

@@ -160,12 +160,29 @@ public sealed class ReviewFieldDiffTests
     }
 
     [Fact]
-    public void A_component_given_a_region_is_a_removal_plus_an_addition()
+    public void A_component_given_a_region_and_nothing_else_is_one_row_renamed()
     {
-        // The price of region being part of the identity, stated so it is a known behaviour and
-        // not a surprise: exactly as changing a label is.
+        // Region is part of a component's identity, so giving it one changes its key - as changing
+        // its label does. It was a removal plus an addition until 2026-10-04; with nothing else of
+        // the row changed it is now the same row, renamed (BoardDataDiffer.PairRenamedRows).
         BoardData published = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(region: ""));
         BoardData submitted = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(region: "PAL"));
+
+        ReviewSectionChange section = ReviewFieldDiffTests.Components(published, submitted);
+
+        ReviewRenamedRow renamed = Assert.Single(section.Renamed);
+        Assert.Equal("U8", renamed.From);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponent("U8", "PAL"), renamed.To);
+        Assert.False(renamed.AlsoChanged);
+        Assert.Empty(section.Added);
+        Assert.Empty(section.Removed);
+    }
+
+    [Fact]
+    public void A_component_given_a_region_AND_a_new_part_number_is_a_removal_plus_an_addition()
+    {
+        BoardData published = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(region: ""));
+        BoardData submitted = ReviewFieldDiffTests.Board(ReviewFieldDiffTests.Component(region: "PAL", part: "251715-01"));
 
         ReviewSectionChange section = ReviewFieldDiffTests.Components(published, submitted);
 
@@ -269,8 +286,9 @@ public sealed class ReviewFieldDiffTests
         // A section whose rows changed but which reports no field detail would leave a maintainer
         // back at "something changed". This walks one edit through each of the ten - nine of which
         // CHANGE a row. Important signals cannot: since 2026-09-26 both of their columns are the
-        // row's key (one display name covers several nets), so a new net is a removal plus an
-        // addition - pinned at the end.
+        // row's key (one display name covers several nets), so a new net is the row RENAMED (it was
+        // a removal plus an addition until 2026-10-04, when a row whose key alone changed became one
+        // row) - pinned at the end.
         var published = new BoardData
         {
             Schematics = [new BoardSchematicEntry { SchematicName = "S", SchematicImageFile = "a.png", CadName = "before" }],
@@ -312,7 +330,8 @@ public sealed class ReviewFieldDiffTests
 
         ReviewSectionChange signals = summary.ChangedSections.Single(section => section.Section == BoardWorkbookSchema.SheetKiCadImportantSignals);
         Assert.Empty(signals.Changed);
-        Assert.Single(signals.Removed);
-        Assert.Single(signals.Added);
+        Assert.Empty(signals.Removed);
+        Assert.Empty(signals.Added);
+        Assert.Single(signals.Renamed);
     }
 }

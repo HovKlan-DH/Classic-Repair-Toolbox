@@ -38,6 +38,33 @@
 										   Foreground="{Binding SubmissionAccentBrush}" />
 							</Border>
 
+							<!-- The draft's errors and warnings (owner report, 2026-10-02) - the
+							     table's own checks, in the colours of its sheet tabs' pills. -->
+							<Border Classes="DraftErrors"
+									IsVisible="{Binding HasErrors}"
+									Background="{DynamicResource BoardTable_Error_Mark}"
+									CornerRadius="9"
+									Padding="7,0"
+									VerticalAlignment="Center"
+									ToolTip.Tip="Something the server would refuse. Open the table to see it - every error has to be fixed before the draft can be submitted.">
+								<TextBlock Text="{Binding ErrorsText}"
+										   FontSize="10"
+										   FontWeight="SemiBold"
+										   Foreground="{DynamicResource BoardTable_Error_Fg}" />
+							</Border>
+							<Border Classes="DraftWarnings"
+									IsVisible="{Binding HasWarnings}"
+									Background="{DynamicResource BoardTable_Warning_Mark}"
+									CornerRadius="9"
+									Padding="7,0"
+									VerticalAlignment="Center"
+									ToolTip.Tip="Worth a look, but nothing stops the draft being submitted. Open the table to see them.">
+								<TextBlock Text="{Binding WarningsText}"
+										   FontSize="10"
+										   FontWeight="SemiBold"
+										   Foreground="{DynamicResource BoardTable_Warning_Fg}" />
+							</Border>
+
 							<!-- No "Updated officially" chip here any more (owner request,
 							     2026-09-28): it only repeated the DriftSummary line below, and
 							     was found confusing - e.g. beside "Published to BETA source",
@@ -98,13 +125,17 @@
 					     it. No account is needed to press this; the dialog asks only for
 					     an email address, so a maintainer can contact the contributor if
 					     they need to. The OUTCOME is reported in "My submissions" - no
-					     email is sent, see SubmissionReceipt's header. -->
+					     email is sent, see SubmissionReceipt's header.
+					     Greyed out too while the draft holds exactly what was last sent (2026-10-03).
+					     ShowOnDisabled, because a disabled button shows no tooltip otherwise - and
+					     the reason it is greyed out is what the tooltip is for. -->
 					<Button Grid.Column="5"
 							Content="Submit"
 							VerticalAlignment="Center"
 							Margin="0,0,8,0"
 							IsEnabled="{Binding CanSubmit}"
 							ToolTip.Tip="{Binding SubmitTooltip}"
+							ToolTip.ShowOnDisabled="True"
 							Command="{Binding SubmitCommand}" />
 
 					<Button Grid.Column="6"

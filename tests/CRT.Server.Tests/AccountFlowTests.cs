@@ -147,7 +147,7 @@ namespace CRT.Server.Tests
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Equal("dennis@example.com", mailer.Last!.ToAddress);
-            Assert.Contains("Hello Dennis,", mailer.Last.Body, StringComparison.Ordinal);
+            Assert.Contains("Hi Dennis,", mailer.Last.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("ATTACKER TEXT", mailer.Last.Body, StringComparison.Ordinal);
         }
 

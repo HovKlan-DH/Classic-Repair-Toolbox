@@ -43,4 +43,59 @@ public sealed class BoardTableDeletedWithTests
             "R12's 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
             deleted.Describe());
     }
+
+    // ------------------------------------------------------------------ Several components at once (2026-10-02)
+
+    // Two components deleted together are one sentence: the labels joined, each sheet's rows added
+    // up in the order the sheets came, "Their" highlights.
+    [Fact]
+    public void Several_components_are_one_sentence_with_each_sheets_rows_added_up()
+    {
+        BoardTableDeletedWith? deleted = BoardTableDeletedWith.Combine(
+        [
+            new BoardTableDeletedWith("U8", [new BoardTableSheetCount("Component images", 2), new BoardTableSheetCount("Component links", 1)], Highlights: 2),
+            new BoardTableDeletedWith("U9", [new BoardTableSheetCount("Component images", 1), new BoardTableSheetCount("Component local files", 1)], Highlights: 1),
+            new BoardTableDeletedWith("U10", [], Highlights: 0)
+        ]);
+
+        Assert.Equal(
+            "Also deleted with U8, U9 and U10: 3 rows on Component images, 1 on Component links and 1 on Component local files. " +
+            "Their 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            deleted!.Describe());
+    }
+
+    // Two regional variants of one component deleted together: the first finds the rows to take,
+    // both count its highlights - which are counted once, and the component named once.
+    [Fact]
+    public void A_component_met_twice_is_named_once_and_its_highlights_counted_once()
+    {
+        BoardTableDeletedWith? deleted = BoardTableDeletedWith.Combine(
+        [
+            new BoardTableDeletedWith("U8", [new BoardTableSheetCount("Component images", 3)], Highlights: 2),
+            new BoardTableDeletedWith("u8", [], Highlights: 2)
+        ]);
+
+        Assert.Equal(
+            "Also deleted with U8: 3 rows on Component images. Its 2 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            deleted!.Describe());
+    }
+
+    // Several components with only highlights between them; one part is returned as it is; none is null.
+    [Fact]
+    public void Several_with_only_highlights_name_the_components_and_one_or_none_is_unchanged()
+    {
+        BoardTableDeletedWith? highlightsOnly = BoardTableDeletedWith.Combine(
+        [
+            new BoardTableDeletedWith("R12", [], Highlights: 1),
+            new BoardTableDeletedWith("R13", [], Highlights: 2)
+        ]);
+
+        Assert.Equal(
+            "The 3 highlights of R12 and R13 on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            highlightsOnly!.Describe());
+
+        var one = new BoardTableDeletedWith("R12", [], Highlights: 1);
+        Assert.Same(one, BoardTableDeletedWith.Combine([one]));
+        Assert.Null(BoardTableDeletedWith.Combine([]));
+    }
 }

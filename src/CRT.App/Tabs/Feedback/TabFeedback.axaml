@@ -33,6 +33,15 @@
                     </Style>
                 </TextBox.Styles>
             </TextBox>
+
+            <!-- Shown, with the box read only, while a maintainer is signed in on the Maintainer tab
+                 and the address is the account's (2026-10-01, ContactAddress.FeedbackNote). -->
+            <TextBlock
+                x:Name="EmailAccountNoteText"
+                IsVisible="False"
+                TextWrapping="Wrap"
+                Opacity="0.75"
+                FontSize="12" />
         </StackPanel>
 
         <!-- Feedback Area -->

@@ -10,8 +10,8 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // Pre-submit validation of the "Component images" section, driven through the real window.
 //
-// ContributionPackagingTests already pins the rule itself (blank file -> NoFileSelected, wrong type
-// -> NotDisplayable). What is checked here is the half that rule alone cannot prove: that a marked
+// ContributionPackagingTests already pins the rule itself (no file and no note -> NoFileOrNote,
+// wrong type -> NotDisplayable, a note and no file -> fine). What is checked here is the half that rule alone cannot prove: that a marked
 // row actually LOOKS marked. The mark travels model -> binding -> style, and every step of that is
 // silently survivable if it breaks - a mistyped Classes binding or a style that loses to a local
 // value simply shows nothing, and the user is told "you cannot save" with nothing to point at.
@@ -31,8 +31,11 @@ namespace ClassicRepairToolbox.Tests.Ui;
 [Collection("HeadlessUi")]
 public class ComponentContributionValidationTests
 {
+    // Case 2 (2026-10-02). The message says what would make the row acceptable - a file OR a note -
+    // since "no file selected" alone sent the contributor looking for a file a note-only row never
+    // needed.
     [Fact]
-    public void A_component_image_row_with_no_file_chosen_is_marked_and_blocks_submission()
+    public void A_component_image_row_with_neither_a_file_nor_a_note_is_marked_and_blocks_saving()
     {
         UiTest.Run(() =>
         {
@@ -47,10 +50,30 @@ public class ComponentContributionValidationTests
 
             Assert.NotNull(problem);
             Assert.True(emptyRow.HasFileError);
-            Assert.Equal("No image file selected", emptyRow.FileErrorText);
+            Assert.Equal("No file or note", emptyRow.FileErrorText);
 
             // The status message has to name the row, or "something is wrong" is all the user gets.
-            Assert.Contains("Component image #1", ProblemMessage(problem));
+            Assert.Equal("Component image #1 has neither a file nor a note - add one of them", ProblemMessage(problem));
+        });
+    }
+
+    // Case 6. A row added here with only a note typed is the same kind of row as the C128's
+    // "Pinout" rows that give a compatible part number - valid in the table and on the server, so
+    // valid here too.
+    [Fact]
+    public void A_new_image_row_with_only_a_note_typed_is_accepted()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentContributionWindow();
+            var rows = GetComponentImageRows(window);
+
+            var noteRow = new ContributionComponentImageRow { Name = "Pinout", Note = "Compatible part-number: 1N4148" };
+            rows.Add(noteRow);
+
+            Assert.Null(Validate(window));
+            Assert.False(noteRow.HasFileError);
+            Assert.Equal(string.Empty, noteRow.FileErrorText);
         });
     }
 

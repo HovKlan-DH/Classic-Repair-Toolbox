@@ -46,9 +46,9 @@ public sealed class DraftDiscardShownTests
         });
     }
 
-    // Above the table, before anything else - it is the first thing to settle before approving.
+    // Above the submission's views, before anything else - the first thing to settle before approving.
     [Fact]
-    public void An_opened_submission_warns_above_its_table_to_ask_the_contributor_first()
+    public void An_opened_submission_warns_above_its_views_to_ask_the_contributor_first()
     {
         UiTest.Run(() =>
         {
@@ -68,7 +68,7 @@ public sealed class DraftDiscardShownTests
                 [],
                 null));
 
-            TextBlock first = main.FindControl<StackPanel>("NotInTablePanel")!.Children.OfType<TextBlock>().First();
+            TextBlock first = main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().First();
 
             Assert.Equal(DraftDiscardWording.SubmissionWarning(Discarded, "dennis@example.com"), first.Text);
         });

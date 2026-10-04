@@ -17,7 +17,15 @@ namespace CRT.Server.Handlers.Submissions
     //
     // WHICH SYSTEMS: the `systems` rows unioned with the boards in the BETA tree - the list the
     // administrator's Maintainers screen uses (MaintainerAssignmentFlows.ListSystemsAsync), for the
-    // same reason: a shipped board nobody has submitted to has no row, and is still a system.
+    // same reason: a shipped board nobody has submitted to has no row, and is still a system - and,
+    // since 2026-10-04, anything the STABLE source holds or lists that BETA does not (owner request:
+    // "I do not expect there should be cases where something can only be listed in stable? If so, it
+    // must be flagged in the left-sided menu 'Systems' list"). Such a system was missing from the
+    // screen altogether; it is now on it, and the Maintainer tab marks it as off.
+    //
+    // THE DROP-DOWN LISTS (2026-10-04): each entry says whether BETA's and the stable source's newest
+    // main Excel data file list it (ListedInBeta / ListedInStable, SystemListings) - read by the
+    // endpoint, null where a list could not be read.
     //
     // The shape SubmissionFlows and ContributorHistory keep: the async methods only fetch, and every
     // rule - what a system's state is, who counts as one contributor, which state word a submission
@@ -25,9 +33,11 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class SystemOverviewFlow
     {
-        // The most submissions one system's screen lists - the newest. Contributors are counted over
-        // up to StoreLimit, which is every submission any board here has had.
-        public const int ListedSubmissions = 50;
+        // The most submissions one system's screen lists - the newest. Its History view shows the
+        // system's WHOLE history (owner request, 2026-10-04), one card per submission, so this is a
+        // bound no board comes near rather than a page size. Contributors are counted over up to
+        // StoreLimit, which is every submission any board here has had.
+        public const int ListedSubmissions = 500;
         public const int StoreLimit = 1000;
 
         public static async Task<SystemOverviewOutcome> ListAsync(
@@ -38,7 +48,8 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             CancellationToken cancellationToken = default,
             IBoardViewStore? boardViews = null,
-            DateTimeOffset? now = null)
+            DateTimeOffset? now = null,
+            SystemListings? listings = null)
         {
             ArgumentNullException.ThrowIfNull(inBeta);
             ArgumentNullException.ThrowIfNull(submissions);
@@ -57,7 +68,7 @@ namespace CRT.Server.Handlers.Submissions
                 boardViews is not null);
 
             return SystemOverviewOutcome.Listed(
-                SystemOverviewFlow.WithViews(SystemOverviewFlow.Entries(rows, inBeta, inProduction, maintainers), views));
+                SystemOverviewFlow.WithViews(SystemOverviewFlow.Entries(rows, inBeta, inProduction, maintainers, listings), views));
         }
 
         // ###########################################################################################
@@ -106,7 +117,8 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             CancellationToken cancellationToken = default,
             DateTimeOffset? now = null,
-            IBoardViewStore? boardViews = null)
+            IBoardViewStore? boardViews = null,
+            SystemListings? listings = null)
         {
             ArgumentNullException.ThrowIfNull(inBeta);
             ArgumentNullException.ThrowIfNull(submissions);
@@ -120,9 +132,11 @@ namespace CRT.Server.Handlers.Submissions
 
             SystemRecord? row = await submissions.FindSystemAsync(systemId, cancellationToken);
             PublishedSystemLister.KnownSystem? known = inBeta.FirstOrDefault(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
+            PublishedSystemLister.KnownSystem? inStable = inProduction?.FirstOrDefault(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
 
-            // A system is a row or a board in the tree - neither is no system at all.
-            if (row is null && known is null)
+            // A system is a row, a board in either tree, or a row in the stable source's drop-down
+            // list (2026-10-04) - none of them is no system at all.
+            if (row is null && known is null && inStable is null && listings?.Stable?.Contains(systemId) != true)
                 return SystemOverviewOutcome.NotFound();
 
             List<MaintainerRecord> pool = (await accounts.ListMaintainersAsync(cancellationToken))
@@ -155,7 +169,7 @@ namespace CRT.Server.Handlers.Submissions
             BoardViewStatistics? views = facts is null ? null : BoardViewStatisticsRules.Build(facts, at);
 
             SystemOverviewEntry entry = SystemOverviewFlow.Entry(
-                systemId, row, known, SystemOverviewFlow.Holds(inProduction, systemId), pool.Count) with
+                systemId, row, known, SystemOverviewFlow.Holds(inProduction, systemId), pool.Count, listings, inStable) with
             {
                 ViewsLast30Days = views?.Last30Days
             };
@@ -187,25 +201,33 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyDictionary<long, DateTimeOffset> returns = await submissions.GetBetaReturnsAsync(
                 sent.Select(record => record.Submission.Id).ToList(), cancellationToken);
 
+            // What each changed as it went into BETA (2026-10-04, migration 0017) - the History view's
+            // summaries. One that cannot be read leaves the summaries out, never the screen.
+            IReadOnlyDictionary<long, SubmissionChanges>? changes = await SystemOverviewFlow.ReadViewsAsync(
+                () => submissions.GetChangesAsync(sent.Select(record => record.Submission.Id).ToList(), cancellationToken),
+                canRead: true);
+
             return SystemOverviewOutcome.Described(new SystemDetailAnswer(
                 entry,
                 pool.Select(maintainer => new PoolMaintainerEntry(maintainer.AccountId, maintainer.DisplayName, maintainer.Email)).ToList(),
                 SystemOverviewFlow.Contributors(sent, named),
-                SystemOverviewFlow.Submissions(sent, row?.ProductionPublishedUtc, named, discarded, returns),
+                SystemOverviewFlow.Submissions(sent, row?.ProductionPublishedUtc, named, discarded, returns, changes),
                 invitations,
                 SystemHistoryRules.Build(sent, named, audit),
                 views));
         }
 
         // ###########################################################################################
-        // The list: every row and every board in the BETA tree, once each, ordered by id - the
-        // order the administrator's Maintainers screen uses, so the two lists read alike.
+        // The list: every row, every board in the BETA tree - and every board the stable source holds
+        // or lists that BETA does not (2026-10-04), so what is off there shows - once each, ordered
+        // by id: the order the administrator's Maintainers screen uses, so the two lists read alike.
         // ###########################################################################################
         public static IReadOnlyList<SystemOverviewEntry> Entries(
             IReadOnlyList<SystemRecord> rows,
             IReadOnlyList<PublishedSystemLister.KnownSystem> inBeta,
             IReadOnlyList<PublishedSystemLister.KnownSystem>? inProduction,
-            IReadOnlyList<MaintainerRecord> maintainers)
+            IReadOnlyList<MaintainerRecord> maintainers,
+            SystemListings? listings = null)
         {
             ArgumentNullException.ThrowIfNull(rows);
             ArgumentNullException.ThrowIfNull(inBeta);
@@ -223,15 +245,29 @@ namespace CRT.Server.Handlers.Submissions
                 .GroupBy(maintainer => maintainer.SystemId, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
+            Dictionary<string, PublishedSystemLister.KnownSystem> byStable = (inProduction ?? [])
+                .GroupBy(system => system.SystemId, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+            // A row of the stable list naming a system nothing else knows - by its id, which is how
+            // the file names it (MasterListingRow.SystemId). The lists match ids in any case, so one
+            // differing only in case from a known system is that system, not another.
+            var known = new HashSet<string>(byRow.Keys.Concat(byTree.Keys).Concat(byStable.Keys), StringComparer.OrdinalIgnoreCase);
+            IEnumerable<string> listedOnly = ((IEnumerable<string>?)listings?.Stable ?? []).Where(id => !known.Contains(id));
+
             return byRow.Keys
                 .Union(byTree.Keys, StringComparer.Ordinal)
+                .Union(byStable.Keys, StringComparer.Ordinal)
+                .Union(listedOnly, StringComparer.Ordinal)
                 .OrderBy(id => id, StringComparer.Ordinal)
                 .Select(id => SystemOverviewFlow.Entry(
                     id,
                     byRow.GetValueOrDefault(id),
                     byTree.GetValueOrDefault(id),
                     SystemOverviewFlow.Holds(inProduction, id),
-                    poolSizes.GetValueOrDefault(id)))
+                    poolSizes.GetValueOrDefault(id),
+                    listings,
+                    byStable.GetValueOrDefault(id)))
                 .ToList();
         }
 
@@ -239,18 +275,26 @@ namespace CRT.Server.Handlers.Submissions
         // One system's facts. The row names it where there is one (it is the truth once anything has
         // been submitted); the tree names a shipped board nobody has touched.
         // ###########################################################################################
+        //
+        // `inStable` names a board the stable source holds and BETA does not; a system nothing but the
+        // stable source's drop-down list knows is named from its id's three folders.
         public static SystemOverviewEntry Entry(
             string systemId,
             SystemRecord? row,
             PublishedSystemLister.KnownSystem? inBeta,
             bool? inProduction,
-            int maintainerCount)
+            int maintainerCount,
+            SystemListings? listings = null,
+            PublishedSystemLister.KnownSystem? inStable = null)
         {
+            string[] parts = systemId.Split('/');
+            string Part(int index) => parts.Length == 3 ? parts[index] : string.Empty;
+
             return new SystemOverviewEntry(
                 systemId,
-                row?.Manufacturer ?? inBeta?.Manufacturer ?? string.Empty,
-                row?.Hardware ?? inBeta?.Hardware ?? string.Empty,
-                row?.Board ?? inBeta?.Board ?? string.Empty,
+                row?.Manufacturer ?? inBeta?.Manufacturer ?? inStable?.Manufacturer ?? Part(0),
+                row?.Hardware ?? inBeta?.Hardware ?? inStable?.Hardware ?? Part(1),
+                row?.Board ?? inBeta?.Board ?? inStable?.Board ?? Part(2),
                 InBeta: inBeta is not null,
                 InProduction: inProduction,
                 IsAwaitingProduction: ProductionPromotionRules.IsAwaitingProduction(row),
@@ -260,8 +304,36 @@ namespace CRT.Server.Handlers.Submissions
                 BetaRevision: row?.CurrentRevision,
                 ProductionRevision: row?.ProductionRevision,
                 ProductionPublishedUtc: row?.ProductionPublishedUtc,
-                MaintainerCount: maintainerCount);
+                MaintainerCount: maintainerCount,
+
+                // What BETA holds, as last published or pushed back - the Systems screen reads its
+                // table again when this moves (2026-10-04).
+                BetaContentHash: row?.ContentHash,
+
+                // Whether each source's drop-down list names it (2026-10-04) - null when unknown.
+                ListedInBeta: listings?.Beta?.Contains(systemId),
+                ListedInStable: listings?.Stable?.Contains(systemId));
         }
+
+        // ###########################################################################################
+        // WHICH SYSTEMS EACH SOURCE'S DROP-DOWN LISTS NAME (2026-10-04) - BETA's and the stable
+        // source's newest main Excel data file, by system id, any case. A list that cannot be read is
+        // null, never empty: "not listed" is only said after looking. The systems overview is read
+        // every minute while its screen is shown, so each file is read once per version
+        // (MasterListingIds) rather than on every request.
+        // ###########################################################################################
+        public static SystemListings ReadListings(string? betaRoot, string? stableRoot) =>
+            new(SystemOverviewFlow.ListedIds(betaRoot), SystemOverviewFlow.ListedIds(stableRoot));
+
+        private static IReadOnlySet<string>? ListedIds(string? root)
+        {
+            if (string.IsNullOrWhiteSpace(root) || MasterListing.NewestMasterPath(root) is not string master)
+                return null;
+
+            return SystemOverviewFlow.ListingReads.Read(master);
+        }
+
+        private static readonly MasterListingIds ListingReads = new();
 
         // ###########################################################################################
         // Who has contributed to this system, and how it went - newest contributor first.
@@ -328,12 +400,14 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         //
         // `discarded` (2026-09-28): when each contributor discarded their own draft since sending.
+        // `changes` (2026-10-04): what each changed as it went into BETA, where that was recorded.
         public static IReadOnlyList<SystemSubmissionEntry> Submissions(
             IEnumerable<SystemSubmissionRecord> sent,
             DateTimeOffset? systemProductionPublishedUtc,
             IReadOnlyDictionary<long, AccountRecord>? accounts = null,
             IReadOnlyDictionary<long, DateTimeOffset>? discarded = null,
-            IReadOnlyDictionary<long, DateTimeOffset>? returns = null)
+            IReadOnlyDictionary<long, DateTimeOffset>? returns = null,
+            IReadOnlyDictionary<long, SubmissionChanges>? changes = null)
         {
             ArgumentNullException.ThrowIfNull(sent);
 
@@ -353,7 +427,8 @@ namespace CRT.Server.Handlers.Submissions
                     submission.CreatedUtc,
                     submission.DecidedUtc,
                     submission.DecisionComment,
-                    discarded is not null && discarded.TryGetValue(submission.Id, out DateTimeOffset at) ? at : null))
+                    discarded is not null && discarded.TryGetValue(submission.Id, out DateTimeOffset at) ? at : null,
+                    changes?.GetValueOrDefault(submission.Id)))
                 .ToList();
         }
 
@@ -372,6 +447,57 @@ namespace CRT.Server.Handlers.Submissions
         // Whether the production tree holds the board - null when there is no production tree to ask.
         private static bool? Holds(IReadOnlyList<PublishedSystemLister.KnownSystem>? tree, string systemId) =>
             tree is null ? null : tree.Any(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
+    }
+
+    // Which systems each source's drop-down lists name - null for a list that could not be read, or a
+    // source the server does not have (SystemOverviewFlow.ReadListings).
+    public sealed record SystemListings(IReadOnlySet<string>? Beta, IReadOnlySet<string>? Stable);
+
+    // ###########################################################################################
+    // A main Excel data file's system ids, read once per version of the file (its path, size and
+    // last write) - the overview asks every minute, and the file changes a few times a month.
+    // ###########################################################################################
+    public sealed class MasterListingIds
+    {
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Written, long Size, IReadOnlySet<string> Ids)> thisRead =
+            new(StringComparer.Ordinal);
+
+        public IReadOnlySet<string>? Read(string masterPath)
+        {
+            try
+            {
+                var file = new FileInfo(masterPath);
+
+                if (!file.Exists)
+                    return null;
+
+                if (this.thisRead.TryGetValue(masterPath, out var cached) &&
+                    cached.Written == file.LastWriteTimeUtc &&
+                    cached.Size == file.Length)
+                {
+                    return cached.Ids;
+                }
+
+                if (!MasterListing.TryRead(masterPath, out IReadOnlyList<MasterListingRow> rows, out _))
+                    return null;
+
+                IReadOnlySet<string> ids = rows
+                    .Select(row => row.SystemId)
+                    .Where(id => id.Length > 0)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                this.thisRead[masterPath] = (file.LastWriteTimeUtc, file.Length, ids);
+                return ids;
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
     }
 
     public sealed record SystemOverviewOutcome(

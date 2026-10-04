@@ -119,7 +119,7 @@ namespace Handlers.DataHandling
             // A NEW system is not refused here any more (2026-09-25): until it is published and
             // synced, the published-workbook check below keeps it, since there is nothing to
             // compare against. See the class header.
-            if (string.IsNullOrWhiteSpace(status.WorkbookPath) || !File.Exists(status.WorkbookPath))
+            if (string.IsNullOrWhiteSpace(status.WorkbookPath))
             {
                 return false;
             }
@@ -129,6 +129,23 @@ namespace Handlers.DataHandling
             {
                 // The publish may be real and the sync simply not have run yet. Keep the draft.
                 return false;
+            }
+
+            // ###########################################################################################
+            // *** A DRAFT THAT LOST ITS WORKBOOK (owner report, 2026-10-02; cases agreed with the
+            // project owner). *** A discard that stopped part-way - the delete went in name order,
+            // the workbook first - left the ZX Spectrum Issue 4B draft as a marker and three images.
+            // This answered "no workbook, keep it" every time, so it was never retired and read as
+            // "0 rows changed" with the drift bar up, for good. The order is fixed
+            // (DraftWorkbookStore.Discard); this clears a draft already in that state.
+            //
+            // With no workbook there are no rows left to protect, so the question is the files alone,
+            // and ALL of them: a left-behind highlights file is compared too, byte for byte with
+            // stable's, since it can hold the contributor's own marking.
+            // ###########################################################################################
+            if (!File.Exists(status.WorkbookPath))
+            {
+                return DraftRetirement.FilesMatchPublished(status, workbookIsGone: true);
             }
 
             BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
@@ -159,7 +176,7 @@ namespace Handlers.DataHandling
             }
 
             // And the bytes of every file the draft folder holds.
-            return DraftRetirement.FilesMatchPublished(status);
+            return DraftRetirement.FilesMatchPublished(status, workbookIsGone: false);
         }
 
         // ###########################################################################################
@@ -197,8 +214,13 @@ namespace Handlers.DataHandling
         // The workbook and its sidecar are skipped here: their CONTENT has already been compared
         // above, and comparing their bytes would fail on nothing more than a different writer's
         // formatting. The draft marker is local bookkeeping and never published.
+        //
+        // workbookIsGone: a draft whose workbook a stopped discard removed (see IsRetirable). Its
+        // content was never compared, so a sidecar left behind is compared here, byte for byte
+        // with the published board's own - found by the published WORKBOOK's name, which for a new
+        // system differs from the draft's.
         // ###########################################################################################
-        private static bool FilesMatchPublished(DraftStatus status)
+        private static bool FilesMatchPublished(DraftStatus status, bool workbookIsGone)
         {
             string? draftFolder = Path.GetDirectoryName(status.WorkbookPath);
             string? publishedFolder = Path.GetDirectoryName(status.PublishedWorkbookPath);
@@ -216,9 +238,19 @@ namespace Handlers.DataHandling
                 foreach (string draftFile in Directory.EnumerateFiles(draftFolder, "*", SearchOption.AllDirectories))
                 {
                     if (DraftRetirement.SamePath(draftFile, status.WorkbookPath)
-                        || DraftRetirement.SamePath(draftFile, draftSidecar)
                         || DraftFolderLayout.IsDraftOnlyFile(draftFile))
                     {
+                        continue;
+                    }
+
+                    if (DraftRetirement.SamePath(draftFile, draftSidecar))
+                    {
+                        if (workbookIsGone
+                            && !DraftRetirement.SameBytes(draftFile, BoardComponentHighlightStorage.GetJsonPath(status.PublishedWorkbookPath)))
+                        {
+                            return false;
+                        }
+
                         continue;
                     }
 

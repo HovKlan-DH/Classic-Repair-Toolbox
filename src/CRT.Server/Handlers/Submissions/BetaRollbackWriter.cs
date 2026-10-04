@@ -24,7 +24,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** NO SHARED FILE IS EVER REMOVED HERE (owner decision, 2026-09-27). *** A shared file is
     // only ever RESTORED to production's bytes; one the rolled-back submissions added stays, unused,
-    // for Admin > Unused files (AutomaticRemovalScope). The system's own BETA-only files are removed
+    // for Account > Unused files (AutomaticRemovalScope). The system's own BETA-only files are removed
     // directly: production's workbook, now in place, does not cite them.
     // ###########################################################################################
     public static class BetaRollbackWriter
@@ -58,7 +58,7 @@ namespace CRT.Server.Handlers.Submissions
             foreach (string path in plan.AllRestored)
             {
                 if (!SubmissionPathRules.TryResolve(productionRoot, path, out string source, out string sourceWhy))
-                    return BetaRollbackWriteOutcome.Failed($"[{path}] cannot be read from production: {sourceWhy} Nothing was changed.");
+                    return BetaRollbackWriteOutcome.Failed($"[{path}] cannot be read from the stable source: {sourceWhy} Nothing was changed.");
 
                 if (!SubmissionPathRules.TryResolve(betaRoot, path, out string destination, out string destinationWhy))
                     return BetaRollbackWriteOutcome.Failed($"[{path}] cannot be written to BETA: {destinationWhy} Nothing was changed.");
@@ -75,7 +75,7 @@ namespace CRT.Server.Handlers.Submissions
                 }
 
                 if (!filePlan.ProductionHashes.TryGetValue(path, out string? hash) || !File.Exists(source))
-                    return BetaRollbackWriteOutcome.Failed($"[{path}] is no longer in production, or cannot be read there. Nothing was changed.");
+                    return BetaRollbackWriteOutcome.Failed($"[{path}] is no longer in the stable source, or cannot be read there. Nothing was changed.");
 
                 restores.Add((path, source, destination, hash));
             }
@@ -141,8 +141,8 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     return BetaRollbackWriteOutcome.Failed(
                         result == VerifiedCopyResult.HashMismatch
-                            ? $"[{path}] changed in production after it was checked, so it was not restored. " + BetaRollbackWriter.PartialSentence(restored)
-                            : $"[{path}] is no longer in production. " + BetaRollbackWriter.PartialSentence(restored),
+                            ? $"[{path}] changed in the stable source after it was checked, so it was not restored. " + BetaRollbackWriter.PartialSentence(restored)
+                            : $"[{path}] is no longer in the stable source. " + BetaRollbackWriter.PartialSentence(restored),
                         restored);
                 }
 

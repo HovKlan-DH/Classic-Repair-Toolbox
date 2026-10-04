@@ -507,41 +507,6 @@ namespace CRT
         public string Url { get; set; } = string.Empty;
     }
 
-    public sealed class ComponentContributionPayload
-    {
-        // Bumped whenever the payload schema changes, so the server review page can tell which
-        // contract a queued submission was produced with. Version 2 added BoardExcelFile,
-        // BoardRevisionDate and the per-row ZipEntry pointers.
-        public int PayloadFormat { get; set; } = 2;
-        public string ApplicationVersion { get; set; } = string.Empty;
-        public string HardwareName { get; set; } = string.Empty;
-        public string BoardName { get; set; } = string.Empty;
-        public string BoardExcelFile { get; set; } = string.Empty;
-        public string BoardRevisionDate { get; set; } = string.Empty;
-        public string Region { get; set; } = string.Empty;
-        public string ComponentBoardLabel { get; set; } = string.Empty;
-        public string ComponentDisplayText { get; set; } = string.Empty;
-        public string ComponentUuidV4 { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Comment { get; set; } = string.Empty;
-        public DateTimeOffset SubmittedUtc { get; set; }
-
-        // True when this submission asks for the component to be REMOVED rather than changed. The
-        // component-scoped sections below are then sent present-but-empty, which the server's
-        // buildDiffSections already reads as "remove every server row in this section" - so the
-        // flag adds no new merge behaviour. What it adds is that the review page can say what it
-        // is looking at, instead of the maintainer inferring a deletion from five empty lists.
-        public bool DeleteComponent { get; set; }
-
-        public List<ContributionComponentRow> Components { get; set; } = new();
-        public List<ContributionComponentImageRow> ComponentImages { get; set; } = new();
-        public List<ComponentHighlightEntry> ComponentHighlights { get; set; } = new();
-        public List<ContributionComponentLocalFileRow> ComponentLocalFiles { get; set; } = new();
-        public List<ContributionComponentLinkRow> ComponentLinks { get; set; } = new();
-        public List<ContributionBoardLocalFileRow> BoardLocalFiles { get; set; } = new();
-        public List<ContributionBoardLinkRow> BoardLinks { get; set; } = new();
-    }
-
     public partial class ComponentContributionWindow : Window
     {
         public ObservableCollection<string> AvailableEndFolders { get; } = new();
@@ -1475,26 +1440,15 @@ namespace CRT
 
             // *** A SYSTEM WITH NO DRAFT IS SEEDED FIRST, as on every other save path. *** A draft
             // is a complete copy of the published board; starting an empty one here would produce
-            // a draft that reads as "every published row deleted".
+            // a draft that reads as "every published row deleted". Copied from the published FILE
+            // as it is now, never from the board cache - see DraftSeeder.SeedFromPublishedFile.
             if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, this.thisBoardExcelFile))
             {
-                string publishedPath = DraftBoardSource.PublishedPathOf(
-                    this.thisDataRoot,
-                    this.thisBoardExcelFile);
+                string seedDraftsRoot = DraftManager.DraftsRoot;
+                string seedDataRoot = this.thisDataRoot;
+                string seedExcelDataFile = this.thisBoardExcelFile;
 
-                BoardData? published = await BoardDataReader.LoadAsync(publishedPath, publishedPath);
-
-                if (published == null)
-                {
-                    Logger.Warning("Component draft save failed - could not read the board to seed a draft from");
-                    return false;
-                }
-
-                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublished(
-                    DraftManager.DraftsRoot,
-                    this.thisDataRoot,
-                    this.thisBoardExcelFile,
-                    published));
+                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublishedFile(seedDraftsRoot, seedDataRoot, seedExcelDataFile));
 
                 if (!seeded.Created)
                 {
@@ -1911,7 +1865,9 @@ namespace CRT
         // Marks every component image row that cannot be submitted and returns the first of them
         // together with the message for the status line, or null when all rows are fine. Marking
         // happens on every row, not just the first, so one pass shows the maintainer every problem;
-        // rows that are fine get their mark cleared here too.
+        // rows that are fine get their mark cleared here too. A row with a note and no file is fine,
+        // as in the table (see ContributionPackaging.ValidateComponentImageFile) - so it needs the
+        // row's note as well as its file.
         // ###########################################################################################
         private (ContributionComponentImageRow Row, string Message)? ValidateComponentImageRows()
         {
@@ -1920,11 +1876,11 @@ namespace CRT
             for (int index = 0; index < this.thisComponentImageRows.Count; index++)
             {
                 var row = this.thisComponentImageRows[index];
-                var problem = ContributionPackaging.ValidateComponentImageFile(GetStoredFilePath(row));
+                var problem = ContributionPackaging.ValidateComponentImageFile(GetStoredFilePath(row), row.Note);
 
                 row.FileErrorText = problem switch
                 {
-                    ContributionPackaging.ComponentImageFileProblem.NoFileSelected => "No image file selected",
+                    ContributionPackaging.ComponentImageFileProblem.NoFileOrNote => "No file or note",
                     ContributionPackaging.ComponentImageFileProblem.NotDisplayable => "Not an image the application can display",
                     _ => string.Empty
                 };
@@ -1935,8 +1891,8 @@ namespace CRT
                 {
                     string rowLabel = $"Component image #{index + 1}";
 
-                    string message = problem == ContributionPackaging.ComponentImageFileProblem.NoFileSelected
-                        ? $"{rowLabel} has no file selected"
+                    string message = problem == ContributionPackaging.ComponentImageFileProblem.NoFileOrNote
+                        ? $"{rowLabel} has neither a file nor a note - add one of them"
                         : $"{rowLabel} is not a format the application can display - use one of: " +
                           string.Join(", ", ContributionPackaging.DisplayableImageExtensions);
 

@@ -32,6 +32,11 @@ public sealed class ApprovalWordingTests
         Assert.Equal("Approve and publish to BETA", ApprovalWording.ApproveButton(ordinary, "BETA"));
         Assert.Null(ApprovalWording.StatusLine(ordinary));
 
+        // An account that may not publish is told so in this line (2026-09-30) - it was the Approve
+        // button's tooltip, which at the bottom of the window took the click meant for the button.
+        Assert.Equal(ApprovalWording.NotAMaintainer, ApprovalWording.StatusLine(ordinary, canPublish: false));
+        Assert.Equal(ApprovalWording.NotAMaintainer, ApprovalWording.StatusLine(null, canPublish: false));
+
         // An older server sends no status at all; one approval publishing is what it did.
         Assert.Equal("Approve and publish to BETA", ApprovalWording.ApproveButton(null, "BETA"));
         Assert.True(ApprovalWording.CanApprove(null));
@@ -51,7 +56,7 @@ public sealed class ApprovalWordingTests
     {
         ApprovalStatus second = ApprovalWordingTests.Both(ApproverRole.Administrator, ApprovalWordingTests.Anna());
 
-        Assert.Equal("Approve and publish to production", ApprovalWording.ApproveButton(second, "production"));
+        Assert.Equal("Approve and publish to stable", ApprovalWording.ApproveButton(second, "stable"));
     }
 
     [Fact]
@@ -83,7 +88,7 @@ public sealed class ApprovalWordingTests
         ApprovalStatus secondAdmin = ApprovalRules.Status(
             [ApproverRole.Maintainer, ApproverRole.Administrator], [admin], ApproverRole.Administrator, yourAccountId: 2);
 
-        Assert.Equal("Another administrator approved - waiting for a maintainer of this board", ApprovalWording.ApproveButton(secondAdmin, "production"));
+        Assert.Equal("Another administrator approved - waiting for a maintainer of this board", ApprovalWording.ApproveButton(secondAdmin, "stable"));
     }
 
     // -----------------------------------------------------------------------------------

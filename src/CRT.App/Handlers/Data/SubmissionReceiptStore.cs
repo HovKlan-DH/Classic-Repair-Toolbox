@@ -232,7 +232,68 @@ namespace Handlers.DataHandling
                     // Kept when the caller passes nothing, so a refresh that cannot read a decision
                     // date does not wipe one recorded earlier.
                     DecidedUtc = decidedUtc ?? existing.DecidedUtc,
-                    AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer
+                    AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer,
+
+                    // The server answered, so it knows the submission again.
+                    NotFoundUtc = null
+                };
+
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // How stale a receipt's LastCheckedUtc may get before an unchanged answer writes it (code
+        // review, 2026-10-04). The minute check asked about every open receipt and saved the whole
+        // file for each one, only to move this date - which nothing shows, and which gates nothing
+        // finer than a once-a-day or once-a-week re-check (SubmissionReceiptPresenter.IsStillOpen).
+        // ###########################################################################################
+        public static readonly TimeSpan CheckedSaveInterval = TimeSpan.FromHours(12);
+
+        // ###########################################################################################
+        // The server answered with nothing new: the date it was checked is written only when the
+        // stored one is missing or older than CheckedSaveInterval, so an unchanged answer costs no
+        // write at all most of the time. An answer that clears a "not found" is news, and is
+        // written by UpdateState instead.
+        // ###########################################################################################
+        public static void NoteChecked(long submissionId, DateTimeOffset checkedUtc)
+        {
+            lock (Gate)
+            {
+                int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
+                if (index < 0)
+                    return;
+
+                SubmissionReceipt existing = _receipts[index];
+
+                if (existing.LastCheckedUtc is DateTimeOffset last && checkedUtc - last < CheckedSaveInterval)
+                    return;
+
+                _receipts[index] = existing with { LastCheckedUtc = checkedUtc };
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The server answered that it does not know this submission (HTTP 404) - deleted with its
+        // system, for one. Its state is kept as it was; it is then asked about only once per
+        // SubmissionReceiptPresenter.NotFoundRecheckInterval (code review, 2026-10-04: it was asked
+        // every minute for ever).
+        // ###########################################################################################
+        public static void NoteNotFound(long submissionId, DateTimeOffset checkedUtc)
+        {
+            lock (Gate)
+            {
+                int index = _receipts.FindIndex(receipt => receipt.SubmissionId == submissionId);
+                if (index < 0)
+                    return;
+
+                SubmissionReceipt existing = _receipts[index];
+
+                _receipts[index] = existing with
+                {
+                    LastCheckedUtc = checkedUtc,
+                    NotFoundUtc = existing.NotFoundUtc ?? checkedUtc
                 };
 
                 Save();
@@ -244,7 +305,25 @@ namespace Handlers.DataHandling
         // BETA" notice for these submissions (SubmissionReceiptPresenter.NeedingSourceSwitchNotice),
         // so it is not shown for them again. One save for them all.
         // ###########################################################################################
-        public static void DismissSourceNotice(IEnumerable<long> submissionIds)
+        public static void DismissSourceNotice(IEnumerable<long> submissionIds) =>
+            SubmissionReceiptStore.Change(
+                submissionIds,
+                receipt => !receipt.SourceNoticeDismissed,
+                receipt => receipt with { SourceNoticeDismissed = true });
+
+        // The same for the "now in the BETA source - tick BETA to try it" notice (2026-10-03,
+        // SubmissionReceiptPresenter.NeedingBetaTryNotice).
+        public static void DismissBetaNotice(IEnumerable<long> submissionIds) =>
+            SubmissionReceiptStore.Change(
+                submissionIds,
+                receipt => !receipt.BetaNoticeDismissed,
+                receipt => receipt with { BetaNoticeDismissed = true });
+
+        // Applies `change` to each of these receipts that `needs` it, with one save for them all.
+        private static void Change(
+            IEnumerable<long> submissionIds,
+            Func<SubmissionReceipt, bool> needs,
+            Func<SubmissionReceipt, SubmissionReceipt> change)
         {
             var ids = new HashSet<long>(submissionIds ?? []);
 
@@ -255,10 +334,10 @@ namespace Handlers.DataHandling
                 for (int index = 0; index < _receipts.Count; index++)
                 {
                     SubmissionReceipt existing = _receipts[index];
-                    if (!ids.Contains(existing.SubmissionId) || existing.SourceNoticeDismissed)
+                    if (!ids.Contains(existing.SubmissionId) || !needs(existing))
                         continue;
 
-                    _receipts[index] = existing with { SourceNoticeDismissed = true };
+                    _receipts[index] = change(existing);
                     changed = true;
                 }
 

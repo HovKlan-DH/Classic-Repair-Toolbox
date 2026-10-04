@@ -1,0 +1,11 @@
+# Breaks of a released CRT's API surface that the project owner has DECIDED to make.
+#
+# One line per break: the exact line from a crt-<version>.txt file (as ApiCompatibilityTests
+# reports it, without its "gone:" or "added:" prefix), then " || ", then why and what was done for
+# the CRTs it breaks - normally the minimum in ClientVersionPolicy that tells them to update, and the
+# server version that did it. Lines starting with "#" are comments.
+#
+# Example (not a real decision):
+#   route POST /api/submissions || replaced by /api/v2/submissions; CRT below 3.4.0 told to update - server 5.0.0, 2027-01-01
+#
+# Every line here is an installed CRT that stopped working for something. Keep the list short.

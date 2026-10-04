@@ -58,12 +58,17 @@ namespace Handlers.DataHandling
         public BoardRowChangeKind Kind { get; init; }
 
         // Which fields differ, for a Modified row - the property names, in declaration order.
-        // Empty for Added and Deleted, where "what changed" is the whole row.
+        // Empty for Added and Deleted, where "what changed" is the whole row. A row whose identifying
+        // cells changed names them here too (BoardDataDiffer.PairRenamedRows).
         //
         // Carried because "U8 changed" is far less useful than "U8: Description, Part number",
         // and the information is free at the point the comparison is made.
         public IReadOnlyList<string> ChangedFields { get; init; } = [];
     }
+
+    // A removed row and the added row it really is, edited - indexes into the two lists handed to
+    // BoardDataDiffer.PairRenamedRows.
+    public readonly record struct BoardRowRename(int Removed, int Added);
 
     // ###########################################################################################
     // Compares a drafted BoardData against the published one and reports what a contributor has
@@ -137,6 +142,12 @@ namespace Handlers.DataHandling
         // exception here would take down a board load over a data defect the contributor can see
         // and fix in Excel. First-wins also matches what BoardDraftApplier's own merge does.
         // ###########################################################################################
+        //
+        // *** A ROW WHOSE IDENTIFYING CELLS CHANGED IS STILL ONE ROW (owner decision, 2026-10-04). ***
+        // A draft row with no published row under its key, and a published row with no draft row
+        // under its, are paired by PairRenamedRows when nothing BUT their identifying cells differs -
+        // "Dennis Helligsoe" made "Dennis Helligsoe 2" in Credits is one row Modified, not a deletion
+        // plus an addition. Its NaturalKey is the draft's.
         private static void CompareSection<T>(
             List<BoardRowChange> changes,
             string sectionName,
@@ -147,9 +158,23 @@ namespace Handlers.DataHandling
             Dictionary<string, T> publishedByKey = BoardDataDiffer.IndexByKey(publishedRows);
             Dictionary<string, T> draftByKey = BoardDataDiffer.IndexByKey(draftRows);
 
+            // The rows each side has alone, in their own order - the ones a rename can pair.
+            List<KeyValuePair<string, T>> draftOnly = draftByKey.Where(drafted => !publishedByKey.ContainsKey(drafted.Key)).ToList();
+            List<KeyValuePair<string, T>> publishedOnly = publishedByKey.Where(published => !draftByKey.ContainsKey(published.Key)).ToList();
+
+            var renamedFrom = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (BoardRowRename rename in BoardDataDiffer.PairRenamedRows(
+                         publishedOnly.Select(row => (object)row.Value).ToList(),
+                         draftOnly.Select(row => (object)row.Value).ToList()))
+            {
+                renamedFrom[draftOnly[rename.Added].Key] = publishedOnly[rename.Removed].Value;
+            }
+
             foreach (KeyValuePair<string, T> drafted in draftByKey)
             {
-                if (!publishedByKey.TryGetValue(drafted.Key, out T? publishedRow))
+                if (!publishedByKey.TryGetValue(drafted.Key, out T? publishedRow) &&
+                    !renamedFrom.TryGetValue(drafted.Key, out publishedRow))
                 {
                     changes.Add(new BoardRowChange
                     {
@@ -178,9 +203,11 @@ namespace Handlers.DataHandling
                 });
             }
 
-            foreach (KeyValuePair<string, T> publishedOnly in publishedByKey)
+            var renamedRows = new HashSet<T>(renamedFrom.Values, ReferenceEqualityComparer.Instance);
+
+            foreach (KeyValuePair<string, T> removed in publishedOnly)
             {
-                if (draftByKey.ContainsKey(publishedOnly.Key))
+                if (renamedRows.Contains(removed.Value))
                 {
                     continue;
                 }
@@ -188,11 +215,176 @@ namespace Handlers.DataHandling
                 changes.Add(new BoardRowChange
                 {
                     Section = sectionName,
-                    NaturalKey = publishedOnly.Key,
-                    DisplayLabel = BoardDataDiffer.DescribeRow(publishedOnly.Value, publishedOnly.Key),
+                    NaturalKey = removed.Key,
+                    DisplayLabel = BoardDataDiffer.DescribeRow(removed.Value, removed.Key),
                     Kind = BoardRowChangeKind.Deleted,
                 });
             }
+        }
+
+        // ###########################################################################################
+        // *** WHICH REMOVED ROW EACH ADDED ROW REALLY IS (owner decision, 2026-10-04). *** The
+        // identifying cells - a credit's Name or handle, a component's Board label, a schematic's
+        // name - are its natural key, so changing one used to show the row as removed plus a new row
+        // added: "This seems weird to me." Natural keys cannot see a rename, so this does: `removed`
+        // are rows that lost their key (published, gone from the draft), `added` rows that gained
+        // one, and a removed row and an added row are the SAME ROW, edited, when
+        //
+        //   - they are the same kind of row, and EVERYTHING BUT THEIR IDENTIFYING CELLS IS EQUAL
+        //     (DifferingFields' own rule: trimmed, case-sensitive, blank and null alike), and
+        //   - they still have something to be recognised by: at least one cell, identifying or not,
+        //     that is filled in and the same in both.
+        //
+        // The owner chose this over the looser "mostly the same row": changing the name AND the
+        // contact of a credit is a different person, and stays a removal plus an addition. And it
+        // never pairs two unrelated rows - an important signal (two identifying cells, nothing else)
+        // pairs only while one of its halves stays the same.
+        //
+        // *** ONE ANSWER WHOEVER ASKS. *** The table (BoardTableSheet), this report and the server's
+        // review summary (ReviewSummary) all pair through here, so they agree on what is one row.
+        // When a row could be either of several, the one sharing the most filled-in identifying
+        // cells wins (three renamed credits each keep their own Category), then the earlier removed
+        // row, then the added row whose key sorts first - an order no caller's row order can change,
+        // since the table holds new rows in screen order and the saved board in saved order.
+        //
+        // Returns the pairs as indexes into the two lists, each row in at most one pair.
+        // ###########################################################################################
+        public static IReadOnlyList<BoardRowRename> PairRenamedRows(IReadOnlyList<object> removed, IReadOnlyList<object> added)
+        {
+            ArgumentNullException.ThrowIfNull(removed);
+            ArgumentNullException.ThrowIfNull(added);
+
+            if (removed.Count == 0 || added.Count == 0)
+            {
+                return [];
+            }
+
+            // Only rows with exactly the same non-identifying cells can pair, so the added rows are
+            // grouped by those cells first - a sheet relabelled wholesale is then not every removed
+            // row compared with every added one.
+            var addedBySameRest = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+
+            for (int index = 0; index < added.Count; index++)
+            {
+                if (BoardDataDiffer.RestOf(added[index]) is not string rest)
+                {
+                    continue;
+                }
+
+                if (!addedBySameRest.TryGetValue(rest, out List<int>? group))
+                {
+                    group = [];
+                    addedBySameRest[rest] = group;
+                }
+
+                group.Add(index);
+            }
+
+            var candidates = new List<(int Removed, int Added, int Shared, string AddedKey)>();
+
+            for (int removedIndex = 0; removedIndex < removed.Count; removedIndex++)
+            {
+                if (BoardDataDiffer.RestOf(removed[removedIndex]) is not string rest ||
+                    !addedBySameRest.TryGetValue(rest, out List<int>? group))
+                {
+                    continue;
+                }
+
+                bool restIsFilledIn = BoardDataDiffer.HasFilledInRest(removed[removedIndex]);
+
+                foreach (int addedIndex in group)
+                {
+                    int shared = BoardDataDiffer.SharedKeyCells(removed[removedIndex], added[addedIndex]);
+
+                    if (restIsFilledIn || shared > 0)
+                    {
+                        candidates.Add((removedIndex, addedIndex, shared, BoardDraftNaturalKeys.ForRow(added[addedIndex])));
+                    }
+                }
+            }
+
+            var takenRemoved = new HashSet<int>();
+            var takenAdded = new HashSet<int>();
+            var pairs = new List<BoardRowRename>();
+
+            foreach ((int removedIndex, int addedIndex, _, _) in candidates
+                         .OrderByDescending(candidate => candidate.Shared)
+                         .ThenBy(candidate => candidate.Removed)
+                         .ThenBy(candidate => candidate.AddedKey, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(candidate => candidate.AddedKey, StringComparer.Ordinal))
+            {
+                if (takenRemoved.Contains(removedIndex) || takenAdded.Contains(addedIndex))
+                {
+                    continue;
+                }
+
+                takenRemoved.Add(removedIndex);
+                takenAdded.Add(addedIndex);
+                pairs.Add(new BoardRowRename(removedIndex, addedIndex));
+            }
+
+            return pairs.OrderBy(pair => pair.Removed).ToList();
+        }
+
+        // ###########################################################################################
+        // A row's NON-identifying cells as one comparable string, led by its type - null for a row
+        // type with no key rule, which then pairs with nothing. Each value is read as DifferingFields
+        // reads it, so "equal here" is "not a differing field there".
+        // ###########################################################################################
+        private static string? RestOf(object row)
+        {
+            if (row is null)
+            {
+                return null;
+            }
+
+            IReadOnlyList<string> keyProperties = BoardDraftNaturalKeys.PropertiesOf(row.GetType());
+            if (keyProperties.Count == 0)
+            {
+                return null;
+            }
+
+            IEnumerable<string> rest = BoardDataDiffer.ComparableProperties(row.GetType())
+                .Where(property => !keyProperties.Contains(property.Name, StringComparer.Ordinal))
+                .Select(property => BoardDataDiffer.ReadValue(property, row));
+
+            return string.Join(BoardDraftNaturalKeys.Separator, rest.Prepend(row.GetType().FullName ?? row.GetType().Name));
+        }
+
+        // Whether any non-identifying cell is filled in. RestOf matched, so the other row's are the
+        // same values.
+        private static bool HasFilledInRest(object row)
+        {
+            IReadOnlyList<string> keyProperties = BoardDraftNaturalKeys.PropertiesOf(row.GetType());
+
+            return BoardDataDiffer.ComparableProperties(row.GetType())
+                .Where(property => !keyProperties.Contains(property.Name, StringComparer.Ordinal))
+                .Any(property => BoardDataDiffer.ReadValue(property, row).Length > 0);
+        }
+
+        // How many identifying cells are filled in and the same in both - case-insensitively, as a
+        // key compares.
+        private static int SharedKeyCells(object removed, object added)
+        {
+            int shared = 0;
+
+            foreach (string name in BoardDraftNaturalKeys.PropertiesOf(removed.GetType()))
+            {
+                PropertyInfo? property = removed.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+                if (property is null)
+                {
+                    continue;
+                }
+
+                string before = BoardDataDiffer.ReadValue(property, removed);
+
+                if (before.Length > 0 && string.Equals(before, BoardDataDiffer.ReadValue(property, added), StringComparison.OrdinalIgnoreCase))
+                {
+                    shared++;
+                }
+            }
+
+            return shared;
         }
 
         // ###########################################################################################

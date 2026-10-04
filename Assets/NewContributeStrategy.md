@@ -46,6 +46,7 @@ earlier ones. Read [How to use this document](#how-to-use-this-document) first.
 - [Phase 6 - Maintainers](#phase-6---maintainers)
 - [Phase 7 - Retire the PHP contribution path](#phase-7---retire-the-php-contribution-path)
 - [Phase 8 - Maintainer tab inside CRT](#phase-8---maintainer-tab-inside-crt-done-2026-09-29)
+- [Installed CRTs keep working](#installed-crts-keep-working-policy-built-2026-10-04)
 - [Security model](#security-model)
 - [Cross-cutting concerns](#cross-cutting-concerns)
 - [Open questions for the project owner](#open-questions-for-the-project-owner)
@@ -4041,7 +4042,8 @@ Manufacturer, Hardware and Board, then the contributor's comment.
   nothing is published; each submission two lines; one not waiting for this account dimmed, "with
   the other approver" - `ReviewQueueDisplay.Group`); the **sheet is remembered per submission**;
   **flagged rows show on their sheet's tab** in a violet pill beside the change count
-  (`BoardTableSheetTabHeader`); and an **important signal is keyed on display name AND net**
+  (`BoardTableSheetTabHeader` - removed again on 2026-10-02 at the owner's request, with the
+  error and warning pills: a tab now says its name and change count only); and an **important signal is keyed on display name AND net**
   (`BoardDraftNaturalKeys.ForKiCadImportantSignal`) - one display name covers several nets, so
   every second one was being flagged a duplicate. That key is shared by the table, the differ and
   the server's review summary, so all three changed together; a changed net now reads as a removal
@@ -4473,6 +4475,205 @@ it now keeps the replaced board's, or takes the drop-down names when there is no
 "Save to draft" and label-editor save dropped it from drafts too - fixed, and guarded by
 `BoardDataCaptionTests`.
 
+### A maintainer's own account [DONE 2026-10-03]
+
+Owner request: the maintainer "can edit his/her own email address and name". Nothing could change
+an account once the invitation had made it, and CRT never read `/me`, so the name and address it
+showed (and handed the Feedback tab and the Submit dialog) were frozen at sign-in. Now "Account..."
+beside "Sign out" opens the Maintainer tab's "Your account" window (`AccountWindow`), backed by
+`AccountSelfServiceFlows` and four routes under `/api/accounts/me/` (server 3.12.0, and 3.13.0 for the session-only change below; migration 0016
+adds the pending address to `account_tokens`). Owner decisions:
+
+- **The session is enough - no current password for anything** (2026-10-03, after a first version
+  asked for it before an address or password change: "no need for that, as I see it as you are
+  already logged in"). An ACCEPTED RISK - see Threat 2. A new ADDRESS still needs a code mailed to
+  it and changes only when the code comes back. Both changes spend the per-address mail budget,
+  which also bounds the password change's Argon2 hash.
+- An address another account holds answers like a free one; its owner is mailed instead of a code.
+- An address or password change signs out every OTHER session (and spends reset codes already in a
+  mailbox); the old address is told.
+- A dialog, not a fifth screen. A "signed in on" list with "sign out everywhere else" (the sessions
+  table already keeps user agent and IP for it) was offered and NOT built.
+
+The remembered sign-in's name and address are read again from `GET /api/accounts/me` once a launch,
+on the paths that already talk to the server. **Known gap:** with the Maintainer tab turned OFF,
+CRT restores the sign-in without any request (`RestoreSignInQuietly`, by design), so another
+computer whose session an address change revoked keeps showing the old address in the Feedback tab
+until its tab is turned on - and a submission sent from it arrives as anonymous under that address.
+
+(The button was renamed "Account" the same day - owner rule: no button label has "...", enforced by
+CRT.App.Tests' `ButtonLabelTests`.)
+
+### A system's Board data, Files, Contributor, Maintainer and Statistics [DONE 2026-10-03]
+
+Owner request: the Systems screen should have "all the same functionalities, as the 'Contributor
+Submissions' has" - Board data "(and I should be able to do the same edits)", Files "(should not
+show changed files - just list all files)", Contributor, Maintainer ("the info as it has now") and
+Statistics (graphs later). Server 3.14.0; no migration.
+
+- **An edit becomes a submission** (owner decision, asked: "Becomes a submission" - over writing BETA
+  directly, and over a read-only table). `POST /api/review/systems/edit` (`SystemEditFlow`) builds a
+  manifest from BETA's board with the table's nine sheets applied (`WithTableSections`; highlights and
+  KiCad calibrations from BETA's sidecar), every cited file taken from BETA (refused otherwise), and
+  runs it through `SubmissionFlows.CreateAsync`/`FinaliseAsync` under the maintainer's account. The
+  Maintainer tab then opens it under Contributor Submissions, where it is approved like any other.
+  BETA must still hold the board the table was read from (its `fingerprint`), or the edit is refused
+  with 409.
+- Only the system's maintainers and the administrator may send one (`CanReview(systemId)`); every
+  maintainer may READ the table (`mayEdit` false: the editor's read-only mode, with the reason).
+- `POST /api/review/systems/table` and `/files` are the two reads; the files list is
+  `SystemFileEntries.ForSystem` - the system's own folder plus the files its board cites in BETA.
+- The Systems list line says only what is off ("In BETA and the stable source" and the 30-day view
+  count left it); the views are the Statistics view.
+
+- **Not while the account's last change of the system still waits.** Each change is built on BETA,
+  so a second one does not hold the first, and as a newer submission from the same account it would
+  REPLACE the first (`SubmissionReplacementRules`) - silently dropping that change. The table opens
+  read-only naming the waiting submission instead, and a send is refused.
+
+**Open:** graphs for the Statistics view are still to be designed. Note that approval has no
+stale-base check at all (`ApprovePublishFlow` replaces a board's rows whole) - two waiting
+submissions of one system from DIFFERENT people can still undo each other once both are approved;
+that predates this and is unchanged.
+
+#### Superseded the same day: a Systems-screen edit goes STRAIGHT TO BETA [DONE 2026-10-03]
+
+Owner request, later the same day: "I do not think it should be necessary for that change to first
+go to 'Contributor Submissions' queue - instead it should go directly to the next queue, 'BETA >
+Stable', so it can directly be tested in BETA", and "remove that input field for 'What does your
+change do?' ... but do ask for a change reason when clicking the 'Save changes' button, so this can
+go along with the change, just like any normal contribution". Server 4.0.0 (MAJOR: the route that
+queued now publishes); no migration. **This replaces "An edit becomes a submission" above.**
+
+- **Still a submission, approved at once.** `SystemEditFlow.PublishAsync` builds the same submission
+  from BETA's own files under the maintainer's account (the reason is its description), creates and
+  finalises it through `SubmissionFlows`, then calls `ApprovePublishFlow.ApproveAsync` as that
+  maintainer. Nothing writes BETA by a path of its own, so every approval rule still holds; BETA >
+  Stable, the system's history and a push-back see an ordinary merged submission. A publish the
+  approval refuses after all (something moved between the checks and its lock) leaves the submission
+  PENDING under Contributor Submissions - nothing lost - and the tab opens it there.
+- **Not while the system waits in BETA > Stable** (owner decision, asked: "If a system is already in
+  'BETA > Stable' queue, then it should simply disallow it, even if this is coming from a
+  maintainer"). One submission in BETA per system, so a maintainer's SECOND change waits until the
+  first is published to stable, pushed back or rejected; the table is read-only with
+  `OneSubmissionInBeta.NoChangeMessage`. Only where production publishing is configured, as for the
+  approval rule itself.
+- **What it removes is shown first.** `POST /api/review/systems/edit/check` (`CheckAsync`) runs every
+  check and answers the files the publish would remove (`SystemEditCheckAnswer`), making nothing; the
+  reason dialog (`PublishSystemChangeWindow`) lists them, and the edit sends them back as
+  `expectedRemovals` - 409 when the list moved, the approval's own rule. The check also means a
+  change that cannot go is refused BEFORE the maintainer is asked for a reason.
+- **The reason is required** (`NoReasonMessage`, 400); the description box above the table is gone.
+- **Published: BETA's checksum manifest is rewritten** (`ReviewEndpoints.RewriteBetaManifest`, split
+  out of the approval's after-publish work) and nobody is mailed - the approval's mail would go to the
+  maintainer who just published it. Made but not published: the system's other approvers are mailed,
+  as before.
+- The tab stays on the Systems screen after a publish: the table is read again (read-only, with the
+  server's reason), the Files view is forgotten, and the BETA > Stable list and the systems are read
+  again at once (`AfterSystemChangePublishedAsync`).
+
+### Deleting a system completely [DONE 2026-10-03]
+
+Owner request: "as admin, I should be able to have a possibility to delete a system completely,
+which then will remove it from everywhere - including BETA and stable sources ... part of the 'Admin'
+menu ... list all systems and have a delete button on each (with a confirmation box)" - prompted by
+test systems left on the Systems screen as "Not published yet". Server 3.15.0; no migration.
+
+- **What goes:** the system's own folder in BOTH trees, its row in both NEWEST main Excel data files,
+  both checksum manifests rebuilt, the `systems` row - and through the schema's ON DELETE CASCADE every
+  submission (any state), approval, amendment, maintainer, invitation and production approval of it -
+  and its `crt_board_views` rows (owner decision, asked: "Delete them"). The audit rows stay, plus one
+  `system.deleted`. Uploaded blobs no submission needs any more are reclaimed by the existing collector.
+- **Open submissions are deleted and their contributors mailed** (owner decision, asked: "Delete them
+  and mail the contributors"): waiting for review (also "returned"), approved once, or merged into BETA
+  and not yet promoted (`SystemDeletionRules.IsOpen`, over the contributor-facing state). The reason is
+  then required - it is the mail's only content (`EmailTemplates.SystemDeleted`). CRT's "My submissions"
+  keeps such a submission's last state, since the server answers 404 and CRT reads that as no news.
+- **Shared files stay** (AutomaticRemovalScope's owner decision): an unused one shows under Admin >
+  Unused files afterwards.
+- **Refused, with the reason on screen and no confirmation** (`SystemDeletionFiles.Survey`): a system an
+  OLDER main Excel data file lists (frozen; and a master naming a missing workbook makes DataTreeUsage
+  incomplete for good, which would stop every publish's removals and Unused files); a file in its folder
+  that another board uses (DataTreeUsage with this system's workbooks previewed as citing nothing); a
+  symbolic link; a tree that cannot be read. Also refused while production publishing is off.
+- **Plan, then delete, held together by a fingerprint** of both trees' files, both list rows, the record
+  and every submission's state - a publish or a new submission in between is a 409. Under the publish
+  lock, in this order: every folder probed (TreeWriteAccess), list rows (stable first), files (stable,
+  then BETA), manifests, and only once both trees are clean the record, views, audit and - outside the
+  lock - the mails. A file that will not go keeps the record, so pressing Delete again finishes.
+
+**Open:** a contributor's local DRAFT of a deleted system stays on that machine - CRT is not told.
+How the Drafts tab then shows such a draft was not checked when this was built.
+
+### A system's History, maintainers under Admin, and the order of the lists [DONE 2026-10-04]
+
+Owner requests, one message: a **History** view after Maintainer on the Systems screen, "the full
+history of what has happened with this board, in an 'easy to overview' way", with each submission's
+change summarised "besides the sometimes vague description from the contributor"; "Send invitation"
+and "Add as maintainer" moved to **Admin** ("only the admin should be able to do"); an Admin screen to
+put the drop-down lists in order, "saved to both sources (BETA + stable)"; and both sheets of the main
+Excel data file dated and frozen on every write. Server 4.3.0, migration 0017.
+
+- **History** (`SystemHistoryDisplay`): a card per submission - sending, amendments, decision, state now,
+  what the contributor was told, and what it changed - and a line for every other event, by month,
+  newest first. The detail now lists up to 500 submissions and 1000 events.
+- **What a submission changed is recorded at the publish** (`ApprovePublishFlow.SummariseChanges` ->
+  `submission_changes`), from `ReviewSummary` and the plan's files, because no board history exists to
+  compute it later. **Submissions published before 4.3.0 have no summary and never will** - their
+  "before" board is gone. A backfill by diffing consecutive merged submissions' kept payloads was
+  considered and NOT built: the first one of a shipped board has nothing to diff against, and
+  push-backs make "consecutive" unreliable.
+- **Maintainers** went back to Admin (`MaintainerPoolView`, choosing the system from
+  `GET /api/admin/systems`); the Systems screen's Maintainer view only lists them. The placement of a
+  new system stays in that view - it is a maintainer's job, not the administrator's.
+- **Order of systems** (`SystemOrderView` -> `POST /api/admin/systems/order`, `SystemOrderFlow`): the
+  whole list or a 409; BETA's list, then the stable source's in the same order (`MasterListing.ArrangeAs`),
+  then each changed manifest. This writes the stable source DIRECTLY, not through a promotion - asked for.
+- **Every write of a main Excel data file** stamps "# Revision date:" on both sheets and freezes the panes
+  (`MasterListing.Finish`): "Hardware & Board" under its header, "Oscilloscope" also after column 2.
+
+### Resetting the contribution data for going live [DONE 2026-10-04]
+
+Owner request: "When I go-live with this, it should not have old data visible, so it should be deleted.
+Of course the real sources of BETA and stable must not be touched, but all contributor and maintainer
+data should go away". Admin > "Reset contribution data", server 4.7.0 (`DataResetFlow`,
+`MySqlDataResetStore`, `GET`/`POST /api/admin/reset`).
+
+- **Owner decisions** (asked the same day): every account that is not an administrator goes, with every
+  maintainer list ("I need real data anyway"); the board views go; and NOTHING refuses the reset, not
+  even work waiting under BETA > Stable - "I will anyway copy everything from stable to BETA and then
+  update the manifest from admin page".
+- **One transaction**: submissions (and all that cascades), production approvals, invitations, pools,
+  system records, non-administrator accounts, the history, board views and API usage - then the stored
+  blobs nothing needs. Never the data trees, `crt_update`, the feedback folders or the administrators.
+- **Guarded twice**: the server setting `AllowDataReset` (off by default - a stolen administrator session
+  cannot use it) and `RESET` typed in the tab. The counts shown are held to a fingerprint.
+- **CRT shows a submission the server no longer knows as "No longer on the server"** and lets the same
+  draft be sent again - needed by the reset, and also true after "Delete a system", which had the same
+  stale-state gap.
+- **The order at go-live** is DEPLOYMENT.md's "Going live": BETA made level with stable by hand, the
+  manifests rebuilt, the switch on, the reset, the switch off.
+
+### "Administrator activities" becomes "Account", every maintainer's [DONE 2026-10-04]
+
+Owner request: rename the screen "Account", "make this tab available to all maintainers", move the
+account functionality from the bottom-left corner to a new entry "My account", show only "Logged in
+as:" and the name (bold) and address there, keep the administrator's entries for the administrator
+alone and mark every such thing with Font Awesome's padlock, no tooltip; and "Server version" for
+every maintainer. Server 4.7.1 (wording only).
+
+- **The screen** (`MaintainerMode.Account`, `TabMaintainer.Account.cs`): "My account" (first, and what
+  it opens on) and "Server version" for everybody; below them the seven administrator's entries, each
+  `AdminOnly` in the markup, hidden from everybody else and padlocked (`TextBlock.AdminLock`). The
+  server refused non-administrators at every one of those routes already - nothing there changed.
+- **"My account"** (`MyAccountView`) is the "Your account" window as a panel, with **Sign out** as its
+  last section; the window and the "Account"/"Sign out" buttons under the lists are gone.
+- **The words** are CRT.Data's `MaintainerScreenWording.Account`/`MyAccount`, which the server's
+  address-change code mail and its two "rebuild the manifests" refusals now read.
+- **Nothing else in CRT is administrator-only** (searched 2026-10-04): the administrator's second
+  approval of a shared-file change is a role in an approval, not a locked control, so it carries no
+  padlock.
+
 ## Phase 7 - Retire the PHP contribution path
 
 **Goal.** New submissions arrive only through the new pipeline.
@@ -4489,7 +4690,9 @@ it now keeps the replaced board's, or takes the drop-down names when there is no
    `ContributionPackaging.TryParseOutdatedVersionResponse` in the app.
 4. Remove the old Contribute tab UI from CRT once the new path is the only one.
 5. Archive `Assets/Webserver/app-contribution/` review code with a note saying what replaced it.
-   Keep `app-feedback` and `app-checkin` - they are unrelated.
+   Keep `app-checkin` - it is unrelated. (`app-feedback` was retired on its own, 2026-10-03: CRT.Server's
+   `POST /api/feedback` replaced it, with Apache forwarding the old address - DEPLOYMENT.md, "Feedback
+   from CRT".)
 6. Update the Wiki: `Contribute-tab.md`, `Contribute-data-via-CRT.md`,
    `Contribute-data-via-GitHub.md` (likely removable), `Explanation-of-data-files.md`, plus any
    sidebar entry. Tell the project owner which files are ready to paste - **never** say a Wiki page has
@@ -4540,8 +4743,8 @@ uses moved - the table's rules are still `CRT.Data`'s.
 
 | Window behaviour | In the tab |
 | --- | --- |
-| Restore the remembered session in `OnOpened` | On the tab's FIRST attach (`TabMaintainer.Session.cs`); `ReviewSessionStore.Initialise()` at CRT's start-up |
-| Minute queue check while the window is active | While the tab is attached AND CRT's window is active; on returning to either if due |
+| Restore the remembered session in `OnOpened` | On the tab's FIRST attach (`TabMaintainer.Session.cs`); `ReviewSessionStore.Initialise()` at CRT's start-up. Since 2026-09-30 at launch, quietly, for the tab's badge |
+| Minute queue check while the window is active | While the tab is attached AND CRT's window is active; on returning to either if due. Since 2026-09-30 the badge's two lists off screen too |
 | `Closing` asks about unsaved table edits | `Main.OnWindowClosing` asks, after the Drafts tab's table, in one continuation |
 | Its own "please wait" overlay | None; `Main`'s one overlay covers it |
 | Window placement and "Show changes only" in `CRT-Maintainer-Settings.json` | Placement dropped (CRT's window has its own); "Show changes only" is `UserSettings.MaintainerShowChangesOnly`, carried over once by `MaintainerSettingsMigration`, which deletes the old file |
@@ -4562,7 +4765,8 @@ refusal name CRT and its Maintainer tab, and the invitation mail tells the invit
   every remembered session undecryptable - it signs every maintainer out, silently.
 - **The minute check is gated on ATTACHMENT**, not just on the window: a `TabControl` detaches an
   unselected tab's content, and CRT is in front far more often than the tab is on screen. Each
-  check extends the session.
+  check extends the session. (Since 2026-09-30 a lighter check runs off screen for the tab's badge -
+  see below; the FULL check is still gated this way.)
 - **The exit prompt asks the Drafts table, then the Maintainer table, in ONE continuation** with one
   settled flag - two separate rounds would each need their own.
 - **`LeftPanelWidth` must never be saved while the tab has collapsed the sidebar** - the splitter
@@ -4571,6 +4775,168 @@ refusal name CRT and its Maintainer tab, and the invitation mail tells the invit
   wants defaults writes `{}` first.
 - **`ReviewHighlightCanvas` is moved but used by nothing** (it drew for the change summary retired on
   2026-09-26). Left for the project owner to decide on.
+
+**After the merge (2026-09-30, server 3.7.0), three owner requests in one:**
+
+- **A badge on the Maintainer tab** in CRT's row of tabs: what waits for the signed-in maintainer,
+  the "Contributor Submissions" and "Beta > Prod" badges ADDED UP (`MaintainerModes.TabAttention`),
+  "until it is fully processed, including if it is awaiting in BETA to PROD". For it, the remembered
+  sign-in is restored AT LAUNCH, quietly (`TabMaintainer.RestoreInBackgroundAsync`, from
+  `Main.StartMaintainerBadge`), and the minute check reads the queue and the BETA list while the tab
+  is off screen - only while the badge can be seen (tab on, window not minimised;
+  `QueueRefreshRules.MinuteCheck`). **Consequence, accepted:** a maintainer's session now slides
+  while CRT is used at all, not only while reviewing.
+- **A submission has three views** - Board data (the table, still what it opens on), Files (the
+  file tree, a window behind an easily missed "Files..." button until now) and Contributor (the
+  contributor's whole record: whether the address was verified by an account, and every other
+  counted submission with its system, state, dates and what they were told - `ContributorHistory`
+  now lists them, three optional fields on `ReviewContributorFacts`). `FileTreeWindow` is gone.
+- **The file lines above the table went** ("Files: [N] included (... replaced under the same
+  name)", "KiCad data included: ..."): the Files view shows them, and **its button's count**
+  (`SubmissionViews.ChangingFiles`) is what now keeps a file replaced under its own path from being
+  approved unseen. It is computed through `SystemFileEntries.ForApproval` - the tree's own rule -
+  and the tree's headline no longer counts the workbook and highlight file the approval writes from
+  the table (the workbook changes on every approval), so the two give one number.
+
+**The same day, a second round:** the Drafts tab got a badge too (the "My submissions" unread count,
+with the launch status check repeated every 5 minutes while CRT runs - `Main.SubmissionChecks.cs`);
+"Contributor Submissions" and "Beta > Prod" open on the entry looked at last, or the first
+(`TabMaintainer.OpenOnEntry.cs`); and "Approve needs three clicks" was traced to the button's
+TOOLTIP, which Avalonia placed over the pointer at the bottom of the window - it and the screen
+buttons' tooltips are gone (see CLAUDE.md, "No tooltip on a control at the BOTTOM of a window").
+
+---
+
+## Installed CRTs keep working [POLICY, built 2026-10-04]
+
+**The request** (project owner, 2026-10-04): "I think we need to have the server understanding
+different version of the API ... how should the server handle this, and still be able to support
+all older versions of CRT app? It is important that all older versions will continue to work,
+including the "checkin" and "feedback", which also should work for legacy versions of the
+application." The plan below was proposed and accepted ("OK, do it") the same day, with the three
+questions it asked answered by that acceptance:
+
+1. **The promise.** The launch check-in, feedback, board views and the health check work for every
+   CRT ever released, for good. Everything else either works, or tells the CRT in words to update -
+   it never fails in a way nobody can read.
+2. **The Maintainer tab may be held to a minimum version sooner** than submissions: its users are
+   few and known.
+3. **CRT 2.x's old contribution upload is answered "please update"** once the PHP page is gone, in
+   the words 2.5.0 already understands, rather than a 404.
+
+### The design: one API that only grows
+
+There is no `/api/v1` beside `/api/v2`. The server is deployed once and is always the newest party,
+while every CRT ever released stays installed - so the server bends and the clients only tolerate.
+Running two API versions side by side would mean two copies of every rule, which for a project this
+size is where the bugs come in. The routes as they are ARE "v1"; if one route ever needs a redesign
+an installed CRT cannot follow, a new route goes beside it (`/api/v2/submissions`, say) and the old
+one keeps serving the CRTs that call it.
+
+**The rules for a change** (CLAUDE.md, "Installed CRTs keep working", is the working copy):
+
+- Add, never rename or remove: new optional request fields, new answer fields, new routes. A
+  missing new field means the old behaviour.
+- A new meaning is a new route. (4.0.0 changed what `systems/edit` does; that was fine only because
+  nothing was released.)
+- A new required request field, a narrowed rule and a new member of an enum an answer carries all
+  break installed CRTs too, though nothing is removed.
+- Removing something: stop CRT using it, watch the server's log for the versions still calling it,
+  and only then let it answer "please update" - never a 404 or a 500.
+- The server ships before the CRT release that needs it.
+- The data trees are an API too (workbooks, the JSON sidecar, the main Excel data file,
+  `dataChecksums.json`): add sheets and columns, never rename or drop what an older reader looks for.
+
+### What was built
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| `CrtVersion`, `ClientVersionContract`, `ClientOutdatedAnswer`, `ApiRefusal` | CRT.Data, `ClientVersionContract.cs` | CRT's version from `User-Agent: CRT <version>`, SemVer-ordered; the 426 "update CRT" answer; the server's sentence out of any refusal body |
+| `ClientVersionPolicy`, `ClientVersionGate` | CRT.Server, `Handlers/Compat/` | Answers a CRT older than a minimum with 426 + `ClientOutdatedAnswer`, per area (submissions; the Maintainer tab's review/admin/accounts routes). **No minimum is set.** Never refuses the check-in, feedback, board views, health or the 2.x address, nor a request naming no CRT version |
+| `LegacyContributionEndpoints` | CRT.Server, `Handlers/Compat/` | `POST /api/legacy/contribution`: reads and drops a 2.x upload and answers the PHP page's own 426 `OUTDATED_VERSION 3.0.0 - ...` |
+| `SubmissionClient` | CRT.App | Now sends the User-Agent (it sent none), and shows the server's own sentence on a refusal |
+| `ReviewApiClient.WithServersWords` | CRT.App | Every status check reads the body: the server's sentence wins over the generic one, a 426 is `ReviewApiFailure.ClientOutdated` |
+| Named answer records | CRT.Data | The sign-in answer, a submission's detail, the blob state, the 416 answer, a maintainer change and the findings refusals were anonymous objects - now records, same JSON |
+| `ApiCompatibilityTests`, `ApiSurface` | CRT.Server.Tests, `ApiCompatibility/` | The machine check, below |
+| `ClientVersionContract.ApiRevision` (2026-10-04) | CRT.Data; sent by CRT.App's review and submission clients; checked by `ClientVersionPolicy` | The API revision, below |
+
+### The machine check
+
+The compiler cannot see a break for an INSTALLED CRT: CRT and the server share CRT.Data's records,
+so a rename moves both ends of the code at once, compiles, and passes `ReviewWireContractTests` -
+while the CRTs already out there still send and read the old name. So a copy of what each released
+CRT was built against is kept and checked:
+
+- `ApiSurface` turns the API into sorted lines: every route, every JSON request body per route
+  (from the route table's own metadata), every answer record's fields with their JSON kinds, how
+  every enum travels, and the string wire names of the forms and headers.
+- When CRT.App.csproj's `InformationalVersion` is a release (no `-`), the surface must exist as
+  `tests/CRT.Server.Tests/ApiCompatibility/crt-<version>.txt`. The first test run without it writes
+  it and fails once - commit it with the release. Pre-releases are not frozen.
+- Every frozen file is compared with the surface on every run, so a line a released CRT relied on
+  that has gone fails, named with the version it breaks. A break the project owner decides to make
+  anyway is listed in `allowed-breaks.txt` with its reason, and the CRTs it breaks are given a
+  minimum in `ClientVersionPolicy` so they are told to update.
+- The surface only sees named records, so an endpoint may write an anonymous object only to carry
+  `message`, `error` or `errors` - a test reads every `*Endpoints.cs` for it.
+
+**Not machine-checked:** that a new request field is optional, and the data trees' formats. Those
+stay rules.
+
+### The API revision - which CRT goes with which server (2026-10-04)
+
+**The question** (project owner, 2026-10-04, on being told a minimum version could be set): "how do I
+know which version of app uses which version of server? How can I tell that, as I do not have an
+overview on what kind of specific changes are done to API and if those changes are compatible or
+not?" Answered with a proposal - "you shouldn't need that overview" - accepted ("OK, do it").
+
+A CRT VERSION does not move when the API does: a build from source and last week's published alpha
+can both say `3.0.0-alpha.2` while speaking different APIs. So the shape gets a number of its own,
+`ClientVersionContract.ApiRevision` in CRT.Data, which both ends are built from:
+
+- CRT's review and submission clients send it as `X-CRT-Api-Revision`; `ClientVersionPolicy`
+  answers a LOWER revision on the submission and Maintainer routes with 426 - "please update CRT to
+  the newest version" (`ClientVersionContract.OutdatedApi`, no minimum version). A newer revision is
+  served (the server ships first), and so is a request naming none. The check-in, feedback, board
+  views and health are never refused.
+- `ApiCompatibilityTests` keeps `api-revision-<N>.txt`, the surface a CRT built for revision N may
+  use - written the first time N is current, grown as the API grows - and fails on any change that
+  breaks it until the revision is raised. A change the surface cannot see (a new meaning with the
+  same shape, a newly required request field) is raised by hand.
+- `GET /api/health` reports the server's revision (server 4.6.0), and the Admin screen's "Server
+  version" entry shows it beside the CRT's own: "API server version [1]" and "API application
+  version [1]" (owner wording) - the server's higher means update CRT, CRT's higher means deploy the
+  newer server.
+
+It started at 1 with server 4.6.0, when no CRT using the new API had been published - so nothing was
+ever refused for it. It matters from the first published 3.0.0 pre-release, and should stand still
+after 3.0.0's release, where the `crt-*.txt` check holds every break.
+
+### Open steps for the project owner
+
+- **When the PHP contribution page is retired** (Phase 7), forward its address to the new route
+  instead of keeping the PHP: in the site's Apache configuration, beside the `/app-feedback/` and
+  `/app-checkin/` forwards, `ProxyPass /app-contribution/api/ http://127.0.0.1:5199/api/legacy/contribution`
+  and the matching `ProxyPassReverse`. Nothing to do before then.
+- **At the 3.0.0 release**, run the tests once before the release workflow and commit
+  `crt-3.0.0.txt` (the run that writes it fails once, by design).
+
+### Measuring what is still used, and retiring a route (2026-10-04)
+
+Owner question: "how about tracking the API end-points, to see if it is possible to retire any, if
+almost no versions uses it any more ... ideally we can remove dead end-points along the way and then make
+sure to show proper 'please update' where required". Server 4.7.0, migration 0018.
+
+- **Measured**: every request reaching a route is counted per day, route pattern and CRT version
+  (`ApiUsageCounter`/`ApiUsageFlusher` -> `crt_api_calls`), no address and no account. Admin > "API
+  usage" lists every mapped route with the versions that called it, and the installations per version
+  from the launch check-ins.
+- **Retiring** is the project owner's decision per route, never automatic, and never for the routes
+  every CRT ever released sends (the check-in, feedback, board views, the health check, the 2.x
+  contribution address) - owner answer: "yes". A retired route stays mapped and answers 426 "please
+  update CRT", never 404. The steps are CLAUDE.md's "Installed CRTs keep working".
+- **Nothing is retirable before 3.0.0 is released** - every /api route is pre-release-only until then
+  and changes in place. The counting runs from go-live so there is data when it matters.
 
 ---
 
@@ -4738,6 +5104,16 @@ chain attack on CRT's users.** This is the scenario to design against hardest.
   unexpected publish is noticed. A silent compromise is the dangerous one.
 - Sessions expire; tokens are revocable; revoking maintainership takes effect immediately, not at
   next login.
+- **ACCEPTED RISK (owner decision, 2026-10-03): a stolen session token can change the account's
+  email address and password** - `AccountSelfServiceFlows` asks for no current password ("as I see
+  it as you are already logged in"; a first version asked for it). With a token copied off disk,
+  somebody can move the address to a mailbox of their own (the code goes there), then reset the
+  password through it; the owner is locked out and can only write to the project owner. What is
+  left: the OLD address is mailed the moment the address changes, naming whom to write to; every
+  other session is signed out, so the owner's CRT asks to sign in at once; a password change alone
+  is recoverable through "I forgot my password", whose reset signs out every session. The token is
+  DPAPI-protected on Windows, so copying it needs the owner's Windows account. Revisit if a
+  maintainer account is ever lost this way.
 - Alert on anomalies worth a human glance: a first-ever publish from a new location, a burst of
   approvals, an approval on a system the account has never touched.
 

@@ -11,7 +11,7 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // "Unused files" on the Admin screen (owner decision, 2026-09-25; a window of its own until the
+    // "Unused files" on the Account screen (owner decision, 2026-09-25; a window of its own until the
     // four screens replaced the windows, 2026-09-27).
     //
     // *** THE LOGIC IS ON THE SERVER AND IN Handlers/, NOT HERE. *** Which files are unused is
@@ -20,6 +20,12 @@ namespace CRT
     //
     // *** A LIST SHOWN IS A LIST SENT. *** Remove sends exactly the paths on screen, and the server
     // removes only those it still finds unused - never one the administrator did not see.
+    //
+    // *** DRAWN AS THE FILE TREE (owner request, 2026-10-04). *** The same FileTreeView a system's
+    // Files view uses, as a listing with every folder open: each file with its size, its picture on
+    // pointing at it, and opened on a double-click - from the tree's public address, which the list
+    // carries (UnusedFileListing.PublicDataUrl). UnusedFilesDisplay.TreeEntries turns the list into
+    // the tree's entries.
     // ###########################################################################################
     public partial class UnusedFilesView : UserControl
     {
@@ -37,7 +43,15 @@ namespace CRT
         public UnusedFilesView()
         {
             this.InitializeComponent();
+
+            // The summary above says the count and the size.
+            this.Tree.ShowSummary = false;
         }
+
+        private FileTreeView Tree => this.FindControl<FileTreeView>("UnusedFileTree")!;
+
+        // The tree on screen, for tests.
+        internal FileTreeView FileTreeForTests => this.Tree;
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
@@ -111,10 +125,7 @@ namespace CRT
         {
             this.thisListing = listing;
 
-            var files = this.FindControl<StackPanel>("FilesPanel");
             var check = this.FindControl<CheckBox>("LookedThroughCheckBox");
-
-            files?.Children.Clear();
 
             if (check is not null)
             {
@@ -124,18 +135,22 @@ namespace CRT
             }
 
             if (listing is not null)
-            {
                 this.SetSummary(UnusedFilesDisplay.Summary(listing));
 
-                foreach (UnusedFileEntry entry in listing.Files)
-                {
-                    files?.Children.Add(new TextBlock
-                    {
-                        Text = UnusedFilesDisplay.Line(entry),
-                        TextWrapping = TextWrapping.Wrap
-                    });
-                }
-            }
+            // Its files from where the list was read: BETA's public address, or the stable source's.
+            bool stable = string.Equals(listing?.Tree, "production", StringComparison.OrdinalIgnoreCase);
+
+            this.Tree.Files = listing is null || this.thisClient is null
+                ? null
+                : new FileTreeFiles(
+                    this,
+                    this.thisClient,
+                    this.thisSession,
+                    submissionId: null,
+                    betaDataUrl: stable ? null : listing.PublicDataUrl,
+                    productionDataUrl: stable ? listing.PublicDataUrl : null);
+
+            this.Tree.ShowListing(listing is null ? null : UnusedFilesDisplay.TreeEntries(listing), openFolder: null, openAll: true);
 
             if (this.FindControl<Button>("RemoveButton") is Button button)
                 button.Content = UnusedFilesDisplay.RemoveButton(listing);

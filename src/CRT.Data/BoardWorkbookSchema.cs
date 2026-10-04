@@ -492,6 +492,10 @@ namespace Handlers.DataHandling
         // on this being the only such rule - it marks a row this would drop as "incomplete" by
         // asking MapRows whether the row survives, rather than restating the condition.
         // ###########################################################################################
+        //
+        // RequiredColumns below names the same two columns, for the table's warning on a row this
+        // would drop ("This row is left out when saving, because KiCad net name is empty",
+        // 2026-10-03) - BoardWorkbookSchemaTests holds the two to each other.
         public static List<KiCadImportantSignalEntry> MapKiCadImportantSignals(IEnumerable<IReadOnlyDictionary<string, string>> rows)
             => rows
                 .Select(r => new KiCadImportantSignalEntry
@@ -503,6 +507,13 @@ namespace Handlers.DataHandling
                     !string.IsNullOrWhiteSpace(entry.DisplayName) &&
                     !string.IsNullOrWhiteSpace(entry.KiCadNetName))
                 .ToList();
+
+        // The columns a row of this sheet cannot be saved without - empty for every sheet but the
+        // one above, whose mapper drops a row missing either.
+        public static IReadOnlyList<string> RequiredColumns(string sheetName) =>
+            sheetName == BoardWorkbookSchema.SheetKiCadImportantSignals
+                ? [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName]
+                : [];
 
         // ###########################################################################################
         // One sheet's rows mapped to its entry type, dispatched on the sheet - for a caller that

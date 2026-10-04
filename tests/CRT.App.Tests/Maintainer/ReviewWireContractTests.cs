@@ -377,6 +377,115 @@ public sealed class ReviewWireContractTests
         Assert.Equal("One file is used again.", result.NotDoneBecause);
     }
 
+    // ###########################################################################################
+    // Rebuilding both trees' manifests (owner request, 2026-10-01). The field this would most
+    // easily get wrong is `entries`: it is a NUMBER that carries -1 for a failure, so a parser
+    // defaulting a missing or renamed field to 0 would report a failed rebuild as "0 files listed"
+    // - a success, in the one place the administrator is looking to see whether it worked.
+    //
+    // A SKIPPED tree (one this server has not configured) must also survive the round trip as
+    // skipped rather than as a failure; the two look the same to anyone reading only the count.
+    // ###########################################################################################
+    [Fact]
+    public void A_manifest_rebuild_reads_back_each_trees_count_its_skip_and_its_failure()
+    {
+        ManifestRebuildResult? result = ReviewApiParser.ParseManifestRebuild(ReviewWireContractTests.Answer(
+            new ManifestRebuildAnswer(
+                "1 of 2 checksum manifests were rebuilt.",
+                [
+                    new ManifestRebuildEntry("beta", Skipped: false, Entries: 1180, Message: "The beta manifest was rebuilt: 1180 files listed."),
+                    new ManifestRebuildEntry("production", Skipped: false, Entries: -1, Message: "The production manifest could NOT be rebuilt."),
+                ])));
+
+        Assert.Equal("1 of 2 checksum manifests were rebuilt.", result!.Headline);
+        Assert.Equal(2, result.Trees.Count);
+
+        Assert.Equal(("beta", false, 1180), (result.Trees[0].Tree, result.Trees[0].Skipped, result.Trees[0].Entries));
+        Assert.Equal("The beta manifest was rebuilt: 1180 files listed.", result.Trees[0].Message);
+
+        // -1 survives as -1, not as 0.
+        Assert.Equal(-1, result.Trees[1].Entries);
+        Assert.False(result.Trees[1].Skipped);
+
+        ManifestRebuildResult? skipped = ReviewApiParser.ParseManifestRebuild(ReviewWireContractTests.Answer(
+            new ManifestRebuildAnswer(
+                "1 checksum manifest was rebuilt.",
+                [new ManifestRebuildEntry("production", Skipped: true, Entries: 0, Message: "Not configured on this server.")])));
+
+        Assert.True(skipped!.Trees[0].Skipped);
+    }
+
+    // ###########################################################################################
+    // DELETING A SYSTEM (owner request, 2026-10-03). The fingerprint is the one that matters: renamed
+    // on either side, every delete would send nothing back and be refused as "changed since it was
+    // shown" - and the reason, which is the only thing the contributors are told.
+    // ###########################################################################################
+    [Fact]
+    public void A_system_delete_arrives_with_its_fingerprint_and_reason()
+    {
+        SystemDeleteRequest received = ReviewWireContractTests.Received<SystemDeleteRequest>(
+            new SystemDeleteRequest("Commodore/C64/999999", new string('f', 64), "It was a test system."));
+
+        Assert.Equal("Commodore/C64/999999", received.SystemId);
+        Assert.Equal(new string('f', 64), received.Fingerprint);
+        Assert.Equal("It was a test system.", received.Reason);
+
+        // The plan is asked for with the systems screen's own request.
+        Assert.Equal(
+            "Commodore/C64/999999",
+            ReviewWireContractTests.Received<SystemDetailRequest>(new SystemDetailRequest("Commodore/C64/999999")).SystemId);
+    }
+
+    [Fact]
+    public void A_system_delete_plan_reads_back_field_for_field()
+    {
+        SystemDeletePlanAnswer? plan = ReviewApiParser.ParseSystemDeletePlan(ReviewWireContractTests.Answer(
+            new SystemDeletePlanAnswer(
+                "Commodore/C64/999999",
+                "Commodore",
+                "C64",
+                "999999",
+                new string('f', 64),
+                BetaFiles: 12,
+                ProductionFiles: 11,
+                ListedInBeta: true,
+                ListedInProduction: false,
+                HasRecord: true,
+                Submissions: 5,
+                Maintainers: 2,
+                Invitations: 1,
+                OpenSubmissions: [new SystemDeleteOpenSubmission(14, "returned", "anna@example.com", "Corrected U8.", ReviewWireContractTests.Decided)],
+                BlockedBecause: "Another board uses a file.")));
+
+        Assert.NotNull(plan);
+        Assert.Equal(("Commodore/C64/999999", "Commodore", "C64", "999999"), (plan.SystemId, plan.Manufacturer, plan.Hardware, plan.Board));
+        Assert.Equal(new string('f', 64), plan.Fingerprint);
+        Assert.Equal((12, 11, true, false, true), (plan.BetaFiles, plan.ProductionFiles, plan.ListedInBeta, plan.ListedInProduction, plan.HasRecord));
+        Assert.Equal((5, 2, 1), (plan.Submissions, plan.Maintainers, plan.Invitations));
+        Assert.Equal("Another board uses a file.", plan.BlockedBecause);
+
+        SystemDeleteOpenSubmission open = Assert.Single(plan.OpenSubmissions);
+        Assert.Equal((14L, "returned", "anna@example.com", "Corrected U8."), (open.Id, open.State, open.Contributor, open.Summary));
+        Assert.Equal(ReviewWireContractTests.Decided, open.CreatedUtc);
+
+        // Nothing blocking is left out on the wire, and reads as nothing blocking.
+        SystemDeletePlanAnswer? clear = ReviewApiParser.ParseSystemDeletePlan(ReviewWireContractTests.Answer(
+            new SystemDeletePlanAnswer("Commodore/C64/999999", "Commodore", "C64", "999999", "f", 0, 0, false, false, true, 3, 0, 0, [])));
+
+        Assert.Null(clear!.BlockedBecause);
+        Assert.Empty(clear.OpenSubmissions);
+    }
+
+    [Fact]
+    public void A_system_delete_reads_back_what_went()
+    {
+        SystemDeleteAnswer? answer = ReviewApiParser.ParseSystemDelete(ReviewWireContractTests.Answer(
+            new SystemDeleteAnswer("Commodore/C64/999999", BetaFilesRemoved: 12, ProductionFilesRemoved: 11, SubmissionsDeleted: 5, ContributorsMailed: 2)));
+
+        Assert.Equal("Commodore/C64/999999", answer!.SystemId);
+        Assert.Equal((12, 11, 5, 2), (answer.BetaFilesRemoved, answer.ProductionFilesRemoved, answer.SubmissionsDeleted, answer.ContributorsMailed));
+    }
+
     // The two answers that were shared records already, read through the server's settings too -
     // including a new system's table, whose published side is null and so left out entirely.
     [Fact]
@@ -388,7 +497,7 @@ public sealed class ReviewWireContractTests
         ReviewTableData? table = ReviewApiParser.ParseTable(ReviewWireContractTests.Answer(new ReviewTableData(4, null, rows)));
 
         UnusedFileListing? listing = ReviewApiParser.ParseUnusedFiles(ReviewWireContractTests.Answer(
-            new UnusedFileListing("production", true, [], 2, 30, 900, [new UnusedFileEntry("a/old.png", 1234)])));
+            new UnusedFileListing("production", true, [], 2, 30, 900, [new UnusedFileEntry("a/old.png", 1234)], "https://example.org/Data/")));
 
         Assert.Equal(4, table!.Version);
         Assert.Null(table.Published);
@@ -396,6 +505,9 @@ public sealed class ReviewWireContractTests
 
         Assert.Equal("production", listing!.Tree);
         Assert.Equal(1234, Assert.Single(listing.Files).SizeBytes);
+
+        // Where the tree is published, for opening a file from the list's tree (2026-10-04).
+        Assert.Equal("https://example.org/Data/", listing.PublicDataUrl);
     }
 
     // ###########################################################################################
@@ -515,6 +627,28 @@ public sealed class ReviewWireContractTests
         Assert.Null(Assert.Single(answer!.Systems).InProduction);
     }
 
+    // ###########################################################################################
+    // BETA's content hash (2026-10-04): what tells the Systems screen its open table and file list
+    // are out of date (QueueRefreshRules.BetaBoardChanged). Arriving empty, the screen would fall
+    // back on the revision date - which a second publish the same day does not move.
+    // ###########################################################################################
+    [Fact]
+    public void A_systems_BETA_content_hash_reads_back_in_the_list_and_in_the_detail()
+    {
+        string hash = new('c', 64);
+        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", null, 1, BetaContentHash: hash);
+
+        SystemOverviewAnswer? list = ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(new SystemOverviewAnswer([system])));
+        SystemDetailAnswer? detail = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])));
+
+        Assert.Equal(hash, Assert.Single(list!.Systems).BetaContentHash);
+        Assert.Equal(hash, detail!.System.BetaContentHash);
+
+        // None from the server (a board nothing has published) is none, not "".
+        Assert.Null(Assert.Single(ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(
+            new SystemOverviewAnswer([system with { BetaContentHash = null }])))!.Systems).BetaContentHash);
+    }
+
     [Fact]
     public void A_system_detail_request_arrives_with_its_id()
     {
@@ -539,6 +673,196 @@ public sealed class ReviewWireContractTests
         Assert.Equal(sent.Maintainers, read.Maintainers);
         Assert.Equal(sent.Contributors, read.Contributors);
         Assert.Equal(sent.Submissions, read.Submissions);
+    }
+
+    // ###########################################################################################
+    // A SYSTEM'S BOARD DATA AND FILES (2026-10-03): the table the Systems screen opens on, the edit
+    // sent back from it - fingerprint, description and rows - the submission it was queued as, and
+    // the file listing. The fingerprint above all: arriving empty, every edit would be refused as
+    // "BETA changed since you opened the table".
+    // ###########################################################################################
+    [Fact]
+    public void A_systems_table_reads_back_with_its_fingerprint_rows_and_whether_it_may_be_changed()
+    {
+        var rows = new SubmissionRows { RevisionDate = "2026-August-21" };
+        rows.Components.Add(new ComponentEntry { BoardLabel = "U8", PartNumber = "251715-01" });
+        rows.KiCadCalibrations.Add(new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "board", OffsetX = 2 });
+
+        SystemTableAnswer? read = ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(
+            new SystemTableAnswer("Commodore/C64/250407", new string('f', 64), rows, MayEdit: false, "Not yours.", "https://example.org/beta")));
+
+        Assert.NotNull(read);
+        Assert.Equal("Commodore/C64/250407", read!.SystemId);
+        Assert.Equal(new string('f', 64), read.Fingerprint);
+        Assert.False(read.MayEdit);
+        Assert.Equal("Not yours.", read.MayNotEditReason);
+        Assert.Equal("https://example.org/beta", read.BetaDataUrl);
+        Assert.Equal("251715-01", Assert.Single(read.Rows.Components).PartNumber);
+        Assert.Equal("board", Assert.Single(read.Rows.KiCadCalibrations).CadName);
+        Assert.Equal("2026-August-21", read.Rows.RevisionDate);
+
+        Assert.True(ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(
+            new SystemTableAnswer("Commodore/C64/250407", "f", rows, MayEdit: true)))!.MayEdit);
+    }
+
+    // The edit and its check carry one request: the fingerprint, the reason, the rows - and the list
+    // of removals the check answered, which the publish must find unchanged.
+    [Fact]
+    public void A_systems_edit_arrives_with_its_fingerprint_reason_rows_and_the_removals_shown()
+    {
+        var rows = new SubmissionRows();
+        rows.Components.Add(new ComponentEntry { BoardLabel = "U8", PartNumber = "251715-02" });
+
+        SystemEditRequest received = ReviewWireContractTests.Received<SystemEditRequest>(
+            new SystemEditRequest("Commodore/C64/250407", new string('f', 64), "Corrected U8.", rows, ["Commodore/C64/250407/manual.pdf"]));
+
+        Assert.Equal("Commodore/C64/250407", received.SystemId);
+        Assert.Equal(new string('f', 64), received.Fingerprint);
+        Assert.Equal("Corrected U8.", received.Summary);
+        Assert.Equal("251715-02", Assert.Single(received.Rows!.Components).PartNumber);
+        Assert.Equal(["Commodore/C64/250407/manual.pdf"], received.ExpectedRemovals);
+    }
+
+    // ###########################################################################################
+    // The check's answer: the files a publish would remove - read back as the list, an empty one as
+    // empty. An answer WITHOUT the list is unreadable, never "nothing to remove": the maintainer must
+    // be shown what goes, and the server refuses a publish whose list differs.
+    // ###########################################################################################
+    [Fact]
+    public void A_systems_edit_check_reads_back_as_the_files_it_would_remove()
+    {
+        SystemEditCheckAnswer? read = ReviewApiParser.ParseSystemEditCheck(ReviewWireContractTests.Answer(
+            new SystemEditCheckAnswer(["Commodore/C64/250407/manual.pdf"])));
+
+        Assert.Equal(["Commodore/C64/250407/manual.pdf"], read!.Removals);
+        Assert.Empty(ReviewApiParser.ParseSystemEditCheck(ReviewWireContractTests.Answer(new SystemEditCheckAnswer([])))!.Removals);
+        Assert.Null(ReviewApiParser.ParseSystemEditCheck("{}"));
+    }
+
+    // ###########################################################################################
+    // The publish's answer, both ways it can go: in BETA (revision, removed files) - or made into a
+    // submission and not published, with the server's reason. And its warnings - an error never
+    // arrives here, it refuses instead.
+    // ###########################################################################################
+    [Fact]
+    public void A_published_systems_edit_reads_back_with_its_revision_removals_and_warnings()
+    {
+        SystemEditResult? read = ReviewApiParser.ParseSystemEdit(ReviewWireContractTests.Answer(
+            new SystemEditAnswer(
+                57,
+                [ReviewWireContractTests.Finding(ValidationSeverity.Warning)],
+                Published: true,
+                Revision: "2026-October-03",
+                RemovedFiles: ["Commodore/C64/250407/manual.pdf"])));
+
+        Assert.NotNull(read);
+        Assert.Equal(57, read!.SubmissionId);
+        Assert.True(read.Published);
+        Assert.Equal("2026-October-03", read.Revision);
+        Assert.Equal(["Commodore/C64/250407/manual.pdf"], read.RemovedFiles);
+        Assert.Null(read.NotPublishedReason);
+        Assert.False(Assert.Single(read.Warnings).IsError);
+        Assert.Equal("An image references component [U9].", read.Warnings[0].Message);
+    }
+
+    [Fact]
+    public void A_systems_edit_made_but_not_published_reads_back_with_the_reason()
+    {
+        SystemEditResult? read = ReviewApiParser.ParseSystemEdit(ReviewWireContractTests.Answer(
+            new SystemEditAnswer(58, [], NotPublishedReason: "BETA moved.")));
+
+        Assert.NotNull(read);
+        Assert.Equal(58, read!.SubmissionId);
+        Assert.False(read.Published);
+        Assert.Equal("BETA moved.", read.NotPublishedReason);
+    }
+
+    [Fact]
+    public void A_systems_file_listing_reads_back_field_for_field()
+    {
+        SystemFilesAnswer? read = ReviewApiParser.ParseSystemFiles(ReviewWireContractTests.Answer(new SystemFilesAnswer(
+            "Commodore/C64/250407",
+            [
+                // With its size (2026-10-04) - and the next without one, as an older server sends it.
+                new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta, SizeBytes: 5_242_880),
+                new SystemFileEntry("Commodore/Shared files/74LS08.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta)
+            ],
+            "https://example.org/beta")));
+
+        Assert.NotNull(read);
+        Assert.Equal("Commodore/C64/250407", read!.SystemId);
+        Assert.Equal("https://example.org/beta", read.BetaDataUrl);
+        Assert.Equal(
+            [
+                new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta, SizeBytes: 5_242_880),
+                new SystemFileEntry("Commodore/Shared files/74LS08.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta)
+            ],
+            read.Files);
+    }
+
+    // ###########################################################################################
+    // THE STABLE SOURCE'S BOARD DATA AND FILES (2026-10-04): the tree named in the request as the
+    // server binds it - none (an older CRT) is BETA - and the stable source's address in both answers.
+    // ###########################################################################################
+    [Fact]
+    public void A_system_request_names_its_tree_and_the_answers_carry_the_stable_address()
+    {
+        SystemDetailRequest stable = ReviewWireContractTests.Received<SystemDetailRequest>(
+            new SystemDetailRequest("Commodore/C64/250407", DataTreeNames.Production));
+        SystemDetailRequest older = ReviewWireContractTests.Received<SystemDetailRequest>(new SystemDetailRequest("Commodore/C64/250407"));
+
+        Assert.True(DataTreeNames.IsProduction(stable.Tree));
+        Assert.False(DataTreeNames.IsProduction(older.Tree));
+
+        SystemTableAnswer? table = ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(new SystemTableAnswer(
+            "Commodore/C64/250407", new string('f', 64), new SubmissionRows(), MayEdit: false, "Read-only.", BetaDataUrl: null,
+            ProductionDataUrl: "https://example.org/app-data/Data/")));
+
+        SystemFilesAnswer? files = ReviewApiParser.ParseSystemFiles(ReviewWireContractTests.Answer(new SystemFilesAnswer(
+            "Commodore/C64/250407",
+            [new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Production, SizeBytes: 10)],
+            BetaDataUrl: null,
+            ProductionDataUrl: "https://example.org/app-data/Data/")));
+
+        Assert.Equal("https://example.org/app-data/Data/", table!.ProductionDataUrl);
+        Assert.False(table.MayEdit);
+        Assert.Equal("https://example.org/app-data/Data/", files!.ProductionDataUrl);
+        Assert.Equal(SystemFileSource.Production, Assert.Single(files.Files).OpenFrom);
+    }
+
+    // The production plan's FileSizes (2026-10-04): path -> bytes, the keys as the paths are spelled
+    // (no naming policy touches a dictionary key), read by the tab's hand-written plan parser.
+    [Fact]
+    public void A_production_plans_file_sizes_read_back_by_path()
+    {
+        ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan(ReviewWireContractTests.Answer(new ProductionPlanAnswer(
+            "Commodore/C128/310378",
+            "2026-October-4",
+            new string('c', 64),
+            IsAwaitingProduction: true,
+            TouchesSharedFiles: false,
+            CanPublish: true,
+            Refusal: null,
+            Approval: null,
+            UnchangedCount: 1,
+            Files: [],
+            Problems: [],
+            Removals: null,
+            FileSizes: new Dictionary<string, long>
+            {
+                ["Commodore/C128/310378/Scope baseline/U10_30b_NTSC.png"] = 36_147,
+                ["Commodore/Shared files/Component images/6510.jpg"] = 46_182
+            })));
+
+        Assert.NotNull(plan!.FileSizes);
+        Assert.Equal(36_147, plan.FileSizes!["Commodore/C128/310378/Scope baseline/U10_30b_NTSC.png"]);
+        Assert.Equal(46_182, plan.FileSizes["Commodore/Shared files/Component images/6510.jpg"]);
+
+        // An older server sends none: no sizes, not an empty claim.
+        ProductionPlanView? older = ReviewApiParser.ParseProductionPlan(ReviewWireContractTests.Answer(new ProductionPlanAnswer(
+            "Commodore/C128/310378", null, new string('c', 64), true, false, true, null, null, 0, [], [], null)));
+
+        Assert.Null(older!.FileSizes);
     }
 
     // ###########################################################################################
@@ -577,6 +901,70 @@ public sealed class ReviewWireContractTests
 
         Assert.Equal(history, read!.History);
         Assert.Null(ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])))!.History);
+    }
+
+    // ###########################################################################################
+    // The maintainer's own account (2026-10-03): the four changes arrive as the server binds them,
+    // and the account and a change's answer read back field for field - including the answer to a
+    // new address, which carries NO account (it has not changed yet) and says a code was sent.
+    // ###########################################################################################
+    [Fact]
+    public void The_account_changes_arrive_as_the_server_binds_them()
+    {
+        Assert.Equal(
+            new ChangeNameRequest("Dennis H"),
+            ReviewWireContractTests.Received<ChangeNameRequest>(new ChangeNameRequest("Dennis H")));
+        Assert.Equal(
+            new ChangeEmailRequest("bench@example.com"),
+            ReviewWireContractTests.Received<ChangeEmailRequest>(new ChangeEmailRequest("bench@example.com")));
+        Assert.Equal(
+            new ConfirmEmailChangeRequest("iAXr2z0PPffPwpmzHR-bOFo5ZPCPfHEK1hZbFAKAoYQ"),
+            ReviewWireContractTests.Received<ConfirmEmailChangeRequest>(new ConfirmEmailChangeRequest("iAXr2z0PPffPwpmzHR-bOFo5ZPCPfHEK1hZbFAKAoYQ")));
+        Assert.Equal(
+            new ChangePasswordRequest("a new one here"),
+            ReviewWireContractTests.Received<ChangePasswordRequest>(new ChangePasswordRequest("a new one here")));
+    }
+
+    [Fact]
+    public void The_account_reads_back_field_for_field()
+    {
+        var sent = new AccountAnswer(
+            7, "dh@example.com", "Dennis", true, true, ["Commodore/C128/310378", "Commodore/C64/250407"],
+            ReviewWireContractTests.Decided.AddYears(-1), ReviewWireContractTests.Decided);
+
+        AccountAnswer? read = ReviewApiParser.ParseAccount(ReviewWireContractTests.Answer(sent));
+
+        Assert.NotNull(read);
+        Assert.Equal(sent.Id, read!.Id);
+        Assert.Equal(sent.Email, read.Email);
+        Assert.Equal(sent.DisplayName, read.DisplayName);
+        Assert.Equal(sent.IsVerified, read.IsVerified);
+        Assert.Equal(sent.IsAdministrator, read.IsAdministrator);
+        Assert.Equal(sent.MaintainerOf, read.MaintainerOf);
+        Assert.Equal(sent.CreatedUtc, read.CreatedUtc);
+        Assert.Equal(sent.LastLoginUtc, read.LastLoginUtc);
+
+        // Never signed in since it was made: no last login, and none invented.
+        Assert.Null(ReviewApiParser.ParseAccount(ReviewWireContractTests.Answer(sent with { LastLoginUtc = null }))!.LastLoginUtc);
+    }
+
+    [Fact]
+    public void A_changes_answer_reads_back_with_its_account_or_without_one_while_a_code_is_on_its_way()
+    {
+        var account = new AccountAnswer(7, "bench@example.com", "Dennis", true, false, [], ReviewWireContractTests.Decided);
+
+        AccountChangeAnswer? changed = ReviewApiParser.ParseAccountChange(
+            ReviewWireContractTests.Answer(new AccountChangeAnswer("Your email address is now bench@example.com.", account)));
+
+        Assert.Equal("Your email address is now bench@example.com.", changed!.Message);
+        Assert.Equal("bench@example.com", changed.Account!.Email);
+        Assert.False(changed.CodeSent);
+
+        AccountChangeAnswer? waiting = ReviewApiParser.ParseAccountChange(
+            ReviewWireContractTests.Answer(new AccountChangeAnswer("A code is on its way.", null, CodeSent: true)));
+
+        Assert.True(waiting!.CodeSent);
+        Assert.Null(waiting.Account);
     }
 
     [Fact]
@@ -668,6 +1056,93 @@ public sealed class ReviewWireContractTests
             new SetPlacementRequest("Amstrad/CPC 6128/MC0020", "CPC 6128", "MC0020", string.Empty, null)).AfterExcelDataFile);
     }
 
+    // ###########################################################################################
+    // Whether each source's drop-down list names a system (2026-10-04) arrives as sent - and NULL,
+    // a list the server could not read, stays null rather than turning into "not listed".
+    // ###########################################################################################
+    [Fact]
+    public void Whether_each_drop_down_list_names_a_system_arrives_including_not_known()
+    {
+        SystemOverviewEntry listed = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1, ListedInBeta: false, ListedInStable: true);
+        SystemOverviewEntry unknown = listed with { SystemId = "Commodore/C128/310378", ListedInBeta = null, ListedInStable = null };
+
+        SystemOverviewAnswer? read = ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(new SystemOverviewAnswer([listed, unknown])));
+
+        Assert.Equal((false, true), (read!.Systems[0].ListedInBeta, read.Systems[0].ListedInStable));
+        Assert.Equal((null, null), (read.Systems[1].ListedInBeta, read.Systems[1].ListedInStable));
+        Assert.Equal(listed, read.Systems[0]);
+    }
+
+    // ###########################################################################################
+    // Account > "Order of systems" (2026-10-04): the order arrives as sent, every id in its place, and
+    // what the server did to each list reads back - including null for a server with no stable
+    // source, which must not turn into "not changed".
+    // ###########################################################################################
+    [Fact]
+    public void The_order_of_systems_arrives_in_order_and_what_was_done_reads_back()
+    {
+        string[] order = ["ZX Spectrum/Spectrum 16K-48K/Issue 4B", "Commodore/C64/250407", "Commodore/C128/310378"];
+
+        Assert.Equal(order, ReviewWireContractTests.Received<SystemOrderRequest>(new SystemOrderRequest(order)).SystemIds);
+
+        SystemOrderAnswer both = new(true, true, null);
+        SystemOrderAnswer betaOnly = new(true, null, null);
+        SystemOrderAnswer failed = new(true, false, "The stable source's list could not be changed: locked.");
+
+        Assert.Equal(both, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(both)));
+        Assert.Equal(betaOnly, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(betaOnly)));
+        Assert.Equal(failed, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(failed)));
+    }
+
+    // ###########################################################################################
+    // What a submission changed as it went into BETA (2026-10-04) rides on its entry in the system's
+    // detail - every list and field arriving as the server recorded it, and none for an entry the
+    // server has no record for.
+    // ###########################################################################################
+    [Fact]
+    public void What_a_submission_changed_arrives_with_its_entry()
+    {
+        var changes = new SubmissionChanges(
+            false,
+            [
+                new SectionChanges(
+                    BoardWorkbookSchema.SheetComponents, 2, 1, 1, 1,
+                    ["U7", "U9"],
+                    [new ChangedRowFact("U8", [BoardWorkbookSchema.ColPartNumber])],
+                    ["R3"],
+                    [new RenamedRowFact("C10", "C51")])
+            ],
+            new FileChanges(1, 0, 1, ["Commodore/C64/250407/U7.png"], [], ["Commodore/C64/250407/old.pdf"]));
+
+        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1);
+
+        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(
+            system,
+            [],
+            [],
+            [
+                new SystemSubmissionEntry(9, "a@example.com", "Fix.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null, Changes: changes),
+                new SystemSubmissionEntry(8, "a@example.com", "Older.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null)
+            ])));
+
+        SubmissionChanges back = read!.Submissions.Single(entry => entry.Id == 9).Changes!;
+
+        Assert.False(back.IsNewSystem);
+
+        SectionChanges section = Assert.Single(back.Sections);
+        Assert.Equal((BoardWorkbookSchema.SheetComponents, 2, 1, 1, 1), (section.Section, section.AddedCount, section.ChangedCount, section.RemovedCount, section.RenamedCount));
+        Assert.Equal(["U7", "U9"], section.Added);
+        Assert.Equal("U8", Assert.Single(section.Changed).Row);
+        Assert.Equal([BoardWorkbookSchema.ColPartNumber], section.Changed[0].Fields);
+        Assert.Equal(["R3"], section.Removed);
+        Assert.Equal(new RenamedRowFact("C10", "C51"), Assert.Single(section.Renamed));
+        Assert.Equal((1, 0, 1), (back.Files.AddedCount, back.Files.ReplacedCount, back.Files.RemovedCount));
+        Assert.Equal(["Commodore/C64/250407/U7.png"], back.Files.Added);
+        Assert.Equal(["Commodore/C64/250407/old.pdf"], back.Files.Removed);
+
+        Assert.Null(read.Submissions.Single(entry => entry.Id == 8).Changes);
+    }
+
     [Fact]
     public void A_saved_placement_reads_back_with_what_the_server_did()
     {
@@ -735,6 +1210,65 @@ public sealed class ReviewWireContractTests
         }));
 
         Assert.Equal(new ReviewContributorFacts("dh@hinet.dk", "Dennis", 3, 2, 1, 4), detail!.Contributor);
+    }
+
+    // ###########################################################################################
+    // *** THE CONTRIBUTOR'S WHOLE RECORD (2026-09-30), THE SAME WAY. *** The Contributor view's
+    // account facts and every listed submission - its system, description, contributor-facing
+    // state, dates and what they were told - out of the server's settings and back through the real
+    // parser. A renamed field would leave the view silently empty; this fails instead.
+    // ###########################################################################################
+    [Fact]
+    public void A_contributors_whole_record_reads_back_field_for_field()
+    {
+        var sent = new ReviewContributorFacts(
+            "dh@hinet.dk",
+            "Dennis",
+            Published: 1,
+            Waiting: 0,
+            ChangesRequested: 0,
+            Rejected: 1,
+            SignedIn: true,
+            AccountCreatedUtc: ReviewWireContractTests.Decided.AddDays(-40),
+            Submissions:
+            [
+                new ContributorSubmissionEntry(9, "Commodore/C64/250407", "Wrong pinout", "rejected", ReviewWireContractTests.Decided.AddDays(-3), ReviewWireContractTests.Decided, "Not this board."),
+                new ContributorSubmissionEntry(7, "Commodore/C128/310378", null, "published", ReviewWireContractTests.Decided.AddDays(-9), null, null)
+            ],
+
+            // "[1] published to stable" (2026-10-01, server 3.9.0).
+            PublishedToStable: 1);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(new
+        {
+            canPublish = true,
+            submission = new ReviewQueueEntry(10, "Commodore/C64/250407", "pending", "New stuff", "dh@hinet.dk", "", null, null, false),
+            contributor = sent
+        }));
+
+        ReviewContributorFacts read = detail!.Contributor!;
+
+        Assert.Equal(sent with { Submissions = null }, read with { Submissions = null });
+        Assert.Equal(sent.Submissions, read.Submissions);
+    }
+
+    // An older server sends none of it: read as "not said", which the view words as such.
+    [Fact]
+    public void A_contributor_from_an_older_server_reads_back_with_no_record()
+    {
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(
+            """
+            {"canPublish":true,
+             "submission":{"id":4,"systemId":"Manu1/Hardware1/Board1","state":"pending","summary":"x","contactEmail":"dh@hinet.dk","baseRevision":""},
+             "contributor":{"email":"dh@hinet.dk","name":null,"published":1,"waiting":0,"changesRequested":0,"rejected":0}}
+            """);
+
+        ReviewContributorFacts read = detail!.Contributor!;
+
+        Assert.Null(read.SignedIn);
+        Assert.Null(read.AccountCreatedUtc);
+        Assert.Null(read.Submissions);
+        Assert.Null(read.PublishedToStable);
     }
 
     // A server that does not know sends no badges - read as "not said", never as "published" or
@@ -863,5 +1397,186 @@ public sealed class ReviewWireContractTests
             [new SystemSubmissionEntry(4, "c@example.com", "x", "merged", discarded, discarded, null, DraftDiscardedUtc: discarded)])));
 
         Assert.Equal(discarded, Assert.Single(system!.Submissions).DraftDiscardedUtc);
+    }
+    // ###########################################################################################
+    // *** SIGNING IN (2026-10-04). *** The session answer was an anonymous object on the server, and
+    // ParseLogin read it by hand-typed names that only ReviewApiParserTests' own JSON held - so a
+    // renamed field locked every maintainer out with every test green. Now it is CRT.Data's
+    // SessionAnswer, through the server's settings and back out of the real parser.
+    // ###########################################################################################
+    [Fact]
+    public void A_sign_in_answer_reads_back_as_the_session_it_describes()
+    {
+        DateTimeOffset expires = new(2026, 11, 3, 12, 0, 0, TimeSpan.Zero);
+
+        ReviewSession? session = ReviewApiParser.ParseLogin(ReviewWireContractTests.Answer(
+            new SessionAnswer("the-bearer-token", expires, new SessionAccountAnswer(7, "m@example.com", "Maintainer", true))));
+
+        Assert.NotNull(session);
+        Assert.Equal("the-bearer-token", session!.BearerToken);
+        Assert.Equal(expires, session.ExpiresUtc);
+        Assert.Equal(7, session.AccountId);
+        Assert.Equal("m@example.com", session.Email);
+        Assert.Equal("Maintainer", session.DisplayName);
+    }
+
+    // ###########################################################################################
+    // *** ONE SUBMISSION'S DETAIL, WHOLE (2026-10-04). *** The screen a maintainer decides from was
+    // an anonymous object on the server, held to the parser only field by field in the tests above
+    // by anonymous objects of their own. Now it is CRT.Data's SubmissionDetailAnswer, and every
+    // field the Maintainer tab reads comes back out of the real parser here.
+    // ###########################################################################################
+    [Fact]
+    public void A_submissions_detail_reads_back_field_for_field()
+    {
+        var manifest = new SubmissionManifest { SystemId = "Commodore/C64/250407" };
+        manifest.Files.Add(new SubmissionFile { Path = "Commodore/C64/250407/new.png", Sha256 = new string('a', 64), SizeBytes = 10 });
+
+        var answer = new SubmissionDetailAnswer(
+            CanPublish: true,
+            Approval: new ApprovalStatus([ApproverRole.Maintainer], [], [ApproverRole.Maintainer], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", "", ReviewWireContractTests.Decided, null, false),
+            Manifest: manifest,
+            Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 1, Waiting: 0, ChangesRequested: 0, Rejected: 0),
+            Findings: [ReviewWireContractTests.Finding(ValidationSeverity.Warning)],
+            Changes: new ReviewChangeSummary(false, null, []),
+            PublishedFiles: ["Commodore/C64/250407/old.png"],
+            PublishedHashes: new Dictionary<string, string> { ["Commodore/C64/250407/old.png"] = new string('b', 64) },
+            SchematicImages: new Dictionary<string, string> { ["Top"] = "Commodore/C64/250407/top.png" },
+            SubmittedFiles: [new SubmittedFileFact("Commodore/C64/250407/new.png", new string('a', 64), 10, SubmissionFileScope.Own, true, null)],
+            Removals: new FileRemovalPreview(["Commodore/C64/250407/old.png"], null),
+            Amendment: new SubmissionAmendmentFact(2, "m@example.com", ReviewWireContractTests.Decided));
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer));
+
+        Assert.NotNull(detail);
+        Assert.True(detail!.CanPublish);
+        Assert.Equal([ApproverRole.Maintainer], detail.Approval!.Required);
+        Assert.Equal([ApproverRole.Maintainer], detail.Approval.WaitingFor);
+        Assert.True(detail.Approval.CanApprove);
+        Assert.True(detail.Approval.ApprovalPublishes);
+        Assert.Equal(4, detail.Submission.Id);
+        Assert.Equal("Commodore/C64/250407/new.png", Assert.Single(detail.Assets.Files).Path);
+        Assert.Equal(answer.Contributor, detail.Contributor);
+        Assert.Equal("image.orphan", Assert.Single(detail.Findings).Code);
+        Assert.NotNull(detail.Changes);
+        Assert.Equal(["Commodore/C64/250407/old.png"], detail.PublishedFiles);
+        Assert.Equal(new string('b', 64), detail.PublishedHashes["Commodore/C64/250407/old.png"]);
+        Assert.Equal("Commodore/C64/250407/top.png", detail.SchematicImages["Top"]);
+        Assert.Equal(answer.SubmittedFiles[0], Assert.Single(detail.SubmittedFiles));
+        Assert.Equal(["Commodore/C64/250407/old.png"], detail.Removals!.Files);
+        Assert.Equal(new ReviewAmendmentView(2, "m@example.com", ReviewWireContractTests.Decided), detail.Amendment);
+    }
+
+    // GET /api/health (2026-10-04): the version Account > "Server version" shows.
+    [Fact]
+    public void The_health_answer_gives_the_server_version()
+    {
+        HealthStatus? health = ReviewApiParser.ParseHealth(
+            ReviewWireContractTests.Answer(new HealthStatus("ok", "4.3.2", ReviewWireContractTests.Decided)));
+
+        Assert.NotNull(health);
+        Assert.Equal("ok", health!.Status);
+        Assert.Equal("4.3.2", health.Version);
+        Assert.Equal(ReviewWireContractTests.Decided, health.Utc);
+        Assert.Null(health.ApiRevision);
+    }
+
+    // The API revision the server serves (server 4.6.0), through the server's JSON settings and the
+    // tab's parser - the number the Admin line compares with this CRT's.
+    [Fact]
+    public void The_health_answer_gives_the_api_revision_the_server_serves()
+    {
+        HealthStatus? health = ReviewApiParser.ParseHealth(
+            ReviewWireContractTests.Answer(new HealthStatus("ok", "4.6.0", ReviewWireContractTests.Decided, 7)));
+
+        Assert.Equal(7, health!.ApiRevision);
+    }
+
+    // ###########################################################################################
+    // RESETTING THE CONTRIBUTION DATA (owner request, 2026-10-04). The fingerprint is the field that
+    // matters: renamed on either side, every reset would send nothing back and be refused as
+    // "changed since the counts were shown". And IsEnabled: lost, the button would stay off for ever
+    // - or, read as true from a server that says false, be offered only to be refused.
+    // ###########################################################################################
+    [Fact]
+    public void A_reset_arrives_with_the_fingerprint_of_the_counts_shown()
+    {
+        DataResetRequest received = ReviewWireContractTests.Received<DataResetRequest>(new DataResetRequest(new string('a', 64)));
+
+        Assert.Equal(new string('a', 64), received.Fingerprint);
+    }
+
+    [Fact]
+    public void The_reset_counts_read_back_field_for_field()
+    {
+        DataResetPlanAnswer? plan = ReviewApiParser.ParseDataResetPlan(ReviewWireContractTests.Answer(
+            new DataResetPlanAnswer(false, new string('f', 64), 14, 6, 1, 4, 2, 7, 310, 1200, 80, "Switched off.")));
+
+        Assert.NotNull(plan);
+        Assert.False(plan!.IsEnabled);
+        Assert.Equal(new string('f', 64), plan.Fingerprint);
+        Assert.Equal((14, 6, 1, 4, 2, 7), (plan.Submissions, plan.Accounts, plan.Administrators, plan.Maintainers, plan.Invitations, plan.Systems));
+        Assert.Equal((310, 1200, 80), (plan.HistoryEntries, plan.BoardViews, plan.ApiUsageRows));
+        Assert.Equal("Switched off.", plan.NotEnabledBecause);
+
+        DataResetPlanAnswer? on = ReviewApiParser.ParseDataResetPlan(ReviewWireContractTests.Answer(
+            new DataResetPlanAnswer(true, "f", 0, 0, 1, 0, 0, 0, 1, 0, 0)));
+
+        Assert.True(on!.IsEnabled);
+        Assert.Null(on.NotEnabledBecause);
+
+        // Counts with no fingerprint cannot be confirmed, so they are not counts at all.
+        Assert.Null(ReviewApiParser.ParseDataResetPlan(ReviewWireContractTests.Answer(
+            new DataResetPlanAnswer(true, "", 1, 1, 1, 1, 1, 1, 1, 1, 1))));
+    }
+
+    [Fact]
+    public void What_a_reset_deleted_reads_back_field_for_field()
+    {
+        DataResetAnswer? done = ReviewApiParser.ParseDataReset(ReviewWireContractTests.Answer(
+            new DataResetAnswer(14, 6, 4, 2, 7, 310, 1200, 80, 23)));
+
+        Assert.Equal(
+            (14, 6, 4, 2, 7, 310, 1200, 80, 23),
+            (done!.SubmissionsDeleted, done.AccountsDeleted, done.MaintainersDeleted, done.InvitationsDeleted, done.SystemsDeleted,
+             done.HistoryEntriesDeleted, done.BoardViewsDeleted, done.ApiUsageRowsDeleted, done.StoredFilesRemoved));
+    }
+
+    // ###########################################################################################
+    // API USAGE (owner request, 2026-10-04). NeverRetired and the versions are the fields to get
+    // wrong: a route read as retirable that every CRT ever released sends, or a version list read as
+    // empty, would make a route look unused when it is not - the one mistake this screen exists to
+    // prevent.
+    // ###########################################################################################
+    [Fact]
+    public void The_API_usage_reads_back_route_for_route_and_version_for_version()
+    {
+        ApiUsageAnswer? usage = ReviewApiParser.ParseApiUsage(ReviewWireContractTests.Answer(
+            new ApiUsageAnswer(
+                90,
+                [
+                    new ApiUsageRoute("POST", "/api/usage/check-in", "Forever", true, 900, ReviewWireContractTests.Decided,
+                        [new ApiUsageVersion("2.5.0", 800, ReviewWireContractTests.Decided), new ApiUsageVersion(ApiUsageVersion.NotCrt, 100, ReviewWireContractTests.Decided)]),
+                    new ApiUsageRoute("POST", "/api/review/systems/edit", "Maintainer", false, 0, null, []),
+                ],
+                [new ApiUsageInstallations("3.0.0", 42, 305)])));
+
+        Assert.NotNull(usage);
+        Assert.Equal(90, usage!.Days);
+        Assert.Equal(2, usage.Routes.Count);
+
+        ApiUsageRoute checkIn = usage.Routes[0];
+        Assert.Equal(("POST", "/api/usage/check-in", "Forever", true, 900L), (checkIn.Method, checkIn.Route, checkIn.Area, checkIn.NeverRetired, checkIn.Calls));
+        Assert.Equal(ReviewWireContractTests.Decided, checkIn.LastUtc);
+        Assert.Equal(["2.5.0", ApiUsageVersion.NotCrt], checkIn.Versions.Select(version => version.Version));
+        Assert.Equal(800, checkIn.Versions[0].Calls);
+
+        ApiUsageRoute unused = usage.Routes[1];
+        Assert.False(unused.NeverRetired);
+        Assert.Null(unused.LastUtc);
+        Assert.Empty(unused.Versions);
+
+        Assert.Equal(new ApiUsageInstallations("3.0.0", 42, 305), Assert.Single(usage.Installations));
     }
 }

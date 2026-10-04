@@ -1,6 +1,7 @@
 using CRT.Server.Configuration;
 using Handlers.DataHandling;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Email;
 
 namespace CRT.Server.Handlers.Submissions
 {
@@ -143,7 +144,7 @@ namespace CRT.Server.Handlers.Submissions
                 try
                 {
                     await ReviewEndpoints.AfterPublishAsync(
-                        submissionId, submissions, notifier, options, logger, cancellationToken);
+                        submissionId, submissions, accounts, notifier, options, logger, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -176,7 +177,7 @@ namespace CRT.Server.Handlers.Submissions
 
                     if (waiting is not null)
                     {
-                        IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForRolesAsync(
+                        IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForRolesAsync(
                             outcome.WaitingFor, waiting.SystemId, accounts, cancellationToken);
 
                         await notifier.NotifyApprovalNeededAsync(
@@ -223,6 +224,7 @@ namespace CRT.Server.Handlers.Submissions
         private static async Task AfterPublishAsync(
             long submissionId,
             ISubmissionStore submissions,
+            IAccountStore accounts,
             SubmissionNotifier notifier,
             ServerOptions options,
             ILogger logger,
@@ -249,28 +251,7 @@ namespace CRT.Server.Handlers.Submissions
             // regeneration leaves the PREVIOUS manifest in place, so clients stay on what they
             // have until it is rebuilt - stale, but never inconsistent.
             // ###########################################################################################
-            int written = DataChecksumManifest.Write(
-                options.DataTreeRoot ?? string.Empty,
-                options.PublicDataBaseUrl ?? string.Empty,
-                options.ManifestPath ?? string.Empty);
-
-            if (written < 0)
-            {
-                logger.LogWarning(
-                    "Submission {SubmissionId} was published but the checksum manifest at " +
-                    "[{ManifestPath}] could not be regenerated - clients will not see the " +
-                    "change until it is rebuilt.",
-                    submissionId,
-                    options.ManifestPath);
-            }
-            else
-            {
-                logger.LogInformation(
-                    "Checksum manifest regenerated after publishing submission " +
-                    "{SubmissionId}: {EntryCount} files.",
-                    submissionId,
-                    written);
-            }
+            ReviewEndpoints.RewriteBetaManifest(submissionId, options, logger);
 
             // ###########################################################################################
             // *** THE MAIL COMES LAST, AFTER THE ONE IRREVERSIBLE OPERATION IN THE SYSTEM. ***
@@ -294,12 +275,43 @@ namespace CRT.Server.Handlers.Submissions
             if (published is not null)
             {
                 await notifier.NotifyDecisionAsync(
-                    published.ContactEmail,
-                    published.SystemId,
+                    published,
+                    accounts,
                     SubmissionState.Merged,
                     published.DecisionComment,
                     amendedByMaintainer: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
                     cancellationToken: cancellationToken);
+            }
+        }
+
+        // ###########################################################################################
+        // BETA's dataChecksums.json, rewritten after a publish into BETA - see AfterPublishAsync for
+        // why it must happen and must never fail the publish. Also called after a change published
+        // from the Systems screen (SystemEndpoints), which goes into BETA the same way.
+        // ###########################################################################################
+        internal static void RewriteBetaManifest(long submissionId, ServerOptions options, ILogger logger)
+        {
+            int written = DataChecksumManifest.Write(
+                options.DataTreeRoot ?? string.Empty,
+                options.PublicDataBaseUrl ?? string.Empty,
+                options.ManifestPath ?? string.Empty);
+
+            if (written < 0)
+            {
+                logger.LogWarning(
+                    "Submission {SubmissionId} was published but the checksum manifest at " +
+                    "[{ManifestPath}] could not be regenerated - clients will not see the " +
+                    "change until it is rebuilt.",
+                    submissionId,
+                    options.ManifestPath);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Checksum manifest regenerated after publishing submission " +
+                    "{SubmissionId}: {EntryCount} files.",
+                    submissionId,
+                    written);
             }
         }
 
@@ -431,8 +443,8 @@ namespace CRT.Server.Handlers.Submissions
             // "your contribution was rejected" and nothing else.
             // ###########################################################################################
             await notifier.NotifyDecisionAsync(
-                record.ContactEmail,
-                record.SystemId,
+                record,
+                accounts,
                 newState,
                 request.Comment!.Trim(),
                 cancellationToken: cancellationToken);
@@ -534,7 +546,7 @@ namespace CRT.Server.Handlers.Submissions
             if (outcome.IsConflict)
                 return Results.Conflict(new { error = outcome.Error });
 
-            return Results.BadRequest(new { error = outcome.FullError, findings = outcome.Findings });
+            return Results.BadRequest(new FindingsRefusalAnswer(outcome.FullError, outcome.Findings));
         }
 
         // ###########################################################################################
@@ -766,61 +778,61 @@ namespace CRT.Server.Handlers.Submissions
             ApprovalStatus approval = await ApprovePublishFlow.ApprovalStatusAsync(
                 access, record, touchesSharedFiles, submissions, accounts, cancellationToken);
 
-            return Results.Ok(new
-            {
-                canPublish,
+            // CRT.Data's SubmissionDetailAnswer (2026-10-04 - an anonymous object with these same
+            // fields until then), which ReviewWireContractTests reads back through the real parser.
+            return Results.Ok(new SubmissionDetailAnswer(
+                CanPublish: canPublish,
 
                 // Who must approve, who has, and what THIS account's approval would do - CRT.Data's
                 // ApprovalStatus, read by the Maintainer tab as the same record.
-                approval,
+                Approval: approval,
 
                 // The queue row, with the detail's own answers for the queue's two badges - which
                 // are judged against the tree as it is now.
-                submission = ReviewQueueFlow.Entry(
+                Submission: ReviewQueueFlow.Entry(
                     record with { TouchesSharedFiles = touchesSharedFiles },
                     isNewSystem: comparison.Changes?.IsNewSystem,
                     awaitsYou: canPublish && approval.CanApprove,
                     draftDiscardedUtc: discarded.TryGetValue(record.Id, out DateTimeOffset discardedUtc) ? discardedUtc : null),
-                manifest,
+                Manifest: manifest,
 
                 // Who sent it, and how their other submissions went - CRT.Data's
                 // ReviewContributorFacts, read by the Maintainer tab as the same record.
-                contributor = await ContributorHistory.BuildAsync(record, submissions, accounts, cancellationToken),
+                Contributor: await ContributorHistory.BuildAsync(record, submissions, accounts, cancellationToken),
 
-                findings = await submissions.GetFindingsAsync(submissionId, cancellationToken),
-                changes = comparison.Changes,
+                Findings: await submissions.GetFindingsAsync(submissionId, cancellationToken),
+                Changes: comparison.Changes,
 
                 // The files the PUBLISHED board references - what the Maintainer tab compares the
                 // submission's own files against. See PublishedFilePaths for why this cannot be
                 // derived client-side from `changes`.
-                publishedFiles = comparison.PublishedFiles,
+                PublishedFiles: comparison.PublishedFiles,
 
                 // The SHA-256 of each published file the submission also carries, so the review
                 // app can drop the pairs that are byte-identical instead of showing every file on
                 // both sides as replaced. See PublishedFileHashes.
-                publishedHashes = comparison.PublishedHashes,
+                PublishedHashes: comparison.PublishedHashes,
 
                 // Which image each schematic is drawn from, so a moved highlight lands on the
                 // right board. See SchematicImageFiles.
-                schematicImages = comparison.SchematicImages,
+                SchematicImages: comparison.SchematicImages,
 
                 // One entry per submitted file: its scope, whether a row uses it, and the hash of
                 // what is published at its path now. The Maintainer tab lists every file that would
                 // change the tree from this - including the ones it cannot draw. The record type is
                 // CRT.Data's SubmittedFileFact, shared with the Maintainer tab, so the field names on
                 // the wire cannot drift apart. (security review, 2026-09-25)
-                submittedFiles = comparison.SubmittedFiles,
+                SubmittedFiles: comparison.SubmittedFiles,
 
                 // The files publishing this would REMOVE from the BETA data, because the board
                 // stops citing them and nothing else uses them - CRT.Data's FileRemovalPreview,
                 // shown before approving and sent back with the approval (2026-09-25).
-                removals = comparison.Removals,
+                Removals: comparison.Removals,
 
                 // Whether a maintainer changed it in the Maintainer tab, and who last did.
-                amendment = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
-                    ? new { version = latest.Version, by = latest.By, atUtc = latest.AtUtc }
-                    : null
-            });
+                Amendment: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
+                    ? new SubmissionAmendmentFact(latest.Version, latest.By, latest.AtUtc)
+                    : null));
         }
 
         // ###########################################################################################
@@ -1014,7 +1026,7 @@ namespace CRT.Server.Handlers.Submissions
         // unreadable sidecar must not make a submission impossible to open, and the maintainer sees
         // the findings instead.
         // ###########################################################################################
-        private static IReadOnlyList<KiCadCalibrationEntry> PublishedCalibrations(
+        internal static IReadOnlyList<KiCadCalibrationEntry> PublishedCalibrations(
             string dataTreeRoot,
             SubmissionManifest manifest,
 

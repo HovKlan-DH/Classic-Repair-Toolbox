@@ -143,7 +143,7 @@ namespace CRT.Server.Tests
                 this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance);
 
             Assert.False(outcome.IsDone);
-            Assert.Contains("changed in production after it was checked", outcome.Error, StringComparison.Ordinal);
+            Assert.Contains("changed in the stable source after it was checked", outcome.Error, StringComparison.Ordinal);
             Assert.Equal("SUBMITTED", File.ReadAllText(this.In(this.thisBeta, BetaRollbackWriterTests.Sheet)));
             Assert.Single(Directory.GetFiles(Path.GetDirectoryName(this.In(this.thisBeta, BetaRollbackWriterTests.Sheet))!));
         }

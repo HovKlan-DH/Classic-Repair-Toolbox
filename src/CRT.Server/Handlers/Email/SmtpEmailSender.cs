@@ -1,4 +1,6 @@
 using System.Net.Mail;
+using System.Net.Mime;
+using System.Text;
 using CRT.Server.Configuration;
 
 namespace CRT.Server.Handlers.Email
@@ -39,7 +41,7 @@ namespace CRT.Server.Handlers.Email
             this.thisLogger = logger;
         }
 
-        public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+        public async Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(message);
 
@@ -60,11 +62,28 @@ namespace CRT.Server.Handlers.Email
                         this.thisOptions.MailFromAddress!,
                         this.thisOptions.MailFromDisplayName),
                     Subject = message.Subject,
+                    SubjectEncoding = Encoding.UTF8,
                     Body = message.Body,
+                    BodyEncoding = Encoding.UTF8,
                     IsBodyHtml = false
                 };
 
+                // ###########################################################################################
+                // THE HTML IS SENT AS THE PREFERRED ALTERNATIVE (2026-10-03). multipart/alternative
+                // with the plain text first and the HTML last - the order RFC 2046 gives for "the
+                // last one is the best one" - so every client that can show HTML shows it, and the
+                // plain part (which spam filters expect beside HTML) is only a fallback.
+                // ###########################################################################################
+                if (!string.IsNullOrEmpty(message.HtmlBody))
+                {
+                    mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
+                        message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
+                }
+
                 mail.To.Add(message.ToAddress);
+
+                if (!string.IsNullOrWhiteSpace(message.ReplyToAddress))
+                    mail.ReplyToList.Add(message.ReplyToAddress);
 
                 await client.SendMailAsync(mail, cancellationToken);
 
@@ -72,6 +91,8 @@ namespace CRT.Server.Handlers.Email
                 // working credential, and the journal is readable by anyone who can read logs.
                 this.thisLogger.LogInformation(
                     "Sent mail to {Recipient}: {Subject}", message.ToAddress, message.Subject);
+
+                return true;
             }
             catch (Exception ex) when (ex is SmtpException or InvalidOperationException or IOException or FormatException)
             {
@@ -85,6 +106,8 @@ namespace CRT.Server.Handlers.Email
                     "still succeeded; the user can request another.",
                     message.ToAddress,
                     message.Subject);
+
+                return false;
             }
         }
     }

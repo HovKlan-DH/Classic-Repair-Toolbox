@@ -46,6 +46,37 @@ public sealed class BetaViewTests
             Removals: null,
             Carrying: carrying);
 
+    // Sizes in the tree (owner request, 2026-10-04): every file's size from the plan's FileSizes - a
+    // removed one as production holds it - and none for a file the plan does not size.
+    [Fact]
+    public void Each_file_in_the_tree_shows_the_size_the_plan_gives_it()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BetaView();
+
+            window.ShowPlanForTests(
+                BetaViewTests.Plan(carrying: [], files: [BetaViewTests.File("Commodore/C64/250407/Images/a.png")]) with
+                {
+                    UnchangedFiles = ["Commodore/C64/250407/Images/b.png"],
+                    Removals = new FileRemovalPreview(["Commodore/C64/250407/Images/old.png"], null),
+                    FileSizes = new Dictionary<string, long>
+                    {
+                        ["Commodore/C64/250407/Images/a.png"] = 2048,
+                        ["Commodore/C64/250407/Images/old.png"] = 512
+                    }
+                },
+                BetaViewTests.Row());
+
+            FileTreeView tree = window.FileTreeForTests;
+            tree.FindControl<CheckBox>("OnlyChangedCheckBox")!.IsChecked = false;
+
+            Assert.Equal("2.0 KB", tree.RowsForTests.Single(row => row.Name == "a.png").Size);
+            Assert.Equal("512 bytes", tree.RowsForTests.Single(row => row.Name == "old.png").Size);
+            Assert.Equal(string.Empty, tree.RowsForTests.Single(row => row.Name == "b.png").Size);
+        });
+    }
+
     private static PromotionFile File(string path) =>
         new(path, new string('a', 64), PromotionChange.Added, PromotionStage.Content, IsShared: false);
 
@@ -140,6 +171,9 @@ public sealed class BetaViewTests
 
             // The counts are the panel's own line above it, not said twice.
             Assert.False(tree.ShowSummary);
+
+            // No sizes in this plan (an older server): no size shown rather than a wrong one.
+            Assert.All(tree.RowsForTests, row => Assert.Equal(string.Empty, row.Size));
 
             tree.FindControl<CheckBox>("OnlyChangedCheckBox")!.IsChecked = false;
 
@@ -379,7 +413,7 @@ public sealed class BetaViewTests
 
             Assert.Null(view.ShownRow);
             Assert.False(view.FindControl<StackPanel>("ActionPanel")!.IsVisible);
-            Assert.Contains("no longer waiting for production", view.FindControl<TextBlock>("MessageText")!.Text, StringComparison.Ordinal);
+            Assert.Contains("no longer waiting to go to stable", view.FindControl<TextBlock>("MessageText")!.Text, StringComparison.Ordinal);
         });
     }
 }

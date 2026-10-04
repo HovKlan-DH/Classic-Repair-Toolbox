@@ -67,7 +67,7 @@ public sealed class TabDraftsTests : IDisposable
 
         string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
-        BoardWorkbookWriter.Write(workbook, board);
+        CachedWorkbooks.Write(workbook, board);
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
@@ -938,6 +938,96 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** SUBMIT WITH AN ERROR SENDS NOTHING AND OPENS THE TABLE ON IT (owner request, 2026-10-02:
+    // "All error should be fixed before submission can be done"). *** The board a submit would
+    // send is checked with the table's own rules; with an error, the draft's table opens showing
+    // only the rows with errors - on the sheet that has them - and says why nothing was sent.
+    // ###########################################################################################
+    [Fact]
+    public async Task Submit_with_an_error_opens_the_table_on_it_and_sends_nothing()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+
+            var board = new BoardData
+            {
+                Components = [new ComponentEntry { BoardLabel = "U0" }],
+                ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" }]
+            };
+
+            CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableSystemA), board);
+
+            Assert.True(await tab.StopForErrorsAsync(EntryA(tab), board));
+
+            BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
+            Assert.True(tab.IsTableOpen);
+            Assert.Equal(BoardTableRowKinds.Errors, editor.Filter);
+            Assert.Equal(BoardWorkbookSchema.SheetComponentLinks, editor.CurrentSheet!.Name);
+            Assert.StartsWith("This draft has 1 error to fix", editor.GetControl<TextBlock>("StatusText").Text, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A DRAFT'S ROW SAYS WHAT IS WRONG WITH IT - AND FOLLOWS AN EDIT MADE IN EXCEL (owner report,
+    // 2026-10-02: "It must check for errors when creating the draft, and if the board changes
+    // "offline", outside of app"). *** The table's own checks, on the row: a component marked on no
+    // schematic is a warning. Then the workbook is changed behind CRT's back, as Excel would, and
+    // SHOWING the tab - a TabControl attaches it - reads the list again and finds the new error.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafts_row_counts_its_problems_and_showing_the_tab_reads_an_Excel_edit()
+    {
+        UiTest.Run(() =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+
+            DraftListItem Row() => tab.Drafts.Single(row => row.ExcelDataFile == TabDraftsTests.TableSystemA);
+
+            Assert.False(Row().HasErrors);
+            Assert.True(Row().HasWarnings);
+            Assert.Equal("1 warning", Row().WarningsText);
+
+            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableSystemA);
+            CachedWorkbooks.Write(workbook, new BoardData
+            {
+                Components = [new ComponentEntry { BoardLabel = "U0" }],
+                ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" }]
+            });
+            File.SetLastWriteTimeUtc(workbook, DateTime.UtcNow.AddMinutes(1));
+
+            // Not until the tab is shown - nothing in CRT changed the draft.
+            Assert.False(Row().HasErrors);
+
+            var window = new Window { Content = tab, Width = 1200, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Row().HasErrors);
+            Assert.Equal("1 error", Row().ErrorsText);
+            Assert.Contains("1 error to fix first", Row().SubmitTooltip, StringComparison.Ordinal);
+
+            window.Close();
+        });
+    }
+
+    // A warning never stops a submit - only an error, which the server would refuse anyway.
+    [Fact]
+    public async Task Submit_with_only_warnings_goes_ahead()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+
+            // U0 is marked on no schematic: a warning.
+            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U0" }] };
+
+            Assert.False(await tab.StopForErrorsAsync(EntryA(tab), board));
+            Assert.False(tab.IsTableOpen);
+        });
+    }
+
     [Fact]
     public async Task Opening_the_table_shows_ONLY_that_drafts_row_with_the_table_below_it()
     {
@@ -1328,6 +1418,54 @@ public sealed class TabDraftsTests : IDisposable
     private static Border RenderedBadge(Window window) =>
         window.GetVisualDescendants().OfType<Border>().Single(border => border.Classes.Contains("SubmissionBadge"));
 
+    // ###########################################################################################
+    // Case 1 (owner request, 2026-10-03: "When a contributor has just submitted, then the "Submit"
+    // button should be disabled, as the submitted is identical to what is in draft now"; cases
+    // agreed with the project owner). The receipt carries the draft's fingerprint at sending; the
+    // draft still gives it, so Submit is greyed out - and the reason shows on the greyed-out
+    // button, which a disabled Avalonia button does not do unless it is told to.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_just_sent_as_it_is_has_its_Submit_greyed_out_and_says_why()
+    {
+        UiTest.Run(() =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            string fingerprint = DraftFingerprint.Compute(
+                DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile),
+                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, excelDataFile));
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                ReceiptsOverrideForTests =
+                [
+                    SentReceipt(8, "Commodore/C64/250407", "pending", "2026-10-03T10:00:00Z") with { DraftFingerprint = fingerprint }
+                ],
+            };
+
+            tab.RefreshDrafts();
+
+            DraftListItem row = Assert.Single(tab.Drafts);
+            Assert.False(row.CanSubmit);
+            Assert.Equal(
+                "You have already sent this draft as it is now, on 2026-October-3. Change something to send it again.",
+                row.SubmitTooltip);
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Button submit = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Submit"));
+            Assert.False(submit.IsEnabled);
+            Assert.True(ToolTip.GetShowOnDisabled(submit));
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_submitted_draft_shows_its_submissions_state_as_a_badge_beside_its_name()
     {
@@ -1409,7 +1547,7 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            Assert.Equal("Published to BETA source", Assert.Single(tab.Drafts).SubmissionStateText);
+            Assert.Equal("Published to the BETA source", Assert.Single(tab.Drafts).SubmissionStateText);
         });
     }
 

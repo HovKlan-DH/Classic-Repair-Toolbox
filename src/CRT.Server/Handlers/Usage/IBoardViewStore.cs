@@ -33,6 +33,13 @@ namespace CRT.Server.Handlers.Usage
             string systemId,
             DateTimeOffset sinceUtc,
             CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Deletes every view of one system - a system the administrator deleted (owner decision,
+        // 2026-10-03: its statistics go with it, so the Fun facts page stops counting a board that
+        // no longer exists). The number of rows deleted.
+        // ###########################################################################################
+        Task<int> DeleteForSystemAsync(string systemId, CancellationToken cancellationToken = default);
     }
 
     // One row of crt_board_views, as the flow decided it (names from the published listing, country

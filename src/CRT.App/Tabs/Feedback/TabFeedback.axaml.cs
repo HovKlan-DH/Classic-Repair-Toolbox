@@ -4,6 +4,8 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.MaintainerHandling;
+using Handlers.OnlineHandling;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -22,6 +24,9 @@ namespace CRT
     {
         private readonly ObservableCollection<string> _customAttachments = new();
 
+        // Where feedback is posted: CRT.Server's route (FeedbackContract).
+        internal const string FeedbackUrl = AppConfig.CrtServerBaseUrl + "/" + FeedbackContract.PathUnderApi;
+
         public TabFeedback()
         {
             this.InitializeComponent();
@@ -36,10 +41,44 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // *** A SIGNED-IN MAINTAINER'S ADDRESS (owner request, 2026-10-01: "When I am a maintainer,
+        // and I have logged in, then I want to use that email address everywhere in the CRT app -
+        // e.g. for the Feedback tab"). *** Main hands the sign-in over (ShareMaintainerSignIn); while
+        // there is one the box shows the account's address, read only, with a note saying why. It
+        // is never saved as the typed address, so signing out brings back what was typed before
+        // (ContactAddress has the rule).
+        // ###########################################################################################
+        private ReviewSession? thisMaintainerAccount;
+        private bool thisShowsAccountAddress;
+
+        internal void UseMaintainerAccount(ReviewSession? account)
+        {
+            if (Equals(this.thisMaintainerAccount, account))
+                return;
+
+            this.thisMaintainerAccount = account;
+
+            ContactAddress address = ContactAddress.Choose(account, UserSettings.ContactEmail, DateTimeOffset.UtcNow);
+
+            // Signed out again: what was typed comes back. Signed in: the account's address.
+            if (address.IsFromAccount || this.thisShowsAccountAddress)
+                this.EmailTextBox.Text = address.Email;
+
+            this.thisShowsAccountAddress = address.IsFromAccount;
+            this.EmailTextBox.IsReadOnly = address.IsFromAccount;
+            this.EmailAccountNoteText.Text = address.IsFromAccount ? ContactAddress.FeedbackNote : string.Empty;
+            this.EmailAccountNoteText.IsVisible = address.IsFromAccount;
+        }
+
+        // ###########################################################################################
         // Persists the shared email address when the field loses focus and the value is valid.
         // ###########################################################################################
         private void OnEmailTextBoxLostFocus(object? sender, RoutedEventArgs e)
         {
+            // The account's address is the account's, never the typed one.
+            if (this.thisShowsAccountAddress)
+                return;
+
             string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
 
             if (string.IsNullOrEmpty(email) || Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
@@ -128,7 +167,8 @@ namespace CRT
                 return;
             }
 
-            UserSettings.ContactEmail = email;
+            if (!this.thisShowsAccountAddress)
+                UserSettings.ContactEmail = email;
 
             if (string.IsNullOrEmpty(feedback))
             {
@@ -175,7 +215,7 @@ namespace CRT
 
                 if (success)
                 {
-                    this.ShowStatus("Feedback submitted successfully - thank you :-)", isError: false);
+                    this.ShowStatus(FeedbackWording.Sent, isError: false);
                     this.FeedbackTextBox.Text = string.Empty;
                     this._customAttachments.Clear();
                     this.AttachLogfileCheckBox.IsChecked = false;
@@ -183,16 +223,8 @@ namespace CRT
                 }
                 else
                 {
-                    Logger.Warning($"Feedback submission failed. HTTP {(int)statusCode}. Server responded with: {responseBody}");
-
-                    if (statusCode == 404)
-                    {
-                        this.ShowStatus("Failed to send feedback: Server endpoint not found (HTTP 404)", isError: true);
-                    }
-                    else
-                    {
-                        this.ShowStatus($"Failed to send feedback (HTTP {(int)statusCode}) - please check the logfile for details", isError: true);
-                    }
+                    Logger.Warning($"Feedback submission failed. HTTP {statusCode}. Server responded with: {responseBody}");
+                    this.ShowStatus(FeedbackWording.Failed(statusCode), isError: true);
                 }
             }
             catch (Exception ex)
@@ -290,9 +322,12 @@ namespace CRT
                 }
             }
 
-            // 3. Zip files into memory stream
-            using var memoryStream = new MemoryStream();
-            using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+            // 3. Zip the files into a TEMPORARY FILE, not into memory (2026-10-03): the attachments
+            //    may be 250 MB packed ("one could potentially zip the entire system"), and memory
+            //    held up to three copies of them before. DeleteOnClose removes it however this ends.
+            string zipPath = Path.Combine(Path.GetTempPath(), $"CRT-feedback-{Guid.NewGuid():N}.zip");
+            await using var zipFile = new FileStream(zipPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose);
+            using (var archive = new ZipArchive(zipFile, ZipArchiveMode.Create, leaveOpen: true))
             {
                 long currentUncompressedBytes = 0;
                 int lastReportedPercent = -1;
@@ -320,37 +355,37 @@ namespace CRT
                 }
             }
 
-            memoryStream.Position = 0;
+            zipFile.Position = 0;
 
-            // 4. Construct form payload 
+            // An empty archive is just its 22-byte end record - nothing attached.
+            bool hasAttachment = zipFile.Length > 22;
+
+            // Over the server's limit: said here, before a long upload ends in a refusal.
+            if (hasAttachment && zipFile.Length > FeedbackContract.MaximumAttachmentBytes)
+                return (false, 413, $"Not sent: the zip is {zipFile.Length} bytes.");
+
+            // 4. The form - CRT.Data's FeedbackContract, the one the server reads. The zip is
+            //    streamed from its file as it is sent.
             using var httpClient = new HttpClient { Timeout = AppConfig.UploadTimeout };
-            using var formContent = new MultipartFormDataContent();
+            using MultipartFormDataContent formContent = FeedbackContract.BuildForm(
+                email, feedbackText, AppConfig.AppDisplayVersionString, hasAttachment ? zipFile : null);
 
-            formContent.Add(new StringContent(email), "email");
-            formContent.Add(new StringContent(feedbackText), "feedback");
-            formContent.Add(new StringContent(AppConfig.AppDisplayVersionString), "version");
+            // Track Upload progress - reported often enough to keep the wait alive on a slow line,
+            // and saying what is waited for once the last byte is sent (ProgressableStreamContent).
+            using var progressContent = new ProgressableStreamContent(formContent, percent => progress.Report(CrtWaitWording.SendingFeedbackAt(percent)));
 
-            if (memoryStream.Length > 22) // More than empty zip header
-            {
-                var fileContent = new ByteArrayContent(memoryStream.ToArray());
-                fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
-                formContent.Add(fileContent, "attachmentFile", "FeedbackPayload.zip");
-            }
-
-            // Track Upload progress
-            using var progressContent = new ProgressableStreamContent(formContent, percent => progress.Report($"Sending to server... {percent}%"));
-
-            //Target URL
+            // ###########################################################################################
+            // *** CRT.SERVER SINCE 2026-10-03, NOT THE PHP PAGE AT /app-feedback/ (owner request:
+            // "can we retire the old "Feedback" backend PHP"). *** The same form and the same
+            // "Success" answer; older CRTs still post to the old address, which Apache forwards to
+            // the same route.
+            // ###########################################################################################
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("CRT "+ AppConfig.AppDisplayVersionString);
-            var response = await httpClient.PostAsync("https://classic-repair-toolbox.dk/app-feedback/", progressContent, cancellationToken);
+            var response = await httpClient.PostAsync(TabFeedback.FeedbackUrl, progressContent, cancellationToken);
 
-            // Read the exact string back from the server
-            // We must explicitly look for the string "Success" to evaluate a true success,
-            // because PHP can crash with a warning string while technically returning HTTP 200
             string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            bool isSuccess = response.IsSuccessStatusCode && responseBody.Trim().StartsWith("Success", StringComparison.OrdinalIgnoreCase);
 
-            return (isSuccess, (int)response.StatusCode, responseBody);
+            return (FeedbackContract.IsSuccess((int)response.StatusCode, responseBody), (int)response.StatusCode, responseBody);
         }
 
         // ###########################################################################################
@@ -387,63 +422,5 @@ namespace CRT
                 // Ignore files that are heavily locked or otherwise unreadable
             }
         }
-    }
-
-    // ###########################################################################################
-    // A custom HttpContent wrapper to track the upload progress of an inner HttpContent payload.
-    // ###########################################################################################
-    public class ProgressableStreamContent : HttpContent
-    {
-        private readonly HttpContent _innerContent;
-        private readonly Action<int> _progress;
-
-        public ProgressableStreamContent(HttpContent innerContent, Action<int> progress)
-        {
-            this._innerContent = innerContent;
-            this._progress = progress;
-
-            foreach (var header in innerContent.Headers)
-            {
-                this.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-        }
-
-        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context)
-        {
-            using var innerStream = new MemoryStream();
-            await this._innerContent.CopyToAsync(innerStream);
-            innerStream.Position = 0;
-
-            var buffer = new byte[81920]; // 80 KB
-            var totalLength = innerStream.Length;
-            long uploadedBytes = 0;
-
-            int bytesRead;
-            while ((bytesRead = await innerStream.ReadAsync(buffer, 0, buffer.Length)) != 0)
-            {
-                await stream.WriteAsync(buffer, 0, bytesRead);
-                uploadedBytes += bytesRead;
-                if (totalLength > 0)
-                {
-                    this._progress((int)((uploadedBytes * 100) / totalLength));
-                }
-            }
-        }
-
-        protected override bool TryComputeLength(out long length)
-        {
-            length = this._innerContent.Headers.ContentLength ?? -1;
-            return length != -1;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                this._innerContent.Dispose();
-            }
-            base.Dispose(disposing);
-        }
-
     }
 }

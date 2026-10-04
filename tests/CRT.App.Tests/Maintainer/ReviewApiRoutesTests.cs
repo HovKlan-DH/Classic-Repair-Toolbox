@@ -21,6 +21,7 @@ public sealed class ReviewApiRoutesTests
         // Configuration a human types, so half of them will end in a slash. Uri's own combining
         // rules would quietly drop a path segment for one of the two spellings.
         Assert.Equal("https://example.com/api/review/queue", ReviewApiRoutes.Queue(baseAddress));
+        Assert.Equal("https://example.com/api/health", ReviewApiRoutes.Health(baseAddress));
     }
 
     [Fact]
@@ -65,8 +66,38 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/admin/maintainers/invitations/withdraw", ReviewApiRoutes.AdminWithdrawInvitation("https://x"));
         Assert.Equal("https://x/api/accounts/accept-invitation", ReviewApiRoutes.AcceptInvitation("https://x"));
 
+        // The maintainer's own account (2026-10-03) - AccountEndpoints' "/me" routes, pinned on the
+        // server's side by RequestBodyLimitsTests.
+        Assert.Equal("https://x/api/accounts/me", ReviewApiRoutes.Me("https://x/"));
+        Assert.Equal("https://x/api/accounts/me/name", ReviewApiRoutes.ChangeName("https://x"));
+        Assert.Equal("https://x/api/accounts/me/email", ReviewApiRoutes.ChangeEmail("https://x"));
+        Assert.Equal("https://x/api/accounts/me/email/confirm", ReviewApiRoutes.ConfirmEmailChange("https://x"));
+        Assert.Equal("https://x/api/accounts/me/password", ReviewApiRoutes.ChangePassword("https://x"));
+
         // A new system's place in the drop-down lists (2026-09-27): GET the lists, POST a placement.
         Assert.Equal("https://x/api/review/systems/listing", ReviewApiRoutes.SystemListing("https://x"));
+
+        // A system's Board data and Files views (2026-10-03) - the four POSTs SystemEndpoints maps,
+        // pinned on the server's side by RequestBodyLimitsTests.
+        Assert.Equal("https://x/api/review/systems/table", ReviewApiRoutes.SystemTable("https://x/"));
+        Assert.Equal("https://x/api/review/systems/edit/check", ReviewApiRoutes.SystemEditCheck("https://x"));
+        Assert.Equal("https://x/api/review/systems/edit", ReviewApiRoutes.SystemEdit("https://x"));
+        Assert.Equal("https://x/api/review/systems/files", ReviewApiRoutes.SystemFiles("https://x"));
+
+        // Rebuilding both checksum manifests by hand (2026-10-01) - AdminEndpoints' "/manifest/rebuild"
+        // under the "/api/admin" group. Unpinned until the code review of the same day.
+        Assert.Equal("https://x/api/admin/manifest/rebuild", ReviewApiRoutes.AdminRebuildManifests("https://x"));
+
+        // Deleting a system (2026-10-03) - AdminEndpoints' "/systems/delete/plan" and "/systems/delete".
+        // The server's side is pinned by RequestBodyLimitsTests, which finds both in its real route table.
+        Assert.Equal("https://x/api/admin/systems/delete/plan", ReviewApiRoutes.AdminSystemDeletePlan("https://x"));
+        Assert.Equal("https://x/api/admin/systems/delete", ReviewApiRoutes.AdminSystemDelete("https://x"));
+
+        // Resetting the contribution data and the API usage (2026-10-04) - AdminEndpoints' "/reset"
+        // (GET the counts, POST the reset) and "/api-usage". The server's side is pinned by
+        // RequestBodyLimitsTests (the POST) and ApiUsageRulesTests' real route table.
+        Assert.Equal("https://x/api/admin/reset", ReviewApiRoutes.AdminDataReset("https://x"));
+        Assert.Equal("https://x/api/admin/api-usage?days=90", ReviewApiRoutes.AdminApiUsage("https://x", 90));
     }
 
     [Fact]

@@ -78,7 +78,7 @@
 									   Opacity="0.75"
 									   FontSize="12" />
 							<Button x:Name="AddSchematicsButton"
-									Content="Choose image files..."
+									Content="Choose image files"
 									HorizontalAlignment="Center"
 									Click="OnAddSchematicsClick" />
 						</StackPanel>
@@ -236,7 +236,7 @@
 									   Opacity="0.75"
 									   FontSize="12" />
 							<Button x:Name="ImportKiCadButton"
-									Content="Choose KiCad folder..."
+									Content="Choose KiCad folder"
 									HorizontalAlignment="Center"
 									Click="OnImportKiCadClick" />
 						</StackPanel>

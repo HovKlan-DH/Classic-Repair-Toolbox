@@ -359,9 +359,14 @@ public sealed class BoardTableFilePreviewTests
     // ###########################################################################################
     // A file column's text tooltip ("Published value: ...") gives way to the card - two popups over
     // one cell would cover each other. Every other column keeps it.
+    //
+    // EXCEPT what is wrong with the file
+    // (2026-10-02): a file that is not there, or spelled differently, is a file cell's error, and
+    // the card cannot say it. So a file cell's tooltip is its problems alone (ProblemToolTip, null
+    // with none - no box at all on a good file), and every other cell keeps its full tooltip.
     // ###########################################################################################
     [Fact]
-    public void A_file_column_gives_its_text_tooltip_to_the_card()
+    public void A_file_column_gives_its_text_tooltip_to_the_card_but_keeps_its_problems()
     {
         UiTest.Run(() =>
         {
@@ -369,22 +374,25 @@ public sealed class BoardTableFilePreviewTests
             int nameColumn = BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName);
 
             BoardTableEditor withSource = Open(null, draft, new FakeFileSource());
-            Assert.False(HasTextToolTip(withSource, ImageFileColumn));
-            Assert.True(HasTextToolTip(withSource, nameColumn));
+            Assert.Equal($"Cells[{ImageFileColumn}].ProblemToolTip", ToolTipPath(withSource, ImageFileColumn));
+            Assert.Equal($"Cells[{nameColumn}].ToolTip", ToolTipPath(withSource, nameColumn));
 
             BoardTableEditor withoutSource = Open(null, draft, source: null);
-            Assert.True(HasTextToolTip(withoutSource, ImageFileColumn));
+            Assert.Equal($"Cells[{ImageFileColumn}].ToolTip", ToolTipPath(withoutSource, ImageFileColumn));
         });
     }
 
-    private static bool HasTextToolTip(BoardTableEditor editor, int columnIndex)
+    private static string? ToolTipPath(BoardTableEditor editor, int columnIndex)
     {
         DataGridColumn column = editor.GetControl<DataGrid>("TableGrid").Columns
             .Single(candidate => candidate.Tag is int tag && tag == columnIndex);
 
         ControlTheme theme = ((DataGridBoundColumn)column).CellTheme!;
 
-        return theme.Setters.OfType<Setter>().Any(setter => setter.Property == ToolTip.TipProperty);
+        return theme.Setters.OfType<Setter>()
+            .Where(setter => setter.Property == ToolTip.TipProperty)
+            .Select(setter => (setter.Value as Avalonia.Data.Binding)?.Path)
+            .SingleOrDefault();
     }
 
     // ###########################################################################################

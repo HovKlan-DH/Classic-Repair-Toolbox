@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Handlers.Theming;
 
 namespace Handlers.MaintainerHandling
 {
@@ -11,7 +12,9 @@ namespace Handlers.MaintainerHandling
     //   Review   - the queue of contributions, as it always was.
     //   BETA     - systems in BETA waiting to be published to production (the "Production" window).
     //   Systems  - every system: its maintainers, contributors and submissions.
-    //   Admin    - "Set maintainers" and "Unused files" (the administrator's two windows).
+    //   Account  - "My account" and "Server version" for every maintainer, and the administrator's
+    //              own entries below them (it was "Admin", the administrator's alone, until
+    //              2026-10-04).
     //
     // Each shows its list on the left and what is chosen in it on the right, where three separate
     // windows used to open over the queue.
@@ -27,14 +30,14 @@ namespace Handlers.MaintainerHandling
         Review,
         Beta,
         Systems,
-        Admin
+        Account
     }
 
     public static class MaintainerModes
     {
-        // The most a badge spells out; more reads as "99+" - a number that large is a backlog to
-        // deal with, and the digits would push the other buttons out of the row.
-        public const int BadgeCeiling = 99;
+        // The most a badge spells out; more reads as "99+" - TabBadge's rule, which the tab badges
+        // in CRT's row of tabs share.
+        public const int BadgeCeiling = TabBadge.Ceiling;
 
         // ###########################################################################################
         // Review: the systems with at least one submission waiting for THIS account. A submission the
@@ -54,13 +57,120 @@ namespace Handlers.MaintainerHandling
         public static int BetaAttention(IEnumerable<ProductionSystemRow>? rows) =>
             rows?.Count(row => row.AwaitsYou != false) ?? 0;
 
+        // ###########################################################################################
+        // THE MAINTAINER TAB'S OWN BADGE, in CRT's row of tabs (owner request, 2026-09-30: "when a
+        // maintainer is logged in, and he/she receives something new in queue (for him to process),
+        // then it should show as a badge in the "Maintainer" tab ... until it is fully processed,
+        // including if it is awaiting in "BETA to PROD" queue").
+        //
+        // *** THE SUM OF THE TWO BUTTONS' BADGES, NOT A COUNT OF ITS OWN. *** A system with a new
+        // submission queued AND an earlier one in BETA waits for this account twice, and each button
+        // counts it once - so the tab says what opening it will show: "3" over a "2" and a "1".
+        // Counting distinct systems would say 2 and leave the maintainer adding the buttons up to 3.
+        // Nothing waiting for this account in either - including a submission waiting only for the
+        // other approver - is no badge.
+        // ###########################################################################################
+        public static int TabAttention(IEnumerable<ReviewQueueRow>? queue, IEnumerable<ProductionSystemRow>? beta) =>
+            MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta);
+
+        // ###########################################################################################
+        // WHETHER THE TAB IS SHOWN AT ALL (owner request, 2026-10-01: "Show only Maintainer tab when
+        // I have outstanding work ... If NOT checked, then it will not show when there is no badge
+        // on the "Maintainer" tab, as that mean there is no work for the maintainer to do").
+        //
+        // Three inputs, in the order they decide it:
+        //
+        //   enabled         - "Enable Maintainer tab". Off hides the tab whatever else is true; this
+        //                     rule narrows that setting, it never overrides it.
+        //   onlyWhenWaiting - the new checkbox. Off means the tab is simply shown, as before.
+        //   badgeKnown      - the number is a real answer (see below); an unread badge never hides the tab.
+        //   attention       - TabAttention, the badge's own number. Nothing waiting, no tab.
+        //   selected, unsavedEdits - hold a tab open whatever the number says; see below.
+        //
+        // *** A TAB THE MAINTAINER IS STANDING ON IS NEVER TAKEN AWAY (owner decision, 2026-10-01).
+        // *** `selected` holds it open. Approving the last submission in the queue drops the badge
+        // to zero the moment it is decided - and without this the tab, the submission's table and
+        // any unsaved edits in it would vanish from under the maintainer at exactly that moment.
+        // It goes on the next tab switch instead, which is when the maintainer has finished with it.
+        // Unticking "Enable Maintainer tab" still hides it at once; that is a deliberate act.
+        //
+        // *** NOR ONE HOLDING UNSAVED TABLE EDITS (code review, 2026-10-01). *** `selected` alone let
+        // it go: a maintainer edits the table of a submission that waits only for the OTHER
+        // approver (so it counts nothing), switches to another tab without saving, and the next
+        // minute check hid the tab with the edits inside it - nothing would bring it back short of
+        // the setting, and quitting CRT then selected an invisible tab to ask about them.
+        // `unsavedEdits` holds it open until they are saved or discarded.
+        //
+        // *** `badgeKnown`: THE BADGE'S NUMBER IS A REAL ANSWER, NOT JUST ZERO. *** The count is zero
+        // before anything was read, after a 401 empties it (ShowSignInPanel), and while the server
+        // cannot be reached - none of which is "no work". TabMaintainer.BadgeKnown says the account
+        // is signed in and the queue and the BETA list have each been read since (code review,
+        // 2026-10-01: it used to be "signed in", which a restored session satisfied before any list
+        // arrived). Only then does zero hide the tab; otherwise it stays, so a maintainer can always
+        // get back to the sign-in screen and a failed read never makes the tab vanish.
+        // ###########################################################################################
+        public static bool TabIsShown(bool enabled, bool onlyWhenWaiting, bool badgeKnown, int attention, bool selected, bool unsavedEdits)
+        {
+            if (!enabled)
+                return false;
+
+            if (!onlyWhenWaiting || !badgeKnown || selected || unsavedEdits)
+                return true;
+
+            return attention > 0;
+        }
+
+        // ###########################################################################################
+        // WHICH ENTRY "CONTRIBUTOR SUBMISSIONS" AND "BETA > PROD" OPEN ON (owner request, 2026-09-30:
+        // "it should select either whatever the user viewed last time (if set) or it should show the
+        // first entry, instead of the maintainer needing to press it"): the one looked at last, while
+        // it is still in the list - else the first. Null only for an empty list. `inListOrder` is
+        // the keys as the list shows them, top to bottom.
+        // ###########################################################################################
+        public static long? EntryToOpen(IReadOnlyList<long> inListOrder, long? remembered)
+        {
+            ArgumentNullException.ThrowIfNull(inListOrder);
+
+            if (remembered is long id && inListOrder.Contains(id))
+                return id;
+
+            return inListOrder.Count > 0 ? inListOrder[0] : null;
+        }
+
+        // ###########################################################################################
+        // THE SCREEN THE TAB OPENS ON (owner request, 2026-10-04: "if there is no queue awaiting,
+        // when opening the "Maintainer" tab, then go to "Systems" and show the last selected system").
+        //
+        // `shown` is the screen on show as the tab is opened (Review after signing in), `attention`
+        // the tab's badge (TabAttention) and `somethingOpen` whether something is open on that screen
+        // - a submission or a BETA system. Systems when nothing waits for this account in EITHER
+        // queue - "awaiting" is the badge's own sense, so a submission waiting only for the other
+        // approver does not keep the tab on a queue - else the screen on show.
+        //
+        // *** ONLY A QUEUE SCREEN GIVES WAY, AND NEVER OVER SOMETHING OPEN. *** A submission the
+        // maintainer opened, which waits for the other approver, is still where it was on coming
+        // back; and Systems and Account were chosen, so they stay. Switching would lose nothing - a
+        // screen is hidden, never closed - but it would move the maintainer away from what they
+        // were looking at.
+        // ###########################################################################################
+        public static MaintainerMode ScreenOnOpening(MaintainerMode shown, int attention, bool somethingOpen) =>
+            attention <= 0 && !somethingOpen && shown is MaintainerMode.Review or MaintainerMode.Beta
+                ? MaintainerMode.Systems
+                : shown;
+
+        // The same for the BETA list, whose entries are systems - and for the Systems list.
+        public static string? EntryToOpen(IReadOnlyList<string> inListOrder, string? remembered)
+        {
+            ArgumentNullException.ThrowIfNull(inListOrder);
+
+            if (remembered is not null && inListOrder.Contains(remembered, StringComparer.Ordinal))
+                return remembered;
+
+            return inListOrder.Count > 0 ? inListOrder[0] : null;
+        }
+
         // The attention badge's text, or null to hide it: nothing needing you is no badge at all.
-        public static string? AttentionBadge(int count) =>
-            count <= 0
-                ? null
-                : count > MaintainerModes.BadgeCeiling
-                    ? $"{MaintainerModes.BadgeCeiling.ToString(CultureInfo.InvariantCulture)}+"
-                    : count.ToString(CultureInfo.InvariantCulture);
+        public static string? AttentionBadge(int count) => TabBadge.Text(count);
 
         // ###########################################################################################
         // The Systems button's DISCREET badge: how many systems there are. Null - hidden - until the
@@ -68,50 +178,5 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         public static string? CountBadge(int? count) =>
             count is int known && known >= 0 ? known.ToString(CultureInfo.InvariantCulture) : null;
-
-        // The button's tooltip: what the screen is, then what its badge counts. `needingPlace` is the
-        // Systems screen's: new systems this account can place in the drop-down lists (2026-09-27).
-        public static string Tooltip(MaintainerMode mode, int? count, int needingPlace = 0)
-        {
-            string what = mode switch
-            {
-                MaintainerMode.Review => "Contributions waiting for review.",
-                MaintainerMode.Beta => "Systems in BETA, waiting to be published to production or pushed back to the queue.",
-                MaintainerMode.Systems => "Every system - who maintains it, who has contributed and how that went.",
-                _ => "Who maintains which system, and files nothing uses."
-            };
-
-            string? counted = mode switch
-            {
-                MaintainerMode.Review => MaintainerModes.Systems(count, "with a contribution waiting for you", "with contributions waiting for you"),
-                MaintainerMode.Beta => MaintainerModes.Systems(count, "waiting for you", "waiting for you"),
-                MaintainerMode.Systems => count is int all ? MaintainerModes.Plural(all, "system", "systems") + " in all." : null,
-                _ => null
-            };
-
-            if (mode == MaintainerMode.Systems && needingPlace > 0)
-            {
-                string waiting = needingPlace == 1
-                    ? "1 new system needs a place in the drop-down lists."
-                    : $"{needingPlace.ToString(CultureInfo.InvariantCulture)} new systems need a place in the drop-down lists.";
-
-                counted = counted is null ? waiting : $"{waiting}\n{counted}";
-            }
-
-            return counted is null ? what : $"{what}\n{counted}";
-        }
-
-        // "Nothing is waiting for you." / "1 system ..." / "3 systems ...".
-        private static string? Systems(int? count, string one, string many) =>
-            count switch
-            {
-                null => null,
-                <= 0 => "Nothing is waiting for you.",
-                1 => $"1 system {one}.",
-                _ => $"{count.Value.ToString(CultureInfo.InvariantCulture)} systems {many}."
-            };
-
-        private static string Plural(int count, string one, string many) =>
-            count == 1 ? $"1 {one}" : $"{count.ToString(CultureInfo.InvariantCulture)} {many}";
     }
 }

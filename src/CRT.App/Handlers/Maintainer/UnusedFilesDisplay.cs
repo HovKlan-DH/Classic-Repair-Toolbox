@@ -1,11 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Handlers.DataHandling;
 
 namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
-    // How the administrator's "Unused files" panel (Admin screen; a window until 2026-09-27) reads (owner decision, 2026-09-25: "there
+    // How the administrator's "Unused files" panel (Account screen; a window until 2026-09-27) reads (owner decision, 2026-09-25: "there
     // must be no orphan files").
     //
     // Pure, so the words are tested - the rule ProductionDisplay and MaintainerAssignmentDisplay
@@ -18,7 +20,7 @@ namespace Handlers.MaintainerHandling
     {
         // "the BETA data" / "production" - the names the rest of the Maintainer tab uses.
         public static string TreeName(string? tree) =>
-            string.Equals(tree, "production", StringComparison.OrdinalIgnoreCase) ? "production" : "the BETA data";
+            string.Equals(tree, "production", StringComparison.OrdinalIgnoreCase) ? "the stable data" : "the BETA data";
 
         public static string Summary(UnusedFileListing listing)
         {
@@ -41,13 +43,6 @@ namespace Handlers.MaintainerHandling
                 ? $"Nothing in {tree} is unused ({checkedAgainst})."
                 : $"{UnusedFilesDisplay.Count(listing.Files.Count, "file")} in {tree} that nothing uses, " +
                   $"{UnusedFilesDisplay.Size(listing.TotalBytes)} ({checkedAgainst}).";
-        }
-
-        // "Generic shared files/Component images/7408.jpg  (42.1 KB)"
-        public static string Line(UnusedFileEntry entry)
-        {
-            ArgumentNullException.ThrowIfNull(entry);
-            return $"{entry.Path}  ({UnusedFilesDisplay.Size(entry.SizeBytes)})";
         }
 
         public static string RemoveButton(UnusedFileListing? listing) =>
@@ -75,18 +70,26 @@ namespace Handlers.MaintainerHandling
                 : $"{removed} {UnusedFilesDisplay.Count(result.Kept.Count, "file")} kept - something uses it again, or it was already gone.";
         }
 
-        // 812 bytes, 42.1 KB, 8.7 MB - 1024-based, one decimal, the same in every locale.
-        public static string Size(long bytes)
+        // 812 bytes, 42.1 KB, 8.7 MB - FileSizeWording's, which every file tree uses too.
+        public static string Size(long bytes) => FileSizeWording.Format(bytes);
+
+        // ###########################################################################################
+        // The list as the file tree draws it (2026-10-04, owner request: "the exact same tree-view
+        // like it does in 'Systems' and 'Files' ... including visualization of images and opening of
+        // files"): each file as it is in its tree, opened from there, with its size. Nothing about a
+        // change - the list is what is there; removing is the button's.
+        // ###########################################################################################
+        public static IReadOnlyList<SystemFileEntry> TreeEntries(UnusedFileListing listing)
         {
-            if (bytes < 1024)
-                return bytes == 1 ? "1 byte" : $"{bytes.ToString(CultureInfo.InvariantCulture)} bytes";
+            ArgumentNullException.ThrowIfNull(listing);
 
-            double kb = bytes / 1024.0;
+            SystemFileSource source = string.Equals(listing.Tree, "production", StringComparison.OrdinalIgnoreCase)
+                ? SystemFileSource.Production
+                : SystemFileSource.Beta;
 
-            if (kb < 1024)
-                return $"{kb.ToString("0.0", CultureInfo.InvariantCulture)} KB";
-
-            return $"{(kb / 1024.0).ToString("0.0", CultureInfo.InvariantCulture)} MB";
+            return listing.Files
+                .Select(file => new SystemFileEntry(file.Path, SystemFileChange.Unchanged, source, SizeBytes: file.SizeBytes))
+                .ToList();
         }
 
         private static string Count(int count, string noun) =>

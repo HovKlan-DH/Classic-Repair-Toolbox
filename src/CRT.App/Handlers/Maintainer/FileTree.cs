@@ -155,6 +155,34 @@ namespace Handlers.MaintainerHandling
             return expanded;
         }
 
+        // ###########################################################################################
+        // The folders open when a LISTING is first shown (the Systems screen's Files view, 2026-10-03):
+        // every folder on the way to `folder`, and `folder` itself - the system's own, where nearly
+        // all of its files are - and nothing else, so the shared folders around it start closed.
+        // Only folders the tree holds; none for a blank or unknown folder.
+        // ###########################################################################################
+        public static IReadOnlySet<string> FoldersOnTheWayTo(FileTreeNode root, string? folder)
+        {
+            ArgumentNullException.ThrowIfNull(root);
+
+            IReadOnlySet<string> folders = FileTree.AllFolders(root);
+            var open = new HashSet<string>(StringComparer.Ordinal);
+
+            string[] segments = (folder ?? string.Empty).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            for (int i = 1; i <= segments.Length; i++)
+            {
+                string path = string.Join('/', segments.Take(i));
+
+                if (!folders.Contains(path))
+                    break;
+
+                open.Add(path);
+            }
+
+            return open;
+        }
+
         // Every folder of the tree - "Expand all" (owner request, 2026-09-28).
         public static IReadOnlySet<string> AllFolders(FileTreeNode root)
         {
@@ -217,20 +245,110 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public static class FileTreeWording
     {
+        // ###########################################################################################
         // "3 files change: 1 new, 2 changed, 0 removed. 2,224 already the same." - or, with
         // nothing to change, that it is all the same.
+        //
+        // *** THE WORKBOOK AND THE HIGHLIGHT FILE ARE SAID APART (2026-09-30). *** An approval writes
+        // both FROM THE TABLE, and the workbook changes on every one - it carries the publish date.
+        // Counted with the rest, every submission's tree said "1 file changes" at the least, and the
+        // headline could not agree with the count on the Files button, which is what the
+        // SUBMISSION'S OWN files do (SubmissionViews.ChangingFiles). So they get a sentence of their
+        // own, and the number is the button's. Their rows still say "changed".
+        // ###########################################################################################
         public static string Summary(FileTreeNode root)
         {
             ArgumentNullException.ThrowIfNull(root);
 
+            var written = new List<SystemFileEntry>();
+            int added = 0, changed = 0, removed = 0;
+
+            void Walk(FileTreeNode node)
+            {
+                foreach (FileTreeNode child in node.Children)
+                {
+                    if (child.IsFolder)
+                    {
+                        Walk(child);
+                        continue;
+                    }
+
+                    SystemFileEntry file = child.File!;
+
+                    if (file.Change == SystemFileChange.Unchanged)
+                        continue;
+
+                    // *** ONLY A FILE THE APPROVAL WRITES - added or changed - IS "WRITTEN" (code review,
+                    // 2026-10-01). *** One that is REMOVED is a removal whatever generated it: filed as
+                    // "written" it was reported as "Approving writes the workbook" for a tree that
+                    // deletes it. ForApproval never builds that today; this keeps the sentence honest
+                    // if a source ever does.
+                    if (file.WrittenOnApproval && file.Change != SystemFileChange.Removed)
+                        written.Add(file);
+                    else if (file.Change == SystemFileChange.Added)
+                        added++;
+                    else if (file.Change == SystemFileChange.Changed)
+                        changed++;
+                    else
+                        removed++;
+                }
+            }
+
+            Walk(root);
+
+            int counted = added + changed + removed;
             string same = $"{FileTreeWording.Count(root.Unchanged, "file")} already the same";
+            string? writes = FileTreeWording.WrittenFiles(written);
 
-            if (!root.HasChanges)
+            if (counted == 0)
+            {
+                if (writes is not null)
+                    return $"Approving writes {writes} from the table; nothing else changes. " + char.ToUpperInvariant(same[0]) + same[1..] + ".";
+
                 return root.Unchanged == 0 ? "No files." : $"Nothing changes - {same}.";
+            }
 
-            return $"{FileTreeWording.Count(root.ChangeCount, "file")} " + (root.ChangeCount == 1 ? "changes" : "change") +
-                $": {FileTreeWording.Number(root.Added)} new, {FileTreeWording.Number(root.Changed)} changed, " +
-                $"{FileTreeWording.Number(root.Removed)} removed. " + char.ToUpperInvariant(same[0]) + same[1..] + ".";
+            string also = writes is null ? string.Empty : $" Approving also writes {writes} from the table.";
+
+            return $"{FileTreeWording.Count(counted, "file")} " + (counted == 1 ? "changes" : "change") +
+                $": {FileTreeWording.Number(added)} new, {FileTreeWording.Number(changed)} changed, " +
+                $"{FileTreeWording.Number(removed)} removed.{also} " + char.ToUpperInvariant(same[0]) + same[1..] + ".";
+        }
+
+        // A listing's line (2026-10-03): how many files, nothing about changes - "2,224 files", "1 file",
+        // "No files."
+        public static string Listing(FileTreeNode root)
+        {
+            ArgumentNullException.ThrowIfNull(root);
+
+            int files = root.Unchanged + root.ChangeCount;
+
+            return files == 0 ? "No files." : $"{FileTreeWording.Count(files, "file")}.";
+        }
+
+        // "the workbook", "the highlight file" or both - named by what they are, not by path. Null
+        // for neither.
+        private static string? WrittenFiles(IReadOnlyList<SystemFileEntry> written)
+        {
+            bool workbook = written.Any(file => !SystemFileEntries.IsHighlightFile(file.Path));
+            bool sidecar = written.Any(file => SystemFileEntries.IsHighlightFile(file.Path));
+
+            return (workbook, sidecar) switch
+            {
+                (true, true) => "the workbook and the highlight file",
+                (true, false) => "the workbook",
+                (false, true) => "the highlight file",
+                _ => null
+            };
+        }
+
+        // A file's size on its row (owner request, 2026-10-04) - none for a folder, or for a file
+        // whose size the server did not say (not written yet, or an older server).
+        public static string Size(FileTreeNode node)
+        {
+            ArgumentNullException.ThrowIfNull(node);
+
+            return node.File?.SizeBytes is long bytes ? FileSizeWording.Format(bytes) : string.Empty;
         }
 
         // The word on a file's row - none for a file that stays as it is.
@@ -242,9 +360,13 @@ namespace Handlers.MaintainerHandling
             _ => string.Empty
         };
 
-        // Beside a folder: how many changes are under it, so a closed folder still says so.
+        // Beside a folder: how many files change under it, so a closed folder still says so -
+        // "1 file changed", "3 files changed" (owner request, 2026-10-01; it read "3 changing").
+        // "Changed" covers a new and a removed file too; each file's own row says which.
         public static string FolderNote(FileTreeNode folder) =>
-            folder.HasChanges ? $"{FileTreeWording.Number(folder.ChangeCount)} changing" : string.Empty;
+            folder.HasChanges
+                ? $"{FileTreeWording.Number(folder.ChangeCount)} {(folder.ChangeCount == 1 ? "file" : "files")} changed"
+                : string.Empty;
 
         // ###########################################################################################
         // *** THE ONE THING A FILE'S HOVER CARD SAYS BESIDE ITS PATH - and only when what opens is

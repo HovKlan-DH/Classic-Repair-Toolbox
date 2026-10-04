@@ -1,5 +1,6 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Email;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Accounts
 {
@@ -44,6 +45,14 @@ namespace CRT.Server.Handlers.Accounts
             // Accepting an invitation to maintain a system (2026-09-27) - the one way a new
             // maintainer's account is made. See MaintainerInvitationFlows.
             accounts.MapPost("/accept-invitation", AccountEndpoints.AcceptInvitationAsync);
+
+            // The signed-in maintainer's own account (2026-10-03) - the Maintainer tab's "Your
+            // account" window. See AccountSelfServiceFlows; the bodies are CRT.Data's
+            // ReviewApiContract records.
+            accounts.MapPost("/me/name", AccountEndpoints.ChangeNameAsync);
+            accounts.MapPost("/me/email", AccountEndpoints.RequestEmailChangeAsync);
+            accounts.MapPost("/me/email/confirm", AccountEndpoints.ConfirmEmailChangeAsync);
+            accounts.MapPost("/me/password", AccountEndpoints.ChangePasswordAsync);
         }
 
         // ###########################################################################################
@@ -199,34 +208,123 @@ namespace CRT.Server.Handlers.Accounts
         //
         // NOTE WHAT IS NOT RETURNED: no password hash, no session list, no internal ids beyond the
         // account's own. A response shaped by "what does the client need" rather than "what does
-        // the record hold".
+        // the record hold" - CRT.Data's AccountAnswer since 2026-10-03, when the Maintainer tab
+        // started reading it (the remembered sign-in refreshes its name and address from it).
         // ###########################################################################################
         private static async Task<IResult> MeAsync(
             HttpContext context,
             IAccountStore store,
+            ServerOptions options,
             CancellationToken cancellationToken)
         {
             AccountRecord? account = await AccountFlows.AuthenticateAsync(
-                AccountEndpoints.BearerToken(context), store, DateTimeOffset.UtcNow, cancellationToken);
+                AccountEndpoints.BearerToken(context), store, DateTimeOffset.UtcNow, cancellationToken, options);
 
             if (account is null)
                 return Results.Unauthorized();
 
-            // The systems this account reviews (Phase 6 roles). Empty for an administrator, who is
-            // in every pool by definition rather than by rows.
-            IReadOnlySet<string> maintainerOf = await store.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
+            return Results.Ok(await AccountSelfServiceFlows.DescribeAsync(account, store, cancellationToken));
+        }
 
-            return Results.Ok(new
+        // ###########################################################################################
+        // POST /api/accounts/me/name, /me/email, /me/email/confirm, /me/password (2026-10-03).
+        //
+        // 200 with AccountChangeAnswer; 401 without a live session; 429 with Retry-After when too
+        // many mails were asked for; 400 with { message } or { errors } otherwise - every refusal is
+        // a sentence written for the maintainer. Unlike registration these may say what went wrong: the caller is signed in,
+        // and the one thing that would tell them who else is registered (a new address another
+        // account holds) answers exactly like a free one.
+        // ###########################################################################################
+        private static async Task<IResult> ChangeNameAsync(
+            global::Handlers.DataHandling.ChangeNameRequest body,
+            HttpContext context,
+            IAccountStore store,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
+                AccountEndpoints.BearerToken(context), body?.DisplayName, store, options, DateTimeOffset.UtcNow, cancellationToken);
+
+            return AccountEndpoints.ChangeResult(outcome, context);
+        }
+
+        private static async Task<IResult> RequestEmailChangeAsync(
+            global::Handlers.DataHandling.ChangeEmailRequest body,
+            HttpContext context,
+            IAccountStore store,
+            IEmailSender mailer,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.RequestEmailChangeAsync(
+                AccountEndpoints.BearerToken(context),
+                body?.NewEmail,
+                AccountEndpoints.ClientAddress(context),
+                store,
+                mailer,
+                options,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            return AccountEndpoints.ChangeResult(outcome, context);
+        }
+
+        private static async Task<IResult> ConfirmEmailChangeAsync(
+            global::Handlers.DataHandling.ConfirmEmailChangeRequest body,
+            HttpContext context,
+            IAccountStore store,
+            IEmailSender mailer,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ConfirmEmailChangeAsync(
+                AccountEndpoints.BearerToken(context), body?.Code, store, mailer, options, DateTimeOffset.UtcNow, cancellationToken);
+
+            return AccountEndpoints.ChangeResult(outcome, context);
+        }
+
+        private static async Task<IResult> ChangePasswordAsync(
+            global::Handlers.DataHandling.ChangePasswordRequest body,
+            HttpContext context,
+            IAccountStore store,
+            IEmailSender mailer,
+            Argon2PasswordHasher hasher,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangePasswordAsync(
+                AccountEndpoints.BearerToken(context),
+                body?.NewPassword,
+                AccountEndpoints.ClientAddress(context),
+                store,
+                mailer,
+                hasher,
+                options,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            return AccountEndpoints.ChangeResult(outcome, context);
+        }
+
+        private static IResult ChangeResult(AccountChangeOutcome outcome, HttpContext context)
+        {
+            if (outcome.IsNotSignedIn)
+                return Results.Unauthorized();
+
+            if (outcome.RetryAfter is TimeSpan wait)
             {
-                id = account.Id,
-                email = account.Email,
-                displayName = account.DisplayName,
-                isVerified = account.IsVerified,
-                isAdministrator = account.IsAdministrator,
-                maintainerOf = maintainerOf.OrderBy(id => id, StringComparer.Ordinal).ToList(),
-                createdUtc = account.CreatedUtc,
-                lastLoginUtc = account.LastLoginUtc
-            });
+                context.Response.Headers.RetryAfter =
+                    ((int)Math.Ceiling(wait.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+
+            if (outcome.Answer is not null)
+                return Results.Ok(outcome.Answer);
+
+            return outcome.Errors.Count > 0
+                ? Results.BadRequest(new { errors = outcome.Errors })
+                : Results.BadRequest(new { message = outcome.Message });
         }
 
         // ###########################################################################################
@@ -313,21 +411,14 @@ namespace CRT.Server.Handlers.Accounts
         // Request and response shapes.
         // -------------------------------------------------------------------------------------
 
-        private static object SessionResponse(AccountRecord account, IssuedSession session)
-        {
-            return new
-            {
-                refreshToken = session.RefreshToken,
-                expiresUtc = session.ExpiresUtc,
-                account = new
-                {
-                    id = account.Id,
-                    email = account.Email,
-                    displayName = account.DisplayName,
-                    isVerified = account.IsVerified
-                }
-            };
-        }
+        // CRT.Data's SessionAnswer, so the names ReviewApiParser.ParseLogin reads are held to the
+        // server's by ReviewWireContractTests - a rename here locked every maintainer out with
+        // every test green while this was an anonymous object.
+        private static SessionAnswer SessionResponse(AccountRecord account, IssuedSession session) =>
+            new(
+                session.RefreshToken,
+                session.ExpiresUtc,
+                new SessionAccountAnswer(account.Id, account.Email, account.DisplayName, account.IsVerified));
 
         // ###########################################################################################
         // The client's address, for rate limiting.

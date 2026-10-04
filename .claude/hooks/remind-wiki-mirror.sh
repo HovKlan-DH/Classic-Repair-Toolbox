@@ -61,22 +61,24 @@ src/CRT.App/Tabs/Workbooks/|src/CRT.App/Tabs/Worklog/|src/CRT.App/Handlers/Data/
 src/CRT.App/Handlers/Data/SimulationOptions|src/CRT.App/Handlers/Data/DataManager|src/CRT.App/Handlers/Data/DraftManager=Commandline-parameters
 src/CRT.Data/BoardDataReader|src/CRT.Data/BoardData\.cs=Board-Excel Main-Excel
 src/CRT.Data/BoardComponentHighlightStorage=Board-JSON
+src/CRT.Data/MasterListing=Main-Excel
 src/CRT.App/Handlers/MiniPro/=MiniPro-programmer
 src/CRT.App/Handlers/Oscilloscope/|src/CRT.App/Tabs/Oscilloscope/=Synchronize-oscilloscope Controlling-oscilloscope-with-keyboard
 src/CRT.App/Handlers/Data/KiCadRawProjectLoader|src/CRT.App/Handlers/Data/KiCadProjectData=KiCad-folder Add-new-board-with-KiCad-data
 src/CRT.App/Tabs/Contribute/=Contribute-data-via-CRT Contribute-tab
 src/CRT.App/Tabs/Drafts/|src/CRT.App/Main/Main\.NewSystem|src/CRT.Data/NewSystem=Add-new-board-with-KiCad-data Contribute-tab Contribute-data-via-CRT
-src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession=Contribute-data-via-CRT
+src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession|src/CRT.Data/BoardDataDiffer=Contribute-data-via-CRT Maintainer-tab
 src/CRT.App/Controls/BoardTable/=Contribute-data-via-CRT Maintainer-tab
 src/CRT.Data/DraftDrift|src/CRT.Data/DraftRevisionComparer|src/CRT.Data/DraftBaseRevision|src/CRT.App/Main/Main\.DraftDrift=Contribute-data-via-CRT Contribute-tab Board-Excel
 src/CRT.Data/DraftRetirement|src/CRT.App/Handlers/Data/PublishedDraftRetirer|src/CRT.Data/DraftWorkbookStore=Contribute-data-via-CRT
 src/CRT.Data/DraftFolderImport=Contribute-data-via-CRT Add-new-board-with-KiCad-data
 src/CRT.App/Main/Main\.SourceSwitchNotice|src/CRT.Data/SubmissionReceipt=Contribute-data-via-CRT Configuration-tab
-src/CRT.Data/DraftFileResolver|src/CRT.Data/DraftBoardSource=Configuration-tab
+src/CRT.Data/DraftFileResolver|src/CRT.Data/DraftBoardSource=Configuration-tab View-boards-from-online-source
 src/CRT.App/Handlers/Online/UpdateService|src/CRT.App/Handlers/Online/UpdateChannelFilter|src/CRT.App/Handlers/Online/StageFilteredUpdateSource=Configuration-tab
 src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-from-source Development-tools-used
-src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract=Information-collected
+src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract|src/CRT.Data/CheckInContract|src/CRT.Server/Handlers/Usage/ApiUsage=Information-collected
 src/CRT.App/Tabs/Maintainer/|src/CRT.App/Main/Main\.Maintainer|src/CRT.App/Handlers/Maintainer/=Maintainer-tab
+src/CRT.App/Tabs/Feedback/|src/CRT.App/Handlers/Data/FeedbackWording|src/CRT.Data/FeedbackContract=Feedback-tab
 "
 
 HITS=""

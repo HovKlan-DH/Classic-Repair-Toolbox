@@ -368,21 +368,12 @@ public partial class TabSchematics
         {
             // Read UNCACHED and synchronously rather than through the async cached load: this
             // runs from a Click handler, and making it async void to await one rare seed would
-            // swallow any exception the rest of this method threw.
-            string publishedPath = DraftBoardSource.PublishedPathOf(DataManager.DataRoot, cacheKey);
-            BoardData? published = BoardDataReader.ReadWorkbookUncached(publishedPath);
-
-            if (published == null)
-            {
-                Logger.Warning("KiCad calibration save failed - could not read the board to seed a draft from");
-                return;
-            }
-
-            DraftSeedResult seeded = DraftSeeder.SeedFromPublished(
+            // swallow any exception the rest of this method threw. The published FILE as it is
+            // now - DraftSeeder.SeedFromPublishedFile, which every seeding save path shares.
+            DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(
                 DraftManager.DraftsRoot,
                 DataManager.DataRoot,
-                cacheKey,
-                published);
+                cacheKey);
 
             if (!seeded.Created)
             {

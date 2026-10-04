@@ -1,0 +1,162 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.MyAccountView">
+
+    <!--
+    "MY ACCOUNT" - THE FIRST ENTRY UNDER THE MAINTAINER TAB'S "ACCOUNT" SCREEN (owner request,
+    2026-10-04: "Move the current account functionality from the bottom-left corner to a new
+    left-side entry named "My account""). Until then this was the "Your account" WINDOW, opened by
+    "Account" beside "Sign out" under the lists (owner request, 2026-10-03: the maintainer "can edit
+    his/her own email address and name"). Both buttons went from there; "Sign out" is the last
+    section here.
+
+    Four sections, each with its own button and its own message line, so the answer to a change
+    is read where the change was made. Every request waits under CRT's window's one BusyOverlay,
+    found up the tree (ServerWait) - this is a panel of the tab now, not a dialog with its own.
+
+    NO CURRENT PASSWORD ANYWHERE (owner decision, 2026-10-03: "no need for that, as I see it as you
+    are already logged in"). The labels and the email section's wording are the owner's too.
+
+    The rules for what each button may send are MyAccountRules'; everything the server judges (a
+    name too short, a password breaking a rule, a code that has expired) is the server's sentence,
+    shown as it comes.
+
+    MaxWidth, left: the right-hand panel is as wide as CRT's window, and a name box across all of it
+    reads as a different kind of field from the window's 520-wide ones it replaces.
+    -->
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="14"
+                    MaxWidth="560"
+                    HorizontalAlignment="Left"
+                    Margin="0,0,12,12">
+
+            <StackPanel Spacing="2">
+                <TextBlock Text="My account" FontSize="14" FontWeight="SemiBold" />
+                <TextBlock x:Name="LoggedInAsText" Opacity="0.75" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- ================= Name ================= -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="Name or handle" FontWeight="SemiBold" />
+                <TextBlock TextWrapping="Wrap"
+                           Opacity="0.75"
+                           FontSize="12"
+                           Text="What other maintainers see, and what the mails call you." />
+
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                    <TextBox x:Name="NameTextBox" TextChanged="OnTextChanged" />
+                    <Button Grid.Column="1"
+                            x:Name="SaveNameButton"
+                            Content="Save name"
+                            Margin="8,0,0,0"
+                            IsEnabled="False"
+                            Click="OnSaveNameClick" />
+                </Grid>
+
+                <TextBlock x:Name="NameMessageText" TextWrapping="Wrap" IsVisible="False" />
+            </StackPanel>
+
+            <!-- ================= Email address ================= -->
+            <Border BorderBrush="{DynamicResource Form_Border}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Email address" FontWeight="SemiBold" />
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.75"
+                               FontSize="12"
+                               Text="When you change your email address, a code is sent to the new email address. Type that code in with &quot;I have received a code&quot; - your address does not change until then. CRT on any other computer will then ask you to sign in again." />
+
+                    <TextBlock Text="New email address" Opacity="0.7" Margin="0,4,0,0" />
+                    <TextBox x:Name="NewEmailTextBox" TextChanged="OnTextChanged" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+                        <Button x:Name="SendCodeButton"
+                                Content="Send code"
+                                IsEnabled="False"
+                                Click="OnSendCodeClick" />
+
+                        <!-- Shows where to type the code in - straight after sending one, or later,
+                             with CRT closed or another screen shown in between. -->
+                        <Button x:Name="HaveCodeButton"
+                                Content="I have received a code"
+                                VerticalAlignment="Center"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="SteelBlue"
+                                Click="OnHaveCodeClick" />
+                    </StackPanel>
+
+                    <!-- Hidden until "I have received a code". -->
+                    <StackPanel x:Name="CodePanel" Spacing="4" IsVisible="False" Margin="0,4,0,0">
+                        <TextBlock Text="Code from the email" Opacity="0.7" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox x:Name="CodeTextBox" TextChanged="OnTextChanged" />
+                            <Button Grid.Column="1"
+                                    x:Name="ConfirmEmailButton"
+                                    Content="Change address"
+                                    Margin="8,0,0,0"
+                                    IsEnabled="False"
+                                    Click="OnConfirmEmailClick" />
+                        </Grid>
+                    </StackPanel>
+
+                    <TextBlock x:Name="EmailMessageText" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+            </Border>
+
+            <!-- ================= Password ================= -->
+            <Border BorderBrush="{DynamicResource Form_Border}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Password" FontWeight="SemiBold" />
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.75"
+                               FontSize="12"
+                               Text="CRT on any other computer will ask you to sign in again with the new one." />
+
+                    <TextBlock Text="New password" Opacity="0.7" Margin="0,4,0,0" />
+                    <TextBox x:Name="NewPasswordTextBox" PasswordChar="*" TextChanged="OnTextChanged" />
+
+                    <TextBlock Text="New password again" Opacity="0.7" Margin="0,4,0,0" />
+                    <TextBox x:Name="RepeatPasswordTextBox" PasswordChar="*" TextChanged="OnTextChanged" />
+
+                    <Button x:Name="ChangePasswordButton"
+                            Content="Change password"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            IsEnabled="False"
+                            Click="OnChangePasswordClick" />
+
+                    <TextBlock x:Name="PasswordMessageText" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+            </Border>
+
+            <!--
+            ================= Sign out =================
+
+            A REAL BUTTON, because it is the only way to clear a remembered session deliberately, and
+            the project owner named it as the thing that must forget the login. A credential that can
+            be stored but not cleared from the UI would be the wrong half of the feature.
+
+            It was under the lists at the bottom left until 2026-10-04 (owner request: remove the
+            "Account" and "Sign out" buttons from there). Here, on a screen of its own, it is as far
+            from the decision buttons as it can be - a maintainer reaching for "Reject" can never
+            find it under the pointer. The tab asks about unsaved table changes first (SignOutRequested).
+            -->
+            <Border BorderBrush="{DynamicResource Form_Border}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Sign out" FontWeight="SemiBold" />
+                    <TextBlock TextWrapping="Wrap"
+                               Opacity="0.75"
+                               FontSize="12"
+                               Text="Signs you out, and forgets the sign-in remembered on this computer." />
+
+                    <Button x:Name="SignOutButton"
+                            Content="Sign out"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            Click="OnSignOutClick" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

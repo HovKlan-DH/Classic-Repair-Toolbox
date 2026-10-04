@@ -1,0 +1,326 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Handlers.DataHandling;
+
+namespace Handlers.MaintainerHandling
+{
+    // ###########################################################################################
+    // A SYSTEM'S SIX VIEWS ON THE "SYSTEMS" SCREEN (owner request, 2026-10-03: "I would like all
+    // the same functionalities, as the 'Contributor Submissions' has. I would like to see these
+    // options when selecting a system: Board data (and I should be able to do the same edits),
+    // Files (should not show changed files - just list all files), Contributor, Maintainer,
+    // Statistics ... where 'Maintainer' is the info as it has now").
+    //
+    //   Board data  - BETA's board in the submission's own table, editable by the system's
+    //                 maintainers and the administrator. A save goes STRAIGHT TO BETA (owner
+    //                 decision, 2026-10-03: "it should go directly to the next queue, 'BETA > Stable',
+    //                 so it can directly be tested in BETA"), with a reason asked for when Save is
+    //                 pressed - not while the system waits under BETA > Stable.
+    //   Files       - every file the system uses as BETA holds it, nothing marked as changing.
+    //   Contributor - who has contributed to it, and how that went.
+    //   Maintainer  - its place in CRT's drop-down lists while it needs one, and who maintains it -
+    //                 a list and nothing more (owner request, 2026-10-04: "The stuff that should be
+    //                 visible in here, is just the selected maintainer(s)"). Adding, inviting and
+    //                 removing them is the administrator's, under Account > Maintainers.
+    //   History     - everything that has happened to it, one card per submission with what it
+    //                 changed (owner request, 2026-10-04 - SystemHistoryDisplay).
+    //   Statistics  - how often CRT users look at it (the board views). Graphs come later.
+    //
+    // Board data first, like a submission's own views (SubmissionViews) - a row of buttons reads
+    // as opening on its first. But a system is not a submission: the views are about "a system",
+    // so the one chosen STAYS when another system is chosen - looking at each system's statistics
+    // or maintainers in turn is the ordinary use, and starting over on Board data every time would
+    // cost a click and a table read per system.
+    //
+    // Pure, so the order, the labels and the words are tested.
+    // ###########################################################################################
+    public enum SystemSection
+    {
+        BoardData,
+        Files,
+        Contributor,
+        Maintainer,
+        History,
+        Statistics
+    }
+
+    public static class SystemSections
+    {
+        // The order of the buttons, left to right.
+        public static IReadOnlyList<SystemSection> Order { get; } =
+        [
+            SystemSection.BoardData,
+            SystemSection.Files,
+            SystemSection.Contributor,
+            SystemSection.Maintainer,
+            SystemSection.History,
+            SystemSection.Statistics
+        ];
+
+        // What the screen opens on before any view is chosen.
+        public const SystemSection Opening = SystemSection.BoardData;
+
+        public static string Label(SystemSection section) => section switch
+        {
+            SystemSection.Files => "Files",
+            SystemSection.Contributor => "Contributor",
+            SystemSection.Maintainer => "Maintainer",
+            SystemSection.History => "History",
+            SystemSection.Statistics => "Statistics",
+            _ => SubmissionViews.Label(SubmissionView.BoardData)
+        };
+
+        // ###########################################################################################
+        // Under the table's toolbar when it opens: what it is coloured against and what a save does -
+        // or, for a system this account may not change, the server's reason.
+        // ###########################################################################################
+        public static string OpenedMessage(SystemTableAnswer table)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+
+            if (!table.MayEdit)
+            {
+                return string.IsNullOrWhiteSpace(table.MayNotEditReason)
+                    ? "You can look at this system's board, but not send a change to it."
+                    : table.MayNotEditReason.Trim();
+            }
+
+            return "BETA's board as it is now - only what you change is marked. Saving asks for a reason and publishes your " +
+                   "change straight to BETA, where it waits under " + MaintainerScreenWording.BetaQueueQuoted + " for the stable source.";
+        }
+
+        // ###########################################################################################
+        // What the table calls its two sides - a changed cell's tooltip names the value it replaced
+        // by the first, and a file cell's card heads its two pictures with both. "BETA now", since
+        // the table is coloured against BETA as it was opened (there is no "published" in between).
+        // ###########################################################################################
+        public const string BaselineLabel = "BETA now";
+
+        public const string ChangeLabel = "Your change";
+
+        // The two "please wait"s of a save: the check of what it would remove, then the publish -
+        // which the server checks as it would any submission.
+        public const string CheckingWait = "Checking your change against BETA...";
+
+        public const string PublishingWait =
+            "Publishing your change to BETA. The server checks it as it would any submission - please wait until it is done.";
+
+        // ###########################################################################################
+        // THE REASON, ASKED WHEN SAVE IS PRESSED (owner request, 2026-10-03: "do ask for a change
+        // reason when clicking the 'Save changes' button, so this can go along with the change, just
+        // like any normal contribution") - PublishSystemChangeWindow's words. It replaced a description
+        // box above the table. With the files the publish would remove, when there are any: the
+        // maintainer sees them before anything is written, as before an approval.
+        // ###########################################################################################
+        public const string ReasonTitle = "Publish your change to BETA";
+
+        public static string ReasonHeadline(string systemId) => $"Publish your change to {systemId} in BETA";
+
+        // The BETA check box named as the Configuration tab names it - one constant, the mails' too.
+        public static string ReasonExplanation { get; } =
+            "Your change goes straight into the BETA data, where you can try it in CRT with \"" +
+            ConfigurationWording.BetaSourceCheckBox + "\" ticked in the Configuration tab. " +
+            "It then waits under " + MaintainerScreenWording.BetaQueueQuoted + " until it is published to the stable source - and until then no other " +
+            "change can be made to this system.";
+
+        public const string ReasonLabel = "Reason for the change";
+
+        public const string ReasonHint = "Corrected U8's part number.";
+
+        public const string ReasonNote =
+            "A sentence is enough. It goes with the change, like a contribution's description - under " + MaintainerScreenWording.BetaQueueQuoted + " and in the system's history.";
+
+        public const string PublishButton = "Publish to BETA";
+
+        // Null when the change removes nothing - the dialog then shows no list at all.
+        public static string? RemovalsHeading(IReadOnlyCollection<string> removals)
+        {
+            ArgumentNullException.ThrowIfNull(removals);
+
+            return removals.Count switch
+            {
+                0 => null,
+                1 => "This also removes 1 file from BETA - nothing uses it once your change is in:",
+                _ => $"This also removes {removals.Count} files from BETA - nothing uses them once your change is in:"
+            };
+        }
+
+        // ###########################################################################################
+        // After the change was published: at which revision, what it removed, and any warnings the
+        // server raised about it. The table then shows BETA as it is now - read-only, with the
+        // server's reason, while the system waits under BETA > Stable.
+        // ###########################################################################################
+        public static string Published(SystemEditResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+
+            string published = string.IsNullOrWhiteSpace(result.Revision)
+                ? "Published to BETA."
+                : $"Published to BETA as revision {result.Revision.Trim()}.";
+
+            int removed = result.RemovedFiles?.Count ?? 0;
+
+            if (removed > 0)
+                published += removed == 1 ? " 1 file nothing used any more was removed." : $" {removed} files nothing used any more were removed.";
+
+            return SystemSections.WithWarnings(published, result);
+        }
+
+        // ###########################################################################################
+        // Made into a submission but NOT published - something changed between the check and the
+        // publish, say. Nothing is lost: it waits under Contributor Submissions, where the screen then
+        // opens it.
+        // ###########################################################################################
+        public static string SavedNotPublished(SystemEditResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+
+            string reason = string.IsNullOrWhiteSpace(result.NotPublishedReason)
+                ? "the server did not say why."
+                : result.NotPublishedReason.Trim();
+
+            return SystemSections.WithWarnings(
+                $"Saved as submission #{result.SubmissionId}, but not published to BETA: {reason} " +
+                "It waits under " + MaintainerScreenWording.ContributorQueueQuoted + ", where you can approve it.",
+                result);
+        }
+
+        private static string WithWarnings(string line, SystemEditResult result)
+        {
+            List<string> warnings = result.Warnings
+                .Select(warning => warning.Message)
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .ToList();
+
+            return warnings.Count == 0 ? line : $"{line} Warnings: {string.Join(" ", warnings)}";
+        }
+
+        // After a publish whose table could not be read again: the table is closed rather than left
+        // on BETA as it was before the change.
+        public static string NotReadAgain(string reason) =>
+            $"The table could not be read again ({(string.IsNullOrWhiteSpace(reason) ? "no answer" : reason.Trim().TrimEnd('.'))}) - " +
+            "choose another view and come back to Board data to read it.";
+
+        // ###########################################################################################
+        // BETA's board moved while the table holds a change not published yet (2026-10-04) - the
+        // table is then not read again under it, and the server would refuse the change
+        // (SystemEditFlow.ChangedSinceMessage), so it is said before it is tried. Undone, the
+        // change is gone and Board data reads BETA again when next shown.
+        // ###########################################################################################
+        public const string BetaMovedUnderChange =
+            "BETA's board for this system has changed since you opened the table, so your change can no longer be published. " +
+            "Copy anything you need, undo your changes (Ctrl+Z), then choose another view and come back to Board data to see BETA as it is now.";
+
+        public static string NotPublished(string reason) =>
+            $"Not published: {(string.IsNullOrWhiteSpace(reason) ? "the server refused it." : reason)}";
+
+        // ###########################################################################################
+        // AFTER NO ANSWER IN TWO MINUTES: the submission a change became, if it arrived - the system's
+        // newest submission with this reason as its description. Its state then says how far it got:
+        // in BETA ("merged", or "published" once it went on to stable), or waiting in the queue.
+        // ###########################################################################################
+        public static SystemSubmissionEntry? FindSent(SystemDetailAnswer detail, string reason)
+        {
+            ArgumentNullException.ThrowIfNull(detail);
+
+            string wanted = reason?.Trim() ?? string.Empty;
+
+            return detail.Submissions
+                .Where(submission => string.Equals(submission.Summary?.Trim(), wanted, StringComparison.Ordinal))
+                .OrderByDescending(submission => submission.Id)
+                .FirstOrDefault();
+        }
+
+        public static bool ReachedBeta(SystemSubmissionEntry submission)
+        {
+            ArgumentNullException.ThrowIfNull(submission);
+
+            return string.Equals(submission.State, "merged", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(submission.State, "published", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // WHAT A SAVE SENDS: BETA's rows with the table's edits applied, and the KiCad calibrations as
+        // BETA has them (the table cannot show them). The server keeps highlights, calibrations and
+        // the revision date as BETA has them whatever is sent (SubmissionRowsBoard.WithTableSections)
+        // - the same rule a submission's own table saves by (ReviewTableWording.RowsToSave).
+        // ###########################################################################################
+        public static SubmissionRows RowsToSend(BoardTableDocument document, SubmissionRows beta) =>
+            ReviewTableWording.RowsToSave(document, beta);
+
+        // The Files view's line above the tree.
+        public const string FilesHeading =
+            "Every file this system uses in BETA: its own folder, and the shared files its board cites.";
+
+        // ###########################################################################################
+        // THE BETA / STABLE SWITCH ON BOARD DATA AND FILES (owner request, 2026-10-04: "Shouldn't there
+        // be somewhere a possibility to see what we actually do have in BETA or stable for this?").
+        // BETA's table is the one a change is made in; the stable source's is read-only - it changes
+        // only when BETA is published to it.
+        //
+        // Which is SHOWN: the one wanted when the system is there; otherwise the stable source when
+        // only that holds it; otherwise BETA, whose view then says nothing is there. The one wanted
+        // stays wanted for the next system, as the chosen view does.
+        // ###########################################################################################
+        public static bool ShowsStable(bool stableWanted, SystemOverviewEntry? system)
+        {
+            if (system is null || system.InProduction != true)
+                return false;
+
+            return stableWanted || !system.InBeta;
+        }
+
+        // Whether each half of the switch can be chosen: the stable source only when it holds the
+        // system, BETA unless only the stable source does - BETA's view says so when neither does.
+        public static bool CanChooseStable(SystemOverviewEntry? system) => system?.InProduction == true;
+
+        public static bool CanChooseBeta(SystemOverviewEntry? system) =>
+            system is not null && (system.InBeta || system.InProduction != true);
+
+        // The stable source's table: what it is called beside a changed cell (it never has one), and
+        // in "there is no file at this path in ...".
+        public const string StableBaselineLabel = "Stable now";
+
+        public const string StableTreeName = "the stable source";
+
+        // ###########################################################################################
+        // *** AN ANSWER THAT IS BETA'S IS NOT SHOWN AS STABLE. *** A server older than 4.5.0 does not
+        // know the request's `tree` and answers with BETA's board and files - which, drawn under
+        // "Stable", would tell the maintainer BETA is what everybody has. The stable source's answer
+        // names no BETA address, and its files open from the stable source; anything else is BETA's.
+        // ###########################################################################################
+        public static bool IsStableAnswer(SystemTableAnswer table)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+            return table.BetaDataUrl is null && !table.MayEdit;
+        }
+
+        public static bool IsStableAnswer(SystemFilesAnswer files)
+        {
+            ArgumentNullException.ThrowIfNull(files);
+            return files.BetaDataUrl is null && files.Files.All(file => file.OpenFrom == SystemFileSource.Production);
+        }
+
+        public const string StableNeedsNewerServer =
+            "This server cannot show the stable source yet - it needs CRT.Server 4.5.0 or newer.";
+
+        public const string StableFilesHeading =
+            "Every file this system uses in the stable source - what everybody using CRT gets: its own folder, and the shared files its board cites.";
+
+        // ###########################################################################################
+        // Above the views, for a system not in CRT's drop-down lists: the list's own mark - and, while
+        // it still NEEDS a place, where that is given: the Maintainer view. A view chosen for another
+        // system stays chosen, so the placement could otherwise go unseen. Null for every other system.
+        // ###########################################################################################
+        public static string? PlacementLine(SystemListingAnswer? listing, string? systemId)
+        {
+            if (SystemPlacementDisplay.ListMark(listing, systemId) is not string mark)
+                return null;
+
+            return SystemPlacementDisplay.UnlistedEntry(listing, systemId)?.Placement is null
+                ? $"{mark} - give it one under Maintainer"
+                : mark;
+        }
+    }
+}

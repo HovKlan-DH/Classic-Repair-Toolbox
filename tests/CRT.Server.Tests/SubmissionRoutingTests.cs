@@ -28,6 +28,13 @@ namespace CRT.Server.Tests
                 FormatVersion: 1, CreatedUtc: SubmissionRoutingTests.Now, ExpiresUtc: null, DecidedUtc: null,
                 DecisionComment: null, TouchesSharedFiles: touchesShared);
 
+        // The addresses written to, in order - what most of these tests are about.
+        private static async Task<IReadOnlyList<string>> EmailsForAsync(SubmissionRecord submission, FakeAccountStore accounts) =>
+            (await SubmissionRouting.RecipientsForAsync(submission, accounts)).Select(recipient => recipient.Email).ToList();
+
+        private static async Task<IReadOnlyList<string>> EmailsForRolesAsync(IEnumerable<ApproverRole> roles, string systemId, FakeAccountStore accounts) =>
+            (await SubmissionRouting.RecipientsForRolesAsync(roles, systemId, accounts)).Select(recipient => recipient.Email).ToList();
+
         private static async Task<long> AccountAsync(FakeAccountStore store, string email, bool admin = false, bool verified = true, bool locked = false)
         {
             long id = await store.CreateAccountAsync(new NewAccount(email, email, "hash", email, SubmissionRoutingTests.Now));
@@ -46,7 +53,7 @@ namespace CRT.Server.Tests
             accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
             accounts.Maintainers.Add((SubmissionRoutingTests.C64, bob));
 
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(), accounts);
 
             Assert.Equal(["anna@example.com", "bob@example.com"], recipients);
@@ -61,7 +68,7 @@ namespace CRT.Server.Tests
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
             await SubmissionRoutingTests.AccountAsync(accounts, "anna@example.com");
 
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(), accounts);
 
             Assert.Equal(["admin@example.com"], recipients);
@@ -76,7 +83,7 @@ namespace CRT.Server.Tests
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
             accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
 
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(touchesShared: true), accounts);
 
             Assert.Equal(["anna@example.com", "admin@example.com"], recipients);
@@ -88,7 +95,7 @@ namespace CRT.Server.Tests
             var accounts = new FakeAccountStore();
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
 
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(touchesShared: true), accounts);
 
             Assert.Equal(["admin@example.com"], recipients);
@@ -106,11 +113,11 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 ["admin@example.com"],
-                await SubmissionRouting.RecipientsForRolesAsync([ApproverRole.Administrator], SubmissionRoutingTests.C64, accounts));
+                await SubmissionRoutingTests.EmailsForRolesAsync([ApproverRole.Administrator], SubmissionRoutingTests.C64, accounts));
 
             Assert.Equal(
                 ["anna@example.com"],
-                await SubmissionRouting.RecipientsForRolesAsync([ApproverRole.Maintainer], SubmissionRoutingTests.C64, accounts));
+                await SubmissionRoutingTests.EmailsForRolesAsync([ApproverRole.Maintainer], SubmissionRoutingTests.C64, accounts));
         }
 
         // ###########################################################################################
@@ -132,12 +139,12 @@ namespace CRT.Server.Tests
             accounts.Maintainers.Add((SubmissionRoutingTests.C64, locked));
             accounts.Maintainers.Add((SubmissionRoutingTests.C64, unverified));
 
-            IReadOnlyList<string> shared = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> shared = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(touchesShared: true), accounts);
 
             Assert.Equal(["admin@example.com", "promoted@example.com"], shared.Order(StringComparer.Ordinal));
 
-            IReadOnlyList<string> asMaintainer = await SubmissionRouting.RecipientsForRolesAsync(
+            IReadOnlyList<string> asMaintainer = await SubmissionRoutingTests.EmailsForRolesAsync(
                 [ApproverRole.Maintainer], SubmissionRoutingTests.C64, accounts);
 
             Assert.Empty(asMaintainer);
@@ -151,7 +158,7 @@ namespace CRT.Server.Tests
             await SubmissionRoutingTests.AccountAsync(accounts, "unverified@example.com", admin: true, verified: false);
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
 
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(), accounts);
 
             Assert.Equal(["admin@example.com"], recipients);
@@ -160,10 +167,32 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task With_nobody_at_all_the_list_is_empty_rather_than_an_error()
         {
-            IReadOnlyList<string> recipients = await SubmissionRouting.RecipientsForAsync(
+            IReadOnlyList<string> recipients = await SubmissionRoutingTests.EmailsForAsync(
                 SubmissionRoutingTests.Submission(), new FakeAccountStore());
 
             Assert.Empty(recipients);
+        }
+
+        // ###########################################################################################
+        // Each recipient comes with the name on their account, to greet them by (owner request,
+        // 2026-10-03: "Hi {name}") - a maintainer's from the pool, an administrator's from the account.
+        // ###########################################################################################
+        [Fact]
+        public async Task Each_recipient_comes_with_the_name_on_their_account()
+        {
+            var accounts = new FakeAccountStore();
+            long anna = await accounts.CreateAccountAsync(new NewAccount("anna@example.com", "anna@example.com", "hash", "Anna", SubmissionRoutingTests.Now));
+            long admin = await accounts.CreateAccountAsync(new NewAccount("admin@example.com", "admin@example.com", "hash", "Dennis", SubmissionRoutingTests.Now));
+            accounts.Accounts[anna] = accounts.Accounts[anna] with { IsVerified = true };
+            accounts.Accounts[admin] = accounts.Accounts[admin] with { IsAdministrator = true, IsVerified = true };
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
+
+            IReadOnlyList<CRT.Server.Handlers.Email.MailRecipient> recipients = await SubmissionRouting.RecipientsForAsync(
+                SubmissionRoutingTests.Submission(touchesShared: true), accounts);
+
+            Assert.Equal(
+                [new("anna@example.com", "Anna"), new("admin@example.com", "Dennis")],
+                recipients);
         }
     }
 }

@@ -95,7 +95,11 @@ namespace CRT.Server.Handlers.Submissions
                 usage.MasterCount,
                 usage.BoardWorkbookCount,
                 usage.Files.Count,
-                files);
+                files,
+
+                // Where the tree is published, so the Maintainer tab's tree can show and open a file
+                // as CRT downloads it (2026-10-04).
+                string.IsNullOrWhiteSpace(tree.PublicBaseUrl) ? null : tree.PublicBaseUrl);
         }
 
         // ###########################################################################################

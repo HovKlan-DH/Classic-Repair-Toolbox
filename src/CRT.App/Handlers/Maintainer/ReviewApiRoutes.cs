@@ -29,6 +29,11 @@ namespace Handlers.MaintainerHandling
         public static string Login(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/login";
 
+        // The deployed server's version (2026-10-04) - unauthenticated and public, so it is asked
+        // with no session (ReviewApiClient.GetServerVersionAsync).
+        public static string Health(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/health";
+
         // ###########################################################################################
         // The DEFAULT server, and the only one anybody uses.
         //
@@ -73,6 +78,27 @@ namespace Handlers.MaintainerHandling
         // and a password. Before anybody is signed in - it is how the account is made.
         public static string AcceptInvitation(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/accept-invitation";
+
+        // ###########################################################################################
+        // The signed-in maintainer's own account (2026-10-03) - the "Your account" window, and the
+        // remembered sign-in refreshing its name and address. Server: AccountEndpoints, under its
+        // "/api/accounts" group. A new address is two calls: ChangeEmail mails a code, and
+        // ConfirmEmailChange spends it.
+        // ###########################################################################################
+        public static string Me(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/me";
+
+        public static string ChangeName(string baseAddress) =>
+            $"{ReviewApiRoutes.Me(baseAddress)}/name";
+
+        public static string ChangeEmail(string baseAddress) =>
+            $"{ReviewApiRoutes.Me(baseAddress)}/email";
+
+        public static string ConfirmEmailChange(string baseAddress) =>
+            $"{ReviewApiRoutes.Me(baseAddress)}/email/confirm";
+
+        public static string ChangePassword(string baseAddress) =>
+            $"{ReviewApiRoutes.Me(baseAddress)}/password";
 
         // ###########################################################################################
         // The three review DECISIONS (task 5).
@@ -163,6 +189,33 @@ namespace Handlers.MaintainerHandling
         public static string AdminRemoveUnusedFiles(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/unused-files/remove";
 
+        // Rebuilding both trees' dataChecksums.json by hand (2026-10-01). A POST with no body - the
+        // one button does every configured tree, so there is nothing to choose.
+        public static string AdminRebuildManifests(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/manifest/rebuild";
+
+        // Deleting a system completely (2026-10-03): what it would remove, then the delete. Both
+        // POST a body - a system id carries slashes.
+        public static string AdminSystemDeletePlan(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/delete/plan";
+
+        public static string AdminSystemDelete(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/delete";
+
+        // The order of CRT's drop-down lists, written into BETA's and the stable source's main Excel
+        // data files (2026-10-04) - every system BETA lists, in order, POSTed.
+        public static string AdminSystemOrder(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/order";
+
+        // Resetting the contribution data for going live (2026-10-04): GET the counts, POST the reset
+        // with their fingerprint - one path for both.
+        public static string AdminDataReset(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/reset";
+
+        // Which CRT versions call which route, over the last `days` days (2026-10-04).
+        public static string AdminApiUsage(string baseAddress, int days) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/api-usage?days={days.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
         // ###########################################################################################
         // BETA to production (2026-09-25) - ProductionEndpoints.MapProductionEndpoints. The plan and
         // the publish are POSTs with a body, because a system id carries slashes.
@@ -225,6 +278,23 @@ namespace Handlers.MaintainerHandling
         // Where a new system goes in the drop-down lists (2026-09-27): GET the list, POST a placement.
         public static string SystemListing(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/listing";
+
+        // ###########################################################################################
+        // A system's Board data and Files views (2026-10-03) - SystemEndpoints' four POSTs: BETA's
+        // board, what a table edit would remove from BETA, the edit itself (published straight to
+        // BETA), and every file the system uses.
+        // ###########################################################################################
+        public static string SystemTable(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/table";
+
+        public static string SystemEditCheck(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/edit/check";
+
+        public static string SystemEdit(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/edit";
+
+        public static string SystemFiles(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/files";
 
         // ###########################################################################################
         // The base address with any trailing slashes removed.

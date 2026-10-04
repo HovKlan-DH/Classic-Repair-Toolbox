@@ -60,7 +60,8 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.RememberThumbnailWindowSettingsPerBoard);
         Assert.False(UserSettings.ViewOfficialPublishedOnly);
         Assert.False(UserSettings.EnableMaintainerTab);
-        Assert.False(UserSettings.MaintainerShowChangesOnly);
+        Assert.False(UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting);
+        Assert.Equal(BoardTableRowKinds.None, UserSettings.MaintainerTableFilter);
     }
 
     [Fact]
@@ -174,6 +175,22 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.EnableWorklog);
     }
 
+    // "Wrap text" in the board tables was a remembered choice for one day (2026-10-04), until the
+    // cells always wrapped (owner request). A settings file still carrying it loads like any other,
+    // keeping everything else it says, and the next save leaves the retired key out.
+    [Fact]
+    public void A_settings_file_still_carrying_the_retired_table_wrap_choice_loads_and_drops_it_on_save()
+    {
+        string path = this.LoadSettings("""{ "tableWrapText": true, "enableWorklog": false }""");
+
+        Assert.False(UserSettings.EnableWorklog);
+
+        UserSettings.EnableWorklog = true;
+
+        Assert.Null(ReadJson(path)["tableWrapText"]);
+        Assert.True(ReadJson(path)["enableWorklog"]!.GetValue<bool>());
+    }
+
     // The Maintainer tab is OFF until a maintainer turns it on: almost nobody running CRT has a
     // maintainer account, and a tab opening on a sign-in screen they cannot use would only confuse.
     [Fact]
@@ -189,24 +206,102 @@ public sealed class UserSettingsTests : IDisposable
         Assert.True(UserSettings.EnableMaintainerTab);
     }
 
-    // The Maintainer tab's table remembers "Show changes only" - what the separate maintainer
-    // application kept in a file of its own until 2026-09-29.
+    // ###########################################################################################
+    // "Hide the Maintainer tab while no work is waiting for me" (owner request, 2026-10-01). OFF by
+    // default, so an existing maintainer's tab does not start disappearing on them after an update
+    // - the rule it feeds is MaintainerModes.TabIsShown.
+    // ###########################################################################################
     [Fact]
-    public void The_maintainer_tables_show_changes_only_persists_and_survives_a_reload()
+    public void Hiding_the_maintainer_tab_until_work_waits_persists_and_survives_a_reload()
     {
         string path = this.LoadSettings("{}");
 
-        UserSettings.MaintainerShowChangesOnly = true;
+        Assert.False(UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting);
 
-        Assert.True(ReadJson(path)["maintainerShowChangesOnly"]!.GetValue<bool>());
+        UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting = true;
 
-        UserSettings.LoadFrom(path);
-        Assert.True(UserSettings.MaintainerShowChangesOnly);
-
-        UserSettings.MaintainerShowChangesOnly = false;
+        Assert.True(ReadJson(path)["showMaintainerTabOnlyWhenWorkWaiting"]!.GetValue<bool>());
 
         UserSettings.LoadFrom(path);
-        Assert.False(UserSettings.MaintainerShowChangesOnly);
+        Assert.True(UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting);
+    }
+
+    // The Maintainer tab's table remembers its filter - "Show changes only", which the separate
+    // maintainer application kept in a file of its own until 2026-09-29, and the colour-key pills
+    // picked since 2026-10-02 - by NAME, so a kind added later cannot change what was saved.
+    [Fact]
+    public void The_maintainer_tables_filter_persists_by_name_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.MaintainerTableFilter = BoardTableRowKinds.Added | BoardTableRowKinds.Errors;
+
+        Assert.Equal("Added,Errors", ReadJson(path)["maintainerTableFilter"]!.GetValue<string>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(BoardTableRowKinds.Added | BoardTableRowKinds.Errors, UserSettings.MaintainerTableFilter);
+
+        UserSettings.MaintainerTableFilter = BoardTableRowKinds.None;
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(BoardTableRowKinds.None, UserSettings.MaintainerTableFilter);
+    }
+
+    // ###########################################################################################
+    // A "Show changes only" saved before the pills became the filter reads as the same rows - the
+    // change pills together - and is gone from the file once the filter is next written.
+    // ###########################################################################################
+    [Fact]
+    public void A_saved_show_changes_only_reads_as_the_change_pills()
+    {
+        string path = this.LoadSettings("{\"maintainerShowChangesOnly\":true}");
+
+        Assert.Equal(BoardTableRowFilter.Changes, UserSettings.MaintainerTableFilter);
+
+        UserSettings.MaintainerTableFilter = BoardTableRowKinds.Errors;
+
+        Assert.Null(ReadJson(path)["maintainerShowChangesOnly"]);
+        Assert.Equal(BoardTableRowKinds.Errors, UserSettings.MaintainerTableFilter);
+    }
+
+    // The submission and the BETA system the Maintainer tab's two queues were last on (2026-09-30),
+    // which they open on after a restart - and nothing at all until one has been looked at.
+    [Fact]
+    public void The_maintainer_queues_last_entries_persist_and_survive_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Null(UserSettings.MaintainerLastSubmissionId);
+        Assert.Null(UserSettings.MaintainerLastBetaSystemId);
+        Assert.Null(ReadJson(path)["maintainerLastSubmissionId"]);
+
+        UserSettings.MaintainerLastSubmissionId = 41;
+        UserSettings.MaintainerLastBetaSystemId = "Commodore/C128/310378";
+
+        Assert.Equal(41, ReadJson(path)["maintainerLastSubmissionId"]!.GetValue<long>());
+        Assert.Equal("Commodore/C128/310378", ReadJson(path)["maintainerLastBetaSystemId"]!.GetValue<string>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(41, UserSettings.MaintainerLastSubmissionId);
+        Assert.Equal("Commodore/C128/310378", UserSettings.MaintainerLastBetaSystemId);
+    }
+
+    // The system the Systems screen was last on (2026-10-04), which the tab opens on when nothing
+    // waits in either queue - after a restart too.
+    [Fact]
+    public void The_maintainer_tabs_last_system_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Null(UserSettings.MaintainerLastSystemId);
+        Assert.Null(ReadJson(path)["maintainerLastSystemId"]);
+
+        UserSettings.MaintainerLastSystemId = "Commodore/C64/250407";
+
+        Assert.Equal("Commodore/C64/250407", ReadJson(path)["maintainerLastSystemId"]!.GetValue<string>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal("Commodore/C64/250407", UserSettings.MaintainerLastSystemId);
     }
 
     [Fact]

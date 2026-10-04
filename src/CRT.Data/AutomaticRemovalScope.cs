@@ -12,7 +12,7 @@ namespace Handlers.DataHandling
     // board stops using - but ONLY under that board's own folder ("Commodore/C64/250407/..."). A file
     // in "Generic shared files", "<Manufacturer>/Shared files" or another system's folder is never
     // removed by one of them: it may become unused (an orphan), and the administrator clears those
-    // on purpose with Admin > Unused files (UnusedFileFlows), which this rule does not touch.
+    // on purpose with Account > Unused files (UnusedFileFlows), which this rule does not touch.
     //
     // It is what made it safe to drop the administrator's second approval for a submission that
     // merely ADDS a shared file (SubmissionSharedFiles): a board's maintainer can no longer cause

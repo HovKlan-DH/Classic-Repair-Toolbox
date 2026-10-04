@@ -27,6 +27,10 @@ namespace CRT
         // Cancel - the same choice as Leaving, but the edits go into the submission, not a draft.
         LeavingSubmission,
 
+        // Leaving the table of a SYSTEM on the Maintainer tab's Systems screen (2026-10-03): Save,
+        // Discard or Cancel - Save asks for a reason and publishes the change straight to BETA.
+        LeavingSystem,
+
         // Leaving, but the draft file changed after the table was opened, so a save is REFUSED:
         // Discard or Cancel, and the reason said.
         DraftChangedOnDisk,
@@ -77,7 +81,7 @@ namespace CRT
 
         public void Initialize(UnsavedTableEditsPrompt prompt)
         {
-            this.SaveButton.IsVisible = prompt is UnsavedTableEditsPrompt.Leaving or UnsavedTableEditsPrompt.LeavingSubmission;
+            this.SaveButton.IsVisible = prompt is UnsavedTableEditsPrompt.Leaving or UnsavedTableEditsPrompt.LeavingSubmission or UnsavedTableEditsPrompt.LeavingSystem;
             this.DiscardButton.IsVisible = prompt != UnsavedTableEditsPrompt.SavingElsewhere;
 
             if (prompt == UnsavedTableEditsPrompt.SavingElsewhere)
@@ -92,6 +96,8 @@ namespace CRT
                     "The table has edits that are not saved yet. Save them into the draft first, or discard them?",
                 UnsavedTableEditsPrompt.LeavingSubmission =>
                     "The table has changes that are not saved yet. Save them into the submission, or discard them?",
+                UnsavedTableEditsPrompt.LeavingSystem =>
+                    "The table has changes that are not published yet. Save them - you are asked for a reason, and they go straight to BETA - or discard them?",
                 UnsavedTableEditsPrompt.Reloading =>
                     "Reloading reads the draft again from its file. The edits in the table that are not saved yet will be lost.",
                 UnsavedTableEditsPrompt.DraftOpenElsewhere =>

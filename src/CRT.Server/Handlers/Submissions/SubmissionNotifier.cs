@@ -1,3 +1,4 @@
+using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Email;
 using Microsoft.Extensions.Logging;
 
@@ -18,9 +19,10 @@ namespace CRT.Server.Handlers.Submissions
     // reasonably try again. So every failure is caught and logged, exactly as IEmailSender's own
     // header says ("sending must not fail the operation it accompanies").
     //
-    // *** A MISSING ADDRESS IS NORMAL, NOT AN ERROR. *** A submission from a signed-in maintainer
-    // carries no ContactEmail, and an older receipt may have none either. No address simply means
-    // no mail; the outcome is still in "My submissions" either way.
+    // *** A MISSING ADDRESS IS NORMAL, NOT AN ERROR. *** An older receipt may carry none. No
+    // address simply means no mail; the outcome is still in "My submissions" either way. A
+    // submission from a signed-in maintainer carries no ContactEmail either, which is why the
+    // decision mails go through the SubmissionRecord overload, which writes to the account.
     //
     // THE APP IS STILL THE PRIMARY CHANNEL. This is a notification, not a replacement: the mail
     // names "My submissions" rather than trying to reproduce the review screen in text.
@@ -50,7 +52,8 @@ namespace CRT.Server.Handlers.Submissions
             string state,
             string? maintainerComment,
             bool amendedByMaintainer = false,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? contributorName = null)
         {
             if (string.IsNullOrWhiteSpace(contactEmail))
             {
@@ -71,7 +74,8 @@ namespace CRT.Server.Handlers.Submissions
                     systemName,
                     state,
                     maintainerComment,
-                    amendedByMaintainer);
+                    amendedByMaintainer,
+                    contributorName);
 
                 if (message is null)
                 {
@@ -90,6 +94,60 @@ namespace CRT.Server.Handlers.Submissions
                     systemName,
                     state);
             }
+        }
+
+        // ###########################################################################################
+        // The same mail for one SUBMISSION, written to its contributor wherever they are reached -
+        // the account's address for a submission sent signed in, the typed one otherwise
+        // (ContributorAddresses, the one rule).
+        //
+        // *** THE DECISION MAILS READ THE TYPED ADDRESS ALONE (owner request, 2026-10-01). *** A
+        // signed-in submission carries none of its own, so its contributor heard nothing about an
+        // approval, a rejection or a request for changes - unseen while CRT never sent one signed
+        // in, and reached the moment CRT began sending a signed-in maintainer's submissions with
+        // their account. The lookup sits inside the guard like everything else here: the decision
+        // is already recorded, so a database fault costs the account's address (the typed one is
+        // used, which may be none), never the request.
+        // ###########################################################################################
+        public async Task NotifyDecisionAsync(
+            SubmissionRecord submission,
+            IAccountStore accounts,
+            string state,
+            string? maintainerComment,
+            bool amendedByMaintainer = false,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(submission);
+            ArgumentNullException.ThrowIfNull(accounts);
+
+            MailRecipient recipient;
+
+            try
+            {
+                AccountRecord? account = submission.AccountId is long accountId
+                    ? await accounts.FindByIdAsync(accountId, cancellationToken).ConfigureAwait(false)
+                    : null;
+
+                recipient = ContributorAddresses.RecipientOf(submission, account);
+            }
+            catch (Exception ex)
+            {
+                this.thisLogger.LogWarning(
+                    ex,
+                    "Could not read the account of submission {SubmissionId} for its review-outcome mail; using its contact address.",
+                    submission.Id);
+
+                recipient = new MailRecipient(submission.ContactEmail ?? string.Empty);
+            }
+
+            await this.NotifyDecisionAsync(
+                recipient.Email,
+                submission.SystemId,
+                state,
+                maintainerComment,
+                amendedByMaintainer,
+                cancellationToken,
+                recipient.Name).ConfigureAwait(false);
         }
 
         // ###########################################################################################
@@ -113,16 +171,18 @@ namespace CRT.Server.Handlers.Submissions
             string? systemName,
             string maintainerComment,
             bool rejected,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            string? contributorName = null) =>
             rejected
-                ? this.NotifyDecisionAsync(contactEmail, systemName, SubmissionState.Rejected, maintainerComment, cancellationToken: cancellationToken)
-                : this.NotifyReturnedToQueueAsync(contactEmail, systemName, maintainerComment, cancellationToken);
+                ? this.NotifyDecisionAsync(contactEmail, systemName, SubmissionState.Rejected, maintainerComment, cancellationToken: cancellationToken, contributorName: contributorName)
+                : this.NotifyReturnedToQueueAsync(contactEmail, systemName, maintainerComment, cancellationToken, contributorName);
 
         public async Task NotifyReturnedToQueueAsync(
             string? contactEmail,
             string? systemName,
             string maintainerComment,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? contributorName = null)
         {
             if (string.IsNullOrWhiteSpace(contactEmail))
             {
@@ -134,7 +194,8 @@ namespace CRT.Server.Handlers.Submissions
                 EmailMessage message = EmailTemplates.SubmissionReturnedToQueue(
                     contactEmail.Trim(),
                     systemName ?? string.Empty,
-                    maintainerComment);
+                    maintainerComment,
+                    contributorName);
 
                 await this.thisMailer.SendAsync(message, cancellationToken).ConfigureAwait(false);
             }
@@ -148,7 +209,9 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Tells the people who can decide a submission that one is waiting (Phase 6 task 11).
+        // Tells the people who can decide a submission that one is waiting (Phase 6 task 11) -
+        // saying whether it is a completely NEW system or an update to an existing one, and greeting
+        // each by the name on their account (owner request, 2026-10-03).
         //
         // One mail per address, each failure logged and swallowed - the submission is already
         // queued, and a mailer that is down must not turn that into an error the contributor
@@ -156,26 +219,23 @@ namespace CRT.Server.Handlers.Submissions
         // administrator hears once.
         // ###########################################################################################
         public async Task NotifyMaintainersAsync(
-            IEnumerable<string?> maintainerAddresses,
+            IEnumerable<MailRecipient> recipients,
             string? systemName,
             long submissionId,
             string? contributorSummary,
+            bool isNewSystem = false,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(maintainerAddresses);
+            ArgumentNullException.ThrowIfNull(recipients);
 
-            IEnumerable<string> addresses = maintainerAddresses
-                .Where(address => !string.IsNullOrWhiteSpace(address))
-                .Select(address => address!.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string address in addresses)
+            foreach (MailRecipient recipient in SubmissionNotifier.Distinct(recipients))
             {
                 try
                 {
                     await this.thisMailer
                         .SendAsync(
-                            EmailTemplates.SubmissionWaiting(address, systemName ?? string.Empty, submissionId, contributorSummary),
+                            EmailTemplates.SubmissionWaiting(
+                                recipient.Email, systemName ?? string.Empty, submissionId, contributorSummary, isNewSystem, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -184,7 +244,7 @@ namespace CRT.Server.Handlers.Submissions
                     this.thisLogger.LogWarning(
                         ex,
                         "Could not tell {Address} that submission {SubmissionId} for [{System}] is waiting.",
-                        address, submissionId, systemName);
+                        recipient.Email, submissionId, systemName);
                 }
             }
         }
@@ -194,28 +254,27 @@ namespace CRT.Server.Handlers.Submissions
         // shared-file change has one approval and waits for theirs. Nothing escapes.
         // ###########################################################################################
         public async Task NotifyApprovalNeededAsync(
-            IEnumerable<string?> addresses,
+            IEnumerable<MailRecipient> recipients,
             string? systemName,
             string what,
             string approvedBy,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(addresses);
+            ArgumentNullException.ThrowIfNull(recipients);
 
-            foreach (string address in addresses
-                         .Where(address => !string.IsNullOrWhiteSpace(address))
-                         .Select(address => address!.Trim())
-                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (MailRecipient recipient in SubmissionNotifier.Distinct(recipients))
             {
                 try
                 {
                     await this.thisMailer
-                        .SendAsync(EmailTemplates.ApprovalNeeded(address, systemName ?? string.Empty, what, approvedBy), cancellationToken)
+                        .SendAsync(
+                            EmailTemplates.ApprovalNeeded(recipient.Email, systemName ?? string.Empty, what, approvedBy, recipient.Name),
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
-                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{System}] needs their approval.", address, systemName);
+                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{System}] needs their approval.", recipient.Email, systemName);
                 }
             }
         }
@@ -225,35 +284,77 @@ namespace CRT.Server.Handlers.Submissions
         // contract as the rest of this class: nothing escapes.
         // ###########################################################################################
         public async Task NotifyProductionPublishAsync(
-            IEnumerable<string?> administratorAddresses,
+            IEnumerable<MailRecipient> administrators,
             string? systemName,
             string actor,
             string? revision,
             int filesCopied,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(administratorAddresses);
+            ArgumentNullException.ThrowIfNull(administrators);
 
-            foreach (string address in administratorAddresses
-                         .Where(address => !string.IsNullOrWhiteSpace(address))
-                         .Select(address => address!.Trim())
-                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (MailRecipient recipient in SubmissionNotifier.Distinct(administrators))
             {
                 try
                 {
                     await this.thisMailer
                         .SendAsync(
-                            EmailTemplates.PublishedToProduction(address, systemName ?? string.Empty, actor, revision, filesCopied),
+                            EmailTemplates.PublishedToProduction(recipient.Email, systemName ?? string.Empty, actor, revision, filesCopied, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     this.thisLogger.LogWarning(
-                        ex, "Could not tell {Address} that [{System}] was published to production.", address, systemName);
+                        ex, "Could not tell {Address} that [{System}] was published to production.", recipient.Email, systemName);
                 }
             }
         }
+
+        // ###########################################################################################
+        // Tells the contributors of a deleted system's open submissions that the system - and their
+        // submission - is gone (owner decision, 2026-10-03). The deletion is already done, so
+        // nothing escapes. Answers how many mails the mailer took, for the administrator's answer.
+        // ###########################################################################################
+        public async Task<int> NotifySystemDeletedAsync(
+            IEnumerable<MailRecipient> contributors,
+            string? systemName,
+            string reason,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(contributors);
+
+            int sent = 0;
+
+            foreach (MailRecipient recipient in SubmissionNotifier.Distinct(contributors))
+            {
+                try
+                {
+                    bool went = await this.thisMailer
+                        .SendAsync(
+                            EmailTemplates.SystemDeleted(recipient.Email, systemName ?? string.Empty, reason, recipient.Name),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (went)
+                        sent++;
+                }
+                catch (Exception ex)
+                {
+                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{System}] was deleted.", recipient.Email, systemName);
+                }
+            }
+
+            return sent;
+        }
+
+        // Blank addresses dropped, each address once (the first name given for it), trimmed.
+        private static IEnumerable<MailRecipient> Distinct(IEnumerable<MailRecipient> recipients) =>
+            recipients
+                .Where(recipient => !string.IsNullOrWhiteSpace(recipient?.Email))
+                .Select(recipient => recipient with { Email = recipient.Email.Trim() })
+                .GroupBy(recipient => recipient.Email, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First());
 
         // ###########################################################################################
         // Which mail a state deserves, or null for one that deserves none.
@@ -271,7 +372,8 @@ namespace CRT.Server.Handlers.Submissions
             string? systemName,
             string? state,
             string? maintainerComment,
-            bool amendedByMaintainer = false)
+            bool amendedByMaintainer = false,
+            string? contributorName = null)
         {
             return (state ?? string.Empty).Trim().ToLowerInvariant() switch
             {
@@ -280,16 +382,16 @@ namespace CRT.Server.Handlers.Submissions
                 // ProductionPromotionFlow's contributors, and the word ProductionPromotionRules
                 // reports to a contributor once it has happened.
                 "merged" => EmailTemplates.SubmissionPublishedToBeta(
-                    toAddress, systemName ?? string.Empty, maintainerComment, amendedByMaintainer),
+                    toAddress, systemName ?? string.Empty, maintainerComment, amendedByMaintainer, contributorName),
 
                 "published" => EmailTemplates.SubmissionPublishedToSource(
-                    toAddress, systemName ?? string.Empty),
+                    toAddress, systemName ?? string.Empty, contributorName),
 
                 "changes_requested" => EmailTemplates.SubmissionChangesRequested(
-                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty),
+                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
 
                 "rejected" => EmailTemplates.SubmissionRejected(
-                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty),
+                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
 
                 _ => null
             };

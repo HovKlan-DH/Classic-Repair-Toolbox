@@ -42,7 +42,7 @@ namespace CRT.Server.Tests
 
             // Where to look: CRT's Maintainer tab since 2026-09-29, when the separate CRT Maintainer
             // application was folded into CRT - and never the application that no longer exists.
-            Assert.Contains("the Maintainer tab", message.Body, StringComparison.Ordinal);
+            Assert.Contains("the \"Maintainer\" tab", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
@@ -70,15 +70,19 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void The_first_mail_says_published_to_the_BETA_SOURCE_and_promises_the_second()
+        public void The_first_mail_says_it_is_in_the_BETA_SOURCE_how_to_try_it_and_that_more_is_coming()
         {
-            // The project owner's words for the two stages: "published to BETA source" and
-            // "published to source" - the same two names CRT's Configuration tab uses.
+            // The project owner's words (2026-10-03): accepted and ready to test in the BETA source,
+            // the Configuration tab's check box named exactly as CRT writes it, and the promise of
+            // a second mail either way.
             EmailMessage message = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "Commodore/C64/250407", null);
 
-            Assert.Contains("published to the BETA source", message.Subject, StringComparison.Ordinal);
-            Assert.Contains("published to the BETA source", message.Body, StringComparison.Ordinal);
-            Assert.Contains("one more email", message.Body, StringComparison.Ordinal);
+            Assert.Equal("Your CRT contribution is accepted and ready to test in the BETA source", message.Subject);
+            Assert.Contains("[Commodore/C64/250407]", message.Body, StringComparison.Ordinal);
+            Assert.Contains("BETA online source", message.Body, StringComparison.Ordinal);
+            Assert.Contains("\"Configuration\" tab", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Download data from the BETA source instead of the stable source", message.Body, StringComparison.Ordinal);
+            Assert.Contains("you will hear from us again", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -90,11 +94,11 @@ namespace CRT.Server.Tests
             EmailMessage changed = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null, amendedByMaintainer: true);
             EmailMessage unchanged = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
 
-            Assert.Contains("A maintainer changed some of the details", changed.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("A maintainer changed", unchanged.Body, StringComparison.Ordinal);
+            Assert.Contains("The maintainer changed some of the details", changed.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("maintainer changed", unchanged.Body, StringComparison.Ordinal);
 
             EmailMessage? mapped = SubmissionNotifier.BuildMessage("c@example.com", "X/Y/Z", "merged", null, amendedByMaintainer: true);
-            Assert.Contains("A maintainer changed some of the details", mapped!.Body, StringComparison.Ordinal);
+            Assert.Contains("The maintainer changed some of the details", mapped!.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -103,7 +107,7 @@ namespace CRT.Server.Tests
             EmailMessage beta = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
             EmailMessage source = EmailTemplates.SubmissionPublishedToSource("c@example.com", "X/Y/Z");
 
-            Assert.Contains("published to the source", source.Subject, StringComparison.Ordinal);
+            Assert.Contains("published to the stable source", source.Subject, StringComparison.Ordinal);
             Assert.DoesNotContain("BETA", source.Subject, StringComparison.Ordinal);
             Assert.NotEqual(beta.Subject, source.Subject);
             Assert.NotEqual(beta.Body, source.Body);
@@ -122,7 +126,7 @@ namespace CRT.Server.Tests
             Assert.Equal("dennis@example.com", message.ToAddress);
             Assert.Contains(EmailTemplatesTests.VerifyUrl, message.Body, StringComparison.Ordinal);
             Assert.Contains("24 hours", message.Body, StringComparison.Ordinal);
-            Assert.Contains("Hello Dennis,", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Hi Dennis,", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -185,8 +189,8 @@ namespace CRT.Server.Tests
             EmailMessage message = EmailTemplates.AlreadyRegistered(
                 "dennis@example.com", displayName: null!, EmailTemplatesTests.ResetCode, 2);
 
-            Assert.Contains("Hello,", message.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("Hello ,", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Hi there,", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("Hi ,", message.Body, StringComparison.Ordinal);
         }
 
         // -----------------------------------------------------------------------------------
@@ -242,7 +246,7 @@ namespace CRT.Server.Tests
             EmailMessage message = EmailTemplates.PasswordReset(
                 "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
 
-            Assert.Contains("the Maintainer tab", message.Body, StringComparison.Ordinal);
+            Assert.Contains("the \"Maintainer\" tab", message.Body, StringComparison.Ordinal);
             Assert.Contains("I forgot my password", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
@@ -273,7 +277,62 @@ namespace CRT.Server.Tests
         {
             EmailMessage message = EmailTemplates.PasswordChanged("dennis@example.com", "Dennis");
 
-            Assert.Contains("forgot password", message.Body, StringComparison.Ordinal);
+            Assert.Contains("I forgot my password", message.Body, StringComparison.Ordinal);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // A maintainer changing their address (2026-10-03).
+        // -----------------------------------------------------------------------------------
+
+        // The code mail: the code on a line of its own, where to paste it, no link to click - the
+        // reset mail's rules, for the reset mail's reasons.
+        [Fact]
+        public void The_address_code_mail_carries_the_code_says_where_it_goes_and_has_no_link()
+        {
+            EmailMessage message = EmailTemplates.EmailChangeCode("bench@example.com", "Dennis", EmailTemplatesTests.ResetCode, 24);
+
+            Assert.Equal("bench@example.com", message.ToAddress);
+            Assert.Contains(message.Body.Split("\r\n"), line => line.Trim() == EmailTemplatesTests.ResetCode);
+            // The way in, in the Maintainer tab's own words (owner wording, 2026-10-03): since
+            // 2026-10-04 the "Account" tab and its "My account" entry, where the "Your account"
+            // window's sections now are. Written out, so a change to the shared words fails here.
+            Assert.Contains("choose \"Account\" and \"My account\", then \"I have received a code\"", message.Body, StringComparison.Ordinal);
+            Assert.Contains("24 hours", message.Body, StringComparison.Ordinal);
+            Assert.Contains("nothing changes unless the code is used", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("https://", message.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("token=", message.Body, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // To an address another account already holds: no code, nothing that could move anything,
+        // and the reassurance that whoever asked learned nothing - the AlreadyRegistered rule.
+        // ###########################################################################################
+        [Fact]
+        public void The_address_taken_mail_carries_no_code_and_says_the_asker_learned_nothing()
+        {
+            EmailMessage message = EmailTemplates.EmailChangeAddressTaken("anna@example.com", "Anna");
+
+            Assert.StartsWith("Hi Anna,", message.Body, StringComparison.Ordinal);
+            Assert.Contains("nothing was changed", message.Body, StringComparison.Ordinal);
+            Assert.Contains("was not told whether this address is registered", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain(EmailTemplatesTests.ResetCode, message.Body, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // To the OLD address once it changed: the one notice that reaches the owner if it was not
+        // them. It names the new address, and - since this mailbox can no longer reset the
+        // password - who to write to, straight away.
+        // ###########################################################################################
+        [Fact]
+        public void The_address_changed_mail_names_the_new_address_and_who_to_write_to()
+        {
+            EmailMessage message = EmailTemplates.EmailChanged("dennis@example.com", "Dennis", "bench@example.com");
+
+            Assert.Equal("dennis@example.com", message.ToAddress);
+            Assert.Contains("bench@example.com", message.Body, StringComparison.Ordinal);
+            Assert.Contains("<b>bench@example.com</b>", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("can no longer be used to reset its password", message.Body, StringComparison.Ordinal);
+            Assert.EndsWith($"Write to Dennis straight away at {EmailTemplates.ContactAddress}.", message.Body, StringComparison.Ordinal);
         }
 
         // -----------------------------------------------------------------------------------
@@ -344,6 +403,178 @@ namespace CRT.Server.Tests
                     Assert.DoesNotContain(word, message.Body, StringComparison.OrdinalIgnoreCase);
                     Assert.DoesNotContain(word, message.Subject, StringComparison.OrdinalIgnoreCase);
                 }
+            }
+        }
+
+        // -----------------------------------------------------------------------------------
+        // HTML, greetings and the contact line (owner request, 2026-10-03).
+        // -----------------------------------------------------------------------------------
+
+        private const string C64 = "Commodore/C64/250407";
+
+        // One of every mail, each with whatever a test needs to find in it.
+        private static IReadOnlyList<EmailMessage> EveryMail() =>
+        [
+            EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
+            EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+            EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+            EmailTemplates.PasswordChanged("a@b.com", "A"),
+            EmailTemplates.EmailChangeCode("a@b.com", "A", EmailTemplatesTests.ResetCode, 24),
+            EmailTemplates.EmailChangeAddressTaken("a@b.com", "A"),
+            EmailTemplates.EmailChanged("a@b.com", "A", "c@d.com"),
+            EmailTemplates.MaintainerInvitation("a@b.com", EmailTemplatesTests.C64, "Dennis", "CODE-123", 7),
+            EmailTemplates.SubmissionWaiting("a@b.com", EmailTemplatesTests.C64, 18, "Fixed R12."),
+            EmailTemplates.SubmissionChangesRequested("a@b.com", EmailTemplatesTests.C64, "Add the PAL region."),
+            EmailTemplates.SubmissionPublishedToBeta("a@b.com", EmailTemplatesTests.C64, null),
+            EmailTemplates.SubmissionPublishedToSource("a@b.com", EmailTemplatesTests.C64),
+            EmailTemplates.SubmissionRejected("a@b.com", EmailTemplatesTests.C64, "Wrong board."),
+            EmailTemplates.SubmissionReturnedToQueue("a@b.com", EmailTemplatesTests.C64, "Needs a check."),
+            EmailTemplates.ApprovalNeeded("a@b.com", EmailTemplatesTests.C64, "submission #18", "Anna"),
+            EmailTemplates.PublishedToProduction("a@b.com", EmailTemplatesTests.C64, "Anna (anna@example.com)", null, 3),
+            EmailTemplates.SystemDeleted("a@b.com", EmailTemplatesTests.C64, "It was a test system."),
+        ];
+
+        // ###########################################################################################
+        // Every mail is HTML (owner request, 2026-10-03: "All mails should be sent in HTML format")
+        // with the same words as plain text beside it - the part spam filters expect, which is never
+        // shown by a client that can show HTML.
+        // ###########################################################################################
+        [Fact]
+        public void Every_mail_is_HTML_with_the_same_words_in_plain_text_beside_it()
+        {
+            foreach (EmailMessage message in EmailTemplatesTests.EveryMail())
+            {
+                Assert.NotNull(message.HtmlBody);
+                Assert.StartsWith("<!DOCTYPE html>", message.HtmlBody, StringComparison.Ordinal);
+                Assert.Contains("<meta charset=\"utf-8\">", message.HtmlBody, StringComparison.Ordinal);
+
+                // The greeting opens both.
+                string greeting = message.Body.Split("\r\n")[0];
+                Assert.Contains($"<p style=\"margin:0 0 14px 0;\">{greeting}</p>", message.HtmlBody, StringComparison.Ordinal);
+            }
+        }
+
+        // *** WHAT SOMEBODY TYPED NEVER BECOMES MARKUP. *** A contributor's description and a name
+        // reach a mail sent to somebody else; in the HTML they are text, whatever they contain.
+        [Fact]
+        public void Text_somebody_typed_is_escaped_in_the_HTML()
+        {
+            EmailMessage message = EmailTemplates.SubmissionWaiting(
+                "anna@example.com", EmailTemplatesTests.C64, 18, "<script>alert(1)</script> & <b>bold</b>", recipientName: "<i>Eve</i>");
+
+            Assert.DoesNotContain("<script>", message.HtmlBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("<i>Eve</i>", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;b&gt;bold&lt;/b&gt;", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("Hi &lt;i&gt;Eve&lt;/i&gt;,", message.HtmlBody, StringComparison.Ordinal);
+
+            // The plain text is plain: the words as they were typed.
+            Assert.Contains("<script>alert(1)</script> & <b>bold</b>", message.Body, StringComparison.Ordinal);
+        }
+
+        // The system in bold inside brackets, as the project owner wrote it; the other person's
+        // words in italics.
+        [Fact]
+        public void The_system_is_bold_inside_brackets_and_the_maintainers_words_are_in_italics()
+        {
+            EmailMessage message = EmailTemplates.SubmissionChangesRequested("c@example.com", EmailTemplatesTests.C64, "Please view the duplicate rows.");
+
+            Assert.Contains("[<b>Commodore/C64/250407</b>]", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("<i>Please view the duplicate rows.</i>", message.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("[Commodore/C64/250407]", message.Body, StringComparison.Ordinal);
+            Assert.Contains("    Please view the duplicate rows.", message.Body, StringComparison.Ordinal);
+        }
+
+        // "Hi {name}," when a name is known, "Hi there," otherwise - in every contribution mail.
+        [Fact]
+        public void A_contributor_is_greeted_by_name_when_known_and_as_there_otherwise()
+        {
+            Assert.StartsWith("Hi Anna,", EmailTemplates.SubmissionRejected("c@example.com", EmailTemplatesTests.C64, "No.", "Anna").Body, StringComparison.Ordinal);
+            Assert.StartsWith("Hi Anna,", EmailTemplates.SubmissionPublishedToSource("c@example.com", EmailTemplatesTests.C64, "Anna").Body, StringComparison.Ordinal);
+            Assert.StartsWith("Hi there,", EmailTemplates.SubmissionRejected("c@example.com", EmailTemplatesTests.C64, "No.").Body, StringComparison.Ordinal);
+            Assert.StartsWith("Hi there,", EmailTemplates.SubmissionChangesRequested("c@example.com", EmailTemplatesTests.C64, "Fix.", "  ").Body, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // A deleted system's open submission (owner decision, 2026-10-03: "Delete them and mail the
+        // contributors"). CRT's "My submissions" keeps the submission's last state, so this mail is
+        // where the contributor learns it is gone - it says so, quotes the reason, and says the draft
+        // on their own computer is untouched. Greeted by name like every contributor mail.
+        // ###########################################################################################
+        [Fact]
+        public void The_system_deleted_mail_says_the_submission_is_gone_quotes_the_reason_and_keeps_the_draft()
+        {
+            EmailMessage message = EmailTemplates.SystemDeleted("c@example.com", "Commodore/C64/999999", "It was a test system.", "Anna");
+
+            Assert.Equal("c@example.com", message.ToAddress);
+            Assert.Equal("A system you contributed to was removed from CRT", message.Subject);
+            Assert.StartsWith("Hi Anna,", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Commodore/C64/999999", message.Body, StringComparison.Ordinal);
+            Assert.Contains("your contribution to it was removed along with it", message.Body, StringComparison.Ordinal);
+            Assert.Contains("It was a test system.", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Your draft is still on your own computer", message.Body, StringComparison.Ordinal);
+
+            // A reason somebody typed is never markup in the mail.
+            EmailMessage hostile = EmailTemplates.SystemDeleted("c@example.com", "Commodore/C64/999999", "<b>gone</b>");
+            Assert.DoesNotContain("<b>gone</b>", hostile.HtmlBody, StringComparison.Ordinal);
+        }
+
+        // An update and a completely new system are told apart (owner request, 2026-10-03).
+        [Fact]
+        public void The_waiting_mail_tells_a_new_system_from_an_update()
+        {
+            EmailMessage update = EmailTemplates.SubmissionWaiting("anna@example.com", EmailTemplatesTests.C64, 18, "Fixed R12.");
+            EmailMessage newSystem = EmailTemplates.SubmissionWaiting("anna@example.com", EmailTemplatesTests.C64, 18, "A new board.", isNewSystem: true);
+
+            Assert.Contains("an update for an existing system, [Commodore/C64/250407]", update.Body, StringComparison.Ordinal);
+            Assert.Contains("The contributor describes the changes like this:", update.Body, StringComparison.Ordinal);
+            Assert.Contains("a completely new system, [Commodore/C64/250407]", newSystem.Body, StringComparison.Ordinal);
+            Assert.Contains("The contributor describes the new system like this:", newSystem.Body, StringComparison.Ordinal);
+            Assert.Equal("A CRT contribution is waiting for your review", update.Subject);
+        }
+
+        // The stable-source mail says how to get the data (and to untick BETA), and that the draft
+        // goes by itself.
+        [Fact]
+        public void The_stable_source_mail_says_how_to_get_the_data_and_that_the_draft_goes_by_itself()
+        {
+            EmailMessage message = EmailTemplates.SubmissionPublishedToSource("c@example.com", EmailTemplatesTests.C64);
+
+            Assert.Equal("Your CRT contribution has been published to the stable source", message.Subject);
+            Assert.Contains("Restart CRT", message.Body, StringComparison.Ordinal);
+            Assert.Contains("untick it", message.Body, StringComparison.Ordinal);
+            Assert.Contains("CRT removes your draft of it by itself", message.Body, StringComparison.Ordinal);
+            Assert.Contains("<i>Classic Repair Toolbox</i>", message.HtmlBody, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // Who to write to (owner request, 2026-10-03: "Please connect with Dennis, if you have any
+        // questions for this") - every mail ends with it, as a mail link, except the notice to the
+        // administrators about a production publish, which goes to the project owner himself.
+        //
+        // The "your address was changed" notice ends with its own, more urgent line naming the same
+        // address: it may be the only thing the owner of a taken-over account receives, and "if you
+        // have any questions" undersells it.
+        // ###########################################################################################
+        [Fact]
+        public void Every_mail_but_the_production_notice_says_who_to_write_to()
+        {
+            foreach (EmailMessage message in EmailTemplatesTests.EveryMail())
+            {
+                bool isProductionNotice = message.Subject.EndsWith("was published to the stable source", StringComparison.Ordinal)
+                    && message.Subject.StartsWith("CRT:", StringComparison.Ordinal);
+
+                if (isProductionNotice)
+                {
+                    Assert.DoesNotContain(EmailTemplates.ContactAddress, message.Body, StringComparison.Ordinal);
+                    continue;
+                }
+
+                string closing = message.Subject.EndsWith("address was changed", StringComparison.Ordinal)
+                    ? $"Write to Dennis straight away at {EmailTemplates.ContactAddress}."
+                    : $"just get in touch with Dennis at {EmailTemplates.ContactAddress}.";
+
+                Assert.EndsWith(closing, message.Body, StringComparison.Ordinal);
+                Assert.Contains($"href=\"mailto:{EmailTemplates.ContactAddress}\"", message.HtmlBody, StringComparison.Ordinal);
             }
         }
 

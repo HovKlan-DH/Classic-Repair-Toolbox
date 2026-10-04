@@ -64,6 +64,47 @@ namespace CRT.Server.Handlers.Submissions
             return await reader.ReadAsync(cancellationToken) ? MySqlSubmissionStore.ReadSystem(reader) : null;
         }
 
+        // ###########################################################################################
+        // One DELETE: the foreign keys' ON DELETE CASCADE takes everything else with it - see
+        // ISubmissionStore.DeleteSystemAsync. The submissions' ids are read first in the same
+        // transaction, with a locking read, so a submission of this system created meanwhile waits
+        // for the commit rather than going with the cascade unnamed.
+        // ###########################################################################################
+        public async Task<IReadOnlyList<long>> DeleteSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlTransaction transaction =
+                await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+
+            var submissionIds = new List<long>();
+
+            await using (MySqlCommand ids = connection.CreateCommand())
+            {
+                ids.Transaction = transaction;
+                ids.CommandText = "SELECT id FROM submissions WHERE system_id = @systemId FOR UPDATE;";
+                ids.Parameters.AddWithValue("@systemId", systemId);
+
+                await using MySqlDataReader reader = await ids.ExecuteReaderAsync(cancellationToken);
+
+                while (await reader.ReadAsync(cancellationToken))
+                    submissionIds.Add(Convert.ToInt64(reader.GetValue(0)));
+            }
+
+            await using (MySqlCommand delete = connection.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = "DELETE FROM systems WHERE system_id = @systemId;";
+                delete.Parameters.AddWithValue("@systemId", systemId);
+
+                await delete.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Not cancellable: a delete the server committed must be answered with its ids.
+            await transaction.CommitAsync(CancellationToken.None);
+
+            return submissionIds;
+        }
+
         public async Task<SystemPlacement?> GetPlacementAsync(string systemId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);

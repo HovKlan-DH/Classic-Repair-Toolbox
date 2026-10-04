@@ -38,7 +38,7 @@
         -->
         <StackPanel x:Name="SharedPanel" Spacing="2" />
 
-        <TextBlock Text="Why? Every contributor above is told this - it is the only message they get."
+        <TextBlock Text="Why? Every contributor above is told this, and nothing else."
                    TextWrapping="Wrap"
                    Opacity="0.75" />
 

@@ -51,6 +51,9 @@ public class FontAwesomeAssetTests
 
         // Help icons - the Configuration tab's "?" buttons and the worklog mode hint
         new object[] { RegularPath, 0xF059, "circle-question (help)" },
+
+        // The administrator's padlock on the Maintainer tab's Account screen (2026-10-04)
+        new object[] { SolidPath, 0xF023, "lock (administrator only)" },
     };
 
     // A codepoint that is absent from the face renders as a blank box, silently. The Free Regular

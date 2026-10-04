@@ -10,7 +10,7 @@ namespace ClassicRepairToolbox.Tests;
 // library until 2026-09-30, whose rule was "no Main, no DataManager, no UserSettings, no Logger".
 // The compiler enforced it then, because the library could not see CRT.App. Folded into CRT.App,
 // a call to UserSettings from the table compiles fine - and it bypasses the host hand-over (a
-// remembered choice passed in, reported back through OnlyChangesWantedChanged) that keeps headless
+// remembered choice passed in, reported back through FilterWantedChanged) that keeps headless
 // tests of the table off the user's real settings file. CRT.Data's CrtLog is the logging seam.
 //
 // So this reads every .cs file under Controls/ with its comments and string literals removed

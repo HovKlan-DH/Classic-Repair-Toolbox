@@ -349,4 +349,37 @@ public sealed class ReviewApiParserTests
 
         Assert.Null(ReviewApiParser.ParseSystemDetail("""{"maintainers":[]}"""));
     }
+
+    // ###########################################################################################
+    // The signed-in maintainer's own account (2026-10-03). An account with no id or no address is
+    // no account: the session would be rebuilt from it, and a blank address then shared with the
+    // Feedback tab and the Submit dialog. A change's answer needs its message - the whole of what
+    // the window shows - and an account that is there but unreadable makes the answer unreadable,
+    // so the window cannot say "done" and keep the old details.
+    // ###########################################################################################
+    [Fact]
+    public void An_account_without_an_id_or_an_address_is_no_account()
+    {
+        Assert.Null(ReviewApiParser.ParseAccount("""{"email":"dh@example.com","displayName":"Dennis"}"""));
+        Assert.Null(ReviewApiParser.ParseAccount("""{"id":7,"email":"  ","displayName":"Dennis"}"""));
+        Assert.Null(ReviewApiParser.ParseAccount("<html>proxy error</html>"));
+
+        AccountAnswer? sparse = ReviewApiParser.ParseAccount("""{"id":7,"email":"dh@example.com"}""");
+
+        Assert.Equal(string.Empty, sparse!.DisplayName);
+        Assert.Empty(sparse.MaintainerOf);
+        Assert.False(sparse.IsAdministrator);
+    }
+
+    [Fact]
+    public void A_changes_answer_needs_its_message_and_a_readable_account_when_it_has_one()
+    {
+        Assert.Null(ReviewApiParser.ParseAccountChange("""{"codeSent":true}"""));
+        Assert.Null(ReviewApiParser.ParseAccountChange("""{"message":"Done.","account":{"displayName":"Dennis"}}"""));
+
+        AccountChangeAnswer? plain = ReviewApiParser.ParseAccountChange("""{"message":"Done.","account":null}""");
+
+        Assert.Null(plain!.Account);
+        Assert.False(plain.CodeSent);
+    }
 }

@@ -88,9 +88,11 @@ public sealed class ReviewSummaryPresenterTests
             ReviewSummaryPresenterTests.Component("U8"),
             ReviewSummaryPresenterTests.Component("U9"));
 
+        // U10 is a component of its own, not U9 relabelled - identical but for the label, the
+        // summary would pair the two as one row renamed (BoardDataDiffer.PairRenamedRows, 2026-10-04).
         BoardData submitted = ReviewSummaryPresenterTests.Board(
             ReviewSummaryPresenterTests.Component("U8", part: "changed"),
-            ReviewSummaryPresenterTests.Component("U10"));
+            ReviewSummaryPresenterTests.Component("U10", part: "251715-01"));
 
         ReviewSummaryLine line = Assert.Single(
             ReviewSummaryPresenter.BuildLines(ReviewSummaryPresenterTests.Wire(ReviewSummary.Compare(published, submitted))));

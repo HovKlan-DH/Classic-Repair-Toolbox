@@ -305,6 +305,15 @@ namespace CRT.Server.Handlers.Submissions
                     : ApproveOutcome.Refused(ApprovePublishFlow.RemovalsChangedMessage, isConflict: true);
             }
 
+            // ---- 6c. What it changes, while the board before still exists (owner request,
+            //          2026-10-04) ---------------------------------------------------------------
+            //
+            // The History view's summary of this submission. Taken HERE because nothing else can:
+            // the write below replaces BETA's board, and no copy of it is kept. Never stops the
+            // publish - see SummariseChanges.
+            SubmissionChanges? changes = ApprovePublishFlow.SummariseChanges(
+                dataTreeRoot, manifest, published, board, plan.Plan!, this.thisLogger, submissionId);
+
             // ---- 7. Write --------------------------------------------------------------------
             //
             // The first step that touches the tree. Everything above can refuse for free.
@@ -351,11 +360,69 @@ namespace CRT.Server.Handlers.Submissions
                     cancellationToken)
                 .ConfigureAwait(false);
 
+            // What it changed, for the system's History view - with the files step 8 removed. A
+            // record that cannot be written costs the history one summary, never the publish.
+            if (changes is not null)
+            {
+                try
+                {
+                    await this.thisStore
+                        .SetChangesAsync(submissionId, SubmissionChangeFacts.WithRemovedFiles(changes, removal.Removed), nowUtc, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    this.thisLogger.LogWarning(ex, "What submission {SubmissionId} changed could not be recorded for its history.", submissionId);
+                }
+            }
+
             this.thisLogger.LogInformation(
                 "Submission {SubmissionId} was published to {SystemId} at revision {Revision} by {Account}.",
                 submissionId, manifest.SystemId, outcome.Descriptor!.Revision, access.Account.Email);
 
             return ApproveOutcome.Published(outcome.Descriptor) with { RemovedFiles = removal.Removed };
+        }
+
+        // ###########################################################################################
+        // WHAT A PUBLISH CHANGES (owner request, 2026-10-04: "summarize each submission change in a
+        // textual form ... to get an idea, besides the sometimes vague description from the
+        // contributor"), worked out just before the write: the review's own comparison of BETA's
+        // board with the one about to replace it (ReviewSummary - rows, highlights, calibrations),
+        // and which of the plan's files are new at their path and which replace other bytes. The
+        // files it removes are added after step 8 (SubmissionChangeFacts.WithRemovedFiles).
+        //
+        // *** NEVER STOPS THE PUBLISH. *** The summary is history, not a check: a comparison that
+        // throws is logged and the submission simply has no summary - the same as one published
+        // before summaries existed.
+        // ###########################################################################################
+        internal static SubmissionChanges? SummariseChanges(
+            string dataTreeRoot,
+            SubmissionManifest manifest,
+            BoardData? published,
+            BoardData board,
+            PublishPlanDetail plan,
+            ILogger logger,
+            long submissionId)
+        {
+            try
+            {
+                ReviewChangeSummary rows = ReviewSummary.Compare(
+                    published,
+                    board,
+                    manifest.Renames,
+                    publishedCalibrations: ReviewEndpoints.PublishedCalibrations(dataTreeRoot, manifest, published),
+                    submittedCalibrations: PublishMerge.CalibrationsOf(manifest));
+
+                (IReadOnlyList<string> added, IReadOnlyList<string> replaced) = SubmissionChangeFacts.SplitWrites(
+                    plan.Files.Select(file => (file.RelativePath, file.AbsolutePath)));
+
+                return SubmissionChangeFacts.Build(rows, added, replaced);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "What submission {SubmissionId} changes could not be worked out; it is published without a summary.", submissionId);
+                return null;
+            }
         }
 
         public const string RemovalsChangedMessage =
@@ -455,7 +522,7 @@ namespace CRT.Server.Handlers.Submissions
                 .Replace(Path.DirectorySeparatorChar, '/');
 
             // Only inside the system's own folder (owner decision, 2026-09-27) - a shared file or
-            // another board's the board stops citing stays, for Admin > Unused files.
+            // another board's the board stops citing stays, for Account > Unused files.
             IReadOnlyList<string> after = SubmissionManifestBuilder.CollectReferencedFiles(board);
             IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
                 SystemDescriptorRules.SystemIdFromExcelDataFile(workbook),

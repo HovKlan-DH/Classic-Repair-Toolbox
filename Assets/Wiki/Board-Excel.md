@@ -28,6 +28,10 @@ The application scans for the first cell starting `# Revision date:` and takes t
 board's revision date. It is shown on the Contribute tab ("Board Excel data last revisioned") and in
 the board information panel.
 
+A workbook written by CRT (a draft, or a board published from a submission) carries this line on
+**every** worksheet, so it can be seen whichever sheet is open. Only the one on **Board schematics**
+is read, so if you change the date by hand, change it there.
+
 **Use `yyyy-MMMM-dd` with the full English month name**, as every shipped board does. The value is
 free text and nothing rejects another format, but two things read it as a date:
 
@@ -175,7 +179,8 @@ E.g. `1.5V` mean that the scope will trigger at "1.5V".
 
 Path and filename to the image file.\
 The image format should be either `JPG`, `PNG` or `GIF`.\
-Use **relative** path from the `Data` folder.
+Use **relative** path from the `Data` folder.\
+It may be left blank when the row has a `Note` - e.g. a `Pinout` row that only gives a compatible part number. A row with neither a file nor a note is an error.
 
 ### Column: Note
 

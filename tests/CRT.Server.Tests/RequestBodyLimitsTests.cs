@@ -67,9 +67,15 @@ namespace CRT.Server.Tests
             { "POST", "/api/submissions", RequestBodyLimits.ManifestBytes },
             { "PUT", "/api/submissions/{submissionId:long}/blobs/{hash}", RequestBodyLimits.BlobChunkBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/amend", RequestBodyLimits.ManifestBytes },
+
+            // A system's table edit (2026-10-03): a whole board's rows, as an amendment carries - and
+            // its check, which carries the same rows before the reason is asked for.
+            { "POST", "/api/review/systems/edit", RequestBodyLimits.ManifestBytes },
+            { "POST", "/api/review/systems/edit/check", RequestBodyLimits.ManifestBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/approve", RequestBodyLimits.PathListBytes },
             { "POST", "/api/review/production/publish", RequestBodyLimits.PathListBytes },
             { "POST", "/api/admin/unused-files/remove", RequestBodyLimits.PathListBytes },
+            { "POST", "/api/admin/systems/order", RequestBodyLimits.PathListBytes },
 
             // Small bodies, deliberately at the default: a sign-in, a token, an address and a
             // password, a maintainer change, a plan request, a review comment of at most 4,000
@@ -81,6 +87,13 @@ namespace CRT.Server.Tests
             { "POST", "/api/accounts/forgot-password", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/reset-password", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/accounts/accept-invitation", RequestBodyLimits.DefaultBytes },
+
+            // A maintainer's own account (2026-10-03): a name, an address and a password, a code,
+            // or two passwords.
+            { "POST", "/api/accounts/me/name", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/accounts/me/email", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/accounts/me/email/confirm", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/accounts/me/password", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/admin/maintainers", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/admin/maintainers/remove", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/admin/maintainers/invite", RequestBodyLimits.DefaultBytes },
@@ -92,14 +105,39 @@ namespace CRT.Server.Tests
             { "POST", "/api/review/production/rollback/plan", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/production/rollback", RequestBodyLimits.DefaultBytes },
 
+            // Deleting a system (2026-10-03): a system id, a fingerprint and the reason the
+            // contributors of its open submissions are told - a rollback's shape.
+            { "POST", "/api/admin/systems/delete/plan", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/systems/delete", RequestBodyLimits.DefaultBytes },
+
+            // Resetting the contribution data (2026-10-04): the fingerprint of the counts shown.
+            { "POST", "/api/admin/reset", RequestBodyLimits.DefaultBytes },
+
             // One system's facts for the "Systems" screen: a system id and nothing else.
             { "POST", "/api/review/systems/detail", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/systems/listing", RequestBodyLimits.DefaultBytes },
+
+            // A system's Board data and Files views (2026-10-03): a system id and nothing else.
+            { "POST", "/api/review/systems/table", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/review/systems/files", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/reject", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/request-changes", RequestBodyLimits.DefaultBytes },
 
             // Board views from CRT (2026-09-27): at most BoardViewRules.MaxViewsPerReport short views.
             { "POST", "/api/usage/board-views", RequestBodyLimits.DefaultBytes },
+
+            // CRT's launch check-in (2026-10-03): four short form fields - at the path CRT posts to
+            // (AppConfig.CheckInUrl, pinned on CRT's side by LaunchCheckInTests) and Apache forwards
+            // the old /app-checkin/ to.
+            { "POST", "/api/usage/check-in", RequestBodyLimits.DefaultBytes },
+
+            // Feedback from CRT (2026-10-03): the text and a zip of the attached files, up to the
+            // limit CRT checks before sending (FeedbackContract) - at the path CRT posts to.
+            { "POST", "/api/feedback", RequestBodyLimits.FeedbackBytes },
+
+            // CRT 2.x's contribution upload (2026-10-04): a zip read to its end only so the "please
+            // update" answer reaches the sender - see LegacyContributionEndpoints.
+            { "POST", "/api/legacy/contribution", RequestBodyLimits.LegacyContributionBytes },
         };
 
         [Theory]
@@ -107,6 +145,18 @@ namespace CRT.Server.Tests
         public void Each_route_that_reads_a_body_carries_the_limit_decided_for_it(string method, string pattern, long expected)
         {
             Assert.Equal(expected, RequestBodyLimits.For(RequestBodyLimitsTests.Route(method, pattern)));
+        }
+
+        // ###########################################################################################
+        // The route CRT's "Rebuild both manifests" calls is really mapped, under the path the client
+        // builds (ReviewApiRoutes.AdminRebuildManifests, pinned on CRT's side by ReviewApiRoutesTests).
+        // It reads no body, so the guard below never sees it - and a renamed segment on either side
+        // compiles and answers 404 (code review, 2026-10-01). Read off this file's real route table.
+        // ###########################################################################################
+        [Fact]
+        public void The_manifest_rebuild_route_is_mapped_where_the_Maintainer_tab_calls_it()
+        {
+            RequestBodyLimitsTests.Route("POST", "/api/admin/manifest/rebuild");
         }
 
         // ###########################################################################################

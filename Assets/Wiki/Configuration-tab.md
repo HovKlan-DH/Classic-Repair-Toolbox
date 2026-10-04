@@ -46,13 +46,14 @@ from the project's server. Leave it on; there are frequent updates. Turning it o
 board-data and image sync entirely, and greys out the two settings below, which have nothing to act
 on without it.
 
-**Download data from BETA source** — fetches board data from the project's test server instead of
-the live one. This is for coordinated testing of data that is not ready yet, and it can leave you
-with board data that is incomplete or wrong; only use it in agreement with the developer, or at your
-own risk. Ticking it refreshes your data from the BETA source straight away; unticking it takes
-effect at the next application launch. Greyed out unless launch-time data checking is on. If you
-ticked it to check a contribution of your own, CRT tells you when that contribution reaches the
-ordinary source, so you remember to untick it again.
+**Download data from the BETA source instead of the stable source** — CRT has two sources of board
+data. The **stable source** is the tested data everybody gets, and is what CRT uses unless you say
+otherwise. The **BETA source** holds data a maintainer has just approved, before it has had its
+final check and gone out to everybody; it can be incomplete or wrong. Tick this to check a
+contribution of your own once it has been approved, then untick it again. Ticking it refreshes your
+data from the BETA source straight away; unticking it takes effect at the next application launch.
+Greyed out unless launch-time data checking is on. If you ticked it to check a contribution of your
+own, CRT tells you when that contribution reaches the stable source, so you remember to untick it.
 
 **Delete orphan and non-used files** — removes files in your data folder that no board refers to any
 more. Housekeeping for a data folder that has been through many updates. Greyed out unless
@@ -107,19 +108,30 @@ so reopening this tab may show a different country with the same code. Nothing i
 setting only changes how your own figures are labelled, and changing it relabels costs you have
 already recorded rather than recalculating them.
 
-## Drafts
+## Contributing and maintaining data
 
-**View boards as officially published** — hides your own local, unpublished draft edits, so a
-board shows exactly what everyone else sees. That covers everything in a draft: its rows, and also
-any schematic image or file you replaced, KiCad data you imported and KiCad calibration you
-changed. Untick it again to see your edits marked and applied as usual. See [Contribute data via CRT](Contribute-data-via-CRT) for what a draft is.
-
-## Maintainer
+**View boards as officially coming from online source (hide my local draft changes)** — hides your
+own local, unpublished draft edits, so a board shows exactly what CRT downloaded and everyone else
+sees. That covers everything in a draft: its rows, and also any schematic image or file you
+replaced, KiCad data you imported and KiCad calibration you changed. Untick it again to see your
+edits marked and applied as usual. The "?" beside it opens
+[View boards from online source](View-boards-from-online-source), and
+[Contribute data via CRT](Contribute-data-via-CRT) says what a draft is.
 
 **Enable Maintainer tab** - shows or hides the [Maintainer tab](Maintainer-tab), where maintainers
 of the hardware data review and publish what other people send in. Off by default: it needs a
 maintainer account, which the administrator gives by invitation, and it does nothing without one.
-Hiding it again does not sign you out.
+Turning it off again does not sign you out: as long as you are signed in, the Feedback tab and the
+Submit dialog use your maintainer account's email address. To sign out, turn the tab on and sign out
+there.
+
+**Hide the Maintainer tab while no work is waiting for me** - with this on, the Maintainer tab only
+appears while its badge shows a number, which is exactly when there is something for you to do: a
+contribution to review, or a system waiting to go from BETA to stable. The tab you are already on
+is never taken away under you - it goes once you move to another tab - and neither is a tab
+holding table changes you have not saved. Greyed out unless the Maintainer tab is enabled, which it
+narrows rather than replaces. A tab that is not signed in stays visible, so you can always get back
+to the sign-in screen. Hiding the tab does not sign you out either.
 
 ## Visible hardware, boards and schematics
 
@@ -143,7 +155,7 @@ remembers whether you left it collapsed or expanded.
 
 Drag the splitter between the two panels to resize; the width is remembered.
 
-## Your files
+## Application related files
 
 Three buttons, one per folder:
 

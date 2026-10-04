@@ -12,8 +12,9 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // The Maintainer tab: sign in, then four screens chosen by the buttons at the top left
-    // (owner request, 2026-09-27) - Review, BETA, Systems and Admin - each a list on the left and
+    // The Maintainer tab: sign in, then four screens chosen by the tab strip across the top
+    // (owner request, 2026-09-27; a strip since 2026-10-01) - Systems, Contributor Submissions,
+    // Beta > Prod and Account (Admin until 2026-10-04) - each a list on the left and
     // what is chosen in it on the right. Review is the queue and the selected submission's TABLE
     // (NewContributeStrategy.md Phase 5, tasks 2 and 3); the other three replaced the
     // "Production", "Maintainers" and "Unused files" windows.
@@ -30,27 +31,45 @@ namespace CRT
     // ticked in the Configuration tab (Main.Maintainer.cs, which also collapses the sidebar and
     // the worklog bar while it is selected). What the window did and a tab cannot, and where each
     // went:
-    //   - the remembered sign-in, restored in OnOpened -> the FIRST time the tab is shown
-    //     (TabMaintainer.Session.cs). ReviewSessionStore.Initialise runs at CRT's start-up.
-    //   - the minute queue check "while the window is in front" -> while this tab is on screen
-    //     AND CRT's window is in front (TabMaintainer.QueueRefresh.cs).
+    //   - the remembered sign-in, restored in OnOpened -> at CRT's LAUNCH, quietly, for the tab's
+    //     badge (2026-09-30), or else the first time the tab is shown (TabMaintainer.Session.cs).
+    //     ReviewSessionStore.Initialise runs at CRT's start-up.
+    //   - the minute queue check "while the window is in front" -> everything while this tab is
+    //     on screen AND CRT's window is in front; only the badge's two lists (the queue and the
+    //     BETA list) while the tab's badge can be seen otherwise (TabMaintainer.QueueRefresh.cs).
     //   - asking about unsaved table changes on Closing -> Main.OnWindowClosing asks, through
     //     HasUnsavedTableEdits / ConfirmLeavingTableAsync (TabMaintainer.Table.cs).
     //   - its own "please wait" overlay -> CRT's window's one (Main.axaml), found up the tree.
-    //   - its window placement -> gone; CRT's window remembers its own. "Show changes only" is
-    //     UserSettings.MaintainerShowChangesOnly (TabMaintainer.Table.cs).
+    //   - its window placement -> gone; CRT's window remembers its own. The table's
+    //     filter (its colour-key pills; "Show changes only" until 2026-10-02) is
+    //     UserSettings.MaintainerTableFilter (TabMaintainer.Table.cs).
     //
     // FILE MAP - this file (sign in, the queue, the decisions), TabMaintainer.Session.cs (the
-    // remembered sign-in, restored when the tab is first shown), TabMaintainer.QueueItems.cs (the
+    // remembered sign-in, restored at launch for the badge or when the tab is first shown, and
+    // sharing it with the rest of CRT), TabMaintainer.QueueItems.cs (the
     // queue list grouped by board), TabMaintainer.QueueRefresh.cs (the queue checking itself - no
-    // Refresh button - and the other lists with it), TabMaintainer.Table.cs (the table, and asking
+    // Refresh button - and the other lists with it, or only the badge's off screen),
+    // TabMaintainer.OpenOnEntry.cs (the entry "Contributor Submissions" and "Beta > Prod" open
+    // on), TabMaintainer.Prefetch.cs (that entry read ahead while the tab is away, so opening it
+    // needs no wait), TabMaintainer.Table.cs (the table, and asking
     // before unsaved changes in it are left), TabMaintainer.Modes.cs (which screen is shown,
     // the buttons' badges, handing the panels the session), TabMaintainer.Beta.cs (the BETA list),
-    // TabMaintainer.Systems.cs (the Systems list), TabMaintainer.Admin.cs (the Admin list),
-    // TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen) and
-    // TabMaintainer.Files.cs (a submission's file tree, in its own window).
-    // The right-hand panels of the last three screens are controls of their own: BetaView,
-    // SystemView (with its SystemView.Maintainers part) and UnusedFilesView.
+    // TabMaintainer.Systems.cs (the Systems list), TabMaintainer.Account.cs (the Account screen:
+    // "My account" and "Server version" for every maintainer and the administrator's padlocked
+    // entries, the "Logged in as" line, and the remembered sign-in's name and address read again at
+    // launch), TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen),
+    // TabMaintainer.SubmissionViews.cs (a submission's three views - Board data, Files,
+    // Contributor - and which is shown), TabMaintainer.Files.cs (the Files view: the submission's
+    // file tree, and the count on its button) and TabMaintainer.Contributor.cs (the Contributor
+    // view: who sent it and everything they sent before).
+    // The right-hand panels of the other three screens are controls of their own: BetaView,
+    // SystemView (a system's five views - Board data, Files, Contributor, Maintainer, Statistics -
+    // with its own file map, and SystemPlacementView), and under Account MyAccountView (the name,
+    // address, password and Sign out) and the administrator's MaintainerPoolView, SystemOrderView,
+    // UnusedFilesView, RebuildManifestsView, SystemDeletionView (with DeleteSystemWindow, its
+    // confirmation), ApiUsageView and DataResetView. A
+    // system's table can hold a change not sent, so HasUnsavedTableEdits
+    // and sign-out ask about it too.
     //
     // *** THE LOGIC IS IN Handlers/, NOT HERE. *** How a queue row reads is ReviewQueueDisplay's;
     // what the table cannot show is ReviewNotInTable's;
@@ -85,6 +104,7 @@ namespace CRT
         {
             this.InitializeComponent();
             this.WireTable();
+            this.WireAccountScreen();
         }
 
         // ###########################################################################################
@@ -94,6 +114,12 @@ namespace CRT
         // ###########################################################################################
         private async Task ReadListsAsync()
         {
+            this.thisEverythingAskedUtc = DateTimeOffset.UtcNow;
+
+            // Signing in, or the tab first shown on a remembered session, opens it: on Systems when
+            // nothing waits (TabMaintainer.OpenOnEntry.cs).
+            this.BeginOpening();
+
             bool answered = await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingQueue, async () =>
             {
                 await this.RefreshQueueAsync();
@@ -102,6 +128,11 @@ namespace CRT
 
             if (!answered)
                 this.ShowQueueMessage(WaitWording.NoAnswer, isError: true);
+
+            // Signed in, or the tab first shown on a remembered session: Systems when nothing waits,
+            // else the queue on the submission looked at last, or its first (TabMaintainer
+            // .OpenOnEntry.cs).
+            this.SelectOnEntry();
         }
 
         // -----------------------------------------------------------------------------------
@@ -164,7 +195,11 @@ namespace CRT
                     return;
                 }
 
-                this.thisSession = result.Value;
+                this.UseSession(result.Value);
+
+                // Fresh from the server: nothing for the launch's account read to bring up to date
+                // (TabMaintainer.Account.cs).
+                this.thisAccountRead = true;
 
                 // *** REMEMBERED HERE, ONCE, ON A SUCCESSFUL SIGN-IN. *** Storing it anywhere else
                 // would mean storing a token that has not been proved to work. The store itself
@@ -398,7 +433,6 @@ namespace CRT
         {
             var signIn = this.FindControl<StackPanel>("SignInPanel");
             var queue = this.FindControl<Grid>("QueuePanel");
-            var signedInAs = this.FindControl<TextBlock>("SignedInAsText");
 
             if (signIn is null || queue is null)
                 return;
@@ -406,12 +440,11 @@ namespace CRT
             signIn.IsVisible = false;
             queue.IsVisible = true;
 
-            if (signedInAs is not null && this.thisSession is not null)
-            {
-                // Named, because somebody with both a maintainer and an administrator account
-                // needs to know which one they are acting as before they publish anything.
-                signedInAs.Text = $"{this.thisSession.DisplayName} ({this.thisSession.Email})";
-            }
+            // A remembered sign-in can be restored while the invitation is on screen; the next
+            // sign-out must find the sign-in form, not that (TabMaintainer.Invitation.cs).
+            this.CloseInvitationView();
+
+            this.ShowSignedInAs();
 
             this.InitialiseScreens();
             this.ApplyModeVisibility();
@@ -511,9 +544,9 @@ namespace CRT
         // ###########################################################################################
         // Puts the server's queue answer on screen, and returns the submission still selected.
         //
-        // *** THE ADMIN SCREEN IS OFFERED ONLY WHEN THE SERVER SAYS THIS ACCOUNT IS AN
-        // ADMINISTRATOR *** (TabMaintainer.Modes.cs). The server refuses everyone else regardless; a
-        // button that could only ever be refused would be clutter.
+        // *** THE ADMINISTRATOR'S ENTRIES ON THE ACCOUNT SCREEN ARE OFFERED ONLY WHEN THE SERVER SAYS
+        // THIS ACCOUNT IS AN ADMINISTRATOR *** (TabMaintainer.Account.cs). The server refuses
+        // everyone else regardless; an entry that could only ever be refused would be clutter.
         // ###########################################################################################
         internal ReviewQueueRow? ApplyQueueResponse(ReviewQueueResponse response, bool background = false)
         {
@@ -523,6 +556,7 @@ namespace CRT
             this.thisQueue.AddRange(response.Submissions);
 
             this.SetAdministrator(response.IsAdministrator);
+            this.thisQueueKnown = true;
 
             ReviewQueueRow? kept = this.ApplyQueue(background);
 
@@ -553,7 +587,8 @@ namespace CRT
 
             // Cleared BEFORE the early return: a null control is a markup problem, and it must not
             // leave a rejected token sitting on disk to be retried next launch.
-            this.thisSession = null;
+            this.UseSession(null);
+            this.thisQueueKnown = false;
             ReviewSessionStore.Forget();
 
             // The session is over, so an open table could not be saved any more.
@@ -572,6 +607,16 @@ namespace CRT
             this.thisSelectedId = null;
             this.thisShownDetail = null;
 
+            // And every comment typed for it - the next account must not find one ready to send.
+            this.thisDecisionCommentBySubmission.Clear();
+
+            if (this.DecisionCommentBox is TextBox comment)
+                comment.Text = string.Empty;
+
+            // What the badges count, too - a 401 reaches here without ApplyQueue, and the tab's own
+            // badge in CRT's row of tabs would otherwise go on counting the last account's queue.
+            this.thisQueueEntries.Clear();
+
             // The other screens' lists and panels too, and the next sign-in starts on Review.
             this.ResetScreens();
 
@@ -583,7 +628,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Signing out deliberately.
+        // Signing out deliberately - "Sign out" under "My account" (MyAccountView; a button under
+        // the lists until 2026-10-04).
         //
         // Revokes server-side FIRST, while the token is still in hand, then clears locally. The
         // order matters: clearing first would leave nothing to revoke with, and the session would
@@ -593,10 +639,11 @@ namespace CRT
         // so there is no error path here - signing out of your own machine must always work, and
         // it is most wanted precisely when the server cannot be reached.
         // ###########################################################################################
-        private async void OnSignOutClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        internal async Task SignOutAsync()
         {
             // Unsaved table changes are asked about first - after signing out nothing can save them.
-            if (!await this.CloseTableAsync())
+            // Both tables: the submission's, and a system's on the Systems screen (2026-10-03).
+            if (!await this.CloseTableAsync() || !await this.SystemDetail.MayLeaveTableAsync())
                 return;
 
             // Under the overlay, and signed out locally whatever the answer - even none at all.
@@ -710,11 +757,19 @@ namespace CRT
 
             ReviewQueueRow row = chosen;
 
+            // What the screen opens on next time, this run or the next (TabMaintainer.OpenOnEntry.cs).
+            this.RememberSubmission(row.Id);
+
             // The header is shown IMMEDIATELY from what the queue already knows, and the rest fills
             // in when it arrives. Waiting for the requests before drawing anything would leave the
             // panel blank on every click over a slow link, which reads as the app having lost the
             // selection.
             this.ShowSubmission(row);
+
+            // Read ahead while the tab was not on screen (TabMaintainer.Prefetch.cs): shown at once,
+            // with no wait.
+            if (await this.TryOpenPrefetchedAsync(row))
+                return;
 
             // The submission (who must approve, what approving removes, what the table cannot show)
             // and its table, side by side - under the overlay (2026-09-28), so a slow link reads as
@@ -750,7 +805,7 @@ namespace CRT
 
             if (!result.IsOk)
             {
-                this.ShowContributor(null);
+                this.ShowContributorHistory(null);
                 this.ShowNotInTable([new ReviewNoteLine(result.Message, ReviewNoteKind.Error)]);
                 return;
             }
@@ -771,8 +826,17 @@ namespace CRT
             if (this.FindControl<TextBlock>("NoSubmissionText") is TextBlock none)
                 none.IsVisible = row is null;
 
-            this.ShowContributor(null);
+            // Another submission - or none - opens on Board data, with nothing of the last one's
+            // files or contributor in the other two views (TabMaintainer.SubmissionViews.cs), and
+            // with its own decision comment rather than the last one's.
+            if (row is null || row.Id != this.thisSelectedId)
+            {
+                this.ResetSubmissionViews();
+                this.SwapDecisionComment(row?.Id);
+            }
+
             this.ShowNotInTable([]);
+            this.ShowNoteLines("BeforeApprovingPanel", []);
 
             if (row is null)
             {
@@ -813,6 +877,12 @@ namespace CRT
         {
             ArgumentNullException.ThrowIfNull(detail);
 
+            // A detail read again may carry other files (a save, another maintainer's change): the
+            // Files view reads its tree anew the next time it is shown. The same detail shown again
+            // (ReapplyApprovalGate) changes nothing there.
+            if (!ReferenceEquals(this.thisShownDetail, detail))
+                this.FilesViewIsStale();
+
             // The table's file preview reads the submitted files' hashes from it.
             this.thisShownDetail = detail;
 
@@ -840,41 +910,48 @@ namespace CRT
                 amended.IsVisible = line is not null;
             }
 
+            // The other two views' facts come with the detail: how many files the submission changes
+            // (the Files button's count - the one place that still says a file was replaced under
+            // its own name before anything is opened) and the contributor's record.
+            this.ShowFilesCount(SubmissionViews.ChangingFiles(detail.SubmittedFiles, detail.Removals));
+            this.ShowContributorHistory(detail.Contributor);
+
             // *** WHAT THE TABLE CANNOT SHOW IS NOT OPTIONAL. *** Highlights and calibration points
             // publish with the approval, and the automatic checks' warnings are what the machine
             // already worked out - see ReviewNotInTable.
-            this.ShowContributor(detail.Contributor);
-            IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(detail.Changes, detail.Findings, detail.SubmittedFiles);
+            this.ShowNotInTable(ReviewNotInTable.Lines(detail.Changes, detail.Findings));
 
             // ###########################################################################################
-            // *** THE CONTRIBUTOR DISCARDED THEIR OWN DRAFT (owner request, 2026-09-28). *** Said
-            // above the table, before anything else is read - they may have changed their mind, and
-            // the maintainer should ask them before approving. See DraftDiscardWording.
+            // *** WHAT TO SETTLE BEFORE APPROVING, ABOVE ALL THREE VIEWS (code review, 2026-10-01). ***
+            // These two were the first lines above the TABLE, inside the Board data view - so with
+            // Files or Contributor on screen, Approve was greyed out with no reason anywhere. They
+            // sit above the view switch now (BeforeApprovingPanel), still before anything else.
             // ###########################################################################################
-            if (detail.Submission.DraftDiscardedUtc is DateTimeOffset discarded)
-            {
-                lines =
-                [
-                    new ReviewNoteLine(
-                        DraftDiscardWording.SubmissionWarning(discarded, detail.Submission.ContactEmail),
-                        ReviewNoteKind.Warning),
-                    .. lines
-                ];
-            }
+            List<ReviewNoteLine> beforeApproving = [];
 
-            // Approve is OFF, with the reason above the table, for a new system with no place in the
-            // drop-down lists yet, or a system with an earlier submission still in BETA (2026-09-27)
-            // - said before the maintainer reads the whole table, not after pressing Approve.
+            // Approve is OFF, with the reason, for a new system with no place in the drop-down lists
+            // yet, or a system with an earlier submission still in BETA (2026-09-27) - said before
+            // the maintainer reads the submission, not after pressing Approve.
             string? blocked = ApprovalGate.Blocked(detail.Submission.SystemId, this.thisListing, this.thisBeta);
             this.thisAppliedGate = blocked;
 
             if (blocked is not null)
             {
-                lines = [new ReviewNoteLine(blocked, ReviewNoteKind.Warning), .. lines];
-                this.BlockApproval(blocked);
+                beforeApproving.Add(new ReviewNoteLine(blocked, ReviewNoteKind.Warning));
+                this.BlockApproval();
             }
 
-            this.ShowNotInTable(lines);
+            // *** THE CONTRIBUTOR DISCARDED THE DRAFT (owner request, 2026-09-28). *** They may have
+            // changed their mind, and the maintainer should ask before approving. See
+            // DraftDiscardWording.
+            if (detail.Submission.DraftDiscardedUtc is DateTimeOffset discarded)
+            {
+                beforeApproving.Add(new ReviewNoteLine(
+                    DraftDiscardWording.SubmissionWarning(discarded, detail.Submission.ContactEmail),
+                    ReviewNoteKind.Warning));
+            }
+
+            this.ShowNoteLines("BeforeApprovingPanel", beforeApproving);
         }
 
         // ###########################################################################################
@@ -912,23 +989,24 @@ namespace CRT
         // True while a decision is on its way to the server.
         private bool thisDecisionInFlight;
 
-        // Turns Approve off for a reason the server's own answer does not cover (ApprovalGate), and
-        // says why on the button itself too. The server refuses regardless.
-        private void BlockApproval(string reason)
+        // Turns Approve off for a reason the server's own answer does not cover (ApprovalGate). The
+        // reason is the first line above the view switch; the button carries no tooltip (see
+        // ShowDecisionPanel for why). The server refuses regardless.
+        private void BlockApproval()
         {
             this.thisApproveAllowed = false;
 
             if (this.FindControl<Button>("ApproveButton") is Button approve)
-            {
                 approve.IsEnabled = false;
-                ToolTip.SetTip(approve, reason);
-            }
         }
 
         // The short lines above the table - nothing at all when there is nothing to say.
-        private void ShowNotInTable(IReadOnlyList<ReviewNoteLine> lines)
+        private void ShowNotInTable(IReadOnlyList<ReviewNoteLine> lines) => this.ShowNoteLines("NotInTablePanel", lines);
+
+        // One panel of note lines, coloured by kind - hidden when there is nothing to say.
+        private void ShowNoteLines(string panelName, IReadOnlyList<ReviewNoteLine> lines)
         {
-            if (this.FindControl<StackPanel>("NotInTablePanel") is not StackPanel panel)
+            if (this.FindControl<StackPanel>(panelName) is not StackPanel panel)
                 return;
 
             panel.Children.Clear();
@@ -939,6 +1017,8 @@ namespace CRT
                 {
                     FontSize = 12,
                     TextWrapping = TextWrapping.Wrap,
+                    // A change under its section's heading ("Component highlights have [2] changes:").
+                    Margin = new Avalonia.Thickness(16 * line.Indent, 0, 0, 0),
                     FontWeight = line.Kind == ReviewNoteKind.Change ? FontWeight.Normal : FontWeight.SemiBold,
                     Foreground = line.Kind switch
                     {
@@ -953,21 +1033,6 @@ namespace CRT
             }
 
             panel.IsVisible = lines.Count > 0;
-        }
-
-        // Who sent the submission and how their other submissions went - above the lines the
-        // table cannot show. Null hides it (nothing selected, or an older server).
-        private void ShowContributor(ReviewContributorFacts? facts)
-        {
-            if (this.FindControl<TextBlock>("ContributorText") is not TextBlock block)
-                return;
-
-            ReviewNoteLine? line = ReviewContributorLine.For(facts);
-
-            if (line is not null)
-                TabMaintainer.ShowLine(block, line);
-
-            block.IsVisible = line is not null;
         }
 
         // ###########################################################################################
@@ -1110,6 +1175,11 @@ namespace CRT
                         string afterwards = MaintainerWaitWording.DecisionAfterTimeout(
                             kind, stateBefore, now.IsOk ? now.Value!.Submission.State : null);
 
+                        // Decided - by this or by somebody else meanwhile: the comment has been
+                        // used. Nothing moved: it stays, for sending again.
+                        if (now.IsOk && !string.Equals(now.Value!.Submission.State, stateBefore, StringComparison.Ordinal))
+                            this.ForgetDecisionComment(id);
+
                         await this.ReadListsAfterDecisionAsync();
                         this.ShowDecisionOutcome(afterwards, isError: !now.IsOk);
                         return;
@@ -1143,6 +1213,10 @@ namespace CRT
                     this.ShowDecisionMessage(
                         ReviewDecisionWording.Describe(kind, result.Value!),
                         isError: false);
+
+                    // Sent, so the box is empty again - before the lists are read, which move the
+                    // selection off the decided submission and would otherwise keep the comment for it.
+                    this.ForgetDecisionComment(id);
 
                     // The submission has left the queue, so the list on screen is now wrong - and an
                     // approval has put a board into BETA, which the BETA button counts.
@@ -1191,6 +1265,48 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
+        // *** THE DECISION COMMENT BELONGS TO ONE SUBMISSION (owner report, 2026-10-02: "I can see my
+        // last rejection comment in the textarea field. This field should be blanked when
+        // submitted/rejected"). *** The box was never emptied, so the comment written for one
+        // submission sat ready to be sent - with one click - to the next contributor. Now a
+        // decision that went through empties it, and moving to another submission puts away what
+        // was typed for this one and shows that one's own (nothing, unless something was typed for
+        // it earlier), so a half-written comment is still there on coming back. For as long as
+        // CRT runs.
+        // ###########################################################################################
+        private readonly Dictionary<long, string> thisDecisionCommentBySubmission = [];
+
+        private TextBox? DecisionCommentBox => this.FindControl<TextBox>("DecisionCommentTextBox");
+
+        // Called as the panel moves from thisSelectedId to `next` (null for none).
+        private void SwapDecisionComment(long? next)
+        {
+            if (this.DecisionCommentBox is not TextBox box)
+                return;
+
+            if (this.thisSelectedId is long current)
+            {
+                if (string.IsNullOrWhiteSpace(box.Text))
+                    this.thisDecisionCommentBySubmission.Remove(current);
+                else
+                    this.thisDecisionCommentBySubmission[current] = box.Text;
+            }
+
+            box.Text = next is long id && this.thisDecisionCommentBySubmission.TryGetValue(id, out string? kept)
+                ? kept
+                : string.Empty;
+        }
+
+        // A decision on `submissionId` went through: its comment has been used.
+        private void ForgetDecisionComment(long submissionId)
+        {
+            this.thisDecisionCommentBySubmission.Remove(submissionId);
+
+            if (this.thisSelectedId == submissionId && this.DecisionCommentBox is TextBox box)
+                box.Text = string.Empty;
+        }
+
         private void ShowDecisionMessage(string? message, bool isError)
         {
             var text = this.FindControl<TextBlock>("DecisionMessageText");
@@ -1227,23 +1343,29 @@ namespace CRT
 
             var approve = this.FindControl<Button>("ApproveButton");
 
+            // ###########################################################################################
+            // *** NO TOOLTIP ON APPROVE - IT ATE THE CLICK (owner report, 2026-09-30: "Sometimes I do
+            // feel that I need to click the "Approve and publish to BETA" multiple times for it to
+            // react ... I once needed to click it 3 times"). *** Avalonia puts a tooltip 20 px below
+            // the pointer; at the bottom of the window there is no room, so it flips ABOVE - and the
+            // 20 px offset is kept, which moves it back down OVER the pointer. The next click then
+            // lands on the tooltip (its own window in CRT), not on the button; the tooltip closes,
+            // and after a moment's hover opens again. What it said is in the status line instead,
+            // and the button's own text says what it does. TabMaintainerDecisionClickTests
+            // reproduces it. Every other tooltip in CRT is safe from it since the same day: each
+            // opens at its control's edge, never under the pointer (ToolTipPlacement).
+            // ###########################################################################################
             if (approve is not null)
             {
                 approve.IsEnabled = this.thisApproveAllowed;
                 approve.Content = ApprovalWording.ApproveButton(approval, "BETA");
-
-                ToolTip.SetTip(
-                    approve,
-                    canPublish
-                        ? "Publishes this submission into the BETA data - once every approval it needs is given. Everyone gets it once it is published from Production. This cannot be undone."
-                        : "This account is not a maintainer of this system. Ask the administrator.");
             }
 
             var status = this.FindControl<TextBlock>("ApprovalStatusText");
 
             if (status is not null)
             {
-                string? line = ApprovalWording.StatusLine(approval);
+                string? line = ApprovalWording.StatusLine(approval, canPublish);
                 status.Text = line ?? string.Empty;
                 status.IsVisible = visible && line is not null;
             }

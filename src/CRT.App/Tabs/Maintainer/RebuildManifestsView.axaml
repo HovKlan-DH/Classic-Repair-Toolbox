@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.RebuildManifestsView">
+
+    <!--
+    REBUILD CHECKSUM MANIFESTS (owner request, 2026-10-01: "I need a way ... to press a button, and
+    then it will generate a new online manifest, both for production and BETA ... when testing a
+    lot, I need to do some manual editing of files from time to time, and then I need it to update
+    the checksum again"). ADMINISTRATOR ONLY, like every padlocked entry on the Account screen (the Admin screen until 2026-10-04).
+
+    ONE BUTTON FOR BOTH TREES (owner decision, same day). A hand edit is as likely in one as the
+    other, and rebuilding a tree that did not change costs only the scan - what it writes is
+    identical. The server decides which trees exist; this panel shows what it answered.
+
+    NO CONFIRMATION, deliberately: a rebuild reads the tree and replaces one file atomically. It
+    destroys nothing and can simply be pressed again. What it DOES need is to say what happened, so
+    every tree's own result is listed under the headline.
+
+    All the words are the SERVER's (ManifestRebuildFlow), shown unchanged - a server that gains a
+    third tree says so with no CRT release.
+    -->
+    <DockPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Rebuild checksum manifests"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12"
+                   Text="Every board CRT downloads is checked against dataChecksums.json. The server rebuilds it by itself whenever it publishes, promotes or rolls back - so this is only needed after data files have been changed on the server by hand, which the service never sees. Both the BETA and the stable data are rebuilt." />
+
+        <Button DockPanel.Dock="Top"
+                x:Name="RebuildButton"
+                HorizontalAlignment="Left"
+                Content="Rebuild both manifests"
+                Margin="0,0,0,12"
+                Click="OnRebuildClick" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeadlineText"
+                   TextWrapping="Wrap"
+                   FontWeight="SemiBold"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <!-- One line per tree, in the server's words. Not a ScrollViewer: there are two of them. -->
+        <StackPanel DockPanel.Dock="Top"
+                    x:Name="ResultsPanel"
+                    Spacing="4" />
+
+        <TextBlock x:Name="MessageText"
+                   DockPanel.Dock="Top"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,8,0,0" />
+
+        <!-- Nothing fills the rest; the panel is a header, a button and its answer. -->
+        <Panel />
+    </DockPanel>
+</UserControl>

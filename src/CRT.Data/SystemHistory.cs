@@ -55,6 +55,11 @@ namespace Handlers.DataHandling
         // The contributor discarded their own draft in CRT after sending the submission (owner
         // request, 2026-09-28) - see DraftDiscardContract. Audited under "#{id}".
         public const string DraftDiscarded = "submission.draft_discarded";
+
+        // The administrator deleted the system from both data trees and the database (owner
+        // request, 2026-10-03 - see CRT.Server's SystemDeletionFlow). Audited under the system id,
+        // so a system created again under the same id shows it at the start of its history.
+        public const string Deleted = "system.deleted";
     }
 
     // ###########################################################################################
@@ -73,7 +78,17 @@ namespace Handlers.DataHandling
     {
         public static string BusyMessage(string? systemId) =>
             $"{(string.IsNullOrWhiteSpace(systemId) ? "This system" : systemId.Trim())} already has a submission in BETA that " +
-            "has not gone to production. A system takes one submission into BETA at a time: publish that one to " +
-            "production (Beta > Prod) or push it back to the queue first.";
+            "has not gone to the stable source. A system takes one submission into BETA at a time: publish that one " +
+            "to stable (under " + MaintainerScreenWording.BetaQueueQuoted + ") or push it back to the queue first.";
+
+        // ###########################################################################################
+        // The same rule for a change made on the Systems screen, which goes straight to BETA (owner
+        // decision, 2026-10-03: "If a system is already in 'BETA > Stable' queue, then it should
+        // simply disallow it, even if this is coming from a maintainer"). The server sends it as the
+        // reason the table is read-only, and refuses an edit with it.
+        // ###########################################################################################
+        public static string NoChangeMessage(string? systemId) =>
+            $"{(string.IsNullOrWhiteSpace(systemId) ? "This system" : systemId.Trim())} is waiting in BETA for the stable source, " +
+            "so no change can be made to it here. Publish it to stable, push it back or reject it under " + MaintainerScreenWording.BetaQueueQuoted + " first.";
     }
 }

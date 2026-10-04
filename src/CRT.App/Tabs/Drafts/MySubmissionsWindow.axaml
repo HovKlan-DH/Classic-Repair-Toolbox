@@ -161,6 +161,13 @@
 											   FontStyle="Italic"
 											   Margin="0,4,0,0" />
 
+									<!-- How to try it, while it is in the BETA source (2026-10-03). It
+									     stays after the notice under CRT's tabs is closed. -->
+									<TextBlock Text="{Binding BetaTryText}"
+											   IsVisible="{Binding HasBetaTryText}"
+											   TextWrapping="Wrap"
+											   Margin="0,4,0,0" />
+
 									<!-- What a maintainer said, once Phase 5 gives them somewhere to
 									     say it. Collapsed entirely until then, rather than showing
 									     an empty labelled box on every row. -->

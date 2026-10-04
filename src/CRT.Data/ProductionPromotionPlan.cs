@@ -99,7 +99,7 @@ namespace Handlers.DataHandling
                 problems.Add(ProductionPromotionPlan.Error(
                     "promote.not_in_beta",
                     systemFolder,
-                    $"[{systemFolder}] has nothing in the BETA data, so there is nothing to publish to production."));
+                    $"[{systemFolder}] has nothing in the BETA data, so there is nothing to publish to the stable source."));
 
                 return new ProductionPromotionResult([], 0, problems, TouchesSharedFiles: false);
             }
@@ -165,8 +165,8 @@ namespace Handlers.DataHandling
                         problems.Add(ProductionPromotionPlan.Error(
                             "promote.foreign_not_in_production",
                             cited,
-                            $"The board uses [{cited}], which belongs to another board and is not yet in production " +
-                            "in the same form. Publish that board to production first."));
+                            $"The board uses [{cited}], which belongs to another board and is not yet in the stable source " +
+                            "in the same form. Publish that board to the stable source first."));
                     }
 
                     continue;
@@ -243,7 +243,7 @@ namespace Handlers.DataHandling
                     problems.Add(ProductionPromotionPlan.Error(
                         "promote.case_collision",
                         path,
-                        $"[{path}] differs only by capitalisation from [{variant}], which production already has. " +
+                        $"[{path}] differs only by capitalisation from [{variant}], which the stable source already has. " +
                         "On Windows and macOS the two would be the same file."));
                     return false;
                 }

@@ -28,6 +28,10 @@ namespace CRT.Server.Tests
         private const string Contributor = "someone@example.com";
         private const string SystemName = "Commodore/C64/250407";
 
+        // Addresses with no names - what most of these tests are about.
+        private static IReadOnlyList<MailRecipient> Recipients(params string?[] addresses) =>
+            addresses.Select(address => new MailRecipient(address!)).ToList();
+
         private static SubmissionNotifier Notifier(IEmailSender mailer) =>
             new(mailer, NullLogger<SubmissionNotifier>.Instance);
 
@@ -47,8 +51,9 @@ namespace CRT.Server.Tests
 
             return (EmailMessage?)method!.Invoke(
                 null,
-                // The last argument is amendedByMaintainer (2026-09-25) - false, a submission nobody changed.
-                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment, false]);
+                // amendedByMaintainer (2026-09-25) - false, a submission nobody changed; then the
+                // contributor's name (2026-10-03) - none, a contributor without an account.
+                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment, false, null]);
         }
 
         // ---------------------------------------------------------------- which mail, if any
@@ -56,7 +61,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // *** TWO STAGES, TWO MAILS (2026-09-25). *** "merged" is the approval, which writes the
         // BETA data - "published to the BETA source". "published" is its board reaching production
-        // - "published to the source". The first must say BETA: their own data (on the ordinary
+        // - "published to the stable source". The first must say BETA: their own data (on the stable
         // source) will not have it for days.
         // ###########################################################################################
         [Fact]
@@ -94,7 +99,7 @@ namespace CRT.Server.Tests
 
             EmailMessage message = Assert.Single(mailer.Sent);
 
-            Assert.Contains("published to the source", message.Subject, StringComparison.Ordinal);
+            Assert.Contains("published to the stable source", message.Subject, StringComparison.Ordinal);
             Assert.DoesNotContain("BETA", message.Subject, StringComparison.Ordinal);
             Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
         }
@@ -127,13 +132,13 @@ namespace CRT.Server.Tests
             // The board is named - a contributor who sent something weeks ago cannot act on "your
             // contribution was taken back".
             Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
-            Assert.Contains("had been published", message.Body, StringComparison.Ordinal);
+            Assert.Contains("had been accepted into the BETA source", message.Body, StringComparison.Ordinal);
             Assert.Contains("no longer holds it", message.Body, StringComparison.Ordinal);
             Assert.Contains("The U8 pinout is wrong.", message.Body, StringComparison.Ordinal);
 
             // What IS true: the contribution is in the queue, and it can be corrected.
             Assert.Contains("is not lost", message.Body, StringComparison.Ordinal);
-            Assert.Contains("send a corrected version", message.Body, StringComparison.Ordinal);
+            Assert.Contains("make the change in the \"Drafts\" tab", message.Body, StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -183,7 +188,7 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("place in the queue", body, StringComparison.Ordinal);
 
             // It says what to do when the draft IS gone, rather than assuming it is there.
-            Assert.Contains("If the draft is no longer there", body, StringComparison.Ordinal);
+            Assert.Contains("If you have discarded your draft", body, StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -211,7 +216,7 @@ namespace CRT.Server.Tests
             var mailer = new FakeEmailSender();
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyProductionPublishAsync(
-                ["admin@example.com", "Admin@example.com", null],
+                SubmissionNotifierTests.Recipients("admin@example.com", "Admin@example.com", null),
                 SubmissionNotifierTests.SystemName,
                 "Anna (anna@example.com)",
                 "2026-September-25",
@@ -220,7 +225,7 @@ namespace CRT.Server.Tests
             EmailMessage message = Assert.Single(mailer.Sent);
             Assert.Equal("admin@example.com", message.ToAddress);
             Assert.Contains("Anna (anna@example.com)", message.Body, StringComparison.Ordinal);
-            Assert.Contains("production", message.Subject, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("stable source", message.Subject, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("3 file(s)", message.Body, StringComparison.Ordinal);
         }
 
@@ -266,7 +271,7 @@ namespace CRT.Server.Tests
 
             // This is the one outcome where the contributor has to act, so the mail has to point
             // them at where they act.
-            Assert.Contains("Drafts tab", message.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"Drafts\" tab", message.Body, StringComparison.Ordinal);
         }
 
         // ---------------------------------------------------------------- telling the maintainers
@@ -278,7 +283,7 @@ namespace CRT.Server.Tests
             var mailer = new FakeEmailSender();
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
-                ["anna@example.com", " ", null, "Anna@Example.com", "bob@example.com"],
+                SubmissionNotifierTests.Recipients("anna@example.com", " ", null, "Anna@Example.com", "bob@example.com"),
                 SubmissionNotifierTests.SystemName,
                 42,
                 "Corrected R12.");
@@ -299,7 +304,7 @@ namespace CRT.Server.Tests
             var mailer = new ThrowingOnceEmailSender();
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
-                ["first@example.com", "second@example.com"],
+                SubmissionNotifierTests.Recipients("first@example.com", "second@example.com"),
                 SubmissionNotifierTests.SystemName,
                 7,
                 null);
@@ -311,14 +316,14 @@ namespace CRT.Server.Tests
         {
             public List<string> Attempted { get; } = [];
 
-            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+            public Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
             {
                 this.Attempted.Add(message.ToAddress);
 
                 if (this.Attempted.Count == 1)
                     throw new InvalidOperationException("SMTP is down.");
 
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             }
         }
 
@@ -401,6 +406,95 @@ namespace CRT.Server.Tests
                 maintainerComment: null);
         }
 
+        // ---------------------------------------------------------------- whom a submission's mail goes to
+
+        private static SubmissionRecord Submission(long? account, string? contactEmail) =>
+            new(1, SubmissionNotifierTests.SystemName, account, contactEmail, "hash", "", "merged", null, 1,
+                new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), null, null);
+
+        // ###########################################################################################
+        // *** A SUBMISSION SENT SIGNED IN IS WRITTEN TO ITS ACCOUNT (owner request, 2026-10-01). ***
+        // It carries no contact address of its own, and the decision mails read only that - so a
+        // signed-in maintainer's own submission was approved, rejected or sent back in silence. Fails
+        // against the version that handed the endpoints' ContactEmail straight through.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_signed_in_submissions_decision_mail_goes_to_its_accounts_address()
+        {
+            var mailer = new FakeEmailSender();
+            var accounts = new FakeAccountStore();
+
+            accounts.Accounts[7] = new CRT.Server.Handlers.Accounts.AccountRecord(
+                7, "dh@example.com", "dh@example.com", "hash", "Dennis", IsVerified: true, IsAdministrator: false, IsLocked: false,
+                new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.Zero), null);
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
+                SubmissionNotifierTests.Submission(account: 7, contactEmail: null),
+                accounts,
+                "rejected",
+                maintainerComment: "Not this board.");
+
+            Assert.Equal("dh@example.com", Assert.Single(mailer.Sent).ToAddress);
+        }
+
+        // Without an account it is the address typed when sending, as it always was.
+        [Fact]
+        public async Task A_submission_sent_without_an_account_is_written_to_its_contact_address()
+        {
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
+                SubmissionNotifierTests.Submission(account: null, contactEmail: SubmissionNotifierTests.Contributor),
+                new FakeAccountStore(),
+                "merged",
+                maintainerComment: null);
+
+            Assert.Equal(SubmissionNotifierTests.Contributor, Assert.Single(mailer.Sent).ToAddress);
+        }
+
+        // ###########################################################################################
+        // The greeting (owner request, 2026-10-03: "if {name} is known, use that, otherwise just
+        // "Hi there.""): the account's name for a submission sent signed in - the only case a name is
+        // known - and "Hi there," for one sent with a typed address.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_signed_in_contributor_is_greeted_by_the_accounts_name_and_anybody_else_as_there()
+        {
+            var mailer = new FakeEmailSender();
+            var accounts = new FakeAccountStore();
+
+            accounts.Accounts[7] = new CRT.Server.Handlers.Accounts.AccountRecord(
+                7, "dh@example.com", "dh@example.com", "hash", "Dennis", IsVerified: true, IsAdministrator: false, IsLocked: false,
+                new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.Zero), null);
+
+            SubmissionNotifier notifier = SubmissionNotifierTests.Notifier(mailer);
+
+            await notifier.NotifyDecisionAsync(SubmissionNotifierTests.Submission(account: 7, contactEmail: null), accounts, "merged", null);
+            await notifier.NotifyDecisionAsync(SubmissionNotifierTests.Submission(account: null, contactEmail: SubmissionNotifierTests.Contributor), accounts, "merged", null);
+
+            Assert.StartsWith("Hi Dennis,", mailer.Sent[0].Body, StringComparison.Ordinal);
+            Assert.StartsWith("Hi there,", mailer.Sent[1].Body, StringComparison.Ordinal);
+        }
+
+        // Each maintainer by the name on their account, and the mail says whether it is a new
+        // system (owner request, 2026-10-03).
+        [Fact]
+        public async Task Each_maintainer_is_greeted_by_name_and_told_whether_it_is_a_new_system()
+        {
+            var mailer = new FakeEmailSender();
+
+            await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
+                [new MailRecipient("anna@example.com", "Anna"), new MailRecipient("bob@example.com", "Bob")],
+                SubmissionNotifierTests.SystemName,
+                18,
+                "A whole new board.",
+                isNewSystem: true);
+
+            Assert.StartsWith("Hi Anna,", mailer.Sent[0].Body, StringComparison.Ordinal);
+            Assert.StartsWith("Hi Bob,", mailer.Sent[1].Body, StringComparison.Ordinal);
+            Assert.All(mailer.Sent, message => Assert.Contains("a completely new system", message.Body, StringComparison.Ordinal));
+        }
+
         // ---------------------------------------------------------------- the mapping itself
 
         [Fact]
@@ -435,7 +529,7 @@ namespace CRT.Server.Tests
 
         private sealed class ThrowingEmailSender : IEmailSender
         {
-            public Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
+            public Task<bool> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
                 => throw new InvalidOperationException("SMTP is unreachable.");
         }
     }

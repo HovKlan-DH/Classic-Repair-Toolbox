@@ -444,6 +444,22 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         Assert.True(Assert.Single(SubmissionReceiptStore.All).SourceNoticeDismissed);
     }
 
+    // The "now in the BETA source - tick BETA to try it" notice (2026-10-03): the same, apart from
+    // the switch-back notice - closing one does not close the other.
+    [Fact]
+    public void A_dismissed_BETA_notice_stays_dismissed_and_leaves_the_switch_back_notice_alone()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        SubmissionReceiptStore.UpdateState(42, "merged", string.Empty, DateTimeOffset.UtcNow);
+
+        SubmissionReceiptStore.DismissBetaNotice([42]);
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        SubmissionReceipt receipt = Assert.Single(SubmissionReceiptStore.All);
+        Assert.True(receipt.BetaNoticeDismissed);
+        Assert.False(receipt.SourceNoticeDismissed);
+    }
+
     [Fact]
     public void Dismissing_touches_only_the_submissions_named()
     {
@@ -579,8 +595,10 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
             DecidedUtc = at.AddHours(2),
             AmendedByMaintainer = true,
             SourceNoticeDismissed = false,
+            BetaNoticeDismissed = false,
             DraftDiscardedUtc = at.AddHours(3),
-            DraftDiscardReported = false
+            DraftDiscardReported = false,
+            DraftFingerprint = "v1:ABC"
         };
 
         // Each rewrite, and the properties it is MEANT to change.
@@ -589,6 +607,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
             ("UpdateState", () => SubmissionReceiptStore.UpdateState(7, "merged", "comment", at.AddHours(1)), ["LastCheckedUtc"]),
             ("AcknowledgeComment", () => SubmissionReceiptStore.AcknowledgeComment(7), ["AcknowledgedComment", "AcknowledgedState"]),
             ("DismissSourceNotice", () => SubmissionReceiptStore.DismissSourceNotice([7]), ["SourceNoticeDismissed"]),
+            ("DismissBetaNotice", () => SubmissionReceiptStore.DismissBetaNotice([7]), ["BetaNoticeDismissed"]),
             ("MarkDraftDiscardReported", () => SubmissionReceiptStore.MarkDraftDiscardReported(7), ["DraftDiscardReported"]),
         };
 
@@ -626,11 +645,15 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
     // reader, or raced on the save's temporary file. Several threads recording and updating at once
     // must lose nothing, throw nothing, and leave a file that reads back whole.
     // ###########################################################################################
+    //
+    // Twelve receipts per thread, not forty (2026-10-03): every Record and UpdateState saves the
+    // whole file atomically (~15 ms here), so forty made this one test 7.5 s of the run. Six
+    // writers still overlap on nearly every save, which is what the test needs.
     [Fact]
     public async Task Receipts_written_from_several_threads_at_once_are_all_kept()
     {
         const int threads = 6;
-        const int each = 40;
+        const int each = 12;
 
         Task[] writers = Enumerable.Range(0, threads).Select(thread => Task.Run(() =>
         {

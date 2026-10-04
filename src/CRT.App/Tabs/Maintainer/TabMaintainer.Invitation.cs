@@ -17,16 +17,57 @@ namespace CRT
     // *** ON SUCCESS THE SIGN-IN FIELDS ARE FILLED, NOT A SESSION OPENED *** - the password reset's
     // rule, for the same reason: accepting is not signing in, the server issues no session for it,
     // and holding the password to sign in behind the person's back would be inventing one.
+    //
+    // *** THE INVITATION IS SHOWN INSTEAD OF THE SIGN-IN FORM, NOT UNDER IT *** (owner request,
+    // 2026-10-04). Under it, the invitation sat below an email and password box and a "Sign in"
+    // button that have nothing to do with accepting one, which was confusing. Cancel goes back to
+    // the form exactly as it was left - what was typed there, a reset code panel, its message - and
+    // empties the invitation's own boxes, so a password typed there does not sit in a hidden box.
     // ###########################################################################################
     public partial class TabMaintainer
     {
         private void OnHaveInvitationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-            if (this.FindControl<StackPanel>("InvitationPanel") is not StackPanel panel)
+            this.ShowInvitationView(true);
+            this.FindControl<TextBox>("InvitationCodeTextBox")?.Focus();
+        }
+
+        private void OnCancelInvitationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            this.CloseInvitationView();
+
+        // Back to the sign-in form, the invitation's boxes and message emptied. Also where signing
+        // in leaves it (ShowQueuePanel), so the next sign-out never lands on a half-filled invitation.
+        private void CloseInvitationView()
+        {
+            foreach (string name in new[] { "InvitationCodeTextBox", "InvitationNameTextBox", "InvitationPasswordTextBox" })
+            {
+                if (this.FindControl<TextBox>(name) is TextBox box)
+                    box.Text = string.Empty;
+            }
+
+            this.ShowInvitationMessage(null);
+            this.ShowInvitationView(false);
+        }
+
+        // One of the two views of the sign-in screen, never both.
+        private void ShowInvitationView(bool show)
+        {
+            if (this.FindControl<StackPanel>("InvitationPanel") is StackPanel invitation)
+                invitation.IsVisible = show;
+
+            if (this.FindControl<StackPanel>("SignInFormPanel") is StackPanel form)
+                form.IsVisible = !show;
+        }
+
+        // The invitation view's own message line - the form's is hidden with the form. Always a
+        // failure: success goes back to the form and says so there.
+        private void ShowInvitationMessage(string? message)
+        {
+            if (this.FindControl<TextBlock>("InvitationMessageText") is not TextBlock text)
                 return;
 
-            panel.IsVisible = true;
-            this.FindControl<TextBox>("InvitationCodeTextBox")?.Focus();
+            text.Text = message ?? string.Empty;
+            text.IsVisible = !string.IsNullOrWhiteSpace(message);
         }
 
         // Enter in the password box accepts, as it signs in in the box above.
@@ -59,23 +100,24 @@ namespace CRT
             // Checked here because the round trip could say nothing more useful about an empty box.
             if (enteredCode.Length == 0)
             {
-                this.ShowSignInMessage("Paste the code from the invitation email first.");
+                this.ShowInvitationMessage("Paste the code from the invitation email first.");
                 return;
             }
 
             if (enteredName.Length == 0)
             {
-                this.ShowSignInMessage("Type the name others will see.");
+                this.ShowInvitationMessage("Type the name others will see.");
                 return;
             }
 
             if (enteredPassword.Length == 0)
             {
-                this.ShowSignInMessage("Type the password you want to use.");
+                this.ShowInvitationMessage("Type the password you want to use.");
                 return;
             }
 
             button.IsEnabled = false;
+            this.ShowInvitationMessage(null);
 
             try
             {
@@ -84,31 +126,39 @@ namespace CRT
                     MaintainerWaitWording.AcceptingInvitation,
                     token => this.SendAcceptanceAsync(enteredCode, enteredName, enteredPassword, token));
 
+                // ###########################################################################
                 // No answer in two minutes: the account may exist now, and the code may be spent -
-                // signing in is the way to find out, never "use the code again" first.
+                // signing in is the way to find out, never "use the code again" first. So it goes
+                // back to the sign-in form with the password chosen filled in, and says so there
+                // (code review, 2026-10-04): said in the invitation view, it told the invitee to
+                // sign in where no sign-in form was on screen, and Cancel - the only way back -
+                // emptied the password just chosen. The address is the one the invitation was
+                // mailed to, which only the invitee knows here.
+                // ###########################################################################
                 if (result.Failure == ReviewApiFailure.TimedOut)
                 {
-                    this.ShowSignInMessage(MaintainerWaitWording.InvitationNoAnswer);
+                    this.CloseInvitationView();
+                    this.ShowSignInMessage(MaintainerWaitWording.InvitationNoAnswer, isError: true);
+
+                    if (this.FindControl<TextBox>("PasswordTextBox") is TextBox chosen)
+                        chosen.Text = enteredPassword;
+
+                    this.FindControl<TextBox>("EmailTextBox")?.Focus();
                     return;
                 }
 
                 if (!result.IsOk)
                 {
-                    this.ShowSignInMessage(result.Message);
+                    this.ShowInvitationMessage(result.Message);
                     return;
                 }
 
                 AcceptInvitationAnswer answer = result.Value!;
 
+                // The code is spent, so its boxes are emptied - a second press would only be told
+                // so - and the sign-in form comes back, saying the account is ready.
+                this.CloseInvitationView();
                 this.ShowSignInMessage(answer.Message, isError: false);
-
-                // The code is spent; a second press would only be told so.
-                code.Text = string.Empty;
-                name.Text = string.Empty;
-                password.Text = string.Empty;
-
-                if (this.FindControl<StackPanel>("InvitationPanel") is StackPanel panel)
-                    panel.IsVisible = false;
 
                 if (this.FindControl<TextBox>("EmailTextBox") is TextBox email)
                     email.Text = answer.Email;

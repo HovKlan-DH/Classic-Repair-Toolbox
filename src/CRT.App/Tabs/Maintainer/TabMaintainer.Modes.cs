@@ -8,12 +8,13 @@ namespace CRT
 {
     // ###########################################################################################
     // THE FOUR SCREENS BEHIND THE BUTTONS AT THE TOP LEFT (owner request, 2026-09-27): Review,
-    // BETA, Systems and Admin. Each changes the list on the left AND the panel on the right; the
-    // "Production", "Maintainers" and "Unused files" windows they replace opened over the queue.
+    // BETA, Systems and Account (Admin until 2026-10-04, the administrator's alone). Each changes
+    // the list on the left AND the panel on the right; the "Production", "Maintainers" and "Unused
+    // files" windows they replace opened over the queue.
     //
     // WHAT THIS PART OWNS: which screen is shown, the buttons' badges, handing the panels the
     // session, and reading the other screens' lists alongside the queue. The screens themselves are
-    // TabMaintainer.Beta.cs, .Systems.cs and .Admin.cs; what a badge counts is MaintainerModes.
+    // TabMaintainer.Beta.cs, .Systems.cs and .Account.cs; what a badge counts is MaintainerModes.
     //
     // *** SWITCHING SCREEN HIDES, IT NEVER CLOSES. *** Each screen keeps its list, its selection and
     // its right-hand panel while another is shown - so an open submission's table, unsaved changes
@@ -23,26 +24,28 @@ namespace CRT
     // *** THE BADGES ARE KEPT CURRENT BY THE QUEUE'S OWN CHECK. *** Every minute while the window is
     // in front (TabMaintainer.QueueRefresh.cs) the BETA list and the systems are read with the
     // queue, so the counts are right on whichever screen is shown. Choosing a screen reads its list
-    // once more, so what it shows is current the moment it is chosen.
+    // once more, so what it shows is current the moment it is chosen. The Review and BETA counts
+    // added up are the tab's own badge in CRT's row of tabs (2026-09-30), kept current off screen too.
     // ###########################################################################################
     public partial class TabMaintainer
     {
         private MaintainerMode thisMode = MaintainerMode.Review;
 
-        // From the server's queue answer - never worked out here. It shows the Admin button.
+        // From the server's queue answer - never worked out here. It shows the administrator's own
+        // entries on the Account screen (TabMaintainer.Account.cs).
         private bool thisIsAdministrator;
 
         // The screen on show.
         internal MaintainerMode ShownMode => this.thisMode;
 
-        // Each screen's button, its list on the left and its panel on the right. Admin's right-hand
-        // side is whichever of its two panels is chosen - ApplyModeVisibility.
+        // Each screen's button, its list on the left and its panel on the right. Account's right-hand
+        // side is whichever of its panels is chosen - ApplyModeVisibility.
         private static readonly (MaintainerMode Mode, string Button, string List, string? Panel)[] ModeScreens =
         [
             (MaintainerMode.Review, "ReviewModeButton", "ReviewList", "ReviewPanel"),
             (MaintainerMode.Beta, "BetaModeButton", "BetaListPanel", "BetaDetailView"),
             (MaintainerMode.Systems, "SystemsModeButton", "SystemsListPanel", "SystemDetailView"),
-            (MaintainerMode.Admin, "AdminModeButton", "AdminList", null)
+            (MaintainerMode.Account, "AccountModeButton", "AccountList", null)
         ];
 
         private async void OnModeClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -63,32 +66,37 @@ namespace CRT
         // ###########################################################################################
         // Shows one screen, and reads its list again - also when it is the screen already shown, so
         // pressing its button is the way to ask "anything new?" without a Refresh button of its own.
-        // Admin is refused to anybody the server did not say is an administrator.
+        // Every screen is every maintainer's since 2026-10-04 - Account included; only its
+        // administrator's entries are not (TabMaintainer.Account.cs).
         // ###########################################################################################
         internal async Task ShowModeAsync(MaintainerMode mode)
         {
-            if (mode == MaintainerMode.Admin && !this.thisIsAdministrator)
-                return;
+            // A screen chosen - by the maintainer, or for something to show - settles an opening
+            // still undecided (TabMaintainer.OpenOnEntry.cs).
+            this.EndOpening();
 
             this.thisMode = mode;
             this.ApplyModeVisibility();
 
             switch (mode)
             {
+                // Both open on the entry looked at last, or the first (TabMaintainer.OpenOnEntry.cs).
                 case MaintainerMode.Review:
                     await this.RefreshQueueAsync(background: true);
+                    this.SelectOnEntry();
                     break;
 
                 case MaintainerMode.Beta:
                     await this.RefreshBetaAsync(background: true);
+                    this.SelectOnEntry();
                     break;
 
                 case MaintainerMode.Systems:
                     await this.RefreshSystemsAsync(background: true);
                     break;
 
-                case MaintainerMode.Admin:
-                    await this.EnterAdminAsync();
+                case MaintainerMode.Account:
+                    await this.EnterAccountAsync();
                     break;
             }
         }
@@ -109,11 +117,26 @@ namespace CRT
                     this.SetShown(panel, shown);
             }
 
-            object? adminItem = this.FindControl<ListBox>("AdminList")?.SelectedItem;
-            bool admin = this.thisMode == MaintainerMode.Admin;
+            object? accountItem = this.FindControl<ListBox>("AccountList")?.SelectedItem;
+            bool account = this.thisMode == MaintainerMode.Account;
 
-            this.SetShown("UnusedFilesAdminView", admin && ReferenceEquals(adminItem, this.FindControl<ListBoxItem>("UnusedFilesItem")));
+            foreach ((string panel, string item) in TabMaintainer.AccountPanels)
+                this.SetShown(panel, account && ReferenceEquals(accountItem, this.FindControl<ListBoxItem>(item)));
         }
+
+        // The Account screen's panels on the right, each with its entry on the left.
+        private static readonly (string Panel, string Item)[] AccountPanels =
+        [
+            ("MyAccountPanel", "MyAccountItem"),
+            ("ServerVersionView", "ServerVersionItem"),
+            ("MaintainerPoolAdminView", "MaintainersItem"),
+            ("SystemOrderAdminView", "SystemOrderItem"),
+            ("UnusedFilesAdminView", "UnusedFilesItem"),
+            ("RebuildManifestsAdminView", "RebuildManifestsItem"),
+            ("SystemDeletionAdminView", "DeleteSystemItem"),
+            ("ApiUsageAdminView", "ApiUsageItem"),
+            ("DataResetAdminView", "ResetDataItem")
+        ];
 
         private void SetShown(string name, bool shown)
         {
@@ -122,22 +145,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The server's word on whether this account is an administrator. The Admin button shows only
-        // for one; an account that stops being one while on the Admin screen goes back to Review.
+        // The server's word on whether this account is an administrator. The Account screen is every
+        // maintainer's; only its administrator's entries follow this - shown for one, hidden for
+        // everybody else, and an account that stops being one while such an entry is chosen goes
+        // back to "My account" (TabMaintainer.Account.cs).
         // ###########################################################################################
         private void SetAdministrator(bool isAdministrator)
         {
             this.thisIsAdministrator = isAdministrator;
-            this.SetShown("AdminModeButton", isAdministrator);
-
-            // The administrator sets maintainers on the Systems screen (2026-09-27).
-            this.SystemDetail.SetAdministrator(isAdministrator);
-
-            if (!isAdministrator && this.thisMode == MaintainerMode.Admin)
-            {
-                this.thisMode = MaintainerMode.Review;
-                this.ApplyModeVisibility();
-            }
+            this.ShowAdministratorEntries(isAdministrator);
+            this.ApplyModeVisibility();
         }
 
         // ###########################################################################################
@@ -168,11 +185,53 @@ namespace CRT
                 systemsBadge.Classes.Set("Count", needingPlace <= 0);
             }
 
-            this.SetTip("ReviewModeButton", MaintainerModes.Tooltip(MaintainerMode.Review, this.thisSession is null ? null : review));
-            this.SetTip("BetaModeButton", MaintainerModes.Tooltip(MaintainerMode.Beta, beta));
-            this.SetTip("SystemsModeButton", MaintainerModes.Tooltip(MaintainerMode.Systems, systems, needingPlace));
-            this.SetTip("AdminModeButton", MaintainerModes.Tooltip(MaintainerMode.Admin, null));
+            // *** NO TOOLTIPS ON THE FOUR BUTTONS (owner request, 2026-09-30: "please remove the
+            // title - no need to see it"). *** They said what each screen is and what its badge
+            // counts; the labels and the badges say it well enough.
+
+            // The tab's own badge in CRT's row of tabs: the two attention badges added up.
+            this.TabAttention = review + (beta ?? 0);
+            this.thisShowTabBadge?.Invoke(this.TabAttention);
         }
+
+        // ###########################################################################################
+        // THE TAB'S BADGE IS MAIN'S TO DRAW (owner request, 2026-09-30) - it sits in CRT's row of
+        // tabs, which this control is not part of. Main hands over how to show it, and whether it can
+        // be seen at all (the tab turned on, CRT's window not minimised), which decides whether the
+        // minute check runs while the tab is off screen - QueueRefreshRules.MinuteCheck.
+        //
+        // Called by Main, like UseRememberedChoices; a tab a test builds on its own has no badge and
+        // checks nothing off screen.
+        // ###########################################################################################
+        internal void UseTabBadge(Func<bool> canBeSeen, Action<int> show)
+        {
+            this.thisTabBadgeCanBeSeen = canBeSeen ?? throw new ArgumentNullException(nameof(canBeSeen));
+            this.thisShowTabBadge = show ?? throw new ArgumentNullException(nameof(show));
+
+            show(this.TabAttention);
+        }
+
+        private Func<bool>? thisTabBadgeCanBeSeen;
+        private Action<int>? thisShowTabBadge;
+
+        // What the tab's badge counts now - MaintainerModes.TabAttention, as the buttons show it.
+        internal int TabAttention { get; private set; }
+
+        // ###########################################################################################
+        // WHETHER THE BADGE'S NUMBER IS A REAL ANSWER (code review, 2026-10-01). Read by Main for
+        // "Hide the Maintainer tab while no work is waiting" (MaintainerModes.TabIsShown).
+        //
+        // *** ZERO MEANS "NOTHING WAITS" ONLY ONCE BOTH LISTS HAVE BEEN READ. *** TabAttention starts
+        // at zero, and stays at zero when the server cannot be reached - so a launch that restores
+        // the remembered sign-in and then fails to read the queue would have read as "no work" and
+        // hidden the tab, with the only way back being the Configuration tab. The number is trusted
+        // only while somebody is signed in AND the queue and the BETA list have each been read at
+        // least once since; a sign-in screen (including the 401 that empties the badge) is never
+        // "no work", so the way back in stays on offer.
+        // ###########################################################################################
+        internal bool BadgeKnown => this.thisSession is not null && this.thisQueueKnown && this.thisBetaKnown;
+
+        private bool thisQueueKnown;
 
         private void SetBadge(string badge, string text, string? value)
         {
@@ -180,12 +239,6 @@ namespace CRT
                 block.Text = value ?? string.Empty;
 
             this.SetShown(badge, value is not null);
-        }
-
-        private void SetTip(string button, string tip)
-        {
-            if (this.FindControl<Button>(button) is Button control)
-                ToolTip.SetTip(control, tip);
         }
 
         // The badge a button shows, or null when it shows none - for tests.
@@ -215,25 +268,46 @@ namespace CRT
 
             this.SystemDetail.Initialize(this.thisClient, this.thisSession);
             this.SystemDetail.AfterPlacementSaved = this.AfterPlacementSavedAsync;
-            this.SystemDetail.AfterPoolChange = this.AfterPoolChangeAsync;
+            this.SystemDetail.AfterSent = this.OpenSentSubmissionAsync;
+            this.SystemDetail.AfterPublished = this.AfterSystemChangePublishedAsync;
 
+            this.MyAccountDetail.Initialize(this.thisClient, this.thisSession);
+
+            this.MaintainerPoolAdmin.Initialize(this.thisClient, this.thisSession);
+            this.MaintainerPoolAdmin.AfterPoolChange = this.AfterPoolChangeAsync;
+            this.SystemOrderAdmin.Initialize(this.thisClient, this.thisSession);
             this.UnusedFilesAdmin.Initialize(this.thisClient, this.thisSession);
+            this.RebuildManifestsAdmin.Initialize(this.thisClient, this.thisSession);
+            this.SystemDeletionAdmin.Initialize(this.thisClient, this.thisSession);
+            this.SystemDeletionAdmin.AfterDelete = this.AfterSystemDeletedAsync;
+            this.ApiUsageAdmin.Initialize(this.thisClient, this.thisSession);
+            this.DataResetAdmin.Initialize(this.thisClient, this.thisSession);
+            this.DataResetAdmin.AfterReset = this.AfterSystemDeletedAsync;
         }
 
         // ###########################################################################################
-        // Signed out: every screen's list and panel goes with the session, and the next sign-in - as
-        // whoever it is - starts on Review with nothing of the previous account's on screen.
+        // Signed out: every screen's list and panel goes with the session - "My account" with every
+        // box emptied - and the next sign-in, as whoever it is, starts on Review with nothing of the
+        // previous account's on screen, and the administrator's entries hidden until the server says
+        // otherwise.
         // ###########################################################################################
         private void ResetScreens()
         {
-            this.CloseFilesWindow();
+            this.ResetSubmissionViews();
             this.ClearBeta();
             this.ClearSystems();
-            this.ClearAdmin();
+            this.ClearAccountScreen();
 
             this.BetaDetail.Initialize(null, null);
             this.SystemDetail.Initialize(null, null);
+            this.MyAccountDetail.Initialize(null, null);
+            this.MaintainerPoolAdmin.Initialize(null, null);
+            this.SystemOrderAdmin.Initialize(null, null);
             this.UnusedFilesAdmin.Initialize(null, null);
+            this.RebuildManifestsAdmin.Initialize(null, null);
+            this.SystemDeletionAdmin.Initialize(null, null);
+            this.ApiUsageAdmin.Initialize(null, null);
+            this.DataResetAdmin.Initialize(null, null);
 
             this.thisMode = MaintainerMode.Review;
             this.SetAdministrator(false);
@@ -266,6 +340,18 @@ namespace CRT
         private SystemView SystemDetail => this.FindControl<SystemView>("SystemDetailView")!;
 
 
+        private MaintainerPoolView MaintainerPoolAdmin => this.FindControl<MaintainerPoolView>("MaintainerPoolAdminView")!;
+
+        private SystemOrderView SystemOrderAdmin => this.FindControl<SystemOrderView>("SystemOrderAdminView")!;
+
         private UnusedFilesView UnusedFilesAdmin => this.FindControl<UnusedFilesView>("UnusedFilesAdminView")!;
+
+        private RebuildManifestsView RebuildManifestsAdmin => this.FindControl<RebuildManifestsView>("RebuildManifestsAdminView")!;
+
+        private SystemDeletionView SystemDeletionAdmin => this.FindControl<SystemDeletionView>("SystemDeletionAdminView")!;
+
+        private ApiUsageView ApiUsageAdmin => this.FindControl<ApiUsageView>("ApiUsageAdminView")!;
+
+        private DataResetView DataResetAdmin => this.FindControl<DataResetView>("DataResetAdminView")!;
     }
 }

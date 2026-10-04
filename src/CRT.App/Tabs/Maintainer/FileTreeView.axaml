@@ -146,6 +146,12 @@
                                            FontWeight="{Binding Weight}"
                                            TextDecorations="{Binding Decorations}"
                                            VerticalAlignment="Center" />
+                                <!-- The file's size (owner request, 2026-10-04: sizes "everywhere"). -->
+                                <TextBlock Text="{Binding Size}"
+                                           FontSize="11"
+                                           Opacity="0.6"
+                                           IsVisible="{Binding Size, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           VerticalAlignment="Center" />
                                 <Border Classes="Pill"
                                         Classes.Added="{Binding IsAdded}"
                                         Classes.Changed="{Binding IsChanged}"

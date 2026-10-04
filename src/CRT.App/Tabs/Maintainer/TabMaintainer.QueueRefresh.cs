@@ -29,12 +29,27 @@ namespace CRT
     // THE OTHER SCREENS' LISTS COME WITH IT (2026-09-27): the BETA list and the systems are read on
     // the same check, whichever screen is shown, so the buttons' badges stay right - each keeping
     // its own "never disturb what is open" rule (TabMaintainer.Beta.cs, .Systems.cs).
+    //
+    // OFF SCREEN, THE BADGE'S TWO LISTS ONLY (owner request, 2026-09-30): the tab's badge in CRT's
+    // row of tabs counts the queue and the BETA list, so while it can be seen those two are read
+    // every minute with the tab on another tab or CRT behind another window - the same background
+    // reads, the same rules. QueueRefreshRules.MinuteCheck decides which.
     // ###########################################################################################
     public partial class TabMaintainer
     {
         private DispatcherTimer? thisQueueTimer;
         private DateTimeOffset? thisQueueAskedUtc;
         private bool thisBackgroundRefreshRunning;
+
+        // Whether the check running now is the badge's two lists only, and whether a full check was
+        // asked for meanwhile - see RefreshQueueInBackgroundAsync.
+        private bool thisBackgroundBadgesOnly;
+        private bool thisEverythingPending;
+
+        // When EVERYTHING was last read - not just the badge's two lists. Coming back to the tab
+        // checks against this, so the first look after a launch spent off screen reads the Systems
+        // overview and the drop-down listing, however recently the badge was brought up to date.
+        private DateTimeOffset? thisEverythingAskedUtc;
 
         // CRT's window while this tab is attached to it - held so its Activated handler is taken
         // off the same window it was put on.
@@ -51,6 +66,9 @@ namespace CRT
         // ###########################################################################################
         private bool IsOnScreenAndInFront => this.thisQueueCheckWindow is { IsActive: true };
 
+        // This tab on screen, whether or not CRT's window is in front - see above.
+        private bool IsOnScreen => this.thisQueueCheckWindow is not null;
+
         private void StartQueueChecks()
         {
             if (this.thisQueueTimer is null)
@@ -58,8 +76,20 @@ namespace CRT
                 this.thisQueueTimer = new DispatcherTimer { Interval = QueueRefreshRules.PollInterval };
                 this.thisQueueTimer.Tick += async (_, _) =>
                 {
-                    if (this.IsOnScreenAndInFront)
-                        await this.RefreshQueueInBackgroundAsync();
+                    switch (QueueRefreshRules.MinuteCheck(this.IsOnScreenAndInFront, this.thisTabBadgeCanBeSeen?.Invoke() == true))
+                    {
+                        case QueueCheck.Everything:
+                            await this.RefreshQueueInBackgroundAsync();
+                            break;
+
+                        case QueueCheck.BadgesOnly:
+                            await this.RefreshBadgesInBackgroundAsync();
+
+                            // The entry the tab will open on, read again when it changed
+                            // (TabMaintainer.Prefetch.cs).
+                            await this.PrefetchEntryToOpenAsync();
+                            break;
+                    }
                 };
             }
 
@@ -80,10 +110,36 @@ namespace CRT
 
             this.thisQueueCheckWindow = TopLevel.GetTopLevel(this) as Window;
 
+            // Shown: the screen it opens on is decided anew - Systems when nothing waits
+            // (TabMaintainer.OpenOnEntry.cs).
+            if (this.thisQueueCheckWindow is not null)
+                this.BeginOpening();
+
             if (this.thisQueueCheckWindow is not null)
                 this.thisQueueCheckWindow.Activated += this.OnQueueCheckWindowActivated;
 
-            Dispatcher.UIThread.Post(async () => await this.CheckQueueIfDueAsync());
+            // Coming back to the tab also opens the screen's entry when nothing is open - still on
+            // screen by then, or it is not this tab's moment (TabMaintainer.OpenOnEntry.cs) - and
+            // reads a Files view marked stale while the tab was away (TabMaintainer.Files.cs).
+            //
+            // *** A QUEUE ALREADY READ OPENS ITS ENTRY FIRST, THE CHECK AFTER (owner request,
+            // 2026-10-02). *** The check reads the Systems overview too, which the server walks
+            // both data trees for, and the entry waited for all of it. With the queue the badge
+            // read - and the entry itself read ahead (TabMaintainer.Prefetch.cs) - it opens at
+            // once; the check then runs under the rules every check keeps for what is open.
+            Dispatcher.UIThread.Post(async () =>
+            {
+                if (this.IsOnScreen && this.thisQueueKnown)
+                    this.SelectOnEntry();
+
+                await this.CheckQueueIfDueAsync();
+
+                if (this.IsOnScreen)
+                {
+                    this.SelectOnEntry();
+                    await this.ShowFilesViewIfStaleAsync();
+                }
+            });
         }
 
         private void DetachQueueChecks()
@@ -92,6 +148,9 @@ namespace CRT
                 this.thisQueueCheckWindow.Activated -= this.OnQueueCheckWindowActivated;
 
             this.thisQueueCheckWindow = null;
+
+            // Off screen, nothing is opened - an opening left undecided stays so.
+            this.EndOpening();
         }
 
         private async void OnQueueCheckWindowActivated(object? sender, EventArgs e) => await this.CheckQueueIfDueAsync();
@@ -99,19 +158,35 @@ namespace CRT
         private async System.Threading.Tasks.Task CheckQueueIfDueAsync()
         {
             if (this.thisQueueTimer is { IsEnabled: true } &&
-                QueueRefreshRules.IsDue(this.thisQueueAskedUtc, DateTimeOffset.UtcNow, QueueRefreshRules.ActivationGap))
+                QueueRefreshRules.IsDue(this.thisEverythingAskedUtc, DateTimeOffset.UtcNow, QueueRefreshRules.ActivationGap))
             {
                 await this.RefreshQueueInBackgroundAsync();
             }
         }
 
+        // ###########################################################################################
         // One background check at a time; an explicit refresh never waits for one.
+        //
+        // *** A FULL CHECK THAT ARRIVES DURING A BADGES-ONLY ONE IS DEFERRED, NOT DROPPED (code
+        // review, 2026-10-01). *** The two share the one guard. A maintainer who switched to the tab
+        // while the off-screen badge check was mid-flight asked for everything (the Systems
+        // overview, the drop-down listing) - and the guard returned at once with nothing read and
+        // nothing remembered, so the screen they had just opened rendered from the last full check
+        // until the next minute tick. It is now remembered, and runs the moment the badge check ends.
+        // A full check blocked by ANOTHER full check is not remembered: that one reads the same.
+        // ###########################################################################################
         private async System.Threading.Tasks.Task RefreshQueueInBackgroundAsync()
         {
             if (this.thisBackgroundRefreshRunning)
+            {
+                if (this.thisBackgroundBadgesOnly)
+                    this.thisEverythingPending = true;
+
                 return;
+            }
 
             this.thisBackgroundRefreshRunning = true;
+            this.thisEverythingAskedUtc = DateTimeOffset.UtcNow;
 
             try
             {
@@ -121,6 +196,43 @@ namespace CRT
             finally
             {
                 this.thisBackgroundRefreshRunning = false;
+            }
+        }
+
+        // The badge's two lists, and nothing else - off screen, and at launch
+        // (TabMaintainer.Session.cs). Shares the one-at-a-time guard with the full check.
+        private async System.Threading.Tasks.Task RefreshBadgesInBackgroundAsync()
+        {
+            if (this.thisBackgroundRefreshRunning)
+                return;
+
+            this.thisBackgroundRefreshRunning = true;
+            this.thisBackgroundBadgesOnly = true;
+
+            try
+            {
+                await this.RefreshQueueAsync(background: true);
+                await this.RefreshBetaAsync(background: true);
+            }
+            finally
+            {
+                this.thisBackgroundBadgesOnly = false;
+                this.thisBackgroundRefreshRunning = false;
+            }
+
+            // The full check asked for meanwhile, now that the guard is free.
+            //
+            // *** AND THE ENTRY THE SCREEN OPENS ON (code review, 2026-10-01). *** The full check is
+            // deferred because the tab was just shown - and AttachQueueChecks then ran SelectOnEntry
+            // against a queue not read yet, so the first look after launch opened on nothing. The
+            // lists are here now; still on screen, it is chosen now.
+            if (this.thisEverythingPending)
+            {
+                this.thisEverythingPending = false;
+                await this.RefreshQueueInBackgroundAsync();
+
+                if (this.IsOnScreen)
+                    this.SelectOnEntry();
             }
         }
 

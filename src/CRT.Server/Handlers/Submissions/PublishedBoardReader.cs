@@ -64,8 +64,26 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
-            PublishedBoardLocation location = PublishedBoardLocator.Locate(dataTreeRoot, manifest);
+            return await this.ReadAsync(PublishedBoardLocator.Locate(dataTreeRoot, manifest), manifest.SystemId, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
+        // ###########################################################################################
+        // The same, for a system named by its id rather than by a submission - the Systems screen's
+        // Board data and Files views (2026-10-03). Located by PublishedBoardLocator.LocateSystem, the
+        // rule the review queue tells a new system by.
+        // ###########################################################################################
+        public Task<BoardData?> TryReadSystemAsync(
+            string dataTreeRoot,
+            string systemId,
+            CancellationToken cancellationToken = default) =>
+            this.ReadAsync(PublishedBoardLocator.LocateSystem(dataTreeRoot, systemId), systemId, cancellationToken);
+
+        private async Task<BoardData?> ReadAsync(
+            PublishedBoardLocation location,
+            string? systemId,
+            CancellationToken cancellationToken)
+        {
             if (!location.Exists)
             {
                 // Logged at INFORMATION rather than WARNING: a new system is an ordinary and
@@ -73,7 +91,7 @@ namespace CRT.Server.Handlers.Submissions
                 // warnings.
                 this.thisLogger.LogInformation(
                     "No published board for {SystemId}; treating as a new system.",
-                    manifest.SystemId);
+                    systemId);
 
                 return null;
             }
@@ -97,7 +115,7 @@ namespace CRT.Server.Handlers.Submissions
                 this.thisLogger.LogError(
                     exception,
                     "The published board for {SystemId} at {Path} could not be read.",
-                    manifest.SystemId,
+                    systemId,
                     location.WorkbookPath);
 
                 throw;

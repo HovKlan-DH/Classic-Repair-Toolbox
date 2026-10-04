@@ -1,6 +1,7 @@
 ﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:CRT"
+             xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
              x:Class="CRT.TabConfiguration">
 
 	<UserControl.Resources>
@@ -36,6 +37,37 @@
 
 		<Style Selector="ComboBoxItem:selected:pointerover">
 			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
+		</Style>
+
+		<!-- A SECTION HEADING, AND THE LINE THAT SEPARATES IT FROM THE SECTION ABOVE (owner request,
+		     2026-10-01: "a horisontal divider between each of the "topics" ... so they are grouped
+		     together and by then maybe more clear").
+
+		     The heading and its line are ONE control: a Border carrying the heading as its content
+		     and a 1px top edge. Spacing alone had to carry the grouping before, and with twelve
+		     sections of chequerboard check boxes that reads as one long list. A separate Separator
+		     per heading would be a second element to keep beside each one, and the StackPanel's
+		     Spacing would then sit between the line and the words it belongs to.
+
+		     The FIRST heading drops the line (Classes="SectionHeading First"): a rule above the top
+		     item separates it from the tab's own edge, not from a section. -->
+		<Style Selector="Border.SectionHeading">
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="0,1,0,0" />
+			<Setter Property="Margin" Value="0,12,0,0" />
+			<Setter Property="Padding" Value="0,12,0,0" />
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+		</Style>
+
+		<Style Selector="Border.SectionHeading.First">
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Margin" Value="0" />
+			<Setter Property="Padding" Value="0" />
+		</Style>
+
+		<Style Selector="Border.SectionHeading > TextBlock">
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="FontWeight" Value="SemiBold" />
 		</Style>
 
 		<!-- "Circle-question" (fa-regular fa-circle-question) help icon that links to an external help
@@ -98,10 +130,9 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top">
 
-			<TextBlock Text="Appearance"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,0,0,4" />
+			<Border Classes="SectionHeading First">
+				<TextBlock Text="Appearance" />
+			</Border>
 
 			<TextBlock Text="Theme" />
 
@@ -117,10 +148,9 @@
                     HorizontalAlignment="Left"
                     Click="OnReloadUserPreferenceThemeClick" />
 
-			<TextBlock Text="Behaviour"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Behaviour" />
+			</Border>
 
 			<CheckBox x:Name="MultipleInstancesForComponentPopupCheckBox"
 					  Content="Open multiple component info windows" />
@@ -132,17 +162,18 @@
 					  Content="Remember thumbnail window settings per board"
 					  IsEnabled="False" />
 
-			<TextBlock Text="Application Update"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Application and data updates" />
+			</Border>
 
 			<CheckBox x:Name="CheckDataOnLaunchCheckBox"
-                      Content="Check for new or updated data at application launch" />
+                      Content="{x:Static data:ConfigurationWording.CheckDataOnLaunchCheckBox}" />
 
+			<!-- No warning text and no red any more (owner request, 2026-10-01). It read as an error
+			     rather than as a choice, and the tooltip says what BETA data is for. -->
 			<CheckBox x:Name="DownloadDataFromTestSourceCheckBox"
-					  Content="Download data from BETA source (only use in agreement with developer or use on your own risk)"
-					  Foreground="{DynamicResource Text_Fail_Fg}" />
+					  Content="{x:Static data:ConfigurationWording.BetaSourceCheckBox}"
+					  ToolTip.Tip="BETA data is newly approved data that has not been released to everybody yet. Tick this to check your own submission after a maintainer has approved it, then untick it to go back to the stable source" />
 
 			<CheckBox x:Name="AllowDeletionOfOrphanAndNonUsedFilesCheckBox"
 					  Content="Delete orphan and non-used files"
@@ -193,10 +224,9 @@
 				</Button>
 			</StackPanel>
 
-			<TextBlock Text="External tooling availability"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<Border Classes="SectionHeading">
+				<TextBlock Text="External tooling availability" />
+			</Border>
 
 			<CheckBox x:Name="EnableNetworkConnectedOscilloscopeTabCheckBox"
                       Content="Enable network connected oscilloscope tab" />
@@ -226,10 +256,9 @@
 			<CheckBox x:Name="EnableMiniproExperimentalDemoModeCheckBox"
                       Content="Enable MiniPro programmer simulated demo mode (only required for CRT development)" />
 
-			<TextBlock Text="Workbooks"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Workbooks" />
+			</Border>
 
 			<StackPanel Orientation="Horizontal"
 						Spacing="4"
@@ -256,9 +285,11 @@
 			<TextBlock Text="Scope in Workbooks tab:"
                        Margin="0,8,0,0" />
 
+			<!-- Not indented (owner request, 2026-10-02): the radio buttons line up with the label
+			     above them and with every check box in this section. -->
 			<StackPanel Orientation="Vertical"
 						Spacing="4"
-						Margin="16,4,0,0">
+						Margin="0,4,0,0">
 				<RadioButton x:Name="WorkbooksScopeAllBoardsRadioButton"
 							 GroupName="WorkbooksScope"
 							 Content="Show all workbooks" />
@@ -276,22 +307,39 @@
                       Margin="0,4,0,0"
                       ToolTip.Tip="Pick the country you live in; its currency is shown beside every cost in a workbook, and in exported PDF and ZIP documents" />
 
-			<TextBlock Text="Drafts"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<!-- DRAFTS AND THE MAINTAINER TAB ARE ONE SECTION (owner request, 2026-10-01: "I think
+			     that the "Draft" checkbox and the maintainer things belongs together"). Both are
+			     about contributing data rather than about repairing a board with it: one decides
+			     whether you see your own unpublished work, the other whether you can review other
+			     people's. Neither means anything to a user who only reads the data. -->
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Contributing and maintaining data" />
+			</Border>
 
-			<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
-                      Content="View boards as officially published (hide my own local drafts)"
-                      ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a system where you have unpublished local edits" />
-
-			<!-- The Maintainer tab (2026-09-29: the separate CRT Maintainer application became a tab).
-			     Off by default - it needs a maintainer account. Laid out like the Workbooks section:
-			     the check box and its "?" share a row. -->
-			<TextBlock Text="Maintainer"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Margin="0,16,0,4" />
+			<!-- Renamed, and given its own help page (owner request, 2026-10-02): "officially
+			     published" did not say WHERE the board then comes from. -->
+			<StackPanel Orientation="Horizontal"
+						Spacing="4"
+						HorizontalAlignment="Left">
+				<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
+						  Content="View boards as officially coming from online source (hide my local draft changes)"
+						  VerticalAlignment="Center"
+						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a system where you have unpublished local edits" />
+				<Button x:Name="ViewOfficialPublishedOnlyHelpButton"
+						Classes="HelpIconButton"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Open help page for viewing boards as they come from the online source"
+						Click="OnViewOfficialPublishedOnlyHelpClick">
+					<TextBlock Text="&#xf059;"
+							   Width="22"
+							   Height="22"
+							   FontFamily="{StaticResource FontAwesomeRegular}"
+							   FontSize="18"
+							   TextAlignment="Center"
+							   HorizontalAlignment="Center"
+							   VerticalAlignment="Center" />
+				</Button>
+			</StackPanel>
 
 			<StackPanel Orientation="Horizontal"
 						Spacing="4"
@@ -315,10 +363,26 @@
 				</Button>
 			</StackPanel>
 
-			<TextBlock Text="For maintainers of the hardware data. The tab needs a maintainer account, given by the administrator through an invitation."
+			<!-- Hides the tab again while nothing is waiting (owner request, 2026-10-01). Directly
+			     under "Enable Maintainer tab" and ABOVE the explanatory line, and NOT indented
+			     (owner request, same day) - the two check boxes read as one pair, with the sentence
+			     that explains them both below. The rule, including why a tab being looked at is
+			     never taken away mid-review, is MaintainerModes.TabIsShown. -->
+			<CheckBox x:Name="ShowMaintainerTabOnlyWhenWorkWaitingCheckBox"
+					  Content="Hide the Maintainer tab while no work is waiting for me"
+					  ToolTip.Tip="The tab appears only while its badge shows a number - a submission to review, or a system waiting to go from BETA to stable. A tab you are already on stays until you leave it" />
+
+			<TextBlock Text="The Maintainer tab requires a maintainer account, given by the administrator through an invitation."
                        TextWrapping="Wrap"
                        Opacity="0.7"
                        Margin="0,2,0,0" />
+
+			<!-- A topic of its own, so it gets its own divider and heading like the rest (owner
+			     request, 2026-10-01). Without one these three buttons read as belonging to the
+			     Maintainer settings above them, which they have nothing to do with. -->
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Application related files" />
+			</Border>
 
 			<!-- Three separate buttons rather than one, because these are three different folders
 			     and two of them can be moved elsewhere by the data-root and workbooks-root
@@ -327,7 +391,7 @@
 			     group rather than a ragged stack. -->
 			<Button x:Name="OpenDataFolderButton"
                     Content="Open data folder"
-                    Margin="0,16,0,0"
+                    Margin="0,0,0,0"
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"

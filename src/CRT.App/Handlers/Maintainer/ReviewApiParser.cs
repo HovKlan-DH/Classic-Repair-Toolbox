@@ -27,7 +27,8 @@ namespace Handlers.MaintainerHandling
     //
     // FILE MAP (split 2026-09-27, past ~1,500 lines): this file - sign-in, the queue, one
     // submission, decisions, messages and the shared readers; ReviewApiParser.Systems.cs - the
-    // Systems screen; ReviewApiParser.Production.cs - "Beta > Prod" and unused files. The records
+    // Systems screen; ReviewApiParser.Production.cs - "Beta > Prod" and unused files;
+    // ReviewApiParser.Account.cs - the signed-in maintainer's own account. The records
     // they read into are ReviewApiViews.cs.
     // ###########################################################################################
     public static partial class ReviewApiParser

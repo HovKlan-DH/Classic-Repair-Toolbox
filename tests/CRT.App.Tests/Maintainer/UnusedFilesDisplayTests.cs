@@ -74,9 +74,12 @@ public sealed class UnusedFilesDisplayTests
     }
 
     [Fact]
-    public void Production_is_named_as_production()
+    public void The_stable_tree_is_named_as_the_stable_data()
     {
-        Assert.Equal("production", UnusedFilesDisplay.TreeName("production"));
+        // "the stable data" rather than "production" since 2026-10-01 (owner decision): the two
+        // sources are named "stable" and "BETA" everywhere a user reads them. The API value stays
+        // "production" - only the words change.
+        Assert.Equal("the stable data", UnusedFilesDisplay.TreeName("production"));
         Assert.Equal("the BETA data", UnusedFilesDisplay.TreeName("beta"));
     }
 
@@ -116,5 +119,24 @@ public sealed class UnusedFilesDisplayTests
         Assert.Equal("production", result!.Tree);
         Assert.Equal(["a.png"], result.Removed);
         Assert.Null(result.NotDoneBecause);
+    }
+
+    // ###########################################################################################
+    // The list as the file tree draws it (owner request, 2026-10-04): each file as it is - nothing
+    // about a change - opened from the tree it was found in, with its size.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("beta", SystemFileSource.Beta)]
+    [InlineData("production", SystemFileSource.Production)]
+    public void The_list_becomes_the_trees_entries_opened_from_where_it_was_read(string tree, SystemFileSource from)
+    {
+        IReadOnlyList<SystemFileEntry> entries = UnusedFilesDisplay.TreeEntries(
+            new UnusedFileListing(tree, true, [], 2, 22, 900, [new UnusedFileEntry("Commodore/Shared files/6510.jpg", 46_182)]));
+
+        SystemFileEntry entry = Assert.Single(entries);
+        Assert.Equal("Commodore/Shared files/6510.jpg", entry.Path);
+        Assert.Equal(SystemFileChange.Unchanged, entry.Change);
+        Assert.Equal(from, entry.OpenFrom);
+        Assert.Equal(46_182, entry.SizeBytes);
     }
 }

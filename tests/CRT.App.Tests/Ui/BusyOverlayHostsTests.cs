@@ -55,27 +55,46 @@ public sealed class BusyOverlayHostsTests : IDisposable
             Assert.NotNull(BusyOverlay.For(new MySubmissionsWindow()));
             Assert.NotNull(BusyOverlay.For(new SystemFilesWindow()));
             Assert.NotNull(BusyOverlay.For(new ComponentContributionWindow()));
+
+            // (The Maintainer tab's "Your account" window was here from 2026-10-03, with an overlay
+            // of its own. Since 2026-10-04 it is "My account", a panel of the tab, whose waits run
+            // under Main's like the rest of the tab - MyAccount_waits_under_the_tabs_window_overlay.)
         });
     }
 
     // ###########################################################################################
-    // Main and the Maintainer tab's file tree window (2026-09-28: opening a file fetches it first -
-    // a window of its own, so an overlay of its own). Each overlay must be a direct child of the
-    // window's ROOT grid: it fades its siblings when it dims, so one nested deeper would fade only
-    // part of the window.
+    // "My account" is a panel of the Maintainer tab since 2026-10-04, not a dialog: a change of name,
+    // address or password waits under the overlay of the window the tab is in - CRT's own - so the
+    // whole window is held while it runs, not a dialog over it.
     // ###########################################################################################
     [Fact]
-    public void The_main_window_and_the_file_tree_window_carry_the_overlay_over_their_whole_content()
+    public void MyAccount_waits_under_the_tabs_window_overlay()
     {
         UiTest.Run(() =>
         {
-            foreach (Window window in new Window[] { new CRT.Main(), new FileTreeWindow() })
-            {
-                BusyOverlay? overlay = BusyOverlay.For(window);
+            var tab = new TabMaintainer();
+            BusyOverlay overlay = ClassicRepairToolbox.Tests.Ui.Maintainer.MaintainerTabHost.AddOverlay(tab);
 
-                Assert.NotNull(overlay);
-                Assert.Same(window.Content, overlay.Parent);
-            }
+            Assert.Same(overlay, BusyOverlay.For(tab.FindControl<MyAccountView>("MyAccountPanel")));
+        });
+    }
+
+    // ###########################################################################################
+    // Main's overlay must be a direct child of the window's ROOT grid: it fades its siblings when
+    // it dims, so one nested deeper would fade only part of the window. (The Maintainer tab's file
+    // tree window was checked here too until 2026-09-30, when the tree became the submission's
+    // Files view - its waits, opening a file, now run under this one.)
+    // ###########################################################################################
+    [Fact]
+    public void The_main_window_carries_the_overlay_over_its_whole_content()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main();
+            BusyOverlay? overlay = BusyOverlay.For(window);
+
+            Assert.NotNull(overlay);
+            Assert.Same(window.Content, overlay.Parent);
         });
     }
 
