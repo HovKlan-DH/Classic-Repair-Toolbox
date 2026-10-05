@@ -33,6 +33,14 @@ namespace CRT.Server.Handlers.Submissions
     //
     // Steps 3 to 7 run under PublishLock, so no publish can land in BETA between the check in
     // step 4 and the copy in step 7.
+    //
+    // *** FOR NOW, ONLY THE ADMINISTRATOR PUBLISHES (owner request, 2026-10-05). *** While
+    // ServerOptions.ProductionPublishingAdministratorsOnly is on (its default), step 3 refuses a
+    // maintainer with CRT.Data's StablePublishing sentence, the plan carries it as its refusal, and
+    // the list never says a system awaits a maintainer - it says it waits for the administrator
+    // (WaitsForAdministrator), and always awaits an administrator. A shared-file replacement needs
+    // the administrator alone, and is still said to replace a shared file. Pushing back and
+    // rejecting (BetaRollbackFlow) are untouched.
     // ###########################################################################################
     public sealed class ProductionPromotionFlow
     {
@@ -154,26 +162,42 @@ namespace CRT.Server.Handlers.Submissions
                 discarded = new HashSet<string>(StringComparer.Ordinal);
             }
 
+            bool administratorsOnly = options.ProductionPublishingAdministratorsOnly;
+
             return systems
-                .Select(system => new ProductionListEntry(
-                    system.SystemId,
-                    system.Manufacturer,
-                    system.Hardware,
-                    system.Board,
-                    BetaRevision: system.CurrentRevision,
-                    BetaContentHash: system.ContentHash,
-                    system.ProductionRevision,
-                    system.ProductionPublishedUtc,
+                .Select(system =>
+                {
+                    // Every system listed is one this account may publish to BETA (ListAwaitingAsync);
+                    // to stable, while only administrators publish there, only if it is one.
+                    bool mayPublishToStable = ReviewAuthority.CanPublishToProduction(access, system.SystemId, administratorsOnly);
 
-                    // Whether it waits for THIS account or for the other approver - the BETA badge
-                    // (2026-09-27).
-                    AwaitsYou: ProductionPromotionRules.AwaitsAccount(
-                        approvals.TryGetValue(system.SystemId, out IReadOnlyList<GivenApproval>? given) ? given : [],
-                        access.Account.Id),
+                    return new ProductionListEntry(
+                        system.SystemId,
+                        system.Manufacturer,
+                        system.Hardware,
+                        system.Board,
+                        BetaRevision: system.CurrentRevision,
+                        BetaContentHash: system.ContentHash,
+                        system.ProductionRevision,
+                        system.ProductionPublishedUtc,
 
-                    // A contributor whose work this carries discarded their own draft (2026-09-28) -
-                    // marked on the list itself, so it is seen before the system is even opened.
-                    CarriesDiscardedDraft: discarded.Contains(system.SystemId)))
+                        // Whether it waits for THIS account or for the other approver - the BETA badge
+                        // (2026-09-27). Never for a maintainer while only administrators publish to
+                        // stable (2026-10-05): the badge would count work they cannot do.
+                        AwaitsYou: mayPublishToStable &&
+                            ProductionPromotionRules.AwaitsAccount(
+                                approvals.TryGetValue(system.SystemId, out IReadOnlyList<GivenApproval>? given) ? given : [],
+                                access.Account.Id,
+                                administratorsOnly),
+
+                        // A contributor whose work this carries discarded their own draft (2026-09-28) -
+                        // marked on the list itself, so it is seen before the system is even opened.
+                        CarriesDiscardedDraft: discarded.Contains(system.SystemId),
+
+                        // ...and, for a maintainer shut out of the stable publish, WHY it is not
+                        // theirs: it waits for the administrator, not for "the other approver".
+                        WaitsForAdministrator: !mayPublishToStable);
+                })
                 .ToList();
         }
 
@@ -181,7 +205,7 @@ namespace CRT.Server.Handlers.Submissions
         // *** A BOARD COPIED TO PRODUCTION BY HAND IS NOT WAITING FOR PRODUCTION (code review,
         // 2026-09-29). *** The record says a system waits while its BETA content hash differs from
         // the one its last PROMOTION recorded - and a board the project owner copied into production
-        // by hand as root (DEPLOYMENT.md's own practice) was never promoted, so it stayed "waiting"
+        // by hand as root (as INSTALLING.md describes) was never promoted, so it stayed "waiting"
         // for ever: listed in Beta > Prod, and - through the one-in-BETA rule - blocking every new
         // approval of that system, with nothing telling the maintainer that a no-op "Publish to
         // production" would clear it.
@@ -284,7 +308,8 @@ namespace CRT.Server.Handlers.Submissions
                 return PromotionPlanOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
 
             ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
-            ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
+            ApprovalStatus approval = await this.ApprovalStatusAsync(
+                access, system, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
 
             // What the promotion would REMOVE from production, shown before anyone approves it.
             FileRemovalPreview removals = plan.CanPromote
@@ -297,6 +322,17 @@ namespace CRT.Server.Handlers.Submissions
                 options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId);
 
             string? refusal = ProductionPromotionFlow.RefusalFor(plan) ?? (listing.IsReady ? null : listing.Problem);
+
+            // Only the administrator publishes to stable, for now (2026-10-05). The plan is still
+            // shown in full - a maintainer may push the system back or reject it - but it carries
+            // the reason, so the publish button is off. Said after the plan's own refusal, which a
+            // maintainer can act on (placing the system, say).
+            if (!ReviewAuthority.CanPublishToProduction(access, system.SystemId, options.ProductionPublishingAdministratorsOnly))
+            {
+                refusal = refusal is null
+                    ? StablePublishing.AdministratorsOnlyMessage
+                    : $"{refusal} {StablePublishing.AdministratorsOnlyMessage}";
+            }
 
             return PromotionPlanOutcome.Planned(system, plan, refusal, approval) with { Removals = removals };
         }
@@ -348,6 +384,11 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanPublish(access, system.SystemId))
                 return PromotionOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
 
+            // Only the administrator publishes to stable, for now (owner request, 2026-10-05) -
+            // refused before anything is planned, and before an approval could be recorded.
+            if (!ReviewAuthority.CanPublishToProduction(access, system.SystemId, options.ProductionPublishingAdministratorsOnly))
+                return PromotionOutcome.Forbidden(StablePublishing.AdministratorsOnlyMessage);
+
             if (!ProductionPromotionRules.IsAwaitingProduction(system))
                 return PromotionOutcome.Conflict("The stable source already has this system as it is in BETA. There is nothing to publish.");
 
@@ -377,7 +418,8 @@ namespace CRT.Server.Handlers.Submissions
                 return PromotionOutcome.Refused(listing.Problem);
 
             // ---- 6. Is this the approval that publishes? --------------------------------------
-            ApprovalStatus approval = await this.ApprovalStatusAsync(access, system, plan, cancellationToken);
+            ApprovalStatus approval = await this.ApprovalStatusAsync(
+                access, system, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
 
             if (!approval.CanApprove)
                 return PromotionOutcome.Conflict(ApprovePublishFlow.WhyNot(approval, "publishing this to the stable source"));
@@ -627,14 +669,23 @@ namespace CRT.Server.Handlers.Submissions
         // Where publishing this system to production stands for this account: the same rule as a
         // submission (ApprovalRules), with "changes a shared file" read off the PLAN and the
         // approvals given against the BETA content hash the plan was made from.
+        //
+        // `administratorsOnly` (2026-10-05): while only administrators publish to stable, a
+        // shared-file change asks for no maintainer approval - nobody could give it, so the
+        // administrator's would wait for ever - and the administrator's alone publishes: ApprovalRules'
+        // "no maintainers" case. The shared-file fact itself is KEPT, so Required still names the
+        // administrator and the screen still says the publish replaces a shared file (code review,
+        // 2026-10-05: collapsing it to "any one approval" took that line off the administrator's
+        // screen, before a publish that cannot be undone).
         // ###########################################################################################
         private async Task<ApprovalStatus> ApprovalStatusAsync(
             ReviewAccess? access,
             SystemRecord system,
             ProductionPromotionResult plan,
+            bool administratorsOnly,
             CancellationToken cancellationToken)
         {
-            bool hasMaintainers = plan.TouchesSharedFiles &&
+            bool hasMaintainers = plan.TouchesSharedFiles && !administratorsOnly &&
                 (await this.thisAccounts.GetMaintainersOfSystemAsync(system.SystemId, cancellationToken))
                     .Any(ReviewAuthority.CanGiveMaintainerApproval);
 

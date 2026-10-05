@@ -36,9 +36,11 @@ namespace Handlers.DataHandling
     // "# Revision date:" marker (see BoardDataReader), and the ONLY place in the app that does so.
     //
     // WHAT THESE STRINGS ACTUALLY LOOK LIKE, read out of the shipped boards in Assets/Data rather
-    // than assumed: "2026-May-12", "2026-July-19", "2026-August-21", "2026-September-20". That is
-    // yyyy-MMMM-dd with the FULL ENGLISH MONTH NAME - not ISO-8601. The test fixtures
-    // (BoardWorkbookBuilder) use "2026-01-15" instead, so both shapes are real and both are parsed.
+    // than assumed: "2026-May-12", "2026-July-19", "2026-August-21", "2026-September-20" - and, from
+    // the server's own stamp, "2026-October-4". That is yyyy-MMMM-d with the FULL ENGLISH MONTH NAME
+    // and a day of one OR two digits - not ISO-8601, and not "dd" (see AcceptedFormats). The test
+    // fixtures (BoardWorkbookBuilder) use "2026-01-15" instead, so both shapes are real and both are
+    // parsed.
     //
     // TWO TRAPS, both of which have a test named after them:
     //
@@ -58,13 +60,16 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class DraftRevisionComparer
     {
-        // Ordered most-likely-first. yyyy-MMMM-dd is what every shipped board actually uses;
-        // yyyy-MMM-dd covers an abbreviated month ("2026-Sep-20"); the two numeric forms cover the
-        // test fixtures and any contributor who wrote an ISO date.
+        // Ordered most-likely-first. yyyy-MMMM-d is what every board carries - the shipped ones
+        // ("2026-August-21") and the server's own stamp (BoardWorkbookStyle.FormatRevisionDate, which
+        // writes no leading zero: "2026-October-4"). A single "d" reads one OR two digits; "dd" read
+        // only two, so every board the server published on the 1st to the 9th failed to parse
+        // (2026-10-05). yyyy-MMM-d covers an abbreviated month ("2026-Sep-20"); the two numeric forms
+        // cover the test fixtures and any contributor who wrote an ISO date.
         private static readonly string[] AcceptedFormats =
         {
-            "yyyy-MMMM-dd",
-            "yyyy-MMM-dd",
+            "yyyy-MMMM-d",
+            "yyyy-MMM-d",
             "yyyy-MM-dd",
             "yyyy-M-d",
         };

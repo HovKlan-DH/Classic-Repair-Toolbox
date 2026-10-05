@@ -35,6 +35,9 @@ namespace Handlers.MaintainerHandling
         // The grey line under a system in the BETA screen's list (2026-09-27): where BETA and
         // production stand - and, when this account has already approved and it waits for the OTHER
         // approver, that too, since the row is dimmed for it (the queue's own wording).
+        //
+        // While only the administrator publishes to stable (2026-10-05), a maintainer's row is dimmed
+        // too, but they never approved it: it is "with the administrator" (code review, 2026-10-05).
         // ###########################################################################################
         public static string ListFooter(ProductionSystemRow system)
         {
@@ -42,6 +45,9 @@ namespace Handlers.MaintainerHandling
 
             string status = ProductionDisplay.SystemStatus(system);
             status = char.ToUpperInvariant(status[0]) + status[1..];
+
+            if (system.WaitsForAdministrator == true)
+                return $"{status} - with the administrator";
 
             return system.AwaitsYou == false ? $"{status} - with the other approver" : status;
         }

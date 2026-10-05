@@ -2,7 +2,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // What the Feedback tab says when a feedback did not get through (2026-10-03, when the feedback
-    // moved from the old PHP page to CRT.Server). The server answers each refusal with its own
+    // moved to CRT.Server). The server answers each refusal with its own
     // status - see CRT.Server's FeedbackEndpoints - and the ones a user can do something about get
     // a sentence saying what; the rest keep the old "check the logfile" line.
     // ###########################################################################################

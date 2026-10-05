@@ -146,6 +146,104 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
+        // Without addresses - an account that does not maintain the system (owner request,
+        // 2026-10-05: maintainers see email addresses only for their own systems)
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // A pool change is written "account 7 (anna@example.com)"; the account number is how its
+        // person is named without the address. Only the three pool actions carry one, and only in
+        // that shape - anything else names nobody rather than a wrong account.
+        // ###########################################################################################
+        [Theory]
+        [InlineData(SystemHistoryEvents.MaintainerAdded, "account 7 (anna@example.com)", 7L)]
+        [InlineData(SystemHistoryEvents.MaintainerRemoved, "account 7 (anna@example.com)", 7L)]
+        [InlineData(SystemHistoryEvents.InvitationAccepted, "account 12 (bo@example.com)", 12L)]
+        [InlineData(SystemHistoryEvents.MaintainerRemoved, "  account 7  ", 7L)]
+        [InlineData(SystemHistoryEvents.MaintainerRemoved, "anna@example.com", null)]
+        [InlineData(SystemHistoryEvents.MaintainerRemoved, "account x (anna@example.com)", null)]
+        [InlineData(SystemHistoryEvents.MaintainerRemoved, "", null)]
+        [InlineData(SystemHistoryEvents.Invited, "account 7 (anna@example.com)", null)]
+        [InlineData(SystemHistoryEvents.Placed, "account 7", null)]
+        public void A_pool_change_names_its_account_by_number(string action, string detail, long? expected)
+        {
+            Assert.Equal(expected, SystemHistoryRules.AccountNamedBy(new AuditEntry(1, "admin@example.com", action, C64, detail, Now)));
+        }
+
+        // ###########################################################################################
+        // The same history, with no "@" anywhere in it: a pool change names its person by their
+        // account (or nobody, for an account no longer there), an invitation - whose detail IS an
+        // address - says nothing, and a default detail that happens to carry an address is dropped.
+        // ###########################################################################################
+        [Fact]
+        public void Without_addresses_a_pool_change_names_its_person_by_account_and_an_invitation_says_nothing()
+        {
+            var named = new Dictionary<long, AccountRecord>
+            {
+                [1] = SystemHistoryRulesTests.Account(1, "Dennis"),
+                [7] = SystemHistoryRulesTests.Account(7, "Anna")
+            };
+
+            IReadOnlyList<AuditEntry> audit =
+            [
+                new(1, "admin@example.com", SystemHistoryEvents.MaintainerRemoved, C64, "account 7 (anna@example.com)", Now.AddMinutes(-5)),
+                new(1, "admin@example.com", SystemHistoryEvents.MaintainerAdded, C64, "account 99 (gone@example.com)", Now.AddMinutes(-4)),
+                new(1, "admin@example.com", SystemHistoryEvents.Invited, C64, "new@example.com", Now.AddMinutes(-3)),
+                new(1, "admin@example.com", SystemHistoryEvents.Placed, C64, "Commodore 64 / 250407", Now.AddMinutes(-2)),
+                new(1, "admin@example.com", SystemHistoryEvents.Placed, C64, "named after someone@example.com", Now.AddMinutes(-1)),
+            ];
+
+            IReadOnlyList<SystemHistoryEntry> history = SystemHistoryRules.Build([], named, audit, showAddresses: false);
+
+            Assert.Equal(
+                [
+                    (SystemHistoryEvents.Placed, (string?)null),
+                    (SystemHistoryEvents.Placed, "Commodore 64 / 250407"),
+                    (SystemHistoryEvents.Invited, null),
+                    (SystemHistoryEvents.MaintainerAdded, null),
+                    (SystemHistoryEvents.MaintainerRemoved, "Anna"),
+                ],
+                history.Select(entry => (entry.Event, entry.Detail)));
+
+            Assert.All(history, entry => Assert.Equal("Dennis", entry.Who));
+            Assert.DoesNotContain(history, entry => (entry.Who + entry.Detail + entry.Note).Contains('@'));
+        }
+
+        // ###########################################################################################
+        // Who did it, without an address: the name on their account; else the label when it is no
+        // address ("the contributor"); else nobody. A sending with no account behind it names nobody.
+        // ###########################################################################################
+        [Fact]
+        public void Without_addresses_an_actor_is_named_by_account_or_by_a_label_that_is_no_address()
+        {
+            var named = new Dictionary<long, AccountRecord> { [7] = SystemHistoryRulesTests.Account(7, "Anna") };
+
+            IReadOnlyList<AuditEntry> audit =
+            [
+                new(7, "anna@example.com", SystemHistoryEvents.Placed, C64, "Commodore 64 / 250407", Now.AddMinutes(-3)),
+                new(null, "the contributor", SystemHistoryEvents.DraftDiscarded, "#9", null, Now.AddMinutes(-2)),
+                new(null, "someone@example.com", SystemHistoryEvents.DraftDiscarded, "#9", null, Now.AddMinutes(-1)),
+            ];
+
+            SystemSubmissionRecord sent = new(
+                SystemHistoryRulesTests.Record(9, SubmissionState.Pending, Now.AddDays(-1)),
+                DecidedByMaintainer: false);
+
+            IReadOnlyList<SystemHistoryEntry> history = SystemHistoryRules.Build([sent], named, audit, showAddresses: false);
+
+            Assert.Equal(
+                [(string?)null, "the contributor", "Anna", null],
+                history.Select(entry => entry.Who));
+
+            // With addresses, the same rows say them.
+            IReadOnlyList<SystemHistoryEntry> shown = SystemHistoryRules.Build([sent], named, audit);
+
+            Assert.Equal(
+                [(string?)"someone@example.com", "the contributor", "anna@example.com", "sender9@example.com"],
+                shown.Select(entry => entry.Who));
+        }
+
+        // -----------------------------------------------------------------------------------
         // Through the real flows
         // -----------------------------------------------------------------------------------
 

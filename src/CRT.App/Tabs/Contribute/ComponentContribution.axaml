@@ -776,37 +776,6 @@
 					</Expander>
 				</Border>
 
-				<Border BorderBrush="{DynamicResource Panel_Border}"
-				        BorderThickness="1"
-				        CornerRadius="6"
-				        Padding="12"
-				        Margin="0,0,0,4">
-					<StackPanel Spacing="6">
-						<TextBlock Text="Note (optional)"
-						           FontSize="15"
-						           FontWeight="Bold" />
-						<TextBlock Text="Describe what you have changed, what was wrong or missing, and anything worth remembering when you come back to this draft or submit it later."
-						           FontSize="11"
-						           Foreground="{DynamicResource Fg}"
-						           TextWrapping="Wrap" />
-
-						<Grid RowDefinitions="Auto,Auto">
-							<TextBlock Grid.Row="0"
-							           Text="Worth documenting your specific board revision here, if the board has more than one."
-							           FontSize="11"
-							           Foreground="{DynamicResource Fg}"
-							           TextWrapping="Wrap" />
-							<TextBox Grid.Row="1"
-							         x:Name="MandatoryCommentTextBox"
-							         AcceptsReturn="True"
-							         TextWrapping="Wrap"
-							         MinHeight="180"
-							         Background="{DynamicResource Form_Bg}"
-							         Foreground="{DynamicResource Form_Fg}" />
-						</Grid>
-					</StackPanel>
-				</Border>
-
 			</StackPanel>
 		</ScrollViewer>
 

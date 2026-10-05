@@ -1,6 +1,6 @@
 [Wiki Home](Home)
 
-Move the data or workbooks folder elsewhere, and fake an update.
+Move the data, workbooks or drafts folder elsewhere, and fake an update.
 
 ---
 
@@ -24,34 +24,36 @@ Puts the downloaded data (schematics, board data, images - close to 1 GB) somewh
 Default if you do not use it:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data`
-* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Data`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Data`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data`
 
 Good to know:
 
 * Use a full path, not a relative one.
 * Do not end the path with `\` or `/`.
-* The folder is created if it does not exist. The first start then takes a while, as the data is copied into it.
-* Your settings, log and workbooks stay where they are - this moves the downloaded data only.
+* The folder is created if it does not exist. The first start then takes a while, as the data is copied (or downloaded) into it.
+* Your settings, log, workbooks and drafts stay where they are - this moves the downloaded data only.
 
 ## --workbooks-root
 
-Puts your workbooks (repair jobs) somewhere else - for example on a synced drive, so you have them on more than one machine.
+Puts your workbooks (your repairs) somewhere else - for example on a synced drive, so you have them on more than one machine.
 
 ```
 --workbooks-root=D:\Repairs
---workbooks-root="D:\My Repair Jobs"
+--workbooks-root="D:\My Repairs"
 ```
 
 Default if you do not use it:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Workbooks`
-* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Workbooks`
 
 Same rules as `--data-root` above.
 
 ## --drafts-root
 
-Puts your local, unpublished edits to hardware and board data somewhere else - the same idea as `--workbooks-root` above, but for drafted contributions rather than repair jobs.
+Puts your local, unpublished edits to hardware and board data somewhere else - the same idea as `--workbooks-root` above, but for drafted contributions rather than repairs.
 
 ```
 --drafts-root=D:\CRT-drafts
@@ -61,17 +63,18 @@ Puts your local, unpublished edits to hardware and board data somewhere else - t
 Default if you do not use it:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Drafts`
-* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Drafts`
 
 Same rules as `--data-root` above.
 
 ## --simulate-update
 
-Shows the "a new version is available" banner without a new version existing, so you can see what it looks like.
+Shows the "a new version is available" banner without a new version existing, so you can see what it looks like. The banner says `(simulated)` after the version.
 
 ```
 --simulate-update
---simulate-update=2.5.1-beta.2
+--simulate-update=3.0.1-beta.1
 ```
 
 Without a version number it pretends version `99.0.0` is available.
@@ -80,6 +83,6 @@ Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothi
 
 ## Which folders am I actually using?
 
-The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters below and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
+The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters above and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
 
-The log file also has a `Data root is [...]` line near the top, and a `Drafts root is [...]` line alongside it.
+There is no button for the drafts folder. The log file shows all three near the top: a `Data root is [...]` line, a `Drafts root is [...]` line, and a `Worklog loaded: [...] from [...]` line for the workbooks folder.

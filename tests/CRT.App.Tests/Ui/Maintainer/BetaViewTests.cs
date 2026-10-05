@@ -315,6 +315,57 @@ public sealed class BetaViewTests
         });
     }
 
+    // ###########################################################################################
+    // *** FOR NOW, ONLY THE ADMINISTRATOR PUBLISHES TO STABLE (owner request, 2026-10-05). *** The
+    // server sends a maintainer's plan with canPublish off and CRT.Data's StablePublishing sentence
+    // as its refusal - the constant CRT.Server.Tests holds the server's plan to - so the panel must
+    // say it, keep the tick and the publish off, and leave push back and reject on.
+    // ###########################################################################################
+    [Fact]
+    public void A_maintainer_is_told_only_the_administrator_publishes_to_stable_and_may_still_push_back()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BetaView();
+
+            window.ShowPlanForTests(
+                BetaViewTests.Plan(carrying: [], files: BetaViewTests.File("Commodore/C64/250407/Images/a.png"))
+                    with { CanPublish = false, Refusal = StablePublishing.AdministratorsOnlyMessage },
+                BetaViewTests.Row());
+
+            TextBlock message = window.FindControl<TextBlock>("MessageText")!;
+
+            Assert.True(message.IsVisible);
+            Assert.Equal(StablePublishing.AdministratorsOnlyMessage, message.Text);
+
+            Assert.False(window.FindControl<CheckBox>("CheckedInBetaCheckBox")!.IsEnabled);
+            Assert.False(window.FindControl<Button>("PublishButton")!.IsEnabled);
+            Assert.True(window.FindControl<Button>("RollBackButton")!.IsEnabled);
+            Assert.True(window.FindControl<Button>("RejectButton")!.IsEnabled);
+        });
+    }
+
+    // ###########################################################################################
+    // The tick quotes the Configuration tab's own check box, word for word. Its three Runs on
+    // separate lines put a space inside each quote - whitespace between inline Runs becomes one -
+    // so it named a box '" Download data ... "' (code review, 2026-10-05). A mixed-run TextBlock
+    // has no Text, so the label is read off its Inlines.
+    // ###########################################################################################
+    [Fact]
+    public void The_tick_quotes_the_configuration_check_box_exactly()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BetaView();
+
+            var label = (TextBlock)window.FindControl<CheckBox>("CheckedInBetaCheckBox")!.Content!;
+
+            Assert.Equal(
+                $"I have checked this board in CRT with the BETA data (Configuration: \"{ConfigurationWording.BetaSourceCheckBox}\"), and it is right.",
+                string.Concat(label.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text)));
+        });
+    }
+
     // With no system selected there is nothing to push back.
     [Fact]
     public void Push_back_is_off_with_no_system_selected()

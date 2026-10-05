@@ -9,8 +9,9 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // The feedback form as the server reads it - fed the very form CRT builds
     // (FeedbackContract.BuildForm), so a field renamed on one side fails here, and the form older
-    // CRTs send, written out by hand with the PHP page's names, so the contract cannot drift away
-    // from what is already installed (Apache forwards their /app-feedback/ posts here).
+    // CRTs send, written out by hand with the names they have always used, so the contract cannot
+    // drift away from what is already installed (Apache forwards their posts to the old feedback
+    // address here).
     // ###########################################################################################
     public sealed class FeedbackFormReaderTests : IDisposable
     {
@@ -85,8 +86,8 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(this.Incoming));
         }
 
-        // The PHP page's names and file name, written out literally: this is what every CRT already
-        // installed sends, and it must keep working once Apache forwards it here.
+        // The names and file name CRT has always sent, written out literally: this is what every CRT
+        // already installed sends, and it must keep working once Apache forwards it here.
         [Fact]
         public async Task The_form_older_CRTs_send_is_still_read()
         {

@@ -144,8 +144,15 @@ namespace CRT.Server.Handlers.Submissions
         // Deliberately cheap: it does not work out whether the promotion needs two approvals at all,
         // which means hashing the board. An account that has not approved can always act - publish,
         // or give the first of two.
+        //
+        // *** WHILE ONLY ADMINISTRATORS PUBLISH TO STABLE, ALWAYS YES (code review, 2026-10-05). ***
+        // Nobody else's approval is asked for then, so an administrator's own always completes the
+        // publish - even one given BEFORE the setting was switched on, which left the system "with the
+        // other approver", dimmed and off the badge, with nobody prompted to finish it. Asked only of
+        // an account that may publish to stable (ReviewAuthority.CanPublishToProduction).
         // ###########################################################################################
-        public static bool AwaitsAccount(IReadOnlyList<GivenApproval>? givenForThisBetaState, long accountId) =>
+        public static bool AwaitsAccount(IReadOnlyList<GivenApproval>? givenForThisBetaState, long accountId, bool administratorsOnly = false) =>
+            administratorsOnly ||
             givenForThisBetaState is null ||
             !givenForThisBetaState.Any(approval => approval.AccountId == accountId);
     }

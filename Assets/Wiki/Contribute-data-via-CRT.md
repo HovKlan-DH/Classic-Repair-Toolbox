@@ -6,13 +6,15 @@ Fix a value or add a datasheet from inside the application.
 
 Spotted a wrong value, a missing part number, or do you have a datasheet, photo or scope
 reading that others would benefit from? You can add it directly from the **Contribute**
-tab - no GitHub account, no spreadsheets, no technical knowledge needed.
+tab - no account, no spreadsheets, no technical knowledge needed.
 
 Your edit is saved into your own local **draft** for this board and takes effect on your own
-machine right away — tick "View boards as officially coming from online source" in the Configuration tab at any
-point to see the board without your edit ([View boards from online source](View-boards-from-online-source)). Nothing changes for anyone else until you submit your
-draft and it has been reviewed and accepted, after which it reaches everyone the next time the
-application syncs its data.
+machine right away - tick "View boards as officially coming from online source (hide my local draft
+changes)" in the Configuration tab at any point to see the board without your edit
+([View boards from online source](View-boards-from-online-source)). Nothing changes for anyone else
+until you submit your draft from the [Drafts tab](Drafts-tab) and a maintainer has accepted it. It is
+then published to the BETA source first, and after a final check to the stable source that everyone
+downloads from.
 
 ## 1. Pick your board
 
@@ -29,7 +31,7 @@ The line **"Board Excel data last revisioned"** tells you how fresh the current 
 ## 3. Click the component you want to change
 
 Click a board label (for example `U1` or `C15`) and the **Component editor**
-opens in full screen. Everything in it is already filled in with the data the app has today —
+opens in full screen. Everything in it is already filled in with the data the app has today -
 you are simply correcting or extending it.
 
 ## 4. Make your changes
@@ -39,24 +41,28 @@ brackets tells you how many entries it already holds.
 
 | Section | What belongs here |
 | --- | --- |
-| **Component** | The basics: friendly name, technical name or value, part number, category, short description |
+| **Component** | The basics: board label, category, friendly name, region, technical name or value, short description, part number - and the **Delete this component** button |
 | **Component images** | Photos and oscilloscope readings for this component, with the scope settings used |
-| **Component local files** | Files about this component — datasheets, instructions, manuals |
+| **Component local files** | Files about this component - datasheets, instructions, manuals |
 | **Component links** | Web links about this component |
-| **Board local files** | Files covering the whole board — service and troubleshooting manuals |
-| **Board links** | Web links about the whole board — repair logs, YouTube videos |
+| **Board local files** | Files covering the whole board - service and troubleshooting manuals |
+| **Board links** | Web links about the whole board - repair logs, YouTube videos |
 
 Then:
 
-- **To change something** — just type in the box. Correct a wrong value, fill in a blank one.
-- **To add something** — click the **Add new …** button at the top of the section. A blank row
-  appears; fill it in.
-- **To delete something** — click the **Remove** button on that row.
+- **To change something** - just type in the box. Correct a wrong value, fill in a blank one.
+- **To add something** - click the add button at the top of the section:
+  **Add new component image**, **Add new component file**, **Add new component link**,
+  **Add new board file** or **Add new board link**. A blank row appears; fill it in.
+- **To delete something** - click the **Remove** button on that row (**Remove image** on a
+  component image).
+- **To delete the whole component** - open the **Component** section and click
+  **Delete this component**. Its images, files and links go with it.
 
 ### Attaching a file or an image
 
-In any row that has a **File** box, click the box and a normal file browser opens. Pick the
-file from anywhere on your computer — a photo, a datasheet, a screenshot. The file name appears
+In any row that has a **File** box, click the box (or **Browse**) and a normal file browser opens. Pick the
+file from anywhere on your computer - a photo, a datasheet, a screenshot. The file name appears
 in the box, images show a small preview, and a copy of the file is stored inside your local draft.
 
 A **Component images** row needs either an image file or a note. A row with only a note is fine -
@@ -77,23 +83,16 @@ you pick from CRT's own data folder keeps the folder it is already in.
 A system you added yourself is in that list too. Its `Scope baseline` folder is where scope
 images from a known good board go.
 
-> **Can't find your component in the list?** Pick the closest one and simply explain in the
-> note (next step) what should be added, or use **"Add new component"** on the Contribute tab
-> instead to start one from scratch.
+> **Can't find your component in the list?** Use **Add new component** on the Contribute tab to
+> start one from scratch.
 
-## 5. Write a note (optional)
-
-At the bottom, you can describe **what you changed, what was wrong or missing**, and anything
-worth remembering when you come back to this draft or submit it later. Worth mentioning **which
-exact board revision you have** — boards vary, and that detail matters at review time.
-
-This is entirely optional — it is a note to yourself and, later, to whoever reviews your
-submission, not a requirement to save.
-
-## 6. Save
+## 5. Save
 
 Click **Save to draft**. Once it has been saved, the editor closes and you are taken to the
-**Drafts** tab, where your draft now is - and where you go on to review it and submit it.
+[Drafts tab](Drafts-tab), where your draft now is - and where you go on to review it and submit it.
+You explain what you changed when you submit, in **What did you change?** - that is what the
+maintainer reads first, and the place to say **which exact board revision you have** (boards vary,
+and that detail matters at review time).
 
 If something is missing or goes wrong, the editor stays open and its message says what, so you
 can put it right and save again.
@@ -111,13 +110,16 @@ Use **Cancel** to close the editor without saving whatever you have not saved ye
 
 Everything above assumes the board you want to improve is already there. If it is not, the
 **Add a new system** button on the Contribute tab creates one: give it a manufacturer, hardware and
-board name, and it appears in the lists immediately as your own local draft. From that point it is an
-ordinary board in every respect — you add board images, label the components and attach files with
+board name (and, if you like, notes about the hardware for the maintainer who adds it to CRT's lists), choose **Create system**, and it appears in
+the lists immediately as your own local draft, with CRT on the Drafts tab. From that point it is an
+ordinary board in every respect - you add board images, label the components and attach files with
 exactly the same tools described above.
 
-Before it is created you are asked to accept the role of **maintainer** for it. If you later submit
-the system for the community to use, you will review the changes others submit for it and publish
-the ones that are right.
+Before it is created you are asked to accept the role of **maintainer** for it ("Becoming the
+system's maintainer" - **Accept and create** or **Decline**). If you later submit the system for the
+community to use, you agree to review the changes others submit for it and publish the ones that are
+right. Accepting sends nothing by itself: the administrator invites a system's maintainers by email -
+see [Maintainer tab](Maintainer-tab#getting-a-maintainer-account).
 
 The full walkthrough, including importing a KiCad project so that clicking a component lights up its
 real copper traces, is on [Add new board with KiCad data](Add-new-board-with-KiCad-data).
@@ -128,7 +130,8 @@ If you already have a board's files from earlier work - a board you set up the o
 edited in Excel or on another computer - you can put its folder into your drafts folder yourself:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Drafts`
-* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Drafts`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Drafts`
 
 Keep the same three folder levels the data uses - manufacturer, hardware, board - for example
 `Drafts\Commodore\C128\310378 Open128\`, with the board's Excel file and everything that belongs to
@@ -154,16 +157,17 @@ it inside. The next time CRT starts, it takes the folder in as a draft and shows
 
 ## Worth knowing
 
-Your edit takes effect in your own local view of the board as soon as you save it — the "Drafts"
-tab lists every board you have local changes on, and you can discard a draft there at any time.
+Your edit takes effect in your own local view of the board as soon as you save it - the
+[Drafts tab](Drafts-tab) lists every board you have local changes on, and you can discard a draft
+there at any time.
 If one of the draft's files is open in another program - its workbook in Excel, say - Discard
 cannot remove all of it and says so at the top of the tab. Close the file there and press Discard
 again.
 If you discard a draft while something you sent from it is still being reviewed, the dialog says so,
 and the board's maintainers are told that you discarded your draft - so they can check with you
 before publishing it. Your contribution itself is not withdrawn.
-Nothing changes for anyone else until you submit your draft and it is reviewed and accepted, after
-which it reaches everyone the next time the application syncs its data.
+Nothing changes for anyone else until you submit your draft and it is reviewed and accepted - and
+it reaches everyone once it has been published to the stable source.
 
 **Where a new component appears.** However you add one - the Contribute window, labelling it on a
 schematic, or the table below - a new component goes into its category, in label order (C1, C2,
@@ -172,7 +176,7 @@ another region of a component that is already there goes right beside it. Editin
 component never moves it.
 
 **A draft you never submit is a perfectly good thing to have.** A board you built yourself keeps
-working on your own machine for as long as you want it — it is not a staging area you are expected
+working on your own machine for as long as you want it - it is not a staging area you are expected
 to empty.
 
 ## When the official data changes underneath your draft
@@ -184,29 +188,29 @@ that board, and the board itself shows a one-line notice.
 **Your edits are not lost and nothing is overwritten.** Your draft and the synced data live in
 separate folders; your changes are still applied on top of whatever the official data now says.
 
-Click **"What changed"** to see how your own edits line up with the official data as it stands now.
-Two things there are worth acting on:
+Click **"What changed"** to open "What changed officially". It shows the revision you started from
+("You started from:") and the one published now ("Officially now:"), and then every change of
+yours compared with the official data as it is now, one per line:
 
-* **an edit whose component no longer exists officially** — your change has stopped having any
-  effect, because the row it was changing is gone;
-* **something you added that has since been added officially too** — the official version is the
-  one being shown, not yours.
+* "You added this. It is not in the published data."
+* "You removed this. It is still in the published data, and your submission would remove it."
+* "You changed:" followed by the columns you changed
 
-Everything else is listed for completeness.
+Look through it for anything the official update already does differently, or no longer needs.
 
 > [!NOTE]
 > CRT cannot show you the official data *as it was* when you started, because that copy is replaced
 > when the data syncs. What it shows is how your edits stand against the data as it is now.
 
 When you have had a look and are happy, click **"I have looked at this"** and the notice goes away.
-That writes down which version you have seen and **changes none of your edits** — it is not a merge,
+That writes down which version you have seen and **changes none of your edits** - it is not a merge,
 and nothing of yours is discarded. If the official data changes again later, you will be told again.
 
 ## Editing a draft as a table
 
 If you would rather work the way you would in Excel - for example because you are copying a lot of
 values over from somewhere else - click **"Edit in table format"** on the board's row in the
-**"Drafts"** tab. The board's data opens right below that row, with one tab for each sheet of its
+[Drafts tab](Drafts-tab#the-table). The board's data opens right below that row, with one tab for each sheet of its
 Excel file (Board schematics, Components, Component images and so on) and every column and row in
 it. The other drafts are hidden while the table is open, and the button changes to
 **"Close table"**.
@@ -215,12 +219,13 @@ Everything that differs from the official data is coloured:
 
 * **green** - a row you added;
 * **orange** - a value you changed. Only the changed cell is coloured, and hovering over it shows
-  the official value;
+  the "Published value";
 * **red, and struck through** - a row you deleted. It is shown where it used to be, so you can see
   what was around it.
 
 **Renaming is still changing the same row.** Some cells say *which* row it is - a component's board
-label and region, a schematic's name, a credit's category and name, an image's pin. Change one of
+label and region, a schematic's name, an image's board label, region, pin and name, a file's or
+link's board label (or category) and name, a credit's category, sub-category and name. Change one of
 those and nothing else in the row, and the row is simply changed: that cell turns orange, and
 hovering over it shows the old value. Change one of them **and** another cell in the same row - a
 credit's name and its contact, say - and CRT can no longer tell it is the same row, so it shows the
@@ -262,7 +267,7 @@ you come back to CRT's window or open the "Drafts" tab.
 The colour key above the table counts each kind for the whole draft - every sheet together,
 whichever one you are looking at - "2 Added", "1 Modified", "1 Errors" and so on. A kind the draft
 has some of is filled with its colour; a kind it has none of is only outlined and shown faint (and
-cannot be clicked - there would be nothing to see). A count you have clicked gets a firm dark outline.
+cannot be clicked - there would be nothing to see). A count you have clicked gets a firm outline.
 **Click a count to see only those rows**, and click it again to see every row. Click several to see the rows of any of
 them - Added, Modified and Deleted together show exactly what you changed. The tabs of
 sheets with none of those rows are hidden meanwhile, so the tabs left are the places to look - and
@@ -274,7 +279,8 @@ added, `~` changed, `-` deleted. The number on each sheet's tab is how many rows
 changed or deleted on that sheet; errors and warnings are not counted there, because they are not
 changes. To find them, click "Errors" or "Warnings" in the colour key, and only the tabs of the
 sheets that have them stay. For a board you created yourself nothing is marked as added, changed or
-deleted, since all of it is your own - but errors and warnings are still shown.
+deleted, since all of it is your own - the Added, Modified and Deleted counts are not shown, and a
+line above the table says so - but errors and warnings are still shown.
 
 **Find something in the table with the search box** above it, which works like the "Find a
 previous repair" box on the Workbooks tab. Type a word and only the rows with it in any cell stay -
@@ -292,9 +298,11 @@ and so does closing the table or opening another draft; it stays when you switch
 image file* column, or *File* on the Component images, Component local files and Board local files
 sheets - and a small card opens beside it straight away:
 
-* a **picture** is shown in it. If you changed it, the official picture and yours are shown side by
-  side, labelled so you can tell which is which, and that includes a picture you replaced under the
-  same file name;
+* a **picture** is shown in it. If you changed it, the published picture and yours are shown side by
+  side, labelled "Published" and "Your draft", and that includes a picture you replaced under the
+  same file name. A line on the card says what happened to the file - "New file", "Removed",
+  "Changed to another file", "Replaced - same file name, new content" or "Unchanged" - and
+  **Open full size** opens the picture;
 * a **PDF** or other document gets a link that opens it in your usual program for that kind of
   file.
 
@@ -323,16 +331,16 @@ see are selected. The Delete key on the keyboard never deletes a row.
 
 **Deleting a component deletes everything that belongs to it.** Its rows on the *Component
 images*, *Component local files* and *Component links* sheets go with it - you will see them in red
-on those sheets - and its highlights on the schematics go when you save. A line under the table
+on those sheets - and its highlights on the schematics go when you save. A line above the table
 says what else went. If the component has another row with the same board label for a different
 region, only the images for the region you deleted go, since the rest still belong to the other
 one. One Ctrl+Z brings all of it back.
 
 **Ctrl+Z undoes, Ctrl+Y redoes** (Ctrl+Shift+Z works too, and Cmd on a Mac). That covers every
-change in the table - typing into a cell, pasting, and inserting, deleting, restoring or moving
-rows - one step at a time, and takes you to the sheet and row where the change was. It reaches
+change in the table - typing into a cell, pasting, and inserting, deleting or moving rows - one
+step at a time, and takes you to the sheet and row where the change was. It reaches
 back to your last save. While you are still typing inside a cell, Ctrl+Z undoes just that typing,
-as in Excel. For something saved earlier, hover over an orange cell to see its official value, and
+as in Excel. For something saved earlier, hover over an orange cell to see its published value, and
 a red row still shows everything it held - type or copy the values back in.
 
 **Rows can be moved.** Drag a row by the dotted handle at its far left: while you drag, the row
@@ -352,8 +360,8 @@ is on the row wherever it went.
 **One component, several regions.** A component that differs between regions has one row per region
 with the same board label - for example U1 with region PAL and U1 with region NTSC. Each is its own
 row: adding the NTSC one shows it as added, and it is saved right beside its PAL twin. Giving an
-existing component a region makes it a new row in the same way as changing its label would - the
-old one shows as deleted and the new one as added.
+existing component a region, and changing nothing else in its row, is one changed row - the region
+cell turns orange - just like renaming it.
 
 **Copy and paste one cell at a time.** Ctrl+C and Ctrl+V work on a selected cell and inside a cell
 you are editing, and cells copied from Excel paste in fine. Pasting a whole block of several cells at
@@ -361,7 +369,8 @@ once is not supported yet - copy them one by one.
 
 **Nothing is written until you click "Save changes".** If you close the table, submit, add schematic
 images or KiCad data, or quit CRT while the table has edits that are not saved, you are asked
-whether to save or discard them first.
+whether to save or discard them first. **"Reload"**, beside "Save changes", reads the draft again
+from its file - after asking, if that would throw edits away.
 
 The table and the board's Excel file are the same data, so you can switch between the two freely.
 While the table is open, CRT keeps an eye on the Excel file:
@@ -386,22 +395,27 @@ The rectangles that mark components on the schematics are not part of the table 
 the Excel file either - and saving the table leaves them untouched.
 
 > [!NOTE]
-> Changing only the ORDER of rows is saved into your draft, but it does not count as a change on its
-> own: the "rows changed" count stays the same, and a draft whose only change is a new order cannot be
-> submitted by itself. The new order is sent along with any other change you submit.
+> Some changes are saved into your draft but do not count as "rows changed": a new ORDER of rows, a
+> KiCad trace calibration, a picture or file replaced under the same file name, and KiCad files. A
+> draft whose only changes are of these kinds reads "0 rows changed" and cannot be submitted on its
+> own. They are sent along with any other change you submit.
 
 ## Sending your work in
 
-When a draft is ready, open the **"Drafts"** tab and click **"Submit"** on that board's row.
+When a draft is ready, open the [Drafts tab](Drafts-tab) and click **"Submit"** on that board's row.
 
 **A draft with errors is not sent.** Instead its table opens showing only the rows with errors, and
 a line above it says how many there are. Fix them, save the table, and click "Submit" again.
 Warnings never stop a submission.
 
-**You do not need an account, and CRT will not ask you to make one.** The only thing the dialog
-asks for is an email address, and it is used for one purpose: telling you whether your
-contribution was accepted, and why if it was not. You also write a short summary of what you
-changed, which is what the maintainer reads first.
+**You do not need an account, and CRT will not ask you to make one.** The "Submit contribution"
+dialog asks for two things, and both are required:
+
+* **Your email address** - "You get an email when your contribution has been reviewed, and a
+  maintainer can write to you if they need to ask something." It starts out as the address you gave
+  on the [Feedback tab](Feedback-tab), if you did.
+* **What did you change?** - a short summary, which is what the maintainer reads first. Say which
+  exact board revision you have - boards vary, and that detail matters at review time.
 
 **If you are a maintainer signed in on the [Maintainer tab](Maintainer-tab)**, the dialog uses your
 account's email address instead and sends the submission with your account, so whoever reviews it
@@ -409,8 +423,8 @@ can see the address is checked - also when the Maintainer tab is turned off or h
 the Maintainer tab first if you want to send with another address.
 
 Before anything is sent, the dialog shows you exactly what is about to go: how many schematics,
-components and highlights, and how many files are referenced. Nothing leaves your machine until
-you click Submit.
+components and highlights, how many files are referenced, and how many KiCad files when there are
+any. Nothing leaves your machine until you click **Submit**.
 
 **Files you already downloaded are not uploaded again.** CRT asks the server which files it is
 missing and sends only those, so correcting a typo on a board with hundreds of images uploads
@@ -452,7 +466,7 @@ newer submission*. If a maintainer has already started on the earlier one - corr
 it, or given it a first approval - both are kept and looked at separately. The server knows the two
 came from you by the email address you gave (or your account, if you are signed in).
 
-**Once your contribution is published to the ordinary source, the draft tidies itself away.** Not
+**Once your contribution is published to the stable source, the draft tidies itself away.** Not
 before: while it is only on the BETA source a maintainer can still take it back out for another look,
 so your draft stays until the second step (see below). When the application has downloaded the
 updated data and your draft holds nothing the published board does not - no other rows, no other
@@ -491,19 +505,26 @@ and why:
 
 The **"My submissions"** button on the Drafts tab lists what you have sent, with the state of each
 one and anything the maintainer has said. **"Check for updates"** asks the server for the latest.
+Every state and its colour is listed on the Drafts tab page, under
+[Submission states](Drafts-tab#submission-states).
 
 You do not have to keep checking. CRT asks the server about anything still waiting when it starts,
-and again every few minutes while it is open. When a maintainer has decided something or written to
-you, a red number appears on the **Drafts** tab - and on the "My submissions" button inside it -
-counting the contributions with news you have not read yet. It goes away once you have read them
-in "My submissions".
+and again every minute while its window is open and not minimised. When a maintainer has decided
+something or written to you, a red number appears on the **Drafts** tab - and on the "My
+submissions" button inside it - counting the contributions with news you have not read yet. Each one
+is marked **New** in "My submissions", with a **"Mark as read"** button; the number goes down as you
+press it. Opening "My submissions" by itself marks nothing as read.
+
+**When a maintainer asks for changes**, the state reads *Changes requested* and the maintainer's
+words are under "Feedback from maintainer". Change your draft - in the Contribute tab, the label
+editor or the table - and click **"Submit"** again. The new submission is a new entry in the list.
 
 **An accepted contribution is published in two steps.** First it is published to the **BETA
 source**, where a maintainer gives the board a final check; "My submissions" then says *Published to
 the BETA source*. After that it is published to the **stable source** that everyone downloads from,
 and the row says *Published to the stable source*. You get an email at each step. CRT looks for the
-second step when it starts and while it is open, for a month after the first; after that, "Check for
-updates" still asks.
+second step at every check for 30 days after the first, and once a week after that; "Check for
+updates" asks at any time.
 
 **Checking your work on the BETA source?** Ticking **Download data from the BETA source instead of
 the stable source** on the Configuration tab lets you see your contribution as it will look, before
@@ -542,11 +563,14 @@ A few things worth knowing about that list:
 
 ### If you contributed a whole new system
 
-For a brand new hardware and board, the project owner may set you up as a **maintainer** of that
-system once it is published, so you can look after it from then on - reviewing what others send in
-for it, and publishing what is right, in CRT's [Maintainer tab](Maintainer-tab). That happens after the fact and only for new systems; it is
-never something you need before contributing.
+For a brand new hardware and board, the administrator may invite you, by email, to be a
+**maintainer** of that system once it is published, so you can look after it from then on -
+reviewing what others send in for it, and publishing what is right, in CRT's
+[Maintainer tab](Maintainer-tab). Accepting the maintainer role when you created the system does not
+do that by itself - the invitation does (see
+[Getting a maintainer account](Maintainer-tab#getting-a-maintainer-account)). It is never something
+you need before contributing.
 
 ## That's it
 
-Thank you — every correction makes the data better for the next person repairing the same board.
+Thank you - every correction makes the data better for the next person repairing the same board.

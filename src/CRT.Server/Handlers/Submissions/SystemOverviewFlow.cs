@@ -12,8 +12,18 @@ namespace CRT.Server.Handlers.Submissions
     // *** ANY MAINTAINER SEES EVERY SYSTEM, CONTRIBUTORS INCLUDED (owner decision, 2026-09-27:
     // "Everything for everyone"). *** The rule is CanReviewAnything - the same "may open the
     // Maintainer tab at all" the queue asks - and NOT CanReview(system): a maintainer of the
-    // C64 sees who contributes to the Amiga. That widens who sees a contributor's contact address,
-    // which is why it was asked rather than assumed; it is recorded in NewContributeStrategy.md.
+    // C64 sees who contributes to the Amiga.
+    //
+    // *** BUT ONLY ITS OWN MAINTAINERS SEE ITS EMAIL ADDRESSES (owner request, 2026-10-05: "I do not
+    // think that normal maintainer should be able to see other email addresses if they are not set
+    // as maintainer for that system. They should be able to see all mail addresses for their own
+    // system(s)"). *** ReviewAuthority.CanSeeAddressesOf - the administrator and the system's pool.
+    // Anybody else gets the same detail with names and no address anywhere in it: its maintainers'
+    // (an empty Email), its contributors' and submissions' (null), and its history's (the name on the
+    // account where there is one) - and AddressesHidden, so the tab can say why. Both decisions are
+    // in CLAUDE.md ("Maintainer" and the server's rules). The first is also in the last version of
+    // NewContributeStrategy.md in git history (deleted 2026-10-05), which still says "contributors'
+    // addresses included" - written before the second narrowed it.
     //
     // WHICH SYSTEMS: the `systems` rows unioned with the boards in the BETA tree - the list the
     // administrator's Maintainers screen uses (MaintainerAssignmentFlows.ListSystemsAsync), for the
@@ -139,6 +149,9 @@ namespace CRT.Server.Handlers.Submissions
             if (row is null && known is null && inStable is null && listings?.Stable?.Contains(systemId) != true)
                 return SystemOverviewOutcome.NotFound();
 
+            // Its people's addresses only for its own maintainers and the administrator (2026-10-05).
+            bool showAddresses = ReviewAuthority.CanSeeAddressesOf(access, systemId);
+
             List<MaintainerRecord> pool = (await accounts.ListMaintainersAsync(cancellationToken))
                 .Where(maintainer => string.Equals(maintainer.SystemId, systemId, StringComparison.Ordinal))
                 .ToList();
@@ -193,6 +206,21 @@ namespace CRT.Server.Handlers.Submissions
                 SystemHistoryRules.Limit,
                 cancellationToken);
 
+            // Without addresses, the history names people by their accounts instead: whoever did
+            // each audited thing, and whoever a pool change named.
+            if (!showAddresses)
+            {
+                foreach (long accountId in audit.Select(entry => entry.ActorAccountId)
+                             .Concat(audit.Select(SystemHistoryRules.AccountNamedBy))
+                             .OfType<long>()
+                             .Distinct()
+                             .Where(accountId => !named.ContainsKey(accountId)))
+                {
+                    if (await accounts.FindByIdAsync(accountId, cancellationToken) is AccountRecord account)
+                        named[accountId] = account;
+                }
+            }
+
             // Whose contributor discarded their own draft since sending it (2026-09-28).
             IReadOnlyDictionary<long, DateTimeOffset> discarded = await submissions.GetDraftDiscardsAsync(
                 sent.Select(record => record.Submission.Id).ToList(), cancellationToken);
@@ -209,12 +237,30 @@ namespace CRT.Server.Handlers.Submissions
 
             return SystemOverviewOutcome.Described(new SystemDetailAnswer(
                 entry,
-                pool.Select(maintainer => new PoolMaintainerEntry(maintainer.AccountId, maintainer.DisplayName, maintainer.Email)).ToList(),
-                SystemOverviewFlow.Contributors(sent, named),
-                SystemOverviewFlow.Submissions(sent, row?.ProductionPublishedUtc, named, discarded, returns, changes),
+                SystemOverviewFlow.Maintainers(pool, showAddresses),
+                SystemOverviewFlow.Contributors(sent, named, showAddresses),
+                SystemOverviewFlow.Submissions(sent, row?.ProductionPublishedUtc, named, discarded, returns, changes, showAddresses),
                 invitations,
-                SystemHistoryRules.Build(sent, named, audit),
-                views));
+                SystemHistoryRules.Build(sent, named, audit, showAddresses),
+                views,
+                AddressesHidden: !showAddresses));
+        }
+
+        // ###########################################################################################
+        // Who maintains it - with their addresses, or (2026-10-05) with an EMPTY address for an
+        // account that does not maintain it: PoolMaintainerEntry.Email is not nullable on the wire,
+        // and an empty one is what CRT already reads as "no address to show".
+        // ###########################################################################################
+        public static IReadOnlyList<PoolMaintainerEntry> Maintainers(IEnumerable<MaintainerRecord> pool, bool showAddresses = true)
+        {
+            ArgumentNullException.ThrowIfNull(pool);
+
+            return pool
+                .Select(maintainer => new PoolMaintainerEntry(
+                    maintainer.AccountId,
+                    maintainer.DisplayName,
+                    showAddresses ? maintainer.Email : string.Empty))
+                .ToList();
         }
 
         // ###########################################################################################
@@ -347,10 +393,14 @@ namespace CRT.Server.Handlers.Submissions
         // when a maintainer made it, and a submission the contributor's own newer one replaced is not
         // counted - it is an earlier copy of the same work. Someone whose only submissions were
         // replaced ones is still LISTED: they did contribute.
+        //
+        // `showAddresses` false (2026-10-05): every Email is null - grouped exactly as with them, so a
+        // contributor without an account is still one entry, just not named by an address.
         // ###########################################################################################
         public static IReadOnlyList<SystemContributorEntry> Contributors(
             IEnumerable<SystemSubmissionRecord> sent,
-            IReadOnlyDictionary<long, AccountRecord>? accounts = null)
+            IReadOnlyDictionary<long, AccountRecord>? accounts = null,
+            bool showAddresses = true)
         {
             ArgumentNullException.ThrowIfNull(sent);
 
@@ -376,7 +426,7 @@ namespace CRT.Server.Handlers.Submissions
                     int Count(Func<SystemSubmissionRecord, bool> which) => group.Count(which);
 
                     return new SystemContributorEntry(
-                        Email: string.IsNullOrWhiteSpace(email) ? null : email,
+                        Email: !showAddresses || string.IsNullOrWhiteSpace(email) ? null : email,
                         Name: name,
                         Accepted: Count(record => record.Submission.State == SubmissionState.Merged),
                         Waiting: Count(record => record.Submission.State is SubmissionState.Pending or SubmissionState.Approved),
@@ -386,6 +436,7 @@ namespace CRT.Server.Handlers.Submissions
                 })
                 .OrderByDescending(contributor => contributor.LastSubmittedUtc)
                 .ThenBy(contributor => contributor.Email, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(contributor => contributor.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
@@ -401,13 +452,15 @@ namespace CRT.Server.Handlers.Submissions
         //
         // `discarded` (2026-09-28): when each contributor discarded their own draft since sending.
         // `changes` (2026-10-04): what each changed as it went into BETA, where that was recorded.
+        // `showAddresses` false (2026-10-05): no ContactEmail on any of them.
         public static IReadOnlyList<SystemSubmissionEntry> Submissions(
             IEnumerable<SystemSubmissionRecord> sent,
             DateTimeOffset? systemProductionPublishedUtc,
             IReadOnlyDictionary<long, AccountRecord>? accounts = null,
             IReadOnlyDictionary<long, DateTimeOffset>? discarded = null,
             IReadOnlyDictionary<long, DateTimeOffset>? returns = null,
-            IReadOnlyDictionary<long, SubmissionChanges>? changes = null)
+            IReadOnlyDictionary<long, SubmissionChanges>? changes = null,
+            bool showAddresses = true)
         {
             ArgumentNullException.ThrowIfNull(sent);
 
@@ -417,9 +470,11 @@ namespace CRT.Server.Handlers.Submissions
                 .Take(SystemOverviewFlow.ListedSubmissions)
                 .Select(submission => new SystemSubmissionEntry(
                     submission.Id,
-                    submission.AccountId is long id && accounts?.GetValueOrDefault(id) is AccountRecord account
-                        ? account.Email
-                        : submission.ContactEmail?.Trim(),
+                    !showAddresses
+                        ? null
+                        : submission.AccountId is long id && accounts?.GetValueOrDefault(id) is AccountRecord account
+                            ? account.Email
+                            : submission.ContactEmail?.Trim(),
                     submission.Summary,
                     ProductionPromotionRules.ContributorFacingState(
                         submission.State, submission.DecidedUtc, systemProductionPublishedUtc,

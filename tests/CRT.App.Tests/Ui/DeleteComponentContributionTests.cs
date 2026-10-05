@@ -74,10 +74,11 @@ public class DeleteComponentContributionTests
 
     // ---------------------------------------------------------------- entering and leaving
 
-    // The heart of the mode: every data section goes inactive and dimmed, while the optional note
-    // box (outside every data section - see the button's own comment) stays live.
+    // The heart of the mode: every data section goes inactive and dimmed. (The window's free-text
+    // note box, which stayed live, was removed on 2026-10-05 - nothing ever saved it; what a change
+    // is about is asked in the Drafts tab's Submit dialog, "What did you change?".)
     [Fact]
-    public void Delete_mode_dims_and_disables_every_data_section_but_not_the_note()
+    public void Delete_mode_dims_and_disables_every_data_section()
     {
         UiTest.Run(() =>
         {
@@ -91,8 +92,6 @@ public class DeleteComponentContributionTests
                 Assert.False(section.IsEnabled);
                 Assert.True(section.Opacity < 1.0);
             }
-
-            Assert.True(window.FindControl<TextBox>("MandatoryCommentTextBox")!.IsEnabled);
         });
     }
 

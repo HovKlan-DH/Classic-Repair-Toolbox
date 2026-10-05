@@ -76,10 +76,10 @@ Assets/Webserver/
 .claude/.wiki-reminded
 .claude/.server-version-reminded
 
-# Server configuration that can hold credentials (Phase 3 onward).
+# Server configuration that can hold credentials.
 #
 # The deployed service reads appsettings.Production.json from its own directory on the server
-# (see DEPLOYMENT.md), which lives OUTSIDE this repository and is never copied into it. These
+# (see src/CRT.Server/INSTALLING.md), which lives OUTSIDE this repository and is never copied into it. These
 # patterns exist for the local-development
 # case: a file created here by accident, or an appsettings.Development.json written while
 # testing against a tunnelled database, would otherwise be a connection string in git history.
@@ -88,7 +88,7 @@ Assets/Webserver/
 # values only, so the shape of the real file is documented. Keep real values out of it.
 #
 # Local development uses "dotnet user-secrets", which stores outside the repository tree
-# entirely; see src/CRT.Server/DEPLOYMENT.md.
+# entirely.
 src/CRT.Server/appsettings.Production.json
 src/CRT.Server/appsettings.Development.json
 src/CRT.Server/appsettings.Local.json
@@ -97,7 +97,7 @@ src/CRT.Server/appsettings.Local.json
 *.pfx
 
 # The framework-dependent publish output for the server, produced by the dotnet publish line in
-# DEPLOYMENT.md step 4 and copied to the box by hand. Build output, not source - and it carries a
+# INSTALLING.md (step 5) and copied to the box by hand. Build output, not source - and it carries a
 # copy of whatever appsettings files were present when it ran.
 publish-server/
 *.pem

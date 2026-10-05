@@ -69,17 +69,25 @@ namespace CRT.Server.Tests
                 CreatedUtc: SystemListingFlowTests.Now,
                 LastLoginUtc: null);
 
-        // A submission for a system, left in `state`.
-        private static async Task<FakeSubmissionStore> SubmittedAsync(string systemId, string state = SubmissionState.Pending, FakeSubmissionStore? store = null)
+        // A submission for a system, left in `state` - with the contributor's notes from "Create
+        // system", when given, sent `minutesLater` than Now.
+        private static async Task<FakeSubmissionStore> SubmittedAsync(
+            string systemId,
+            string state = SubmissionState.Pending,
+            FakeSubmissionStore? store = null,
+            string? notes = null,
+            int minutesLater = 0)
         {
             store ??= new FakeSubmissionStore();
             string[] parts = systemId.Split('/');
+            DateTimeOffset sent = SystemListingFlowTests.Now.AddMinutes(minutesLater);
 
             long id = await store.CreateAsync(
                 new NewSubmission(
                     systemId, parts[0], parts[1], parts[2],
                     null, "someone@example.com", "192.0.2.1", "hash", string.Empty,
-                    "A new board.", 1, [], SystemListingFlowTests.Now, SystemListingFlowTests.Now.AddHours(24)),
+                    "A new board.", 1, [], sent, sent.AddHours(24),
+                    HardwareNotes: notes),
                 CancellationToken.None);
 
             await store.SetStateAsync(id, state, SystemListingFlowTests.Now, CancellationToken.None);
@@ -128,6 +136,113 @@ namespace CRT.Server.Tests
             Assert.Equal(
                 new SystemPlacement("Commodore 128", "310378 Open128", string.Empty, SystemListingFlowTests.C128.ExcelDataFile),
                 Assert.Single(outcome.Answer!.Unlisted).Suggested);
+        }
+
+        // ------------------------------------------------------------------ the contributor's notes
+
+        // ###########################################################################################
+        // *** THE NOTES REACH THE MAIN EXCEL DATA FILE (owner request, 2026-10-05: "that note needs to
+        // be sent also to the server, as this notes needs to go into the main Excel in the 'Hardware
+        // and Board' sheet and in the column 'Hardware notes in "Overview" tab'"). *** The notes the
+        // contributor typed in "Create system" are where the placement starts; saving that placement,
+        // as the Maintainer tab sends it, writes them into BETA's list.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_contributors_notes_start_the_placement_and_saving_it_writes_them_into_the_list()
+        {
+            const string Notes = "Open-source replica of the C128 board.";
+
+            DataTreeBuilder.Board(this.thisBeta, SystemListingFlowTests.Open128Workbook);
+            FakeSubmissionStore store = await SystemListingFlowTests.SubmittedAsync(
+                SystemListingFlowTests.Open128, SubmissionState.Merged, notes: Notes);
+
+            SystemListingOutcome listed = await SystemListingFlowTests.Flow(store).ListAsync(
+                SystemListingFlowTests.Admin(), this.thisBeta, PublishedSystemLister.List(this.thisBeta));
+
+            SystemPlacement suggested = Assert.Single(listed.Answer!.Unlisted).Suggested;
+            Assert.Equal(Notes, suggested.Notes);
+
+            SetPlacementOutcome saved = await SystemListingFlowTests.Flow(store).SetAsync(
+                SystemListingFlowTests.MaintainerOf(SystemListingFlowTests.Open128),
+                new SetPlacementRequest(SystemListingFlowTests.Open128, suggested.HardwareName, suggested.BoardName, suggested.Notes, suggested.AfterExcelDataFile),
+                this.thisBeta,
+                SystemListingFlowTests.Now);
+
+            Assert.True(saved.Answer!.ListedInBeta, saved.Error);
+            Assert.Contains(
+                new MasterListingRow("Commodore 128", "310378 Open128", SystemListingFlowTests.Open128Workbook, Notes),
+                DataTreeBuilder.ListedIn(this.thisBeta));
+        }
+
+        // ###########################################################################################
+        // Which notes count: the newest of a submission still waiting or published. A rejected,
+        // withdrawn or abandoned one's were turned down with it; one still uploading nobody has seen.
+        // ###########################################################################################
+        [Theory]
+        [InlineData(SubmissionState.Pending, "Newer.")]
+        [InlineData(SubmissionState.Approved, "Newer.")]
+        [InlineData(SubmissionState.ChangesRequested, "Newer.")]
+        [InlineData(SubmissionState.Merged, "Newer.")]
+        [InlineData(SubmissionState.Rejected, "Older.")]
+        [InlineData(SubmissionState.Withdrawn, "Older.")]
+        [InlineData(SubmissionState.Abandoned, "Older.")]
+        [InlineData(SubmissionState.Uploading, "Older.")]
+        public void The_placement_starts_with_the_newest_notes_of_a_submission_still_waiting_or_published(string newerState, string expected)
+        {
+            IReadOnlyList<SubmissionNotes> notes =
+            [
+                new(2, newerState, SystemListingFlowTests.Now.AddHours(1), "  Newer.  "),
+                new(1, SubmissionState.Pending, SystemListingFlowTests.Now, "Older."),
+            ];
+
+            Assert.Equal(expected, SystemListingRules.SuggestedNotes(notes));
+        }
+
+        [Fact]
+        public void With_no_notes_that_count_the_placement_starts_with_none()
+        {
+            Assert.Equal(string.Empty, SystemListingRules.SuggestedNotes(null));
+            Assert.Equal(string.Empty, SystemListingRules.SuggestedNotes([]));
+            Assert.Equal(string.Empty, SystemListingRules.SuggestedNotes([new(1, SubmissionState.Rejected, SystemListingFlowTests.Now, "Turned down.")]));
+            Assert.Equal(string.Empty, SystemListingRules.SuggestedNotes([new(1, SubmissionState.Pending, SystemListingFlowTests.Now, "   ")]));
+        }
+
+        // Through the flow, a rejected submission's notes stay out while a later waiting one's are used.
+        [Fact]
+        public async Task A_rejected_submissions_notes_are_not_suggested_but_a_later_waiting_ones_are()
+        {
+            FakeSubmissionStore store = await SystemListingFlowTests.SubmittedAsync(
+                SystemListingFlowTests.Open128, SubmissionState.Rejected, notes: "Turned down.");
+
+            await SystemListingFlowTests.SubmittedAsync(
+                SystemListingFlowTests.Open128, SubmissionState.Pending, store, notes: "Sent again.", minutesLater: 30);
+
+            SystemListingOutcome outcome = await SystemListingFlowTests.Flow(store).ListAsync(
+                SystemListingFlowTests.Admin(), this.thisBeta, PublishedSystemLister.List(this.thisBeta));
+
+            Assert.Equal("Sent again.", Assert.Single(outcome.Answer!.Unlisted).Suggested.Notes);
+        }
+
+        // A placement the maintainer SAVED is theirs - the contributor's notes only start one nobody
+        // has saved, so clearing or rewording them sticks.
+        [Fact]
+        public async Task A_saved_placement_keeps_its_own_notes()
+        {
+            FakeSubmissionStore store = await SystemListingFlowTests.SubmittedAsync(
+                SystemListingFlowTests.Open128, notes: "The contributor's words.");
+
+            await SystemListingFlowTests.Flow(store).SetAsync(
+                SystemListingFlowTests.MaintainerOf(SystemListingFlowTests.Open128),
+                new SetPlacementRequest(SystemListingFlowTests.Open128, "Commodore 128", "310378 Open128", string.Empty, SystemListingFlowTests.C128.ExcelDataFile),
+                this.thisBeta,
+                SystemListingFlowTests.Now);
+
+            SystemListingOutcome outcome = await SystemListingFlowTests.Flow(store).ListAsync(
+                SystemListingFlowTests.Admin(), this.thisBeta, PublishedSystemLister.List(this.thisBeta));
+
+            UnlistedSystemEntry entry = Assert.Single(outcome.Answer!.Unlisted);
+            Assert.Equal(string.Empty, entry.Placement!.Notes);
+            Assert.Equal("The contributor's words.", entry.Suggested.Notes);
         }
 
         [Fact]

@@ -6,7 +6,7 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers LegacyContributionEndpoints - CRT 2.x's "Send contribution", answered "please update"
-    // once the old PHP page is gone (owner decision, 2026-10-04).
+    // now that the old contribution upload is gone (owner decision, 2026-10-04).
     //
     // *** THE ANSWER IS READ BY BUILDS THAT CAN NEVER CHANGE. *** So it is checked against a copy of
     // the parser CRT 2.5.0 ships (ContributionPackaging.TryParseOutdatedVersionResponse at the 2.5.0
@@ -24,10 +24,11 @@ namespace CRT.Server.Tests
             Assert.Equal("3.0.0", version);
         }
 
-        // The PHP page's own words, so a 2.x log reads the same before and after the retirement -
-        // and older 2.x builds, which do not parse the token, log exactly this text.
+        // The words CRT 2.x has always been answered with, so a 2.x log reads the same before and
+        // after the retirement - and older 2.x builds, which do not parse the token, log exactly
+        // this text.
         [Fact]
-        public void The_answer_is_the_PHP_pages_wording_with_the_senders_version()
+        public void The_answer_is_the_wording_CRT_2_x_has_always_had_with_the_senders_version()
         {
             Assert.Equal(
                 "OUTDATED_VERSION 3.0.0 - this application version [2.4.0-beta.16] is too old to contribute data - please update to version [3.0.0] or newer.",
@@ -110,7 +111,7 @@ namespace CRT.Server.Tests
             public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
 
-        // The route Apache's forward of /app-contribution/api/ lands on.
+        // The route Apache's forward of the old contribution address lands on.
         [Fact]
         public void The_route_is_mapped_where_Apache_forwards_the_old_address()
         {

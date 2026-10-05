@@ -103,8 +103,8 @@ public sealed class ReviewApiRoutesTests
     [Fact]
     public void A_path_in_the_base_address_is_preserved()
     {
-        // The server may be hosted under a path rather than at a domain root, which is how the
-        // existing PHP contribution endpoint is deployed today.
+        // The server may be hosted under a path rather than at a domain root, so a path in the base
+        // address must survive the route being appended.
         Assert.Equal(
             "https://example.com/crt/api/review/queue",
             ReviewApiRoutes.Queue("https://example.com/crt"));

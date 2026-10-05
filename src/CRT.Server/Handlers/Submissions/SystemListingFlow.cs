@@ -21,6 +21,11 @@ namespace CRT.Server.Handlers.Submissions
     //     neighbours.
     // A board of the tree that is not new never involves the file at all - it is listed already.
     //
+    // THE NOTES (owner request, 2026-10-05): a placement nobody has saved starts with the notes the
+    // contributor wrote in CRT's "Create system" (SystemListingRules.SuggestedNotes). They reach the
+    // main Excel data file's "Hardware notes in "Overview" tab" column only as part of the placement
+    // the maintainer saves - who may correct them first.
+    //
     // WHO: seeing the list is anybody who may open the Maintainer tab (the Systems screen's
     // "everything for everyone"); PLACING a system is who may publish it - a maintainer of that
     // system, or the administrator - since placing one already in BETA publishes its row.
@@ -109,6 +114,11 @@ namespace CRT.Server.Handlers.Submissions
                         continue;
                 }
 
+                // The contributor's own notes from "Create system" (owner request, 2026-10-05) - the
+                // placement starts with them, and saving it puts them in the main Excel data file.
+                string notes = SystemListingRules.SuggestedNotes(
+                    await this.thisStore.GetHardwareNotesAsync(systemId, cancellationToken));
+
                 unlisted.Add(new UnlistedSystemEntry(
                     systemId,
                     manufacturer,
@@ -117,7 +127,7 @@ namespace CRT.Server.Handlers.Submissions
                     isInBeta,
                     ReviewAuthority.CanPublish(access, systemId),
                     await this.thisStore.GetPlacementAsync(systemId, cancellationToken),
-                    SystemListingRules.Suggest(rows, manufacturer, hardware, board)));
+                    SystemListingRules.Suggest(rows, manufacturer, hardware, board, notes)));
             }
 
             return SystemListingOutcome.Listed(new SystemListingAnswer(
@@ -256,21 +266,41 @@ namespace CRT.Server.Handlers.Submissions
         // hardware's own name - so Commodore/C128/310378 Open128 joins "Commodore 128" rather than
         // appearing as a hardware of its own called "C128". A hardware nobody has listed yet goes at
         // the end, under its folder name.
+        //
+        // `notes` are the contributor's (SuggestedNotes, 2026-10-05) - the Notes box starts with them.
         // ###########################################################################################
-        public static SystemPlacement Suggest(IReadOnlyList<MasterListingRow> rows, string manufacturer, string hardware, string board)
+        public static SystemPlacement Suggest(IReadOnlyList<MasterListingRow> rows, string manufacturer, string hardware, string board, string? notes = null)
         {
             ArgumentNullException.ThrowIfNull(rows);
 
             string prefix = $"{manufacturer}/{hardware}/";
+            string suggestedNotes = notes?.Trim() ?? string.Empty;
 
             MasterListingRow? sameHardware = rows.LastOrDefault(row =>
                 (row.SystemId + "/").StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
             if (sameHardware is not null)
-                return new SystemPlacement(sameHardware.HardwareName, board, string.Empty, sameHardware.ExcelDataFile);
+                return new SystemPlacement(sameHardware.HardwareName, board, suggestedNotes, sameHardware.ExcelDataFile);
 
-            return new SystemPlacement(hardware, board, string.Empty, rows.Count == 0 ? null : rows[^1].ExcelDataFile);
+            return new SystemPlacement(hardware, board, suggestedNotes, rows.Count == 0 ? null : rows[^1].ExcelDataFile);
         }
+
+        // ###########################################################################################
+        // *** WHICH NOTES THE PLACEMENT STARTS WITH (owner request, 2026-10-05). *** The newest notes
+        // of a submission that is still waiting or was published - never of one rejected, withdrawn
+        // or abandoned, whose contributor's words were turned down with it, nor of one still
+        // uploading, which nobody has seen. A newer submission's notes replace an older one's, as its
+        // data does. Empty when none count.
+        // ###########################################################################################
+        public static string SuggestedNotes(IReadOnlyList<SubmissionNotes>? notes) =>
+            notes?
+                .Where(entry => (SystemListingRules.IsWaiting(entry.State) || entry.State == SubmissionState.Merged) &&
+                    !string.IsNullOrWhiteSpace(entry.HardwareNotes))
+                .OrderByDescending(entry => entry.CreatedUtc)
+                .ThenByDescending(entry => entry.SubmissionId)
+                .Select(entry => entry.HardwareNotes.Trim())
+                .FirstOrDefault()
+            ?? string.Empty;
 
         // ###########################################################################################
         // A request made into a placement fit to store and write: a well-formed system id, names that

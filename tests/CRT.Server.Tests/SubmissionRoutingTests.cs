@@ -150,6 +150,40 @@ namespace CRT.Server.Tests
             Assert.Empty(asMaintainer);
         }
 
+        // ###########################################################################################
+        // *** AN ADMINISTRATOR NAMED A SYSTEM'S MAINTAINER (owner request, 2026-10-05) is told about
+        // its submissions like its other maintainers - and ONCE: "It should of course not send double
+        // mails to me in this case (as both admin and maintainer)". Alone in the pool, or beside
+        // another maintainer; an ordinary submission, or one replacing a shared file, where the
+        // administrator role asks for them a second time.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_administrator_named_the_only_maintainer_is_told_once_whatever_the_submission()
+        {
+            var accounts = new FakeAccountStore();
+            long admin = await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, admin));
+
+            Assert.Equal(["admin@example.com"], await SubmissionRoutingTests.EmailsForAsync(SubmissionRoutingTests.Submission(), accounts));
+            Assert.Equal(["admin@example.com"], await SubmissionRoutingTests.EmailsForAsync(SubmissionRoutingTests.Submission(touchesShared: true), accounts));
+        }
+
+        [Fact]
+        public async Task An_administrator_named_beside_another_maintainer_is_told_with_them_and_once()
+        {
+            var accounts = new FakeAccountStore();
+            long anna = await SubmissionRoutingTests.AccountAsync(accounts, "anna@example.com");
+            long admin = await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, anna));
+            accounts.Maintainers.Add((SubmissionRoutingTests.C64, admin));
+
+            IReadOnlyList<string> ordinary = await SubmissionRoutingTests.EmailsForAsync(SubmissionRoutingTests.Submission(), accounts);
+            IReadOnlyList<string> shared = await SubmissionRoutingTests.EmailsForAsync(SubmissionRoutingTests.Submission(touchesShared: true), accounts);
+
+            Assert.Equal(["admin@example.com", "anna@example.com"], ordinary.Order(StringComparer.Ordinal));
+            Assert.Equal(["admin@example.com", "anna@example.com"], shared.Order(StringComparer.Ordinal));
+        }
+
         [Fact]
         public async Task A_locked_or_unverified_administrator_is_not_written_to()
         {

@@ -114,6 +114,21 @@ public sealed class ApprovalWordingTests
         Assert.Contains("needs the administrator", line, StringComparison.Ordinal);
     }
 
+    // ###########################################################################################
+    // The administrator ALONE is asked for in three cases the status cannot tell apart: a board
+    // nobody maintains, a pool holding only the administrator (who never counts as the maintainer
+    // half), and a stable publish while only administrators publish. "(nobody reviews this board
+    // yet)" was wrong for the last two - the Maintainer view named the administrator as the board's
+    // maintainer beside it (code review, 2026-10-05) - so the line gives no reason it cannot know.
+    // ###########################################################################################
+    [Fact]
+    public void A_change_needing_the_administrator_alone_does_not_claim_nobody_reviews_the_board()
+    {
+        Assert.Equal(
+            "Replaces a shared file other boards may use, so it needs the administrator's approval. Nobody has approved it yet.",
+            ApprovalWording.StatusLine(ApprovalRules.Status([ApproverRole.Administrator], [], ApproverRole.Administrator)));
+    }
+
     [Fact]
     public void A_recorded_approval_says_it_was_NOT_published_yet()
     {

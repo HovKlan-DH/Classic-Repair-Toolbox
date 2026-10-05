@@ -152,6 +152,24 @@ namespace CRT.Server.Handlers.Submissions
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // A new system's notes (2026-10-05, migration 0019) - in the same transaction, so a
+            // submission never exists without the notes it was sent with.
+            if (!string.IsNullOrWhiteSpace(submission.HardwareNotes))
+            {
+                await using MySqlCommand command = connection.CreateCommand();
+
+                command.Transaction = transaction;
+                command.CommandText = """
+                    INSERT INTO submission_notes (submission_id, hardware_notes)
+                    VALUES (@submissionId, @notes);
+                    """;
+
+                command.Parameters.AddWithValue("@submissionId", submissionId);
+                command.Parameters.AddWithValue("@notes", submission.HardwareNotes);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
 
             return submissionId;
@@ -379,10 +397,12 @@ namespace CRT.Server.Handlers.Submissions
             // than vanishing; the validator then reports the missing names, which is the truth.
             command.CommandText = """
                 SELECT p.format_version, p.rows_json, p.renames_json,
-                       COALESCE(y.manufacturer, ''), COALESCE(y.hardware, ''), COALESCE(y.board, '')
+                       COALESCE(y.manufacturer, ''), COALESCE(y.hardware, ''), COALESCE(y.board, ''),
+                       COALESCE(n.hardware_notes, '')
                 FROM submission_payloads p
                 JOIN submissions s ON s.id = p.submission_id
                 LEFT JOIN systems y ON y.system_id = s.system_id
+                LEFT JOIN submission_notes n ON n.submission_id = p.submission_id
                 WHERE p.submission_id = @id
                 LIMIT 1;
                 """;
@@ -395,6 +415,7 @@ namespace CRT.Server.Handlers.Submissions
             string manufacturer;
             string hardware;
             string board;
+            string hardwareNotes;
 
             await using (MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken))
             {
@@ -414,6 +435,9 @@ namespace CRT.Server.Handlers.Submissions
                 manufacturer = reader.GetString(3);
                 hardware = reader.GetString(4);
                 board = reader.GetString(5);
+
+                // A new system's notes (migration 0019), so the manifest read back is the one sent.
+                hardwareNotes = reader.GetString(6);
             }
 
             if (rows is null)
@@ -450,6 +474,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 BaseRevision = submission.BaseRevision,
                 Summary = submission.Summary ?? string.Empty,
+                HardwareNotes = hardwareNotes,
                 CreatedUtc = submission.CreatedUtc,
                 Rows = rows,
                 Renames = renames ?? [],

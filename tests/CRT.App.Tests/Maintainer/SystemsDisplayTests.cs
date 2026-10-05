@@ -98,6 +98,16 @@ public sealed class SystemsDisplayTests
         Assert.Equal("1 waiting, 2 rejected", SystemsDisplay.ContributorRecord(named));
 
         Assert.Equal(string.Empty, SystemsDisplay.ContributorRecord(new SystemContributorEntry("x@example.com", null, 0, 0, 0, 0, null)));
+
+        // A system the account does not maintain comes without addresses (2026-10-05): a contributor
+        // with no account is said as one - "(no address)" would claim they gave none - and a named
+        // one, like a maintainer, is the name alone.
+        var anonymous = new SystemContributorEntry(null, null, 1, 0, 0, 0, null);
+
+        Assert.Equal("A contributor without an account", SystemsDisplay.ContributorName(anonymous, addressesHidden: true));
+        Assert.Equal("(no address)", SystemsDisplay.ContributorName(anonymous));
+        Assert.Equal("Anna", SystemsDisplay.ContributorName(named with { Email = null }, addressesHidden: true));
+        Assert.Equal("Anna", SystemsDisplay.MaintainerLine(new PoolMaintainerEntry(7, "Anna", string.Empty)));
     }
 
     [Fact]

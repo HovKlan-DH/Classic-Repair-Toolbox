@@ -27,7 +27,8 @@ public sealed class FeedbackContractTests
         Assert.Equal("application/zip", zip.Headers.ContentType!.MediaType);
     }
 
-    // The PHP page could answer 200 with a warning in the body, so the body is read as well.
+    // The old feedback address could answer 200 with a warning in the body, so the body is read as
+    // well.
     [Theory]
     [InlineData(200, "Success", true)]
     [InlineData(200, "  success\n", true)]

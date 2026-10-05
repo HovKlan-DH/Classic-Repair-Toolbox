@@ -12,28 +12,36 @@ Two buttons in the "Workbooks" tab header, acting on the selected workbook.
 | --- | --- | --- |
 | The document | Yes | Yes - the same PDF, inside |
 | Photos | Embedded, page sized | The original files |
-| Attached files | No | Yes |
-| Use it for | Sharing the write-up | Handing over everything |
+| Attached files | Listed by name only | The original files |
+| Use it for | Sharing the write-up | Keeping or sharing everything, originals included |
 
 Both are named like this, and you can rename it in the save dialog:
 
 ```
-Workbook_3_Commodore_C64_20260904.pdf
+Workbook_<number>_<hardware>_<board>_<date of export>
+Workbook_3_Commodore-64_250407-long-board_20260904.pdf
 ```
+
+The hardware and board are the names in the two drop-downs ("Commodore 64" and "250407 (long board)"), with spaces, brackets and other punctuation turned into hyphens. The date is the day you exported, as year, month, day.
 
 The workbook description is deliberately not in the file name - it often holds personal details, on a file you may be about to send to someone.
 
+The file is not opened after export - you get it where you saved it. If an export fails, no file appears and no message is shown - the reason is written to the log ("Configuration" tab -> **Open logs and settings folder**).
+
 ### What the PDF contains
 
-The totals first, then one section per schematic, each starting on a new page: the schematic at full page width with the marked areas drawn on it in their category colours, then each worklog with its description, category, state, work done, comments, links and photos.
+* A header: the workbook description and status, its number, board, when it started (or ended), and the date it was exported.
+* The workbook note, then the totals.
+* One section per schematic, in alphabetical order - the first follows the totals, every later one starts on a new page. Each shows the schematic at full page width with the marked areas drawn on it in their category colours.
+* Then each worklog on that schematic: its title, category and state, description, components in scope (finished ones marked "(done)"), work done, comments, links, the names of its attached files, and its photos.
 
-Each photo is shown with its file name and comment, so a recipient can find that exact file in the ZIP.
+Each photo is shown with its file name and comment, so a recipient can find that exact file in the ZIP. Web links in the text, and the worklog's links, are clickable in the PDF.
 
 ### What the ZIP contains
 
 ```
-Workbook_3_Commodore_C64_20260904.zip
-├── Workbook_3_Commodore_C64_20260904.pdf
+Workbook_3_Commodore-64_250407-long-board_20260904.zip
+├── Workbook_3_Commodore-64_250407-long-board_20260904.pdf
 ├── worklog_1/
 │   ├── 5v-rail-ripple.png
 │   └── 7805-datasheet.pdf
@@ -43,14 +51,13 @@ Workbook_3_Commodore_C64_20260904.zip
 
 One folder per worklog, named the same as on your own disk.
 
-The file is not opened after export - you get it where you saved it.
-
 ## Where your files are
 
 Everything is on your own machine, in a `Workbooks` folder next to your settings and log:
 
 * Windows: `%LocalAppData%\Classic-Repair-Toolbox\Workbooks`
-* Linux and macOS: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Workbooks`
 
 The "Configuration" tab has a button `Open workbooks folder` that takes you straight there.
 
@@ -75,10 +82,6 @@ That means **you can delete a worklog, or a whole workbook, by deleting its fold
 
 The `index.json` at the top of `Workbooks/` is not a workbook. It records which numbers have been handed out, so a deleted workbook's number is never given to a new one.
 
-> **Upgrading from an older version:** the layout changed and **nothing is converted automatically**. Older versions kept every worklog of a workbook in one `entries.json`, and named workbook folders by a bare number (`1` instead of `workbook_1`). Those are no longer read, so workbooks written by an older version will not appear. Keep a copy of the folder before upgrading if you need that data. The same applies to the older `counters.json`, which is no longer read and can be deleted.
->
-> Two fields inside a workbook's `index.json` were renamed at the same time, for the same reason the folders were: `entryCount` and `lastEntryId` are now `worklogCount` and `lastWorklogId`, so the file says "worklog" like the rest of the application. These are also not converted - a workbook from an older version shows both as `0` until its next change, and no worklog number is ever re-used as a result.
-
 **To back up: copy the `Workbooks` folder.** That is all of it. To move to another machine, copy it across - nothing else needs doing.
 
 Close the application first, so you do not catch a file mid-write.
@@ -87,11 +90,11 @@ You can put the folder somewhere else with `--workbooks-root=`, see [Commandline
 
 ## Deleting
 
-Both are permanent - there is no undo.
+Both are permanent - there is no undo. Each asks you to confirm first.
 
-**Delete a worklog** - the ✕ on its card. Removes the worklog and its photos and files.
+**Delete a worklog** - the "Delete worklog" button on its card. Removes the worklog and its photos and files.
 
-**Delete a workbook** - the button in the header. Removes the whole repair: every worklog, photo and file in it.
+**Delete a workbook** - the "Delete workbook" button in the header. Removes the whole repair: every worklog, photo and file in it. If it was the workbook you were working in, the newest remaining workbook on that board takes its place.
 
 Export to ZIP first if there is any chance you want it back.
 

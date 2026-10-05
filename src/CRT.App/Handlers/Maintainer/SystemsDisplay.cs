@@ -352,16 +352,30 @@ namespace Handlers.MaintainerHandling
                 ? "Nobody has contributed to this system through CRT yet."
                 : count == 1 ? "Contributor" : $"Contributors ({count.ToString(CultureInfo.InvariantCulture)})";
 
-        // "Anna (anna@example.com)" - or the address alone for a contributor with no account.
-        public static string ContributorName(SystemContributorEntry contributor)
+        // "Anna (anna@example.com)" - or the address alone for a contributor with no account. For a
+        // system the account does not maintain (2026-10-05) the server sends no address, so a
+        // contributor with no account has nothing to be named by - said as that, not "(no address)",
+        // which would claim they gave none.
+        public static string ContributorName(SystemContributorEntry contributor, bool addressesHidden = false)
         {
             ArgumentNullException.ThrowIfNull(contributor);
 
             if (string.IsNullOrWhiteSpace(contributor.Name))
-                return string.IsNullOrWhiteSpace(contributor.Email) ? "(no address)" : contributor.Email.Trim();
+            {
+                if (!string.IsNullOrWhiteSpace(contributor.Email))
+                    return contributor.Email.Trim();
+
+                return addressesHidden ? "A contributor without an account" : "(no address)";
+            }
 
             return SystemsDisplay.NameAndAddress(contributor.Name, contributor.Email);
         }
+
+        // ###########################################################################################
+        // Said above the Contributor and Maintainer views of a system the account does not maintain
+        // (owner request, 2026-10-05), so the missing addresses read as a rule rather than a fault.
+        // ###########################################################################################
+        public const string AddressesHiddenLine = "Email addresses are shown only for the systems you maintain.";
 
         // ###########################################################################################
         // How a contributor's submissions to this system went, and when they last sent one:

@@ -169,6 +169,50 @@ namespace CRT.Server.Tests
             Assert.True(result.IsAccepted, string.Join("; ", result.Findings.Select(finding => finding.Code)));
         }
 
+        // ###########################################################################################
+        // *** A NEW SYSTEM'S NOTES ARE KEPT WITH ITS SUBMISSION (owner request, 2026-10-05). *** What
+        // the contributor typed in "Create system" is stored, trimmed, for the maintainer's placement
+        // to start with - and from that placement it reaches the main Excel data file. Blank notes
+        // are none at all.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("  Open-source replica.  ", "Open-source replica.")]
+        [InlineData("   ", null)]
+        [InlineData("", null)]
+        public async Task A_new_systems_notes_are_kept_with_its_submission(string sent, string? kept)
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.HardwareNotes = sent;
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
+            Assert.Equal(kept, store.Created[created.Negotiation!.SubmissionId].HardwareNotes);
+        }
+
+        // Longer than the main Excel data file's notes column holds: refused at create, where the
+        // contributor can act on it, and nothing is stored.
+        [Fact]
+        public async Task Notes_longer_than_the_notes_column_holds_are_refused_and_nothing_is_created()
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.HardwareNotes = new string('x', MasterListing.MaximumNotesLength + 1);
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.False(created.IsAccepted);
+            Assert.Contains(created.Findings, finding => finding.Code == "notes.too_long");
+            Assert.Empty(store.Created);
+        }
+
         // The finalise-time content check covers KiCad files too: a program renamed .kicad_pcb is
         // refused before any maintainer sees it.
         [Fact]

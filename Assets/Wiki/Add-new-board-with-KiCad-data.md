@@ -8,7 +8,7 @@ This page walks through contributing a **complete new board** whose schematics a
 by a KiCad project, so that selecting a component highlights its actual copper traces, nets can be
 hovered, and pin 1 can be marked.
 
-A board without KiCad data is the same job minus steps 3 and 5. Everything else applies either way.
+A board without KiCad data is the same job minus steps 3, 5, 6, 7 and 8. Everything else applies either way.
 
 ---
 
@@ -48,6 +48,10 @@ reference implementation - when in doubt, look at what it does.
 > suits the task: the application reads the file fresh every time, so it always sees your
 > latest edits, and it never writes back over them.
 >
+> When the application saves the file, it writes it afresh from the values in the documented
+> columns (see [Board Excel](Board-Excel)). Your values are kept; formatting, colours, extra
+> columns and extra worksheets are not.
+>
 > Close the file in Excel before saving from the application, as you would with any document
 > open in two places.
 >
@@ -66,8 +70,10 @@ reference implementation - when in doubt, look at what it does.
 The app parses the raw KiCad files itself. There is no conversion step and no export to prepare, but
 the project has to satisfy four things:
 
-1. **Modern KiCad files.** Only `.kicad_pcb`, `.kicad_sch` and `.kicad_pro` are read (KiCad 6 and newer
-   S-expression format). Legacy `.brd` / `.sch` files are ignored.
+1. **Modern KiCad files, with one PCB.** Only `.kicad_pcb`, `.kicad_sch` and `.kicad_pro` are read
+   (KiCad 6 and newer S-expression format). Legacy `.brd` / `.sch` files are ignored. Components are
+   matched against the `.kicad_pcb`, so the project needs exactly one - with several, only the first is
+   used.
 2. **Reference designators must match your board labels.** A component labelled `U17` finds its copper
    by looking for a footprint named `U17`. Call it `PLA/U17` in your board data and nothing will
    highlight. Matching is case-insensitive and trimmed, but otherwise exact.
@@ -112,7 +118,13 @@ Fill in three names:
 | **Hardware** | The machine itself. | `C64` |
 | **Board** | The board revision. | `250407` |
 
-There is a **Notes** box as well, which is optional and shows up on the Overview tab.
+There is a **Notes** box as well, which is optional - a short note about the hardware, at most 2,000
+characters. It is sent with your submission: the maintainer who adds the system to CRT's hardware
+and board lists starts from it and may adjust it, and it is then shown on the
+[Overview tab](Overview-tab).
+
+The Hardware and Board names are also what your system is called in the hardware and board lists.
+When it is published, the maintainer who accepts it may choose other names for those lists.
 
 The box at the bottom previews exactly what will be created. Click **Create system** and you are asked
 to accept the role of **maintainer**: if you later submit this system for the community to use, you will
@@ -125,10 +137,6 @@ away, and is selected for you.
 > [!TIP]
 > Pick from the **Manufacturer** suggestions where you can. Typing `Comodore` instead of `Commodore`
 > creates a second folder beside the real one, and nothing will warn you.
-
-**That is the whole of what used to be steps 1, 2 and 4** - creating the folders, building a board
-Excel file by copying and emptying another one, and creating a version-named `_UserContribution`
-workbook to register the board in. None of that is needed any more.
 
 ---
 
@@ -187,7 +195,9 @@ no copper.
 There is a walkthrough video: [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
 
 You can also use the **Contribute** tab to add components one at a time, with their friendly name, part
-number, category, files and links.
+number, category, files and links. Or click **Edit in table format** on your system's row in the
+[Drafts tab](Drafts-tab) to work on every sheet of the board as a table - credits included. The
+columns are explained in [Board Excel](Board-Excel).
 
 ---
 
@@ -211,6 +221,10 @@ You no longer have to read any of this out of the logfile.
 Each board image that should be backed by KiCad data needs a **CAD name** naming which KiCad view it
 shows. The names are listed for you in the window above - copy one across verbatim.
 
+Nothing fills it in for you. Click **Edit in table format** on your system's row in the Drafts tab,
+open the `Board schematics` sheet, and type the name into the image's `CAD name` cell - or do the same
+in the board's Excel file.
+
 Views are generated like this:
 
 | View | Display name |
@@ -231,7 +245,8 @@ yields `250407_sheet2`.
 ## Step 7 - Calibrate each KiCad-backed view
 
 KiCad works in millimetres and your image is pixels, so each view needs a one-time alignment. Fill in
-`CAD name` **before** calibrating - the calibration is stored together with the CAD name it was made for.
+`CAD name` **before** calibrating - **Calibrate KiCad traces** is only offered on a view whose CAD name
+matches a KiCad view, and the calibration is stored together with the CAD name it was made for.
 
 1. Schematics tab -> settings panel -> tick **Enable contributor mode**.
 2. Select the view you want to calibrate.
@@ -251,7 +266,8 @@ Repeat for every view that has a `CAD name`.
 ## Step 8 - Important signals (optional, KiCad-only)
 
 The `Important signals` data powers the side panel that lets a user light up a whole supply or clock
-net without hunting for a component:
+net without hunting for a component. Type the rows into the `Important signals` sheet - with **Edit in
+table format** on the Drafts tab, or in the board's Excel file:
 
 | Display name | KiCad net name |
 | --- | --- |
@@ -282,9 +298,11 @@ select components, look for copper lighting up, hover nets.
 Two extra checks worth doing:
 
 * Re-open **KiCad data** and confirm nothing is left in the "will NOT light up" list.
-* Untick **"View boards as officially coming from online source"** on the Configuration tab and back on again. For a
-  brand-new system, ticking it shows an empty board - that is correct, because officially your system
-  does not exist yet.
+* Click **Edit in table format** on the Drafts tab and fix every red corner - a draft with errors cannot
+  be submitted. Amber corners are warnings worth a look.
+* Tick **"View boards as officially coming from online source (hide my local draft changes)"** on the
+  Configuration tab, then untick it again. For a brand-new system, ticking it shows an empty board -
+  that is correct, because officially your system does not exist yet.
 
 The logfile is still worth a glance for anything unexpected; the application is deliberately forgiving
 at runtime, so some mistakes are a warning there rather than a visible failure.
@@ -302,32 +320,30 @@ at runtime, so some mistakes are a warning there rather than a visible failure.
 | Component highlights, but no copper lights up | Reference designator != board label. **The report names every one of these** - see step 5 |
 | Only some nets ever light up | Those nets are unnamed in KiCad, or the component's pads have no net assignment |
 | Signal missing from the Important signals panel | Net name does not resolve - turn on contributor mode and read the log |
-| "Mark first pin" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
+| "Mark first pin on component" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
 | "KiCad data initializing..." for a long time | Normal on a large `.kicad_pcb`; it loads in the background |
 | Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only system has nothing published yet, so that view is correctly blank |
 
 ---
 
-## Boards made the old way
+## Already have a board folder from earlier work?
 
-Before drafts existed, a new board was registered by creating a
-`Classic-Repair-Toolbox.v<version>_UserContribution.xlsx` workbook in the data root by hand, listing the
-board in it, and building the board's own `.xlsx` alongside. **Boards made that way keep working exactly
-as they always have** and are still protected from the online sync - nothing has been taken away.
-
-New boards are not made that way any more, and the application will not create such a file. If you have
-a board set up the old way and it works, leave it alone.
-
-To **submit** a board made the old way, copy its board folder into your drafts folder. The next time CRT
-starts, it appears on the **Drafts** tab as a new system, ready to send - see
+Copy its board folder into your drafts folder. The next time CRT starts, it appears on the **Drafts**
+tab as a new system, ready to work on and send - see
 [Bringing in a board you already have work on](Contribute-data-via-CRT#bringing-in-a-board-you-already-have-work-on).
 
 ---
 
 ## Submitting your data
 
-Submitting drafts from inside the application is being built. Until it lands, a whole new board is still
-best contributed through [Contribute data GitHub](Contribute-data-via-GitHub).
+When your board is ready, click **Submit** on its row in the [Drafts tab](Drafts-tab). A draft with
+errors is not sent: its table opens on the rows to fix instead. Warnings never stop a submission.
+
+A maintainer then reviews it. A new system has to be placed in the hardware and board lists before it
+can be accepted: the maintainer chooses the names it is shown under and where in the lists it goes.
+Once accepted, it is published to the **BETA source** first, and then to the **stable source** that
+everyone downloads from. You are told by email at each step - see
+[Contribute data via CRT](Contribute-data-via-CRT#sending-your-work-in) for the whole story.
 
 **Make sure you submit data in a good quality!** No one wants to see a rough and fast implementation, as
 this only gives frustration when missing something or something is plain wrong. This is a fine balance

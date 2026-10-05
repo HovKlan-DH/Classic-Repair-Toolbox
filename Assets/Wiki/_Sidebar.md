@@ -9,10 +9,14 @@
 - [Export and data](Workbooks-Export-and-data)
 
 [Synchronize oscilloscope](Synchronize-oscilloscope)
-- [Oscilloscope from keyboard](Controlling-oscilloscope-with-keyboard)
-- [MiniPro programmer](MiniPro-programmer)
-- [Command-line parameters](Commandline-parameters)
-- [Install on Linux](Installing-application-in-Linux)
+
+[Oscilloscope from keyboard](Controlling-oscilloscope-with-keyboard)
+
+[MiniPro programmer](MiniPro-programmer)
+
+[Command-line parameters](Commandline-parameters)
+
+[Install on Linux](Installing-application-in-Linux)
 
 ### The tabs
 - [Schematics](Schematics-tab)
@@ -21,6 +25,7 @@
 - [Workbooks](Workbooks-tab)
 - [Oscilloscope](Oscilloscope-tab)
 - [Contribute](Contribute-tab)
+- [Drafts](Drafts-tab)
 - [Maintainer](Maintainer-tab)
 - [Configuration](Configuration-tab)
 - [Feedback](Feedback-tab)
@@ -29,10 +34,9 @@
 ### Contributing
 - [Via CRT](Contribute-data-via-CRT)
   - [View boards from online source](View-boards-from-online-source)
-- [Via GitHub](Contribute-data-via-GitHub)
 - [Add a board (KiCad)](Add-new-board-with-KiCad-data)
 
-**Data files**
+### Data files
 - [Overview](Explanation-of-data-files)
   - [Main Excel](Main-Excel)
   - [Board Excel](Board-Excel)

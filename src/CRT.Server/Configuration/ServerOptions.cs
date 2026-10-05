@@ -2,7 +2,7 @@ namespace CRT.Server.Configuration
 {
     // ###########################################################################################
     // Everything the service reads from appsettings.Production.json, which sits in the service's
-    // own directory beside the binaries. See DEPLOYMENT.md for the deployed layout.
+    // own directory beside the binaries. See INSTALLING.md for the deployed layout.
     //
     // THE DEFAULTS ARE THE POINT. Every value that decides WHERE DATA GOES is null here, with no
     // fallback anywhere, so a service that was not told explicitly refuses to start rather than
@@ -40,8 +40,11 @@ namespace CRT.Server.Configuration
         // project owner asked for a two-stage publish - BETA first, Production after a maintainer has
         // checked it there - so the service may now write ProductionDataTreeRoot below, and only
         // through ProductionPromoter, which copies bytes that are already in BETA and nothing
-        // else. Until the three Production* settings below are set, that is switched OFF and the
-        // service is as unable to write Production as it always was. See DEPLOYMENT.md step 3.
+        // else. Until the three Production* settings below are set, that is switched OFF and no
+        // code path writes Production. The FILESYSTEM refuses it too only while the stable tree is
+        // left out of the unit's ReadWritePaths - and the shipped crt-server.service names it,
+        // because INSTALLING.md's settings publish to stable. A deployment with publishing off takes
+        // it out (INSTALLING.md, "Settings you may change later").
         public string? ProductionTreeRoot { get; set; }
 
         // -----------------------------------------------------------------------------------
@@ -68,6 +71,24 @@ namespace CRT.Server.Configuration
             !string.IsNullOrWhiteSpace(this.ProductionDataTreeRoot) &&
             !string.IsNullOrWhiteSpace(this.ProductionManifestPath) &&
             !string.IsNullOrWhiteSpace(this.ProductionPublicDataBaseUrl);
+
+        // -----------------------------------------------------------------------------------
+        // Whether ONLY ADMINISTRATORS may publish a system from BETA to the stable source (owner
+        // request, 2026-10-05: "for now ... I do not want to pollute the stable yet. Only me, as
+        // admin, should be able to publish to stable").
+        //
+        // ON: a maintainer still sees the system waiting, its plan, and may push it back or reject
+        // it - but the publish itself is refused (403, CRT.Data's StablePublishing sentence), the
+        // plan says so, and CRT greys the button out. The shared-file rule's maintainer approval is
+        // not asked for: nobody but the administrator could give it, and the administrator's own
+        // approval is what that rule exists to get. OFF: a maintainer publishes their own systems,
+        // as designed on 2026-09-25.
+        //
+        // A control, and its safe value is knowable, so it defaults ON - forgetting it keeps the
+        // stable source closed rather than open. The project owner sets it false in
+        // appsettings.Production.json to open it up (INSTALLING.md).
+        // -----------------------------------------------------------------------------------
+        public bool ProductionPublishingAdministratorsOnly { get; set; } = true;
 
         // ###########################################################################################
         // The tree the Systems screen READS as the stable source: the promotion's own root, else the
@@ -106,10 +127,10 @@ namespace CRT.Server.Configuration
         public string? BlobStoreRoot { get; set; }
 
         // -----------------------------------------------------------------------------------
-        // Feedback from CRT's Feedback tab (owner request, 2026-10-03 - the old PHP page's job).
+        // Feedback from CRT's Feedback tab (owner request, 2026-10-03).
         //
         // FeedbackRoot is where each feedback's attached files are saved, one "feedback-<random>"
-        // folder per feedback - the PHP page's /mydir/http/classic-repair-toolbox.dk/user-feedback,
+        // folder per feedback - /mydir/http/classic-repair-toolbox.dk/user-feedback on the server,
         // which the project owner opens from a network share. FeedbackToAddress is who the mail
         // goes to. NO DEFAULT for either, by this class's rule: one decides where strangers' files
         // land, the other who reads their logs. The folder must sit outside the web document root
@@ -153,7 +174,7 @@ namespace CRT.Server.Configuration
         public string? PublicApiBaseUrl { get; set; }
 
         // -----------------------------------------------------------------------------------
-        // Mail. Defaults match the deployment documented in DEPLOYMENT.md (local postfix), and
+        // Mail. Defaults match the deployment documented in INSTALLING.md (local postfix), and
         // are safe: the worst case of a wrong port here is mail that fails to send, which is
         // visible and harms nothing.
         // -----------------------------------------------------------------------------------

@@ -277,6 +277,32 @@ namespace CRT.Data.Tests
             Assert.Equal("250407", manifest.Board);
             Assert.Equal("2026-09-01", manifest.BaseRevision);
             Assert.Equal("Corrected R12.", manifest.Summary);
+
+            // A draft of a published board carries no notes.
+            Assert.Equal(string.Empty, manifest.HardwareNotes);
+        }
+
+        // A new system's notes from "Create system" travel with it, trimmed (owner request, 2026-10-05).
+        [Fact]
+        public void A_new_systems_notes_reach_the_manifest_trimmed()
+        {
+            SubmissionIdentity identity = SubmissionManifestBuilderTests.Identity();
+
+            SubmissionManifest manifest = SubmissionManifestBuilder.Build(
+                SubmissionManifestBuilderTests.Board(),
+                new SubmissionIdentity
+                {
+                    SystemId = identity.SystemId,
+                    Manufacturer = identity.Manufacturer,
+                    Hardware = identity.Hardware,
+                    Board = identity.Board,
+                    Summary = identity.Summary,
+                    HardwareNotes = "  Open-source replica.\nRev. B only.  ",
+                    CreatedUtc = identity.CreatedUtc
+                },
+                SubmissionManifestBuilderTests.Hashes("main.png", "Images/U8-pin3.png")).Manifest;
+
+            Assert.Equal("Open-source replica.\nRev. B only.", manifest.HardwareNotes);
         }
 
         [Fact]

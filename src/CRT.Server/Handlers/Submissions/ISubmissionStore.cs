@@ -263,6 +263,13 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
+        // The notes a new system's submissions carried (owner request, 2026-10-05, migration 0019),
+        // newest first, whatever their state - SystemListingRules.SuggestedNotes decides which one
+        // the placement starts with. Written by CreateAsync from NewSubmission.HardwareNotes.
+        // ###########################################################################################
+        Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string systemId, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
         // Records that a system's BETA state has been copied to Production (2026-09-25): the BETA
         // revision and content hash it had, and when. A separate call from SetSystemPublishedAsync
         // because it is a separate fact about a separate tree - and the comparison between the two
@@ -591,7 +598,15 @@ namespace CRT.Server.Handlers.Submissions
         // Whether it adds or changes a file under "Shared files" / "Generic shared files" -
         // decided at creation by SubmissionSharedFiles, and what routes it to the administrator
         // rather than to the system's maintainers. See ReviewAuthority.
-        bool TouchesSharedFiles = false);
+        bool TouchesSharedFiles = false,
+
+        // A new system's notes from "Create system" (2026-10-05) - null when it carried none.
+        // Stored in submission_notes (migration 0019), apart from the submission's own row.
+        string? HardwareNotes = null);
+
+    // One submission's notes for a new system, with what decides whether they count: its state and
+    // when it was sent. See SystemListingRules.SuggestedNotes.
+    public sealed record SubmissionNotes(long SubmissionId, string State, DateTimeOffset CreatedUtc, string HardwareNotes);
 
     public sealed record SubmissionRecord(
         long Id,

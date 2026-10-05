@@ -57,13 +57,18 @@ namespace CRT.Server.Tests
             }
         }
 
-        private ServerOptions Options(bool configured = true) => new()
+        // `administratorsOnly` is OFF here unless a test asks for it, although the server defaults
+        // it ON: the tests below describe a maintainer publishing their own systems, as designed
+        // (2026-09-25). The "for now, only the administrator" rule (2026-10-05) has its own tests at
+        // the end of the class.
+        private ServerOptions Options(bool configured = true, bool administratorsOnly = false) => new()
         {
             DataTreeRoot = this.thisBeta,
             ProductionTreeRoot = Path.Combine(this.thisRoot, "app-data"),
             ProductionDataTreeRoot = configured ? this.thisProduction : null,
             ProductionManifestPath = configured ? Path.Combine(this.thisRoot, "app-data", "dataChecksums.json") : null,
-            ProductionPublicDataBaseUrl = configured ? "https://example.com/app-data/Data" : null
+            ProductionPublicDataBaseUrl = configured ? "https://example.com/app-data/Data" : null,
+            ProductionPublishingAdministratorsOnly = administratorsOnly
         };
 
         private static ReviewAccess Admin() =>
@@ -808,6 +813,216 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsPublished);
             Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
+        }
+
+        // ###########################################################################################
+        // *** FOR NOW, ONLY THE ADMINISTRATOR PUBLISHES TO STABLE (owner request, 2026-10-05: "I do
+        // not want to pollute the stable yet. Only me, as admin, should be able to publish to
+        // stable"). *** ServerOptions.ProductionPublishingAdministratorsOnly, ON by default. A
+        // maintainer still sees the system and its plan, and may push it back or reject it - only
+        // the publish is closed to them.
+        // ###########################################################################################
+
+        // The default is what makes "for now" true on a server nobody re-configured: forgetting the
+        // setting must leave stable closed to maintainers, not open.
+        [Fact]
+        public void A_server_not_told_otherwise_lets_only_administrators_publish_to_stable()
+        {
+            Assert.True(new ServerOptions().ProductionPublishingAdministratorsOnly);
+        }
+
+        [Fact]
+        public async Task While_only_administrators_publish_a_maintainer_is_refused_and_nothing_arrives_in_stable()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            string hash = ProductionPromotionFlowTests.BetaHashOf(store);
+
+            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, hash, this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now,
+                [], CancellationToken.None);
+
+            Assert.False(outcome.IsPublished);
+            Assert.True(outcome.IsForbidden);
+            Assert.Equal(StablePublishing.AdministratorsOnlyMessage, outcome.Error);
+            Assert.False(Directory.Exists(this.InProduction("Commodore")));
+
+            // Nor is half an approval left behind for the administrator's to complete.
+            Assert.False(store.ProductionApprovals.ContainsKey((ProductionPromotionFlowTests.SystemId, hash)));
+            Assert.False(store.ProductionSystems.ContainsKey(ProductionPromotionFlowTests.SystemId));
+        }
+
+        [Fact]
+        public async Task While_only_administrators_publish_the_administrator_still_publishes_to_stable()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+
+            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+        }
+
+        // ###########################################################################################
+        // A REPLACED shared file normally needs the board's maintainer AND the administrator. With
+        // the maintainer shut out of the publish, asking for their half would leave the
+        // administrator's approval waiting for ever - so the administrator's alone publishes.
+        // ###########################################################################################
+        [Fact]
+        public async Task While_only_administrators_publish_a_shared_file_replacement_needs_the_administrator_alone()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
+            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
+            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
+
+            PromotionPlanOutcome plan = await this.Flow(store, accounts).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: true));
+
+            Assert.True(plan.Plan!.TouchesSharedFiles);
+            Assert.True(plan.Approval!.ApprovalPublishes);
+
+            // Still SAID to be a shared-file replacement: Required is what CRT's "Replaces a shared
+            // file other boards may use" line is written from, and a stable publish cannot be undone.
+            // Collapsing it to "any one approval" took that warning off the administrator's screen
+            // (code review, 2026-10-05).
+            Assert.Equal([ApproverRole.Administrator], plan.Approval.Required);
+
+            // And the maintainer is not offered a publish they cannot make: the administrator's
+            // approval is the one needed, theirs is not asked for.
+            PromotionPlanOutcome maintainers = await this.Flow(store, accounts).PlanAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: true));
+
+            Assert.False(maintainers.Approval!.CanApprove);
+            Assert.Equal([ApproverRole.Administrator], maintainers.Approval.WaitingFor);
+
+            PromotionOutcome outcome = await this.Flow(store, accounts).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.SystemId, ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.NotEqual("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
+        }
+
+        // ###########################################################################################
+        // *** AN APPROVAL GIVEN BEFORE THE SETTING WAS SWITCHED ON (code review, 2026-10-05). *** The
+        // administrator gave the first of two approvals on a shared-file replacement; with only
+        // administrators publishing, nothing else is asked for, so their next press publishes. The
+        // list must say so: "you approved, so it is with the other approver" left the system dimmed
+        // and off the administrator's badge, with nobody prompted to finish it.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_administrators_approval_given_before_only_administrators_published_still_leaves_the_system_awaiting_them()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
+            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
+            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
+            ProductionPromotionFlow flow = this.Flow(store, accounts);
+            string hash = ProductionPromotionFlowTests.BetaHashOf(store);
+
+            PromotionOutcome first = await flow.PromoteAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, hash,
+                this.Options(administratorsOnly: false), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
+
+            Assert.True(first.IsAwaitingApproval);
+
+            ProductionListEntry entry = Assert.Single(await flow.ListEntriesAsync(
+                ProductionPromotionFlowTests.Admin(), this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now));
+
+            Assert.True(entry.AwaitsYou);
+
+            PromotionOutcome second = await flow.PromoteAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, hash,
+                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
+
+            Assert.True(second.IsPublished, second.Error);
+        }
+
+        // ###########################################################################################
+        // The plan is what CRT's button follows (ProductionPlanAnswer.CanPublish needs a null
+        // refusal): a maintainer's carries the reason, the administrator's does not. Everything
+        // else - the files, the removals - is still shown to the maintainer, who may push it back.
+        // ###########################################################################################
+        [Fact]
+        public async Task While_only_administrators_publish_a_maintainers_plan_carries_the_reason_and_the_administrators_does_not()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            this.ProductionHasTheOlderBoard();
+            ProductionPromotionFlow flow = this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer());
+
+            PromotionPlanOutcome maintainers = await flow.PlanAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: true));
+
+            Assert.False(maintainers.IsForbidden);
+            Assert.Equal(StablePublishing.AdministratorsOnlyMessage, maintainers.Refusal);
+            Assert.Equal([ProductionPromotionFlowTests.OldManual], maintainers.Removals.Files);
+
+            PromotionPlanOutcome administrators = await flow.PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: true));
+
+            Assert.Null(administrators.Refusal);
+
+            // Switched off, the maintainer's plan is as it always was.
+            PromotionPlanOutcome open = await flow.PlanAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: false));
+
+            Assert.Null(open.Refusal);
+        }
+
+        // A plan refusal the maintainer CAN act on (placing the system) is still said, first.
+        [Fact]
+        public async Task While_only_administrators_publish_a_maintainer_is_still_told_the_plans_own_refusal_first()
+        {
+            DataTreeBuilder.ListingMaster(this.thisProduction, ApprovePublishFlowTests.OtherListedBoard);
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            DataTreeBuilder.ListingMaster(this.thisBeta, ApprovePublishFlowTests.OtherListedBoard);
+
+            PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                ProductionPromotionFlowTests.SystemId, this.Options(administratorsOnly: true));
+
+            Assert.StartsWith("This system is not in the drop-down lists", plan.Refusal, StringComparison.Ordinal);
+            Assert.EndsWith(StablePublishing.AdministratorsOnlyMessage, plan.Refusal, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // The maintainer still SEES the system in the BETA queue - they may push it back or reject
+        // it - but it never awaits them, so the tab's badge does not count work they cannot do.
+        // ###########################################################################################
+        [Fact]
+        public async Task While_only_administrators_publish_the_list_shows_a_maintainer_the_system_but_never_as_awaiting_them()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            ProductionPromotionFlow flow = this.Flow(store);
+
+            ProductionListEntry maintainers = Assert.Single(await flow.ListEntriesAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now));
+
+            Assert.False(maintainers.AwaitsYou);
+
+            // ...and says it waits for the administrator, so CRT does not call it "with the other
+            // approver" - which the maintainer never was (code review, 2026-10-05).
+            Assert.True(maintainers.WaitsForAdministrator);
+
+            ProductionListEntry administrators = Assert.Single(await flow.ListEntriesAsync(
+                ProductionPromotionFlowTests.Admin(), this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now));
+
+            Assert.True(administrators.AwaitsYou);
+            Assert.False(administrators.WaitsForAdministrator);
+
+            ProductionListEntry open = Assert.Single(await flow.ListEntriesAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.SystemId),
+                this.Options(administratorsOnly: false), ProductionPromotionFlowTests.Now));
+
+            Assert.True(open.AwaitsYou);
+            Assert.False(open.WaitsForAdministrator);
         }
     }
 }

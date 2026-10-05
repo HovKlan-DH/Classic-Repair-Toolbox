@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // FEEDBACK (owner request, 2026-10-03: retire the app-feedback PHP page; the mail as HTML with
+    // FEEDBACK (owner request, 2026-10-03: the service takes over feedback; the mail as HTML with
     // the log "as monospace"; the files "just keep exact same behaviour" - a feedback-<random>
     // folder, opened from the network share). Against a temporary folder and a fake mailer.
     // ###########################################################################################
@@ -90,7 +90,8 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // CRT's own text files are SHOWN, monospaced ("logfile should still show as monospace as
         // this is kind of quoted text"); everything else is SAVED in the feedback's folder, listed
-        // in the mail under the folder's name - the PHP page's "Internal reference".
+        // in the mail under the folder's name - the "Internal reference" feedback mails have always
+        // given.
         // ###########################################################################################
         [Fact]
         public async Task The_log_and_settings_are_shown_and_the_other_files_are_saved_under_the_reference()
@@ -671,7 +672,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_reference_is_the_PHP_pages_shape()
+        public void A_reference_has_the_shape_it_has_always_had()
         {
             string reference = FeedbackFlow.NewReference();
 

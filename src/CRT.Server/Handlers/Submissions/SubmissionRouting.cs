@@ -28,21 +28,29 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(submission);
             ArgumentNullException.ThrowIfNull(accounts);
 
-            // Only maintainers who can approve as maintainers - the rule the approval itself counts by
-            // (ReviewAuthority.CanGiveMaintainerApproval), so who is asked and who is waited for agree.
-            IReadOnlyList<MaintainerRecord> maintainers =
-                (await accounts.GetMaintainersOfSystemAsync(submission.SystemId, cancellationToken))
-                    .Where(ReviewAuthority.CanGiveMaintainerApproval)
-                    .ToList();
+            IReadOnlyList<MaintainerRecord> pool =
+                await accounts.GetMaintainersOfSystemAsync(submission.SystemId, cancellationToken);
 
-            IReadOnlyList<ApproverRole> required = ApprovalRules.Required(submission.TouchesSharedFiles, maintainers.Count > 0);
+            // Only maintainers who can approve as maintainers decide WHICH approvals are needed - the
+            // rule the approval itself counts by (ReviewAuthority.CanGiveMaintainerApproval), so who
+            // is asked and who is waited for agree.
+            bool hasMaintainers = pool.Any(ReviewAuthority.CanGiveMaintainerApproval);
 
-            // Ordinary: any one approval, and the maintainers are the ones to ask - or the
-            // administrators when there are none.
+            IReadOnlyList<ApproverRole> required = ApprovalRules.Required(submission.TouchesSharedFiles, hasMaintainers);
+
+            // Ordinary: any one approval, and the system's maintainers are the ones to ask - or the
+            // administrators when there are none. An ADMINISTRATOR in the pool (2026-10-05) is one of
+            // the system's maintainers here: named as its maintainer, so told like one - and once,
+            // however many roles they hold (Distinct, and SubmissionNotifier's own).
             if (required.Count == 0)
             {
+                List<MailRecipient> maintainers = pool
+                    .Where(SubmissionRouting.CanBeWrittenTo)
+                    .Select(maintainer => new MailRecipient(maintainer.Email, maintainer.DisplayName))
+                    .ToList();
+
                 return maintainers.Count > 0
-                    ? maintainers.Select(maintainer => new MailRecipient(maintainer.Email, maintainer.DisplayName)).ToList()
+                    ? SubmissionRouting.Distinct(maintainers)
                     : await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken);
             }
 
@@ -78,11 +86,20 @@ namespace CRT.Server.Handlers.Submissions
                 }
             }
 
-            return recipients
+            return SubmissionRouting.Distinct(recipients);
+        }
+
+        // One mail per address, in the order first named.
+        private static IReadOnlyList<MailRecipient> Distinct(IEnumerable<MailRecipient> recipients) =>
+            recipients
                 .GroupBy(recipient => recipient.Email, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToList();
-        }
+
+        // A pool member with a proven address who can still sign in - an administrator included.
+        // The administrators' own rule, below.
+        private static bool CanBeWrittenTo(MaintainerRecord maintainer) =>
+            maintainer.IsVerified && !maintainer.IsLocked;
 
         // A locked administrator is not somebody to write to; an unverified one has no proven
         // address.

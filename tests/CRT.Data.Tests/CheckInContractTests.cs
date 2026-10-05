@@ -10,11 +10,11 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class CheckInContractTests
 {
-    // *** THE PHP PAGE'S FORM, BYTE FOR BYTE. *** Every CRT already installed posts exactly this to
-    // /app-checkin/, which Apache forwards to the server - so a field renamed here would still
-    // compile on both ends, and every older CRT's check-in would stop counting.
+    // *** THE FORM CRT HAS ALWAYS SENT, BYTE FOR BYTE. *** Every CRT already installed posts exactly
+    // this to the old check-in address, which Apache forwards to the server - so a field renamed
+    // here would still compile on both ends, and every older CRT's check-in would stop counting.
     [Fact]
-    public async Task The_form_is_the_PHP_pages_four_fields_url_encoded()
+    public async Task The_form_is_the_four_fields_CRT_has_always_sent_url_encoded()
     {
         using FormUrlEncodedContent form = CheckInContract.BuildForm("Windows", "Microsoft Windows 10.0.19045", "64-bit");
 

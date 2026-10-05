@@ -11,7 +11,7 @@ namespace CRT.Server.Handlers.Submissions
     // a handler body is a rule no test can reach.
     //
     // *** ADMINISTRATOR ONLY, AND THERE IS NO WAY TO BECOME ONE HERE. *** Granting administrator
-    // stays a by-hand SQL step (DEPLOYMENT.md), deliberately: an endpoint that grants it is an
+    // stays a by-hand SQL step (INSTALLING.md), deliberately: an endpoint that grants it is an
     // endpoint that can be abused to grant it. These flows hand out MAINTAINER rights, which are
     // bounded to a system.
     //
@@ -73,8 +73,17 @@ namespace CRT.Server.Handlers.Submissions
         //
         // The account must be VERIFIED and not LOCKED - ReviewAuthority refuses either whatever the
         // pool says, so granting to one would produce a maintainer who cannot review and a puzzled
-        // administrator. An ADMINISTRATOR is refused too: they are in every pool already, and a
-        // row for them would be a second source of the same truth.
+        // administrator.
+        //
+        // *** AN ADMINISTRATOR MAY BE PUT IN A POOL (owner request, 2026-10-05: "I would like to be
+        // able to set myself (admin) as a maintainer, so others can see that this is me maintaining
+        // these systems"). *** It was refused until then as "a second source of the same truth". The
+        // row grants nothing more - an administrator reviews and publishes every system anyway, and
+        // approves as the administrator (ReviewAuthority.RoleIn) - so what it adds is being NAMED as
+        // the system's maintainer, and that system's "submission waiting" mail (SubmissionRouting,
+        // one mail however many roles). It never counts as the maintainer half of a two-person
+        // approval (ReviewAuthority.CanGiveMaintainerApproval), or a shared-file change on a system
+        // they alone maintain would wait for a second approval nobody can give.
         //
         // The system must be one that EXISTS - a `systems` row or a board in the tree. A pool row
         // for a system that is neither would grant authority over something that could only come
@@ -212,9 +221,7 @@ namespace CRT.Server.Handlers.Submissions
             if (account.IsLocked)
                 return $"{account.Email} is locked. Unlock the account before making them a maintainer.";
 
-            if (account.IsAdministrator)
-                return $"{account.Email} is an administrator and already reviews every system.";
-
+            // An administrator may be granted (2026-10-05) - see AddAsync.
             return null;
         }
     }

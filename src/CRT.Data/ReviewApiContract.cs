@@ -428,7 +428,15 @@ namespace Handlers.DataHandling
 
         // Whether a submission this BETA state carries was sent by a contributor who has since
         // discarded their own draft in CRT (owner request, 2026-09-28) - see DraftDiscardContract.
-        bool? CarriesDiscardedDraft = null);
+        bool? CarriesDiscardedDraft = null,
+
+        // ###########################################################################################
+        // Whether it waits for the ADMINISTRATOR because only administrators publish to stable and
+        // this account is not one (2026-10-05, StablePublishing). AwaitsYou is then false, which
+        // alone reads as "you approved, it is with the other approver" - wrong words for a system
+        // the account never approved (code review, 2026-10-05). Optional: null from an older server.
+        // ###########################################################################################
+        bool? WaitsForAdministrator = null);
 
     // ###########################################################################################
     // THE "SYSTEMS" SCREEN (owner request, 2026-09-27): every system, and one system's facts - who
@@ -486,6 +494,12 @@ namespace Handlers.DataHandling
     // system, newest first (SystemHistoryEntry, 2026-09-27); null from a server older than that.
     // Views: how often CRT users look at it (BoardViewStatistics, 2026-09-27); null from a server
     // older than that, or when the counts could not be read.
+    //
+    // AddressesHidden (owner request, 2026-10-05): true when the account does not maintain the
+    // system, so the server sent NO email address - not its maintainers' (an empty Email), its
+    // contributors' or its submissions' (null), nor any in its history (names instead, where there is
+    // an account). The Maintainer tab says so rather than showing a contributor without an account
+    // as one who gave no address. False from a server older than that, which sent every address.
     public sealed record SystemDetailAnswer(
         SystemOverviewEntry System,
         IReadOnlyList<PoolMaintainerEntry> Maintainers,
@@ -493,7 +507,8 @@ namespace Handlers.DataHandling
         IReadOnlyList<SystemSubmissionEntry> Submissions,
         IReadOnlyList<MaintainerInvitationEntry>? Invitations = null,
         IReadOnlyList<SystemHistoryEntry>? History = null,
-        BoardViewStatistics? Views = null);
+        BoardViewStatistics? Views = null,
+        bool AddressesHidden = false);
 
     // ###########################################################################################
     // A SYSTEM'S BOARD DATA AND FILES ON THE "SYSTEMS" SCREEN (owner request, 2026-10-03: "all the
@@ -585,7 +600,8 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // The signed-in account, as GET /api/accounts/me answers it (2026-10-03 - an anonymous object
     // with these same fields until then, read by nothing). MaintainerOf: the systems whose pools it
-    // is in - empty for an administrator, who is in every pool by definition. *** NO PASSWORD
+    // is in - for an administrator, who reviews every system anyway, only the systems they were
+    // named a maintainer of (2026-10-05), often none. *** NO PASSWORD
     // HASH, NO SESSION, NO TOKEN. ***
     // ###########################################################################################
     public sealed record AccountAnswer(

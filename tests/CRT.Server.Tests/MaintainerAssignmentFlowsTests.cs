@@ -1,6 +1,7 @@
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Submissions;
 using CRT.Server.Tests.Fakes;
+using Handlers.DataHandling;
 using Xunit;
 
 namespace CRT.Server.Tests
@@ -173,8 +174,13 @@ namespace CRT.Server.Tests
             Assert.Contains("locked", outcome.Error, StringComparison.OrdinalIgnoreCase);
         }
 
+        // ###########################################################################################
+        // *** AN ADMINISTRATOR CAN BE NAMED A SYSTEM'S MAINTAINER (owner request, 2026-10-05: "so
+        // others can see that this is me maintaining these systems"). *** It was refused until then.
+        // The row is in the pool like anybody's - and it still approves as the administrator.
+        // ###########################################################################################
         [Fact]
-        public async Task An_ADMINISTRATOR_is_not_put_in_a_pool_because_they_are_in_every_pool_already()
+        public async Task An_ADMINISTRATOR_can_be_put_in_a_pool_and_still_approves_as_the_administrator()
         {
             (FakeAccountStore accounts, ReviewAccess admin, _) = await MaintainerAssignmentFlowsTests.SetUpAsync();
 
@@ -182,8 +188,12 @@ namespace CRT.Server.Tests
                 admin, MaintainerAssignmentFlowsTests.C64, admin.Account.Id, MaintainerAssignmentFlowsTests.Tree,
                 accounts, new FakeSubmissionStore(), MaintainerAssignmentFlowsTests.Now);
 
-            Assert.False(outcome.IsDone);
-            Assert.Contains("administrator", outcome.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.True(outcome.IsDone, outcome.Error);
+            Assert.Contains((MaintainerAssignmentFlowsTests.C64, admin.Account.Id), accounts.Maintainers);
+            Assert.Null(MaintainerAssignmentRules.WhyNotGrantable(admin.Account));
+
+            ReviewAccess withRow = ReviewAccess.For(admin.Account, [MaintainerAssignmentFlowsTests.C64]);
+            Assert.Equal(ApproverRole.Administrator, ReviewAuthority.RoleIn(withRow, MaintainerAssignmentFlowsTests.C64));
         }
 
         [Fact]

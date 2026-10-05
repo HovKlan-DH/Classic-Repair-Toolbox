@@ -35,5 +35,21 @@ namespace Handlers.DataHandling
         public string ExcelDataFile { get; init; } = string.Empty;
 
         public string CreatedUtc { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // The notes as a submission carries them (owner request, 2026-10-05 - they go to the server,
+        // and from the maintainer's placement into the main Excel data file): trimmed, and cut to that
+        // file's notes column. "Create system" stops typing there, but a draft made before it did,
+        // or a marker edited by hand, could hold more - and CRT has nowhere to shorten them after
+        // the system is created, so refusing them would leave the draft unsendable for good.
+        // ###########################################################################################
+        public string NotesForSubmission()
+        {
+            string notes = this.HardwareNotes?.Trim() ?? string.Empty;
+
+            return notes.Length <= MasterListing.MaximumNotesLength
+                ? notes
+                : notes[..MasterListing.MaximumNotesLength].TrimEnd();
+        }
     }
 }

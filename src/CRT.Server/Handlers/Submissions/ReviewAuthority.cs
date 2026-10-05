@@ -65,6 +65,26 @@ namespace CRT.Server.Handlers.Submissions
             ReviewAuthority.CanReview(access, systemId);
 
         // ###########################################################################################
+        // May this account PUBLISH THIS SYSTEM FROM BETA TO THE STABLE SOURCE? CanPublish - unless
+        // the server lets only administrators do that (ServerOptions.ProductionPublishingAdministratorsOnly,
+        // owner request, 2026-10-05). Seeing the system in the BETA queue, reading its plan, and
+        // pushing it back or rejecting it are not this question: they stay CanPublish's.
+        // ###########################################################################################
+        public static bool CanPublishToProduction(ReviewAccess? access, string? systemId, bool administratorsOnly) =>
+            ReviewAuthority.CanPublish(access, systemId) && (!administratorsOnly || access!.Account.IsAdministrator);
+
+        // ###########################################################################################
+        // May this account see the EMAIL ADDRESSES of this system's people - its maintainers, its
+        // contributors, and whoever its history names (owner request, 2026-10-05: "I do not think that
+        // normal maintainer should be able to see other email addresses if they are not set as
+        // maintainer for that system. They should be able to see all mail addresses for their own
+        // system(s)")? The administrator and the system's own maintainers: CanReview. Everybody else
+        // on the Systems screen sees the same system with names and no addresses (SystemOverviewFlow).
+        // ###########################################################################################
+        public static bool CanSeeAddressesOf(ReviewAccess? access, string? systemId) =>
+            ReviewAuthority.CanReview(access, systemId);
+
+        // ###########################################################################################
         // The role this account approves as, for this system: Administrator for an administrator
         // (in every pool by definition), Maintainer for a member of the system's pool, null for
         // anyone else. What ApprovalRules counts.
@@ -86,9 +106,10 @@ namespace CRT.Server.Handlers.Submissions
         // Can this pool member give the MAINTAINER half of a two-person approval (code review,
         // 2026-09-25)?
         //
-        // Not every row in a pool can. An account granted a pool and later made administrator BY
-        // HAND (the documented SQL step) keeps its row, but approves as the administrator
-        // (RoleIn); a locked or unverified account cannot approve at all. Counting such a row as
+        // Not every row in a pool can. An ADMINISTRATOR's row - granted directly since 2026-10-05, so
+        // others see who maintains a system, or kept by an account made administrator by hand later
+        // (the documented SQL step) - approves as the administrator (RoleIn); a locked or unverified
+        // account cannot approve at all. Counting such a row as
         // "the board has a maintainer" made a shared-file change demand a maintainer approval nobody
         // could give, and the submission waited in 'approved' for ever. The same preconditions as
         // IsUsable, plus "not an administrator".
@@ -98,7 +119,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // May this account manage maintainer pools? Administrators only, and there is deliberately
-        // no way for anyone else to become one - see DEPLOYMENT.md on granting the first.
+        // no way for anyone else to become one - see INSTALLING.md on making the first.
         // ###########################################################################################
         public static bool CanAdminister(ReviewAccess? access) =>
             ReviewAuthority.IsUsable(access) && access!.Account.IsAdministrator;

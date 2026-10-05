@@ -106,6 +106,55 @@ public sealed class SystemViewSectionsTests
     }
 
     // ###########################################################################################
+    // A SYSTEM THE ACCOUNT DOES NOT MAINTAIN comes without addresses (owner request, 2026-10-05), and
+    // its Contributor and Maintainer views say so once each - so the names alone read as the rule,
+    // and a contributor with no account as one, not as somebody who gave no address. A system the
+    // account maintains says nothing of the kind.
+    // ###########################################################################################
+    [Fact]
+    public void A_system_sent_without_addresses_says_why_in_its_contributor_and_maintainer_views()
+    {
+        UiTest.Run(() =>
+        {
+            var view = new SystemView();
+
+            SystemDetailAnswer detail = SystemViewSectionsTests.Detail() with
+            {
+                Maintainers = [new PoolMaintainerEntry(1, "Dennis", string.Empty)],
+                Contributors =
+                [
+                    new SystemContributorEntry(null, null, 1, 0, 0, 0, null),
+                    new SystemContributorEntry(null, "Dora", 0, 1, 0, 0, null)
+                ],
+                AddressesHidden = true
+            };
+
+            view.ShowDetailForTests(detail);
+
+            List<string> contributors = SystemViewSectionsTests.TextsIn(view, "ContributorsSection");
+            List<string> maintainers = SystemViewSectionsTests.TextsIn(view, "MaintainersSection");
+
+            Assert.Single(contributors, text => text == SystemsDisplay.AddressesHiddenLine);
+            Assert.Contains("A contributor without an account", contributors);
+            Assert.Contains("Dora", contributors);
+            Assert.Single(maintainers, text => text == SystemsDisplay.AddressesHiddenLine);
+            Assert.Contains("Dennis", maintainers);
+
+            view.ShowDetailForTests(detail with { AddressesHidden = false });
+
+            Assert.DoesNotContain(SystemsDisplay.AddressesHiddenLine, SystemViewSectionsTests.TextsIn(view, "ContributorsSection"));
+            Assert.DoesNotContain(SystemsDisplay.AddressesHiddenLine, SystemViewSectionsTests.TextsIn(view, "MaintainersSection"));
+        });
+    }
+
+    // Every text in one of the view's sections, top to bottom.
+    private static List<string> TextsIn(SystemView view, string section) =>
+        Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(view.FindControl<StackPanel>(section)!)
+            .OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+
+    // ###########################################################################################
     // A view shows alone, and STAYS CHOSEN for the next system - looking at each system's statistics
     // in turn is the ordinary use (SystemSections' header).
     // ###########################################################################################

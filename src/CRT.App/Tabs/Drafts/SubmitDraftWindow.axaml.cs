@@ -319,17 +319,7 @@ namespace CRT
             // from the fields captured on the UI thread rather than from the identity.
             var manifest = SubmissionManifestBuilder.Build(
                 this.thisMergedData!,
-                new SubmissionIdentity
-                {
-                    SystemId = identity.SystemId,
-                    Manufacturer = identity.Manufacturer,
-                    Hardware = identity.Hardware,
-                    Board = identity.Board,
-                    BaseRevision = identity.BaseRevision,
-                    ApplicationVersion = identity.ApplicationVersion,
-                    CreatedUtc = DateTimeOffset.UtcNow,
-                    Summary = this.SummaryText
-                },
+                SubmitDraftWindow.IdentityToSend(identity, this.SummaryText, DateTimeOffset.UtcNow),
                 hashed.Hashes,
                 renames: null,
                 calibrations: this.thisCalibrations,
@@ -660,6 +650,30 @@ namespace CRT
 
                 this.FindingsPanel.Children.Add(text);
             }
+        }
+
+        // ###########################################################################################
+        // The identity the manifest is built from: the one Initialize was given, with the summary
+        // typed since and the moment of sending. Everything else is COPIED - a field left out here
+        // never leaves this computer, however the caller filled it in (a new system's notes nearly
+        // did, 2026-10-05), so SubmitDraftWindowIdentityTests checks every property by reflection.
+        // ###########################################################################################
+        internal static SubmissionIdentity IdentityToSend(SubmissionIdentity identity, string summary, DateTimeOffset nowUtc)
+        {
+            ArgumentNullException.ThrowIfNull(identity);
+
+            return new SubmissionIdentity
+            {
+                SystemId = identity.SystemId,
+                Manufacturer = identity.Manufacturer,
+                Hardware = identity.Hardware,
+                Board = identity.Board,
+                BaseRevision = identity.BaseRevision,
+                Summary = summary,
+                HardwareNotes = identity.HardwareNotes,
+                ApplicationVersion = identity.ApplicationVersion,
+                CreatedUtc = nowUtc
+            };
         }
 
         private static IReadOnlyList<ValidationFinding> AsFindings(IReadOnlyList<string> problems)

@@ -375,10 +375,9 @@ namespace CRT
             using var progressContent = new ProgressableStreamContent(formContent, percent => progress.Report(CrtWaitWording.SendingFeedbackAt(percent)));
 
             // ###########################################################################################
-            // *** CRT.SERVER SINCE 2026-10-03, NOT THE PHP PAGE AT /app-feedback/ (owner request:
-            // "can we retire the old "Feedback" backend PHP"). *** The same form and the same
-            // "Success" answer; older CRTs still post to the old address, which Apache forwards to
-            // the same route.
+            // *** CRT.SERVER SINCE 2026-10-03, NOT THE OLD FEEDBACK ADDRESS. *** The same form and
+            // the same "Success" answer; older CRTs still post to the old address, which Apache
+            // forwards to the same route.
             // ###########################################################################################
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("CRT "+ AppConfig.AppDisplayVersionString);
             var response = await httpClient.PostAsync(TabFeedback.FeedbackUrl, progressContent, cancellationToken);

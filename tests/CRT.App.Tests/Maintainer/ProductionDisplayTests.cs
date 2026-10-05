@@ -34,6 +34,24 @@ public sealed class ProductionDisplayTests
             ProductionDisplay.ListFooter(row with { AwaitsYou = false }));
     }
 
+    // ###########################################################################################
+    // While only the administrator publishes to stable (2026-10-05) a maintainer's row is not
+    // theirs either - but they never approved it, so it is not "with the other approver" (code
+    // review, 2026-10-05). The server says which; the line follows it.
+    // ###########################################################################################
+    [Fact]
+    public void A_beta_list_line_says_when_the_system_waits_for_the_administrator()
+    {
+        ProductionSystemRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null, AwaitsYou: false);
+
+        Assert.Equal(
+            "BETA 2026-September-25, stable 2026-May-14 - with the administrator",
+            ProductionDisplay.ListFooter(row with { WaitsForAdministrator = true }));
+        Assert.Equal(
+            "BETA 2026-September-25, stable 2026-May-14 - with the other approver",
+            ProductionDisplay.ListFooter(row with { WaitsForAdministrator = false }));
+    }
+
     // -----------------------------------------------------------------------------------
     // WHOSE WORK THIS CARRIES (owner request, 2026-09-27)
     //

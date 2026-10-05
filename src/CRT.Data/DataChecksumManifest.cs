@@ -22,19 +22,19 @@ namespace Handlers.DataHandling
     // The manifest sits ONE FOLDER UP from the data root (beside `Data/`, not inside it), so it is
     // configured separately and cannot be derived - see ServerOptions.ManifestPath.
     //
-    // *** THIS IS A PORT OF THE REVIEW TOOL'S PHP GENERATOR, NOT THE SERVER'S. *** There are two
-    // and they disagree. `app-data-BETA/dataGenerate.php` is a plain recursive scan: no junk
-    // filtering, no explicit sort, and a non-atomic write. `review/function_file-ops.php`'s
-    // regenerateDataChecksumsManifest filters dot-files and OS junk, sorts by path, forces
-    // lowercase and writes atomically. The stricter one is the one worth keeping, and its four
-    // rules are each load-bearing:
+    // *** THE STRICTER OF THE TWO EARLIER GENERATORS' RULES, KEPT. *** The manifest used to be
+    // written by two different scripts, and they disagreed. One was a plain recursive scan: no
+    // junk filtering, no explicit sort, and a non-atomic write. The other filtered dot-files and
+    // OS junk, sorted by path, forced lowercase and wrote atomically. The stricter one is the one
+    // worth keeping, and its four rules are each load-bearing:
     //
     //   - JUNK IS SKIPPED. Thumbs.db, desktop.ini, anything dot-prefixed and any leftover
     //     .tmp_NNN from an interrupted write. A client that syncs those downloads files it can
     //     never use, and a .tmp_ entry names a file that is about to vanish.
-    //   - SORTED BY PATH. The live manifest is only sorted today because scandir happened to
-    //     return it that way. A stable order means two regenerations of unchanged data produce an
-    //     identical file, which is what makes "did anything actually change" answerable.
+    //   - SORTED BY PATH. The plain scan's manifest was only sorted because the directory listing
+    //     happened to return it that way. A stable order means two regenerations of unchanged
+    //     data produce an identical file, which is what makes "did anything actually change"
+    //     answerable.
     //   - LOWERCASE HEX. A hash differing only in case compares unequal on the client, which
     //     reads as every file being permanently out of date.
     //   - WRITTEN ATOMICALLY. A client fetching a half-written manifest aborts its sync. That is
@@ -65,8 +65,8 @@ namespace Handlers.DataHandling
         }
 
         // Indented, because this file is read by humans diagnosing a sync as often as by the app.
-        // Slash escaping is left at the default: the PHP generator escapes them ("https:\/\/") and
-        // System.Text.Json does not, which is a difference in the BYTES and not in the JSON - both
+        // Slash escaping is left at the default: the earlier generators escaped them ("https:\/\/")
+        // and System.Text.Json does not, which is a difference in the BYTES and not in the JSON - both
         // parse identically, and the client deserialises rather than string-matching.
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -116,7 +116,8 @@ namespace Handlers.DataHandling
                 });
             }
 
-            // Ordinal, matching the PHP's strcmp and the case-sensitive tree the server runs on.
+            // Ordinal, matching the earlier generator's byte-wise sort and the case-sensitive tree the
+            // server runs on.
             return entries
                 .OrderBy(entry => entry.File, StringComparer.Ordinal)
                 .ToList();
@@ -127,7 +128,8 @@ namespace Handlers.DataHandling
         //
         // Checked SEGMENT BY SEGMENT, not against the whole path, so a dot-folder excludes
         // everything beneath it - ".git/config" is skipped because of the ".git", not because the
-        // file itself is dotted. That is what the PHP does and it is the behaviour that matters:
+        // file itself is dotted. That is what the earlier generator did and it is the behaviour
+        // that matters:
         // a dot-directory's contents are never ordinary data.
         // ###########################################################################################
         public static bool IsSyncable(string? relativePath)

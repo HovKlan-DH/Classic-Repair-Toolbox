@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // The launch check-in against the server that receives it (2026-10-03, when the check-in moved
-// from the old app-checkin PHP page to CRT.Server). The address CRT posts to is the route the
+// to CRT.Server). The address CRT posts to is the route the
 // server maps (RequestBodyLimitsTests pins the same path on the server's real route table), and the
 // version CRT sends as its User-Agent must be one the server stores (CheckInRules.VersionFrom
 // refuses one without "CRT " or with a character outside letters, digits and  ,.#()*[]!:/- - a

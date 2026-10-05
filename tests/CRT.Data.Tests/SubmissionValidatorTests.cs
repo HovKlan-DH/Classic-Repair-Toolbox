@@ -800,6 +800,18 @@ namespace CRT.Data.Tests
             Assert.Contains(SubmissionValidatorTests.Validate(baseRevision), finding => finding.Code == "revision.too_long");
         }
 
+        // A new system's notes go into the main Excel data file's notes column (owner request,
+        // 2026-10-05), so they are held to what it holds - here, rather than when the maintainer
+        // saves the placement they start.
+        [Fact]
+        public void Over_long_hardware_notes_are_refused()
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.HardwareNotes = new string('x', MasterListing.MaximumNotesLength + 1);
+
+            Assert.Contains(SubmissionValidatorTests.Validate(manifest), finding => finding.Code == "notes.too_long");
+        }
+
         // Anti-vacuity: exactly at each limit is fine.
         [Fact]
         public void Fields_exactly_at_their_limits_are_accepted()
@@ -808,6 +820,7 @@ namespace CRT.Data.Tests
             manifest.Summary = new string('x', SubmissionFormat.MaximumSummaryLength);
             manifest.BaseRevision = new string('x', SubmissionFormat.MaximumRevisionLength);
             manifest.Rows.RevisionDate = new string('x', SubmissionFormat.MaximumRevisionLength);
+            manifest.HardwareNotes = new string('x', MasterListing.MaximumNotesLength);
 
             Assert.Empty(SubmissionValidatorTests.Validate(manifest));
         }

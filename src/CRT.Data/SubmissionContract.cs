@@ -7,9 +7,9 @@ namespace Handlers.DataHandling
     // The wire contract between CRT and the server for submitting a system. ONE definition,
     // referenced by both sides - which is the whole reason CRT.Data was extracted in Phase 1.
     //
-    // The old ComponentContributionPayload had the app and the PHP each carrying their own idea of
-    // the shape, kept in step by hand and by a note in CLAUDE.md telling whoever changed one to
-    // remember the other. That is the defect this replaces: here, a field added on one side does
+    // The old ComponentContributionPayload had the app and the old server each carrying their own
+    // idea of the shape, kept in step by hand and by a note in CLAUDE.md telling whoever changed
+    // one to remember the other. That is the defect this replaces: here, a field added on one side does
     // not compile on the other until it is handled.
     //
     // WHAT IS SUBMITTED, SEMANTICALLY: the complete system as it should be after the change.
@@ -43,9 +43,9 @@ namespace Handlers.DataHandling
         // would let an old client's "PayloadFormat 2" be mistaken for something this understands.
         //
         // The server rejects a submission whose version it does not know, with an update-required
-        // message - the same approach $minimumContributionVersion takes in the PHP, and for the
-        // same reason: silently accepting a payload you cannot fully interpret is how half-applied
-        // data gets published.
+        // message - the same approach the old contribution upload took with a minimum version, and
+        // for the same reason: silently accepting a payload you cannot fully interpret is how
+        // half-applied data gets published.
         // ###########################################################################################
         public const int CurrentVersion = 1;
 
@@ -140,6 +140,22 @@ namespace Handlers.DataHandling
         // Free text from the contributor saying what they changed and why. This is what a maintainer
         // reads first, so it is part of the contract rather than an afterthought.
         public string Summary { get; set; } = string.Empty;
+
+        // ###########################################################################################
+        // *** A NEW SYSTEM'S NOTES (owner request, 2026-10-05: "that note needs to be sent also to the
+        // server, as this notes needs to go into the main Excel in the 'Hardware & Board' sheet and
+        // in the column 'Hardware notes in "Overview" tab'"). *** What the contributor typed under
+        // "Notes (optional)" in "Create system". They were kept on the contributor's computer only.
+        //
+        // The server keeps them with the submission, and the maintainer's placement of the system
+        // (CRT.Server's SystemListingFlow) starts with them in its Notes box; the placement the
+        // maintainer saves is what goes into the main Excel data file's notes column. Empty for a
+        // draft of a published board - its notes are already in the list.
+        //
+        // OPTIONAL: a CRT older than this sends none, and nothing is suggested. At most
+        // MasterListing.MaximumNotesLength, the column's own limit (SubmissionValidator).
+        // ###########################################################################################
+        public string HardwareNotes { get; set; } = string.Empty;
 
         // ###########################################################################################
         // Where to tell the contributor whether their work was accepted.

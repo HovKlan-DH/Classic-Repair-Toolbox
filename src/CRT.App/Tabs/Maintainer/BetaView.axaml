@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:CRT"
+             xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
              x:Class="CRT.BetaView">
 
     <!--
@@ -56,8 +57,10 @@
             <CheckBox x:Name="CheckedInBetaCheckBox"
                       IsEnabled="False"
                       IsCheckedChanged="OnCheckedInBetaChanged">
-                <TextBlock TextWrapping="Wrap"
-                           Text="I have checked this board in CRT with the BETA data (Configuration: &quot;Download data from BETA source&quot;), and it is right." />
+                <!-- The Configuration tab's own label, from CRT.Data, so this cannot name a box CRT does not have.
+                     The Runs stay on ONE line: whitespace between inline Runs becomes a space, which put
+                     one inside each quote (BetaViewTests.The_tick_quotes_the_configuration_check_box_exactly). -->
+                <TextBlock TextWrapping="Wrap"><Run Text="I have checked this board in CRT with the BETA data (Configuration: &quot;" /><Run Text="{x:Static data:ConfigurationWording.BetaSourceCheckBox}" /><Run Text="&quot;), and it is right." /></TextBlock>
             </CheckBox>
 
             <!--

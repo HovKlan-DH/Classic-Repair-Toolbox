@@ -611,12 +611,12 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // FEEDBACK from CRT's Feedback tab, to the project owner (owner request, 2026-10-03: "can we
-        // retire the old "Feedback" backend PHP ... these mails should then change into HTML
-        // format, except that e.g. logfile should still show as monospace as this is kind of quoted
-        // text"). The PHP page's mail, section for section: the sender's words as a quotation, CRT's
-        // own text files as written in a fixed-width font, and the attached files listed under the
-        // folder they were saved in - its "Internal reference", the name to look for on the share.
+        // FEEDBACK from CRT's Feedback tab, to the project owner (owner request, 2026-10-03: "these
+        // mails should then change into HTML format, except that e.g. logfile should still show as
+        // monospace as this is kind of quoted text"). The feedback mail as it has always been,
+        // section for section: the sender's words as a quotation, CRT's own text files as written in
+        // a fixed-width font, and the attached files listed under the folder they were saved in -
+        // its "Internal reference", the name to look for on the share.
         //
         // Reply goes to the sender when an address was given (the From is the service's own - see
         // EmailMessage). No greeting and no contact line: it goes to the contact. Wide, for the logs.

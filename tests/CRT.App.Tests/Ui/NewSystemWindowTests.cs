@@ -171,6 +171,17 @@ public sealed class NewSystemWindowTests : IDisposable
         });
     }
 
+    // The notes go to the main Excel data file's notes column (owner request, 2026-10-05), so the
+    // box stops at what that column holds - the server refuses more.
+    [Fact]
+    public void The_notes_box_stops_at_what_the_notes_column_holds()
+    {
+        UiTest.Run(() =>
+        {
+            Assert.Equal(MasterListing.MaximumNotesLength, WindowWith().GetControl<TextBox>("NotesBox").MaxLength);
+        });
+    }
+
     // ------------------------------------------------------------------ Rejections
 
     // One check covers all three sources of an existing name: the main workbook, a legacy

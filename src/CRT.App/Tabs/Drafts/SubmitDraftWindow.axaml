@@ -71,7 +71,7 @@
 					   Opacity="0.75"
 					   FontSize="12"
 					   Margin="0,2,0,10"
-					   Text="Used only so a maintainer can contact you if they need to ask something. The outcome itself is shown in &quot;My submissions&quot; on the Drafts tab. There is no account to create and no password to choose." />
+					   Text="You get an email when your contribution has been reviewed, and a maintainer can write to you if they need to ask something. The outcome is also shown in &quot;My submissions&quot; on the Drafts tab. There is no account to create and no password to choose." />
 
 			<TextBlock Text="What did you change?"
 					   FontWeight="Bold"

@@ -10,7 +10,7 @@ namespace CRT.Server.Handlers.Usage
     //
     // ASP.NET's own form reading, unlike feedback's: the form is four short fields under the
     // default 64 KB body limit, so nothing large is ever buffered. A multipart form is read too,
-    // as the PHP page's $_POST read both; CRT has always sent a URL-encoded one.
+    // as the old check-in address read both; CRT has always sent a URL-encoded one.
     // ###########################################################################################
     public static class CheckInFormReader
     {

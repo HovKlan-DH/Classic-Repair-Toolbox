@@ -19,7 +19,7 @@
 
   PUBLISHING: the release workflow publishes src/CRT.App/CRT.App.csproj by name, never the
   solution, so adding this project cannot affect the signed per-RID release builds. It is deployed
-  separately and by hand - see DEPLOYMENT.md.
+  separately and by hand - see INSTALLING.md.
   -->
 
   <PropertyGroup>
@@ -31,7 +31,7 @@
     <IsPackable>false</IsPackable>
     <!--
     The service is published framework-dependent onto a box that has the ASP.NET Core runtime
-    installed (DEPLOYMENT.md installs it), so a solution-wide self-contained publish must not try
+    installed (INSTALLING.md installs it), so a solution-wide self-contained publish must not try
     to drag this project along for a desktop RID. Same defensive reasoning as the
     SelfContained=false block in CRT.Data.Tests.csproj, which exists because a solution-wide
     publish otherwise fails on a project that cannot be RID-targeted.
@@ -62,7 +62,7 @@
     fields on purpose - InformationalVersion is the one /api/health reports and the one to bump.
     -->
     <AssemblyVersion>1.0.0</AssemblyVersion>
-    <InformationalVersion>4.7.3</InformationalVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
 
   </PropertyGroup>
 
@@ -89,6 +89,19 @@
   -->
   <ItemGroup>
     <None Update="Migrations\*.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <!--
+  The systemd unit, shipped beside the binaries so INSTALLING.md can say "copy it" rather than
+  have it typed in from a document (2026-10-05). It is a FILE so a test can hold it to the code:
+  ServerExitCodesTests reads it, and fails when the exit codes and RestartPreventExitStatus=
+  disagree - a setting refused at start would otherwise restart the service every five seconds.
+  -->
+  <ItemGroup>
+    <None Update="crt-server.service">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>

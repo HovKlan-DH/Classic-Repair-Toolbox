@@ -14,7 +14,7 @@ namespace CRT.Server.Handlers.Submissions
     // rebuilds the manifest beside it - an approval (ReviewEndpoints), a promotion
     // (ProductionEndpoints), a rollback (BetaRollbackFlow) and an unused-file removal
     // (UnusedFileFlows). But the project owner also copies files into the trees BY HAND as root
-    // (DEPLOYMENT.md step 3, and the "served file is replaced, never opened" note in CLAUDE.md).
+    // (INSTALLING.md ("Folders and permissions"), and the "served file is replaced, never opened" note in CLAUDE.md).
     // Nothing on the server sees those edits, so the manifest keeps describing the tree as it was
     // and every CRT client stays on the old bytes - the file looks published and reaches nobody.
     //

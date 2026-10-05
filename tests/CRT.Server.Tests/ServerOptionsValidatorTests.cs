@@ -10,7 +10,7 @@ namespace CRT.Server.Tests
     // missing setting into a refusal to start rather than a silent guess.
     //
     // WHAT THESE TESTS DO NOT CLAIM. Passing validation does not make a production write
-    // impossible - only the filesystem permissions (DEPLOYMENT.md step 3) and systemd's
+    // impossible - only the filesystem permissions (INSTALLING.md, "Folders and permissions") and systemd's
     // ProtectSystem=strict do that. These tests pin the early, loud failure for honest
     // misconfiguration. Read ServerOptionsValidator's header before assuming a check here is the
     // security control.
@@ -88,7 +88,7 @@ namespace CRT.Server.Tests
             Assert.Contains(failures, f => f.Contains("DataTreeRoot", StringComparison.Ordinal));
         }
 
-        // The message is what appears in "systemctl status" when the unit fails, and DEPLOYMENT.md
+        // The message is what appears in "systemctl status" when the unit fails, and INSTALLING.md
         // promises the project owner that a refusal names the setting. If that stops being true, the
         // runbook is lying.
         [Fact]
@@ -800,7 +800,7 @@ namespace CRT.Server.Tests
 
             string failure = Assert.Single(failures);
             Assert.Contains("FeedbackRoot is not writable", failure, StringComparison.Ordinal);
-            Assert.Contains("Feedback from CRT", failure, StringComparison.Ordinal);
+            Assert.Contains("Folders and permissions", failure, StringComparison.Ordinal);
         }
     }
 }

@@ -5,7 +5,7 @@ namespace CRT.Server.Handlers.Submissions
     // production promotion or a push-back lands (owner report, 2026-09-28).
     //
     // *** WHY: DATA COPIED INTO THE TREES BY HAND. *** The trees are group-writable with the
-    // group inherited (DEPLOYMENT.md step 3), but whatever is copied in as root arrives owned by
+    // group inherited (INSTALLING.md ("Folders and permissions")), but whatever is copied in as root arrives owned by
     // root with no group write. For a FILE that no longer matters - every served file is
     // replaced by a rename (FileReplacer, VerifiedFileCopy), which needs only its folder. A
     // FOLDER copied in that way is another matter: nothing can be written into it or removed
@@ -26,7 +26,7 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class TreeWriteAccess
     {
-        // The group DEPLOYMENT.md step 3 gives the data trees.
+        // The group INSTALLING.md ("Folders and permissions") gives the data trees.
         public const string DataGroup = "crt-data";
 
         // ###########################################################################################
@@ -121,7 +121,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The command that gives the service its folders back - DEPLOYMENT.md step 3, for exactly
+        // The command that gives the service its folders back - INSTALLING.md ("Folders and permissions"), for exactly
         // these folders. Logged for the administrator, never shown to a maintainer. Each path is
         // single-quoted for the shell (a board folder or "Shared files" has spaces in it).
         // ###########################################################################################

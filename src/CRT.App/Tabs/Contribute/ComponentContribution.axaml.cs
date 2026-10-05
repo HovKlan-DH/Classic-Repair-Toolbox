@@ -675,15 +675,10 @@ namespace CRT
             // *** ALWAYS EMPTY SINCE THE UUID COLUMN WAS DROPPED (2026-09-23). ***
             //
             // BoardData no longer carries UuidV4 - the column is gone from the board workbooks
-            // entirely - so there is nothing to read here. The field is kept on the payload
-            // because it is part of the LEGACY PHP's wire contract, and that contract is not
-            // being changed: the PHP is being retired with this pipeline rather than migrated
-            // (owner decision, 2026-09-23), so touching its format now would be work spent
-            // on something about to be deleted.
-            //
-            // Sending it empty is SAFE rather than merely tolerable: review/function_board-context.php
-            // matches a submitted component by uuid first and falls back to the board label, and
-            // the label is always present. An empty uuid simply takes that fallback.
+            // entirely - so there is nothing to read here. The field is kept because it was part
+            // of the LEGACY contribution format, and that format was not changed: it was retired
+            // with this pipeline rather than migrated (owner decision, 2026-09-23), so touching it
+            // would have been work spent on something about to go.
             // ###########################################################################################
             this.thisComponentUuidV4 = string.Empty;
             this.thisComponentDisplayText = this.BuildComponentDisplayText(primaryComponent, boardLabel);
@@ -1100,9 +1095,10 @@ namespace CRT
         // ###########################################################################################
         // Switches the window into - or back out of - "delete this component" mode.
         //
-        // It is a toggle rather than a one-way door because the only thing standing between a
-        // mistaken click and a submitted deletion is the mandatory comment; being able to back out
-        // is what makes the button safe to press in order to see what it would remove.
+        // It is a toggle rather than a one-way door because nothing else in this window stands
+        // between a mistaken click and a deletion saved to the draft; being able to back out is what
+        // makes the button safe to press in order to see what it would remove. The draft is the
+        // second guard: nothing leaves this computer until it is submitted from the Drafts tab.
         // ###########################################################################################
         private void OnToggleDeleteComponentClick(object? sender, RoutedEventArgs e)
         {
