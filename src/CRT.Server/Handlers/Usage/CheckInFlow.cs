@@ -7,29 +7,31 @@ namespace CRT.Server.Handlers.Usage
 {
     // ###########################################################################################
     // STORING A LAUNCH CHECK-IN (owner request, 2026-10-03) - POST /api/usage/check-in, and the old
-    // /app-checkin/ address through Apache. The app-checkin PHP page's job, moved here so the page
-    // can be retired. See CRT.Data's CheckInContract for the form.
+    // check-in address older CRTs post to, through Apache. See CRT.Data's CheckInContract for the
+    // form.
     //
-    // *** THE PHP PAGE'S RULES, KEPT. *** The table it wrote (crt_update) is read by the Fun facts
-    // pages and a nightly statistics job, which nothing here may surprise:
+    // *** THE RULES CHECK-INS HAVE ALWAYS BEEN STORED BY, KEPT. *** The table they go into
+    // (crt_update) is read by the website's Fun facts page and a nightly statistics job, which
+    // nothing here may surprise:
     //   - the VERSION is the User-Agent with any markup stripped and trimmed, and only one naming
-    //     "CRT " and made of letters, digits and  ,.#()*[]!:/-  counts (the PHP page's isValid);
+    //     "CRT " and made of letters, digits and  ,.#()*[]!:/-  counts;
     //   - the control field must say exactly "CRT";
-    //   - anything else is not stored (the PHP page answered an empty 200; this answers 400, which
-    //     no CRT ever gets and none reads);
+    //   - anything else is not stored (it used to be answered with an empty 200; this answers 400,
+    //     which no CRT ever gets and none reads);
     //   - a check-in from a LOCAL network is the project owner's own machines, and is answered but
-    //     NEVER stored - the PHP page's "192.168." rule, and every Fun facts query filters them too.
+    //     NEVER stored - check-ins from "192.168." never were, and every Fun facts query filters
+    //     them too.
     //     Unlike board views there is no setting to count them: the charts would drop them anyway.
     //     The outcome says so, so the endpoint can log it - the way the project owner sees their own
     //     test reach the server;
     //   - the ADDRESS is stored (every chart counts DISTINCT ipaddr) with the COUNTRY looked up at
     //     ip-api.com - the lookup board views use, which the check-in has always used. A failed
     //     lookup costs the country (""), never the row - the charts then leave the row out, as
-    //     they did a PHP row with no country;
-    //   - the operating system fields lose any markup, as the PHP page's strip_tags did (the Fun
-    //     facts page prints them), and are cut to the lengths board views keep.
+    //     they always have for a row with no country;
+    //   - the operating system fields lose any markup, as they always have (the Fun facts page
+    //     prints them), and are cut to the lengths board views keep.
     //
-    // *** WHAT IS DIFFERENT: apiJson. *** The PHP page stored ip-api.com's WHOLE answer - city,
+    // *** WHAT IS DIFFERENT: apiJson. *** It used to hold ip-api.com's WHOLE answer - city,
     // region, postcode, coordinates, internet provider. Nothing reads that column (checked on both
     // sites' pages, 2026-10-03), and the shared lookup asks only for the country, so a row now
     // holds only that: {"status":"success","countryCode":"DK","country":"Denmark"}, or "{}".
@@ -99,18 +101,18 @@ namespace CRT.Server.Handlers.Usage
     }
 
     // ###########################################################################################
-    // The PHP page's text rules, one method each - pure, so each is tested on its own.
+    // The check-in's text rules, one method each - pure, so each is tested on its own.
     // ###########################################################################################
     public static class CheckInRules
     {
-        // The characters a version may hold besides ASCII letters and digits - the PHP page's
-        // isValid pattern, [a-zA-Z0-9 ,.#()*\[\]!:\/-].
+        // The characters a version may hold besides ASCII letters and digits - the pattern
+        // check-ins have always been held to, [a-zA-Z0-9 ,.#()*\[\]!:\/-].
         private const string VersionPunctuation = " ,.#()*[]!:/-";
 
         // ###########################################################################################
-        // The CRT version a User-Agent names ("CRT 2026.10.0"), or null when it is not one the PHP
-        // page would have stored: blank, without "CRT " (any case), with a character outside the
-        // pattern, or longer than crt_board_views keeps a version.
+        // The CRT version a User-Agent names ("CRT 2026.10.0"), or null when it is not one a
+        // check-in has ever been stored with: blank, without "CRT " (any case), with a character
+        // outside the pattern, or longer than crt_board_views keeps a version.
         // ###########################################################################################
         public static string? VersionFrom(string? userAgent)
         {
@@ -137,9 +139,9 @@ namespace CRT.Server.Handlers.Usage
             BoardViewRules.Clip(CheckInRules.StripTags(value ?? string.Empty), maxLength) ?? string.Empty;
 
         // ###########################################################################################
-        // PHP's strip_tags, as far as it matters here: a "<" that opens a tag removes everything up
-        // to the next ">", or to the end when there is none. A "<" followed by a space, or last in
-        // the text, opens nothing and is kept ("5 < 6"), as PHP keeps it.
+        // Markup stripped the way check-ins always have been, as far as it matters here: a "<" that
+        // opens a tag removes everything up to the next ">", or to the end when there is none. A
+        // "<" followed by a space, or last in the text, opens nothing and is kept ("5 < 6").
         // ###########################################################################################
         public static string StripTags(string value)
         {

@@ -192,7 +192,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // The command is DEPLOYMENT.md step 3 for exactly these folders - group, group write, and
+        // The command is INSTALLING.md ("Folders and permissions") for exactly these folders - group, group write, and
         // setgid on every folder so what is written later keeps the group. Every path quoted for the
         // shell: board folders and "Shared files" have spaces, and a quote must not end the string.
         // ###########################################################################################

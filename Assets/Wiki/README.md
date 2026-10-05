@@ -1,10 +1,11 @@
 # Wiki mirror
 
-This folder is the **source of truth for the GitHub Wiki**. Every `.md` file here corresponds to
-one Wiki page of the **same name**, and its content is what that page should contain.
+This folder is the **source of truth for the GitHub Wiki**. Every `.md` file here (except this
+README and `!sync-status.md`) corresponds to one Wiki page of the **same name**, and its content is
+what that page should contain.
 
 > [!IMPORTANT]
-> The Wiki itself is updated **by hand**. Nothing here publishes automatically — GitHub gives no
+> The Wiki itself is updated **by hand**. Nothing here publishes automatically - GitHub gives no
 > way to push a folder in this repository to the Wiki. Editing a file here changes what the page
 > *should* say; the page only changes when the project owner copies it across.
 
@@ -15,7 +16,7 @@ The published documentation lives at
 
 The Wiki is a separate git repository with no pull requests, no review and no link to the code it
 describes. Keeping the text here means a documentation change travels with the commit that made it
-necessary, and can be reviewed like any other change — while the Wiki keeps the integrated,
+necessary, and can be reviewed like any other change - while the Wiki keeps the integrated,
 easy-to-read presentation the project owner wants for readers.
 
 The cost of that split is one manual step, described below.
@@ -48,7 +49,7 @@ rather than this repository's:
   survive the paste untouched.
 
 `images/` holds reference copies of those images so they are versioned and cannot be lost if the
-upload URL ever disappears. **The Wiki does not read from this folder** — it is a backup, not a
+upload URL ever disappears. **The Wiki does not read from this folder** - it is a backup, not a
 source. Repointing a page at it would break the image.
 
 ## Page conventions
@@ -68,7 +69,7 @@ One or two lines: what this page gets you.
 - **The breadcrumb comes first, then the summary**, then a `---` rule.
 - **No "Go to Wiki Home" footers.** `_Sidebar.md` is rendered by GitHub on every page and does that
   job; a hand-maintained footer rots (it was missing from 9 of 24 pages before).
-- **The app is `CRT`** — not `_CRT_`, not "the application", not "the app".
+- **The app is `CRT`** - not `_CRT_`, not "the application", not "the app".
 - **Bold for anything clickable** (**Add worklog**), **backticks for literal text** you type or a
   file, folder or column name (`Board label`).
 - **Tabs are quoted**: the "Configuration" tab.
@@ -81,14 +82,14 @@ One or two lines: what this page gets you.
 
 1. Edit the `.md` file here, in the same commit as whatever code change made it necessary.
 2. When ready to publish, open [`!sync-status.md`](./%21sync-status.md). It lists every file still
-   waiting to be pasted, and where in the Wiki each one lives — it is generated at the end of every
+   waiting to be pasted, and where in the Wiki each one lives - it is generated at the end of every
    turn, so it needs no double-checking first.
 3. Open the Wiki page it names, select all, paste the file's contents, save.
 4. Confirm, so [`!sync-status.md`](./%21sync-status.md) can be brought up to date.
 
 ## Pages deliberately NOT mirrored here
 
-Six Wiki pages are not in this folder. They are orphans — nothing links to them, and each is
+Six Wiki pages are not in this folder. They are orphans - nothing links to them, and each is
 superseded by a page that is here:
 
 | Wiki page | Superseded by |
@@ -97,7 +98,7 @@ superseded by a page that is here:
 | `Data-files` | `Explanation-of-data-files` and its children |
 | `Compiling-yourself` | `Compiling-yourself-from-source` |
 | `Classic-Repair-Toolbox-documentation` | `Home` |
-| `Contribute-data` | `Contribute-data-via-GitHub` |
+| `Contribute-data` | `Contribute-data-via-CRT` |
 | `MiniPro-programmer-how‐to` | `MiniPro-programmer` |
 
 They still exist in the Wiki and are untouched. If any should be kept alive, mirror it here first
@@ -105,19 +106,21 @@ so it stops being edited in two places.
 
 ## The in-app help links
 
-These four Wiki pages are opened by five "?" buttons in the shipped application:
+These six Wiki pages are opened by seven "?" buttons in the shipped application:
 
 | Page | Opened from |
 | --- | --- |
 | `Workbooks-tab` | Configuration tab, "?" beside "Enable Workbooks tab" |
-| `MiniPro-programmer` | Configuration tab "?", and the component popup |
-| `Controlling-oscilloscope-with-keyboard` | Component popup |
-| `Synchronize-oscilloscope` | Component popup |
+| `MiniPro-programmer` | Configuration tab, "?" beside "Enable MiniPro programmer functionality"; and the component popup, "?" beside "Test IC with MiniPro programmer" |
+| `Controlling-oscilloscope-with-keyboard` | Component popup, "?" beside "Numpad controls oscilloscope" |
+| `Synchronize-oscilloscope` | Component popup, "?" beside "Synchronize oscilloscope" |
+| `Maintainer-tab` | Configuration tab, "?" beside "Enable Maintainer tab" |
+| `View-boards-from-online-source` | Configuration tab, "?" beside "View boards as officially coming from online source (hide my local draft changes)" |
 
 Renaming or deleting one of those pages breaks a button in a released build, which no update can
 fix for versions already installed.
 
 The page names live in `AppConfig` (`WikiPageWorkbooks`, `WikiPageMiniPro`, `WikiPageScopeKeyboard`,
-`WikiPageScopeSync`), so there is one place to change and one place to grep. `WikiHelpPageNamesTests`
-asserts each of them still matches a file in this folder — so a rename that forgets a button fails
-the suite instead of shipping.
+`WikiPageScopeSync`, `WikiPageMaintainer`, `WikiPageViewOnlineSource`), so there is one place to
+change and one place to grep. `WikiHelpPageNamesTests` asserts each of them still matches a file in
+this folder - so a rename that forgets a button fails the suite instead of shipping.

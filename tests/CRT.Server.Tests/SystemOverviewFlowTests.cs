@@ -10,8 +10,9 @@ namespace CRT.Server.Tests
     // every system, and one system's maintainers, contributors and recent submissions.
     //
     // THE RULE THAT MATTERS MOST is who may see it: ANY account that may review anything, for
-    // EVERY system - contributor addresses included (owner decision, "Everything for everyone").
-    // A maintainer of one board reads another board's facts; an account in no pool reads nothing.
+    // EVERY system (owner decision, "Everything for everyone") - but its email addresses only for
+    // its own maintainers and the administrator (owner request, 2026-10-05). A maintainer of one
+    // board reads another board's facts by name; an account in no pool reads nothing.
     //
     // No database, no filesystem: the trees are handed in as lists, the way the endpoint hands them
     // in after PublishedSystemLister has read them.
@@ -77,24 +78,113 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** EVERYTHING FOR EVERYONE (owner decision, 2026-09-27). *** Anna maintains only the C128,
-        // and is shown the C64's contributors and their addresses all the same.
+        // *** EVERY SYSTEM FOR EVERYONE (owner decision, 2026-09-27) - BUT ITS ADDRESSES FOR ITS OWN
+        // MAINTAINERS ONLY (owner request, 2026-10-05: "I do not think that normal maintainer should be
+        // able to see other email addresses if they are not set as maintainer for that system"). ***
+        // Anna maintains only the C128: she is shown the C64's maintainers, contributors, submissions
+        // and history - by name, with not one address anywhere in the answer. Bo maintains the C64,
+        // and the administrator every system: both get every address.
         // ###########################################################################################
-        [Fact]
-        public async Task A_maintainer_sees_the_contributors_of_a_system_they_do_not_maintain()
+        private static async Task<(FakeAccountStore Accounts, FakeSubmissionStore Store, ReviewAccess Anna, ReviewAccess Bo, ReviewAccess Admin)> PeopleOnTheC64Async()
         {
-            (FakeAccountStore accounts, ReviewAccess anna, _, _) = await SystemOverviewFlowTests.MaintainersAsync();
+            (FakeAccountStore accounts, ReviewAccess anna, _, long bo) = await SystemOverviewFlowTests.MaintainersAsync();
             var store = new FakeSubmissionStore();
 
+            long admin = await accounts.CreateAccountAsync(new NewAccount(
+                "admin@example.com", "admin@example.com", "hash", "Dennis", SystemOverviewFlowTests.Now));
+            accounts.Accounts[admin] = accounts.Accounts[admin] with { IsVerified = true, IsAdministrator = true };
+
+            long dora = await accounts.CreateAccountAsync(new NewAccount(
+                "dora@example.com", "dora@example.com", "hash", "Dora", SystemOverviewFlowTests.Now));
+            accounts.Accounts[dora] = accounts.Accounts[dora] with { IsVerified = true };
+
             await store.EnsureSystemAsync(SystemOverviewFlowTests.C64, "Commodore", "C64", "250407", "shipped", SystemOverviewFlowTests.Now);
+
+            // Carl sent one without an account; Dora one signed in.
             store.Submissions[1] = SystemOverviewFlowTests.Record(1, "carl@example.com", state: SubmissionState.Merged);
+            store.Submissions[2] = SystemOverviewFlowTests.Record(2, email: null, account: dora);
 
-            SystemOverviewOutcome outcome = await SystemOverviewFlow.DetailAsync(
-                anna, SystemOverviewFlowTests.C64, SystemOverviewFlowTests.Beta, SystemOverviewFlowTests.Production, store, accounts);
+            // The history: Bo made a maintainer, somebody invited, and Carl discarding his draft.
+            await accounts.WriteAuditAsync(new AuditEntry(
+                admin, "admin@example.com", SystemHistoryEvents.MaintainerAdded, SystemOverviewFlowTests.C64,
+                $"account {bo} (bo@example.com)", SystemOverviewFlowTests.Now.AddDays(-3)));
+            await accounts.WriteAuditAsync(new AuditEntry(
+                admin, "admin@example.com", SystemHistoryEvents.Invited, SystemOverviewFlowTests.C64,
+                "eve@example.com", SystemOverviewFlowTests.Now.AddDays(-2)));
+            await accounts.WriteAuditAsync(new AuditEntry(
+                null, "carl@example.com", SystemHistoryEvents.DraftDiscarded, "#1", null, SystemOverviewFlowTests.Now.AddDays(-1)));
 
-            Assert.False(outcome.IsForbidden);
-            Assert.Equal("carl@example.com", Assert.Single(outcome.Detail!.Contributors).Email);
-            Assert.Equal("Bo", Assert.Single(outcome.Detail.Maintainers).DisplayName);
+            return (
+                accounts,
+                store,
+                anna,
+                ReviewAccess.For(accounts.Accounts[bo], await accounts.GetReviewedSystemIdsAsync(bo)),
+                ReviewAccess.For(accounts.Accounts[admin]));
+        }
+
+        private static async Task<SystemDetailAnswer> C64DetailAsync(ReviewAccess access, FakeAccountStore accounts, FakeSubmissionStore store) =>
+            (await SystemOverviewFlow.DetailAsync(
+                access, SystemOverviewFlowTests.C64, SystemOverviewFlowTests.Beta, SystemOverviewFlowTests.Production, store, accounts)).Detail!;
+
+        [Fact]
+        public async Task A_maintainer_sees_a_system_they_do_not_maintain_but_not_one_of_its_email_addresses()
+        {
+            (FakeAccountStore accounts, FakeSubmissionStore store, ReviewAccess anna, _, _) = await SystemOverviewFlowTests.PeopleOnTheC64Async();
+
+            SystemDetailAnswer detail = await SystemOverviewFlowTests.C64DetailAsync(anna, accounts, store);
+
+            Assert.True(detail.AddressesHidden);
+
+            // Everybody is still there - by name.
+            PoolMaintainerEntry maintainer = Assert.Single(detail.Maintainers);
+            Assert.Equal(("Bo", string.Empty), (maintainer.DisplayName, maintainer.Email));
+            Assert.Equal(2, detail.Contributors.Count);
+            Assert.Contains(detail.Contributors, contributor => contributor.Name == "Dora");
+            Assert.All(detail.Contributors, contributor => Assert.Null(contributor.Email));
+            Assert.All(detail.Submissions, submission => Assert.Null(submission.ContactEmail));
+
+            // The history names the people by their accounts: who made Bo a maintainer, and whom.
+            SystemHistoryEntry granted = detail.History!.Single(entry => entry.Event == SystemHistoryEvents.MaintainerAdded);
+            Assert.Equal(("Dennis", "Bo"), (granted.Who, granted.Detail));
+            Assert.Null(detail.History!.Single(entry => entry.Event == SystemHistoryEvents.Invited).Detail);
+            Assert.Equal("Dora", detail.History!.Single(entry => entry.Event == SystemHistoryEvents.Sent && entry.SubmissionId == 2).Who);
+
+            // *** And not one address anywhere in what goes over the wire. *** The catch-all: a new
+            // field carrying one would fail here, whatever it is called.
+            Assert.DoesNotContain("@", System.Text.Json.JsonSerializer.Serialize(detail), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_systems_own_maintainer_and_the_administrator_see_every_address()
+        {
+            (FakeAccountStore accounts, FakeSubmissionStore store, _, ReviewAccess bo, ReviewAccess admin) = await SystemOverviewFlowTests.PeopleOnTheC64Async();
+
+            foreach (ReviewAccess access in new[] { bo, admin })
+            {
+                SystemDetailAnswer detail = await SystemOverviewFlowTests.C64DetailAsync(access, accounts, store);
+
+                Assert.False(detail.AddressesHidden);
+                Assert.Equal("bo@example.com", Assert.Single(detail.Maintainers).Email);
+                Assert.Contains(detail.Contributors, contributor => contributor.Email == "carl@example.com");
+                Assert.Contains(detail.Contributors, contributor => contributor.Email == "dora@example.com");
+                Assert.Contains(detail.Submissions, submission => submission.ContactEmail == "carl@example.com");
+                Assert.Equal("bo@example.com", detail.History!.Single(entry => entry.Event == SystemHistoryEvents.MaintainerAdded).Detail);
+                Assert.Equal("eve@example.com", detail.History!.Single(entry => entry.Event == SystemHistoryEvents.Invited).Detail);
+            }
+        }
+
+        // An administrator named a system's maintainer (2026-10-05) is shown in its pool to everybody
+        // - the point of naming them - by name to a maintainer of another system.
+        [Fact]
+        public async Task An_administrator_in_a_pool_is_shown_as_its_maintainer()
+        {
+            (FakeAccountStore accounts, FakeSubmissionStore store, ReviewAccess anna, _, ReviewAccess admin) = await SystemOverviewFlowTests.PeopleOnTheC64Async();
+
+            await accounts.AddMaintainerAsync(SystemOverviewFlowTests.C64, admin.Account.Id, admin.Account.Id, SystemOverviewFlowTests.Now);
+
+            SystemDetailAnswer detail = await SystemOverviewFlowTests.C64DetailAsync(anna, accounts, store);
+
+            Assert.Equal(["Bo", "Dennis"], detail.Maintainers.Select(maintainer => maintainer.DisplayName).Order(StringComparer.Ordinal));
         }
 
         // An account in no pool may not review anything, and is refused both - the queue's own rule.
@@ -472,8 +562,12 @@ namespace CRT.Server.Tests
             store.Submissions[5] = SystemOverviewFlowTests.Record(5, "carl@example.com", system: SystemOverviewFlowTests.C128);
             store.Submissions[6] = SystemOverviewFlowTests.Record(6, null, account: annaId, state: SubmissionState.Merged);
 
+            // Read as one of the C64's own maintainers, who sees its addresses (2026-10-05) - this
+            // test is about which submissions count, and finds the contributors by address.
+            ReviewAccess maintainerOfC64 = ReviewAccess.For(anna.Account, [SystemOverviewFlowTests.C64]);
+
             SystemDetailAnswer detail = (await SystemOverviewFlow.DetailAsync(
-                anna, SystemOverviewFlowTests.C64, SystemOverviewFlowTests.Beta, SystemOverviewFlowTests.Production, store, accounts)).Detail!;
+                maintainerOfC64, SystemOverviewFlowTests.C64, SystemOverviewFlowTests.Beta, SystemOverviewFlowTests.Production, store, accounts)).Detail!;
 
             Assert.Equal([6L, 2L, 1L], detail.Submissions.Select(entry => entry.Id));
 

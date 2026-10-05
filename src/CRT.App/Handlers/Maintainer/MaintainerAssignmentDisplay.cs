@@ -65,13 +65,12 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         // Mirrors MaintainerAssignmentRules on the server, so the list can say what the server will
         // say. The server still decides; this only saves a round trip that would end in a refusal.
+        // An administrator may be granted since 2026-10-05 (owner request: to be named as a
+        // system's maintainer), so being one is no reason here any more.
         // ###########################################################################################
         public static string? WhyNotGrantable(ReviewAccountRow account)
         {
             ArgumentNullException.ThrowIfNull(account);
-
-            if (account.IsAdministrator)
-                return "administrator, reviews every system already";
 
             if (!account.IsVerified)
                 return "address not verified yet";

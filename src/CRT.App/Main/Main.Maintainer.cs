@@ -7,7 +7,7 @@ namespace CRT
 {
     // ###########################################################################################
     // THE MAINTAINER TAB, as the window sees it (2026-09-29: the separate CRT Maintainer application
-    // became a tab in CRT - owner decision, Assets/MaintainerTabMergePlan.md).
+    // became a tab in CRT - owner decision).
     //
     // WHAT THIS PART OWNS: whether the tab is shown (the Configuration tab's "Enable Maintainer tab",
     // UserSettings.EnableMaintainerTab), the window's LAYOUT while it is selected, the tab's

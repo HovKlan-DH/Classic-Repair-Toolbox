@@ -4,10 +4,10 @@ using CRT;
 namespace ClassicRepairToolbox.Tests;
 
 // Tests for RealPathResolver - the "follow every symlink/junction along a path to its real
-// target" helper ExternalTargetLauncher (and, on the webserver side, the equivalent PHP check)
-// relies on to stop Path.GetFullPath's purely lexical normalization from missing a linked
-// directory that redirects outside the data root. See the class's own header for the full
-// reasoning and where this is currently unreachable in the shipped app.
+// target" helper ExternalTargetLauncher relies on to stop Path.GetFullPath's purely lexical
+// normalization from missing a linked directory that redirects outside the data root. See the
+// class's own header for the full reasoning and where this is currently unreachable in the
+// shipped app.
 public sealed class RealPathResolverTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();

@@ -14,12 +14,15 @@ namespace CRT.Server.Configuration
     // the messages accumulate.
     //
     // WHY THE MESSAGES NAME THE SETTING. These strings are what appears in "systemctl status" and
-    // the journal when the unit fails to start. DEPLOYMENT.md tells the project owner that a refusal
+    // the journal when the unit fails to start. INSTALLING.md tells the project owner that a refusal
     // names the setting, so each message must carry the key as written in the JSON.
     //
-    // WHAT THIS IS NOT. Passing here does NOT make writing to Production impossible - only the
-    // filesystem permissions in DEPLOYMENT.md step 3 and systemd's ProtectSystem=strict do that.
-    // These checks catch honest misconfiguration early and loudly; they are not the control.
+    // WHAT THIS IS NOT. Passing here does NOT make writing to Production impossible. With publishing
+    // to stable configured the service is MEANT to write it, and the shipped crt-server.service
+    // lists the stable tree in ReadWritePaths for that; with it off, only systemd's
+    // ProtectSystem=strict makes a write impossible, and only once the stable tree is taken out of
+    // ReadWritePaths (INSTALLING.md, "Settings you may change later"). These checks catch honest
+    // misconfiguration early and loudly; they are not the control.
     // ###########################################################################################
     public static class ServerOptionsValidator
     {
@@ -121,7 +124,7 @@ namespace CRT.Server.Configuration
                 failures.Add(
                     $"{ServerOptions.SectionName}:DataTreeRoot is not writable by the service user: " +
                     $"[{normalised}]. Check the group ownership and the setgid bit - see " +
-                    "DEPLOYMENT.md step 3.");
+                    "INSTALLING.md, \"Folders and permissions\".");
             }
 
             return normalised;
@@ -279,7 +282,7 @@ namespace CRT.Server.Configuration
                     failures.Add(
                         $"{prefix}:ProductionDataTreeRoot is not writable by the service user: " +
                         $"[{productionData}]. Publishing to production needs the permissions in " +
-                        "DEPLOYMENT.md step 3 and the tree in the unit's ReadWritePaths.");
+                        "INSTALLING.md (\"Folders and permissions\") and the tree in the unit's ReadWritePaths.");
                 }
             }
 
@@ -549,7 +552,7 @@ namespace CRT.Server.Configuration
             {
                 failures.Add(
                     $"{prefix}:FeedbackRoot is not writable by the service user: [{feedback}]. It needs the " +
-                    "group and the unit's ReadWritePaths in DEPLOYMENT.md (\"Feedback from CRT\").");
+                    "group and the unit's ReadWritePaths in INSTALLING.md (\"Folders and permissions\").");
             }
         }
 

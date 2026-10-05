@@ -15,9 +15,9 @@ nothing is tested in-circuit.
 ## Enable it in CRT
 
 * Go to the "Configuration" tab:
-  * Tick `Enable MiniPro programmer functionality`
-  * There is no need for you to enable the simulated demo mode, as this is used for CRT development
-    only
+  * Make sure `Enable MiniPro programmer functionality` is ticked - it is on by default
+  * There is no need for you to enable `Enable MiniPro programmer simulated demo mode (only
+    required for CRT development)`, as this is used for CRT development only
 
 ## What to install on your local system?
 
@@ -72,9 +72,13 @@ help for others):
 ## Which ICs can be tested?
 
 The `Test IC with MiniPro programmer` button only appears for components that are categorized as an
-`IC` and that have a test in CRT's test catalogue - currently 29 of the 74-series logic ICs plus the
-C64 PLA (`906114-01`). The catalogue is part of the online-synchronized data, so new tests can arrive
-without a new version of CRT.
+`IC` and that have a test in CRT's test catalogue. A component is matched by its "Technical name or
+value" (e.g. `74LS139`; `7406` matches the `74LS06` test), not by its part number.
+
+The catalogue currently holds 29 of the 74-series logic ICs plus the C64 PLA (`906114-01`). 28 of
+the 74-series ICs can be run; the `74LS193` is a "functional-only" part, so its button opens the
+panel but `Run test` stays greyed out. The catalogue is part of the online-synchronized data, so new
+tests can arrive without a new version of CRT.
 
 ## How to test a logic IC in CRT?
 
@@ -82,6 +86,7 @@ without a new version of CRT.
 * Go to a logic component (e.g. `7406` or `74LS139` or alike) and open the component information
   popup
   * Click the `Test IC with MiniPro programmer` button
+  * The `Test depth` shows how many test vectors are run; there is nothing to choose
   * Click the `Run test` button - it should finish almost instantly
 
 ## How to test a C64 PLA IC in CRT?
@@ -89,13 +94,19 @@ without a new version of CRT.
 * Insert the IC in the ZIF socket, with pin 1 of the IC aligned with pin 1 of the socket
 * Go to the PLA component and open the component information popup
   * Click the `Test IC with MiniPro programmer` button
-  * Choose either `Quick (25 vectors)` or `Standard (512 vectors)` in the `Test depth` drop-down
-  * Click the `Run test` button - it should finish almost instantly
+  * Choose `Quick (25)`, `Standard (512)` or `Full (65536)` in the `Test depth` drop-down - the
+    number is how many test vectors are run. Quick and Standard finish almost instantly;
+    Full tests every combination and takes longer, with the elapsed time shown beside the buttons.
+  * Click the `Run test` button
+
+While a test runs, `Cancel` stops it. Below the result, `Raw MiniPro output:` shows what the
+programmer reported, which is useful when a test fails. `Close MiniPro Test` returns to the popup.
 
 ## Important note for test results
 
-You can for sure trust the result if the test reports a FAIL - then the IC is for sure broken - but
-if the test reports a SUCCESS, then you need to pay attention to this fact:
+The result reads PASS or FAIL. You can for sure trust the result if the test reports a FAIL - then
+the IC is for sure broken, and CRT names the failing pins when it can - but if the test reports a
+PASS, then you need to pay attention to this fact:
 
 * The truth-table is tested OK - no issues in that, so logically the IC is working
 * Timing is **not** tested, so in some cases it could _potentially_ be problematic or fail in the

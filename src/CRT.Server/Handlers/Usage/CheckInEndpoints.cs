@@ -13,12 +13,13 @@ namespace CRT.Server.Handlers.Usage
     //                                                       415 not a form,
     //                                                       429 too many from this address.
     //
-    // *** OLDER CRTs REACH IT TOO. *** They post the same form to /app-checkin/, the PHP page's
-    // address, and Apache forwards that here - which is why the answer is the PHP page's plain text.
+    // *** OLDER CRTs REACH IT TOO. *** They post the same form to the old check-in address,
+    // /app-checkin/, and Apache forwards that here - which is why the answer is the plain text
+    // check-ins have always been given.
     //
-    // ANONYMOUS, like the PHP page and board views: CRT checks in without an account. Limited per
-    // address in memory (the PHP page had no limit at all); the body to the default 64 KB, stated on
-    // the route so RequestBodyLimitsTests sees the decision.
+    // ANONYMOUS, as check-ins have always been, like board views: CRT checks in without an account.
+    // Limited per address in memory (there used to be no limit at all); the body to the default
+    // 64 KB, stated on the route so RequestBodyLimitsTests sees the decision.
     // ###########################################################################################
     public static class CheckInEndpoints
     {

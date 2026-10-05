@@ -678,8 +678,8 @@ namespace CRT.Server.Tests
             // Maintainer tab's stage line says where it is.
             Assert.DoesNotContain("Queue", SystemEditFlow.NotInBetaMessage, StringComparison.Ordinal);
             Assert.Contains($"into BETA, {BetaQueue} and the system's history", SystemEditFlow.NoReasonMessage, StringComparison.Ordinal);
-            Assert.Contains($"to stable (under {BetaQueue})", OneSubmissionInBeta.BusyMessage(SystemEditFlowTests.SystemId), StringComparison.Ordinal);
-            Assert.Contains($"reject it under {BetaQueue} first.", OneSubmissionInBeta.NoChangeMessage(SystemEditFlowTests.SystemId), StringComparison.Ordinal);
+            Assert.Contains($"to the queue (under {BetaQueue}) first.", OneSubmissionInBeta.BusyMessage(SystemEditFlowTests.SystemId), StringComparison.Ordinal);
+            Assert.Contains($"rejected under {BetaQueue} first.", OneSubmissionInBeta.NoChangeMessage(SystemEditFlowTests.SystemId), StringComparison.Ordinal);
 
             Assert.Equal(ContributorQueue, MaintainerScreenWording.ContributorQueueQuoted);
             Assert.Equal(BetaQueue, MaintainerScreenWording.BetaQueueQuoted);

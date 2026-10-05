@@ -59,10 +59,18 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionState.Withdrawn
         };
 
+        // ###########################################################################################
+        // `showAddresses` false (owner request, 2026-10-05 - an account that does not maintain the
+        // system): NO email address in any line. A person is named by their account where there is
+        // one (`named` must then hold whoever did each audited thing, and whoever a pool change
+        // names - AccountNamedBy), a label that is no address is kept ("the contributor"), and
+        // anything else is left out, which the tab reads as "somebody".
+        // ###########################################################################################
         public static IReadOnlyList<SystemHistoryEntry> Build(
             IReadOnlyList<SystemSubmissionRecord> submissions,
             IReadOnlyDictionary<long, AccountRecord> named,
-            IReadOnlyList<AuditEntry> audit)
+            IReadOnlyList<AuditEntry> audit,
+            bool showAddresses = true)
         {
             ArgumentNullException.ThrowIfNull(submissions);
             ArgumentNullException.ThrowIfNull(named);
@@ -79,7 +87,7 @@ namespace CRT.Server.Handlers.Submissions
                     SystemHistoryEvents.Sent,
                     submission.AccountId is long sender && named.TryGetValue(sender, out AccountRecord? account)
                         ? account.DisplayName
-                        : SystemHistoryRules.Blank(submission.ContactEmail),
+                        : showAddresses ? SystemHistoryRules.Blank(submission.ContactEmail) : null,
                     submission.Id,
                     SystemHistoryRules.Blank(submission.Summary)));
 
@@ -105,9 +113,9 @@ namespace CRT.Server.Handlers.Submissions
                 entries.Add(new SystemHistoryEntry(
                     row.AtUtc,
                     row.Action,
-                    SystemHistoryRules.Blank(row.ActorLabel),
+                    showAddresses ? SystemHistoryRules.Blank(row.ActorLabel) : SystemHistoryRules.ActorWithoutAddress(row, named),
                     SystemHistoryRules.SubmissionOf(row.Subject),
-                    SystemHistoryRules.DetailOf(row)));
+                    showAddresses ? SystemHistoryRules.DetailOf(row) : SystemHistoryRules.DetailWithoutAddress(row, named)));
             }
 
             // Newest first; OrderByDescending is stable, so two events at one instant keep the order
@@ -156,6 +164,65 @@ namespace CRT.Server.Handlers.Submissions
 
                 default:
                     return detail;
+            }
+        }
+
+        // ###########################################################################################
+        // The account a pool change names - "account 7 (anna@example.com)" -> 7 - for a maintainer
+        // made, removed, or made by an accepted invitation; null for anything else, or a detail
+        // not in that shape.
+        // ###########################################################################################
+        public static long? AccountNamedBy(AuditEntry row)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            if (row.Action is not (SystemHistoryEvents.MaintainerAdded or SystemHistoryEvents.MaintainerRemoved or SystemHistoryEvents.InvitationAccepted))
+                return null;
+
+            const string Prefix = "account ";
+            string detail = row.Detail?.Trim() ?? string.Empty;
+
+            if (!detail.StartsWith(Prefix, StringComparison.Ordinal))
+                return null;
+
+            string digits = new(detail[Prefix.Length..].TakeWhile(char.IsAsciiDigit).ToArray());
+
+            return long.TryParse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long id) ? id : null;
+        }
+
+        // Who did an audited thing, without an address: the name on their account, else the label
+        // when it is no address ("the contributor"), else nobody.
+        private static string? ActorWithoutAddress(AuditEntry row, IReadOnlyDictionary<long, AccountRecord> named)
+        {
+            if (row.ActorAccountId is long id && named.TryGetValue(id, out AccountRecord? account))
+                return SystemHistoryRules.Blank(account.DisplayName);
+
+            string? label = SystemHistoryRules.Blank(row.ActorLabel);
+
+            return label is null || label.Contains('@') ? null : label;
+        }
+
+        // An audit row's detail without an address: a pool change names its person by their
+        // account; an invitation's detail IS an address, so it says nothing; the rest are as
+        // DetailOf has them, none of which carries an address.
+        private static string? DetailWithoutAddress(AuditEntry row, IReadOnlyDictionary<long, AccountRecord> named)
+        {
+            switch (row.Action)
+            {
+                case SystemHistoryEvents.MaintainerAdded:
+                case SystemHistoryEvents.MaintainerRemoved:
+                case SystemHistoryEvents.InvitationAccepted:
+                    return SystemHistoryRules.AccountNamedBy(row) is long id && named.TryGetValue(id, out AccountRecord? account)
+                        ? SystemHistoryRules.Blank(account.DisplayName)
+                        : null;
+
+                case SystemHistoryEvents.Invited:
+                case SystemHistoryEvents.InvitationWithdrawn:
+                    return null;
+
+                default:
+                    string? detail = SystemHistoryRules.DetailOf(row);
+                    return detail is not null && detail.Contains('@') ? null : detail;
             }
         }
 

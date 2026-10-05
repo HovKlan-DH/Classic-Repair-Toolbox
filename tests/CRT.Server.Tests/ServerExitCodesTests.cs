@@ -7,21 +7,17 @@ namespace CRT.Server.Tests
     // Covers ServerExitCodes - the codes a start that cannot go on exits with.
     //
     // The code only ends the restart loop if the systemd unit names it in
-    // RestartPreventExitStatus=. The unit is written by hand from DEPLOYMENT.md, so the runbook is
-    // the one place the two halves can be checked against each other: change the number on one
-    // side only and this fails.
+    // RestartPreventExitStatus=. The unit ships beside the binaries as src/CRT.Server/crt-server.service
+    // (2026-10-05 - it was typed in from the installation document before, which a test should not
+    // read), so the two halves are checked against each other here: change the number on one side
+    // only and this fails.
     // ###########################################################################################
     public sealed class ServerExitCodesTests
     {
         [Fact]
-        public void The_runbook_unit_does_not_restart_a_service_whose_settings_were_refused()
+        public void The_shipped_unit_does_not_restart_a_service_whose_settings_were_refused()
         {
-            string runbook = File.ReadAllText(ServerExitCodesTests.RunbookPath());
-
-            Assert.Contains(
-                "RestartPreventExitStatus=" + ServerExitCodes.ConfigurationRefused,
-                runbook,
-                StringComparison.Ordinal);
+            Assert.Contains(ServerExitCodes.ConfigurationRefused, ServerExitCodesTests.CodesTheUnitDoesNotRestart());
         }
 
         [Fact]
@@ -34,9 +30,9 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // A START THAT FAILED IN THE DATABASE (2026-09-27). A failed migration needs a person, so it
-        // must NOT be retried - the runbook's unit has to name its code. An unreachable database is
-        // what a restart fixes (MariaDB up a few seconds after this service at boot), so the unit
-        // must NOT name its code. Both halves are read from the runbook, as above.
+        // must NOT be retried - the unit has to name its code. An unreachable database is what a
+        // restart fixes (MariaDB up a few seconds after this service at boot), so the unit must NOT
+        // name its code. Both halves are read from the shipped unit, as above.
         // ###########################################################################################
         [Fact]
         public void A_failed_migration_stops_the_service_and_is_not_restarted()
@@ -63,10 +59,10 @@ namespace CRT.Server.Tests
             Assert.Null(ServerExitCodes.ForStartupFailure(new IOException("disk")));
         }
 
-        // The numbers after RestartPreventExitStatus= in the runbook's unit file.
+        // The numbers after RestartPreventExitStatus= in the shipped unit file - exactly one such line.
         private static IReadOnlyList<int> CodesTheUnitDoesNotRestart()
         {
-            string line = File.ReadAllLines(ServerExitCodesTests.RunbookPath())
+            string line = File.ReadAllLines(ServerExitCodesTests.UnitPath())
                 .Single(text => text.StartsWith("RestartPreventExitStatus=", StringComparison.Ordinal));
 
             return line["RestartPreventExitStatus=".Length..]
@@ -83,7 +79,7 @@ namespace CRT.Server.Tests
             }
         }
 
-        private static string RunbookPath()
+        private static string UnitPath()
         {
             string? folder = AppContext.BaseDirectory;
 
@@ -92,7 +88,7 @@ namespace CRT.Server.Tests
 
             Assert.NotNull(folder);
 
-            return Path.Combine(folder!, "src", "CRT.Server", "DEPLOYMENT.md");
+            return Path.Combine(folder!, "src", "CRT.Server", "crt-server.service");
         }
     }
 }

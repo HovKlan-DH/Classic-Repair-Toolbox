@@ -117,9 +117,9 @@ namespace CRT
         // URL for the launch check-in.
         // Used by: OnlineServices.CheckInVersionAsync
         //
-        // CRT.SERVER'S ROUTE SINCE 2026-10-03, not the PHP page at /app-checkin/ (owner request:
-        // retire that page). CRTs already installed still post there, and Apache forwards it to
-        // the same route - CheckInContract keeps the form the page read, so both arrive alike.
+        // CRT.SERVER'S ROUTE SINCE 2026-10-03, not the old check-in address older CRTs post to.
+        // CRTs already installed still post there, and Apache forwards it to the same route -
+        // CheckInContract keeps the form they have always sent, so both arrive alike.
         public const string CheckInUrl = CrtServerBaseUrl + "/" + CheckInContract.PathUnderApi;
 
         // The CRT.Server host with NO path - what the Maintainer tab's review client builds on

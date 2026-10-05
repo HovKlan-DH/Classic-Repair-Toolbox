@@ -26,7 +26,7 @@ namespace CRT.Server
     // Phase 3 step 0 is deliberately just the health endpoint: the systemd -> Apache -> TLS ->
     // SELinux chain has several independent ways to fail, and debugging that chain at the same
     // time as debugging business logic is what turns one evening into one week. Deploy something
-    // that does nothing, prove it answers over HTTPS, then add code. See DEPLOYMENT.md.
+    // that does nothing, prove it answers over HTTPS, then add code. See INSTALLING.md.
     // ###########################################################################################
     public static class Program
     {
@@ -38,7 +38,7 @@ namespace CRT.Server
             // UNDER SYSTEMD, LOG IN SYSTEMD'S FORMAT (2026-09-27). The default console format
             // writes "crit: Category[0]" with the message on a second line and nothing the journal
             // reads as a level, so the journal filed EVERY line as info - and
-            // "journalctl -p warning", DEPLOYMENT.md's way to read the reasons without a core dump,
+            // "journalctl -p warning", INSTALLING.md's way to read the reasons without a core dump,
             // showed none of ours. The systemd format writes each entry on ONE line, prefixed with
             // its syslog level, which the journal strips and records: a crit is then a crit.
             // systemd sets JOURNAL_STREAM exactly when the output goes to the journal, so running
@@ -346,14 +346,14 @@ namespace CRT.Server
             services.AddSingleton<BoardViewNameDirectory>();
             services.AddBoardViewRateLimit();
 
-            // Feedback from CRT's Feedback tab (2026-10-03) - the old PHP page's job. Anonymous,
+            // Feedback from CRT's Feedback tab (2026-10-03). Anonymous,
             // limited per address in memory like board views. FeedbackStorage is what every
             // feedback with files shares: one unpack at a time, and the folder's remembered total.
             services.AddFeedbackRateLimit();
             services.AddSingleton(new FeedbackStorage(() => FeedbackFlow.StoredBytesUnder(options.FeedbackRoot!)));
 
-            // CRT's launch check-in (2026-10-03) - the old app-checkin PHP page's job, into the
-            // crt_update table it wrote. Shares the board views' country lookup.
+            // CRT's launch check-in (2026-10-03), into the crt_update table check-ins have always
+            // been written to. Shares the board views' country lookup.
             services.AddSingleton<ICheckInStore, MySqlCheckInStore>();
             services.AddCheckInRateLimit();
 
@@ -418,8 +418,8 @@ namespace CRT.Server
             // anonymous, rate limited per address in memory.
             app.MapCheckInEndpoints();
 
-            // CRT 2.x's contribution upload, through Apache's forward of /app-contribution/api/ once
-            // the old PHP page is gone - answered "please update" in the words 2.5.0 understands.
+            // CRT 2.x's contribution upload, through Apache's forward of the old address
+            // /app-contribution/api/ - answered "please update" in the words 2.5.0 understands.
             app.MapLegacyContributionEndpoints();
 
             // Every route above, for Account > "API usage" - read when it is asked for, so the list is

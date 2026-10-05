@@ -209,6 +209,17 @@ namespace Handlers.DataHandling
                     "characters. Shorten it - the maintainer sees the full list of changes anyway."));
             }
 
+            // A new system's notes go into the main Excel data file's notes column, which holds no
+            // more than this (MasterListing.IsWritableRow) - refused here, where the contributor
+            // can shorten them, rather than when the maintainer tries to save the placement.
+            if ((manifest.HardwareNotes?.Length ?? 0) > MasterListing.MaximumNotesLength)
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "notes.too_long",
+                    string.Empty,
+                    $"The hardware notes are longer than {MasterListing.MaximumNotesLength} characters. Shorten them."));
+            }
+
             if (string.IsNullOrWhiteSpace(manifest.Hardware))
             {
                 findings.Add(SubmissionValidator.Error(

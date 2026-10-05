@@ -62,7 +62,7 @@ WATCHED='^src/CRT\.Server/|^src/CRT\.Data/'
 
 # Anything under CRT.Server that cannot change the service's behaviour. Docs and
 # the version history itself must not trigger the very reminder they answer.
-IGNORED='^src/CRT\.Server/(VERSION|DEPLOYMENT|README)\.md$|^src/CRT\.Server/Properties/'
+IGNORED='^src/CRT\.Server/(VERSION|INSTALLING)\.md$|^src/CRT\.Server/Properties/'
 
 RELEVANT="$(printf '%s\n' "$CHANGED" | grep -E "$WATCHED" | grep -vE "$IGNORED")"
 [ -n "$RELEVANT" ] || exit 0

@@ -7,8 +7,8 @@ namespace ClassicRepairToolbox.Tests;
 // Tests for ContributionPackaging - the pure half of the component contribution upload.
 //
 // The zip entry names this class assigns are recorded per row inside ComponentContribution.json
-// (the "ZipEntry" field), and the server-side review page (Assets/Webserver/app-contribution/api)
-// uses them to locate each submitted file exactly. That makes the naming scheme a wire contract:
+// (the "ZipEntry" field), and the server side of the old contribution upload used them to locate
+// each submitted file exactly. That makes the naming scheme a wire contract:
 // "ReferencedFiles/<SectionFolder>/<NNN>_<filename>" with one global running number and one shared
 // entry per distinct source file. Change the scheme and queued submissions stop resolving.
 public class ContributionPackagingTests
@@ -433,8 +433,8 @@ public class ContributionPackagingTests
 
     // -------------------------------------------------------------- BuildFeedbackText
 
-    // The server (app-contribution/index.php and api/index.php) reformats the summary around the
-    // literal marker line "Mandatory change comment:" - the marker is part of the contract.
+    // The server side of the old contribution upload reformatted the summary around the literal
+    // marker line "Mandatory change comment:" - the marker is part of the contract.
     [Fact]
     public void The_feedback_text_lists_the_context_and_ends_with_the_mandatory_comment_marker()
     {

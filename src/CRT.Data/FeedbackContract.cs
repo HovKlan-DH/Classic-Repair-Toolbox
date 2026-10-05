@@ -7,18 +7,19 @@ using System.Net.Http.Headers;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // *** FEEDBACK FROM CRT'S FEEDBACK TAB, AS IT TRAVELS (owner request, 2026-10-03: "can we
-    // retire the old "Feedback" backend PHP, and then have the new backend server handle
-    // that?"). *** One multipart form: the address typed (or the signed-in account's), the text, the
-    // CRT version, and at most one zip of the attached files. CRT builds it with BuildForm, the
-    // server (CRT.Server's FeedbackFormReader) reads it with these names, and both ends judge the
-    // answer with IsSuccess - so a renamed field cannot compile on one side and fail on the other.
+    // *** FEEDBACK FROM CRT'S FEEDBACK TAB, AS IT TRAVELS (owner request, 2026-10-03: "have the
+    // new backend server handle that"). *** One multipart form: the address typed (or the
+    // signed-in account's), the text, the CRT version, and at most one zip of the attached files.
+    // CRT builds it with BuildForm, the server (CRT.Server's FeedbackFormReader) reads it with
+    // these names, and both ends judge the answer with IsSuccess - so a renamed field cannot
+    // compile on one side and fail on the other.
     //
-    // *** THE FORM IS THE OLD PHP PAGE'S, UNCHANGED, ON PURPOSE. *** Every CRT already installed posts
-    // exactly this to https://classic-repair-toolbox.dk/app-feedback/, and reads "Success" at the
-    // start of the answer as success. Apache forwards that old address to the server's route
-    // (DEPLOYMENT.md), so older CRTs keep working the day the PHP is removed - which only holds
-    // while these names, the zip's file name and the "Success" answer stay as they are.
+    // *** THE FORM IS THE ONE CRT HAS ALWAYS SENT, UNCHANGED, ON PURPOSE. *** Every CRT already
+    // installed posts exactly this to the old feedback address,
+    // https://classic-repair-toolbox.dk/app-feedback/, and reads "Success" at the start of the
+    // answer as success. Apache forwards that address to the server's route (INSTALLING.md), so
+    // older CRTs keep working - which only holds while these names, the zip's file name and the
+    // "Success" answer stay as they are.
     // ###########################################################################################
     public static class FeedbackContract
     {
@@ -54,8 +55,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The files the mail SHOWS rather than saves - CRT's own text files, which the Feedback
         // tab's two check boxes attach under exactly these names (AppConfig's, held to these by
-        // CRT.App.Tests' FeedbackAttachmentNamesTests). The PHP page showed the first three; the
-        // crash log joined them on the move (2026-10-03), being the same kind of text.
+        // CRT.App.Tests' FeedbackAttachmentNamesTests). The mail always showed the first three; the
+        // crash log joined them on the move to CRT.Server (2026-10-03), being the same kind of text.
         // ###########################################################################################
         public static readonly IReadOnlyList<FeedbackInlineFile> InlineFiles =
         [
@@ -92,8 +93,9 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Did the feedback arrive? A 2xx AND a body starting with "Success" - the PHP page could
-        // answer 200 with a PHP warning in the body, which is why CRT always read the body too.
+        // Did the feedback arrive? A 2xx AND a body starting with "Success" - the old feedback
+        // address could answer 200 with a warning in the body, which is why CRT always read the
+        // body too.
         // ###########################################################################################
         public static bool IsSuccess(int statusCode, string? body) =>
             statusCode is >= 200 and < 300 &&

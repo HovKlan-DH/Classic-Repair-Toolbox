@@ -131,6 +131,40 @@ public sealed class BoardFileLookupTests
         Assert.Equal(BoardFileState.Found, lookup.Check($"{Board}/U8.png").State);
     }
 
+    // ###########################################################################################
+    // *** THE SAME, WHEN THE FOLDER'S WRITE TIME DID NOT MOVE (2026-10-05). *** A folder's write time
+    // has the clock's resolution (about 16 ms on Windows, two seconds on FAT), so a rename landing in
+    // the same tick as the listing's read leaves it unchanged - and the stale listing was trusted:
+    // the test above failed one run in many, depending on how quickly the rename followed. Putting
+    // the old write time back makes that case certain. A listing read while its folder had JUST been
+    // written proves nothing about the next moment, so it is read again.
+    //
+    // The write time is pinned a minute AHEAD before the first read, never left at "when the file
+    // was written": on a runner that stalled for longer than WriteTimeResolution between writing the
+    // file and that read, the listing had aged into "trusted" and the test failed at random (code
+    // review, 2026-10-05). A write time later than the read is the same tick however slowly this runs.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_put_right_in_the_same_clock_tick_as_the_folder_was_read_is_still_found()
+    {
+        using var workspace = new TempWorkspace();
+        string wrong = workspace.WriteFile($"Data/{Board}/u8.png", "x");
+        string folder = Path.GetDirectoryName(wrong)!;
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+
+        DateTime writtenWhenRead = DateTime.UtcNow.AddMinutes(1);
+        Directory.SetLastWriteTimeUtc(folder, writtenWhenRead);
+
+        Assert.Equal(BoardFileState.CaseDiffers, lookup.Check($"{Board}/U8.png").State);
+
+        string between = Path.Combine(folder, "between.png");
+        File.Move(wrong, between);
+        File.Move(between, Path.Combine(folder, "U8.png"));
+        Directory.SetLastWriteTimeUtc(folder, writtenWhenRead);
+
+        Assert.Equal(BoardFileState.Found, lookup.Check($"{Board}/U8.png").State);
+    }
+
     // A FOUND answer is kept for the lookup's life - re-asking thousands of found files after every
     // edit is what the cache exists to avoid - so a file that vanishes is only seen by a new lookup.
     [Fact]

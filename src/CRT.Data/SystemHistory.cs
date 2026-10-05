@@ -73,13 +73,17 @@ namespace Handlers.DataHandling
     // in BETA that has not gone to production, no other submission of it may be approved. The
     // server refuses it (ApprovePublishFlow) and the Maintainer tab turns Approve off beside the same
     // sentence, so the two say it identically.
+    //
+    // Both sentences say what has to happen FIRST, never "publish it" to their reader (code review,
+    // 2026-10-05): while only the administrator publishes to stable (StablePublishing), a maintainer
+    // told to publish was offered the one action their screen greys out.
     // ###########################################################################################
     public static class OneSubmissionInBeta
     {
         public static string BusyMessage(string? systemId) =>
             $"{(string.IsNullOrWhiteSpace(systemId) ? "This system" : systemId.Trim())} already has a submission in BETA that " +
-            "has not gone to the stable source. A system takes one submission into BETA at a time: publish that one " +
-            "to stable (under " + MaintainerScreenWording.BetaQueueQuoted + ") or push it back to the queue first.";
+            "has not gone to the stable source. A system takes one submission into BETA at a time: that one has to be " +
+            "published to stable or pushed back to the queue (under " + MaintainerScreenWording.BetaQueueQuoted + ") first.";
 
         // ###########################################################################################
         // The same rule for a change made on the Systems screen, which goes straight to BETA (owner
@@ -89,6 +93,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static string NoChangeMessage(string? systemId) =>
             $"{(string.IsNullOrWhiteSpace(systemId) ? "This system" : systemId.Trim())} is waiting in BETA for the stable source, " +
-            "so no change can be made to it here. Publish it to stable, push it back or reject it under " + MaintainerScreenWording.BetaQueueQuoted + " first.";
+            "so no change can be made to it here. It has to be published to stable, pushed back or rejected under " +
+            MaintainerScreenWording.BetaQueueQuoted + " first.";
     }
 }

@@ -315,7 +315,11 @@ namespace CRT.Server.Handlers.Submissions
                         bytesToUpload,
 
                         // Decided before the gate (it may hash files) - see touchesSharedFiles.
-                        touchesSharedFiles),
+                        touchesSharedFiles,
+
+                        // A new system's notes (2026-10-05), for the placement to start with.
+                        // Their length was held to the notes column's by SubmissionValidator.
+                        HardwareNotes: string.IsNullOrWhiteSpace(manifest.HardwareNotes) ? null : manifest.HardwareNotes.Trim()),
                     cancellationToken);
             }
 

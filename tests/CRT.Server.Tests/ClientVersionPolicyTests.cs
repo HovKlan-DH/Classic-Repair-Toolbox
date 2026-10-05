@@ -140,8 +140,8 @@ namespace CRT.Server.Tests
             Assert.Null(everythingRaised.Refuse(path, "CRT 1.0.0"));
         }
 
-        // FAIL OPEN, the old PHP page's rule: a request naming no CRT version is never refused - a
-        // browser opening a mailed link to /api/accounts/verify must still work.
+        // FAIL OPEN, the old contribution upload's rule: a request naming no CRT version is never
+        // refused - a browser opening a mailed link to /api/accounts/verify must still work.
         [Theory]
         [InlineData(null)]
         [InlineData("")]

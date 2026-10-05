@@ -36,9 +36,13 @@ namespace Handlers.MaintainerHandling
             if (status is null || status.Required.Count == 0)
                 return null;
 
+            // The administrator ALONE has three causes the status cannot tell apart - nobody
+            // maintains the board, only the administrator is in its pool, or only administrators
+            // publish to stable - so no reason is given (code review, 2026-10-05: "nobody reviews
+            // this board yet" sat beside a Maintainer view naming the administrator).
             string needs = status.Required.Count > 1
                 ? "Replaces a shared file other boards may use, so it needs a maintainer of this board AND the administrator."
-                : "Replaces a shared file other boards may use, so it needs the administrator (nobody reviews this board yet).";
+                : "Replaces a shared file other boards may use, so it needs the administrator's approval.";
 
             string given = status.Given.Count == 0
                 ? "Nobody has approved it yet."

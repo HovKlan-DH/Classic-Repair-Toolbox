@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
         x:Class="CRT.NewSystemWindow"
         Title="Add a new system"
         Width="560"
@@ -53,12 +54,17 @@
 		<TextBox x:Name="BoardBox" PlaceholderText="250407" />
 
 		<TextBlock Text="Notes (optional)" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="Anything worth knowing about this hardware. Shown on the Overview tab."
+		<!-- Sent with the submission (owner request, 2026-10-05): the maintainer's placement of the
+		     system starts with it, and the placement saved is what goes into the main Excel data
+		     file's notes column - so the maintainer may still change it. At most that column's
+		     length (MaxLength below; the server refuses more). -->
+		<TextBlock Text="Anything worth knowing about this hardware. Sent with the submission - the maintainer checks it when adding the system to CRT's list of hardware and boards, and it is then shown on the Overview tab."
 				   TextWrapping="Wrap"
 				   FontSize="11"
 				   Opacity="0.75"
 				   Margin="0,0,0,2" />
 		<TextBox x:Name="NotesBox"
+				 MaxLength="{x:Static data:MasterListing.MaximumNotesLength}"
 				 AcceptsReturn="True"
 				 TextWrapping="Wrap"
 				 Height="60" />

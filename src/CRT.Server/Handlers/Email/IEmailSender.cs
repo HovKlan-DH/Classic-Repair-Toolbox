@@ -18,8 +18,8 @@ namespace CRT.Server.Handlers.Email
     //
     // *** IT SAYS WHETHER THE MAIL WENT (2026-10-03). *** Feedback is the one case where the mail IS
     // the operation: a feedback whose mail never left reached nobody, and the sender must be told
-    // so and try again (the old PHP page answered "Mail sending failed"). True means postfix took
-    // the message; every other caller ignores it, as before.
+    // so and try again (the old feedback address answered "Mail sending failed"). True means
+    // postfix took the message; every other caller ignores it, as before.
     // ###########################################################################################
     public interface IEmailSender
     {

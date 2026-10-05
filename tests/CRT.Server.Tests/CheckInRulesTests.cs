@@ -4,11 +4,11 @@ using CRT.Server.Handlers.Usage;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers CheckInRules - the app-checkin PHP page's text rules, kept when the check-in moved to
-    // the service (2026-10-03). crt_update is read by the Fun facts pages and a nightly statistics
-    // job, so a version the PHP page would have stored must still be stored as it was, one it
-    // would have refused must still be refused, and no markup may reach the table (the Fun facts
-    // page prints these fields).
+    // Covers CheckInRules - the check-in's text rules, kept when the check-in moved to the service
+    // (2026-10-03). crt_update is read by the Fun facts page and a nightly statistics job, so a
+    // version that was stored before must still be stored as it was, one that was refused must
+    // still be refused, and no markup may reach the table (the Fun facts page prints these
+    // fields).
     // ###########################################################################################
     public sealed class CheckInRulesTests
     {
@@ -17,9 +17,9 @@ namespace CRT.Server.Tests
         [InlineData("CRT 2.5.0-beta.1", "CRT 2.5.0-beta.1")]
         [InlineData("  CRT 2026.10.0 \n", "CRT 2026.10.0")]
         [InlineData("<b>CRT 2026.10.0</b>", "CRT 2026.10.0")]
-        // The PHP page looked for "CRT " in any case, and stored what it was sent.
+        // "CRT " has always been looked for in any case, and stored as it was sent.
         [InlineData("crt 2026.10.0", "crt 2026.10.0")]
-        public void A_CRT_version_is_kept_as_the_PHP_page_stored_it(string userAgent, string expected)
+        public void A_CRT_version_is_kept_as_it_was_always_stored(string userAgent, string expected)
         {
             Assert.Equal(expected, CheckInRules.VersionFrom(userAgent));
         }
@@ -31,7 +31,7 @@ namespace CRT.Server.Tests
         [InlineData("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")]
         [InlineData("CRT")]
         [InlineData("CRT2026.10.0")]
-        // Outside the PHP page's pattern: build metadata, an underscore, a semicolon, a quote.
+        // Outside the version pattern: build metadata, an underscore, a semicolon, a quote.
         [InlineData("CRT 2026.10.0+abc123")]
         [InlineData("CRT 2026_10")]
         [InlineData("CRT 2026.10.0; DROP TABLE crt_update")]
@@ -48,8 +48,8 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // PHP's strip_tags, as far as these fields can carry: a tag goes, an unclosed one takes the
-        // rest of the text with it, and a "<" that opens nothing stays.
+        // Markup stripped as it always has been, as far as these fields can carry: a tag goes, an
+        // unclosed one takes the rest of the text with it, and a "<" that opens nothing stays.
         // ###########################################################################################
         [Theory]
         [InlineData("Windows", "Windows")]
@@ -60,7 +60,7 @@ namespace CRT.Server.Tests
         [InlineData("ends with <", "ends with <")]
         [InlineData("a > b", "a > b")]
         [InlineData("", "")]
-        public void Markup_is_stripped_as_PHP_stripped_it(string value, string expected)
+        public void Markup_is_stripped_as_it_always_was(string value, string expected)
         {
             Assert.Equal(expected, CheckInRules.StripTags(value));
         }
@@ -75,7 +75,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // apiJson holds the country the lookup gave - and nothing more, where the PHP page stored
+        // apiJson holds the country the lookup gave - and nothing more, where it used to hold
         // ip-api.com's whole answer (city, coordinates, provider), which nothing reads.
         // ###########################################################################################
         [Fact]

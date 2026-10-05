@@ -214,7 +214,10 @@ namespace Handlers.MaintainerHandling
                     ReviewApiParser.Bool(element, "awaitsYou"),
 
                     // A contributor whose work this carries discarded their draft (2026-09-28).
-                    ReviewApiParser.Bool(element, "carriesDiscardedDraft")));
+                    ReviewApiParser.Bool(element, "carriesDiscardedDraft"),
+
+                    // It waits for the administrator, who alone publishes to stable (2026-10-05).
+                    ReviewApiParser.Bool(element, "waitsForAdministrator")));
             }
 
             return new ProductionListResponse(ReviewApiParser.Bool(root, "configured") ?? false, rows);

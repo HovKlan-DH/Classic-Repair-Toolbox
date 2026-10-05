@@ -15,8 +15,9 @@ settings by hand for every pin you probe.
 
 ## Enabling it
 
-* Tick `Enable network connected oscilloscope tab` on the "Configuration" tab.
-* Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it.
+* Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
+* Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it - see
+  [Oscilloscope tab](Oscilloscope-tab).
 * Click a component that has an oscilloscope baseline, and select one of its images.
 * In the component information window, make sure `Synchronize oscilloscope` is ticked. It is on by
   default, but it is only available while CRT is actually connected to the oscilloscope.
@@ -43,10 +44,17 @@ trigger slope - you have to set those up yourself.
 
 ## How the values are matched
 
-Values are written as a number followed by a unit, using a period as the decimal separator:
+Values are written as a number followed by a unit, using a period as the decimal separator. The
+unit is required, and its capitals do not matter:
 
 * Time: `ns`, `us` (or `µs`), `ms`, `s` - for example `500ns`, `20us`, `1ms`
 * Voltage: `uV` (or `µV`), `mV`, `V` - for example `500mV`, `2V`, `1.5V`
+
+A `T/DIV` or `V/DIV` value is only sent when it matches one of the values your scope supports - the
+`TIME/DIV` and `VOLTS/DIV` lists for your scope model in the main Excel data file. A value that is
+not in the list is skipped, and the output on the "Oscilloscope" tab says
+`Could not map image T/DIV value [...] to a supported oscilloscope value` (or the same for
+VOLTS/DIV). The trigger level is sent as written.
 
 ## Good to know
 
@@ -62,4 +70,8 @@ If your oscilloscope is not in the list, or it does not work properly, then plea
 which **SCPI commands** work for your specific oscilloscope model, as this varies quite a lot - even
 within the same vendor. I do not know all oscilloscopes, nor do I have access to anything other than
 my own, so you will need to provide this data yourself. You can add and test the required data in
-the main Excel data file `Classic-Repair-Toolbox.xlsx` in the sheet `Oscilloscope`.
+the main Excel data file `Classic-Repair-Toolbox.v2.0.0.xlsx` in the sheet `Oscilloscope` - see
+[Main Excel](Main-Excel). Note that the launch-time data check replaces a changed data file with
+the server's copy at the next launch, unless **Check for new or updated data at application launch**
+is unticked in [Configuration](Configuration-tab) - so send your working entry to the developer
+through the [Feedback tab](Feedback-tab) as well.

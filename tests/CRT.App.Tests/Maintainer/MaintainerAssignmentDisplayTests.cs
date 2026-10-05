@@ -74,11 +74,19 @@ public sealed class MaintainerAssignmentDisplayTests
     [Fact]
     public void An_account_the_server_would_REFUSE_says_why_in_the_list_itself()
     {
-        // Read before the button is pressed, not after a round trip - and the same three reasons
+        // Read before the button is pressed, not after a round trip - and the same two reasons
         // MaintainerAssignmentRules gives on the server.
-        Assert.Contains("administrator", MaintainerAssignmentDisplay.AccountChoice(MaintainerAssignmentDisplayTests.Account(administrator: true)), StringComparison.Ordinal);
         Assert.Contains("not verified", MaintainerAssignmentDisplay.AccountChoice(MaintainerAssignmentDisplayTests.Account(verified: false)), StringComparison.Ordinal);
         Assert.Contains("locked", MaintainerAssignmentDisplay.AccountChoice(MaintainerAssignmentDisplayTests.Account(locked: true)), StringComparison.Ordinal);
+    }
+
+    // An administrator can be named a system's maintainer (owner request, 2026-10-05: "so others can
+    // see that this is me maintaining these systems") - listed plainly, as the server now grants it.
+    [Fact]
+    public void An_administrator_is_listed_as_grantable_like_anybody_else()
+    {
+        Assert.Null(MaintainerAssignmentDisplay.WhyNotGrantable(MaintainerAssignmentDisplayTests.Account(administrator: true)));
+        Assert.Equal("Bob (bob@example.com)", MaintainerAssignmentDisplay.AccountChoice(MaintainerAssignmentDisplayTests.Account(administrator: true)));
     }
 
     // -----------------------------------------------------------------------------------

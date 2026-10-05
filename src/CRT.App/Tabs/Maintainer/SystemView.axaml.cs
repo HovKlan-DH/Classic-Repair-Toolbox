@@ -266,10 +266,14 @@ namespace CRT
             // ---- Contributor ------------------------------------------------------------------
             contributors.Children.Add(SystemView.Heading(SystemsDisplay.ContributorsHeading(detail.Contributors.Count), detail.Contributors.Count == 0));
 
+            // No addresses for a system this account does not maintain (2026-10-05) - said, once.
+            if (detail.AddressesHidden && detail.Contributors.Count > 0)
+                contributors.Children.Add(SystemView.Note(SystemsDisplay.AddressesHiddenLine));
+
             foreach (SystemContributorEntry contributor in detail.Contributors)
             {
                 contributors.Children.Add(SystemView.TwoLines(
-                    SystemsDisplay.ContributorName(contributor),
+                    SystemsDisplay.ContributorName(contributor, detail.AddressesHidden),
                     SystemsDisplay.ContributorRecord(contributor),
                     note: null));
             }
@@ -350,6 +354,17 @@ namespace CRT
 
         private static TextBlock Line(string text) =>
             new() { Text = text, TextWrapping = TextWrapping.Wrap };
+
+        // A grey line under a heading that says how to read the list below it.
+        private static TextBlock Note(string text) =>
+            new()
+            {
+                Text = text,
+                FontSize = 11,
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(0, 0, 0, 4)
+            };
 
         // One entry: its main line, a grey line under it, and - when there is one - what the
         // contributor was told, in italics.

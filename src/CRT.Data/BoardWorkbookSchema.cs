@@ -13,7 +13,7 @@ namespace Handlers.DataHandling
     // correct while reading was the only thing anyone did. Phase 5 adds a WRITER (publishing), and
     // a writer with its own copy of the column names is precisely the defect this project has
     // already been bitten by twice and written down both times: the old ComponentContributionPayload
-    // kept the app's and the PHP's idea of a shape in step BY HAND, and SubmissionContract.cs
+    // kept the app's and the old server's idea of a shape in step BY HAND, and SubmissionContract.cs
     // exists because that failed. A workbook written with "Part number" and read with
     // "Part-number" produces a board that loads with every part number silently blank - nothing
     // throws, and the data is simply gone.

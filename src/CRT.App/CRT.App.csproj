@@ -120,10 +120,10 @@
 
   <!--
   Repository layout since the Phase 0 restructure: this project lives at src/CRT.App/, with
-  Assets/ (including Assets/Webserver/, the hand-maintained PHP mirror) two levels up at the
-  repository root, entirely outside this project's own directory tree. The SDK's default
-  "**/*.cs" glob only ever walks DOWN from the project file, so it cannot reach Assets/Webserver/
-  and the exclude that used to be needed for it is gone - there is nothing left to exclude.
+  Assets/ two levels up at the repository root, entirely outside this project's own directory
+  tree. The SDK's default "**/*.cs" glob only ever walks DOWN from the project file, so it cannot
+  reach anything under Assets/, and the exclude that used to be needed for it is gone - there is
+  nothing left to exclude.
   Likewise the test project now lives as a sibling under tests/CRT.App.Tests/, not inside this
   project's folder, so the old "Tests/**" exclude is gone too.
   -->

@@ -7,9 +7,10 @@ namespace CRT.Server.Handlers.Usage
     // ICheckInStore over MariaDB - crt_update. An I/O boundary, untested like the other MySql*
     // stores; every decision is made before it is called (CheckInFlow).
     //
-    // *** THE PHP PAGE'S OWN INSERT, word for word. *** createDateTime is the database's NOW() - the
-    // server's local time, as every row before this one - and versionMajor is 2, which is what
-    // tells this CRT's check-ins from the old Commodore Repair Toolbox's (1) in the same table.
+    // *** THE INSERT CHECK-INS HAVE ALWAYS BEEN WRITTEN WITH, word for word. *** createDateTime is
+    // the database's NOW() - the server's local time, as every row before this one - and
+    // versionMajor is 2, which is what tells this CRT's check-ins from the old Commodore Repair
+    // Toolbox's (1) in the same table.
     // ###########################################################################################
     public sealed class MySqlCheckInStore : ICheckInStore
     {

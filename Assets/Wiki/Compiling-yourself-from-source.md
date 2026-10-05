@@ -5,7 +5,7 @@ Build CRT on Windows, Linux or macOS with the plain `dotnet` CLI.
 ---
 
 CRT is a .NET 10 / Avalonia desktop application and builds with the plain `dotnet` CLI on all
-three platforms. The build is identical everywhere — only **how you install the .NET 10 SDK** differs.
+three platforms. The build is identical everywhere - only **how you install the .NET 10 SDK** differs.
 
 ## Contents
 
@@ -24,8 +24,9 @@ three platforms. The build is identical everywhere — only **how you install th
 ## Before you start
 
 You need the **.NET 10 SDK** ([download](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) or
-your package manager), **Git**, and about **2 GB free disk space**. A newer SDK is fine — the project
-sets `RollForward=LatestMajor`.
+your package manager), **Git**, and about **2 GB free disk space**. A newer SDK is fine - there is no
+`global.json` pinning one. The project also sets `RollForward=LatestMajor`, so the built application
+runs on a newer .NET runtime too.
 
 Fork the [CRT GitHub repository](https://github.com/HovKlan-DH/Classic-Repair-Toolbox) first to your own GitHub repository and then from your development environment:
 
@@ -53,17 +54,23 @@ To run from the source tree:
 dotnet run --project src/CRT.App/CRT.App.csproj -c Release
 ```
 
+The solution holds more than CRT itself: `src/CRT.App` is CRT, `src/CRT.Data` is the board-data
+library CRT and the server share, `src/CRT.Server` is the contribution service (submissions,
+feedback, the launch check-in), and `tests/` holds a test project for each. You do not need the
+server to build, test or run CRT - CRT talks to the one hosted at `classic-repair-toolbox.dk`.
+
 > `build` and `test` target the **solution** (`.slnx`) so the tests come along. `run` and `publish`
-> target the **project** (`.csproj`), or you would publish the test project too.
+> target the **project** (`.csproj`), or you would publish the server and the test projects too.
 
 ## Debug vs Release
 
-**Both configurations behave identically** — same update check, same data sync, same diagnostics.
-Build `Release` for anything you intend to use or measure; `Debug` is JIT-only and starts slower.
+**Both configurations behave identically** - same update check, same data sync, same diagnostics.
+Build `Release` for anything you intend to use or measure; `Debug` is unoptimised and slower. Only a
+`publish` with `-r` is also precompiled - see [Self-contained builds](#self-contained-builds).
 
 ## Windows
 
-**Visual Studio** - open `Classic-Repair-Toolbox.slnx`, set the configuration to **`Release`**, and then `Build` > `Build Solution`.
+**Visual Studio 2026** - open `Classic-Repair-Toolbox.slnx`, set the configuration to **`Release`**, and then `Build` > `Build Solution`.
 
 **Visual Studio Code** - with the **C# Dev Kit** extension you get the `build` task, the `watch` task
 (rebuild-and-restart on save), and **F5** to debug. Both `watch` and F5 pass `--simulate-update`.
@@ -117,7 +124,7 @@ dotnet build Classic-Repair-Toolbox.slnx -c Release
 
 Two quirks:
 
-- You get a **bare executable, not a `.app` bundle** — the `.app` in official releases is made by
+- You get a **bare executable, not a `.app` bundle** - the `.app` in official releases is made by
   Velopack during packaging. Running from Terminal works fine.
 - Local builds are **not signed or notarised**. If macOS refuses to start it:
   `xattr -dr com.apple.quarantine ./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox`
@@ -140,14 +147,16 @@ dotnet publish src/CRT.App/CRT.App.csproj -c Release -f net10.0 -r <rid> --self-
 | macOS Apple Silicon | `osx-arm64` | `src/CRT.App/bin/Release/net10.0/osx-arm64/publish/` |
 | macOS Intel | `osx-x64` | `src/CRT.App/bin/Release/net10.0/osx-x64/publish/` |
 
-Add `-o <folder>` to choose the output folder. Passing `-r` also enables **ReadyToRun** — bigger and
+Add `-o <folder>` to choose the output folder. Passing `-r` also enables **ReadyToRun** - bigger and
 slower to build, noticeably quicker to launch. Cross-compiling works; only the macOS packaging step
 in CI needs a Mac.
 
 ## Running the test suite
 
-An xUnit suite covers the non-UI logic in `Handlers/`. No hardware, no network, no display, a few
-seconds:
+There are three xUnit test projects: `tests/CRT.App.Tests` (CRT itself, including headless UI tests
+of its tabs and windows), `tests/CRT.Data.Tests` (the shared data library) and
+`tests/CRT.Server.Tests` (the contribution service). No hardware, no network, no display and no
+database - the whole run takes about two minutes in Release, build included:
 
 ```
 dotnet test Classic-Repair-Toolbox.slnx -c Release
@@ -159,12 +168,15 @@ pull request. If you add or change logic, add or update the tests in the same ch
 ## Where the hardware data comes from
 
 The ~1 GB in `Assets/Data` is **not** copied into the build output - official installers bundle it, but a
-source build does not. On first launch CRT creates its data folder and downloads from its stable source, `classic-repair-toolbox.dk`.
+source build does not. On first launch CRT creates its data folder and downloads from its stable source,
+`classic-repair-toolbox.dk` - as long as "Check for new or updated data at application launch" is ticked in
+the "Configuration" tab, which it is by default.
 
 | Platform | Data folder |
 | --- | --- |
 | Windows | `%LOCALAPPDATA%\Classic-Repair-Toolbox\Data` |
-| Linux / macOS | `~/.local/share/Classic-Repair-Toolbox/Data` |
+| Linux | `~/.local/share/Classic-Repair-Toolbox/Data` |
+| macOS | `~/Library/Application Support/Classic-Repair-Toolbox/Data` |
 
 ## The MiniPro IC programmer
 
@@ -185,5 +197,6 @@ check runs, so there is nothing for the simulation to answer. The log states thi
   * Avalonia needs fonts and ICU. On a minimal or container install add `fontconfig` and your distro's
 `libicu` package. Check the log for the real error.
 * **Application launches but there is no hardware data**
-  * Expected on a first run from source — it is downloading. See
+  * Expected on a first run from source - it is downloading. If nothing arrives, check that "Check for
+new or updated data at application launch" is ticked. See
 [Where the hardware data comes from](#where-the-hardware-data-comes-from).

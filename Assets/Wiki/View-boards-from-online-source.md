@@ -4,10 +4,11 @@ See every board exactly as everybody else sees it, without your own local change
 
 ---
 
-When you change a board in CRT - in the Contribute tab, the label editor or the table on the
-**Drafts** tab - the change is saved into your own local **draft** of that board, and CRT shows the
-board WITH your changes from then on. That is usually what you want: you see your own work as you
-build it. See [Contribute data via CRT](Contribute-data-via-CRT) for what a draft is.
+When you change a board in CRT - in the Contribute tab, the label editor, the KiCad trace
+calibration, or on the **Drafts** tab - the change is saved into your own local **draft** of that
+board, and CRT shows the board WITH your changes from then on. So does a change you make in the
+draft's Excel file. That is usually what you want: you see your own work as you build it. See
+[Drafts tab](Drafts-tab#what-a-draft-is) for what a draft is.
 
 Sometimes you want to see the board as it really is for everybody else. That is what this setting is
 for.
@@ -41,8 +42,10 @@ same tab.
 
 * **Your drafts are not touched.** Nothing is deleted, cleared or changed. Untick the setting and
   every change is back.
-* **The Drafts tab still shows and edits your drafts** as normal, including "Edit in table format"
-  and Submit.
+* **The [Drafts tab](Drafts-tab) still shows and edits your drafts** as normal, including
+  "Edit in table format" and Submit.
+* **The amber Draft badges in the Hardware and Board drop-downs stay**, because your drafts are
+  still there.
 
 ## When it is useful
 

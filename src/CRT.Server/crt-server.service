@@ -1,0 +1,42 @@
+[Unit]
+Description=Classic Repair Toolbox contribution service (CRT.Server)
+After=network.target mariadb.service
+
+[Service]
+# Type=simple, NOT Type=notify: the service sends systemd no readiness signal, so with
+# "notify" it would serve requests while "systemctl start" hung and then reported failure.
+Type=simple
+User=crt-server
+Group=crt-data
+WorkingDirectory=/mydir/http/classic-repair-toolbox.dk/crt-server/app
+ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server/app/CRT.Server.dll
+Restart=always
+RestartSec=5
+# A refused setting or a failed database migration exits with 78 and is NOT restarted - a
+# restart cannot fix either. A database not up yet at boot exits with 69 and IS restarted.
+# Held to the code by ServerExitCodesTests.
+RestartPreventExitStatus=78
+
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# Loopback only: the service is reached through Apache and never directly.
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5199
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Hardening. ProtectSystem=strict makes the whole filesystem read-only to the service except
+# the folders below: the BETA and stable data, the stored uploads and the saved feedback. The
+# service's own folder (its program files and settings) is deliberately NOT among them.
+#
+# The stable data (.../public_html/app-data) is here because the settings in INSTALLING.md publish
+# to stable. With publishing to stable OFF (the three Production* data settings empty), take it
+# out of the line: then the filesystem, not only the service's own check, keeps stable read-only.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data /mydir/http/classic-repair-toolbox.dk/crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback
+
+[Install]
+WantedBy=multi-user.target

@@ -16,11 +16,12 @@ namespace CRT.Server.Handlers.Feedback
     //                                                   502 the mail could not be sent,
     //                                                   507 no room on the disk for it.
     //
-    // *** OLDER CRTs REACH IT TOO. *** They post the same form to /app-feedback/, the PHP page's
-    // address, and Apache forwards that here (DEPLOYMENT.md) - which is why the answer is the
-    // PHP's plain-text "Success" rather than JSON: an installed CRT reads exactly that.
+    // *** OLDER CRTs REACH IT TOO. *** They post the same form to the old feedback address,
+    // /app-feedback/, and Apache forwards that here (INSTALLING.md) - which is why the answer is
+    // the plain-text "Success" CRT has always been given rather than JSON: an installed CRT reads
+    // exactly that.
     //
-    // ANONYMOUS, like the PHP page: anybody may send feedback. Limited per address in memory, like
+    // ANONYMOUS, as feedback has always been: anybody may send it. Limited per address in memory, like
     // board views - and the body to FeedbackContract.MaximumRequestBytes (256 MB), on the route.
     // ###########################################################################################
     public static class FeedbackEndpoints

@@ -563,6 +563,26 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
+    // *** WAITING FOR THE ADMINISTRATOR (2026-10-05). *** Renamed on either side, a maintainer's
+    // row would fall back to "with the other approver" - the words for an approval they never gave.
+    // Absent, it reads as not said.
+    // ###########################################################################################
+    [Fact]
+    public void Whether_a_waiting_system_waits_for_the_administrator_reads_back()
+    {
+        ProductionListResponse? list = ReviewApiParser.ParseProductionList(ReviewWireContractTests.Answer(
+            new ProductionListAnswer(
+                true,
+                [
+                    new ProductionListEntry("Commodore/C64/250407", "Commodore", "C64", "250407", null, new string('c', 64), null, null, AwaitsYou: false, WaitsForAdministrator: true),
+                    new ProductionListEntry("Commodore/C128/310378", "Commodore", "C128", "310378", null, new string('d', 64), null, null, AwaitsYou: true, WaitsForAdministrator: false),
+                    new ProductionListEntry("Amstrad/CPC/464", "Amstrad", "CPC", "464", null, new string('e', 64), null, null)
+                ])));
+
+        Assert.Equal([true, false, null], list!.Systems.Select(row => row.WaitsForAdministrator));
+    }
+
+    // ###########################################################################################
     // THE "SYSTEMS" SCREEN (2026-09-27): the list, the detail request, and the detail - every
     // field, since each one is on screen and a renamed one would be blank there in silence.
     // ###########################################################################################
@@ -673,6 +693,30 @@ public sealed class ReviewWireContractTests
         Assert.Equal(sent.Maintainers, read.Maintainers);
         Assert.Equal(sent.Contributors, read.Contributors);
         Assert.Equal(sent.Submissions, read.Submissions);
+        Assert.False(read.AddressesHidden);
+    }
+
+    // ###########################################################################################
+    // NO ADDRESSES FOR A SYSTEM THE ACCOUNT DOES NOT MAINTAIN (owner request, 2026-10-05). The
+    // server's word for it must arrive, or the tab reads a contributor without an account as one who
+    // gave no address - and a maintainer's empty address must stay empty, not become "(no address)".
+    // ###########################################################################################
+    [Fact]
+    public void A_systems_detail_sent_without_addresses_says_so_and_reads_back_without_them()
+    {
+        SystemDetailAnswer sent = new(
+            new SystemOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", ReviewWireContractTests.Decided, 1),
+            [new PoolMaintainerEntry(7, "Anna", string.Empty)],
+            [new SystemContributorEntry(null, null, Accepted: 1, Waiting: 0, ChangesRequested: 0, Rejected: 0, LastSubmittedUtc: ReviewWireContractTests.Decided)],
+            [new SystemSubmissionEntry(41, null, "Corrected U8.", "merged", ReviewWireContractTests.Decided, null, null)],
+            AddressesHidden: true);
+
+        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(sent));
+
+        Assert.True(read!.AddressesHidden);
+        Assert.Equal(string.Empty, Assert.Single(read.Maintainers).Email);
+        Assert.Null(Assert.Single(read.Contributors).Email);
+        Assert.Null(Assert.Single(read.Submissions).ContactEmail);
     }
 
     // ###########################################################################################
@@ -1016,7 +1060,10 @@ public sealed class ReviewWireContractTests
                     InBeta: true,
                     CanPlace: true,
                     new SystemPlacement("Commodore 128", "310378 Open128", "Open-source replica.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
-                    new SystemPlacement("Commodore 128", "310378 Open128", string.Empty, "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx")),
+
+                    // The suggestion carries the contributor's notes from "Create system" (2026-10-05)
+                    // - dropped on either side, the maintainer's placement would start empty again.
+                    new SystemPlacement("Commodore 128", "310378 Open128", "Sent by its contributor.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx")),
 
                 // Never placed, and placed FIRST by its suggestion (no row above it).
                 new UnlistedSystemEntry(

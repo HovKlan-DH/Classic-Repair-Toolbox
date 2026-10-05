@@ -32,7 +32,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // "beta" or "production" to the tree it names. Production only when publishing to it is
-        // configured - otherwise the service has no business writing there (DEPLOYMENT.md step 3).
+        // configured - otherwise the service has no business writing there (INSTALLING.md ("Folders and permissions")).
         // ###########################################################################################
         public static bool TryResolve(string? name, ServerOptions options, out DataTree? tree, out string error)
         {

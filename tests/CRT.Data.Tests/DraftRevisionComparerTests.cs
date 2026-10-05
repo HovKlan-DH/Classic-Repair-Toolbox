@@ -58,6 +58,26 @@ public sealed class DraftRevisionComparerTests
             DraftRevisionComparer.Compare(baseRevision, officialRevision));
     }
 
+    // ###########################################################################################
+    // THE SERVER'S OWN DATES, days 1 to 9 (2026-10-05). The server stamps every published board with
+    // BoardWorkbookStyle.FormatRevisionDate - "yyyy-MMMM-d", no leading zero - so a board published
+    // on the 4th reads "2026-October-4". The formats here all wanted a two-digit day ("dd"), so that
+    // date did not parse and a draft behind it was told only "changed", never "updated". Built from
+    // the server's own formatter, so the two cannot drift apart again.
+    // ###########################################################################################
+    [Fact]
+    public void A_date_the_server_stamps_on_a_single_digit_day_parses_and_orders()
+    {
+        string publishedOnTheFourth = BoardWorkbookStyle.FormatRevisionDate(new DateTimeOffset(2026, 10, 4, 12, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal("2026-October-4", publishedOnTheFourth);
+        Assert.True(DraftRevisionComparer.TryParse(publishedOnTheFourth, out DateTime parsed));
+        Assert.Equal(new DateTime(2026, 10, 4), parsed);
+
+        Assert.Equal(DraftDriftState.OfficialIsNewer, DraftRevisionComparer.Compare("2026-September-20", publishedOnTheFourth));
+        Assert.Equal(DraftDriftState.OfficialIsNewer, DraftRevisionComparer.Compare("2026-October-1", "2026-October-12"));
+    }
+
     [Fact]
     public void An_abbreviated_month_name_parses_too()
     {

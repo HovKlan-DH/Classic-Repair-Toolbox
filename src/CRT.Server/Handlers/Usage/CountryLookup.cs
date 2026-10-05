@@ -23,13 +23,13 @@ namespace CRT.Server.Handlers.Usage
 
     // ###########################################################################################
     // The country of a board view's or a launch check-in's sender, from ip-api.com - THE SERVICE THE
-    // CHECK-IN HAS ALWAYS USED (the app-checkin PHP page until 2026-10-03, CheckInFlow since), so
+    // CHECK-IN HAS ALWAYS USED (CheckInFlow since 2026-10-03, and the old check-in before it), so
     // crt_board_views and crt_update name countries alike and the Fun facts maps can put them side
     // by side.
     //
     // *** THIS CLASS NEVER STORES THE ADDRESS. *** It is sent to ip-api.com and kept in memory for at
     // most CacheFor, so a machine sending several batches is looked up once; only the country
-    // reaches crt_board_views. (crt_update does store it - CheckInFlow does, as the PHP page did,
+    // reaches crt_board_views. (crt_update does store it - CheckInFlow does, as the check-in always has,
     // because the Fun facts charts count addresses.) The server's own country (LookupOwnAsync, for views
     // from its own network) is remembered the same way. ip-api.com's free service is plain HTTP and
     // allows 45 lookups a minute, far above what CRT's users send; asking only for three fields keeps
@@ -200,9 +200,9 @@ namespace CRT.Server.Handlers.Usage
     //
     // A local or private address places nobody, so it is never looked up. Behind Apache, a real CRT
     // user always arrives with their public address, so a private one is the server's own network -
-    // the project owner's machines. The launch check-in has always left those out (the app-checkin
-    // PHP page stored nothing for "192.168.*", CheckInFlow stores nothing for any of these, and every
-    // Fun facts query filters them). Board views store them
+    // the project owner's machines. The launch check-in has always left those out (nothing was ever
+    // stored for "192.168.*", CheckInFlow stores nothing for any of these, and every Fun facts query
+    // filters them). Board views store them
     // only while ServerOptions.CountLocalNetworkBoardViews is on (owner request, 2026-09-27: "For now
     // I would like my own home usage also to count"), marked, with the country of the server's own
     // public address (ICountryLookup.LookupOwnAsync) - BoardViewFlows.

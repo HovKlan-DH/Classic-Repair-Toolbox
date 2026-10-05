@@ -620,6 +620,11 @@ namespace CRT
                 // The server needs to know which revision these edits were made on top of; reading
                 // the current one here would claim the contributor had seen changes they never saw.
                 BaseRevision = status.BaseRevision,
+
+                // A new system's notes from "Create system" (owner request, 2026-10-05): the
+                // maintainer's placement starts with them, and from it they reach the main Excel
+                // data file's notes column. A draft of a published board has none.
+                HardwareNotes = status.NewSystem?.NotesForSubmission() ?? string.Empty,
                 ApplicationVersion = AppConfig.AppDisplayVersionString,
                 CreatedUtc = DateTimeOffset.UtcNow
             };

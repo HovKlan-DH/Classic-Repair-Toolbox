@@ -1,6 +1,6 @@
 [Wiki Home](Home)
 
-Fix or add board data from inside the application, and send it to the developer.
+Fix or add board data from inside the application, and send it in for review.
 
 ---
 
@@ -11,21 +11,28 @@ You can:
 
 * correct a component's **friendly name, technical name, part number or description**
 * **add a new component**, or delete one that is not on the board
-* add **component images**, **files** and **links** — a datasheet, a photo, a reference page
+* add **component images**, **files** and **links** - a datasheet, a photo, a reference page
 * add **board-level files and links**
-* **add a whole new system** — a hardware and board that is not in the lists at all
+* **add a whole new system** - a hardware and board that is not in the lists at all
 
-Every edit is saved into your own local **draft** for this board straight away — you see it on the
-board immediately, and the "Drafts" tab lists every board you have local changes on. Nothing you edit
-here changes what anyone else sees until you submit it for review.
+The tab lists the components of the board that is selected, in one column per category. Point at a
+board label to see its full name, and click it to open the component editor. **Add new component**
+opens the same editor on a blank component, for one the board data does not have yet - it is greyed
+out until a board is loaded. The line **"Board Excel data last revisioned:"** says how fresh the
+board's data is.
+
+Every edit is saved into your own local **draft** for this board straight away - you see it on the
+board immediately, and the [Drafts tab](Drafts-tab) lists every board you have local changes on.
+Nothing you edit here changes what anyone else sees until you submit it for review from the Drafts
+tab.
 
 A small amber **Draft** badge marks where your drafts are: on each board with a draft in the
 **Board** drop-down, on its hardware in the **Hardware** drop-down, and on each changed component in
 the component list.
 
-If the official data for a board is updated while you have a draft on it, the "Drafts" tab says so
-under that board and offers a **"What changed"** view. Your edits are still applied — see
-[Contribute data via CRT](Contribute-data-via-CRT) for what that view shows.
+If the official data for a board is updated while you have a draft on it, the Drafts tab says so
+under that board and offers a **"What changed"** view. Your edits are still applied - see
+[Drafts tab](Drafts-tab#what-changed) for what that view shows.
 
 **The full walkthrough, step by step:
 [Contribute data via CRT](Contribute-data-via-CRT).**
@@ -33,18 +40,21 @@ under that board and offers a **"What changed"** view. Your edits are still appl
 ## Adding a whole new system
 
 The **Add a new system** button creates a brand-new hardware and board of your own. You give it a
-manufacturer, hardware and board name, and it appears in the lists straight away as a local draft —
-empty, and ready for you to add board images, label components and attach files exactly as you would
-edit any other board.
+manufacturer, hardware and board name - and, if you like, notes about the hardware for the maintainer
+who adds it to CRT's lists - and choose **Create system**. It appears in the lists straight away as a local draft, empty and ready
+for you to add board images, label components and attach files exactly as you would edit any other
+board, and CRT takes you to the [Drafts tab](Drafts-tab), where the next steps are.
 
-Creating one asks you to accept the role of **maintainer** for it: if you submit the system for the
-community to use, you will review the changes others submit for it and publish the ones that are
-right. The system is only created if you accept.
+Creating one asks you to accept the role of **maintainer** for it, in "Becoming the system's
+maintainer": if you submit the system for the community to use, you agree to review the changes others
+submit for it and publish the ones that are right. The system is only created if you choose
+**Accept and create**. Accepting sends nothing by itself - the administrator invites a system's
+maintainers by email, see [Maintainer tab](Maintainer-tab).
 
-Unlike "Add new component", this button does not need a board loaded first. That is the point: it is
-for the board that is not there.
+Unlike **Add new component**, this button does not need a board loaded first. That is the point: it
+is for the board that is not there.
 
-A system you never submit is not a half-finished thing sitting in a queue — it keeps working locally
+A system you never submit is not a half-finished thing sitting in a queue - it keeps working locally
 for as long as you want it. The full walkthrough, including importing KiCad data:
 [Add new board with KiCad data](Add-new-board-with-KiCad-data).
 
@@ -52,5 +62,7 @@ for as long as you want it. The full walkthrough, including importing KiCad data
 
 | | |
 | --- | --- |
-| A component highlighted in the wrong place | The label editor — see [The Schematics tab](Schematics-tab) |
+| A component highlighted in the wrong place | The label editor - see [The Schematics tab](Schematics-tab) |
+| Schematic images, or a board's KiCad data | The **Schematic images** and **KiCad data** buttons on the [Drafts tab](Drafts-tab) |
+| Many values at once, the way you would in Excel | **Edit in table format** on the [Drafts tab](Drafts-tab) |
 | Something wrong with the application itself | [The Feedback tab](Feedback-tab) |

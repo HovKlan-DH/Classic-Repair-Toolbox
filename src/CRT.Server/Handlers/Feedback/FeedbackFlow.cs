@@ -9,26 +9,26 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Feedback
 {
     // ###########################################################################################
-    // *** FEEDBACK FROM CRT'S FEEDBACK TAB (owner request, 2026-10-03: "can we retire the old
-    // "Feedback" backend PHP, and then have the new backend server handle that?"). *** What the
-    // PHP page at /app-feedback/ did, decided here and tested against a temporary folder and a fake
-    // mailer:
+    // *** FEEDBACK FROM CRT'S FEEDBACK TAB (owner request, 2026-10-03: "have the new backend
+    // server handle that"). *** What a feedback has always done, decided here and tested against a
+    // temporary folder and a fake mailer:
     //
     //   - CRT's own text files in the zip (FeedbackContract.InlineFiles - the log above all) are
     //     SHOWN in the mail rather than saved;
     //   - every other file is saved under "<FeedbackRoot>/feedback-<16 random characters>", the
-    //     PHP's own folder name, which the mail gives as its "Internal reference" - the project
-    //     owner opens it from the network share, as before ("just keep exact same behaviour");
+    //     folder name feedback has always been saved under, which the mail gives as its "Internal
+    //     reference" - the project owner opens it from the network share, as before ("just keep
+    //     exact same behaviour");
     //   - one mail goes to the project owner, now as HTML (EmailTemplates.Feedback).
     //
-    // *** WHAT IS DELIBERATELY DIFFERENT FROM THE PHP. ***
-    //   - The mail is FROM the service, with Reply-To the sender. The PHP sent it from the
+    // *** WHAT IS DELIBERATELY DIFFERENT FROM BEFORE. ***
+    //   - The mail is FROM the service, with Reply-To the sender. It used to be sent from the
     //     sender's own address, which fails SPF at the sender's provider - mail that lands in spam.
     //   - Every saved path goes through SubmissionPathRules (the one containment rule): a zip
     //     entry naming "../" or an absolute path is skipped and said in the mail, never written.
-    //   - Limits the PHP left to php.ini: how many entries a zip may hold before it is opened at all
-    //     (ZipCentralDirectory), how many files and how many bytes it may unpack to (a 60 MB zip can
-    //     claim gigabytes), and the disk reserve the blob store keeps.
+    //   - Limits that used to be left to the web server's defaults: how many entries a zip may hold
+    //     before it is opened at all (ZipCentralDirectory), how many files and how many bytes it may
+    //     unpack to (a 60 MB zip can claim gigabytes), and the disk reserve the blob store keeps.
     //   - The shown files together are capped (ShownBytesLimit), counted by what is READ rather
     //     than what the zip declares, and by the bytes each takes in the mail ONCE ENCODED for it
     //     (MailBytes - in the HTML a " is six bytes); a log beyond it is SAVED instead, and the
@@ -36,7 +36,7 @@ namespace CRT.Server.Handlers.Feedback
     //     twice, transfer-encoded on top, and postfix refuses a mail over 10 MB by default.
     //   - One unpack at a time, and the folder's total remembered between walks (FeedbackStorage).
     //   - A mail that could not be sent is a failure the sender sees (IEmailSender's answer), so
-    //     the text stays in CRT to send again. The PHP said the same ("Mail sending failed").
+    //     the text stays in CRT to send again. That was said before too ("Mail sending failed").
     // ###########################################################################################
     public static class FeedbackFlow
     {
@@ -61,12 +61,13 @@ namespace CRT.Server.Handlers.Feedback
         // empty records would make (code review, 2026-10-04).
         public const int MaxZipEntries = 2 * FeedbackFlow.MaxSavedFiles;
 
-        // How many saved files the mail lists by name (the PHP's 200).
+        // How many saved files the mail lists by name (200, as it always has).
         public const int MaxListedFiles = 200;
 
         public const string ReferencePrefix = "feedback-";
 
-        // The PHP's alphabet: no 0/O, 1/l/I or v/V, so a reference read aloud is unambiguous.
+        // The alphabet references have always used: no 0/O, 1/l/I or v/V, so a reference read aloud
+        // is unambiguous.
         private const string ReferenceAlphabet = "23456789abcdefghkmnpqrstuwxyzABCDEFGHJKMNPQRSTUWXYZ";
 
         // ###########################################################################################
@@ -403,7 +404,7 @@ namespace CRT.Server.Handlers.Feedback
         // 2026-10-03). *** The service's default modes (rwxr-xr-x, rw-r--r--) let only crt-server
         // delete what it saved, so every folder and file of a feedback is made GROUP-writable here,
         // and the folder they sit in is the service's, group crt-server, with the setgid bit
-        // (DEPLOYMENT.md, "Feedback from CRT", step 1) - so they inherit that group, which the
+        // (INSTALLING.md, "Folders and permissions") - so they inherit that group, which the
         // share's user is put in when it is not root (owner decision, 2026-10-03: no group of its
         // own). The service owns the folder but runs as group crt-data, so as it sets these modes
         // the kernel may drop the setgid bit from SUBfolders - harmless, every file is in place by

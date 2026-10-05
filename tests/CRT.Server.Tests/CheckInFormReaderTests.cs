@@ -11,8 +11,9 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // The launch check-in as the server reads it - fed the very form CRT builds
     // (CheckInContract.BuildForm), so a field renamed on one side fails here, and the form older
-    // CRTs send, written out by hand with the PHP page's names, so the contract cannot drift away
-    // from what is already installed (Apache forwards their /app-checkin/ posts here).
+    // CRTs send, written out by hand with the names they have always used, so the contract cannot
+    // drift away from what is already installed (Apache forwards their posts to the old check-in
+    // address here).
     //
     // Read through ASP.NET's own form parsing on a DefaultHttpContext - the path the route takes -
     // with no server started (rule 6).
@@ -46,8 +47,8 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** WHAT EVERY INSTALLED CRT SENDS, BY HAND. *** Its names are the PHP page's; if this fails,
-        // the contract moved and older CRTs' check-ins would silently stop counting.
+        // *** WHAT EVERY INSTALLED CRT SENDS, BY HAND. *** Its names are the ones CRT has always sent;
+        // if this fails, the contract moved and older CRTs' check-ins would silently stop counting.
         // ###########################################################################################
         [Fact]
         public async Task The_form_older_CRTs_send_is_read_too()
@@ -64,7 +65,7 @@ namespace CRT.Server.Tests
                 read.Request);
         }
 
-        // The PHP page's $_POST read a multipart form as well.
+        // The old check-in address read a multipart form as well.
         [Fact]
         public async Task A_multipart_form_is_read_too()
         {

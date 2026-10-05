@@ -93,8 +93,8 @@ namespace CRT.Server.Handlers.Accounts
             ArgumentNullException.ThrowIfNull(account);
             ArgumentNullException.ThrowIfNull(store);
 
-            // The systems this account reviews. Empty for an administrator, who is in every pool
-            // by definition rather than by rows.
+            // The systems whose pools this account is in. For an administrator, who reviews every
+            // system anyway, only those they were named a maintainer of (2026-10-05) - often none.
             IReadOnlySet<string> maintainerOf = await store.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
 
             return new AccountAnswer(

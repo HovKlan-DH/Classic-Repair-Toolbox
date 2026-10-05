@@ -1,6 +1,6 @@
 [Wiki Home](Home)
 
-Record what you find on a board and what you did about it — and share the finished repair as a PDF.
+Record what you find on a board and what you did about it - and share the finished repair as a PDF.
 
 ---
 
@@ -39,7 +39,7 @@ State is **Open** or **Closed**. The category decides the colour the worklog is 
 
 You never set this yourself. A workbook is **Closed** when it has at least one worklog and all of them are Closed - otherwise it is Open.
 
-So closing the last worklog closes the workbook, and adding a new worklog reopens it.
+So closing the last worklog closes the workbook, and adding a new worklog reopens it. Deleting the last Open worklog closes it too.
 
 While a workbook is Open, it is shown as **started** on the date it began. Once it is Closed, it is shown as **ended** on the day the last outstanding worklog was closed. Reopening and closing it again updates that date; the start date never changes.
 

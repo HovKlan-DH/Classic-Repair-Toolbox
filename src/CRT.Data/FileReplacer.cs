@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
     // 2026-09-28).
     //
     // *** WHY: A FILE COPIED IN BY HAND. *** The data trees are group-writable folders
-    // (DEPLOYMENT.md step 3), but a file copied into them as root arrives owned by root with no
+    // (INSTALLING.md ("Folders and permissions")), but a file copied into them as root arrives owned by root with no
     // group write - so the service may DELETE or REPLACE it (that is the folder's permission) but
     // not OPEN it for writing (that is the file's). A publish that wrote the board's highlight
     // file in place was refused on exactly that after production's files had been copied into

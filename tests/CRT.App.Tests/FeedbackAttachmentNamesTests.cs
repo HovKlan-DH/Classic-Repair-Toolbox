@@ -4,8 +4,8 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// The Feedback tab against the server that receives it (2026-10-03, when feedback moved from the
-// old PHP page to CRT.Server). The tab's two check boxes attach CRT's own files under AppConfig's
+// The Feedback tab against the server that receives it (2026-10-03, when feedback moved to
+// CRT.Server). The tab's two check boxes attach CRT's own files under AppConfig's
 // names; the server SHOWS a file in the mail only when its name is in FeedbackContract.InlineFiles
 // - so a renamed log file would quietly turn from the mail's first section into an attachment on
 // the share. And the address the tab posts to is the route the server maps (RequestBodyLimitsTests

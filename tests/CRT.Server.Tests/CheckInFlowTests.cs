@@ -6,10 +6,10 @@ using Handlers.DataHandling;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers CheckInFlow - storing CRT's launch check-in in crt_update, the app-checkin PHP page's
-    // job since 2026-10-03.
+    // Covers CheckInFlow - storing CRT's launch check-in in crt_update, the service's job since
+    // 2026-10-03.
     //
-    // WHAT MUST HOLD: a row the Fun facts pages count exactly as they counted the PHP page's - the
+    // WHAT MUST HOLD: a row the Fun facts page counts exactly as it counted every earlier one - the
     // sender's public address as text (every chart counts DISTINCT ipaddr and filters
     // "192.168.%"), the version, the operating system and a two-letter country; nothing stored
     // from the server's own network; and anything not from CRT refused without a lookup.
@@ -40,7 +40,7 @@ namespace CRT.Server.Tests
                 store);
 
         [Fact]
-        public async Task A_check_in_is_one_row_as_the_PHP_page_wrote_it()
+        public async Task A_check_in_is_one_row_as_check_ins_have_always_been_written()
         {
             var store = new FakeCheckInStore();
 
@@ -80,8 +80,8 @@ namespace CRT.Server.Tests
             Assert.Equal(0, countries.AskedOwn);
         }
 
-        // A lookup that finds nothing costs the country, never the row - stored as the PHP page
-        // stored it then: an empty code and name, and "{}".
+        // A lookup that finds nothing costs the country, never the row - stored as such a row has
+        // always been: an empty code and name, and "{}".
         [Fact]
         public async Task A_failed_lookup_stores_the_row_without_a_country()
         {
@@ -95,7 +95,7 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // The project owner's own machines: answered, so CRT is content, and never stored or looked
-        // up - the PHP page's "192.168." rule, widened to every address that places nobody.
+        // up - the old "192.168." rule, widened to every address that places nobody.
         // ###########################################################################################
         [Theory]
         [InlineData("192.168.30.11")]
@@ -131,7 +131,7 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // Not a CRT check-in: refused, with nothing stored and nobody looked up. The control field
-        // must say exactly "CRT", as the PHP page compared it.
+        // must say exactly "CRT", as it always has had to.
         // ###########################################################################################
         [Theory]
         [InlineData(null)]
@@ -166,7 +166,7 @@ namespace CRT.Server.Tests
         }
 
         // The Fun facts page prints these fields: markup goes, a long value is cut to the length
-        // board views keep, and a missing one is stored empty, as the PHP page stored it.
+        // board views keep, and a missing one is stored empty, as it always has been.
         [Fact]
         public async Task The_machine_fields_are_stripped_cut_and_never_missing()
         {

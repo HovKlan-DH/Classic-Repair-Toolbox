@@ -513,6 +513,18 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(true);
         }
 
+        // submission_notes (migration 0019): read off what each submission was created with, joined
+        // to its state NOW - as the real store's JOIN does - newest first.
+        public Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string systemId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SubmissionNotes>>(this.Created
+                .Where(pair => string.Equals(pair.Value.SystemId, systemId, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(pair.Value.HardwareNotes) &&
+                    this.Submissions.ContainsKey(pair.Key))
+                .Select(pair => new SubmissionNotes(pair.Key, this.Submissions[pair.Key].State, this.Submissions[pair.Key].CreatedUtc, pair.Value.HardwareNotes!))
+                .OrderByDescending(notes => notes.CreatedUtc)
+                .ThenByDescending(notes => notes.SubmissionId)
+                .ToList());
+
         // An UPDATE in the real store, so - like SetSystemPublishedAsync - a system with no row is
         // refused rather than invented.
         public Task SetSystemInProductionAsync(

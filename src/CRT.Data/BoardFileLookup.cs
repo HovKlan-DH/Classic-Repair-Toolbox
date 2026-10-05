@@ -112,7 +112,18 @@ namespace Handlers.DataHandling
         private readonly string thisDraftSystemFolder;
         private readonly HashSet<string> thisFound = new(StringComparer.Ordinal);
         private readonly HashSet<string> thisAskedAndMissed = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, (DateTime Written, string[] Names)> thisListings = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (DateTime Written, DateTime ReadAt, string[] Names)> thisListings = new(StringComparer.Ordinal);
+
+        // ###########################################################################################
+        // *** A WRITE TIME ONLY PROVES SOMETHING ONCE IT IS OLDER THAN ITS OWN RESOLUTION (2026-10-05).
+        // *** A folder written again within the same clock tick - about 16 ms on Windows, two seconds
+        // on FAT - keeps the same write time, so a listing read in that tick looked current while a
+        // rename had changed the folder under it ("case differs" stayed on a file put right; it failed
+        // the suite one run in many). A listing read less than this after its folder was written is
+        // therefore read again on the next ask. A folder left alone for a moment is trusted as before,
+        // so the board's quiet folders still cost one stat call each.
+        // ###########################################################################################
+        internal static readonly TimeSpan WriteTimeResolution = TimeSpan.FromSeconds(2);
 
         // `draftSystemFolder` is empty for the downloaded data alone (the launch log).
         public DiskFileLookup(string dataRoot, string draftSystemFolder)
@@ -205,15 +216,19 @@ namespace Handlers.DataHandling
 
         private string[] ListingOf(string folder, bool checkWritten)
         {
-            bool known = this.thisListings.TryGetValue(folder, out (DateTime Written, string[] Names) cached);
+            bool known = this.thisListings.TryGetValue(folder, out (DateTime Written, DateTime ReadAt, string[] Names) cached);
 
             if (known && !checkWritten)
                 return cached.Names;
 
             DateTime written = DiskFileLookup.WrittenAt(folder);
 
-            if (known && cached.Written == written)
+            // Unchanged AND read long enough after that write for an unchanged time to mean
+            // unchanged entries - see WriteTimeResolution.
+            if (known && cached.Written == written && cached.ReadAt - cached.Written >= DiskFileLookup.WriteTimeResolution)
                 return cached.Names;
+
+            DateTime readAt = DateTime.UtcNow;
 
             string[] names;
 
@@ -228,7 +243,7 @@ namespace Handlers.DataHandling
                 names = [];
             }
 
-            this.thisListings[folder] = (written, names);
+            this.thisListings[folder] = (written, readAt, names);
             return names;
         }
 

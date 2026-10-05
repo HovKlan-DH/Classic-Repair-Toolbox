@@ -128,7 +128,7 @@ namespace CRT.Server.Tests
 
             // CRT's launch check-in (2026-10-03): four short form fields - at the path CRT posts to
             // (AppConfig.CheckInUrl, pinned on CRT's side by LaunchCheckInTests) and Apache forwards
-            // the old /app-checkin/ to.
+            // the old check-in address to.
             { "POST", "/api/usage/check-in", RequestBodyLimits.DefaultBytes },
 
             // Feedback from CRT (2026-10-03): the text and a zip of the attached files, up to the

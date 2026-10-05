@@ -31,8 +31,8 @@ namespace CRT.Server.Handlers.Compat
     //     versions. None is set.
     //
     // FAIL OPEN: a request naming no CRT version or no API revision (a browser opening a mailed link,
-    // curl, a CRT 2.x, a CRT whose version does not parse) is never refused on that count - the old
-    // PHP contribution page's rule.
+    // curl, a CRT 2.x, a CRT whose version does not parse) is never refused on that count - the rule
+    // the old contribution upload kept too.
     // ###########################################################################################
     public enum ClientArea
     {

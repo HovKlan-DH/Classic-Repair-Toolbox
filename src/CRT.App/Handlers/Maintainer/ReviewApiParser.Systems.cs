@@ -245,7 +245,14 @@ namespace Handlers.MaintainerHandling
                 }
             }
 
-            return new SystemDetailAnswer(entry, maintainers, contributors, submissions, invitations, history, ReviewApiParser.ParseViewStatistics(root));
+            // No address sent, as the account does not maintain the system (2026-10-05) - absent
+            // from an older server, which sent them all.
+            bool addressesHidden =
+                root.TryGetProperty("addressesHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True;
+
+            return new SystemDetailAnswer(
+                entry, maintainers, contributors, submissions, invitations, history, ReviewApiParser.ParseViewStatistics(root),
+                addressesHidden);
         }
 
         // ###########################################################################################

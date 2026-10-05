@@ -4,7 +4,8 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Compat
 {
     // ###########################################################################################
-    // CRT 2.x's "SEND CONTRIBUTION", once the old PHP page is gone (owner decision, 2026-10-04).
+    // CRT 2.x's "SEND CONTRIBUTION", now that the old contribution upload is gone (owner decision,
+    // 2026-10-04).
     //
     //   POST /api/legacy/contribution   CRT 2.x's contribution upload -> 426 "OUTDATED_VERSION 3.0.0 - ..."
     //                                                                     429 too many from this address.
@@ -13,10 +14,10 @@ namespace CRT.Server.Handlers.Compat
     // 2026-09-23), so a 2.x CRT cannot contribute any more - but it should be TOLD so, not shown
     // "HTTP 404". CRT 2.5.0 and later already turn exactly this answer into "This application
     // version [2.5.0] is too old to contribute data - please update to version [3.0.0] or newer"
-    // (their ContributionPackaging.TryParseOutdatedVersionResponse, which read the PHP page's own
-    // OUTDATED_VERSION answer); older 2.x builds show the 426 and log the text. Apache forwards the
-    // old address, https://classic-repair-toolbox.dk/app-contribution/api/, here when the PHP page
-    // is retired.
+    // (their ContributionPackaging.TryParseOutdatedVersionResponse, which reads an OUTDATED_VERSION
+    // answer in exactly these words); older 2.x builds show the 426 and log the text. Apache forwards
+    // the old address CRT 2.x posts to, https://classic-repair-toolbox.dk/app-contribution/api/,
+    // here.
     //
     // *** THE TEXT IS A CONTRACT WITH BUILDS THAT CAN NEVER CHANGE. *** The token, the space and the
     // version straight after it are what 2.5.0 reads; ApiCompatibilityTests runs it through a copy of
@@ -52,9 +53,9 @@ namespace CRT.Server.Handlers.Compat
             services.AddPerAddressRateLimit(LegacyContributionEndpoints.RateLimitPolicy, LegacyContributionEndpoints.MaxPerAddressPerHour);
 
         // ###########################################################################################
-        // The answer, in the PHP page's words. The version CRT 2.x sent is read from its User-Agent
-        // ("CRT 2.5.0") - the form carries it too, but the answer is the same either way and the form
-        // is not worth parsing for it.
+        // The answer, in the words CRT 2.x has always been given. The version CRT 2.x sent is read
+        // from its User-Agent ("CRT 2.5.0") - the form carries it too, but the answer is the same
+        // either way and the form is not worth parsing for it.
         // ###########################################################################################
         public static string OutdatedAnswer(string? userAgent)
         {

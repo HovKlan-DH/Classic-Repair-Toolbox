@@ -20,12 +20,12 @@ namespace CRT.Server.Configuration
     //     the unit's RestartPreventExitStatus= names the code so systemd stops there.
     //   MigrationFailed - the SAME code, deliberately: a migration that failed, or one MigrationPlan
     //     refused, needs a person to look at the database, and restarting only repeats it. Sharing
-    //     78 means the unit written from DEPLOYMENT.md needed no change to stop retrying it.
+    //     78 means the shipped unit (crt-server.service) needed no change to stop retrying it.
     //   DatabaseUnreachable (69, EX_UNAVAILABLE) - the database did not answer. That IS what a
     //     restart fixes (MariaDB coming up a few seconds after this service at boot), so the unit
     //     does not name it and systemd tries again - now without a core dump each time.
     //
-    // DEPLOYMENT.md's unit file names 78 and not 69; ServerExitCodesTests fails if they part.
+    // The shipped unit file, crt-server.service, names 78 and not 69; ServerExitCodesTests fails if they part.
     // ###########################################################################################
     public static class ServerExitCodes
     {

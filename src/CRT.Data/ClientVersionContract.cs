@@ -29,8 +29,8 @@ namespace Handlers.DataHandling
         // The product token CRT names itself with in its User-Agent ("CRT 3.0.0").
         public const string ProductToken = "CRT";
 
-        // The refusal's code, and its status: 426 Upgrade Required, which is what the old PHP
-        // contribution page answered an outdated CRT too.
+        // The refusal's code, and its status: 426 Upgrade Required, which is what the old
+        // contribution upload answered an outdated CRT too.
         public const string OutdatedCode = "client.outdated";
         public const int OutdatedStatus = 426;
 
@@ -239,7 +239,7 @@ namespace Handlers.DataHandling
         // The version a User-Agent names, or null when it names none: "CRT 3.0.0-alpha.2" (CRT's
         // own) or "CRT/3.0.0", the product token in any case, anywhere among the agent's tokens. A
         // browser, curl, or a CRT whose version does not parse all give null - and null is let
-        // through by the server's version policy (fail open, as the old PHP page did).
+        // through by the server's version policy (fail open, as the old contribution upload did).
         // ###########################################################################################
         public static CrtVersion? FromUserAgent(string? userAgent)
         {

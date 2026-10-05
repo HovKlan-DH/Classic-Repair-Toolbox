@@ -167,6 +167,50 @@ namespace CRT.Server.Tests
             Assert.False(ReviewAuthority.CanAdminister(null));
         }
 
+        // ###########################################################################################
+        // Publishing from BETA to the stable source (owner request, 2026-10-05: "for now ... Only
+        // me, as admin, should be able to publish to stable"). While the server lets only
+        // administrators, a maintainer of the very system is refused; switched off, it is
+        // CanPublish exactly. Never wider than CanPublish either way - a locked administrator and a
+        // maintainer of another system stay refused.
+        // ###########################################################################################
+        [Fact]
+        public void While_only_administrators_publish_to_stable_a_maintainer_of_the_system_may_not()
+        {
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
+
+            Assert.False(ReviewAuthority.CanPublishToProduction(maintainer, ReviewAuthorityTests.C64, administratorsOnly: true));
+            Assert.True(ReviewAuthority.CanPublishToProduction(maintainer, ReviewAuthorityTests.C64, administratorsOnly: false));
+
+            Assert.True(ReviewAuthority.CanPublishToProduction(ReviewAuthorityTests.Admin(), ReviewAuthorityTests.C64, administratorsOnly: true));
+            Assert.True(ReviewAuthority.CanPublishToProduction(ReviewAuthorityTests.Admin(), ReviewAuthorityTests.C64, administratorsOnly: false));
+
+            foreach (bool administratorsOnly in new[] { true, false })
+            {
+                Assert.False(ReviewAuthority.CanPublishToProduction(maintainer, ReviewAuthorityTests.C128, administratorsOnly));
+                Assert.False(ReviewAuthority.CanPublishToProduction(ReviewAuthorityTests.Admin(locked: true), ReviewAuthorityTests.C64, administratorsOnly));
+                Assert.False(ReviewAuthority.CanPublishToProduction(ReviewAuthorityTests.Ordinary(), ReviewAuthorityTests.C64, administratorsOnly));
+                Assert.False(ReviewAuthority.CanPublishToProduction(null, ReviewAuthorityTests.C64, administratorsOnly));
+            }
+        }
+
+        // ###########################################################################################
+        // Whose addresses an account sees on the Systems screen (owner request, 2026-10-05: "They
+        // should be able to see all mail addresses for their own system(s)") - the system's own
+        // maintainers and the administrator; a maintainer of ANOTHER system sees the system, not them.
+        // ###########################################################################################
+        [Fact]
+        public void Only_a_systems_own_maintainers_and_the_administrator_see_its_addresses()
+        {
+            ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
+
+            Assert.True(ReviewAuthority.CanSeeAddressesOf(maintainer, ReviewAuthorityTests.C64));
+            Assert.False(ReviewAuthority.CanSeeAddressesOf(maintainer, ReviewAuthorityTests.C128));
+            Assert.True(ReviewAuthority.CanSeeAddressesOf(ReviewAuthorityTests.Admin(), ReviewAuthorityTests.C128));
+            Assert.False(ReviewAuthority.CanSeeAddressesOf(ReviewAuthorityTests.Admin(locked: true), ReviewAuthorityTests.C64));
+            Assert.False(ReviewAuthority.CanSeeAddressesOf(null, ReviewAuthorityTests.C64));
+        }
+
         // -----------------------------------------------------------------------------------
         // Nobody at all
         // -----------------------------------------------------------------------------------

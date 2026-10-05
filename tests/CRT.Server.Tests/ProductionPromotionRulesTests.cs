@@ -257,5 +257,19 @@ namespace CRT.Server.Tests
             Assert.True(ProductionPromotionRules.AwaitsAccount([], accountId: 7));
             Assert.True(ProductionPromotionRules.AwaitsAccount(null, accountId: 7));
         }
+
+        // ###########################################################################################
+        // While only administrators publish to stable, an administrator's approval always completes
+        // the publish - so a system waits for them even when they approved it before the setting was
+        // switched on (code review, 2026-10-05).
+        // ###########################################################################################
+        [Fact]
+        public void While_only_administrators_publish_the_system_waits_for_an_administrator_who_already_approved()
+        {
+            GivenApproval[] given = [new(ApproverRole.Administrator, "Dennis", ProductionPromotionRulesTests.Merged, AccountId: 1)];
+
+            Assert.False(ProductionPromotionRules.AwaitsAccount(given, accountId: 1));
+            Assert.True(ProductionPromotionRules.AwaitsAccount(given, accountId: 1, administratorsOnly: true));
+        }
     }
 }

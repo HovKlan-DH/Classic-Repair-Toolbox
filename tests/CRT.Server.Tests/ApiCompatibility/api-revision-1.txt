@@ -162,6 +162,7 @@ answer ProductionListAnswer | .systems[].manufacturer string
 answer ProductionListAnswer | .systems[].productionPublishedUtc string
 answer ProductionListAnswer | .systems[].productionRevision string
 answer ProductionListAnswer | .systems[].systemId string
+answer ProductionListAnswer | .systems[].waitsForAdministrator boolean
 answer ProductionPlanAnswer | (root) object
 answer ProductionPlanAnswer | .approval object
 answer ProductionPlanAnswer | .approval.approvalPublishes boolean
@@ -492,6 +493,7 @@ answer SubmissionDetailAnswer | .manifest.files[].sha256 string
 answer SubmissionDetailAnswer | .manifest.files[].sizeBytes number
 answer SubmissionDetailAnswer | .manifest.formatVersion number
 answer SubmissionDetailAnswer | .manifest.hardware string
+answer SubmissionDetailAnswer | .manifest.hardwareNotes string
 answer SubmissionDetailAnswer | .manifest.manufacturer string
 answer SubmissionDetailAnswer | .manifest.renames array of object
 answer SubmissionDetailAnswer | .manifest.renames[].from string
@@ -659,6 +661,7 @@ answer SystemDeletePlanAnswer | .productionFiles number
 answer SystemDeletePlanAnswer | .submissions number
 answer SystemDeletePlanAnswer | .systemId string
 answer SystemDetailAnswer | (root) object
+answer SystemDetailAnswer | .addressesHidden boolean
 answer SystemDetailAnswer | .contributors array of object
 answer SystemDetailAnswer | .contributors[].accepted number
 answer SystemDetailAnswer | .contributors[].changesRequested number
@@ -1222,6 +1225,7 @@ body POST /api/submissions | .files[].sha256 string
 body POST /api/submissions | .files[].sizeBytes number
 body POST /api/submissions | .formatVersion number
 body POST /api/submissions | .hardware string
+body POST /api/submissions | .hardwareNotes string
 body POST /api/submissions | .manufacturer string
 body POST /api/submissions | .renames array of object
 body POST /api/submissions | .renames[].from string

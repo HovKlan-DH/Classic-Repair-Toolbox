@@ -167,6 +167,39 @@ namespace CRT.Server.Handlers.Submissions
             return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
         }
 
+        // A new system's notes, newest submission first (migration 0019). Bounded like the system's
+        // own submission list - only the newest that counts is ever used.
+        public async Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                SELECT s.id, s.state, s.created_utc, n.hardware_notes
+                  FROM submission_notes n
+                  JOIN submissions s ON s.id = n.submission_id
+                 WHERE s.system_id = @systemId
+                 ORDER BY s.created_utc DESC, s.id DESC
+                 LIMIT 50;
+                """;
+            command.Parameters.AddWithValue("@systemId", systemId);
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            var notes = new List<SubmissionNotes>();
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                notes.Add(new SubmissionNotes(
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    MySqlSubmissionStore.ReadUtc(reader, 2)!.Value,
+                    reader.GetString(3)));
+            }
+
+            return notes;
+        }
+
         public Task SetSystemInProductionAsync(
             string systemId,
             string? revision,

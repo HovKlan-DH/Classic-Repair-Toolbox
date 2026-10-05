@@ -9,6 +9,8 @@ The project is a direct spin-off from an older project, _Commodore Repair Toolbo
 
 With CRT you can easily view technical schematics, zoom, identify components, view chip pinouts, use interactive (KiCad) traces or do manual circuit tracing, test ICs with a MiniPro programmer, study datasheets, view oscilloscope images, resources and various other information, helping you diagnosing and repairing old vintage hardware. You can also keep track on your repairs via the _Workbook_ feature.
 
+You can also improve the data from inside CRT - correct a component, add a picture or a datasheet, or add a whole new system - and send it in for everybody to use. Each contribution is reviewed by a maintainer of that system, tried out in a BETA version of the data, and then published for everybody.
+
 It is (for now) having Commodore computers with the most documented systems, but it also has an Amstrad and a ZX Spectrum board (more systems will come for sure), but it can support any kind of hardware, as you can add your own data - e.g. other computers, radios, DIY electronics or whatever else you can imagine. It probably works the best, if the hardware is "simple" and have good documentation available, like schematics, and if it is something you need to revisit multiple times - then you can add the needed information yourself, and use it for easy future reference.
 
 
@@ -176,7 +178,9 @@ I will keep adding and enhancing data, but if this is only me providing data, th
 
 Data contribution can be almost anything - tiny and trivial updates (spelling mistakes, wrong or missing technical values or alike) or it can be huge new boards, but I really would like to get a massive amount of **quality** data, for the benefit of everyone using this. The goal is that it should have (most) relevant data in one place, so it would not be required to go and lookup for other data sources, but of course it also needs to be balanced a little, not overwelming with too much data 🤔
 
-Contributing data is very easy - just go to the "Contribute" tab, select the component you want to edit and send your update - that's it.
+Contributing data is very easy - make your changes in the "Contribute" tab (they are kept as a draft on your own computer), check them in the "Drafts" tab, and press "Submit" - that's it. You can follow how it goes under "My submissions", and you get an email when it has been reviewed. How it works step by step: [Contribute data via CRT](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/wiki/Contribute-data-via-CRT).
+
+Would you like to look after a system - reviewing and publishing what others send in for it? Then you can become a **maintainer** of that system; just get in contact (see below).
 
 You can help specifically with these topics:
 - Do you have higher-quality images of the used schematics?

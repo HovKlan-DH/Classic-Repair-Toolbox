@@ -116,6 +116,7 @@ namespace Handlers.DataHandling
                 Board = identity.Board,
                 BaseRevision = identity.BaseRevision,
                 Summary = identity.Summary,
+                HardwareNotes = identity.HardwareNotes?.Trim() ?? string.Empty,
                 ApplicationVersion = identity.ApplicationVersion,
                 CreatedUtc = identity.CreatedUtc,
                 Files = files,
@@ -259,6 +260,11 @@ namespace Handlers.DataHandling
         public string Board { get; init; } = string.Empty;
         public string BaseRevision { get; init; } = string.Empty;
         public string Summary { get; init; } = string.Empty;
+
+        // A NEW system's notes from "Create system" (its NewSystemRegistration) - see
+        // SubmissionManifest.HardwareNotes. Empty for a draft of a published board.
+        public string HardwareNotes { get; init; } = string.Empty;
+
         public string ApplicationVersion { get; init; } = string.Empty;
         public DateTimeOffset CreatedUtc { get; init; }
     }

@@ -58,7 +58,12 @@ namespace Handlers.MaintainerHandling
         bool? AwaitsYou = null,
 
         // Whether a contributor whose work it carries discarded their own draft (2026-09-28).
-        bool? CarriesDiscardedDraft = null);
+        bool? CarriesDiscardedDraft = null,
+
+        // Whether it waits for the administrator because only administrators publish to stable
+        // (2026-10-05) - the row then says so instead of "with the other approver". Null from an
+        // older server.
+        bool? WaitsForAdministrator = null);
 
     public sealed record ProductionPlanView(
         string SystemId,

@@ -64,4 +64,25 @@ public sealed class SubmissionClientCreateRequestTests
         Assert.Equal("Commodore/C64/250407", body.RootElement.GetProperty("systemId").GetString());
         Assert.Equal("dh@example.com", body.RootElement.GetProperty("contactEmail").GetString());
     }
+
+    // ###########################################################################################
+    // A new system's notes (owner request, 2026-10-05) go as "hardwareNotes", and come back out of
+    // the body as the server binds it - ASP.NET Core's web defaults - so the maintainer's placement
+    // can start with them.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_new_systems_notes_go_in_the_body_and_read_back_as_the_server_reads_them()
+    {
+        SubmissionManifest manifest = SubmissionClientCreateRequestTests.Manifest();
+        manifest.HardwareNotes = "Open-source replica.";
+
+        using HttpRequestMessage request = SubmissionClient.BuildCreateRequest("https://example.com/api", manifest, null);
+        string json = await request.Content!.ReadAsStringAsync();
+
+        using JsonDocument body = JsonDocument.Parse(json);
+        Assert.Equal("Open-source replica.", body.RootElement.GetProperty("hardwareNotes").GetString());
+
+        SubmissionManifest? received = JsonSerializer.Deserialize<SubmissionManifest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal("Open-source replica.", received!.HardwareNotes);
+    }
 }

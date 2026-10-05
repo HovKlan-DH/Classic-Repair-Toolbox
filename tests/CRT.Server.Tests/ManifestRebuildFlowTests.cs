@@ -54,7 +54,7 @@ public class ManifestRebuildFlowTests
 
     // ###########################################################################################
     // *** A SERVER WITHOUT PRODUCTION PUBLISHING IS A NORMAL SERVER, NOT A BROKEN ONE. *** Until
-    // DEPLOYMENT.md step 13 is done, nothing leaves BETA (ServerOptions.IsProductionPublishingConfigured),
+    // publishing to stable is configured, nothing leaves BETA (ServerOptions.IsProductionPublishingConfigured),
     // and the service must never write a production tree it has not been told about. The flow must
     // therefore SKIP that tree rather than "fail" to rebuild it - a red line on the Account screen
     // would send the administrator looking for a fault that is not there.
