@@ -857,12 +857,22 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                              discarded draft. They were the first lines above the TABLE, inside the
                              Board data view - so on Files or Contributor, Approve was greyed out
                              with no reason anywhere. Still above everything else, as the owner
-                             asked of the discarded-draft warning (2026-09-28). -->
-                        <StackPanel DockPanel.Dock="Top"
-                                    x:Name="BeforeApprovingPanel"
-                                    Spacing="2"
-                                    IsVisible="False"
-                                    Margin="0,0,0,8" />
+                             asked of the discarded-draft warning (2026-09-28).
+                             THE AMBER NOTICE PANEL (owner request, 2026-10-09: "this should look the
+                             same as the previous highlighted panel ... The UI should have a uniform and
+                             consistent look") - App.axaml's Border.Notice, the Boards screen's
+                             ReadOnlyNotice's own look, and in its place: directly above the view
+                             switch. One line per reason, in BeforeApprovingPanel. -->
+                        <Border DockPanel.Dock="Top"
+                                x:Name="BeforeApprovingNotice"
+                                Classes="Notice"
+                                IsVisible="False"
+                                Margin="0,0,0,10">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+                                <StackPanel Grid.Column="1" x:Name="BeforeApprovingPanel" Spacing="4" />
+                            </Grid>
+                        </Border>
 
                         <!-- No one-line "From ... - [4] other submissions" beside the buttons any
                              more (owner request, 2026-09-30: "I do not need to see highlighted
@@ -971,5 +981,14 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
         second overlay here would dim only the tab and block nothing above it: the update banner,
         the other tabs' headers and the data-sync icon would all stay clickable.
         -->
+
+        <!--
+        "CRT HAS TO BE UPDATED" (owner request, 2026-10-09; Main.UpdateRequired.cs) - the one overlay
+        that IS the tab's own, because it is meant to cover only this tab: the server turns this
+        version of CRT away from everything here, while the rest of CRT works. It cannot be closed.
+        LAST, so it lies over everything above - and over this Grid's own 16px margin too (-16), or
+        the tab showed an uncovered frame around it.
+        -->
+        <local:UpdateRequiredOverlay x:Name="UpdateRequired" Margin="-16" />
     </Grid>
 </UserControl>

@@ -26,6 +26,8 @@ namespace CRT
     //
     // *** COLOURED AGAINST BETA AS OPENED. *** Every row starts white and only the maintainer's own
     // inserts, edits and deletions are coloured - the rule a new board's submission table keeps.
+    // With "Compare sources" ticked it is coloured against the stable source instead
+    // (BoardDetailView.Compare.cs).
     //
     // *** A TABLE OPENED IS A BOARD SENT BACK. *** The edit carries the fingerprint of BETA's board
     // the table was read from, and the server refuses it when BETA changed since - publishing it would
@@ -101,33 +103,61 @@ namespace CRT
         // ###########################################################################################
         private async Task LoadTableAsync()
         {
-            if (this.ShownBoard is not { } board || !this.CanReadTable)
+            if (this.ShownBoard is not { } board)
                 return;
 
+            BoardTableAnswer? beta = await this.ReadTableForAsync(board);
+
+            if (!this.IsShowing(board))
+                return;
+
+            // A stable table compared with BETA follows it (ShowTables).
+            this.ShowTables(beta, betaMessage: null, stable: null);
+
+            if (beta is not null)
+                this.NoteTableReadAt(board);
+        }
+
+        // ###########################################################################################
+        // BETA's table of `board` as the server answers it, or null - with why said above the table.
+        // A board BETA no longer holds (pushed back out of it) is closed rather than left on screen
+        // as if it were still there; any other failure leaves the table as it was. Null too for an
+        // answer about a board no longer chosen, which the caller drops.
+        // ###########################################################################################
+        private async Task<BoardTableAnswer?> ReadTableForAsync(BoardOverviewEntry board)
+        {
+            if (!this.CanReadTable)
+                return null;
+
             this.ShowTableLoadMessage(null);
-            this.ShowReadOnlyNotice(null);
 
             ReviewApiResult<BoardTableAnswer> result = await this.ReadTableAsync(board.BoardId);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal))
-                return;
+            if (!this.IsShowing(board))
+                return null;
 
             if (!result.IsOk)
             {
-                // A board BETA no longer holds (pushed back out of it) is not left on screen as if
-                // it were still there. Any other failure leaves the table as it was, saying why.
                 if (result.Failure == ReviewApiFailure.NotFound)
                     this.CloseTableNow();
 
                 // "Not in BETA" is an answer about the board, not a failure - shown in plain grey.
                 this.ShowTableLoadMessage(result.Message, isError: result.Failure != ReviewApiFailure.NotFound);
-                return;
+                return null;
             }
 
-            this.OpenTable(result.Value!, message: null);
+            return result.Value!;
+        }
+
+        // The table just read was read off `board` as it is now - what TableIsBehind holds it against.
+        private void NoteTableReadAt(BoardOverviewEntry board)
+        {
             this.thisTableReadAt = board;
             this.thisTableReadAtMaintainers = this.thisShownMaintainers;
         }
+
+        private bool IsShowing(BoardOverviewEntry board) =>
+            string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal);
 
         private bool CanReadTable =>
             this.ReadTableOverrideForTests is not null || (this.thisClient is not null && this.thisSession is not null);
@@ -140,47 +170,82 @@ namespace CRT
         // Reads a board's table without a server - for tests.
         internal Func<string, Task<ReviewApiResult<BoardTableAnswer>>>? ReadTableOverrideForTests { get; set; }
 
-        private void OpenTable(BoardTableAnswer table, string? message)
-        {
-            BoardTableEditor editor = this.BoardTable;
+        // BETA's table opened on `table`, `message` first in the line above it - and a stable table
+        // compared with BETA built again against it (ShowTables).
+        private void OpenTable(BoardTableAnswer table, string? message) =>
+            this.ShowTables(table, message, stable: null);
 
-            // The same board opened again (after a publish): it stays on the sheet it was on.
-            if (this.thisTable is not null && editor.CurrentSheet?.Name is string current)
+        // Holds `table` as BETA's. The sheet on screen is kept for the board it showed, so the same
+        // board opened again (after a publish, or compared anew) stays on it.
+        private void TakeTable(BoardTableAnswer table)
+        {
+            if (this.thisTable is not null && this.BoardTable.CurrentSheet?.Name is string current)
                 this.thisSheetByBoard[this.thisTable.BoardId] = current;
 
             this.thisTable = table;
+        }
+
+        // ###########################################################################################
+        // Builds BETA's table as held, against what it is compared with now, with `message` first in
+        // the line above it. Only ShowTables and ApplyComparison call it - see ShowTables for why.
+        // ###########################################################################################
+        private void BuildTable(string? message)
+        {
+            if (this.thisTable is not { } table)
+                return;
+
+            this.TableBuildsForTests++;
+
+            BoardTableEditor editor = this.BoardTable;
             this.ShowTableLoadMessage(null);
 
-            if (this.thisClient is ReviewApiClient client)
-                editor.FileSource = new PublishedTableFileSource(client, table.BetaDataUrl, this.LaunchFileAsync);
+            // "Compare sources" ticked (BoardDetailView.Compare.cs): built against the stable
+            // source's board, so everything BETA holds differently is marked.
+            BoardTableAnswer? stable = this.StableToCompareWith(table.BoardId);
+            this.thisTableComparedWith = stable;
 
-            // Coloured against BETA AS OPENED - every row white until the maintainer changes it.
+            if (this.thisClient is ReviewApiClient client)
+            {
+                editor.FileSource = new PublishedTableFileSource(client, table.BetaDataUrl, this.LaunchFileAsync)
+                {
+                    Baseline = BoardDetailView.StableFilesBaseline(stable)
+                };
+            }
+
+            // Otherwise coloured against BETA AS OPENED - every row white until the maintainer
+            // changes it.
             BoardData beta = SubmissionRowsBoard.ToBoard(table.Rows);
+            BoardData comparedWith = SubmissionRowsBoard.ToBoard((stable ?? table).Rows);
 
             editor.Clear();
             editor.IsReadOnly = !table.MayEdit;
             editor.Open(
-                BoardTableDocument.Create(beta, SubmissionRowsBoard.ToBoard(table.Rows), BoardSections.BaselineLabel),
+                BoardTableDocument.Create(
+                    comparedWith,
+                    beta,
+                    stable is null ? BoardSections.BaselineLabel : BoardTableDocument.StableSourceBaselineLabel),
                 null,
                 preferredSheet: this.thisSheetByBoard.TryGetValue(table.BoardId, out string? sheet) ? sheet : null);
 
             // What the table is - under the BETA / Stable switch, above the table (owner request,
             // 2026-10-04: it sat under the search box, and moved the table about between the two).
-            // Why it cannot be changed is a panel of its own (owner request, 2026-10-09), unless a
-            // line of the caller's own says what happened.
-            if (!table.MayEdit && message is null)
-            {
-                this.ShowReadOnlyNotice(BoardSections.OpenedMessage(table));
-                this.ShowTableNote(null);
-            }
-            else
-            {
-                this.ShowReadOnlyNotice(null);
-                this.ShowTableNote(message ?? BoardSections.OpenedMessage(table));
-            }
+            // Why it cannot be changed is the panel above the views (ShowReadOnlyNotice), never
+            // this line - which says what a read-only table is compared with, when it is (code
+            // review, 2026-10-09).
+            this.ShowTableNote(BoardSections.TableNote(table, comparedWithStable: stable is not null, said: message));
         }
 
-        // The panel above BETA's table saying why it cannot be changed - or nothing.
+        // ###########################################################################################
+        // The panel saying why BETA's table cannot be changed - or nothing. It sits directly above
+        // the view switch, said whichever view is open, as the queue's "why Approve is off" does
+        // (owner request, 2026-10-09: "this kind of UI should be unified").
+        //
+        // *** FROM WHICHEVER WAS READ LAST: THE BOARD'S DETAIL OR BETA'S TABLE (code review,
+        // 2026-10-09). *** Said only once the table was read, the panel was missing from a board
+        // opened on another view until Board data had been visited - the same board looked
+        // different by the views visited. The detail now carries the table's answer (ShowDetail);
+        // a server older than that sends none, and the table still says it when read.
+        // ###########################################################################################
         private void ShowReadOnlyNotice(string? reason)
         {
             if (this.FindControl<TextBlock>("ReadOnlyNoticeText") is TextBlock text)
@@ -324,9 +389,9 @@ namespace CRT
                 return;
 
             if (fresh.IsOk)
-                this.OpenTable(fresh.Value!, $"{line} {BoardSections.OpenedMessage(fresh.Value!)}");
+                this.OpenTable(fresh.Value!, line);
             else
-                this.OpenTable(table with { MayEdit = false, MayNotEditReason = line }, line);
+                this.OpenTable(table with { MayEdit = false, MayNotEditReason = null }, line);
 
             // Taken as the state read at the board's next reading, as after a publish.
             this.thisTableReadAt = null;
@@ -353,7 +418,7 @@ namespace CRT
 
             if (fresh.IsOk)
             {
-                this.OpenTable(fresh.Value!, $"{publishedLine} {BoardSections.OpenedMessage(fresh.Value!)}");
+                this.OpenTable(fresh.Value!, publishedLine);
 
                 // BETA as this publish left it, which the board's next reading will say - taken as
                 // the state read, rather than read again over the line saying what the publish did.
@@ -459,17 +524,24 @@ namespace CRT
         // straight to BETA. Save asks for the reason as the button does. True when the table may go.
         // With nobody to ask (the tab not on screen) the answer is Cancel: the table stays, which is
         // never the harmful choice.
+        //
+        // `canSend` false - the tab says "CRT has to be updated" (code review, 2026-10-09) - offers
+        // Discard or Cancel only: a save would be turned away out of sight.
         // ###########################################################################################
-        internal async Task<bool> MayLeaveTableAsync(Window? owner = null)
+        internal async Task<bool> MayLeaveTableAsync(Window? owner = null, bool canSend = true)
         {
             if (!this.HasUnsavedTableEdits)
                 return true;
+
+            UnsavedTableEditsPrompt asked = canSend
+                ? UnsavedTableEditsPrompt.LeavingBoard
+                : UnsavedTableEditsPrompt.LeavingUpdateRequired;
 
             UnsavedTableEditsChoice? choice;
 
             if (this.UnsavedTableEditsAnswerForTests is { } answer)
             {
-                choice = answer(UnsavedTableEditsPrompt.LeavingBoard);
+                choice = answer(asked);
             }
             else
             {
@@ -477,14 +549,14 @@ namespace CRT
                     return false;
 
                 var prompt = new UnsavedTableEditsWindow();
-                prompt.Initialize(UnsavedTableEditsPrompt.LeavingBoard);
+                prompt.Initialize(asked);
 
                 choice = await prompt.ShowDialog<UnsavedTableEditsChoice?>(ownerWindow);
             }
 
             return choice switch
             {
-                UnsavedTableEditsChoice.Save => await this.SendTableAsync(),
+                UnsavedTableEditsChoice.Save when canSend => await this.SendTableAsync(),
                 UnsavedTableEditsChoice.Discard => true,
                 _ => false
             };
@@ -502,6 +574,7 @@ namespace CRT
             this.thisTable = null;
             this.thisTableReadAt = null;
             this.thisTableReadAtMaintainers = null;
+            this.thisTableComparedWith = null;
             this.thisUnsentReason = null;
 
             BoardTableEditor editor = this.BoardTable;

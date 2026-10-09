@@ -6,18 +6,15 @@ using Handlers.MaintainerHandling;
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
 // ###########################################################################################
-// WHERE A BOARD IS (owner request, 2026-10-04: "I see this system here ... where does this sit now,
-// as I do not think it is in BETA nor stable? Shouldn't there be somewhere a possibility to see what
-// we actually do have in BETA or stable for this?") - the stage line under its name
-// (BoardDetailView.Stages.cs), and the BETA / Stable switch on Board data and Files (BoardDetailView.Stable.cs).
+// WHERE A BOARD IS (owner request, 2026-10-04: "Shouldn't there be somewhere a possibility to see what
+// we actually do have in BETA or stable for this?") - the BETA / Stable switch on Board data and Files
+// (BoardDetailView.Stable.cs). The stage line under the name was removed on 2026-10-09 (owner request).
 // Drawn without a server: the detail through ShowDetailForTests, tables through their seams.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class BoardDetailViewStableTests
 {
     private const string BoardId = "Commodore/C64/250407";
-
-    private static readonly DateTimeOffset Decided = new(2026, 9, 21, 10, 0, 0, TimeSpan.Zero);
 
     private static BoardOverviewEntry Board(bool inBeta = true, bool? inStable = true, string boardId = BoardDetailViewStableTests.BoardId) =>
         new(boardId, "Commodore", "C64", boardId.Split('/')[2], inBeta, inStable, false, true,
@@ -42,46 +39,6 @@ public sealed class BoardDetailViewStableTests
         BoardTableSheet components = editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
         int friendly = BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName);
         return components.Rows.Single().Cells[friendly].Text;
-    }
-
-    // ###########################################################################################
-    // THE REPORTED BOARD: a new one whose only submission was turned down. The line says so, and
-    // that neither BETA nor the stable source holds it - it used to read only "Not published yet".
-    // ###########################################################################################
-    [Fact]
-    public void The_stage_line_says_where_a_board_turned_down_is()
-    {
-        UiTest.Run(() =>
-        {
-            var view = new BoardDetailView();
-            view.ShowDetailForTests(BoardDetailViewStableTests.Detail(
-                BoardDetailViewStableTests.Board(inBeta: false, inStable: false),
-                new BoardSubmissionEntry(5, "c@example.com", "Open128", "rejected", BoardDetailViewStableTests.Decided.AddDays(-1), BoardDetailViewStableTests.Decided, "No.")));
-
-            Assert.True(view.StagesShownForTests);
-            Assert.Equal(
-                [
-                    $"1  Submitted: #5 Not accepted - decided {SubmissionReceiptPresenter.FormatDate(BoardDetailViewStableTests.Decided)}",
-                    "2  BETA: Not there",
-                    "3  Stable: Not there"
-                ],
-                view.StagesForTests());
-        });
-    }
-
-    [Fact]
-    public void The_stage_line_names_the_BETA_and_stable_revisions_and_is_gone_with_no_board()
-    {
-        UiTest.Run(() =>
-        {
-            var view = new BoardDetailView();
-            view.ShowDetailForTests(BoardDetailViewStableTests.Detail(BoardDetailViewStableTests.Board()));
-
-            Assert.Equal(["1  Submitted: No submissions", "2  BETA: Revision 2026-October-4", "3  Stable: Revision 2026-September-25"], view.StagesForTests());
-
-            view.Clear();
-            Assert.False(view.StagesShownForTests);
-        });
     }
 
     // ###########################################################################################
@@ -153,7 +110,7 @@ public sealed class BoardDetailViewStableTests
             await view.ShowTreeAsync(stable: false);
 
             Assert.True(BoardDetailViewStableTests.Shown(view, "BetaBoardPart"));
-            Assert.Equal(BoardSections.OpenedMessage(BoardDetailViewStableTests.Table("PLA", mayEdit: true)), view.TableNoteForTests);
+            Assert.Equal(BoardSections.TableNote(BoardDetailViewStableTests.Table("PLA", mayEdit: true), comparedWithStable: false), view.TableNoteForTests);
             Assert.False(view.BoardTableForTests.FindControl<TextBlock>("StatusText")!.IsVisible);
             Assert.True(view.HasUnsavedTableEdits);
             Assert.Equal("PLA (82S100)", BoardDetailViewStableTests.FriendlyName(view.BoardTableForTests));

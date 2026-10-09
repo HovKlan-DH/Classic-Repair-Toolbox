@@ -59,10 +59,12 @@ namespace Handlers.DataHandling
         // of a released CRT is refused by the same test (crt-<version>.txt) unless the project owner
         // decides it, and raising this then turns away every CRT built before.
         //
-        // Raised to 2 on 2026-10-09: every route and field that said "system" says "board" (owner
-        // decision - /api/review/systems/... is /api/review/boards/..., systemId is boardId).
+        // BACK TO 1 on 2026-10-09 (owner request, with the contribution data reset again: "This has
+        // never been released to anyone else than me"), with the server's version back at 1.0.0.
+        // Revision 1 now stands for the API as it is that day - "board" everywhere; the
+        // "system"-to-"board" rename that had raised it to 2 the same morning is part of it.
         // ###########################################################################################
-        public const int ApiRevision = 2;
+        public const int ApiRevision = 1;
 
         // The header the review and submission clients send ApiRevision in.
         public const string ApiRevisionHeader = "X-CRT-Api-Revision";

@@ -169,4 +169,47 @@ public sealed class UnsavedTableEditsWindowTests
             window.Close();
         });
     }
+
+    // ###########################################################################################
+    // *** UNDER "CRT HAS TO BE UPDATED" (code review, 2026-10-09). *** A Maintainer tab table's Save
+    // sends to the server, which turns this CRT away - so leaving one offers Discard or Cancel and
+    // says why; and the notice for another editor's save cannot send the contributor to a covered
+    // Drafts tab, so it says what settles the table there instead.
+    // ###########################################################################################
+    [Fact]
+    public void Leaving_a_Maintainer_table_while_CRT_has_to_be_updated_offers_NO_Save_and_says_why()
+    {
+        UiTest.Run(() =>
+        {
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingUpdateRequired);
+
+            Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
+            Assert.True(ButtonWithContent(window, "Discard edits").IsVisible);
+            Assert.True(ButtonWithContent(window, "Cancel").IsVisible);
+            Assert.Contains("cannot be sent until CRT is updated", window.GetControl<TextBlock>("MessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Saving_elsewhere_under_a_covered_Drafts_tab_is_a_notice_naming_what_settles_the_table()
+    {
+        UiTest.Run(() =>
+        {
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired);
+
+            Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
+            Assert.False(ButtonWithContent(window, "Discard edits").IsVisible);
+            Assert.True(ButtonWithContent(window, "Cancel").IsVisible);
+
+            Assert.Equal("Unsaved table edits in the Drafts tab", window.Title);
+            string message = window.GetControl<TextBlock>("MessageText").Text!;
+            Assert.Contains("cannot be used until CRT is updated", message);
+            Assert.Contains("Updating CRT - or quitting it - asks first", message);
+            Assert.DoesNotContain("Go to the Drafts tab", message);
+
+            window.Close();
+        });
+    }
 }

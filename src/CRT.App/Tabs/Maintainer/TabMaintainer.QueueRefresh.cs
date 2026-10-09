@@ -71,6 +71,11 @@ namespace CRT
 
         private void StartQueueChecks()
         {
+            // The server turns this CRT away: every check would be answered "update CRT"
+            // (TabMaintainer.UpdateRequired.cs) - a remembered sign-in restored after that starts none.
+            if (this.thisUpdateRequired)
+                return;
+
             if (this.thisQueueTimer is null)
             {
                 this.thisQueueTimer = new DispatcherTimer { Interval = QueueRefreshRules.PollInterval };

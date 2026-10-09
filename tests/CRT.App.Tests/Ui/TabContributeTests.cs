@@ -37,21 +37,56 @@ public sealed class TabContributeTests
         });
     }
 
+    // ###########################################################################################
+    // *** ALL THREE IN THE SAME HIGHLIGHTED COLOUR (owner request, 2026-10-09: "have all 3 buttons in
+    // there with the same IndianRed color"). *** Only "Add new component" had it. Read off a SHOWN
+    // window, where the tab's styles are applied, against the theme's own Button_Highlighted_Bg -
+    // IndianRed in the light theme.
+    // ###########################################################################################
+    [Fact]
+    public void All_three_buttons_are_in_the_highlighted_IndianRed()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabContribute();
+            var window = new Window { Content = tab, Width = 900, Height = 500 };
+            window.Show();
+
+            Assert.True(Avalonia.Application.Current!.TryGetResource(
+                "Button_Highlighted_Bg", window.ActualThemeVariant, out object? resource));
+
+            Avalonia.Media.Color highlighted = ((Avalonia.Media.ISolidColorBrush)resource!).Color;
+
+            if (window.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light)
+                Assert.Equal(Avalonia.Media.Colors.IndianRed, highlighted);
+
+            foreach (string name in new[] { "AddNewComponentButton", "EditBoardAsDraftButton", "AddNewBoardButton" })
+            {
+                Button button = tab.GetControl<Button>(name);
+
+                Assert.Contains("ContributeAction", button.Classes);
+                Assert.Equal(highlighted, ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
+            }
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_problem_making_the_draft_is_said_under_the_text_and_cleared_again()
     {
         UiTest.Run(() =>
         {
             var tab = new TabContribute();
-            TextBlock problem = tab.GetControl<TextBlock>("EditAsDraftProblemText");
+            TextBlock problem = tab.GetControl<TextBlock>("DraftProblemText");
 
             Assert.False(problem.IsVisible);
 
-            tab.ShowEditAsDraftProblem("No draft could be made of this board: the published board could not be read.");
+            tab.ShowDraftProblem("No draft could be made of this board: the published board could not be read.");
             Assert.True(problem.IsVisible);
             Assert.StartsWith("No draft could be made", problem.Text);
 
-            tab.ShowEditAsDraftProblem(null);
+            tab.ShowDraftProblem(null);
             Assert.False(problem.IsVisible);
         });
     }
@@ -65,11 +100,11 @@ public sealed class TabContributeTests
         {
             var tab = new TabContribute();
             tab.LoadData(new BoardData(), "PAL");
-            tab.ShowEditAsDraftProblem("No draft could be made of this board: the published board could not be read.");
+            tab.ShowDraftProblem("No draft could be made of this board: the published board could not be read.");
 
             tab.LoadData(new BoardData(), "PAL");
 
-            Assert.False(tab.GetControl<TextBlock>("EditAsDraftProblemText").IsVisible);
+            Assert.False(tab.GetControl<TextBlock>("DraftProblemText").IsVisible);
         });
     }
 }

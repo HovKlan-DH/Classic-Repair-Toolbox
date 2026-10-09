@@ -541,6 +541,85 @@ public sealed class TabMaintainerQueueTests
     }
 
     // ###########################################################################################
+    // *** WHY APPROVE IS OFF IS THE AMBER NOTICE PANEL (owner request, 2026-10-09: "this should look
+    // the same as the previous highlighted panel ... The UI should have a uniform and consistent
+    // look"). *** It was an orange line. Now it is the Boards screen's read-only panel, drawn alike:
+    // read off a SHOWN window, both panels have the same fill, edge and ink, each with its icon -
+    // and the panel is gone again once nothing holds Approve back.
+    // ###########################################################################################
+    [Fact]
+    public void Why_Approve_is_off_is_the_same_amber_panel_as_the_Boards_screens_read_only_notice()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            var window = new Window { Content = main, Width = 1400, Height = 900 };
+            window.Show();
+
+            ReviewQueueRow open = Row(id: 42);
+            main.ApplyBetaListAsync(new ProductionListResponse(true,
+            [
+                new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null)
+            ]), background: true).GetAwaiter().GetResult();
+
+            Queue(main, open);
+            Select(main, open);
+            main.ShowDetail(Detail(open));
+
+            // The Boards screen's panel, raised the way a board waiting in BETA raises it.
+            BoardDetailView board = main.BoardDetailForTests;
+            board.OpenTableForTests(new BoardTableAnswer("Commodore/C64/250407", new string('f', 64), new SubmissionRows(), MayEdit: false, "It waits in BETA."));
+            Dispatcher.UIThread.RunJobs();
+
+            Border queueNotice = main.FindControl<Border>("BeforeApprovingNotice")!;
+            Border boardNotice = board.FindControl<Border>("ReadOnlyNotice")!;
+            TextBlock queueLine = main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Single();
+            TextBlock boardLine = board.FindControl<TextBlock>("ReadOnlyNoticeText")!;
+
+            Assert.True(queueNotice.IsVisible);
+            Assert.Equal(OneSubmissionInBeta.BusyMessage("Commodore/C64/250407"), ShownText(queueLine));
+
+            Assert.Contains("Notice", queueNotice.Classes);
+            Assert.Contains("Notice", boardNotice.Classes);
+            Assert.Equal(Colour(boardNotice.Background), Colour(queueNotice.Background));
+            Assert.Equal(Colour(boardNotice.BorderBrush), Colour(queueNotice.BorderBrush));
+            Assert.Equal(boardNotice.CornerRadius, queueNotice.CornerRadius);
+            Assert.Equal(Colour(boardLine.Foreground), Colour(queueLine.Foreground));
+            Assert.Equal(boardLine.FontWeight, queueLine.FontWeight);
+            Assert.Single(queueNotice.GetVisualDescendants().OfType<TextBlock>(), block => block.Classes.Contains("NoticeIcon"));
+            Assert.Single(boardNotice.GetVisualDescendants().OfType<TextBlock>(), block => block.Classes.Contains("NoticeIcon"));
+
+            // *** AND IN THE SAME PLACE (owner request, same day: "one is shown as the first info and
+            // the other is shown above the table? Again, this kind of UI should be unified"). ***
+            // Each directly above its own view switch, and said whichever view is open.
+            Assert.Equal("SubmissionViewBar", NextSibling(queueNotice).Name);
+            Assert.Equal("BoardSectionBar", NextSibling(boardNotice).Name);
+
+            // Outside every one of the board's views - it sat inside Board data, gone on the others.
+            for (StyledElement? parent = boardNotice.Parent; parent is not null; parent = parent.Parent)
+                Assert.NotEqual("SectionsPanel", (parent as Control)?.Name);
+
+            board.ShowSectionAsync(BoardSection.History).GetAwaiter().GetResult();
+            Assert.True(boardNotice.IsVisible);
+
+            // Promoted: nothing holds Approve back, and the panel goes with its last reason.
+            main.ApplyBetaListAsync(new ProductionListResponse(true, []), background: true).GetAwaiter().GetResult();
+
+            Assert.False(queueNotice.IsVisible);
+
+            window.Close();
+        });
+
+        static Avalonia.Media.Color Colour(Avalonia.Media.IBrush? brush) => ((Avalonia.Media.ISolidColorBrush)brush!).Color;
+
+        static Control NextSibling(Control control)
+        {
+            var parent = (Panel)control.Parent!;
+            return parent.Children[parent.Children.IndexOf(control) + 1];
+        }
+    }
+
+    // ###########################################################################################
     // *** ONE SUBMISSION IN BETA PER BOARD, ON SCREEN (owner decision, 2026-09-27). *** With an
     // earlier submission of the board waiting in "Beta > Prod", Approve is off - a line above the
     // submission's three views says why, in the server's own words - while Reject and Request changes

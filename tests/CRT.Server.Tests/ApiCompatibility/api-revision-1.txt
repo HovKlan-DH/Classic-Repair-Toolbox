@@ -1,9 +1,9 @@
 # The API a CRT built for API revision 1 may use - recorded by ApiCompatibilityTests, which adds to it as the API grows.
 # Do not edit by hand: a change that breaks a line here raises ClientVersionContract.ApiRevision instead. See CLAUDE.md, "Installed CRTs keep working".
 answer AcceptInvitationAnswer | (root) object
+answer AcceptInvitationAnswer | .boardIds array of string
 answer AcceptInvitationAnswer | .email string
 answer AcceptInvitationAnswer | .message string
-answer AcceptInvitationAnswer | .systemIds array of string
 answer AccountAnswer | (root) object
 answer AccountAnswer | .createdUtc string
 answer AccountAnswer | .displayName string
@@ -50,13 +50,14 @@ answer ApiUsageAnswer | .routes[].versions[].calls number
 answer ApiUsageAnswer | .routes[].versions[].lastUtc string
 answer ApiUsageAnswer | .routes[].versions[].version string
 answer BetaRollbackAnswer | (root) object
+answer BetaRollbackAnswer | .boardId string
 answer BetaRollbackAnswer | .filesRemoved number
 answer BetaRollbackAnswer | .filesRestored number
 answer BetaRollbackAnswer | .kind string
 answer BetaRollbackAnswer | .rejected boolean
 answer BetaRollbackAnswer | .submissionsReturned number
-answer BetaRollbackAnswer | .systemId string
 answer BetaRollbackPlanAnswer | (root) object
+answer BetaRollbackPlanAnswer | .boardId string
 answer BetaRollbackPlanAnswer | .kind string
 answer BetaRollbackPlanAnswer | .removed array of string
 answer BetaRollbackPlanAnswer | .restored array of string
@@ -67,13 +68,288 @@ answer BetaRollbackPlanAnswer | .returning[].decidedUtc string
 answer BetaRollbackPlanAnswer | .returning[].draftDiscardedUtc string
 answer BetaRollbackPlanAnswer | .returning[].id number
 answer BetaRollbackPlanAnswer | .sharedRestored array of string
-answer BetaRollbackPlanAnswer | .systemId string
 answer BlobChunkRejectedAnswer | (root) object
 answer BlobChunkRejectedAnswer | .message string
 answer BlobChunkRejectedAnswer | .resumeFrom number
 answer BlobUploadAnswer | (root) object
 answer BlobUploadAnswer | .complete boolean
 answer BlobUploadAnswer | .uploaded number
+answer BoardDeleteAnswer | (root) object
+answer BoardDeleteAnswer | .betaFilesRemoved number
+answer BoardDeleteAnswer | .boardId string
+answer BoardDeleteAnswer | .contributorsMailed number
+answer BoardDeleteAnswer | .productionFilesRemoved number
+answer BoardDeleteAnswer | .submissionsDeleted number
+answer BoardDeletePlanAnswer | (root) object
+answer BoardDeletePlanAnswer | .betaFiles number
+answer BoardDeletePlanAnswer | .blockedBecause string
+answer BoardDeletePlanAnswer | .board string
+answer BoardDeletePlanAnswer | .boardId string
+answer BoardDeletePlanAnswer | .fingerprint string
+answer BoardDeletePlanAnswer | .hardware string
+answer BoardDeletePlanAnswer | .hasRecord boolean
+answer BoardDeletePlanAnswer | .invitations number
+answer BoardDeletePlanAnswer | .listedInBeta boolean
+answer BoardDeletePlanAnswer | .listedInProduction boolean
+answer BoardDeletePlanAnswer | .maintainers number
+answer BoardDeletePlanAnswer | .manufacturer string
+answer BoardDeletePlanAnswer | .openSubmissions array of object
+answer BoardDeletePlanAnswer | .openSubmissions[].contributor string
+answer BoardDeletePlanAnswer | .openSubmissions[].createdUtc string
+answer BoardDeletePlanAnswer | .openSubmissions[].id number
+answer BoardDeletePlanAnswer | .openSubmissions[].state string
+answer BoardDeletePlanAnswer | .openSubmissions[].summary string
+answer BoardDeletePlanAnswer | .productionFiles number
+answer BoardDeletePlanAnswer | .submissions number
+answer BoardDetailAnswer | (root) object
+answer BoardDetailAnswer | .addressesHidden boolean
+answer BoardDetailAnswer | .board object
+answer BoardDetailAnswer | .board.betaContentHash string
+answer BoardDetailAnswer | .board.betaRevision string
+answer BoardDetailAnswer | .board.board string
+answer BoardDetailAnswer | .board.boardId string
+answer BoardDetailAnswer | .board.hardware string
+answer BoardDetailAnswer | .board.inBeta boolean
+answer BoardDetailAnswer | .board.inProduction boolean
+answer BoardDetailAnswer | .board.isAccepting boolean
+answer BoardDetailAnswer | .board.isAwaitingProduction boolean
+answer BoardDetailAnswer | .board.listedInBeta boolean
+answer BoardDetailAnswer | .board.listedInStable boolean
+answer BoardDetailAnswer | .board.maintainerCount number
+answer BoardDetailAnswer | .board.manufacturer string
+answer BoardDetailAnswer | .board.productionPublishedUtc string
+answer BoardDetailAnswer | .board.productionRevision string
+answer BoardDetailAnswer | .board.submissionCounts object
+answer BoardDetailAnswer | .board.submissionCounts.inBeta number
+answer BoardDetailAnswer | .board.submissionCounts.inStable number
+answer BoardDetailAnswer | .board.submissionCounts.rejected number
+answer BoardDetailAnswer | .board.submissionCounts.total number
+answer BoardDetailAnswer | .board.submissionCounts.waiting number
+answer BoardDetailAnswer | .board.viewsLast30Days number
+answer BoardDetailAnswer | .contributors array of object
+answer BoardDetailAnswer | .contributors[].accepted number
+answer BoardDetailAnswer | .contributors[].changesRequested number
+answer BoardDetailAnswer | .contributors[].email string
+answer BoardDetailAnswer | .contributors[].lastSubmittedUtc string
+answer BoardDetailAnswer | .contributors[].name string
+answer BoardDetailAnswer | .contributors[].rejected number
+answer BoardDetailAnswer | .contributors[].waiting number
+answer BoardDetailAnswer | .history array of object
+answer BoardDetailAnswer | .history[].atUtc string
+answer BoardDetailAnswer | .history[].detail string
+answer BoardDetailAnswer | .history[].event string
+answer BoardDetailAnswer | .history[].note string
+answer BoardDetailAnswer | .history[].submissionId number
+answer BoardDetailAnswer | .history[].who string
+answer BoardDetailAnswer | .invitations array of object
+answer BoardDetailAnswer | .invitations[].email string
+answer BoardDetailAnswer | .invitations[].expiresUtc string
+answer BoardDetailAnswer | .invitations[].id number
+answer BoardDetailAnswer | .invitations[].invitedUtc string
+answer BoardDetailAnswer | .maintainers array of object
+answer BoardDetailAnswer | .maintainers[].accountId number
+answer BoardDetailAnswer | .maintainers[].displayName string
+answer BoardDetailAnswer | .maintainers[].email string
+answer BoardDetailAnswer | .mayEdit boolean
+answer BoardDetailAnswer | .mayNotEditReason string
+answer BoardDetailAnswer | .submissions array of object
+answer BoardDetailAnswer | .submissions[].changes object
+answer BoardDetailAnswer | .submissions[].changes.files object
+answer BoardDetailAnswer | .submissions[].changes.files.added array of string
+answer BoardDetailAnswer | .submissions[].changes.files.addedCount number
+answer BoardDetailAnswer | .submissions[].changes.files.hasChanges boolean
+answer BoardDetailAnswer | .submissions[].changes.files.removed array of string
+answer BoardDetailAnswer | .submissions[].changes.files.removedCount number
+answer BoardDetailAnswer | .submissions[].changes.files.replaced array of string
+answer BoardDetailAnswer | .submissions[].changes.files.replacedCount number
+answer BoardDetailAnswer | .submissions[].changes.isNewBoard boolean
+answer BoardDetailAnswer | .submissions[].changes.sections array of object
+answer BoardDetailAnswer | .submissions[].changes.sections[].added array of string
+answer BoardDetailAnswer | .submissions[].changes.sections[].addedCount number
+answer BoardDetailAnswer | .submissions[].changes.sections[].changed array of object
+answer BoardDetailAnswer | .submissions[].changes.sections[].changedCount number
+answer BoardDetailAnswer | .submissions[].changes.sections[].changed[].fields array of string
+answer BoardDetailAnswer | .submissions[].changes.sections[].changed[].row string
+answer BoardDetailAnswer | .submissions[].changes.sections[].removed array of string
+answer BoardDetailAnswer | .submissions[].changes.sections[].removedCount number
+answer BoardDetailAnswer | .submissions[].changes.sections[].renamed array of object
+answer BoardDetailAnswer | .submissions[].changes.sections[].renamedCount number
+answer BoardDetailAnswer | .submissions[].changes.sections[].renamed[].from string
+answer BoardDetailAnswer | .submissions[].changes.sections[].renamed[].to string
+answer BoardDetailAnswer | .submissions[].changes.sections[].section string
+answer BoardDetailAnswer | .submissions[].contactEmail string
+answer BoardDetailAnswer | .submissions[].createdUtc string
+answer BoardDetailAnswer | .submissions[].decidedUtc string
+answer BoardDetailAnswer | .submissions[].decisionComment string
+answer BoardDetailAnswer | .submissions[].draftDiscardedUtc string
+answer BoardDetailAnswer | .submissions[].id number
+answer BoardDetailAnswer | .submissions[].state string
+answer BoardDetailAnswer | .submissions[].summary string
+answer BoardDetailAnswer | .views object
+answer BoardDetailAnswer | .views.daily array of object
+answer BoardDetailAnswer | .views.daily[].day string
+answer BoardDetailAnswer | .views.daily[].views number
+answer BoardDetailAnswer | .views.fromBetaLast30Days number
+answer BoardDetailAnswer | .views.last30Days number
+answer BoardDetailAnswer | .views.last365Days number
+answer BoardDetailAnswer | .views.last7Days number
+answer BoardDetailAnswer | .views.topCountries array of object
+answer BoardDetailAnswer | .views.topCountries[].countryCode string
+answer BoardDetailAnswer | .views.topCountries[].countryName string
+answer BoardDetailAnswer | .views.topCountries[].views number
+answer BoardEditAnswer | (root) object
+answer BoardEditAnswer | .findings array of object
+answer BoardEditAnswer | .findings[].code string
+answer BoardEditAnswer | .findings[].message string
+answer BoardEditAnswer | .findings[].severity enum ValidationSeverity
+answer BoardEditAnswer | .findings[].subject string
+answer BoardEditAnswer | .notPublishedReason string
+answer BoardEditAnswer | .published boolean
+answer BoardEditAnswer | .removedFiles array of string
+answer BoardEditAnswer | .revision string
+answer BoardEditAnswer | .submissionId number
+answer BoardEditCheckAnswer | (root) object
+answer BoardEditCheckAnswer | .removals array of string
+answer BoardFilesAnswer | (root) object
+answer BoardFilesAnswer | .betaDataUrl string
+answer BoardFilesAnswer | .boardId string
+answer BoardFilesAnswer | .files array of object
+answer BoardFilesAnswer | .files[].change enum BoardFileChange
+answer BoardFilesAnswer | .files[].openFrom enum BoardFileSource
+answer BoardFilesAnswer | .files[].path string
+answer BoardFilesAnswer | .files[].sha256 string
+answer BoardFilesAnswer | .files[].sizeBytes number
+answer BoardFilesAnswer | .files[].writtenOnApproval boolean
+answer BoardFilesAnswer | .productionDataUrl string
+answer BoardListingAnswer | (root) object
+answer BoardListingAnswer | .hasList boolean
+answer BoardListingAnswer | .rows array of object
+answer BoardListingAnswer | .rows[].boardId string
+answer BoardListingAnswer | .rows[].boardName string
+answer BoardListingAnswer | .rows[].excelDataFile string
+answer BoardListingAnswer | .rows[].hardwareName string
+answer BoardListingAnswer | .unlisted array of object
+answer BoardListingAnswer | .unlisted[].board string
+answer BoardListingAnswer | .unlisted[].boardId string
+answer BoardListingAnswer | .unlisted[].canPlace boolean
+answer BoardListingAnswer | .unlisted[].hardware string
+answer BoardListingAnswer | .unlisted[].inBeta boolean
+answer BoardListingAnswer | .unlisted[].manufacturer string
+answer BoardListingAnswer | .unlisted[].placement object
+answer BoardListingAnswer | .unlisted[].placement.afterExcelDataFile string
+answer BoardListingAnswer | .unlisted[].placement.boardName string
+answer BoardListingAnswer | .unlisted[].placement.hardwareName string
+answer BoardListingAnswer | .unlisted[].placement.notes string
+answer BoardListingAnswer | .unlisted[].suggested object
+answer BoardListingAnswer | .unlisted[].suggested.afterExcelDataFile string
+answer BoardListingAnswer | .unlisted[].suggested.boardName string
+answer BoardListingAnswer | .unlisted[].suggested.hardwareName string
+answer BoardListingAnswer | .unlisted[].suggested.notes string
+answer BoardOrderAnswer | (root) object
+answer BoardOrderAnswer | .betaChanged boolean
+answer BoardOrderAnswer | .problem string
+answer BoardOrderAnswer | .stableChanged boolean
+answer BoardOverviewAnswer | (root) object
+answer BoardOverviewAnswer | .boards array of object
+answer BoardOverviewAnswer | .boards[].betaContentHash string
+answer BoardOverviewAnswer | .boards[].betaRevision string
+answer BoardOverviewAnswer | .boards[].board string
+answer BoardOverviewAnswer | .boards[].boardId string
+answer BoardOverviewAnswer | .boards[].hardware string
+answer BoardOverviewAnswer | .boards[].inBeta boolean
+answer BoardOverviewAnswer | .boards[].inProduction boolean
+answer BoardOverviewAnswer | .boards[].isAccepting boolean
+answer BoardOverviewAnswer | .boards[].isAwaitingProduction boolean
+answer BoardOverviewAnswer | .boards[].listedInBeta boolean
+answer BoardOverviewAnswer | .boards[].listedInStable boolean
+answer BoardOverviewAnswer | .boards[].maintainerCount number
+answer BoardOverviewAnswer | .boards[].manufacturer string
+answer BoardOverviewAnswer | .boards[].productionPublishedUtc string
+answer BoardOverviewAnswer | .boards[].productionRevision string
+answer BoardOverviewAnswer | .boards[].submissionCounts object
+answer BoardOverviewAnswer | .boards[].submissionCounts.inBeta number
+answer BoardOverviewAnswer | .boards[].submissionCounts.inStable number
+answer BoardOverviewAnswer | .boards[].submissionCounts.rejected number
+answer BoardOverviewAnswer | .boards[].submissionCounts.total number
+answer BoardOverviewAnswer | .boards[].submissionCounts.waiting number
+answer BoardOverviewAnswer | .boards[].viewsLast30Days number
+answer BoardTableAnswer | (root) object
+answer BoardTableAnswer | .betaDataUrl string
+answer BoardTableAnswer | .boardId string
+answer BoardTableAnswer | .fingerprint string
+answer BoardTableAnswer | .mayEdit boolean
+answer BoardTableAnswer | .mayNotEditReason string
+answer BoardTableAnswer | .productionDataUrl string
+answer BoardTableAnswer | .rows object
+answer BoardTableAnswer | .rows.boardLinks array of object
+answer BoardTableAnswer | .rows.boardLinks[].category string
+answer BoardTableAnswer | .rows.boardLinks[].name string
+answer BoardTableAnswer | .rows.boardLinks[].url string
+answer BoardTableAnswer | .rows.boardLocalFiles array of object
+answer BoardTableAnswer | .rows.boardLocalFiles[].category string
+answer BoardTableAnswer | .rows.boardLocalFiles[].file string
+answer BoardTableAnswer | .rows.boardLocalFiles[].name string
+answer BoardTableAnswer | .rows.componentHighlights array of object
+answer BoardTableAnswer | .rows.componentHighlights[].boardLabel string
+answer BoardTableAnswer | .rows.componentHighlights[].height string
+answer BoardTableAnswer | .rows.componentHighlights[].schematicName string
+answer BoardTableAnswer | .rows.componentHighlights[].width string
+answer BoardTableAnswer | .rows.componentHighlights[].x string
+answer BoardTableAnswer | .rows.componentHighlights[].y string
+answer BoardTableAnswer | .rows.componentImages array of object
+answer BoardTableAnswer | .rows.componentImages[].boardLabel string
+answer BoardTableAnswer | .rows.componentImages[].expectedOscilloscopeReading string
+answer BoardTableAnswer | .rows.componentImages[].file string
+answer BoardTableAnswer | .rows.componentImages[].name string
+answer BoardTableAnswer | .rows.componentImages[].note string
+answer BoardTableAnswer | .rows.componentImages[].pin string
+answer BoardTableAnswer | .rows.componentImages[].region string
+answer BoardTableAnswer | .rows.componentImages[].timeDiv string
+answer BoardTableAnswer | .rows.componentImages[].triggerLevelVolts string
+answer BoardTableAnswer | .rows.componentImages[].voltsDiv string
+answer BoardTableAnswer | .rows.componentLinks array of object
+answer BoardTableAnswer | .rows.componentLinks[].boardLabel string
+answer BoardTableAnswer | .rows.componentLinks[].name string
+answer BoardTableAnswer | .rows.componentLinks[].url string
+answer BoardTableAnswer | .rows.componentLocalFiles array of object
+answer BoardTableAnswer | .rows.componentLocalFiles[].boardLabel string
+answer BoardTableAnswer | .rows.componentLocalFiles[].file string
+answer BoardTableAnswer | .rows.componentLocalFiles[].name string
+answer BoardTableAnswer | .rows.components array of object
+answer BoardTableAnswer | .rows.components[].boardLabel string
+answer BoardTableAnswer | .rows.components[].category string
+answer BoardTableAnswer | .rows.components[].description string
+answer BoardTableAnswer | .rows.components[].friendlyName string
+answer BoardTableAnswer | .rows.components[].partNumber string
+answer BoardTableAnswer | .rows.components[].region string
+answer BoardTableAnswer | .rows.components[].technicalNameOrValue string
+answer BoardTableAnswer | .rows.credits array of object
+answer BoardTableAnswer | .rows.credits[].category string
+answer BoardTableAnswer | .rows.credits[].contact string
+answer BoardTableAnswer | .rows.credits[].nameOrHandle string
+answer BoardTableAnswer | .rows.credits[].subCategory string
+answer BoardTableAnswer | .rows.kiCadCalibrations array of object
+answer BoardTableAnswer | .rows.kiCadCalibrations[].cadName string
+answer BoardTableAnswer | .rows.kiCadCalibrations[].mirrorX boolean
+answer BoardTableAnswer | .rows.kiCadCalibrations[].mirrorY boolean
+answer BoardTableAnswer | .rows.kiCadCalibrations[].offsetX number
+answer BoardTableAnswer | .rows.kiCadCalibrations[].offsetY number
+answer BoardTableAnswer | .rows.kiCadCalibrations[].scaleX number
+answer BoardTableAnswer | .rows.kiCadCalibrations[].scaleY number
+answer BoardTableAnswer | .rows.kiCadCalibrations[].schematicName string
+answer BoardTableAnswer | .rows.kiCadImportantSignals array of object
+answer BoardTableAnswer | .rows.kiCadImportantSignals[].displayName string
+answer BoardTableAnswer | .rows.kiCadImportantSignals[].kiCadNetName string
+answer BoardTableAnswer | .rows.revisionDate string
+answer BoardTableAnswer | .rows.schematics array of object
+answer BoardTableAnswer | .rows.schematics[].cadName string
+answer BoardTableAnswer | .rows.schematics[].oppositeTraceHighlightColor string
+answer BoardTableAnswer | .rows.schematics[].schematicHighlightColor string
+answer BoardTableAnswer | .rows.schematics[].schematicHighlightOpacity string
+answer BoardTableAnswer | .rows.schematics[].schematicImageFile string
+answer BoardTableAnswer | .rows.schematics[].schematicName string
+answer BoardTableAnswer | .rows.schematics[].thumbnailHighlightColor string
+answer BoardTableAnswer | .rows.schematics[].thumbnailHighlightOpacity string
 answer ClientOutdatedAnswer | (root) object
 answer ClientOutdatedAnswer | .code string
 answer ClientOutdatedAnswer | .message string
@@ -82,17 +358,18 @@ answer DataResetAnswer | (root) object
 answer DataResetAnswer | .accountsDeleted number
 answer DataResetAnswer | .apiUsageRowsDeleted number
 answer DataResetAnswer | .boardViewsDeleted number
+answer DataResetAnswer | .boardsDeleted number
 answer DataResetAnswer | .historyEntriesDeleted number
 answer DataResetAnswer | .invitationsDeleted number
 answer DataResetAnswer | .maintainersDeleted number
 answer DataResetAnswer | .storedFilesRemoved number
 answer DataResetAnswer | .submissionsDeleted number
-answer DataResetAnswer | .systemsDeleted number
 answer DataResetPlanAnswer | (root) object
 answer DataResetPlanAnswer | .accounts number
 answer DataResetPlanAnswer | .administrators number
 answer DataResetPlanAnswer | .apiUsageRows number
 answer DataResetPlanAnswer | .boardViews number
+answer DataResetPlanAnswer | .boards number
 answer DataResetPlanAnswer | .fingerprint string
 answer DataResetPlanAnswer | .historyEntries number
 answer DataResetPlanAnswer | .invitations number
@@ -100,7 +377,6 @@ answer DataResetPlanAnswer | .isEnabled boolean
 answer DataResetPlanAnswer | .maintainers number
 answer DataResetPlanAnswer | .notEnabledBecause string
 answer DataResetPlanAnswer | .submissions number
-answer DataResetPlanAnswer | .systems number
 answer FindingsRefusalAnswer | (root) object
 answer FindingsRefusalAnswer | .error string
 answer FindingsRefusalAnswer | .findings array of object
@@ -127,21 +403,21 @@ answer MaintainerAccountsAnswer | .accounts[].id number
 answer MaintainerAccountsAnswer | .accounts[].isAdministrator boolean
 answer MaintainerAccountsAnswer | .accounts[].isLocked boolean
 answer MaintainerAccountsAnswer | .accounts[].isVerified boolean
+answer MaintainerBoardsAnswer | (root) object
+answer MaintainerBoardsAnswer | .boards array of object
+answer MaintainerBoardsAnswer | .boards[].board string
+answer MaintainerBoardsAnswer | .boards[].boardId string
+answer MaintainerBoardsAnswer | .boards[].currentRevision string
+answer MaintainerBoardsAnswer | .boards[].hardware string
+answer MaintainerBoardsAnswer | .boards[].isAccepting boolean
+answer MaintainerBoardsAnswer | .boards[].maintainers array of object
+answer MaintainerBoardsAnswer | .boards[].maintainers[].accountId number
+answer MaintainerBoardsAnswer | .boards[].maintainers[].displayName string
+answer MaintainerBoardsAnswer | .boards[].maintainers[].email string
+answer MaintainerBoardsAnswer | .boards[].manufacturer string
 answer MaintainerChangeAnswer | (root) object
 answer MaintainerChangeAnswer | .accountId number
-answer MaintainerChangeAnswer | .systemId string
-answer MaintainerSystemsAnswer | (root) object
-answer MaintainerSystemsAnswer | .systems array of object
-answer MaintainerSystemsAnswer | .systems[].board string
-answer MaintainerSystemsAnswer | .systems[].currentRevision string
-answer MaintainerSystemsAnswer | .systems[].hardware string
-answer MaintainerSystemsAnswer | .systems[].isAccepting boolean
-answer MaintainerSystemsAnswer | .systems[].maintainers array of object
-answer MaintainerSystemsAnswer | .systems[].maintainers[].accountId number
-answer MaintainerSystemsAnswer | .systems[].maintainers[].displayName string
-answer MaintainerSystemsAnswer | .systems[].maintainers[].email string
-answer MaintainerSystemsAnswer | .systems[].manufacturer string
-answer MaintainerSystemsAnswer | .systems[].systemId string
+answer MaintainerChangeAnswer | .boardId string
 answer ManifestRebuildAnswer | (root) object
 answer ManifestRebuildAnswer | .headline string
 answer ManifestRebuildAnswer | .trees array of object
@@ -150,19 +426,19 @@ answer ManifestRebuildAnswer | .trees[].message string
 answer ManifestRebuildAnswer | .trees[].skipped boolean
 answer ManifestRebuildAnswer | .trees[].tree string
 answer ProductionListAnswer | (root) object
+answer ProductionListAnswer | .boards array of object
+answer ProductionListAnswer | .boards[].awaitsYou boolean
+answer ProductionListAnswer | .boards[].betaContentHash string
+answer ProductionListAnswer | .boards[].betaRevision string
+answer ProductionListAnswer | .boards[].board string
+answer ProductionListAnswer | .boards[].boardId string
+answer ProductionListAnswer | .boards[].carriesDiscardedDraft boolean
+answer ProductionListAnswer | .boards[].hardware string
+answer ProductionListAnswer | .boards[].manufacturer string
+answer ProductionListAnswer | .boards[].productionPublishedUtc string
+answer ProductionListAnswer | .boards[].productionRevision string
+answer ProductionListAnswer | .boards[].waitsForAdministrator boolean
 answer ProductionListAnswer | .configured boolean
-answer ProductionListAnswer | .systems array of object
-answer ProductionListAnswer | .systems[].awaitsYou boolean
-answer ProductionListAnswer | .systems[].betaContentHash string
-answer ProductionListAnswer | .systems[].betaRevision string
-answer ProductionListAnswer | .systems[].board string
-answer ProductionListAnswer | .systems[].carriesDiscardedDraft boolean
-answer ProductionListAnswer | .systems[].hardware string
-answer ProductionListAnswer | .systems[].manufacturer string
-answer ProductionListAnswer | .systems[].productionPublishedUtc string
-answer ProductionListAnswer | .systems[].productionRevision string
-answer ProductionListAnswer | .systems[].systemId string
-answer ProductionListAnswer | .systems[].waitsForAdministrator boolean
 answer ProductionPlanAnswer | (root) object
 answer ProductionPlanAnswer | .approval object
 answer ProductionPlanAnswer | .approval.approvalPublishes boolean
@@ -179,6 +455,7 @@ answer ProductionPlanAnswer | .approval.yourRole enum ApproverRole
 answer ProductionPlanAnswer | .betaContentHash string
 answer ProductionPlanAnswer | .betaDataUrl string
 answer ProductionPlanAnswer | .betaRevision string
+answer ProductionPlanAnswer | .boardId string
 answer ProductionPlanAnswer | .canPublish boolean
 answer ProductionPlanAnswer | .carrying array of object
 answer ProductionPlanAnswer | .carrying[].comment string
@@ -205,16 +482,15 @@ answer ProductionPlanAnswer | .removals object
 answer ProductionPlanAnswer | .removals.blockedBecause string
 answer ProductionPlanAnswer | .removals.files array of string
 answer ProductionPlanAnswer | .removals.isBlocked boolean
-answer ProductionPlanAnswer | .systemId string
 answer ProductionPlanAnswer | .touchesSharedFiles boolean
 answer ProductionPlanAnswer | .unchangedCount number
 answer ProductionPlanAnswer | .unchangedFiles array of string
 answer ProductionPublishAnswer | (root) object
+answer ProductionPublishAnswer | .boardId string
 answer ProductionPublishAnswer | .filesCopied number
 answer ProductionPublishAnswer | .removedFiles array of string
 answer ProductionPublishAnswer | .revision string
 answer ProductionPublishAnswer | .state string
-answer ProductionPublishAnswer | .systemId string
 answer ProductionPublishAnswer | .waitingFor array of enum ApproverRole
 answer ReviewDecisionAnswer | (root) object
 answer ReviewDecisionAnswer | .contentHash string
@@ -229,15 +505,15 @@ answer ReviewQueueAnswer | .isAdministrator boolean
 answer ReviewQueueAnswer | .submissions array of object
 answer ReviewQueueAnswer | .submissions[].awaitsYou boolean
 answer ReviewQueueAnswer | .submissions[].baseRevision string
+answer ReviewQueueAnswer | .submissions[].boardId string
 answer ReviewQueueAnswer | .submissions[].contactEmail string
 answer ReviewQueueAnswer | .submissions[].createdUtc string
 answer ReviewQueueAnswer | .submissions[].decidedUtc string
 answer ReviewQueueAnswer | .submissions[].draftDiscardedUtc string
 answer ReviewQueueAnswer | .submissions[].id number
-answer ReviewQueueAnswer | .submissions[].isNewSystem boolean
+answer ReviewQueueAnswer | .submissions[].isNewBoard boolean
 answer ReviewQueueAnswer | .submissions[].state string
 answer ReviewQueueAnswer | .submissions[].summary string
-answer ReviewQueueAnswer | .submissions[].systemId string
 answer ReviewQueueAnswer | .submissions[].touchesSharedFiles boolean
 answer ReviewTableData | (root) object
 answer ReviewTableData | .published object
@@ -437,7 +713,7 @@ answer SubmissionDetailAnswer | .changes.changedSections[].renamed[].to string
 answer SubmissionDetailAnswer | .changes.changedSections[].section string
 answer SubmissionDetailAnswer | .changes.changedSections[].totalChanges number
 answer SubmissionDetailAnswer | .changes.hasChanges boolean
-answer SubmissionDetailAnswer | .changes.isNewSystem boolean
+answer SubmissionDetailAnswer | .changes.isNewBoard boolean
 answer SubmissionDetailAnswer | .changes.revisionDate object
 answer SubmissionDetailAnswer | .changes.revisionDate.after string
 answer SubmissionDetailAnswer | .changes.revisionDate.before string
@@ -468,13 +744,13 @@ answer SubmissionDetailAnswer | .contributor.publishedToStable number
 answer SubmissionDetailAnswer | .contributor.rejected number
 answer SubmissionDetailAnswer | .contributor.signedIn boolean
 answer SubmissionDetailAnswer | .contributor.submissions array of object
+answer SubmissionDetailAnswer | .contributor.submissions[].boardId string
 answer SubmissionDetailAnswer | .contributor.submissions[].createdUtc string
 answer SubmissionDetailAnswer | .contributor.submissions[].decidedUtc string
 answer SubmissionDetailAnswer | .contributor.submissions[].decisionComment string
 answer SubmissionDetailAnswer | .contributor.submissions[].id number
 answer SubmissionDetailAnswer | .contributor.submissions[].state string
 answer SubmissionDetailAnswer | .contributor.submissions[].summary string
-answer SubmissionDetailAnswer | .contributor.submissions[].systemId string
 answer SubmissionDetailAnswer | .contributor.waiting number
 answer SubmissionDetailAnswer | .findings array of object
 answer SubmissionDetailAnswer | .findings[].code string
@@ -485,6 +761,7 @@ answer SubmissionDetailAnswer | .manifest object
 answer SubmissionDetailAnswer | .manifest.applicationVersion string
 answer SubmissionDetailAnswer | .manifest.baseRevision string
 answer SubmissionDetailAnswer | .manifest.board string
+answer SubmissionDetailAnswer | .manifest.boardId string
 answer SubmissionDetailAnswer | .manifest.contactEmail string
 answer SubmissionDetailAnswer | .manifest.createdUtc string
 answer SubmissionDetailAnswer | .manifest.files array of object
@@ -570,7 +847,6 @@ answer SubmissionDetailAnswer | .manifest.rows.schematics[].schematicName string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].thumbnailHighlightColor string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].thumbnailHighlightOpacity string
 answer SubmissionDetailAnswer | .manifest.summary string
-answer SubmissionDetailAnswer | .manifest.systemId string
 answer SubmissionDetailAnswer | .publishedFiles array of string
 answer SubmissionDetailAnswer | .publishedHashes map of string
 answer SubmissionDetailAnswer | .removals object
@@ -581,15 +857,15 @@ answer SubmissionDetailAnswer | .schematicImages map of string
 answer SubmissionDetailAnswer | .submission object
 answer SubmissionDetailAnswer | .submission.awaitsYou boolean
 answer SubmissionDetailAnswer | .submission.baseRevision string
+answer SubmissionDetailAnswer | .submission.boardId string
 answer SubmissionDetailAnswer | .submission.contactEmail string
 answer SubmissionDetailAnswer | .submission.createdUtc string
 answer SubmissionDetailAnswer | .submission.decidedUtc string
 answer SubmissionDetailAnswer | .submission.draftDiscardedUtc string
 answer SubmissionDetailAnswer | .submission.id number
-answer SubmissionDetailAnswer | .submission.isNewSystem boolean
+answer SubmissionDetailAnswer | .submission.isNewBoard boolean
 answer SubmissionDetailAnswer | .submission.state string
 answer SubmissionDetailAnswer | .submission.summary string
-answer SubmissionDetailAnswer | .submission.systemId string
 answer SubmissionDetailAnswer | .submission.touchesSharedFiles boolean
 answer SubmissionDetailAnswer | .submittedFiles array of object
 answer SubmissionDetailAnswer | .submittedFiles[].existsOnServer boolean
@@ -602,14 +878,14 @@ answer SubmissionDetailAnswer | .submittedFiles[].sha256 string
 answer SubmissionDetailAnswer | .submittedFiles[].sizeBytes number
 answer SubmissionFilesAnswer | (root) object
 answer SubmissionFilesAnswer | .betaDataUrl string
+answer SubmissionFilesAnswer | .boardId string
 answer SubmissionFilesAnswer | .files array of object
-answer SubmissionFilesAnswer | .files[].change enum SystemFileChange
-answer SubmissionFilesAnswer | .files[].openFrom enum SystemFileSource
+answer SubmissionFilesAnswer | .files[].change enum BoardFileChange
+answer SubmissionFilesAnswer | .files[].openFrom enum BoardFileSource
 answer SubmissionFilesAnswer | .files[].path string
 answer SubmissionFilesAnswer | .files[].sha256 string
 answer SubmissionFilesAnswer | .files[].sizeBytes number
 answer SubmissionFilesAnswer | .files[].writtenOnApproval boolean
-answer SubmissionFilesAnswer | .systemId string
 answer SubmissionResult | (root) object
 answer SubmissionResult | .findings array of object
 answer SubmissionResult | .findings[].code string
@@ -621,6 +897,7 @@ answer SubmissionResult | .state string
 answer SubmissionResult | .submissionId number
 answer SubmissionStatus | (root) object
 answer SubmissionStatus | .amendedByMaintainer boolean
+answer SubmissionStatus | .boardId string
 answer SubmissionStatus | .createdUtc string
 answer SubmissionStatus | .decidedUtc string
 answer SubmissionStatus | .findings array of object
@@ -632,266 +909,6 @@ answer SubmissionStatus | .id number
 answer SubmissionStatus | .maintainerComment string
 answer SubmissionStatus | .state string
 answer SubmissionStatus | .summary string
-answer SubmissionStatus | .systemId string
-answer SystemDeleteAnswer | (root) object
-answer SystemDeleteAnswer | .betaFilesRemoved number
-answer SystemDeleteAnswer | .contributorsMailed number
-answer SystemDeleteAnswer | .productionFilesRemoved number
-answer SystemDeleteAnswer | .submissionsDeleted number
-answer SystemDeleteAnswer | .systemId string
-answer SystemDeletePlanAnswer | (root) object
-answer SystemDeletePlanAnswer | .betaFiles number
-answer SystemDeletePlanAnswer | .blockedBecause string
-answer SystemDeletePlanAnswer | .board string
-answer SystemDeletePlanAnswer | .fingerprint string
-answer SystemDeletePlanAnswer | .hardware string
-answer SystemDeletePlanAnswer | .hasRecord boolean
-answer SystemDeletePlanAnswer | .invitations number
-answer SystemDeletePlanAnswer | .listedInBeta boolean
-answer SystemDeletePlanAnswer | .listedInProduction boolean
-answer SystemDeletePlanAnswer | .maintainers number
-answer SystemDeletePlanAnswer | .manufacturer string
-answer SystemDeletePlanAnswer | .openSubmissions array of object
-answer SystemDeletePlanAnswer | .openSubmissions[].contributor string
-answer SystemDeletePlanAnswer | .openSubmissions[].createdUtc string
-answer SystemDeletePlanAnswer | .openSubmissions[].id number
-answer SystemDeletePlanAnswer | .openSubmissions[].state string
-answer SystemDeletePlanAnswer | .openSubmissions[].summary string
-answer SystemDeletePlanAnswer | .productionFiles number
-answer SystemDeletePlanAnswer | .submissions number
-answer SystemDeletePlanAnswer | .systemId string
-answer SystemDetailAnswer | (root) object
-answer SystemDetailAnswer | .addressesHidden boolean
-answer SystemDetailAnswer | .contributors array of object
-answer SystemDetailAnswer | .contributors[].accepted number
-answer SystemDetailAnswer | .contributors[].changesRequested number
-answer SystemDetailAnswer | .contributors[].email string
-answer SystemDetailAnswer | .contributors[].lastSubmittedUtc string
-answer SystemDetailAnswer | .contributors[].name string
-answer SystemDetailAnswer | .contributors[].rejected number
-answer SystemDetailAnswer | .contributors[].waiting number
-answer SystemDetailAnswer | .history array of object
-answer SystemDetailAnswer | .history[].atUtc string
-answer SystemDetailAnswer | .history[].detail string
-answer SystemDetailAnswer | .history[].event string
-answer SystemDetailAnswer | .history[].note string
-answer SystemDetailAnswer | .history[].submissionId number
-answer SystemDetailAnswer | .history[].who string
-answer SystemDetailAnswer | .invitations array of object
-answer SystemDetailAnswer | .invitations[].email string
-answer SystemDetailAnswer | .invitations[].expiresUtc string
-answer SystemDetailAnswer | .invitations[].id number
-answer SystemDetailAnswer | .invitations[].invitedUtc string
-answer SystemDetailAnswer | .maintainers array of object
-answer SystemDetailAnswer | .maintainers[].accountId number
-answer SystemDetailAnswer | .maintainers[].displayName string
-answer SystemDetailAnswer | .maintainers[].email string
-answer SystemDetailAnswer | .submissions array of object
-answer SystemDetailAnswer | .submissions[].changes object
-answer SystemDetailAnswer | .submissions[].changes.files object
-answer SystemDetailAnswer | .submissions[].changes.files.added array of string
-answer SystemDetailAnswer | .submissions[].changes.files.addedCount number
-answer SystemDetailAnswer | .submissions[].changes.files.hasChanges boolean
-answer SystemDetailAnswer | .submissions[].changes.files.removed array of string
-answer SystemDetailAnswer | .submissions[].changes.files.removedCount number
-answer SystemDetailAnswer | .submissions[].changes.files.replaced array of string
-answer SystemDetailAnswer | .submissions[].changes.files.replacedCount number
-answer SystemDetailAnswer | .submissions[].changes.isNewSystem boolean
-answer SystemDetailAnswer | .submissions[].changes.sections array of object
-answer SystemDetailAnswer | .submissions[].changes.sections[].added array of string
-answer SystemDetailAnswer | .submissions[].changes.sections[].addedCount number
-answer SystemDetailAnswer | .submissions[].changes.sections[].changed array of object
-answer SystemDetailAnswer | .submissions[].changes.sections[].changedCount number
-answer SystemDetailAnswer | .submissions[].changes.sections[].changed[].fields array of string
-answer SystemDetailAnswer | .submissions[].changes.sections[].changed[].row string
-answer SystemDetailAnswer | .submissions[].changes.sections[].removed array of string
-answer SystemDetailAnswer | .submissions[].changes.sections[].removedCount number
-answer SystemDetailAnswer | .submissions[].changes.sections[].renamed array of object
-answer SystemDetailAnswer | .submissions[].changes.sections[].renamedCount number
-answer SystemDetailAnswer | .submissions[].changes.sections[].renamed[].from string
-answer SystemDetailAnswer | .submissions[].changes.sections[].renamed[].to string
-answer SystemDetailAnswer | .submissions[].changes.sections[].section string
-answer SystemDetailAnswer | .submissions[].contactEmail string
-answer SystemDetailAnswer | .submissions[].createdUtc string
-answer SystemDetailAnswer | .submissions[].decidedUtc string
-answer SystemDetailAnswer | .submissions[].decisionComment string
-answer SystemDetailAnswer | .submissions[].draftDiscardedUtc string
-answer SystemDetailAnswer | .submissions[].id number
-answer SystemDetailAnswer | .submissions[].state string
-answer SystemDetailAnswer | .submissions[].summary string
-answer SystemDetailAnswer | .system object
-answer SystemDetailAnswer | .system.betaContentHash string
-answer SystemDetailAnswer | .system.betaRevision string
-answer SystemDetailAnswer | .system.board string
-answer SystemDetailAnswer | .system.hardware string
-answer SystemDetailAnswer | .system.inBeta boolean
-answer SystemDetailAnswer | .system.inProduction boolean
-answer SystemDetailAnswer | .system.isAccepting boolean
-answer SystemDetailAnswer | .system.isAwaitingProduction boolean
-answer SystemDetailAnswer | .system.listedInBeta boolean
-answer SystemDetailAnswer | .system.listedInStable boolean
-answer SystemDetailAnswer | .system.maintainerCount number
-answer SystemDetailAnswer | .system.manufacturer string
-answer SystemDetailAnswer | .system.productionPublishedUtc string
-answer SystemDetailAnswer | .system.productionRevision string
-answer SystemDetailAnswer | .system.systemId string
-answer SystemDetailAnswer | .system.viewsLast30Days number
-answer SystemDetailAnswer | .views object
-answer SystemDetailAnswer | .views.fromBetaLast30Days number
-answer SystemDetailAnswer | .views.last30Days number
-answer SystemDetailAnswer | .views.last365Days number
-answer SystemDetailAnswer | .views.last7Days number
-answer SystemDetailAnswer | .views.topCountries array of object
-answer SystemDetailAnswer | .views.topCountries[].countryCode string
-answer SystemDetailAnswer | .views.topCountries[].countryName string
-answer SystemDetailAnswer | .views.topCountries[].views number
-answer SystemEditAnswer | (root) object
-answer SystemEditAnswer | .findings array of object
-answer SystemEditAnswer | .findings[].code string
-answer SystemEditAnswer | .findings[].message string
-answer SystemEditAnswer | .findings[].severity enum ValidationSeverity
-answer SystemEditAnswer | .findings[].subject string
-answer SystemEditAnswer | .notPublishedReason string
-answer SystemEditAnswer | .published boolean
-answer SystemEditAnswer | .removedFiles array of string
-answer SystemEditAnswer | .revision string
-answer SystemEditAnswer | .submissionId number
-answer SystemEditCheckAnswer | (root) object
-answer SystemEditCheckAnswer | .removals array of string
-answer SystemFilesAnswer | (root) object
-answer SystemFilesAnswer | .betaDataUrl string
-answer SystemFilesAnswer | .files array of object
-answer SystemFilesAnswer | .files[].change enum SystemFileChange
-answer SystemFilesAnswer | .files[].openFrom enum SystemFileSource
-answer SystemFilesAnswer | .files[].path string
-answer SystemFilesAnswer | .files[].sha256 string
-answer SystemFilesAnswer | .files[].sizeBytes number
-answer SystemFilesAnswer | .files[].writtenOnApproval boolean
-answer SystemFilesAnswer | .productionDataUrl string
-answer SystemFilesAnswer | .systemId string
-answer SystemListingAnswer | (root) object
-answer SystemListingAnswer | .hasList boolean
-answer SystemListingAnswer | .rows array of object
-answer SystemListingAnswer | .rows[].boardName string
-answer SystemListingAnswer | .rows[].excelDataFile string
-answer SystemListingAnswer | .rows[].hardwareName string
-answer SystemListingAnswer | .rows[].systemId string
-answer SystemListingAnswer | .unlisted array of object
-answer SystemListingAnswer | .unlisted[].board string
-answer SystemListingAnswer | .unlisted[].canPlace boolean
-answer SystemListingAnswer | .unlisted[].hardware string
-answer SystemListingAnswer | .unlisted[].inBeta boolean
-answer SystemListingAnswer | .unlisted[].manufacturer string
-answer SystemListingAnswer | .unlisted[].placement object
-answer SystemListingAnswer | .unlisted[].placement.afterExcelDataFile string
-answer SystemListingAnswer | .unlisted[].placement.boardName string
-answer SystemListingAnswer | .unlisted[].placement.hardwareName string
-answer SystemListingAnswer | .unlisted[].placement.notes string
-answer SystemListingAnswer | .unlisted[].suggested object
-answer SystemListingAnswer | .unlisted[].suggested.afterExcelDataFile string
-answer SystemListingAnswer | .unlisted[].suggested.boardName string
-answer SystemListingAnswer | .unlisted[].suggested.hardwareName string
-answer SystemListingAnswer | .unlisted[].suggested.notes string
-answer SystemListingAnswer | .unlisted[].systemId string
-answer SystemOrderAnswer | (root) object
-answer SystemOrderAnswer | .betaChanged boolean
-answer SystemOrderAnswer | .problem string
-answer SystemOrderAnswer | .stableChanged boolean
-answer SystemOverviewAnswer | (root) object
-answer SystemOverviewAnswer | .systems array of object
-answer SystemOverviewAnswer | .systems[].betaContentHash string
-answer SystemOverviewAnswer | .systems[].betaRevision string
-answer SystemOverviewAnswer | .systems[].board string
-answer SystemOverviewAnswer | .systems[].hardware string
-answer SystemOverviewAnswer | .systems[].inBeta boolean
-answer SystemOverviewAnswer | .systems[].inProduction boolean
-answer SystemOverviewAnswer | .systems[].isAccepting boolean
-answer SystemOverviewAnswer | .systems[].isAwaitingProduction boolean
-answer SystemOverviewAnswer | .systems[].listedInBeta boolean
-answer SystemOverviewAnswer | .systems[].listedInStable boolean
-answer SystemOverviewAnswer | .systems[].maintainerCount number
-answer SystemOverviewAnswer | .systems[].manufacturer string
-answer SystemOverviewAnswer | .systems[].productionPublishedUtc string
-answer SystemOverviewAnswer | .systems[].productionRevision string
-answer SystemOverviewAnswer | .systems[].systemId string
-answer SystemOverviewAnswer | .systems[].viewsLast30Days number
-answer SystemTableAnswer | (root) object
-answer SystemTableAnswer | .betaDataUrl string
-answer SystemTableAnswer | .fingerprint string
-answer SystemTableAnswer | .mayEdit boolean
-answer SystemTableAnswer | .mayNotEditReason string
-answer SystemTableAnswer | .productionDataUrl string
-answer SystemTableAnswer | .rows object
-answer SystemTableAnswer | .rows.boardLinks array of object
-answer SystemTableAnswer | .rows.boardLinks[].category string
-answer SystemTableAnswer | .rows.boardLinks[].name string
-answer SystemTableAnswer | .rows.boardLinks[].url string
-answer SystemTableAnswer | .rows.boardLocalFiles array of object
-answer SystemTableAnswer | .rows.boardLocalFiles[].category string
-answer SystemTableAnswer | .rows.boardLocalFiles[].file string
-answer SystemTableAnswer | .rows.boardLocalFiles[].name string
-answer SystemTableAnswer | .rows.componentHighlights array of object
-answer SystemTableAnswer | .rows.componentHighlights[].boardLabel string
-answer SystemTableAnswer | .rows.componentHighlights[].height string
-answer SystemTableAnswer | .rows.componentHighlights[].schematicName string
-answer SystemTableAnswer | .rows.componentHighlights[].width string
-answer SystemTableAnswer | .rows.componentHighlights[].x string
-answer SystemTableAnswer | .rows.componentHighlights[].y string
-answer SystemTableAnswer | .rows.componentImages array of object
-answer SystemTableAnswer | .rows.componentImages[].boardLabel string
-answer SystemTableAnswer | .rows.componentImages[].expectedOscilloscopeReading string
-answer SystemTableAnswer | .rows.componentImages[].file string
-answer SystemTableAnswer | .rows.componentImages[].name string
-answer SystemTableAnswer | .rows.componentImages[].note string
-answer SystemTableAnswer | .rows.componentImages[].pin string
-answer SystemTableAnswer | .rows.componentImages[].region string
-answer SystemTableAnswer | .rows.componentImages[].timeDiv string
-answer SystemTableAnswer | .rows.componentImages[].triggerLevelVolts string
-answer SystemTableAnswer | .rows.componentImages[].voltsDiv string
-answer SystemTableAnswer | .rows.componentLinks array of object
-answer SystemTableAnswer | .rows.componentLinks[].boardLabel string
-answer SystemTableAnswer | .rows.componentLinks[].name string
-answer SystemTableAnswer | .rows.componentLinks[].url string
-answer SystemTableAnswer | .rows.componentLocalFiles array of object
-answer SystemTableAnswer | .rows.componentLocalFiles[].boardLabel string
-answer SystemTableAnswer | .rows.componentLocalFiles[].file string
-answer SystemTableAnswer | .rows.componentLocalFiles[].name string
-answer SystemTableAnswer | .rows.components array of object
-answer SystemTableAnswer | .rows.components[].boardLabel string
-answer SystemTableAnswer | .rows.components[].category string
-answer SystemTableAnswer | .rows.components[].description string
-answer SystemTableAnswer | .rows.components[].friendlyName string
-answer SystemTableAnswer | .rows.components[].partNumber string
-answer SystemTableAnswer | .rows.components[].region string
-answer SystemTableAnswer | .rows.components[].technicalNameOrValue string
-answer SystemTableAnswer | .rows.credits array of object
-answer SystemTableAnswer | .rows.credits[].category string
-answer SystemTableAnswer | .rows.credits[].contact string
-answer SystemTableAnswer | .rows.credits[].nameOrHandle string
-answer SystemTableAnswer | .rows.credits[].subCategory string
-answer SystemTableAnswer | .rows.kiCadCalibrations array of object
-answer SystemTableAnswer | .rows.kiCadCalibrations[].cadName string
-answer SystemTableAnswer | .rows.kiCadCalibrations[].mirrorX boolean
-answer SystemTableAnswer | .rows.kiCadCalibrations[].mirrorY boolean
-answer SystemTableAnswer | .rows.kiCadCalibrations[].offsetX number
-answer SystemTableAnswer | .rows.kiCadCalibrations[].offsetY number
-answer SystemTableAnswer | .rows.kiCadCalibrations[].scaleX number
-answer SystemTableAnswer | .rows.kiCadCalibrations[].scaleY number
-answer SystemTableAnswer | .rows.kiCadCalibrations[].schematicName string
-answer SystemTableAnswer | .rows.kiCadImportantSignals array of object
-answer SystemTableAnswer | .rows.kiCadImportantSignals[].displayName string
-answer SystemTableAnswer | .rows.kiCadImportantSignals[].kiCadNetName string
-answer SystemTableAnswer | .rows.revisionDate string
-answer SystemTableAnswer | .rows.schematics array of object
-answer SystemTableAnswer | .rows.schematics[].cadName string
-answer SystemTableAnswer | .rows.schematics[].oppositeTraceHighlightColor string
-answer SystemTableAnswer | .rows.schematics[].schematicHighlightColor string
-answer SystemTableAnswer | .rows.schematics[].schematicHighlightOpacity string
-answer SystemTableAnswer | .rows.schematics[].schematicImageFile string
-answer SystemTableAnswer | .rows.schematics[].schematicName string
-answer SystemTableAnswer | .rows.schematics[].thumbnailHighlightColor string
-answer SystemTableAnswer | .rows.schematics[].thumbnailHighlightOpacity string
-answer SystemTableAnswer | .systemId string
 answer UnusedFilesRemoveAnswer | (root) object
 answer UnusedFilesRemoveAnswer | .kept array of string
 answer UnusedFilesRemoveAnswer | .notDoneBecause string
@@ -930,43 +947,208 @@ body POST /api/accounts/register | .password string
 body POST /api/accounts/reset-password | (root) object
 body POST /api/accounts/reset-password | .newPassword string
 body POST /api/accounts/reset-password | .token string
+body POST /api/admin/boards/delete | (root) object
+body POST /api/admin/boards/delete | .boardId string
+body POST /api/admin/boards/delete | .fingerprint string
+body POST /api/admin/boards/delete | .reason string
+body POST /api/admin/boards/delete/plan | (root) object
+body POST /api/admin/boards/delete/plan | .boardId string
+body POST /api/admin/boards/delete/plan | .tree string
+body POST /api/admin/boards/order | (root) object
+body POST /api/admin/boards/order | .boardIds array of string
 body POST /api/admin/maintainers | (root) object
 body POST /api/admin/maintainers | .accountId number
-body POST /api/admin/maintainers | .systemId string
+body POST /api/admin/maintainers | .boardId string
 body POST /api/admin/maintainers/invitations/withdraw | (root) object
 body POST /api/admin/maintainers/invitations/withdraw | .invitationId number
 body POST /api/admin/maintainers/invite | (root) object
+body POST /api/admin/maintainers/invite | .boardId string
 body POST /api/admin/maintainers/invite | .email string
-body POST /api/admin/maintainers/invite | .systemId string
 body POST /api/admin/maintainers/remove | (root) object
 body POST /api/admin/maintainers/remove | .accountId number
-body POST /api/admin/maintainers/remove | .systemId string
+body POST /api/admin/maintainers/remove | .boardId string
 body POST /api/admin/reset | (root) object
 body POST /api/admin/reset | .fingerprint string
-body POST /api/admin/systems/delete | (root) object
-body POST /api/admin/systems/delete | .fingerprint string
-body POST /api/admin/systems/delete | .reason string
-body POST /api/admin/systems/delete | .systemId string
-body POST /api/admin/systems/delete/plan | (root) object
-body POST /api/admin/systems/delete/plan | .systemId string
-body POST /api/admin/systems/delete/plan | .tree string
-body POST /api/admin/systems/order | (root) object
-body POST /api/admin/systems/order | .systemIds array of string
 body POST /api/admin/unused-files/remove | (root) object
 body POST /api/admin/unused-files/remove | .files array of string
 body POST /api/admin/unused-files/remove | .tree string
+body POST /api/review/boards/detail | (root) object
+body POST /api/review/boards/detail | .boardId string
+body POST /api/review/boards/detail | .tree string
+body POST /api/review/boards/edit | (root) object
+body POST /api/review/boards/edit | .boardId string
+body POST /api/review/boards/edit | .expectedRemovals array of string
+body POST /api/review/boards/edit | .fingerprint string
+body POST /api/review/boards/edit | .rows object
+body POST /api/review/boards/edit | .rows.boardLinks array of object
+body POST /api/review/boards/edit | .rows.boardLinks[].category string
+body POST /api/review/boards/edit | .rows.boardLinks[].name string
+body POST /api/review/boards/edit | .rows.boardLinks[].url string
+body POST /api/review/boards/edit | .rows.boardLocalFiles array of object
+body POST /api/review/boards/edit | .rows.boardLocalFiles[].category string
+body POST /api/review/boards/edit | .rows.boardLocalFiles[].file string
+body POST /api/review/boards/edit | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit | .rows.componentHighlights array of object
+body POST /api/review/boards/edit | .rows.componentHighlights[].boardLabel string
+body POST /api/review/boards/edit | .rows.componentHighlights[].height string
+body POST /api/review/boards/edit | .rows.componentHighlights[].schematicName string
+body POST /api/review/boards/edit | .rows.componentHighlights[].width string
+body POST /api/review/boards/edit | .rows.componentHighlights[].x string
+body POST /api/review/boards/edit | .rows.componentHighlights[].y string
+body POST /api/review/boards/edit | .rows.componentImages array of object
+body POST /api/review/boards/edit | .rows.componentImages[].boardLabel string
+body POST /api/review/boards/edit | .rows.componentImages[].expectedOscilloscopeReading string
+body POST /api/review/boards/edit | .rows.componentImages[].file string
+body POST /api/review/boards/edit | .rows.componentImages[].name string
+body POST /api/review/boards/edit | .rows.componentImages[].note string
+body POST /api/review/boards/edit | .rows.componentImages[].pin string
+body POST /api/review/boards/edit | .rows.componentImages[].region string
+body POST /api/review/boards/edit | .rows.componentImages[].timeDiv string
+body POST /api/review/boards/edit | .rows.componentImages[].triggerLevelVolts string
+body POST /api/review/boards/edit | .rows.componentImages[].voltsDiv string
+body POST /api/review/boards/edit | .rows.componentLinks array of object
+body POST /api/review/boards/edit | .rows.componentLinks[].boardLabel string
+body POST /api/review/boards/edit | .rows.componentLinks[].name string
+body POST /api/review/boards/edit | .rows.componentLinks[].url string
+body POST /api/review/boards/edit | .rows.componentLocalFiles array of object
+body POST /api/review/boards/edit | .rows.componentLocalFiles[].boardLabel string
+body POST /api/review/boards/edit | .rows.componentLocalFiles[].file string
+body POST /api/review/boards/edit | .rows.componentLocalFiles[].name string
+body POST /api/review/boards/edit | .rows.components array of object
+body POST /api/review/boards/edit | .rows.components[].boardLabel string
+body POST /api/review/boards/edit | .rows.components[].category string
+body POST /api/review/boards/edit | .rows.components[].description string
+body POST /api/review/boards/edit | .rows.components[].friendlyName string
+body POST /api/review/boards/edit | .rows.components[].partNumber string
+body POST /api/review/boards/edit | .rows.components[].region string
+body POST /api/review/boards/edit | .rows.components[].technicalNameOrValue string
+body POST /api/review/boards/edit | .rows.credits array of object
+body POST /api/review/boards/edit | .rows.credits[].category string
+body POST /api/review/boards/edit | .rows.credits[].contact string
+body POST /api/review/boards/edit | .rows.credits[].nameOrHandle string
+body POST /api/review/boards/edit | .rows.credits[].subCategory string
+body POST /api/review/boards/edit | .rows.kiCadCalibrations array of object
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].cadName string
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].mirrorX boolean
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].mirrorY boolean
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].offsetX number
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].offsetY number
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].scaleX number
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].scaleY number
+body POST /api/review/boards/edit | .rows.kiCadCalibrations[].schematicName string
+body POST /api/review/boards/edit | .rows.kiCadImportantSignals array of object
+body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].displayName string
+body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit | .rows.revisionDate string
+body POST /api/review/boards/edit | .rows.schematics array of object
+body POST /api/review/boards/edit | .rows.schematics[].cadName string
+body POST /api/review/boards/edit | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/review/boards/edit | .rows.schematics[].schematicHighlightColor string
+body POST /api/review/boards/edit | .rows.schematics[].schematicHighlightOpacity string
+body POST /api/review/boards/edit | .rows.schematics[].schematicImageFile string
+body POST /api/review/boards/edit | .rows.schematics[].schematicName string
+body POST /api/review/boards/edit | .rows.schematics[].thumbnailHighlightColor string
+body POST /api/review/boards/edit | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/review/boards/edit | .summary string
+body POST /api/review/boards/edit/check | (root) object
+body POST /api/review/boards/edit/check | .boardId string
+body POST /api/review/boards/edit/check | .expectedRemovals array of string
+body POST /api/review/boards/edit/check | .fingerprint string
+body POST /api/review/boards/edit/check | .rows object
+body POST /api/review/boards/edit/check | .rows.boardLinks array of object
+body POST /api/review/boards/edit/check | .rows.boardLinks[].category string
+body POST /api/review/boards/edit/check | .rows.boardLinks[].name string
+body POST /api/review/boards/edit/check | .rows.boardLinks[].url string
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles array of object
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].category string
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].file string
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit/check | .rows.componentHighlights array of object
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].boardLabel string
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].height string
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].schematicName string
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].width string
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].x string
+body POST /api/review/boards/edit/check | .rows.componentHighlights[].y string
+body POST /api/review/boards/edit/check | .rows.componentImages array of object
+body POST /api/review/boards/edit/check | .rows.componentImages[].boardLabel string
+body POST /api/review/boards/edit/check | .rows.componentImages[].expectedOscilloscopeReading string
+body POST /api/review/boards/edit/check | .rows.componentImages[].file string
+body POST /api/review/boards/edit/check | .rows.componentImages[].name string
+body POST /api/review/boards/edit/check | .rows.componentImages[].note string
+body POST /api/review/boards/edit/check | .rows.componentImages[].pin string
+body POST /api/review/boards/edit/check | .rows.componentImages[].region string
+body POST /api/review/boards/edit/check | .rows.componentImages[].timeDiv string
+body POST /api/review/boards/edit/check | .rows.componentImages[].triggerLevelVolts string
+body POST /api/review/boards/edit/check | .rows.componentImages[].voltsDiv string
+body POST /api/review/boards/edit/check | .rows.componentLinks array of object
+body POST /api/review/boards/edit/check | .rows.componentLinks[].boardLabel string
+body POST /api/review/boards/edit/check | .rows.componentLinks[].name string
+body POST /api/review/boards/edit/check | .rows.componentLinks[].url string
+body POST /api/review/boards/edit/check | .rows.componentLocalFiles array of object
+body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].boardLabel string
+body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].file string
+body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].name string
+body POST /api/review/boards/edit/check | .rows.components array of object
+body POST /api/review/boards/edit/check | .rows.components[].boardLabel string
+body POST /api/review/boards/edit/check | .rows.components[].category string
+body POST /api/review/boards/edit/check | .rows.components[].description string
+body POST /api/review/boards/edit/check | .rows.components[].friendlyName string
+body POST /api/review/boards/edit/check | .rows.components[].partNumber string
+body POST /api/review/boards/edit/check | .rows.components[].region string
+body POST /api/review/boards/edit/check | .rows.components[].technicalNameOrValue string
+body POST /api/review/boards/edit/check | .rows.credits array of object
+body POST /api/review/boards/edit/check | .rows.credits[].category string
+body POST /api/review/boards/edit/check | .rows.credits[].contact string
+body POST /api/review/boards/edit/check | .rows.credits[].nameOrHandle string
+body POST /api/review/boards/edit/check | .rows.credits[].subCategory string
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations array of object
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].cadName string
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].mirrorX boolean
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].mirrorY boolean
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].offsetX number
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].offsetY number
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].scaleX number
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].scaleY number
+body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].schematicName string
+body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals array of object
+body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].displayName string
+body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit/check | .rows.revisionDate string
+body POST /api/review/boards/edit/check | .rows.schematics array of object
+body POST /api/review/boards/edit/check | .rows.schematics[].cadName string
+body POST /api/review/boards/edit/check | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/review/boards/edit/check | .rows.schematics[].schematicHighlightColor string
+body POST /api/review/boards/edit/check | .rows.schematics[].schematicHighlightOpacity string
+body POST /api/review/boards/edit/check | .rows.schematics[].schematicImageFile string
+body POST /api/review/boards/edit/check | .rows.schematics[].schematicName string
+body POST /api/review/boards/edit/check | .rows.schematics[].thumbnailHighlightColor string
+body POST /api/review/boards/edit/check | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/review/boards/edit/check | .summary string
+body POST /api/review/boards/files | (root) object
+body POST /api/review/boards/files | .boardId string
+body POST /api/review/boards/files | .tree string
+body POST /api/review/boards/listing | (root) object
+body POST /api/review/boards/listing | .afterExcelDataFile string
+body POST /api/review/boards/listing | .boardId string
+body POST /api/review/boards/listing | .boardName string
+body POST /api/review/boards/listing | .hardwareName string
+body POST /api/review/boards/listing | .notes string
+body POST /api/review/boards/table | (root) object
+body POST /api/review/boards/table | .boardId string
+body POST /api/review/boards/table | .tree string
 body POST /api/review/production/plan | (root) object
-body POST /api/review/production/plan | .systemId string
+body POST /api/review/production/plan | .boardId string
 body POST /api/review/production/publish | (root) object
+body POST /api/review/production/publish | .boardId string
 body POST /api/review/production/publish | .expectedBetaContentHash string
 body POST /api/review/production/publish | .expectedRemovals array of string
-body POST /api/review/production/publish | .systemId string
 body POST /api/review/production/rollback | (root) object
+body POST /api/review/production/rollback | .boardId string
 body POST /api/review/production/rollback | .comment string
 body POST /api/review/production/rollback | .reject boolean
-body POST /api/review/production/rollback | .systemId string
 body POST /api/review/production/rollback/plan | (root) object
-body POST /api/review/production/rollback/plan | .systemId string
+body POST /api/review/production/rollback/plan | .boardId string
 body POST /api/review/submissions/{submissionId:long}/amend | (root) object
 body POST /api/review/submissions/{submissionId:long}/amend | .expectedVersion number
 body POST /api/review/submissions/{submissionId:long}/amend | .rows object
@@ -1048,175 +1230,11 @@ body POST /api/review/submissions/{submissionId:long}/reject | .expectedRemovals
 body POST /api/review/submissions/{submissionId:long}/request-changes | (root) object
 body POST /api/review/submissions/{submissionId:long}/request-changes | .comment string
 body POST /api/review/submissions/{submissionId:long}/request-changes | .expectedRemovals array of string
-body POST /api/review/systems/detail | (root) object
-body POST /api/review/systems/detail | .systemId string
-body POST /api/review/systems/detail | .tree string
-body POST /api/review/systems/edit | (root) object
-body POST /api/review/systems/edit | .expectedRemovals array of string
-body POST /api/review/systems/edit | .fingerprint string
-body POST /api/review/systems/edit | .rows object
-body POST /api/review/systems/edit | .rows.boardLinks array of object
-body POST /api/review/systems/edit | .rows.boardLinks[].category string
-body POST /api/review/systems/edit | .rows.boardLinks[].name string
-body POST /api/review/systems/edit | .rows.boardLinks[].url string
-body POST /api/review/systems/edit | .rows.boardLocalFiles array of object
-body POST /api/review/systems/edit | .rows.boardLocalFiles[].category string
-body POST /api/review/systems/edit | .rows.boardLocalFiles[].file string
-body POST /api/review/systems/edit | .rows.boardLocalFiles[].name string
-body POST /api/review/systems/edit | .rows.componentHighlights array of object
-body POST /api/review/systems/edit | .rows.componentHighlights[].boardLabel string
-body POST /api/review/systems/edit | .rows.componentHighlights[].height string
-body POST /api/review/systems/edit | .rows.componentHighlights[].schematicName string
-body POST /api/review/systems/edit | .rows.componentHighlights[].width string
-body POST /api/review/systems/edit | .rows.componentHighlights[].x string
-body POST /api/review/systems/edit | .rows.componentHighlights[].y string
-body POST /api/review/systems/edit | .rows.componentImages array of object
-body POST /api/review/systems/edit | .rows.componentImages[].boardLabel string
-body POST /api/review/systems/edit | .rows.componentImages[].expectedOscilloscopeReading string
-body POST /api/review/systems/edit | .rows.componentImages[].file string
-body POST /api/review/systems/edit | .rows.componentImages[].name string
-body POST /api/review/systems/edit | .rows.componentImages[].note string
-body POST /api/review/systems/edit | .rows.componentImages[].pin string
-body POST /api/review/systems/edit | .rows.componentImages[].region string
-body POST /api/review/systems/edit | .rows.componentImages[].timeDiv string
-body POST /api/review/systems/edit | .rows.componentImages[].triggerLevelVolts string
-body POST /api/review/systems/edit | .rows.componentImages[].voltsDiv string
-body POST /api/review/systems/edit | .rows.componentLinks array of object
-body POST /api/review/systems/edit | .rows.componentLinks[].boardLabel string
-body POST /api/review/systems/edit | .rows.componentLinks[].name string
-body POST /api/review/systems/edit | .rows.componentLinks[].url string
-body POST /api/review/systems/edit | .rows.componentLocalFiles array of object
-body POST /api/review/systems/edit | .rows.componentLocalFiles[].boardLabel string
-body POST /api/review/systems/edit | .rows.componentLocalFiles[].file string
-body POST /api/review/systems/edit | .rows.componentLocalFiles[].name string
-body POST /api/review/systems/edit | .rows.components array of object
-body POST /api/review/systems/edit | .rows.components[].boardLabel string
-body POST /api/review/systems/edit | .rows.components[].category string
-body POST /api/review/systems/edit | .rows.components[].description string
-body POST /api/review/systems/edit | .rows.components[].friendlyName string
-body POST /api/review/systems/edit | .rows.components[].partNumber string
-body POST /api/review/systems/edit | .rows.components[].region string
-body POST /api/review/systems/edit | .rows.components[].technicalNameOrValue string
-body POST /api/review/systems/edit | .rows.credits array of object
-body POST /api/review/systems/edit | .rows.credits[].category string
-body POST /api/review/systems/edit | .rows.credits[].contact string
-body POST /api/review/systems/edit | .rows.credits[].nameOrHandle string
-body POST /api/review/systems/edit | .rows.credits[].subCategory string
-body POST /api/review/systems/edit | .rows.kiCadCalibrations array of object
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].cadName string
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].mirrorX boolean
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].mirrorY boolean
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].offsetX number
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].offsetY number
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].scaleX number
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].scaleY number
-body POST /api/review/systems/edit | .rows.kiCadCalibrations[].schematicName string
-body POST /api/review/systems/edit | .rows.kiCadImportantSignals array of object
-body POST /api/review/systems/edit | .rows.kiCadImportantSignals[].displayName string
-body POST /api/review/systems/edit | .rows.kiCadImportantSignals[].kiCadNetName string
-body POST /api/review/systems/edit | .rows.revisionDate string
-body POST /api/review/systems/edit | .rows.schematics array of object
-body POST /api/review/systems/edit | .rows.schematics[].cadName string
-body POST /api/review/systems/edit | .rows.schematics[].oppositeTraceHighlightColor string
-body POST /api/review/systems/edit | .rows.schematics[].schematicHighlightColor string
-body POST /api/review/systems/edit | .rows.schematics[].schematicHighlightOpacity string
-body POST /api/review/systems/edit | .rows.schematics[].schematicImageFile string
-body POST /api/review/systems/edit | .rows.schematics[].schematicName string
-body POST /api/review/systems/edit | .rows.schematics[].thumbnailHighlightColor string
-body POST /api/review/systems/edit | .rows.schematics[].thumbnailHighlightOpacity string
-body POST /api/review/systems/edit | .summary string
-body POST /api/review/systems/edit | .systemId string
-body POST /api/review/systems/edit/check | (root) object
-body POST /api/review/systems/edit/check | .expectedRemovals array of string
-body POST /api/review/systems/edit/check | .fingerprint string
-body POST /api/review/systems/edit/check | .rows object
-body POST /api/review/systems/edit/check | .rows.boardLinks array of object
-body POST /api/review/systems/edit/check | .rows.boardLinks[].category string
-body POST /api/review/systems/edit/check | .rows.boardLinks[].name string
-body POST /api/review/systems/edit/check | .rows.boardLinks[].url string
-body POST /api/review/systems/edit/check | .rows.boardLocalFiles array of object
-body POST /api/review/systems/edit/check | .rows.boardLocalFiles[].category string
-body POST /api/review/systems/edit/check | .rows.boardLocalFiles[].file string
-body POST /api/review/systems/edit/check | .rows.boardLocalFiles[].name string
-body POST /api/review/systems/edit/check | .rows.componentHighlights array of object
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].boardLabel string
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].height string
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].schematicName string
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].width string
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].x string
-body POST /api/review/systems/edit/check | .rows.componentHighlights[].y string
-body POST /api/review/systems/edit/check | .rows.componentImages array of object
-body POST /api/review/systems/edit/check | .rows.componentImages[].boardLabel string
-body POST /api/review/systems/edit/check | .rows.componentImages[].expectedOscilloscopeReading string
-body POST /api/review/systems/edit/check | .rows.componentImages[].file string
-body POST /api/review/systems/edit/check | .rows.componentImages[].name string
-body POST /api/review/systems/edit/check | .rows.componentImages[].note string
-body POST /api/review/systems/edit/check | .rows.componentImages[].pin string
-body POST /api/review/systems/edit/check | .rows.componentImages[].region string
-body POST /api/review/systems/edit/check | .rows.componentImages[].timeDiv string
-body POST /api/review/systems/edit/check | .rows.componentImages[].triggerLevelVolts string
-body POST /api/review/systems/edit/check | .rows.componentImages[].voltsDiv string
-body POST /api/review/systems/edit/check | .rows.componentLinks array of object
-body POST /api/review/systems/edit/check | .rows.componentLinks[].boardLabel string
-body POST /api/review/systems/edit/check | .rows.componentLinks[].name string
-body POST /api/review/systems/edit/check | .rows.componentLinks[].url string
-body POST /api/review/systems/edit/check | .rows.componentLocalFiles array of object
-body POST /api/review/systems/edit/check | .rows.componentLocalFiles[].boardLabel string
-body POST /api/review/systems/edit/check | .rows.componentLocalFiles[].file string
-body POST /api/review/systems/edit/check | .rows.componentLocalFiles[].name string
-body POST /api/review/systems/edit/check | .rows.components array of object
-body POST /api/review/systems/edit/check | .rows.components[].boardLabel string
-body POST /api/review/systems/edit/check | .rows.components[].category string
-body POST /api/review/systems/edit/check | .rows.components[].description string
-body POST /api/review/systems/edit/check | .rows.components[].friendlyName string
-body POST /api/review/systems/edit/check | .rows.components[].partNumber string
-body POST /api/review/systems/edit/check | .rows.components[].region string
-body POST /api/review/systems/edit/check | .rows.components[].technicalNameOrValue string
-body POST /api/review/systems/edit/check | .rows.credits array of object
-body POST /api/review/systems/edit/check | .rows.credits[].category string
-body POST /api/review/systems/edit/check | .rows.credits[].contact string
-body POST /api/review/systems/edit/check | .rows.credits[].nameOrHandle string
-body POST /api/review/systems/edit/check | .rows.credits[].subCategory string
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations array of object
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].cadName string
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].mirrorX boolean
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].mirrorY boolean
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].offsetX number
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].offsetY number
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].scaleX number
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].scaleY number
-body POST /api/review/systems/edit/check | .rows.kiCadCalibrations[].schematicName string
-body POST /api/review/systems/edit/check | .rows.kiCadImportantSignals array of object
-body POST /api/review/systems/edit/check | .rows.kiCadImportantSignals[].displayName string
-body POST /api/review/systems/edit/check | .rows.kiCadImportantSignals[].kiCadNetName string
-body POST /api/review/systems/edit/check | .rows.revisionDate string
-body POST /api/review/systems/edit/check | .rows.schematics array of object
-body POST /api/review/systems/edit/check | .rows.schematics[].cadName string
-body POST /api/review/systems/edit/check | .rows.schematics[].oppositeTraceHighlightColor string
-body POST /api/review/systems/edit/check | .rows.schematics[].schematicHighlightColor string
-body POST /api/review/systems/edit/check | .rows.schematics[].schematicHighlightOpacity string
-body POST /api/review/systems/edit/check | .rows.schematics[].schematicImageFile string
-body POST /api/review/systems/edit/check | .rows.schematics[].schematicName string
-body POST /api/review/systems/edit/check | .rows.schematics[].thumbnailHighlightColor string
-body POST /api/review/systems/edit/check | .rows.schematics[].thumbnailHighlightOpacity string
-body POST /api/review/systems/edit/check | .summary string
-body POST /api/review/systems/edit/check | .systemId string
-body POST /api/review/systems/files | (root) object
-body POST /api/review/systems/files | .systemId string
-body POST /api/review/systems/files | .tree string
-body POST /api/review/systems/listing | (root) object
-body POST /api/review/systems/listing | .afterExcelDataFile string
-body POST /api/review/systems/listing | .boardName string
-body POST /api/review/systems/listing | .hardwareName string
-body POST /api/review/systems/listing | .notes string
-body POST /api/review/systems/listing | .systemId string
-body POST /api/review/systems/table | (root) object
-body POST /api/review/systems/table | .systemId string
-body POST /api/review/systems/table | .tree string
 body POST /api/submissions | (root) object
 body POST /api/submissions | .applicationVersion string
 body POST /api/submissions | .baseRevision string
 body POST /api/submissions | .board string
+body POST /api/submissions | .boardId string
 body POST /api/submissions | .contactEmail string
 body POST /api/submissions | .createdUtc string
 body POST /api/submissions | .files array of object
@@ -1302,7 +1320,6 @@ body POST /api/submissions | .rows.schematics[].schematicName string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightOpacity string
 body POST /api/submissions | .summary string
-body POST /api/submissions | .systemId string
 body POST /api/usage/board-views | (root) object
 body POST /api/usage/board-views | .batchId string
 body POST /api/usage/board-views | .cpu string
@@ -1310,6 +1327,7 @@ body POST /api/usage/board-views | .osHighlevel string
 body POST /api/usage/board-views | .osVersion string
 body POST /api/usage/board-views | .version string
 body POST /api/usage/board-views | .views array of object
+body POST /api/usage/board-views | .views[].boardId string
 body POST /api/usage/board-views | .views[].fromBeta boolean
 body POST /api/usage/board-views | .views[].systemId string
 body POST /api/usage/board-views | .views[].viewedUtc string
@@ -1335,6 +1353,14 @@ const FeedbackContract.VersionField = "version"
 const SubmissionFormat.UploadTokenHeader = "X-Submission-Token"
 enum ApproverRole | Administrator -> "Administrator"
 enum ApproverRole | Maintainer -> "Maintainer"
+enum BoardFileChange | Added -> "Added"
+enum BoardFileChange | Changed -> "Changed"
+enum BoardFileChange | Removed -> "Removed"
+enum BoardFileChange | Unchanged -> "Unchanged"
+enum BoardFileSource | Beta -> "Beta"
+enum BoardFileSource | NotWrittenYet -> "NotWrittenYet"
+enum BoardFileSource | Production -> "Production"
+enum BoardFileSource | Submission -> "Submission"
 enum PromotionChange | Added -> "Added"
 enum PromotionChange | Replaced -> "Replaced"
 enum PromotionStage | Board -> "Board"
@@ -1343,24 +1369,18 @@ enum SubmissionFileScope | Foreign -> "Foreign"
 enum SubmissionFileScope | GenericShared -> "GenericShared"
 enum SubmissionFileScope | ManufacturerShared -> "ManufacturerShared"
 enum SubmissionFileScope | Own -> "Own"
-enum SystemFileChange | Added -> "Added"
-enum SystemFileChange | Changed -> "Changed"
-enum SystemFileChange | Removed -> "Removed"
-enum SystemFileChange | Unchanged -> "Unchanged"
-enum SystemFileSource | Beta -> "Beta"
-enum SystemFileSource | NotWrittenYet -> "NotWrittenYet"
-enum SystemFileSource | Production -> "Production"
-enum SystemFileSource | Submission -> "Submission"
 enum ValidationSeverity | Error -> 1
 enum ValidationSeverity | Warning -> 0
 route GET /api/accounts/me
 route GET /api/accounts/verify
 route GET /api/admin/accounts
 route GET /api/admin/api-usage
+route GET /api/admin/boards
 route GET /api/admin/reset
-route GET /api/admin/systems
 route GET /api/admin/unused-files
 route GET /api/health
+route GET /api/review/boards
+route GET /api/review/boards/listing
 route GET /api/review/production
 route GET /api/review/queue
 route GET /api/review/submissions/{submissionId:long}
@@ -1368,8 +1388,6 @@ route GET /api/review/submissions/{submissionId:long}/files
 route GET /api/review/submissions/{submissionId:long}/published/{**path}
 route GET /api/review/submissions/{submissionId:long}/submitted/{hash}
 route GET /api/review/submissions/{submissionId:long}/table
-route GET /api/review/systems
-route GET /api/review/systems/listing
 route GET /api/submissions/{submissionId:long}
 route GET /api/submissions/{submissionId:long}/blobs/{hash}
 route POST /api/accounts/accept-invitation
@@ -1383,18 +1401,24 @@ route POST /api/accounts/me/password
 route POST /api/accounts/refresh
 route POST /api/accounts/register
 route POST /api/accounts/reset-password
+route POST /api/admin/boards/delete
+route POST /api/admin/boards/delete/plan
+route POST /api/admin/boards/order
 route POST /api/admin/maintainers
 route POST /api/admin/maintainers/invitations/withdraw
 route POST /api/admin/maintainers/invite
 route POST /api/admin/maintainers/remove
 route POST /api/admin/manifest/rebuild
 route POST /api/admin/reset
-route POST /api/admin/systems/delete
-route POST /api/admin/systems/delete/plan
-route POST /api/admin/systems/order
 route POST /api/admin/unused-files/remove
 route POST /api/feedback
 route POST /api/legacy/contribution
+route POST /api/review/boards/detail
+route POST /api/review/boards/edit
+route POST /api/review/boards/edit/check
+route POST /api/review/boards/files
+route POST /api/review/boards/listing
+route POST /api/review/boards/table
 route POST /api/review/production/plan
 route POST /api/review/production/publish
 route POST /api/review/production/rollback
@@ -1403,12 +1427,6 @@ route POST /api/review/submissions/{submissionId:long}/amend
 route POST /api/review/submissions/{submissionId:long}/approve
 route POST /api/review/submissions/{submissionId:long}/reject
 route POST /api/review/submissions/{submissionId:long}/request-changes
-route POST /api/review/systems/detail
-route POST /api/review/systems/edit
-route POST /api/review/systems/edit/check
-route POST /api/review/systems/files
-route POST /api/review/systems/listing
-route POST /api/review/systems/table
 route POST /api/submissions
 route POST /api/submissions/{submissionId:long}/draft-discarded
 route POST /api/submissions/{submissionId:long}/finalise

@@ -117,6 +117,9 @@ namespace CRT
             this.SetShown("StableBoardPart", stable);
             this.SetShown("BetaFilesPart", !stable);
             this.SetShown("StableFilesPart", stable);
+
+            // "Compare sources" beside the switch - with Board data only (BoardDetailView.Compare.cs).
+            this.ApplyCompareBox();
         }
 
         private bool HoldsStableTableFor(string? boardId) =>
@@ -150,15 +153,38 @@ namespace CRT
         // ###########################################################################################
         private async Task LoadStableTableAsync()
         {
-            if (this.ShownBoard is not { } board || !this.CanReadStable)
+            if (this.ShownBoard is not { } board)
                 return;
+
+            BoardTableAnswer? stable = await this.ReadStableTableForAsync(board);
+
+            if (!this.IsShowing(board))
+                return;
+
+            // BETA's table compared with the stable source follows it - compared with nothing when
+            // the stable table was closed (ShowTables).
+            this.ShowTables(beta: null, betaMessage: null, stable);
+
+            if (stable is not null)
+                this.thisStableTableReadAt = board;
+        }
+
+        // ###########################################################################################
+        // The stable source's table of `board` as the server answers it, or null - with why said
+        // above it. A board the stable source does not hold, and an older server's answer that is
+        // BETA's, close the stable table. Null too for an answer about a board no longer chosen.
+        // ###########################################################################################
+        private async Task<BoardTableAnswer?> ReadStableTableForAsync(BoardOverviewEntry board)
+        {
+            if (!this.CanReadStable)
+                return null;
 
             WindowMessage.Show(this.FindControl<TextBlock>("StableTableMessageText"), null, isError: false);
 
             ReviewApiResult<BoardTableAnswer> result = await this.ReadStableTableAsync(board.BoardId);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal))
-                return;
+            if (!this.IsShowing(board))
+                return null;
 
             if (!result.IsOk)
             {
@@ -171,7 +197,7 @@ namespace CRT
                     result.Message,
                     isError: result.Failure != ReviewApiFailure.NotFound);
 
-                return;
+                return null;
             }
 
             // An older server answered with BETA's board: never drawn as the stable source's.
@@ -179,11 +205,10 @@ namespace CRT
             {
                 this.CloseStableTable();
                 WindowMessage.Show(this.FindControl<TextBlock>("StableTableMessageText"), BoardSections.StableNeedsNewerServer, isError: true);
-                return;
+                return null;
             }
 
-            this.OpenStableTable(result.Value!);
-            this.thisStableTableReadAt = board;
+            return result.Value!;
         }
 
         private bool CanReadStable =>
@@ -197,25 +222,54 @@ namespace CRT
         // Reads a board's stable table without a server - for tests.
         internal Func<string, Task<ReviewApiResult<BoardTableAnswer>>>? ReadStableTableOverrideForTests { get; set; }
 
-        private void OpenStableTable(BoardTableAnswer table)
-        {
-            BoardTableEditor editor = this.StableBoardTable;
+        // The stable table opened on `table` - and BETA's compared with it built again (ShowTables).
+        private void OpenStableTable(BoardTableAnswer table) =>
+            this.ShowTables(beta: null, betaMessage: null, table);
 
-            if (this.thisStableTable is not null && editor.CurrentSheet?.Name is string current)
+        // Holds `table` as the stable source's, keeping the sheet on screen for the board it showed.
+        private void TakeStableTable(BoardTableAnswer table)
+        {
+            if (this.thisStableTable is not null && this.StableBoardTable.CurrentSheet?.Name is string current)
                 this.thisStableSheetByBoard[this.thisStableTable.BoardId] = current;
 
             this.thisStableTable = table;
+        }
+
+        // Builds the stable table as held, against what it is compared with now. Only ShowTables and
+        // ApplyComparison call it.
+        private void BuildStableTable()
+        {
+            if (this.thisStableTable is not { } table)
+                return;
+
+            this.StableTableBuildsForTests++;
+
+            BoardTableEditor editor = this.StableBoardTable;
+
+            // "Compare sources" ticked (BoardDetailView.Compare.cs): built against BETA's board as
+            // read, so everything the stable source holds differently is marked.
+            BoardTableAnswer? beta = this.BetaToCompareWith(table.BoardId);
+            this.thisStableComparedWith = beta;
 
             if (this.thisClient is ReviewApiClient client)
-                editor.FileSource = new PublishedTableFileSource(client, table.ProductionDataUrl, this.LaunchFileAsync, BoardSections.StableTreeName);
+            {
+                editor.FileSource = new PublishedTableFileSource(client, table.ProductionDataUrl, this.LaunchFileAsync, BoardSections.StableTreeName)
+                {
+                    Baseline = BoardDetailView.BetaFilesBaseline(beta)
+                };
+            }
 
             BoardData stable = SubmissionRowsBoard.ToBoard(table.Rows);
+            BoardData comparedWith = SubmissionRowsBoard.ToBoard((beta ?? table).Rows);
 
             // Never editable: the server says so, and the table is told so whatever it says.
             editor.Clear();
             editor.IsReadOnly = true;
             editor.Open(
-                BoardTableDocument.Create(stable, SubmissionRowsBoard.ToBoard(table.Rows), BoardSections.StableBaselineLabel),
+                BoardTableDocument.Create(
+                    comparedWith,
+                    stable,
+                    beta is null ? BoardSections.StableBaselineLabel : BoardTableDocument.BetaSourceBaselineLabel),
                 null,
                 preferredSheet: this.thisStableSheetByBoard.TryGetValue(table.BoardId, out string? sheet) ? sheet : null);
 
@@ -241,6 +295,7 @@ namespace CRT
 
             this.thisStableTable = null;
             this.thisStableTableReadAt = null;
+            this.thisStableComparedWith = null;
 
             BoardTableEditor editor = this.StableBoardTable;
             editor.Clear();
@@ -334,7 +389,8 @@ namespace CRT
                 this.thisStableTableReadAt is { } tableReadAt &&
                 QueueRefreshRules.StableBoardChanged(tableReadAt, now))
             {
-                if (onScreen && this.thisSection == BoardSection.BoardData)
+                // On screen - or what BETA's table on screen is compared with (BoardDetailView.Compare.cs).
+                if ((onScreen || this.ComparesSources) && this.thisSection == BoardSection.BoardData)
                     await this.LoadStableTableAsync();
                 else
                     this.CloseStableTable();

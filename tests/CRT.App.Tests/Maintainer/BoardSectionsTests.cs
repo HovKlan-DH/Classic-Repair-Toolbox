@@ -33,12 +33,12 @@ public sealed class BoardSectionsTests
     // ###########################################################################################
     // What the table says when it opens: for a board this account may change, that a save asks for
     // a reason and goes straight to BETA, then waits under "Queue: Awaiting push from BETA to stable" - no longer that it becomes
-    // a submission to approve; for one it may not, the server's reason.
+    // a submission to approve; for one it may not, the server's reason - in the panel, not the line.
     // ###########################################################################################
     [Fact]
     public void An_editable_table_says_a_save_asks_a_reason_and_goes_straight_to_BETA()
     {
-        string opened = BoardSections.OpenedMessage(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: true));
+        string opened = BoardSections.TableNote(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: true), comparedWithStable: false)!;
 
         Assert.Contains("asks for a reason", opened, StringComparison.Ordinal);
         Assert.Contains("straight to BETA", opened, StringComparison.Ordinal);
@@ -49,15 +49,41 @@ public sealed class BoardSectionsTests
     [Fact]
     public void A_table_this_account_may_not_change_says_why_in_the_servers_words()
     {
-        Assert.Equal(
-            "Only this board's maintainers can.",
-            BoardSections.OpenedMessage(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false, "Only this board's maintainers can.")));
+        var readOnly = new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false, "Only this board's maintainers can.");
+
+        Assert.Equal("Only this board's maintainers can.", BoardSections.ReadOnlyReason(readOnly));
 
         // No reason from the server: still said that it cannot be changed.
         Assert.Contains(
             "not send a change",
-            BoardSections.OpenedMessage(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false)),
+            BoardSections.ReadOnlyReason(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false)),
             StringComparison.Ordinal);
+
+        // The board's detail says it in the same words (code review, 2026-10-09) - and nothing for
+        // a board that may be changed.
+        Assert.Equal("Only this board's maintainers can.", BoardSections.ReadOnlyReason(mayEdit: false, "Only this board's maintainers can."));
+        Assert.Null(BoardSections.ReadOnlyReason(mayEdit: true, "Ignored."));
+        Assert.Null(BoardSections.ReadOnlyReason(new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: true)));
+
+        // Why is the panel's; the line above a read-only table says nothing of its own.
+        Assert.Null(BoardSections.TableNote(readOnly, comparedWithStable: false));
+    }
+
+    // ###########################################################################################
+    // *** A READ-ONLY TABLE COMPARED WITH THE STABLE SOURCE SAYS SO (code review, 2026-10-09). ***
+    // Its rows are coloured with every difference from the stable source, and nothing near it said
+    // what the colours were. And whatever a caller says first - what a publish just did - leads.
+    // ###########################################################################################
+    [Fact]
+    public void A_read_only_table_compared_with_the_stable_source_says_what_its_colours_are()
+    {
+        var readOnly = new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false, "It waits in BETA.");
+
+        Assert.Equal(BoardSections.ComparedReadOnlyLine, BoardSections.TableNote(readOnly, comparedWithStable: true));
+        Assert.Equal(
+            "Published to BETA as revision 3. " + BoardSections.ComparedReadOnlyLine,
+            BoardSections.TableNote(readOnly, comparedWithStable: true, said: "Published to BETA as revision 3."));
+        Assert.Equal("Published to BETA as revision 3.", BoardSections.TableNote(readOnly, comparedWithStable: false, said: " Published to BETA as revision 3. "));
     }
 
     // ###########################################################################################
@@ -259,5 +285,39 @@ public sealed class BoardSectionsTests
 
         Assert.Null(BoardSections.PlacementLine(new BoardListingAnswer(true, [], []), BoardSectionsTests.BoardId));
         Assert.Null(BoardSections.PlacementLine(null, BoardSectionsTests.BoardId));
+    }
+
+    // ###########################################################################################
+    // "COMPARE SOURCES" (owner request, 2026-10-09). Only a board in BOTH sources can be compared,
+    // and never while BETA's table holds a change not saved - comparing builds the table again.
+    // Each reason is said; null is "it can be used".
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, true, false, null)]
+    [InlineData(true, true, true, BoardSections.CompareNeedsSavedTable)]
+    [InlineData(true, false, false, BoardSections.CompareNeedsBothSources)]
+    [InlineData(false, true, false, BoardSections.CompareNeedsBothSources)]
+    [InlineData(true, null, false, BoardSections.CompareNeedsBothSources)]
+    public void Comparing_needs_the_board_in_both_sources_and_no_change_waiting_in_BETAs_table(
+        bool inBeta, bool? inStable, bool unsaved, string? expected)
+    {
+        var board = new BoardOverviewEntry(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", inBeta, inStable, false, true, null, null, null, 1);
+
+        Assert.Equal(expected, BoardSections.CompareUnavailable(board, unsaved));
+        Assert.Equal(BoardSections.CompareNeedsBothSources, BoardSections.CompareUnavailable(null, betaHoldsUnsavedChange: false));
+    }
+
+    // Compared, BETA's table no longer says "only what you change is marked" - everything that
+    // differs from the stable source is.
+    [Fact]
+    public void A_compared_table_says_what_is_marked()
+    {
+        var table = new BoardTableAnswer(BoardSectionsTests.BoardId, new string('f', 64), new SubmissionRows(), MayEdit: true, MayNotEditReason: null);
+
+        string compared = BoardSections.TableNote(table, comparedWithStable: true)!;
+
+        Assert.StartsWith("BETA's board compared with the stable source - everything that differs from it is marked", compared, StringComparison.Ordinal);
+        Assert.Contains("straight to BETA", compared, StringComparison.Ordinal);
+        Assert.Contains("only what you change is marked", BoardSections.TableNote(table, comparedWithStable: false), StringComparison.Ordinal);
     }
 }

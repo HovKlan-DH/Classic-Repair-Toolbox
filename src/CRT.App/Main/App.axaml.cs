@@ -199,6 +199,12 @@ namespace CRT
         // Used by: UpdateService.CheckForUpdateAsync
         public const string GitHubRepo = "Classic-Repair-Toolbox";
 
+        // The page listing every release, pre-releases included - and one release's own page.
+        // Used by: Main's update banner ("View notes") and the "CRT has to be updated" overlay
+        public const string GitHubReleasesUrl = $"https://github.com/{GitHubOwner}/{GitHubRepo}/releases";
+
+        public static string GitHubReleaseUrl(string version) => $"{GitHubReleasesUrl}/tag/{version}";
+
         // ===== In-app Wiki help links =============================================================
 
         // The Wiki pages opened by the "?" help buttons in the shipped application. Renaming or

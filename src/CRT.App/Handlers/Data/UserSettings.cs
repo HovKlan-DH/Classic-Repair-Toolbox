@@ -85,6 +85,11 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? MaintainerTableFilter { get; set; }
 
+        // The Boards screen's "Compare sources" (2026-10-09).
+        [JsonPropertyName("maintainerCompareSources")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? MaintainerCompareSources { get; set; }
+
         // Whether the Maintainer tab hides itself when nothing is waiting (2026-10-01).
         [JsonPropertyName("showMaintainerTabOnlyWhenWorkWaiting")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -830,6 +835,25 @@ namespace Handlers.DataHandling
                 _data.MaintainerTableFilter = BoardTableRowFilter.Format(value);
                 _data.MaintainerShowChangesOnly = null;
                 Logger.Info($"Setting changed: [MaintainerTableFilter] [{_data.MaintainerTableFilter}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The Boards screen's "Compare sources" box (owner request, 2026-10-09: "do keep the checkbox
+        // as last state") - ticked, a board's table is coloured against the other data source. Off
+        // until ticked. Handed to the tab by Main (TabMaintainer.UseRememberedComparison).
+        // ###########################################################################################
+        public static bool MaintainerCompareSources
+        {
+            get => _data.MaintainerCompareSources == true;
+            set
+            {
+                if (MaintainerCompareSources == value)
+                    return;
+
+                _data.MaintainerCompareSources = value;
+                Logger.Info($"Setting changed: [MaintainerCompareSources] [{value}]");
                 Save();
             }
         }

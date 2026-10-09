@@ -427,7 +427,8 @@ namespace CRT.Server.Handlers.Submissions
                 accounts,
                 cancellationToken,
                 boardViews: boardViews,
-                listings: BoardEndpoints.Listings(options));
+                listings: BoardEndpoints.Listings(options),
+                oneSubmissionInBeta: options.IsProductionPublishingConfigured);
 
             if (outcome.IsForbidden)
                 return ReviewEndpoints.NotAMaintainer();

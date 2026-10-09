@@ -343,6 +343,26 @@ source instead of the stable source". When it later reaches the stable source wh
 BETA, a notice reminds you that you can switch back. **Open Configuration** takes you to the setting,
 and the cross closes the notice.
 
+## When CRT has to be updated
+
+Now and then the server that drafts are sent to changes in a way an older CRT cannot follow. While
+you have drafts (or the [Maintainer tab](Maintainer-tab) is turned on), CRT asks the server about this
+when it starts - or when your first draft appears - and it notices it whenever the server answers
+that way. The whole Drafts tab is then covered by **CRT has to be updated**, which cannot be closed:
+until CRT is updated, drafts cannot be submitted and the server cannot be asked how your submissions
+are getting on. Your drafts stay on this computer, untouched, and are all there again after the
+update. Everything else in CRT works as before.
+
+The button on it is the way out. If CRT has already found a newer version - with **Check for new
+version at application launch** ticked on the [Configuration tab](Configuration-tab) - **Install
+update** downloads and installs it, as the update notice at the top of the window does. Otherwise
+**Open download page** opens the page listing every CRT release in your web browser.
+
+If a draft's table holds edits you have not saved, installing the update asks first, as quitting
+CRT does: save them into the draft, discard them, or cancel and install nothing. While the tab is
+covered, **Edit board as draft** and **Add a new board** on the [Contribute tab](Contribute-tab) make
+nothing and say why, since their next step is on this tab.
+
 ## Limits
 
 * Changes that are not rows read "0 rows changed", and a draft with only such changes cannot be

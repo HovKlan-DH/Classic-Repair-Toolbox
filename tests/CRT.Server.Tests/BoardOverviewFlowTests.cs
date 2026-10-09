@@ -207,6 +207,61 @@ namespace CRT.Server.Tests
             Assert.Equal(["Bo", "Dennis"], detail.Maintainers.Select(maintainer => maintainer.DisplayName).Order(StringComparer.Ordinal));
         }
 
+        // ###########################################################################################
+        // *** WHETHER BETA'S DATA MAY BE CHANGED, IN THE DETAIL (code review, 2026-10-09). *** The
+        // Boards screen says why BETA's table cannot be changed above EVERY view, and before Board data
+        // has been read it has only the detail to go by - so the detail carries the table's own
+        // answer, decided by the table's own rule (BoardEditFlow.WhyNotEditableAsync). Anna maintains
+        // another board; Bo maintains this one, and the administrator every board.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_detail_says_whether_this_account_may_change_the_boards_BETA_data_and_why_not()
+        {
+            (FakeAccountStore accounts, FakeSubmissionStore store, ReviewAccess anna, ReviewAccess bo, ReviewAccess admin) = await BoardOverviewFlowTests.PeopleOnTheC64Async();
+
+            BoardDetailAnswer forAnna = await BoardOverviewFlowTests.C64DetailAsync(anna, accounts, store);
+            Assert.Equal((false, BoardEditFlow.NotYoursMessage), (forAnna.MayEdit, forAnna.MayNotEditReason));
+
+            foreach (ReviewAccess access in new[] { bo, admin })
+            {
+                BoardDetailAnswer detail = await BoardOverviewFlowTests.C64DetailAsync(access, accounts, store);
+                Assert.Equal((true, null), (detail.MayEdit, detail.MayNotEditReason));
+            }
+        }
+
+        // While the board waits under BETA > Stable, nobody changes it - its own maintainer included -
+        // and the detail says so in the table's words. Only where the server holds one submission in
+        // BETA per board (its stable publishing configured), as the table does.
+        [Fact]
+        public async Task The_detail_says_a_board_waiting_in_BETA_cannot_be_changed()
+        {
+            (FakeAccountStore accounts, FakeSubmissionStore store, _, ReviewAccess bo, _) = await BoardOverviewFlowTests.PeopleOnTheC64Async();
+            await store.SetBoardPublishedAsync(BoardOverviewFlowTests.C64, "r1", "beta-hash", BoardOverviewFlowTests.Now);
+
+            BoardDetailAnswer waiting = (await BoardOverviewFlow.DetailAsync(
+                bo, BoardOverviewFlowTests.C64, BoardOverviewFlowTests.Beta, BoardOverviewFlowTests.Production, store, accounts,
+                oneSubmissionInBeta: true)).Detail!;
+
+            Assert.Equal((false, OneSubmissionInBeta.NoChangeMessage(BoardOverviewFlowTests.C64)), (waiting.MayEdit, waiting.MayNotEditReason));
+
+            BoardDetailAnswer unconfigured = await BoardOverviewFlowTests.C64DetailAsync(bo, accounts, store);
+            Assert.True(unconfigured.MayEdit);
+        }
+
+        // A board BETA does not hold has no data there to change: nothing is said either way.
+        [Fact]
+        public async Task The_detail_of_a_board_BETA_does_not_hold_says_nothing_about_changing_it()
+        {
+            (FakeAccountStore accounts, ReviewAccess anna, _, _) = await BoardOverviewFlowTests.MaintainersAsync();
+
+            IReadOnlyList<PublishedBoardLister.KnownBoard> stableTree = [new(BoardOverviewFlowTests.Vic, "Commodore", "VIC-20", "250403")];
+
+            BoardDetailAnswer detail = (await BoardOverviewFlow.DetailAsync(
+                anna, BoardOverviewFlowTests.Vic, BoardOverviewFlowTests.Beta, stableTree, new FakeSubmissionStore(), accounts)).Detail!;
+
+            Assert.Equal((null, null), (detail.MayEdit, detail.MayNotEditReason));
+        }
+
         // An account in no pool may not review anything, and is refused both - the queue's own rule.
         [Fact]
         public async Task An_account_that_reviews_nothing_is_refused_the_list_and_the_detail()

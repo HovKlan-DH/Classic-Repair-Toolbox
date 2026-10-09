@@ -33,65 +33,15 @@
     may READ every board (owner decision, "Everything for everyone"), and BoardOverviewFlow and
     BoardEditFlow say why.
 
-    WHERE IT IS (owner request, 2026-10-04): the STAGE LINE under its name - Submitted, BETA, Stable,
-    each with its state (BoardStagesDisplay; BoardDetailView.Stages.cs) - and a BETA / Stable switch on
-    Board data and Files (BoardDetailView.Stable.cs): BETA's table is the one a change is made in, the
-    stable source's a read-only table and file tree of its own beside it, so switching never touches
-    a change in BETA's.
-    -->
-    <UserControl.Styles>
-        <Style Selector="TextBlock.StageLabel">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-        <Style Selector="TextBlock.StageValue">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-        <!-- Not there, or not known: said, but quietly - only what IS there stands out. -->
-        <Style Selector="TextBlock.StageValue.Quiet">
-            <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="Opacity" Value="0.6" />
-        </Style>
-        <Style Selector="TextBlock.StageDetail">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Opacity" Value="0.7" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-        <Style Selector="StackPanel.Stage">
-            <Setter Property="MaxWidth" Value="280" />
-            <Setter Property="Spacing" Value="1" />
-        </Style>
-        <!-- Each stage a card, the one where the newest work sits outlined (owner request,
-             2026-10-09: the three columns were not clear enough). -->
-        <Style Selector="Border.StageCard">
-            <Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="MinWidth" Value="190" />
-        </Style>
-        <Style Selector="Border.StageCard.Current">
-            <Setter Property="BorderBrush" Value="{DynamicResource Stage_Current_Border}" />
-            <Setter Property="BorderThickness" Value="2" />
-            <Setter Property="Background" Value="{DynamicResource Stage_Current_Bg}" />
-        </Style>
-        <Style Selector="TextBlock.StageNote">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Opacity" Value="0.6" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Margin" Value="0,0,0,3" />
-        </Style>
-        <Style Selector="TextBlock.StageArrow">
-            <Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Opacity" Value="0.4" />
-            <Setter Property="Margin" Value="18,0" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-    </UserControl.Styles>
+    A BETA / STABLE SWITCH on Board data and Files (owner request, 2026-10-04; BoardDetailView.Stable.cs):
+    BETA's table is the one a change is made in, the stable source's a read-only table and file tree
+    of its own beside it, so switching never touches a change in BETA's. "Compare sources" beside it
+    (owner request, 2026-10-09) colours either table against the other source.
 
+    The stage line under the name (Submitted, BETA, Stable as three cards) was REMOVED on 2026-10-09
+    (owner request: "They are so confusing, that I do not know how I want to handle that, so for now I
+    will completely remove it, and then decide later") - it is in git history, with BoardStagesDisplay.
+    -->
     <DockPanel>
 
         <!-- The board's name - or, with nothing chosen, what to do (the other screens' look). -->
@@ -109,51 +59,6 @@
                    x:Name="BoardStateText"
                    TextWrapping="Wrap"
                    IsVisible="False" />
-
-        <!-- THE STAGE LINE (owner request, 2026-10-04): where the board is - its newest submission,
-             BETA and the stable source - each said, "Not there" included. It replaced the revisions
-             line, whose revisions it carries. Chevrons are Font Awesome's (chevron-right). -->
-        <Grid DockPanel.Dock="Top"
-              x:Name="BoardStagesPanel"
-              ColumnDefinitions="Auto,Auto,Auto,Auto,Auto"
-              HorizontalAlignment="Left"
-              IsVisible="False"
-              Margin="0,8,0,0">
-            <Border Grid.Column="0" x:Name="StageSubmittedCard" Classes="StageCard">
-                <StackPanel Classes="Stage">
-                    <TextBlock x:Name="StageSubmittedLabel" Classes="StageLabel" />
-                    <TextBlock x:Name="StageSubmittedNote" Classes="StageNote" />
-                    <TextBlock x:Name="StageSubmittedValue" Classes="StageValue" />
-                    <TextBlock x:Name="StageSubmittedDetail" Classes="StageDetail" />
-                </StackPanel>
-            </Border>
-            <TextBlock Grid.Column="1" Classes="StageArrow" Text="&#xf054;" />
-            <Border Grid.Column="2" x:Name="StageBetaCard" Classes="StageCard">
-                <StackPanel Classes="Stage">
-                    <TextBlock x:Name="StageBetaLabel" Classes="StageLabel" />
-                    <TextBlock x:Name="StageBetaNote" Classes="StageNote" />
-                    <TextBlock x:Name="StageBetaValue" Classes="StageValue" />
-                    <TextBlock x:Name="StageBetaDetail" Classes="StageDetail" />
-                </StackPanel>
-            </Border>
-            <TextBlock Grid.Column="3" Classes="StageArrow" Text="&#xf054;" />
-            <Border Grid.Column="4" x:Name="StageStableCard" Classes="StageCard">
-                <StackPanel Classes="Stage">
-                    <TextBlock x:Name="StageStableLabel" Classes="StageLabel" />
-                    <TextBlock x:Name="StageStableNote" Classes="StageNote" />
-                    <TextBlock x:Name="StageStableValue" Classes="StageValue" />
-                    <TextBlock x:Name="StageStableDetail" Classes="StageDetail" />
-                </StackPanel>
-            </Border>
-        </Grid>
-
-        <!-- Where the newest work is now and what comes next, in words (BoardStagesDisplay.Now). -->
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="BoardStageNowText"
-                   FontSize="12"
-                   TextWrapping="Wrap"
-                   IsVisible="False"
-                   Margin="0,6,0,0" />
 
         <!-- Where CRT's drop-down lists show it - once it is in them. -->
         <TextBlock DockPanel.Dock="Top"
@@ -176,6 +81,26 @@
                    TextWrapping="Wrap"
                    IsVisible="False"
                    Margin="0,6,0,0" />
+
+        <!-- WHY BETA'S TABLE CANNOT BE CHANGED, AS A PANEL OF ITS OWN (owner request, 2026-10-09: "I
+             do think the information for this should be more visible, so please highlight the text
+             ... as its own panel") - waiting under the BETA queue, or a board this account does not
+             maintain. The ordinary notes stay a line.
+             *** WHERE THE QUEUE HAS ITS OWN (owner request, same day: "one is shown as the first info
+             and the other is shown above the table? Again, this kind of UI should be unified"). ***
+             Directly above the view switch, and said whichever view is open - the queue's "why
+             Approve is off" (BeforeApprovingNotice) is placed and shown the same way. The look is
+             App.axaml's Border.Notice. -->
+        <Border DockPanel.Dock="Top"
+                x:Name="ReadOnlyNotice"
+                Classes="Notice"
+                IsVisible="False"
+                Margin="0,12,0,0">
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+                <TextBlock Grid.Column="1" Classes="NoticeText" x:Name="ReadOnlyNoticeText" />
+            </Grid>
+        </Border>
 
         <!-- THE FIVE VIEWS, ONE JOINED SWITCH - the look of a submission's own (SubmissionViewBar).
              Shown once a board is chosen. -->
@@ -208,6 +133,16 @@
                 <Button x:Name="BetaTreeButton" Classes="Segment First Selected" Content="BETA" Click="OnTreeClick" />
                 <Button x:Name="StableTreeButton" Classes="Segment Last" Content="Stable" Click="OnTreeClick" />
             </StackPanel>
+
+            <!-- "Compare sources" (owner request, 2026-10-09; BoardDetailView.Compare.cs): the table
+                 coloured against the OTHER source. With Board data only. Click, not IsChecked, so
+                 setting the tick from code never acts on it. -->
+            <CheckBox x:Name="CompareSourcesBox"
+                      Content="Compare sources"
+                      VerticalAlignment="Center"
+                      Margin="8,0,0,0"
+                      ToolTip.ShowOnDisabled="True"
+                      Click="OnCompareSourcesClick" />
         </StackPanel>
 
         <Panel x:Name="SectionsPanel" IsVisible="False">
@@ -219,37 +154,6 @@
                      UNDER THE SWITCH, above the table, not in the table's own line under its search
                      box (owner request, 2026-10-04). -->
                 <DockPanel x:Name="BetaBoardPart">
-                    <!-- WHY BETA'S TABLE CANNOT BE CHANGED, AS A PANEL OF ITS OWN (owner request,
-                         2026-10-09: "I do think the information for this should be more visible, so
-                         please highlight the text ... as its own panel") - waiting under the BETA queue,
-                         or a board this account does not maintain. The ordinary notes stay a line. -->
-                    <Border DockPanel.Dock="Top"
-                            x:Name="ReadOnlyNotice"
-                            IsVisible="False"
-                            Background="{DynamicResource Notice_Bg}"
-                            BorderBrush="{DynamicResource Notice_Border}"
-                            BorderThickness="1"
-                            CornerRadius="4"
-                            Padding="12,8"
-                            Margin="0,0,0,10">
-                        <Grid ColumnDefinitions="Auto,*">
-                            <!-- Font Awesome "circle-info" - not the padlock, which marks what only the
-                                 administrator can use. -->
-                            <TextBlock Grid.Column="0"
-                                       Text="&#xf05a;"
-                                       FontFamily="{DynamicResource FontAwesomeSolid}"
-                                       FontSize="16"
-                                       Foreground="{DynamicResource Notice_Fg}"
-                                       VerticalAlignment="Top"
-                                       Margin="0,1,10,0" />
-                            <TextBlock Grid.Column="1"
-                                       x:Name="ReadOnlyNoticeText"
-                                       Foreground="{DynamicResource Notice_Fg}"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
-                        </Grid>
-                    </Border>
-
                     <TextBlock DockPanel.Dock="Top"
                                x:Name="TableLoadMessageText"
                                TextWrapping="Wrap"

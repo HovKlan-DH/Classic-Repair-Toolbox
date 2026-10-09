@@ -42,6 +42,8 @@ namespace CRT
     //   TabDrafts.Table.cs  - table mode: opening/closing the table, and the unsaved-edits prompts
     //   TabDrafts.OutsideChanges.cs - reading the list again when the tab is shown or CRT's window
     //                         comes back to the front, so a draft edited in Excel shows its new numbers
+    //   TabDrafts.UpdateRequired.cs - "CRT has to be updated" over the whole tab, when the server
+    //                         turns this version of CRT away from submissions
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {

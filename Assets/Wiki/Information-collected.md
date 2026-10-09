@@ -84,4 +84,6 @@ With "Check for new or updated data at application launch" ticked in the "Config
 
 Every time CRT talks to the server - the check-in, sending board views or feedback, submitting a contribution - it says which CRT version it is. The server counts, per day, how many times each CRT version used each part of the server. Nothing else is kept: no IP address, no account and no user or installation ID.
 
+While you have drafts on the "Drafts" tab, or the "Maintainer" tab is turned on, CRT also asks the server once when it starts (or when either first comes into use) whether this CRT is still new enough for it, so those tabs can say so if CRT has to be updated. That request carries the CRT version and nothing else.
+
 I use this to see when an old part of the server is no longer used by anybody, so it can be retired. A CRT version that still uses a retired part is told to update, instead of failing.

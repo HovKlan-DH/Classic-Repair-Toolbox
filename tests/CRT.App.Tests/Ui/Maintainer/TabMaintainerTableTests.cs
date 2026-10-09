@@ -467,4 +467,41 @@ public sealed class TabMaintainerTableTests
             Assert.True(await main.ConfirmLeavingTableAsync());
         });
     }
+
+    // ###########################################################################################
+    // *** WHILE CRT HAS TO BE UPDATED, LEAVING OFFERS NO SAVE (code review, 2026-10-09). *** The
+    // save goes to the server, which turns this CRT away: offered, it was refused under the tab's
+    // cover where nobody could read why, and quitting was silently cancelled every time. So the
+    // question is Discard or Cancel - and a Save answered anyway sends nothing and leaves nothing.
+    // ###########################################################################################
+    [Fact]
+    public async Task While_CRT_has_to_be_updated_leaving_the_submission_table_asks_without_a_Save()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            var asked = new List<UnsavedTableEditsPrompt>();
+            UnsavedTableEditsChoice answer = UnsavedTableEditsChoice.Save;
+            main.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return answer;
+            };
+
+            main.OpenTableForTests(Row(42), Table());
+
+            BoardTableDocument document = main.TableEditorForTests.CommitAndGetDocument()!;
+            BoardTableRow row = document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!.Rows.First(candidate => !candidate.IsDeleted);
+            row.Cells[BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName)].Text = "Changed";
+
+            main.ShowUpdateRequired(Handlers.Online.AppUpdateRequiredWording.For(Handlers.Online.AppUpdateArea.Maintainer, "Please update CRT.", null));
+
+            Assert.False(await main.ConfirmLeavingTableAsync());
+            Assert.Equal([UnsavedTableEditsPrompt.LeavingUpdateRequired], asked);
+            Assert.True(main.HasUnsavedTableEdits);
+
+            answer = UnsavedTableEditsChoice.Discard;
+            Assert.True(await main.ConfirmLeavingTableAsync());
+        });
+    }
 }

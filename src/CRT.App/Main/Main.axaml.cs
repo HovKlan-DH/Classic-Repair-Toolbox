@@ -46,6 +46,8 @@ namespace CRT
         //   Main.BoardViews.cs        - counting a board as viewed after ten seconds, sending views home
         //   Main.Maintainer.cs        - the Maintainer tab: shown or not, its badge, and the layout while selected
         //   Main.SubmissionChecks.cs  - the Drafts tab's badge, and asking about sent submissions while CRT runs
+        //   Main.UpdateRequired.cs    - "CRT has to be updated" over the Drafts and Maintainer tabs when
+        //                               the server turns this version away (API revision, or a 426)
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -237,6 +239,9 @@ namespace CRT
             this.TabMaintainer.UseRememberedChoices(
                 UserSettings.MaintainerTableFilter,
                 filter => UserSettings.MaintainerTableFilter = filter);
+            this.TabMaintainer.UseRememberedComparison(
+                UserSettings.MaintainerCompareSources,
+                compare => UserSettings.MaintainerCompareSources = compare);
             this.TabMaintainer.UseRememberedSelections(
                 UserSettings.MaintainerLastSubmissionId,
                 UserSettings.MaintainerLastBetaBoardId,
@@ -246,6 +251,10 @@ namespace CRT
                 boardId => UserSettings.MaintainerLastBoardId = boardId);
             this.TabMaintainer.UseTabBadge(() => this.MaintainerTabBadgeCanBeSeen, this.ShowMaintainerTabBadge);
             this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
+
+            // "CRT has to be updated" on either tab: its one button (Main.UpdateRequired.cs).
+            this.TabDrafts.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;
+            this.TabMaintainer.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;
 
             this.MainTabControl.SelectionChanged += this.OnMainTabControlSelectionChanged;
 
@@ -463,6 +472,12 @@ namespace CRT
                 {
                     _ = this.CheckForAppUpdateNowAsync();
                 }
+
+                // Does the server still serve this CRT? Asked before the sync, which is awaited, so
+                // the Drafts and Maintainer tabs say "CRT has to be updated" as early as possible
+                // (owner request, 2026-10-09; Main.UpdateRequired.cs) - and only when either tab is
+                // in use, now or later (code review, same day). Not awaited.
+                this.StartAppUpdateRequiredChecks();
 
                 await this.StartBackgroundSyncAsync();
 
@@ -779,6 +794,9 @@ namespace CRT
             {
                 this.MoveSelectionOffHiddenTab(this.DraftsTabItem);
             }
+
+            // Shown for the first time: does the server still serve this CRT? (Main.UpdateRequired.cs)
+            this.AskApiRevisionOnceInUse();
         }
 
         // ###########################################################################################
@@ -1088,20 +1106,7 @@ namespace CRT
 
                 Dispatcher.UIThread.Post(async () =>
                 {
-                    if (this.TabDrafts.HasUnsavedTableEdits)
-                    {
-                        if (this.DraftsTabItem != null && this.MainTabControl != null)
-                        {
-                            this.MainTabControl.SelectedItem = this.DraftsTabItem;
-                        }
-
-                        if (!await this.TabDrafts.ConfirmLeavingTableAsync(this))
-                        {
-                            return;
-                        }
-                    }
-
-                    if (!await this.ConfirmLeavingMaintainerTableAsync())
+                    if (!await this.ConfirmLeavingTablesAsync())
                     {
                         return;
                     }
@@ -1139,6 +1144,33 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // Unsaved edits in the Drafts tab's table, then in the Maintainer tab's - each tab brought
+        // forward and asked. True when CRT may go: nothing unsaved, or every one saved or discarded.
+        //
+        // *** QUITTING AND INSTALLING AN UPDATE BOTH ASK (code review, 2026-10-09). *** Installing
+        // restarts CRT through Velopack's ApplyUpdatesAndRestart, which exits the process without a
+        // Closing event - so OnWindowClosing never asked, and the "CRT has to be updated" overlay's
+        // Install threw away a table it had itself made unreachable (InstallPendingUpdateAsync).
+        // ###########################################################################################
+        internal async Task<bool> ConfirmLeavingTablesAsync()
+        {
+            if (this.TabDrafts.HasUnsavedTableEdits)
+            {
+                if (this.DraftsTabItem != null && this.MainTabControl != null)
+                {
+                    this.MainTabControl.SelectedItem = this.DraftsTabItem;
+                }
+
+                if (!await this.TabDrafts.ConfirmLeavingTableAsync(this))
+                {
+                    return false;
+                }
+            }
+
+            return await this.ConfirmLeavingMaintainerTableAsync();
+        }
+
+        // ###########################################################################################
         // Forces the entire application (and all its sub-windows) to shut down once the main window
         // has successfully completed its closing sequence.
         // ###########################################################################################
@@ -1147,6 +1179,7 @@ namespace CRT
             UserSettings.CheckDataOnLaunchChanged -= this.OnCheckDataOnLaunchSettingChanged;
             UserSettings.WorkbooksScopeChanged -= this.OnWorkbooksScopeSettingChanged;
             UserSettings.WorklogCurrencyChanged -= this.OnWorklogCurrencySettingChanged;
+            this.StopAppUpdateRequiredChecks();
 
             if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
             {

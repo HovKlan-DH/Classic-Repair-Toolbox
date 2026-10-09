@@ -96,18 +96,57 @@ namespace CRT
         // ###########################################################################################
         private bool NeedsReading(BoardSection section)
         {
+            // Compared, Board data needs BOTH tables, whichever is on screen (BoardDetailView.Compare.cs).
+            if (section == BoardSection.BoardData && this.ComparesSources)
+                return this.BetaTableNeedsReading() || this.StableNeedsReading(section);
+
             // The stable source's half has its own table and files (BoardDetailView.Stable.cs).
             if (this.ShowsStable)
                 return this.StableNeedsReading(section);
 
-            string? boardId = this.ShownBoard?.BoardId;
-
             return section switch
             {
-                BoardSection.BoardData => !this.HoldsTableFor(boardId) || (!this.HasUnsavedTableEdits && this.TableIsBehind()),
-                BoardSection.Files => !this.HoldsFilesFor(boardId) || this.FilesAreBehind(),
+                BoardSection.BoardData => this.BetaTableNeedsReading(),
+                BoardSection.Files => !this.HoldsFilesFor(this.ShownBoard?.BoardId) || this.FilesAreBehind(),
                 _ => false
             };
+        }
+
+        private bool BetaTableNeedsReading() =>
+            !this.HoldsTableFor(this.ShownBoard?.BoardId) || (!this.HasUnsavedTableEdits && this.TableIsBehind());
+
+        // ###########################################################################################
+        // Both tables, for "Compare sources": what is not held, or held but behind. Both are READ
+        // first, then each is BUILT once against the other as it now is (ShowTables) - built as each
+        // arrived, the stable source's was built twice for every compared board chosen (code review,
+        // 2026-10-09).
+        // ###########################################################################################
+        private async Task LoadBothTablesAsync()
+        {
+            if (this.ShownBoard is not { } board)
+                return;
+
+            BoardTableAnswer? stable = this.StableNeedsReading(BoardSection.BoardData)
+                ? await this.ReadStableTableForAsync(board)
+                : null;
+
+            if (!this.IsShowing(board))
+                return;
+
+            BoardTableAnswer? beta = this.BetaTableNeedsReading()
+                ? await this.ReadTableForAsync(board)
+                : null;
+
+            if (!this.IsShowing(board))
+                return;
+
+            this.ShowTables(beta, betaMessage: null, stable);
+
+            if (stable is not null)
+                this.thisStableTableReadAt = board;
+
+            if (beta is not null)
+                this.NoteTableReadAt(board);
         }
 
         private bool TableIsBehind() =>
@@ -144,8 +183,11 @@ namespace CRT
                 {
                     if (this.HasUnsavedTableEdits)
                         this.ShowTableNote(BoardSections.BetaMovedUnderChange);
-                    else
+                    else if (!this.BoardTable.IsEditingCell)
                         await this.LoadTableAsync();
+
+                    // A cell still being typed in is under the maintainer's hands: the next check
+                    // decides, as the Drafts tab's file watch does (code review, 2026-10-09).
                 }
             }
 
@@ -169,6 +211,7 @@ namespace CRT
         // Reads the view on show when it needs the server - the caller holds any wait.
         private Task LoadShownSectionAsync() => (this.thisSection, this.ShowsStable) switch
         {
+            (BoardSection.BoardData, _) when this.ComparesSources => this.LoadBothTablesAsync(),
             (BoardSection.BoardData, false) => this.LoadTableAsync(),
             (BoardSection.Files, false) => this.LoadFilesAsync(),
             (BoardSection.BoardData, true) => this.LoadStableTableAsync(),
@@ -186,8 +229,6 @@ namespace CRT
             this.ClearFiles();
             this.ForgetStableContent();
             this.thisShownMaintainers = null;
-            this.thisStageSubmissions = null;
-            this.thisStageSubmissionsFor = null;
         }
     }
 }

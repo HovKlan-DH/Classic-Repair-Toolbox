@@ -6,8 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -43,8 +41,9 @@ namespace CRT
         // How long a wait runs before the window dims.
         public static readonly TimeSpan RevealAfter = TimeSpan.FromMilliseconds(300);
 
-        // What the rest of the window fades to once revealed.
-        internal const double Fade = 0.35;
+        // What the rest of the window fades to once revealed - OverlayCover's, shared with
+        // UpdateRequiredOverlay.
+        internal const double Fade = OverlayCover.Fade;
 
         private static readonly IBrush ScrimBrush = new SolidColorBrush(Color.FromArgb(0x33, 0, 0, 0));
 
@@ -67,7 +66,7 @@ namespace CRT
         // never change the sentence of the next one.
         private int thisGeneration;
         private bool thisRevealed;
-        private TopLevel? thisBlockedTopLevel;
+        private IDisposable? thisKeysTaken;
 
         public BusyOverlay()
         {
@@ -340,60 +339,29 @@ namespace CRT
             this.ElapsedText.Text = BusyOverlay.FormatElapsed(this.thisElapsed.Elapsed);
 
             // Everything else in the host's grid fades - the overlay itself stays at full strength.
-            if (this.Parent is Panel host)
-            {
-                foreach (Control sibling in host.Children)
-                {
-                    if (ReferenceEquals(sibling, this) || this.thisFaded.ContainsKey(sibling))
-                        continue;
-
-                    this.thisFaded[sibling] = sibling.Opacity;
-                    sibling.Opacity = BusyOverlay.Fade;
-                }
-            }
+            OverlayCover.FadeSiblings(this, this.thisFaded);
         }
 
-        private void RestoreFaded()
-        {
-            foreach ((Control control, double opacity) in this.thisFaded)
-                control.Opacity = opacity;
-
-            this.thisFaded.Clear();
-        }
+        private void RestoreFaded() => OverlayCover.RestoreFaded(this.thisFaded);
 
         // In words - see WaitWording.Elapsed.
         internal static string FormatElapsed(TimeSpan elapsed) => WaitWording.Elapsed(elapsed);
 
         // ###########################################################################################
-        // *** KEYS ARE TAKEN ON THE TUNNEL ROUTE, AT THE WINDOW. *** A click cannot get past the
-        // overlay, but a key goes to whatever has focus - so the button that started the work, still
-        // focused, would take Enter and start it again. Handled on the way DOWN, before any control
-        // sees it.
+        // *** KEYS ARE TAKEN ON THE TUNNEL ROUTE, AT THE WINDOW (OverlayCover.TakeKeys). *** A click
+        // cannot get past the overlay, but a key goes to whatever has focus - so the button that
+        // started the work, still focused, would take Enter and start it again.
         // ###########################################################################################
         private void BlockKeyboard()
         {
-            if (TopLevel.GetTopLevel(this) is not TopLevel topLevel)
-                return;
-
-            this.thisBlockedTopLevel = topLevel;
-            topLevel.AddHandler(InputElement.KeyDownEvent, BusyOverlay.Swallow, RoutingStrategies.Tunnel, handledEventsToo: true);
-            topLevel.AddHandler(InputElement.KeyUpEvent, BusyOverlay.Swallow, RoutingStrategies.Tunnel, handledEventsToo: true);
-            topLevel.AddHandler(InputElement.TextInputEvent, BusyOverlay.SwallowText, RoutingStrategies.Tunnel, handledEventsToo: true);
+            if (TopLevel.GetTopLevel(this) is TopLevel topLevel)
+                this.thisKeysTaken = OverlayCover.TakeKeys(topLevel);
         }
 
         private void UnblockKeyboard()
         {
-            if (this.thisBlockedTopLevel is not TopLevel topLevel)
-                return;
-
-            topLevel.RemoveHandler(InputElement.KeyDownEvent, BusyOverlay.Swallow);
-            topLevel.RemoveHandler(InputElement.KeyUpEvent, BusyOverlay.Swallow);
-            topLevel.RemoveHandler(InputElement.TextInputEvent, BusyOverlay.SwallowText);
-            this.thisBlockedTopLevel = null;
+            this.thisKeysTaken?.Dispose();
+            this.thisKeysTaken = null;
         }
-
-        private static readonly EventHandler<KeyEventArgs> Swallow = (_, e) => e.Handled = true;
-
-        private static readonly EventHandler<TextInputEventArgs> SwallowText = (_, e) => e.Handled = true;
     }
 }

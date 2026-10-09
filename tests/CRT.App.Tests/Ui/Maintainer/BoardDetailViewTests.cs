@@ -72,15 +72,11 @@ public sealed class BoardDetailViewTests
                 ],
                 view.TextsForTests());
 
-            // The revisions are the stage line's since 2026-10-04 - with the newest submission, and
-            // where BETA waits.
-            Assert.Equal(
-                [
-                    $"1  Submitted: #41 Taken back out of BETA - waiting for review again - sent {SubmissionReceiptPresenter.FormatDate(BoardDetailViewTests.Noon)}",
-                    $"2  BETA: Revision 2026-September-25 - ahead of stable - waiting under {MaintainerScreenWording.BetaQueueQuoted}",
-                    "3  Stable: In the stable source"
-                ],
-                view.StagesForTests());
+            // *** NO STAGE LINE (owner request, 2026-10-09). *** The three numbered cards under the
+            // name - Submitted, BETA, Stable - and the "Now:" sentence under them were removed as
+            // too confusing ("for now I will completely remove it, and then decide later").
+            Assert.Null(view.FindControl<Control>("BoardStagesPanel"));
+            Assert.Null(view.FindControl<Control>("BoardStageNowText"));
 
             Assert.Equal("Commodore/C64/250407", view.ShownBoard!.BoardId);
         });

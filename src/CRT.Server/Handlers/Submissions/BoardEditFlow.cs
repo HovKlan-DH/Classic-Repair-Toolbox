@@ -428,8 +428,11 @@ namespace CRT.Server.Handlers.Submissions
         // published stays in the queue (see the header), and a newer submission from the same account
         // REPLACES the older pending one (SubmissionReplacementRules) - so sending another would
         // quietly withdraw it. The table opens read-only instead, naming the submission to decide.
+        //
+        // The board's detail asks it too (BoardOverviewFlow.DetailAsync, code review 2026-10-09), so
+        // the Boards screen says why above every view - one rule, never a second copy.
         // ###########################################################################################
-        private static async Task<string?> WhyNotEditableAsync(
+        internal static async Task<string?> WhyNotEditableAsync(
             ReviewAccess? access,
             string boardId,
             ISubmissionStore store,

@@ -204,10 +204,8 @@
 					<SolidColorBrush x:Key="Chart_Baseline">#C3C2B7</SolidColorBrush>
 					<SolidColorBrush x:Key="Chart_Label">#6F6D67</SolidColorBrush>
 
-					<!-- Light, the Boards screen (2026-10-09): the stage where a board's newest work sits, and the
-					     panel saying why its BETA table cannot be changed - amber, the colour of waiting. -->
-					<SolidColorBrush x:Key="Stage_Current_Border">#2A78D6</SolidColorBrush>
-					<SolidColorBrush x:Key="Stage_Current_Bg">#EEF5FD</SolidColorBrush>
+					<!-- Light, the Boards screen (2026-10-09): the panel saying why a board's BETA table cannot
+					     be changed - amber, the colour of waiting. -->
 					<SolidColorBrush x:Key="Notice_Bg">#FFF4DC</SolidColorBrush>
 					<SolidColorBrush x:Key="Notice_Border">#E8B866</SolidColorBrush>
 					<SolidColorBrush x:Key="Notice_Fg">#5C3A00</SolidColorBrush>
@@ -402,9 +400,7 @@
 				<SolidColorBrush x:Key="Chart_Baseline">#4A4542</SolidColorBrush>
 				<SolidColorBrush x:Key="Chart_Label">#A39C96</SolidColorBrush>
 
-				<!-- Dark, the Boards screen's current stage and its read-only notice. -->
-				<SolidColorBrush x:Key="Stage_Current_Border">#3987E5</SolidColorBrush>
-				<SolidColorBrush x:Key="Stage_Current_Bg">#1C2633</SolidColorBrush>
+				<!-- Dark, the Boards screen's read-only notice. -->
 				<SolidColorBrush x:Key="Notice_Bg">#33270F</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Border">#7A5A1E</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Fg">#F7D9A0</SolidColorBrush>
@@ -506,6 +502,37 @@
 			<Setter Property="Padding" Value="0,1,0,0" />
 			<Setter Property="Opacity" Value="0.7" />
 			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<!--
+		THE AMBER NOTICE PANEL - why something cannot be done right now, as a panel of its own (owner
+		requests, 2026-10-09: "please highlight the text ... as its own panel", and then of the queue's
+		"why Approve is off" line: "I think this should look the same ... The UI should have a uniform
+		and consistent look"). ONE look, so every such panel stays the same: a Border.Notice holding
+		a Grid of a TextBlock.NoticeIcon (Font Awesome's "circle-info", U+F05A - not the padlock, which
+		marks what only the administrator can use) and the words in TextBlock.NoticeText. Used by the
+		Boards screen's ReadOnlyNotice and the queue's BeforeApprovingNotice.
+		-->
+		<Style Selector="Border.Notice">
+			<Setter Property="Background" Value="{DynamicResource Notice_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="4" />
+			<Setter Property="Padding" Value="12,8" />
+		</Style>
+
+		<Style Selector="TextBlock.NoticeIcon">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="16" />
+			<Setter Property="Foreground" Value="{DynamicResource Notice_Fg}" />
+			<Setter Property="VerticalAlignment" Value="Top" />
+			<Setter Property="Margin" Value="0,1,10,0" />
+		</Style>
+
+		<Style Selector="TextBlock.NoticeText">
+			<Setter Property="Foreground" Value="{DynamicResource Notice_Fg}" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="TextWrapping" Value="Wrap" />
 		</Style>
 
 		<!-- Banner install button: explicit hover/pressed backgrounds -->

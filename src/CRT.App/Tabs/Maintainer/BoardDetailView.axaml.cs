@@ -28,10 +28,13 @@ namespace CRT
     //   BoardDetailView.Maintainers.cs   - Maintainer: who maintains it, a list (changing that is the
     //                                 administrator's, Account > Maintainers - MaintainerPoolView)
     //   BoardDetailView.History.cs       - History: a card per submission, with what it changed
-    //   BoardDetailView.Stages.cs        - the stage line under the name: its newest submission, BETA
-    //                                 and the stable source (2026-10-04)
     //   BoardDetailView.Stable.cs        - the BETA / Stable switch on Board data and Files, and the
     //                                 stable source's read-only table and file tree (2026-10-04)
+    //   BoardDetailView.Compare.cs       - "Compare sources": either table coloured against the other
+    //                                 source (2026-10-09)
+    //
+    // (The stage line under the name - BoardDetailView.Stages.cs - was removed on 2026-10-09, owner
+    // request; it is in git history.)
     //
     // *** THE WORDS ARE BoardsDisplay's AND BoardSections', AND THE FACTS THE SERVER's. *** Nothing
     // here decides anything.
@@ -51,6 +54,7 @@ namespace CRT
         {
             this.InitializeComponent();
             this.WireTable();
+            this.WireCompare();
         }
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
@@ -199,18 +203,20 @@ namespace CRT
             // Who maintains it, for whether a table read earlier is out of date (CatchUpWithBetaAsync).
             this.thisShownMaintainers = detail.Maintainers.Select(maintainer => maintainer.AccountId).ToList();
 
-            // Its submissions, for the stage line's "Submitted" (BoardDetailView.Stages.cs).
-            this.UseStageSubmissions(detail);
-
             // The detail's own facts - newer than the list's, if anything moved between the two.
             this.ShowSummary(detail.Board);
             this.ShowSections(detail);
+
+            // Why BETA's table cannot be changed, above whichever view is open (code review,
+            // 2026-10-09) - not known from an older server, which leaves it to the table.
+            if (detail.MayEdit is bool mayEdit)
+                this.ShowReadOnlyNotice(BoardSections.ReadOnlyReason(mayEdit, detail.MayNotEditReason));
         }
 
         // ###########################################################################################
         // The name, and - only when it is so - where its data is, who maintains it and that it is
-        // closed (owner request, 2026-10-03: "only show where there is something odd/off"), and its
-        // revisions; or, with nothing chosen, what to do. The views show once a board is chosen.
+        // closed (owner request, 2026-10-03: "only show where there is something odd/off"); or, with
+        // nothing chosen, what to do. The views show once a board is chosen.
         // ###########################################################################################
         private void ShowSummary(BoardOverviewEntry? board)
         {
@@ -229,10 +235,6 @@ namespace CRT
                 TabMaintainer.ShowParts(state, board is null ? [] : BoardsDisplay.ListLineParts(board));
                 state.IsVisible = board is not null;
             }
-
-            // Where it is: its submission, BETA, the stable source (BoardDetailView.Stages.cs) - which
-            // replaced the revisions line, whose revisions it carries.
-            this.ShowStages(board);
 
             this.SetShown("BoardSectionBar", board is not null);
             this.SetShown("SectionsPanel", board is not null);

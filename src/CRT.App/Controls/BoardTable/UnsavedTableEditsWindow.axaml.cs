@@ -42,7 +42,17 @@ namespace CRT
         // ANOTHER editor - the Contribute tab's component editor, the label editor - wants to save
         // into a draft whose table has unsaved edits. Nothing can be decided from here, so it is a
         // notice with Cancel alone: see ShowSavingBlockedAsync.
-        SavingElsewhere
+        SavingElsewhere,
+
+        // Leaving a MAINTAINER TAB table while the tab says "CRT has to be updated" (code review,
+        // 2026-10-09): Discard or Cancel. Its Save sends to the server, which turns this CRT away -
+        // offered, it was refused out of sight under the cover and the quit silently cancelled.
+        LeavingUpdateRequired,
+
+        // SavingElsewhere while the Drafts tab says "CRT has to be updated" (code review,
+        // 2026-10-09): Cancel alone, as SavingElsewhere - but the Drafts tab cannot be reached to
+        // settle the table there, so it says what does: updating CRT, or quitting it, asks first.
+        SavingElsewhereUpdateRequired
     }
 
     // ###########################################################################################
@@ -81,10 +91,12 @@ namespace CRT
 
         public void Initialize(UnsavedTableEditsPrompt prompt)
         {
-            this.SaveButton.IsVisible = prompt is UnsavedTableEditsPrompt.Leaving or UnsavedTableEditsPrompt.LeavingSubmission or UnsavedTableEditsPrompt.LeavingBoard;
-            this.DiscardButton.IsVisible = prompt != UnsavedTableEditsPrompt.SavingElsewhere;
+            bool notice = prompt is UnsavedTableEditsPrompt.SavingElsewhere or UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired;
 
-            if (prompt == UnsavedTableEditsPrompt.SavingElsewhere)
+            this.SaveButton.IsVisible = prompt is UnsavedTableEditsPrompt.Leaving or UnsavedTableEditsPrompt.LeavingSubmission or UnsavedTableEditsPrompt.LeavingBoard;
+            this.DiscardButton.IsVisible = !notice;
+
+            if (notice)
             {
                 this.Title = "Unsaved table edits in the Drafts tab";
                 this.HeadingText.Text = "Unsaved table edits in the Drafts tab";
@@ -108,6 +120,14 @@ namespace CRT
                     "The table in the Drafts tab has unsaved edits for this same board. They need to be dealt " +
                     "with before this can be saved. Go to the Drafts tab, save or discard the table's edits, " +
                     "then come back here and save this again if it is still needed.",
+                UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired =>
+                    "The table in the Drafts tab has unsaved edits for this same board, and the Drafts tab " +
+                    "cannot be used until CRT is updated. Updating CRT - or quitting it - asks first whether " +
+                    "to save the table's edits. After that, save this again if it is still needed.",
+                UnsavedTableEditsPrompt.LeavingUpdateRequired =>
+                    "The table has changes that are not sent yet, and they cannot be sent until CRT is updated - " +
+                    "the server turns this version of CRT away. Discard them, or cancel to keep CRT open and " +
+                    "copy what you need first.",
                 _ =>
                     "The draft was changed outside this table after it was opened - by \"Save to draft\" in the " +
                     "Contribute tab, for example, or in Excel - so the edits in the table can no longer be saved " +
@@ -119,10 +139,10 @@ namespace CRT
         // The notice another editor shows instead of saving while the Drafts tab's table holds
         // unsaved edits for the same board. Nothing is saved; the editor stays open as it was.
         // ###########################################################################################
-        public static async Task ShowSavingBlockedAsync(Window owner)
+        public static async Task ShowSavingBlockedAsync(Window owner, UnsavedTableEditsPrompt prompt = UnsavedTableEditsPrompt.SavingElsewhere)
         {
             var window = new UnsavedTableEditsWindow();
-            window.Initialize(UnsavedTableEditsPrompt.SavingElsewhere);
+            window.Initialize(prompt);
 
             await window.ShowDialog<UnsavedTableEditsChoice?>(owner);
         }

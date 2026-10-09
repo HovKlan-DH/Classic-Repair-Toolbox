@@ -679,7 +679,7 @@ namespace CRT
 
             // Held back while the Drafts tab's table has unsaved edits for the same board - see
             // ComponentContributionWindow.SubmitAsync.
-            window.SetUnsavedTableEditsCheck(this.TabDrafts.HasUnsavedTableEditsFor);
+            window.SetUnsavedTableEditsCheck(this.TabDrafts.SavingBlockedFor);
 
             this.PositionFullscreenWindowOnSameScreen(window);
             window.WindowState = Avalonia.Controls.WindowState.Maximized;

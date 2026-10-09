@@ -250,9 +250,13 @@ namespace Handlers.MaintainerHandling
             bool addressesHidden =
                 root.TryGetProperty("addressesHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True;
 
+            // Whether BETA's data may be changed now, and why not (code review, 2026-10-09) - absent
+            // from an older server and for a board BETA does not hold: then not known.
             return new BoardDetailAnswer(
                 entry, maintainers, contributors, submissions, invitations, history, ReviewApiParser.ParseViewStatistics(root),
-                addressesHidden);
+                addressesHidden,
+                ReviewApiParser.Bool(root, "mayEdit"),
+                ReviewApiParser.String(root, "mayNotEditReason"));
         }
 
         // ###########################################################################################

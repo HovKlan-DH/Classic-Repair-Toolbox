@@ -50,6 +50,10 @@ from saving a component or labels - nothing new is made: a window says so and of
 draft**, which opens the draft you have in the same table. Every change you make to a board goes into
 that one draft.
 
+While the Drafts tab says **CRT has to be updated**, this button and **Add a new board** below make
+nothing and say why: their next step is on the Drafts tab, which cannot be used until CRT is updated
+(see [Drafts tab](Drafts-tab)).
+
 ## Adding a whole new board
 
 The **Add a new board** button creates a brand-new hardware and board of your own. You give it a

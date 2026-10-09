@@ -26,7 +26,10 @@
 			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
 		</Style>
 
-		<Style Selector="Button.AddNewComponentButton">
+		<!-- The three buttons on the right, ALL in the highlighted colour (owner request, 2026-10-09:
+		     "have all 3 buttons in there with the same IndianRed color") - Button_Highlighted_*, IndianRed
+		     in the light theme. -->
+		<Style Selector="Button.ContributeAction">
 			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
 			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Button_Highlighted_Border}" />
@@ -53,7 +56,7 @@
 				</TextBlock>
 				<TextBlock Text="The list below holds the components the board data already has. Use the buttons to the right for a component that is missing from it, to edit the whole board in table form, or for a board that is not in the lists at all."
 						   TextWrapping="Wrap" />
-				<TextBlock x:Name="EditAsDraftProblemText"
+				<TextBlock x:Name="DraftProblemText"
 						   TextWrapping="Wrap"
 						   Foreground="{DynamicResource Text_Fail_Fg}"
 						   IsVisible="False" />
@@ -65,7 +68,7 @@
 			     until a draft exists, so on a fresh install it would be unreachable. -->
 			<StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Top">
 				<Button x:Name="AddNewComponentButton"
-						Classes="AddNewComponentButton"
+						Classes="ContributeAction"
 						Content="Add new component"
 						IsEnabled="False"
 						HorizontalAlignment="Stretch"
@@ -77,6 +80,7 @@
 				     the board shown - a draft - opened in the Drafts tab's table. A board has one draft
 				     at most; with one already, it is offered instead (Main.EditBoardAsDraft.cs). -->
 				<Button x:Name="EditBoardAsDraftButton"
+						Classes="ContributeAction"
 						Content="Edit board as draft"
 						IsEnabled="False"
 						HorizontalAlignment="Stretch"
@@ -85,6 +89,7 @@
 						Click="OnEditBoardAsDraftClick" />
 
 				<Button x:Name="AddNewBoardButton"
+						Classes="ContributeAction"
 						Content="Add a new board"
 						HorizontalAlignment="Stretch"
 						HorizontalContentAlignment="Center"

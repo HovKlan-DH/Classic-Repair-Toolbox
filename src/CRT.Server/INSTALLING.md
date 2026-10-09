@@ -1,6 +1,6 @@
 # Installing CRT.Server
 
-How to install CRT's contribution service - **CRT.Server 1.1.0, the server CRT 3.0.0 talks to** - on
+How to install CRT's contribution service - **CRT.Server 1.0.0, the server CRT 3.0.0 talks to** - on
 the AlmaLinux box behind `classic-repair-toolbox.dk`, and how to run it afterwards. Every step ends
 with a check that says plainly whether it worked.
 
@@ -320,7 +320,7 @@ sudo systemctl enable --now crt-server
 ```bash
 systemctl status crt-server                   # active (running)
 ss -ltnp | grep 5199                          # 127.0.0.1:5199 - NOT 0.0.0.0
-curl -s http://127.0.0.1:5199/api/health      # {"status":"ok","version":"1.1.0",...}
+curl -s http://127.0.0.1:5199/api/health      # {"status":"ok","version":"1.0.0",...}
 journalctl -u crt-server -n 30 --no-pager | grep -v '^ '
 ```
 

@@ -735,6 +735,31 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
+    // WHETHER BETA'S DATA MAY BE CHANGED, IN THE DETAIL (code review, 2026-10-09) - the Boards screen
+    // says why not above every view from it. Both answers arrive as sent, and an older server's detail
+    // (no such fields) reads as not known - never as "may be changed".
+    // ###########################################################################################
+    [Fact]
+    public void A_boards_detail_reads_back_whether_its_BETA_data_may_be_changed_and_why_not()
+    {
+        var board = new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, true, true, "r2", "r1", ReviewWireContractTests.Decided, 1);
+
+        BoardDetailAnswer? readOnly = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(
+            new BoardDetailAnswer(board, [], [], [], MayEdit: false, MayNotEditReason: "It is waiting in BETA for the stable source.")));
+
+        Assert.Equal((false, "It is waiting in BETA for the stable source."), (readOnly!.MayEdit, readOnly.MayNotEditReason));
+
+        BoardDetailAnswer? editable = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(
+            new BoardDetailAnswer(board, [], [], [], MayEdit: true)));
+
+        Assert.Equal((true, null), (editable!.MayEdit, editable.MayNotEditReason));
+
+        BoardDetailAnswer? older = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [])));
+
+        Assert.Equal((null, null), (older!.MayEdit, older.MayNotEditReason));
+    }
+
+    // ###########################################################################################
     // A BOARD'S BOARD DATA AND FILES (2026-10-03): the table the Boards screen opens on, the edit
     // sent back from it - fingerprint, description and rows - the submission it was queued as, and
     // the file listing. The fingerprint above all: arriving empty, every edit would be refused as
