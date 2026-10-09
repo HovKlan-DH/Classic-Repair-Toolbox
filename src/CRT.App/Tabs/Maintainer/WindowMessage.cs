@@ -11,7 +11,7 @@ namespace CRT
     // carried this body - four times, counting Production's second message line - so a change to
     // how a refusal is shown had to be made four times and would be missed in one. Each keeps a
     // one-line wrapper that names its own TextBlock and calls this - now the panels those windows
-    // became (BetaView, UnusedFilesView, SystemView) and the main window's lists.
+    // became (BetaView, UnusedFilesView, BoardDetailView) and the main window's lists.
     //
     // UI code, not a Handlers/ class: it sets a control's properties and decides nothing worth a
     // test of its own - the same reason the windows' code-behind is verified by running the app.

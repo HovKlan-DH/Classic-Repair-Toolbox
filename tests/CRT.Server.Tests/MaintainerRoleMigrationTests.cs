@@ -87,7 +87,7 @@ namespace CRT.Server.Tests
         // *** THE AUDIT TRAIL KEEPS ONE NAME PER EVENT (code review, 2026-09-25). *** The grant and
         // revoke actions became maintainer.granted / maintainer.revoked, and the BETA database already
         // holds reviewer.* rows from grants made before the rename. Left alone, a query for every
-        // grant of a system misses all of them. 0010 must rewrite each old word to the one the code
+        // grant of a board misses all of them. 0010 must rewrite each old word to the one the code
         // now writes.
         // ###########################################################################################
         [Theory]

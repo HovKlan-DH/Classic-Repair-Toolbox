@@ -32,6 +32,11 @@ namespace CRT.Server.Handlers.Accounts
 
         Task<AccountRecord?> FindByIdAsync(long accountId, CancellationToken cancellationToken = default);
 
+        // Several accounts in ONE query, keyed by id - for a screen that names many people (a
+        // board's detail), which would otherwise ask once per person (code review, 2026-10-09). An
+        // id with no account is simply absent.
+        Task<IReadOnlyDictionary<long, AccountRecord>> FindByIdsAsync(IReadOnlyCollection<long> accountIds, CancellationToken cancellationToken = default);
+
         // Returns the new account's id. The caller has already validated everything; this inserts.
         Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default);
 
@@ -95,36 +100,36 @@ namespace CRT.Server.Handlers.Accounts
         Task RevokeOtherSessionsAsync(long accountId, long keepSessionId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // -----------------------------------------------------------------------------------
-        // Maintainer pools (Phase 6 roles, 2026-09-25). One row per (system, account) in the
+        // Maintainer pools (Phase 6 roles, 2026-09-25). One row per (board, account) in the
         // `maintainers` table; being in a pool is the whole of what makes an account a maintainer.
         // Read on EVERY review request (ReviewEndpoints.AuthoriseAsync), which is what makes
         // removal take effect on the next call rather than at next login.
         // -----------------------------------------------------------------------------------
 
-        // The system ids this account reviews. Empty for an ordinary account, and for an
+        // The board ids this account reviews. Empty for an ordinary account, and for an
         // administrator too - the administrator is in every pool by definition and never needs
         // rows.
-        Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default);
+        Task<IReadOnlySet<string>> GetReviewedBoardIdsAsync(long accountId, CancellationToken cancellationToken = default);
 
-        // Who reviews this system, with the display names system.json mirrors and the addresses a
+        // Who reviews this board, with the display names system.json mirrors and the addresses a
         // new-submission mail goes to.
-        Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfBoardAsync(string boardId, CancellationToken cancellationToken = default);
 
         // Every pool row there is, for the administrator's overview. Small by nature - a handful
-        // of people across a few dozen systems.
+        // of people across a few dozen boards.
         Task<IReadOnlyList<MaintainerRecord>> ListMaintainersAsync(CancellationToken cancellationToken = default);
 
         // Idempotent: adding somebody already in the pool changes nothing.
-        Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+        Task AddMaintainerAsync(string boardId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
         // Idempotent: removing somebody not in the pool changes nothing.
-        Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default);
+        Task RemoveMaintainerAsync(string boardId, long accountId, CancellationToken cancellationToken = default);
 
         // Every account, for the administrator to pick a maintainer from. Bounded, because a table
         // that has somehow grown large is a sign of abuse to look into, not a list to page.
         Task<IReadOnlyList<AccountRecord>> ListAccountsAsync(int limit, CancellationToken cancellationToken = default);
 
-        // Where a submission goes when no maintainer is assigned to its system, or it changes
+        // Where a submission goes when no maintainer is assigned to its board, or it changes
         // shared files.
         Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default);
 
@@ -167,7 +172,7 @@ namespace CRT.Server.Handlers.Accounts
 
         Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default);
 
-        // The audit rows naming any of `subjects`, newest first - a system's history on the Systems
+        // The audit rows naming any of `subjects`, newest first - a board's history on the Boards
         // screen (2026-09-27): its id, and "#{id}" for each of its submissions.
         Task<IReadOnlyList<AuditEntry>> GetAuditForSubjectsAsync(IReadOnlyCollection<string> subjects, int limit, CancellationToken cancellationToken = default);
 
@@ -188,7 +193,7 @@ namespace CRT.Server.Handlers.Accounts
 
         // ###########################################################################################
         // Accepting: in ONE transaction, creates the account VERIFIED (the code proved the mailbox),
-        // puts it in the pool of every system its address has an open invitation to, and marks
+        // puts it in the pool of every board its address has an open invitation to, and marks
         // those invitations accepted. Null - and nothing written - when the address has an account
         // already (taken between the flow's check and this write).
         // ###########################################################################################
@@ -196,7 +201,7 @@ namespace CRT.Server.Handlers.Accounts
     }
 
     public sealed record NewMaintainerInvitation(
-        string SystemId,
+        string BoardId,
         string Email,
         string NormalisedEmail,
         string TokenHash,
@@ -206,7 +211,7 @@ namespace CRT.Server.Handlers.Accounts
 
     public sealed record MaintainerInvitationRecord(
         long Id,
-        string SystemId,
+        string BoardId,
         string Email,
         string NormalisedEmail,
         long? InvitedByAccountId,
@@ -235,8 +240,8 @@ namespace CRT.Server.Handlers.Accounts
         DateTimeOffset? LastLoginUtc);
 
     // ###########################################################################################
-    // One pool row, joined to the account it names. SystemId is present so a whole-table listing
-    // can be grouped by system without a second lookup.
+    // One pool row, joined to the account it names. BoardId is present so a whole-table listing
+    // can be grouped by board without a second lookup.
     //
     // The account's three flags travel with it (code review, 2026-09-25): a pool row can outlive
     // the account's fitness to review - the account made administrator by hand, locked, or never
@@ -244,7 +249,7 @@ namespace CRT.Server.Handlers.Accounts
     // (ReviewAuthority.CanGiveMaintainerApproval).
     // ###########################################################################################
     public sealed record MaintainerRecord(
-        string SystemId,
+        string BoardId,
         long AccountId,
         string DisplayName,
         string Email,

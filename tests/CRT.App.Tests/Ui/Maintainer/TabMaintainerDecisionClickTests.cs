@@ -86,7 +86,7 @@ public sealed class TabMaintainerDecisionClickTests
     }
 
     // ###########################################################################################
-    // And none when Approve is off: neither for a system gated elsewhere (the reason is the first
+    // And none when Approve is off: neither for a board gated elsewhere (the reason is the first
     // line above the table) nor for an account that may not publish - which is said in the line
     // above the buttons instead, where it can be read without hovering at all.
     // ###########################################################################################

@@ -57,9 +57,13 @@ namespace Handlers.DataHandling
         // The capability token, returned once by the server at creation and never again.
         public string UploadToken { get; init; } = string.Empty;
 
-        // The system this was a submission for, as its ExcelDataFile identity - what the row is
+        // The board this was a submission for, as its ExcelDataFile identity - what the row is
         // labelled with, and what ties a receipt back to a draft still on this machine.
-        public string SystemId { get; init; } = string.Empty;
+        //
+        // Written as "SystemId", the name it had before "system" became "board" everywhere (owner
+        // decision, 2026-10-09): every receipt already on a contributor's machine carries it.
+        [JsonPropertyName("SystemId")]
+        public string BoardId { get; init; } = string.Empty;
 
         // What the contributor typed as their summary. Kept locally so the list reads as theirs
         // ("fixed U8 pinout") rather than as a row of ids, and so it still reads that way when the
@@ -84,7 +88,7 @@ namespace Handlers.DataHandling
         public DateTimeOffset? LastCheckedUtc { get; init; }
 
         // When the server last answered that it does not know this submission (HTTP 404 - deleted
-        // with its system, for one), or null while it does (code review, 2026-10-04). Such a receipt
+        // with its board, for one), or null while it does (code review, 2026-10-04). Such a receipt
         // is asked about only once per NotFoundRecheckInterval rather than every minute for ever;
         // any later answer clears it. "My submissions" keeps showing its last known state.
         public DateTimeOffset? NotFoundUtc { get; init; }
@@ -226,7 +230,7 @@ namespace Handlers.DataHandling
 
         // Never the generated ToString, which would print UploadToken - a secret - into any log line
         // that formats a receipt.
-        public override string ToString() => $"Submission #{this.SubmissionId} ({this.SystemId})";
+        public override string ToString() => $"Submission #{this.SubmissionId} ({this.BoardId})";
     }
 
     // ###########################################################################################
@@ -344,7 +348,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // *** A SUBMISSION THE SERVER NO LONGER KNOWS (2026-10-04). *** The server answers "not
-        // found" for a submission deleted with its system (Account > "Delete a system") or by a reset
+        // found" for a submission deleted with its board (Account > "Delete a board") or by a reset
         // of the contribution data at go-live (Account > "Reset contribution data"). The receipt keeps
         // the state it last had - and showed it, "Submitted - awaiting feedback" for ever, about a
         // submission nobody will ever look at. These two read the RECEIPT, not only its state, so a
@@ -544,22 +548,22 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // A system's name as a contributor reads it: "Commodore/C128/310378 Open128" ->
+        // A board's name as a contributor reads it: "Commodore/C128/310378 Open128" ->
         // "Commodore C128 310378 Open128".
         //
-        // *** A RECEIPT HOLDS THE SYSTEM ID ITSELF, with no file name on the end (2026-09-27). ***
+        // *** A RECEIPT HOLDS THE BOARD ID ITSELF, with no file name on the end (2026-09-27). ***
         // "My submissions" used to drop the last segment as though it were the workbook's file
         // name, so a real receipt read "Commodore C128" with the board missing. A workbook path
         // (the shape older fixtures used) still loses only its ".xlsx" file.
         // ###########################################################################################
-        public static string DescribeSystem(string? systemId)
+        public static string DescribeBoard(string? boardId)
         {
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
             {
-                return "(unknown system)";
+                return "(unknown board)";
             }
 
-            List<string> segments = systemId.Split('/', StringSplitOptions.RemoveEmptyEntries)
+            List<string> segments = boardId.Split('/', StringSplitOptions.RemoveEmptyEntries)
                 .Select(segment => segment.Trim())
                 .Where(segment => segment.Length > 0)
                 .ToList();
@@ -569,7 +573,7 @@ namespace Handlers.DataHandling
                 segments.RemoveAt(segments.Count - 1);
             }
 
-            return segments.Count == 0 ? systemId.Trim() : string.Join(' ', segments);
+            return segments.Count == 0 ? boardId.Trim() : string.Join(' ', segments);
         }
 
         // ###########################################################################################
@@ -600,10 +604,10 @@ namespace Handlers.DataHandling
                 .ToList();
         }
 
-        // The notice's words, naming each system once.
+        // The notice's words, naming each board once.
         public static string DescribeSourceSwitchNotice(IReadOnlyList<SubmissionReceipt> receipts)
         {
-            (string named, string verb) = SubmissionReceiptPresenter.NameSystems(receipts);
+            (string named, string verb) = SubmissionReceiptPresenter.NameBoards(receipts);
 
             return $"{named} {verb} now published to the stable source. You are downloading data from the BETA source - " +
                    "you can switch back to the stable source on the Configuration tab.";
@@ -639,7 +643,7 @@ namespace Handlers.DataHandling
         // BETA check box is greyed out, so the notice names that one first.
         public static string DescribeBetaTryNotice(IReadOnlyList<SubmissionReceipt> receipts, bool checkDataOnLaunch)
         {
-            (string named, string verb) = SubmissionReceiptPresenter.NameSystems(receipts);
+            (string named, string verb) = SubmissionReceiptPresenter.NameBoards(receipts);
 
             string tick = checkDataOnLaunch
                 ? $"tick \"{ConfigurationWording.BetaSourceCheckBox}\""
@@ -671,33 +675,33 @@ namespace Handlers.DataHandling
         }
 
         // "Your submission for Commodore C64 250407" / "Your submissions for A and B", and its verb -
-        // each system named once.
-        private static (string Named, string Verb) NameSystems(IReadOnlyList<SubmissionReceipt> receipts)
+        // each board named once.
+        private static (string Named, string Verb) NameBoards(IReadOnlyList<SubmissionReceipt> receipts)
         {
             ArgumentNullException.ThrowIfNull(receipts);
 
-            List<string> systems = receipts
-                .Select(receipt => SubmissionReceiptPresenter.DescribeSystem(receipt.SystemId))
+            List<string> boards = receipts
+                .Select(receipt => SubmissionReceiptPresenter.DescribeBoard(receipt.BoardId))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            string named = systems.Count switch
+            string named = boards.Count switch
             {
                 0 => "Your submission",
-                1 => $"Your submission for {systems[0]}",
-                _ => $"Your submissions for {string.Join(", ", systems.Take(systems.Count - 1))} and {systems[^1]}",
+                1 => $"Your submission for {boards[0]}",
+                _ => $"Your submissions for {string.Join(", ", boards.Take(boards.Count - 1))} and {boards[^1]}",
             };
 
-            return (named, systems.Count > 1 ? "are" : "is");
+            return (named, boards.Count > 1 ? "are" : "is");
         }
 
         // ###########################################################################################
-        // The LATEST submission of one system, or null when it was never sent - for the badge on
+        // The LATEST submission of one board, or null when it was never sent - for the badge on
         // its Drafts tab row (owner request, 2026-09-27: "When I have submitted ... I need to see
         // that somehow").
         //
-        // Matched on the system id, the one a submission is sent under
-        // (SystemDescriptorRules.SystemIdFromExcelDataFile) - never on a display name. Latest by
+        // Matched on the board id, the one a submission is sent under
+        // (BoardDescriptorRules.BoardIdFromExcelDataFile) - never on a display name. Latest by
         // the time it was sent; a newer one replaces an older one on the server too.
         //
         // *** ONLY SUBMISSIONS SENT FROM THIS DRAFT (code review, 2026-09-27). *** A contributor
@@ -706,19 +710,19 @@ namespace Handlers.DataHandling
         // had not been sent at all. draftCreatedUtc (the marker's) leaves out anything sent before
         // the draft existed; null, from a marker that does not say, leaves nothing out.
         // ###########################################################################################
-        public static SubmissionReceipt? LatestForSystem(
+        public static SubmissionReceipt? LatestForBoard(
             IEnumerable<SubmissionReceipt>? receipts,
-            string? systemId,
+            string? boardId,
             DateTimeOffset? draftCreatedUtc = null)
         {
-            string id = systemId?.Trim() ?? string.Empty;
+            string id = boardId?.Trim() ?? string.Empty;
             if (id.Length == 0)
             {
                 return null;
             }
 
             return (receipts ?? [])
-                .Where(receipt => string.Equals(receipt.SystemId?.Trim(), id, StringComparison.OrdinalIgnoreCase))
+                .Where(receipt => string.Equals(receipt.BoardId?.Trim(), id, StringComparison.OrdinalIgnoreCase))
                 .Where(receipt => draftCreatedUtc is null || receipt.SentUtc >= draftCreatedUtc.Value)
                 .OrderByDescending(receipt => receipt.SentUtc)
                 .ThenByDescending(receipt => receipt.SubmissionId)
@@ -728,7 +732,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // *** HAS THE DRAFT ALREADY BEEN SENT AS IT IS NOW? (owner request, 2026-10-03: "It should
         // not be possible to submit the same data again"; cases agreed with the project owner) ***
-        // True while the draft's fingerprint is the one its LATEST submission (LatestForSystem,
+        // True while the draft's fingerprint is the one its LATEST submission (LatestForBoard,
         // only those sent from this draft) was sent with - whatever has happened to that
         // submission since: waiting, approved, in BETA, taken back out of BETA, changes requested,
         // even not accepted. Sending the same rows again answers none of those.
@@ -741,7 +745,7 @@ namespace Handlers.DataHandling
         // Never blocks on an unknown: a receipt from before fingerprints existed, or a draft whose
         // fingerprint could not be worked out (DraftFingerprint gives "" then).
         //
-        // NOR when the server no longer knows that submission (2026-10-04) - deleted with its system,
+        // NOR when the server no longer knows that submission (2026-10-04) - deleted with its board,
         // or by the reset at go-live. What was sent is gone, so sending the same draft again is
         // exactly what is wanted.
         // ###########################################################################################
@@ -783,7 +787,7 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(receipt);
 
-            return $"Your last submission of this system, sent {SubmissionReceiptPresenter.FormatDate(receipt.SentUtc)}. " +
+            return $"Your last submission of this board, sent {SubmissionReceiptPresenter.FormatDate(receipt.SentUtc)}. " +
                    "Open \"My submissions\" above for the details.";
         }
 

@@ -16,18 +16,18 @@ public sealed class DraftFolderLayoutTests
 {
     // Built for THIS machine, never a literal @"C:\..." - see TestPathLiteralTests.
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "Drafts");
-    private const string System = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string Board = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     [Fact]
-    public void The_system_folder_mirrors_the_published_tree_layout()
+    public void The_board_folder_mirrors_the_published_tree_layout()
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407"),
-            DraftFolderLayout.GetSystemFolder(Root, System));
+            DraftFolderLayout.GetBoardFolder(Root, Board));
     }
 
     // ###########################################################################################
-    // *** THE SAME FILE NAME THE PUBLISHED SYSTEM USES. ***
+    // *** THE SAME FILE NAME THE PUBLISHED BOARD USES. ***
     //
     // Not "Data C64 250407 (draft).xlsx". The request was that the folder be indistinguishable
     // from a real board, and a renamed workbook would announce itself as something else - it would
@@ -38,7 +38,7 @@ public sealed class DraftFolderLayoutTests
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "Data C64 250407.xlsx"),
-            DraftFolderLayout.GetWorkbookPath(Root, System));
+            DraftFolderLayout.GetWorkbookPath(Root, Board));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class DraftFolderLayoutTests
         // of "the sidecar beside this workbook" rather than a second extension swap here.
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "Data C64 250407.json"),
-            DraftFolderLayout.GetSidecarPath(Root, System));
+            DraftFolderLayout.GetSidecarPath(Root, Board));
     }
 
     // Beside the workbook, with the exact name published boards use - the Wiki's
@@ -59,11 +59,11 @@ public sealed class DraftFolderLayoutTests
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "Scope baseline"),
-            DraftFolderLayout.GetScopeBaselineFolder(Root, System));
+            DraftFolderLayout.GetScopeBaselineFolder(Root, Board));
 
         Assert.Equal(
-            Path.GetDirectoryName(DraftFolderLayout.GetWorkbookPath(Root, System)),
-            Path.GetDirectoryName(DraftFolderLayout.GetScopeBaselineFolder(Root, System)));
+            Path.GetDirectoryName(DraftFolderLayout.GetWorkbookPath(Root, Board)),
+            Path.GetDirectoryName(DraftFolderLayout.GetScopeBaselineFolder(Root, Board)));
     }
 
     // ###########################################################################################
@@ -76,27 +76,27 @@ public sealed class DraftFolderLayoutTests
     {
         string resolved = DraftFolderLayout.GetReferencedFilePath(
             Root,
-            System,
+            Board,
             "Commodore/C64/250407/Scope baseline/U1_1_PAL.png");
 
         Assert.Equal(
-            DraftFolderLayout.GetScopeBaselineFolder(Root, System),
+            DraftFolderLayout.GetScopeBaselineFolder(Root, Board),
             Path.GetDirectoryName(resolved));
     }
 
     [Fact]
-    public void The_scope_baseline_folder_is_empty_when_the_system_cannot_be_resolved()
+    public void The_scope_baseline_folder_is_empty_when_the_board_cannot_be_resolved()
     {
-        Assert.Equal(string.Empty, DraftFolderLayout.GetScopeBaselineFolder(string.Empty, System));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetScopeBaselineFolder(string.Empty, Board));
         Assert.Equal(string.Empty, DraftFolderLayout.GetScopeBaselineFolder(Root, "no-folder.xlsx"));
     }
 
     [Fact]
-    public void The_marker_sits_at_the_system_folder_root()
+    public void The_marker_sits_at_the_board_folder_root()
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", ".crt-draft.json"),
-            DraftFolderLayout.GetMarkerPath(Root, System));
+            DraftFolderLayout.GetMarkerPath(Root, Board));
     }
 
     // ###########################################################################################
@@ -104,26 +104,26 @@ public sealed class DraftFolderLayoutTests
     //
     // A BoardData row stores a file as a path from the DATA ROOT
     // ("Commodore/C64/250407/Sheet1.png"), because that is what the published tree needs. Inside a
-    // draft folder the system's own three segments ARE the folder, so they have to be stripped -
+    // draft folder the board's own three segments ARE the folder, so they have to be stripped -
     // otherwise the bytes land at "<draft>/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png"
     // and every image in the draft points at nothing.
     // ###########################################################################################
     [Fact]
-    public void A_referenced_file_has_the_systems_OWN_prefix_stripped()
+    public void A_referenced_file_has_the_boards_OWN_prefix_stripped()
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "Sheet1.png"),
-            DraftFolderLayout.GetReferencedFilePath(Root, System, "Commodore/C64/250407/Sheet1.png"));
+            DraftFolderLayout.GetReferencedFilePath(Root, Board, "Commodore/C64/250407/Sheet1.png"));
     }
 
     [Fact]
     public void A_referenced_file_in_a_SUBFOLDER_keeps_its_subfolder()
     {
-        // "KiCad data/" and similar. Stripping the system prefix must not flatten what is below it.
+        // "KiCad data/" and similar. Stripping the board prefix must not flatten what is below it.
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "KiCad data", "board.kicad_pcb"),
             DraftFolderLayout.GetReferencedFilePath(
-                Root, System, "Commodore/C64/250407/KiCad data/board.kicad_pcb"));
+                Root, Board, "Commodore/C64/250407/KiCad data/board.kicad_pcb"));
     }
 
     // ###########################################################################################
@@ -139,20 +139,20 @@ public sealed class DraftFolderLayoutTests
     {
         Assert.Equal(
             string.Empty,
-            DraftFolderLayout.GetReferencedFilePath(Root, System, "Commodore/Shared files/7805.jpg"));
+            DraftFolderLayout.GetReferencedFilePath(Root, Board, "Commodore/Shared files/7805.jpg"));
 
         Assert.Equal(
             string.Empty,
-            DraftFolderLayout.GetReferencedFilePath(Root, System, "Generic shared files/74LS00.png"));
+            DraftFolderLayout.GetReferencedFilePath(Root, Board, "Generic shared files/74LS00.png"));
     }
 
     [Fact]
     public void A_file_under_a_DIFFERENT_board_of_the_same_hardware_is_also_shared()
     {
-        // Same manufacturer and hardware, different board - still not this system's to own.
+        // Same manufacturer and hardware, different board - still not this board's to own.
         Assert.Equal(
             string.Empty,
-            DraftFolderLayout.GetReferencedFilePath(Root, System, "Commodore/C64/250425/Sheet1.png"));
+            DraftFolderLayout.GetReferencedFilePath(Root, Board, "Commodore/C64/250425/Sheet1.png"));
     }
 
     // ###########################################################################################
@@ -162,11 +162,11 @@ public sealed class DraftFolderLayoutTests
     // would all stop being copied, with no error anywhere.
     // ###########################################################################################
     [Fact]
-    public void The_system_prefix_is_matched_case_insensitively()
+    public void The_board_prefix_is_matched_case_insensitively()
     {
         Assert.Equal(
             Path.Combine(Root, "Commodore", "C64", "250407", "Sheet1.png"),
-            DraftFolderLayout.GetReferencedFilePath(Root, System, "commodore/c64/250407/Sheet1.png"));
+            DraftFolderLayout.GetReferencedFilePath(Root, Board, "commodore/c64/250407/Sheet1.png"));
     }
 
     [Fact]
@@ -174,10 +174,10 @@ public sealed class DraftFolderLayoutTests
     {
         // Callers treat empty as "no draft folder available". A bogus path would be far worse:
         // it would be created, and files would be written somewhere nobody looks.
-        Assert.Equal(string.Empty, DraftFolderLayout.GetSystemFolder(string.Empty, System));
-        Assert.Equal(string.Empty, DraftFolderLayout.GetSystemFolder(Root, string.Empty));
-        Assert.Equal(string.Empty, DraftFolderLayout.GetSystemFolder(Root, "loose-file.xlsx"));
-        Assert.Equal(string.Empty, DraftFolderLayout.GetReferencedFilePath(Root, System, null));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetBoardFolder(string.Empty, Board));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetBoardFolder(Root, string.Empty));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetBoardFolder(Root, "loose-file.xlsx"));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetReferencedFilePath(Root, Board, null));
     }
 
     // ###########################################################################################

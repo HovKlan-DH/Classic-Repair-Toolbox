@@ -28,7 +28,7 @@ public sealed class TabMaintainerScreenTabsTests
 {
     private static readonly BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
-    private static readonly string[] ScreenTabs = ["SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton"];
+    private static readonly string[] ScreenTabs = ["BoardsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton"];
 
     private static ReviewQueueRow Row() =>
         new(42, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", DateTimeOffset.UtcNow.AddHours(-1), false, false, true);
@@ -121,7 +121,7 @@ public sealed class TabMaintainerScreenTabsTests
             Color red = Resource("Main_TabUnderline_Selected");
 
             ContentPresenter chosen = Painted(tab.FindControl<Button>("ReviewModeButton")!);
-            ContentPresenter other = Painted(tab.FindControl<Button>("SystemsModeButton")!);
+            ContentPresenter other = Painted(tab.FindControl<Button>("BoardsModeButton")!);
 
             Assert.Equal(red, ColourOf(chosen.BorderBrush));
             Assert.Equal(new Thickness(0, 0, 0, 3), chosen.BorderThickness);
@@ -132,7 +132,7 @@ public sealed class TabMaintainerScreenTabsTests
                 tab.FindControl<Button>(button)!.GetVisualDescendants().OfType<TextBlock>().First(text => text.Classes.Contains("ScreenTabLabel"));
 
             Assert.Equal(1, Label("ReviewModeButton").Opacity);
-            Assert.True(Label("SystemsModeButton").Opacity < 1);
+            Assert.True(Label("BoardsModeButton").Opacity < 1);
 
             // The badge on a screen not chosen is not greyed with its label.
             Assert.Equal(1, tab.FindControl<TextBlock>("BetaBadgeText")!.Opacity);

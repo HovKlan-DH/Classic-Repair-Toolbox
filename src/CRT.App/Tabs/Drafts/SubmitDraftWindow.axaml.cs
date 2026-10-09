@@ -29,7 +29,7 @@ namespace CRT
     // verified by running the app.
     //
     // *** NOTHING LONG-RUNNING TOUCHES THE UI THREAD. *** "Do not let submission block the UI" is
-    // a named trap in the strategy document. Hashing a 76 MB system and uploading it both happen
+    // a named trap in the strategy document. Hashing a 76 MB board and uploading it both happen
     // on the thread pool; progress arrives through an IProgress whose callback posts to the
     // dispatcher.
     // ###########################################################################################
@@ -48,12 +48,12 @@ namespace CRT
         // What the draft held when Submit was pressed - see Initialize and NewReceipt.
         private string thisDraftFingerprint = string.Empty;
 
-        // TWO roots, because a system's files live in two places - see SubmissionFileLocator.
-        // thisSystemFolder is the DRAFT folder for this system; thisDataRoot is the synced Data/
+        // TWO roots, because a board's files live in two places - see SubmissionFileLocator.
+        // thisBoardFolder is the DRAFT folder for this board; thisDataRoot is the synced Data/
         // tree that holds everything already published.
-        private string thisSystemFolder = string.Empty;
+        private string thisBoardFolder = string.Empty;
         private string thisDataRoot = string.Empty;
-        private string thisSystemDisplayName = string.Empty;
+        private string thisBoardDisplayName = string.Empty;
 
         private CancellationTokenSource? thisCancellation;
 
@@ -70,9 +70,9 @@ namespace CRT
 
             string officialFolder = string.IsNullOrWhiteSpace(this.thisDataRoot)
                 ? string.Empty
-                : Path.Combine(this.thisDataRoot, this.thisIdentity.SystemId.Replace('/', Path.DirectorySeparatorChar));
+                : Path.Combine(this.thisDataRoot, this.thisIdentity.BoardId.Replace('/', Path.DirectorySeparatorChar));
 
-            return SubmissionKiCadFiles.Collect(this.thisIdentity.SystemId, this.thisSystemFolder, officialFolder);
+            return SubmissionKiCadFiles.Collect(this.thisIdentity.BoardId, this.thisBoardFolder, officialFolder);
         }
 
         // Set once the submission has been sent, so the caller can tell whether the draft should
@@ -93,14 +93,14 @@ namespace CRT
 
         // ###########################################################################################
         // Prepares the dialog. Takes the merged board data rather than a draft, because what gets
-        // submitted is the system as it should READ afterwards - the server diffs it against the
+        // submitted is the board as it should READ afterwards - the server diffs it against the
         // base revision itself.
         // ###########################################################################################
         public void Initialize(
-            string systemDisplayName,
+            string boardDisplayName,
             BoardData mergedData,
             SubmissionIdentity identity,
-            string systemFolder,
+            string boardFolder,
             string dataRoot,
 
             // The draft's KiCad calibrations. They CANNOT come from mergedData - BoardData has no
@@ -120,14 +120,14 @@ namespace CRT
             ArgumentNullException.ThrowIfNull(identity);
 
             this.thisDraftFingerprint = draftFingerprint ?? string.Empty;
-            this.thisSystemDisplayName = systemDisplayName;
+            this.thisBoardDisplayName = boardDisplayName;
             this.thisMergedData = mergedData;
             this.thisIdentity = identity;
             this.thisCalibrations = calibrations ?? [];
-            this.thisSystemFolder = systemFolder;
+            this.thisBoardFolder = boardFolder;
             this.thisDataRoot = dataRoot;
 
-            this.SystemNameText.Text = systemDisplayName;
+            this.BoardNameText.Text = boardDisplayName;
 
             // ###########################################################################################
             // ONE EMAIL ADDRESS FOR THE WHOLE APPLICATION (owner request, 2026-09-22).
@@ -299,7 +299,7 @@ namespace CRT
             CancellationToken token)
         {
             // What the rows cite, plus the board's KiCad data - the folder no row cites, which the
-            // rows-only list silently left behind until 2026-09-26 (a new system published without
+            // rows-only list silently left behind until 2026-09-26 (a new board published without
             // its traces). Both are hashed the same way; SubmissionFileLocator resolves each path
             // against the draft first, then the synced data.
             IReadOnlyList<string> kiCadFiles = this.CollectKiCadFiles();
@@ -311,7 +311,7 @@ namespace CRT
             ];
 
             FileHashResult hashed = await SubmissionClient.HashFilesAsync(
-                this.thisDataRoot, this.thisSystemFolder, paths, progress, token);
+                this.thisDataRoot, this.thisBoardFolder, paths, progress, token);
 
             SubmissionIdentity identity = this.thisIdentity!;
 
@@ -382,7 +382,7 @@ namespace CRT
                 // all means hashing already located this file, so a failure is a real change on
                 // disk between the two passes.
                 if (!SubmissionFileLocator.TryLocate(
-                        this.thisDataRoot, this.thisSystemFolder, file.Path,
+                        this.thisDataRoot, this.thisBoardFolder, file.Path,
                         out string absolute, out string reason))
                 {
                     throw new SubmissionRejectedException(
@@ -423,7 +423,7 @@ namespace CRT
         {
             SubmissionId = submissionId,
             UploadToken = uploadToken,
-            SystemId = this.thisIdentity?.SystemId ?? string.Empty,
+            BoardId = this.thisIdentity?.BoardId ?? string.Empty,
             Summary = this.SummaryText,
             SentUtc = sentUtc,
             DraftFingerprint = this.thisDraftFingerprint
@@ -655,7 +655,7 @@ namespace CRT
         // ###########################################################################################
         // The identity the manifest is built from: the one Initialize was given, with the summary
         // typed since and the moment of sending. Everything else is COPIED - a field left out here
-        // never leaves this computer, however the caller filled it in (a new system's notes nearly
+        // never leaves this computer, however the caller filled it in (a new board's notes nearly
         // did, 2026-10-05), so SubmitDraftWindowIdentityTests checks every property by reflection.
         // ###########################################################################################
         internal static SubmissionIdentity IdentityToSend(SubmissionIdentity identity, string summary, DateTimeOffset nowUtc)
@@ -664,7 +664,7 @@ namespace CRT
 
             return new SubmissionIdentity
             {
-                SystemId = identity.SystemId,
+                BoardId = identity.BoardId,
                 Manufacturer = identity.Manufacturer,
                 Hardware = identity.Hardware,
                 Board = identity.Board,

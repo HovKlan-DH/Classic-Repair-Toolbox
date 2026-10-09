@@ -95,7 +95,7 @@ public sealed class ExternalTargetLauncherTests : IDisposable
 
     [Theory]
     [InlineData("ftp://example.com/file.zip")]
-    [InlineData("file:///C:/Windows/System32/calc.exe")]
+    [InlineData("file:///C:/Windows/Board32/calc.exe")]
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html;base64,PHNjcmlwdD4=")]
     [InlineData("vbscript:msgbox(1)")]

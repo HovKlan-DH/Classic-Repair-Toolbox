@@ -10,7 +10,7 @@ namespace Handlers.MaintainerHandling
     // Pure, so the wording is tested rather than eyeballed - the same rule ReviewQueueDisplay
     // follows. Two things here are decisions rather than formatting: an account that CANNOT be
     // granted says why in the list itself (so the refusal is read before the button is pressed,
-    // not after), and a system with nobody assigned says so in words, because an empty bracket
+    // not after), and a board with nobody assigned says so in words, because an empty bracket
     // reads as a rendering fault and an unassigned board is exactly the thing the administrator
     // opens this screen to find.
     // ###########################################################################################
@@ -18,21 +18,21 @@ namespace Handlers.MaintainerHandling
     {
         // ###########################################################################################
         // "Commodore / C64 / 250407  -  2 maintainers". The three parts with spaces, because a
-        // system id with slashes reads as a path rather than as a board.
+        // board id with slashes reads as a path rather than as a board.
         // ###########################################################################################
-        public static string SystemLine(ReviewSystemRow system)
+        public static string BoardLine(ReviewBoardRow board)
         {
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
 
             string name = string.Join(
                 " / ",
-                new[] { system.Manufacturer, system.Hardware, system.Board }
+                new[] { board.Manufacturer, board.Hardware, board.Board }
                     .Where(part => !string.IsNullOrWhiteSpace(part)));
 
             if (name.Length == 0)
-                name = string.IsNullOrWhiteSpace(system.SystemId) ? "(unknown system)" : system.SystemId;
+                name = string.IsNullOrWhiteSpace(board.BoardId) ? "(unknown board)" : board.BoardId;
 
-            return $"{name}  -  {MaintainerAssignmentDisplay.CountPhrase(system.Maintainers.Count)}";
+            return $"{name}  -  {MaintainerAssignmentDisplay.CountPhrase(board.Maintainers.Count)}";
         }
 
         // ###########################################################################################
@@ -66,7 +66,7 @@ namespace Handlers.MaintainerHandling
         // Mirrors MaintainerAssignmentRules on the server, so the list can say what the server will
         // say. The server still decides; this only saves a round trip that would end in a refusal.
         // An administrator may be granted since 2026-10-05 (owner request: to be named as a
-        // system's maintainer), so being one is no reason here any more.
+        // board's maintainer), so being one is no reason here any more.
         // ###########################################################################################
         public static string? WhyNotGrantable(ReviewAccountRow account)
         {

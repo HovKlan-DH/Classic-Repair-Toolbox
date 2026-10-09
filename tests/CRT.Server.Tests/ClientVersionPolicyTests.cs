@@ -54,7 +54,7 @@ namespace CRT.Server.Tests
         [InlineData("/api/submissions/42/finalise", ClientArea.Submissions)]
         [InlineData("/API/Submissions/42", ClientArea.Submissions)]
         [InlineData("/api/review/queue", ClientArea.Maintainer)]
-        [InlineData("/api/review/systems/edit", ClientArea.Maintainer)]
+        [InlineData("/api/review/boards/edit", ClientArea.Maintainer)]
         [InlineData("/api/admin/manifest/rebuild", ClientArea.Maintainer)]
         [InlineData("/api/accounts/login", ClientArea.Maintainer)]
         [InlineData("/api/accounts/me/password", ClientArea.Maintainer)]
@@ -170,7 +170,7 @@ namespace CRT.Server.Tests
         [InlineData("/api/submissions", "2")]
         [InlineData("/api/submissions/7/finalise", "1")]
         [InlineData("/api/review/queue", "2")]
-        [InlineData("/api/admin/systems", "2")]
+        [InlineData("/api/admin/boards", "2")]
         [InlineData("/api/accounts/login", "2")]
         public void A_CRT_built_for_an_older_api_revision_is_told_to_update(string path, string revision)
         {

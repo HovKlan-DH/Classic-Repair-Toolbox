@@ -12,8 +12,8 @@ namespace CRT.Server.Tests
     // maintainer(s) - both in the BETA to PROD queue, but also in the normal queue").
     //
     // Recorded once per submission (the FIRST time is kept), audited once under "#{id}" so the
-    // system's history shows it, and carried to every screen a maintainer decides from: the queue,
-    // the detail, "Beta > Prod" (its list and its plan) and the Systems screen.
+    // board's history shows it, and carried to every screen a maintainer decides from: the queue,
+    // the detail, "Beta > Prod" (its list and its plan) and the Boards screen.
     // ###########################################################################################
     public sealed class DraftDiscardFlowTests
     {
@@ -36,7 +36,7 @@ namespace CRT.Server.Tests
             Assert.Equal(Now, store.DraftDiscards[42]);
 
             AuditEntry audit = Assert.Single(accounts.Audit);
-            Assert.Equal(SystemHistoryEvents.DraftDiscarded, audit.Action);
+            Assert.Equal(BoardHistoryEvents.DraftDiscarded, audit.Action);
             Assert.Equal("#42", audit.Subject);
             Assert.Equal("dennis@example.com", audit.ActorLabel);
             Assert.Equal(Now, audit.AtUtc);
@@ -111,11 +111,11 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void The_systems_screen_lists_the_discard_beside_the_submission()
+        public void The_boards_screen_lists_the_discard_beside_the_submission()
         {
-            IReadOnlyList<SystemSubmissionEntry> listed = SystemOverviewFlow.Submissions(
-                [new SystemSubmissionRecord(Record(3), DecidedByMaintainer: true), new SystemSubmissionRecord(Record(4), DecidedByMaintainer: true)],
-                systemProductionPublishedUtc: null,
+            IReadOnlyList<BoardSubmissionEntry> listed = BoardOverviewFlow.Submissions(
+                [new BoardSubmissionRecord(Record(3), DecidedByMaintainer: true), new BoardSubmissionRecord(Record(4), DecidedByMaintainer: true)],
+                boardProductionPublishedUtc: null,
                 accounts: null,
                 discarded: new Dictionary<long, DateTimeOffset> { [4] = Now });
 
@@ -123,21 +123,21 @@ namespace CRT.Server.Tests
             Assert.Null(listed.Single(entry => entry.Id == 3).DraftDiscardedUtc);
         }
 
-        // The audit row the flow writes is one the system's history shows, with who did it.
+        // The audit row the flow writes is one the board's history shows, with who did it.
         [Fact]
-        public async Task The_systems_history_shows_the_discard()
+        public async Task The_boards_history_shows_the_discard()
         {
             var accounts = new FakeAccountStore();
             SubmissionRecord record = Record(42);
 
             await DraftDiscardFlow.RecordAsync(record, new FakeSubmissionStore(), accounts, Now);
 
-            IReadOnlyList<SystemHistoryEntry> history = SystemHistoryRules.Build(
-                [new SystemSubmissionRecord(record, DecidedByMaintainer: true)],
+            IReadOnlyList<BoardHistoryEntry> history = BoardHistoryRules.Build(
+                [new BoardSubmissionRecord(record, DecidedByMaintainer: true)],
                 new Dictionary<long, AccountRecord>(),
                 accounts.Audit);
 
-            SystemHistoryEntry line = history.Single(entry => entry.Event == SystemHistoryEvents.DraftDiscarded);
+            BoardHistoryEntry line = history.Single(entry => entry.Event == BoardHistoryEvents.DraftDiscarded);
             Assert.Equal(42, line.SubmissionId);
             Assert.Equal("dennis@example.com", line.Who);
         }

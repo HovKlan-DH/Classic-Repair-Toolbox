@@ -344,7 +344,7 @@ public sealed class BoardDataChecksTests
 
         var manifest = new SubmissionManifest
         {
-            SystemId = Board,
+            BoardId = Board,
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407",

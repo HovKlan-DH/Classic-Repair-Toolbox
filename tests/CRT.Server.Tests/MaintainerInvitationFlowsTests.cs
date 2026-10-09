@@ -16,7 +16,7 @@ namespace CRT.Server.Tests
     // The whole round trip is driven the way the people involved drive it: the administrator
     // invites, the code is taken OUT OF THE MAIL (never out of the store - the store holds only its
     // hash), the invitee accepts it with a name and a password, and then signs in and has authority
-    // over the system.
+    // over the board.
     // ###########################################################################################
     public sealed class MaintainerInvitationFlowsTests
     {
@@ -26,7 +26,7 @@ namespace CRT.Server.Tests
         private const string C128 = "Commodore/C128/310378";
         private const string GoodPassword = "correct horse battery staple";
 
-        private static readonly IReadOnlyList<PublishedSystemLister.KnownSystem> Tree =
+        private static readonly IReadOnlyList<PublishedBoardLister.KnownBoard> Tree =
         [
             new(MaintainerInvitationFlowsTests.C64, "Commodore", "C64", "250407"),
             new(MaintainerInvitationFlowsTests.C128, "Commodore", "C128", "310378")
@@ -57,9 +57,9 @@ namespace CRT.Server.Tests
             return new World(accounts, new FakeSubmissionStore(), new FakeEmailSender(), ReviewAccess.For(accounts.Accounts[adminId]), adminId);
         }
 
-        private static Task<MaintainerInvitationOutcome> InviteAsync(World world, string email, string systemId = C64, ReviewAccess? actor = null) =>
+        private static Task<MaintainerInvitationOutcome> InviteAsync(World world, string email, string boardId = C64, ReviewAccess? actor = null) =>
             MaintainerInvitationFlows.InviteAsync(
-                actor ?? world.Admin, systemId, email, MaintainerInvitationFlowsTests.Tree,
+                actor ?? world.Admin, boardId, email, MaintainerInvitationFlowsTests.Tree,
                 world.Accounts, world.Submissions, world.Mailer, MaintainerInvitationFlowsTests.Now);
 
         private static Task<InvitationAcceptOutcome> AcceptAsync(World world, string code, DateTimeOffset? at = null, string name = "Anna", string password = GoodPassword) =>
@@ -71,7 +71,7 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task An_invited_person_accepts_the_mailed_code_signs_in_and_maintains_the_system()
+        public async Task An_invited_person_accepts_the_mailed_code_signs_in_and_maintains_the_board()
         {
             World world = await MaintainerInvitationFlowsTests.SetUpAsync();
 
@@ -80,10 +80,10 @@ namespace CRT.Server.Tests
             Assert.True(invited.IsDone, invited.Message);
             Assert.Equal("An invitation is on its way to Anna@Example.com. Its code works for 14 days.", invited.Message);
 
-            // The mail names the system, who invited, where the app is and the button to press.
+            // The mail names the board, who invited, where the app is and the button to press.
             EmailMessage mail = world.Mailer.Last!;
             Assert.Equal("Anna@Example.com", mail.ToAddress);
-            Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] system", mail.Subject);
+            Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] board", mail.Subject);
             Assert.Contains("Dennis has invited you", mail.Body, StringComparison.Ordinal);
             Assert.Contains("\"I have an invitation\"", mail.Body, StringComparison.Ordinal);
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT
@@ -99,7 +99,7 @@ namespace CRT.Server.Tests
 
             Assert.True(accepted.IsAccepted, accepted.Message);
             Assert.Equal("Anna@Example.com", accepted.Answer!.Email);
-            Assert.Equal([MaintainerInvitationFlowsTests.C64], accepted.Answer.SystemIds);
+            Assert.Equal([MaintainerInvitationFlowsTests.C64], accepted.Answer.BoardIds);
             Assert.Equal(
                 "Your account is ready, and you now maintain Commodore/C64/250407. Sign in with your email address and the password you chose.",
                 accepted.Message);
@@ -115,8 +115,8 @@ namespace CRT.Server.Tests
 
             Assert.True(login.IsSuccess);
 
-            // ...and publishes to exactly the system she was invited to.
-            ReviewAccess access = ReviewAccess.For(anna, await world.Accounts.GetReviewedSystemIdsAsync(anna.Id));
+            // ...and publishes to exactly the board she was invited to.
+            ReviewAccess access = ReviewAccess.For(anna, await world.Accounts.GetReviewedBoardIdsAsync(anna.Id));
             Assert.True(ReviewAuthority.CanPublish(access, MaintainerInvitationFlowsTests.C64));
             Assert.False(ReviewAuthority.CanPublish(access, MaintainerInvitationFlowsTests.C128));
         }
@@ -146,7 +146,7 @@ namespace CRT.Server.Tests
             InvitationAcceptOutcome accepted = await MaintainerInvitationFlowsTests.AcceptAsync(world, world.Mailer.ExtractTokenFromLastMail());
 
             Assert.True(accepted.IsAccepted, accepted.Message);
-            Assert.Equal([MaintainerInvitationFlowsTests.C128, MaintainerInvitationFlowsTests.C64], accepted.Answer!.SystemIds.Order(StringComparer.Ordinal));
+            Assert.Equal([MaintainerInvitationFlowsTests.C128, MaintainerInvitationFlowsTests.C64], accepted.Answer!.BoardIds.Order(StringComparer.Ordinal));
 
             long anna = world.Accounts.Accounts.Values.Single(account => account.Email == "anna@example.com").Id;
             Assert.Contains((MaintainerInvitationFlowsTests.C64, anna), world.Accounts.Maintainers);
@@ -208,7 +208,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_system_that_does_not_exist_is_refused()
+        public async Task A_board_that_does_not_exist_is_refused()
         {
             World world = await MaintainerInvitationFlowsTests.SetUpAsync();
 
@@ -218,15 +218,15 @@ namespace CRT.Server.Tests
             Assert.Empty(world.Mailer.Sent);
         }
 
-        // A shipped board nobody has submitted to has no systems row; the invitation's key needs one.
+        // A shipped board nobody has submitted to has no boards row; the invitation's key needs one.
         [Fact]
-        public async Task Inviting_to_a_board_with_no_systems_row_creates_the_row()
+        public async Task Inviting_to_a_board_with_no_boards_row_creates_the_row()
         {
             World world = await MaintainerInvitationFlowsTests.SetUpAsync();
 
             await MaintainerInvitationFlowsTests.InviteAsync(world, "anna@example.com");
 
-            Assert.True(world.Submissions.Systems.ContainsKey(MaintainerInvitationFlowsTests.C64));
+            Assert.True(world.Submissions.Boards.ContainsKey(MaintainerInvitationFlowsTests.C64));
         }
 
         // "Send it again": the earlier code stops working, so only the newest mail is good.
@@ -331,7 +331,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void The_accepted_message_names_every_system()
+        public void The_accepted_message_names_every_board()
         {
             Assert.Equal(
                 "Your account is ready, and you now maintain A/B/C, D/E/F and G/H/I. Sign in with your email address and the password you chose.",
@@ -339,21 +339,21 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // On the Systems screen
+        // On the Boards screen
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // The open invitations ride on a system's detail - for the ADMINISTRATOR only, the one person
-        // who can act on them. A maintainer reading the same system gets none.
+        // The open invitations ride on a board's detail - for the ADMINISTRATOR only, the one person
+        // who can act on them. A maintainer reading the same board gets none.
         // ###########################################################################################
         [Fact]
-        public async Task A_systems_detail_carries_its_open_invitations_for_the_administrator_only()
+        public async Task A_boards_detail_carries_its_open_invitations_for_the_administrator_only()
         {
             World world = await MaintainerInvitationFlowsTests.SetUpAsync();
             await MaintainerInvitationFlowsTests.InviteAsync(world, "anna@example.com");
             await MaintainerInvitationFlowsTests.InviteAsync(world, "bo@example.com", MaintainerInvitationFlowsTests.C128);
 
-            SystemOverviewOutcome forAdmin = await SystemOverviewFlow.DetailAsync(
+            BoardOverviewOutcome forAdmin = await BoardOverviewFlow.DetailAsync(
                 world.Admin, MaintainerInvitationFlowsTests.C64, MaintainerInvitationFlowsTests.Tree, null,
                 world.Submissions, world.Accounts, now: MaintainerInvitationFlowsTests.Now);
 
@@ -365,7 +365,7 @@ namespace CRT.Server.Tests
                 "m@example.com", "m@example.com", "hash", "M", MaintainerInvitationFlowsTests.Now));
             world.Accounts.Accounts[maintainerId] = world.Accounts.Accounts[maintainerId] with { IsVerified = true };
 
-            SystemOverviewOutcome forMaintainer = await SystemOverviewFlow.DetailAsync(
+            BoardOverviewOutcome forMaintainer = await BoardOverviewFlow.DetailAsync(
                 ReviewAccess.For(world.Accounts.Accounts[maintainerId], [MaintainerInvitationFlowsTests.C64]),
                 MaintainerInvitationFlowsTests.C64, MaintainerInvitationFlowsTests.Tree, null,
                 world.Submissions, world.Accounts, now: MaintainerInvitationFlowsTests.Now);

@@ -5,7 +5,7 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers PublishedBoardLocator - which file holds a system's published board, and what
+    // Covers PublishedBoardLocator - which file holds a board's published board, and what
     // "there is none" means.
     //
     // TWO THINGS HERE ARE SECURITY-SHAPED, not merely correctness-shaped:
@@ -13,9 +13,9 @@ namespace CRT.Server.Tests
     //   1. The identity comes from a SUBMISSION and is untrusted. On a WRITE path a traversal
     //      would corrupt the tree; on this READ path it would disclose an arbitrary file's
     //      contents to a maintainer, turning a review screen into a file-disclosure hole.
-    //   2. A missing board must read as "new system", never as an error - because a new system is
+    //   2. A missing board must read as "new board", never as an error - because a new board is
     //      the highest-risk submission there is and must reach a maintainer rather than failing to
-    //      open. But a board that exists and cannot be READ must NOT read as "new system", or a
+    //      open. But a board that exists and cannot be READ must NOT read as "new board", or a
     //      maintainer approves a replacement for a board they were told did not exist.
     //
     // Uses a real temp folder: what is under test is which file on disk is chosen, which a fake
@@ -49,13 +49,13 @@ namespace CRT.Server.Tests
             string hardware = "C64",
             string board = "250407") => new()
             {
-                SystemId = $"{manufacturer}/{hardware}/{board}",
+                BoardId = $"{manufacturer}/{hardware}/{board}",
                 Manufacturer = manufacturer,
                 Hardware = hardware,
                 Board = board
             };
 
-        private string SystemFolder(params string[] workbooks)
+        private string BoardFolder(params string[] workbooks)
         {
             string folder = Path.Combine(this.thisRoot, "Commodore", "C64", "250407");
             Directory.CreateDirectory(folder);
@@ -76,7 +76,7 @@ namespace CRT.Server.Tests
             // *** THE SAME RULE PUBLISHING WRITES WITH. *** Reading an older, frozen generation
             // would show the maintainer a diff against a board no current build uses, and every
             // difference between the generations would appear as a change the contributor made.
-            this.SystemFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
 
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
@@ -87,16 +87,16 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // From a system ID - what the review QUEUE holds, which loads no manifest (2026-09-26: the
-        // "New system" badge). The same workbook as from the manifest, and nothing at all for an id
+        // From a board ID - what the review QUEUE holds, which loads no manifest (2026-09-26: the
+        // "New board" badge). The same workbook as from the manifest, and nothing at all for an id
         // that is not three well-formed parts - a traversal included.
         // ###########################################################################################
         [Fact]
-        public void A_system_id_finds_the_same_board_as_its_manifest()
+        public void A_board_id_finds_the_same_board_as_its_manifest()
         {
-            this.SystemFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
 
-            PublishedBoardLocation byId = PublishedBoardLocator.LocateSystem(this.thisRoot, "Commodore/C64/250407");
+            PublishedBoardLocation byId = PublishedBoardLocator.LocateBoard(this.thisRoot, "Commodore/C64/250407");
 
             Assert.Equal(PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest()), byId);
             Assert.True(byId.Exists);
@@ -108,17 +108,17 @@ namespace CRT.Server.Tests
         [InlineData("../C64/250407")]
         [InlineData("")]
         [InlineData(null)]
-        public void A_malformed_system_id_locates_nothing(string? systemId)
+        public void A_malformed_board_id_locates_nothing(string? boardId)
         {
-            this.SystemFolder("Data C64 250407.xlsx");
+            this.BoardFolder("Data C64 250407.xlsx");
 
-            Assert.False(PublishedBoardLocator.LocateSystem(this.thisRoot, systemId).Exists);
+            Assert.False(PublishedBoardLocator.LocateBoard(this.thisRoot, boardId).Exists);
         }
 
         [Fact]
         public void A_tree_with_only_the_unversioned_original_finds_it()
         {
-            this.SystemFolder("Data C64 250407.xlsx");
+            this.BoardFolder("Data C64 250407.xlsx");
 
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
@@ -147,13 +147,13 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // A new system - an answer, not a failure
+        // A new board - an answer, not a failure
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_system_with_no_folder_at_all_is_reported_as_having_no_board()
+        public void A_board_with_no_folder_at_all_is_reported_as_having_no_board()
         {
-            // The new-system case. It must not throw: a new system is the highest-risk submission
+            // The new-board case. It must not throw: a new board is the highest-risk submission
             // there is and has to reach a maintainer.
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
@@ -164,9 +164,9 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_folder_holding_no_workbook_is_reported_as_having_no_board()
         {
-            // A system folder can exist carrying only images - a partially published system, or
+            // A board folder can exist carrying only images - a partially published board, or
             // one whose files arrived before its workbook.
-            string folder = this.SystemFolder();
+            string folder = this.BoardFolder();
             File.WriteAllText(Path.Combine(folder, "sheet1.png"), "x");
 
             Assert.False(PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest()).Exists);
@@ -211,7 +211,7 @@ namespace CRT.Server.Tests
             //
             // The layout mirrors a genuine deployment: the data tree is one folder among several
             // under a parent, and a sibling holds a board the maintainer must never be shown as if
-            // it were this system's history.
+            // it were this board's history.
             string parent = Path.Combine(this.thisRoot, "parent");
             string dataTree = Path.Combine(parent, "beta");
             string sibling = Path.Combine(parent, "Commodore", "C64", "250407");
@@ -246,7 +246,7 @@ namespace CRT.Server.Tests
         {
             // Falling back to the root would compare the submission against whatever workbook
             // happened to sit at the top of the data tree - a diff against an unrelated board,
-            // presented to the maintainer as this system's history.
+            // presented to the maintainer as this board's history.
             PublishedBoardLocation location = PublishedBoardLocator.Locate(
                 this.thisRoot,
                 PublishedBoardLocatorTests.Manifest("", "", ""));
@@ -277,7 +277,7 @@ namespace CRT.Server.Tests
             // The anti-vacuity partner to the traversal tests above: those pass trivially if
             // nothing is ever found. This proves the ordinary case really does resolve, and
             // resolves inside the root.
-            this.SystemFolder("Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder("Data C64 250407 v2.0.0.xlsx");
 
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());

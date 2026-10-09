@@ -66,7 +66,7 @@ namespace Handlers.DataHandling
         public static BoardDraftSummary LastLoadedDraftSummary { get; private set; } = BoardDraftSummary.Empty;
 
         // The base revision the most recent LoadBoardDataAsync call's draft recorded, and whether
-        // that draft registers a system of its own - the two things the drift check needs about a
+        // that draft registers a board of its own - the two things the drift check needs about a
         // draft beyond its rows (NewContributeStrategy.md Phase 2, session 2d).
         //
         // Siblings of LastLoadedDraftSummary and set from the SAME draft object for the same
@@ -79,7 +79,7 @@ namespace Handlers.DataHandling
         // toggle is on is the UI's decision, taken at the banner rather than by blinding the data.
         public static string LastLoadedDraftBaseRevision { get; private set; } = string.Empty;
 
-        public static bool LastLoadedDraftIsNewSystem { get; private set; }
+        public static bool LastLoadedDraftIsNewBoard { get; private set; }
 
         // Raised with a general status message (e.g. "Checking files...", "Sync complete")
         public static event Action<string>? StatusChanged;
@@ -397,8 +397,8 @@ namespace Handlers.DataHandling
             // is still null whenever the manifest fetch did not run.
             if (_syncManifest != null && HardwareBoards.Count > 0)
             {
-                // Draft-only systems are excluded: their ExcelDataFile names a file that exists only
-                // as an identity key and is never on disk or in the manifest (see NewSystemIdentity),
+                // Draft-only boards are excluded: their ExcelDataFile names a file that exists only
+                // as an identity key and is never on disk or in the manifest (see NewBoardIdentity),
                 // so asking sync to fetch it would be a guaranteed miss on every launch.
                 var boardExcelFiles = HardwareBoards
                     .Where(entry => !entry.IsDraftOnly)
@@ -570,7 +570,7 @@ namespace Handlers.DataHandling
             ReportStatus("Loading hardware definitions...");
             await Task.Run(LoadMainExcel);
 
-            // Draft-only systems excluded for the same reason as the startup sync above: their
+            // Draft-only boards excluded for the same reason as the startup sync above: their
             // ExcelDataFile is an identity key, not a file the server has or will ever have.
             var boardExcelFiles = HardwareBoards
                 .Where(entry => !entry.IsDraftOnly)
@@ -950,22 +950,22 @@ namespace Handlers.DataHandling
                     }
                 }
 
-                // Systems that exist only as a local draft ("Add a new system" - see
+                // Boards that exist only as a local draft ("Add a new board" - see
                 // NewContributeStrategy.md Phase 2, session 2c, task 9). Merged last, so a synced
-                // system and a _UserContribution one both win a name collision over a draft.
+                // board and a _UserContribution one both win a name collision over a draft.
                 //
                 // Deliberately NOT added to _protectedContributionFiles, unlike the user
                 // contribution block above: that list protects real files under "Data/" from being
-                // overwritten by sync or removed by orphan cleanup, and a draft-only system has no
+                // overwritten by sync or removed by orphan cleanup, and a draft-only board has no
                 // files under "Data/" at all. Its files live under "Drafts/", which sync never
                 // touches in either direction.
                 //
-                // A board folder put into Drafts/ by hand becomes a draft FIRST, so a new system
+                // A board folder put into Drafts/ by hand becomes a draft FIRST, so a new board
                 // among them is merged in on this same pass (owner request, 2026-09-27).
                 DraftManager.ImportHandPlacedFolders(entries.Select(entry =>
-                    new KnownDraftSystem(entry.ExcelDataFile, entry.IsPublished)));
+                    new KnownDraftBoard(entry.ExcelDataFile, entry.IsPublished)));
 
-                MergeDraftOnlySystems(entries);
+                MergeDraftOnlyBoards(entries);
 
                 HardwareBoards = entries;
 
@@ -1053,13 +1053,13 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Appends every draft-only system to an entry list, skipping any whose hardware/board name
-        // already names a system from the main Excel workbook or a _UserContribution sidecar. The
+        // Appends every draft-only board to an entry list, skipping any whose hardware/board name
+        // already names a board from the main Excel workbook or a _UserContribution sidecar. The
         // same "{HardwareName}|{BoardName}" identity and the same skip-with-a-warning behaviour the
         // user contribution merge above uses, so all three sources follow one rule.
         //
         // A collision here is not a corrupt state - it happens naturally when a contributor drafts a
-        // whole new system and it is later published officially, at which point the synced entry
+        // whole new board and it is later published officially, at which point the synced entry
         // takes over and the draft's rows apply to it as an ordinary overlay. The warning is how
         // that transition becomes visible in the log rather than a silent change of behaviour.
         //
@@ -1072,7 +1072,7 @@ namespace Handlers.DataHandling
         // contributor knows it, and it reads the draft exactly as a published board would.
         //
         // *** ONLY WHEN THE LISTED ENTRY REALLY READS THIS DRAFT (code review, 2026-09-27). *** A
-        // listed entry finds a draft's workbook by ITS OWN file name. A new system published into
+        // listed entry finds a draft's workbook by ITS OWN file name. A new board published into
         // BETA is listed as "Data C128 310378 Open128 v2.0.0.xlsx" (the tree's generation) while its
         // draft is still "Data C128 310378 Open128.xlsx" - so the listed entry could not read it, and
         // skipping the draft's own entry left the draft unreachable until production retired it:
@@ -1080,10 +1080,10 @@ namespace Handlers.DataHandling
         // correction. So the folder rule applies only when a listed entry carries the draft's own
         // workbook key; otherwise the draft keeps its entry, as it did before the rule.
         // ###########################################################################################
-        private static void MergeDraftOnlySystems(List<HardwareBoardEntry> entries)
+        private static void MergeDraftOnlyBoards(List<HardwareBoardEntry> entries)
         {
-            var draftOnlySystems = DraftManager.EnumerateDraftOnlySystems();
-            if (draftOnlySystems.Count == 0)
+            var draftOnlyBoards = DraftManager.EnumerateDraftOnlyBoards();
+            if (draftOnlyBoards.Count == 0)
             {
                 return;
             }
@@ -1098,11 +1098,11 @@ namespace Handlers.DataHandling
 
             int addedCount = 0;
 
-            foreach (var draftEntry in draftOnlySystems)
+            foreach (var draftEntry in draftOnlyBoards)
             {
                 if (existingFiles.Contains(draftEntry.ExcelDataFile))
                 {
-                    Logger.Info($"Draft-only system [{draftEntry.HardwareName}] / [{draftEntry.BoardName}] is already listed as [{draftEntry.ExcelDataFile}] - the listed entry reads the draft");
+                    Logger.Info($"Draft-only board [{draftEntry.HardwareName}] / [{draftEntry.BoardName}] is already listed as [{draftEntry.ExcelDataFile}] - the listed entry reads the draft");
                 }
                 else if (existingKeys.Add($"{draftEntry.HardwareName}|{draftEntry.BoardName}"))
                 {
@@ -1112,7 +1112,7 @@ namespace Handlers.DataHandling
                 }
                 else
                 {
-                    Logger.Warning($"Draft-only system skipped - a system with this hardware/board already exists: [{draftEntry.HardwareName}] / [{draftEntry.BoardName}]");
+                    Logger.Warning($"Draft-only board skipped - a board with this hardware/board already exists: [{draftEntry.HardwareName}] / [{draftEntry.BoardName}]");
                 }
             }
 
@@ -1123,9 +1123,9 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The workbook key of every system the MAIN workbook lists - the boards whose file in Data/
+        // The workbook key of every board the MAIN workbook lists - the boards whose file in Data/
         // really is the published one. What draft retirement may compare a draft against: a
-        // draft-only system has no file there, and a _UserContribution board's file is the
+        // draft-only board has no file there, and a _UserContribution board's file is the
         // contributor's own (see HardwareBoardEntry.IsPublished).
         // ###########################################################################################
         public static List<string> PublishedExcelDataFiles() =>
@@ -1139,19 +1139,19 @@ namespace Handlers.DataHandling
         // Rebuilds the draft-only half of HardwareBoards from disk, leaving everything that came
         // from the main Excel workbook (and any _UserContribution sidecar) exactly as it is.
         //
-        // This exists so creating or discarding a system takes effect immediately rather than at the
+        // This exists so creating or discarding a board takes effect immediately rather than at the
         // next restart. It deliberately does NOT call LoadMainExcel: that re-reads and re-parses the
         // whole main workbook, and would also rebuild Oscilloscopes and _protectedContributionFiles
         // as a side effect of what is meant to be a narrow refresh.
         //
-        // Call this after creating a new system AND after discarding one - a discarded system that
+        // Call this after creating a new board AND after discarding one - a discarded board that
         // stayed in HardwareBoards would still be listed in the drop-downs, pointing at a draft
         // folder that no longer exists.
         // ###########################################################################################
-        public static void RefreshDraftOnlySystems()
+        public static void RefreshDraftOnlyBoards()
         {
             var entries = HardwareBoards.Where(entry => !entry.IsDraftOnly).ToList();
-            MergeDraftOnlySystems(entries);
+            MergeDraftOnlyBoards(entries);
             HardwareBoards = entries;
         }
 
@@ -1159,7 +1159,7 @@ namespace Handlers.DataHandling
         // Lazily loads and caches all sheets from the board-specific Excel file linked to the entry.
         // Delegates to BoardDataReader for parsing and caching. Returns null on failure.
         //
-        // Also resolves this system's local draft, if any (NewContributeStrategy.md Phase 2), and
+        // Also resolves this board's local draft, if any (NewContributeStrategy.md Phase 2), and
         // hands it to BoardDataReader so the returned BoardData already has the draft overlaid -
         // every caller of this method sees drafted edits without having to know drafts exist.
         // DraftManager.LoadDraftFor re-reads draft.json on every call rather than caching it, so an
@@ -1207,29 +1207,29 @@ namespace Handlers.DataHandling
                 : DraftBoardSource.PublishedPathOf(_dataRoot, entry.ExcelDataFile);
 
             LastLoadedDraftBaseRevision = source.Marker?.BaseRevision ?? string.Empty;
-            LastLoadedDraftIsNewSystem = source.IsNewSystem;
+            LastLoadedDraftIsNewBoard = source.IsNewBoard;
 
-            // A system that exists only as a local draft (session 2c, task 9) has no official .xlsx
+            // A board that exists only as a local draft (session 2c, task 9) has no official .xlsx
             // by construction. The marker is the DRAFT's own registration, never merely "the file is
-            // missing" - for a system the main workbook DOES list, a missing file is a real sync
+            // missing" - for a board the main workbook DOES list, a missing file is a real sync
             // failure and must keep logging and returning null rather than quietly rendering empty.
             //
             // Read off the marker regardless of "view boards as officially published", so that with
-            // the toggle on a draft-only system correctly renders as a blank board (officially, it
+            // the toggle on a draft-only board correctly renders as a blank board (officially, it
             // does not exist yet) rather than failing to open at all.
-            bool allowMissingOfficialFile = source.IsNewSystem;
+            bool allowMissingOfficialFile = source.IsNewBoard;
 
             // ###########################################################################################
             // No draft is passed: there is no overlay any more. The workbook chosen above IS the
             // board, drafted or not.
             //
-            // *** THE CACHE KEY MUST NAME THE FILE THAT WAS ACTUALLY READ, NOT THE SYSTEM. ***
+            // *** THE CACHE KEY MUST NAME THE FILE THAT WAS ACTUALLY READ, NOT THE BOARD. ***
             //
-            // BoardDataReader caches by the key it is given, and this used to pass the system's
+            // BoardDataReader caches by the key it is given, and this used to pass the board's
             // ExcelDataFile - which was safe while a draft was an OVERLAY applied after the cache
-            // lookup, because only one file was ever read for a system.
+            // lookup, because only one file was ever read for a board.
             //
-            // It is not safe now. A drafted system has TWO workbooks - the published one and the
+            // It is not safe now. A drafted board has TWO workbooks - the published one and the
             // draft's - and "view boards as officially published" switches between them. With one
             // key for both, the first load caches whichever file it read and the second load gets
             // it back regardless of the toggle: turning the toggle off again kept showing the
@@ -1271,11 +1271,11 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Drops every cached parse of one system - BOTH its published workbook and its draft's.
+        // Drops every cached parse of one board - BOTH its published workbook and its draft's.
         //
-        // *** A SYSTEM NOW OCCUPIES MORE THAN ONE CACHE KEY. *** Since Phase 6 the cache is keyed
+        // *** A BOARD NOW OCCUPIES MORE THAN ONE CACHE KEY. *** Since Phase 6 the cache is keyed
         // by the PATH that was read (see LoadBoardDataAsync for why it had to stop being the
-        // system's ExcelDataFile), and a drafted system has two of those. Every caller that used to
+        // board's ExcelDataFile), and a drafted board has two of those. Every caller that used to
         // pass ExcelDataFile to BoardDataReader.ClearCache was therefore clearing a key nothing
         // uses any more - silently, since clearing an absent key is not an error, and the symptom
         // would be a stale board after saving an edit.
@@ -1304,15 +1304,15 @@ namespace Handlers.DataHandling
             }
 
             // The pre-Phase-6 key. Harmless if absent, and it means a build that still passes the
-            // system identity somewhere unnoticed does not leave a stale entry behind forever.
+            // board identity somewhere unnoticed does not leave a stale entry behind forever.
             BoardDataReader.ClearCache(excelDataFile);
         }
 
         // ###########################################################################################
-        // Loads the PUBLISHED copy of a system, purely to compare a draft against it.
+        // Loads the PUBLISHED copy of a board, purely to compare a draft against it.
         //
         // *** THE SAME CACHE KEY AS ANY OTHER LOAD OF THAT FILE - its own path. *** This used to use
-        // a separate "published:" key, from when the drafted load was cached under the system's
+        // a separate "published:" key, from when the drafted load was cached under the board's
         // ExcelDataFile and a shared key would have made the comparison diff a board against
         // itself. Since the cache is keyed by the PATH that was read (see LoadBoardDataAsync), the
         // draft and its published copy already have different keys - so the prefix only made the
@@ -1321,7 +1321,7 @@ namespace Handlers.DataHandling
         // sharing the entry is safe.
         //
         // Returns null when there is no published copy, which is the ordinary case for a
-        // draft-only system. BoardDataDiffer treats a null published board as "every drafted row is
+        // draft-only board. BoardDataDiffer treats a null published board as "every drafted row is
         // an addition", which is the literal truth.
         // ###########################################################################################
         private static async Task<BoardData?> LoadPublishedForComparisonAsync(string publishedWorkbookPath)

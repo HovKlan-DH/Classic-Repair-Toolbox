@@ -30,7 +30,7 @@ namespace CRT
     // maintainer's copy would have to duplicate, and logic no test without a display can reach.
     //
     // It deliberately knows nothing of Main or DataManager either: it is handed a drafts folder, a
-    // system and the published board to compare with, and raises Saved. TabDrafts does the wiring.
+    // board and the published board to compare with, and raises Saved. TabDrafts does the wiring.
     //
     // THE GRID is ProDataGrid, an MIT-licensed fork of Avalonia's own DataGrid (which is deprecated
     // from Avalonia 12, while the maintained alternative, TreeDataGrid, needs a paid licence that
@@ -54,7 +54,7 @@ namespace CRT
     // BoardTableEditor.CellColours.cs (each cell's background and tooltip - its state's wash and
     // its problem's corner mark),
     // BoardTableEditor.Selection.cs (several rows selected, "Delete row" on all of them),
-    // BoardTableEditor.Search.cs (the search box, and its marks through BoardTableSearchAdapter),
+    // BoardTableEditor.Search.cs (the search box, and the search handed to BoardTableCellText),
     // BoardTableEditor.TextWrap.cs (cells that always wrap, columns dragged wider than they size
     // themselves, and a double-click on a heading's edge fitting a column to its text),
     // BoardTableEditor.RowDrag.cs (dragging a row by its grip, with the worklog-style placeholder),
@@ -76,6 +76,9 @@ namespace CRT
 
         // The downloaded data, so the checks can look for the files a row names (DraftTableSession).
         private string thisDataRoot = string.Empty;
+
+        // What a changed cell's tooltip calls the published value - the host's, kept for re-reads.
+        private string? thisBaselineLabel;
 
         // The table's text size - smaller than the grid's default so a sheet shows more rows at
         // once (owner request, 2026-09-24). The grid, its headers and every column use it.
@@ -185,6 +188,7 @@ namespace CRT
             this.thisExcelDataFile = string.Empty;
             this.thisPublished = null;
             this.thisDataRoot = string.Empty;
+            this.thisBaselineLabel = null;
 
             this.Attach(document, session: null, keepSheet);
             this.ShowStatus(message ?? string.Empty);
@@ -194,7 +198,7 @@ namespace CRT
         public event EventHandler? SaveRequested;
 
         // ###########################################################################################
-        // READ-ONLY (2026-10-03): the Maintainer tab's Systems screen shows the board of a system the
+        // READ-ONLY (2026-10-03): the Maintainer tab's Boards screen shows the data of a board the
         // account may not change. The table is there to look at - sheets, search, the colour key,
         // copying a cell, the file cards - but nothing in it can be typed, pasted, moved, inserted
         // or deleted, and there is no "Save changes": an edit that could never be sent is worse than
@@ -241,15 +245,18 @@ namespace CRT
 
         // ###########################################################################################
         // Opens a draft as a table. `published` is what differences are coloured against - null
-        // for a system with nothing published. Returns false when the draft cannot be read.
+        // for a board with nothing published. Returns false when the draft cannot be read.
         // ###########################################################################################
         //
         // `dataRoot` is the downloaded data, where the checks look for the files a row names after
         // the draft's own folder (owner request, 2026-10-02) - the host's to hand over, since this
         // control knows nothing of DataManager. Empty: files are not looked for.
-        public bool Load(string draftsRoot, string excelDataFile, BoardData? published, string dataRoot = "")
+        //
+        // `baselineLabel` names the published side in a changed cell's tooltip - the data source it
+        // came from, which only the host knows (BoardTableDocument.SourceBaselineLabel).
+        public bool Load(string draftsRoot, string excelDataFile, BoardData? published, string dataRoot = "", string? baselineLabel = null)
         {
-            DraftTableSession? session = DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot);
+            DraftTableSession? session = DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot, baselineLabel);
             if (session is null)
             {
                 return false;
@@ -267,11 +274,12 @@ namespace CRT
             this.thisExcelDataFile = excelDataFile;
             this.thisPublished = published;
             this.thisDataRoot = dataRoot ?? string.Empty;
+            this.thisBaselineLabel = baselineLabel;
 
             this.Attach(session.Document, session, keepSheet: null);
             this.ShowStatus(session.Document.HasBaseline
                 ? string.Empty
-                : "Nothing of this system is published yet, so no row is marked as added, changed or deleted - every row is your own.");
+                : "Nothing of this board is published yet, so no row is marked as added, changed or deleted - every row is your own.");
 
             return true;
         }
@@ -285,6 +293,7 @@ namespace CRT
             this.thisSession = null;
             this.thisCurrentSheet = null;
             this.thisPublished = null;
+            this.thisBaselineLabel = null;
             this.thisExcelDataFile = string.Empty;
 
             this.TableGrid.ItemsSource = Array.Empty<BoardTableRow>();
@@ -358,6 +367,7 @@ namespace CRT
             string excelDataFile = this.thisExcelDataFile;
             BoardData? published = this.thisPublished;
             string dataRoot = this.thisDataRoot;
+            string? baselineLabel = this.thisBaselineLabel;
 
             (DraftWorkbookEditOutcome Outcome, DraftTableSession? Reread) result;
             this.thisSaveInFlight = true;
@@ -381,7 +391,7 @@ namespace CRT
                     DraftWorkbookEditOutcome outcome = write();
 
                     return (outcome, outcome == DraftWorkbookEditOutcome.Saved
-                        ? DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot)
+                        ? DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot, baselineLabel)
                         : null);
                 }), stillRunning: () =>
                 {
@@ -997,7 +1007,7 @@ namespace CRT
             // finding a different row under the cursor.
             List<string>? currentValues = this.CurrentRow?.Cells.Select(cell => cell.Text).ToList();
 
-            DraftTableSession? session = reread ?? DraftTableSession.Open(this.thisDraftsRoot, this.thisExcelDataFile, this.thisPublished, this.thisDataRoot);
+            DraftTableSession? session = reread ?? DraftTableSession.Open(this.thisDraftsRoot, this.thisExcelDataFile, this.thisPublished, this.thisDataRoot, this.thisBaselineLabel);
             if (session is null)
             {
                 return false;
@@ -1333,10 +1343,11 @@ namespace CRT
 
             for (int i = 0; i < this.thisCurrentSheet.Columns.Count; i++)
             {
-                this.TableGrid.Columns.Add(new DataGridTextColumn
+                this.TableGrid.Columns.Add(new BoardTableTextColumn
                 {
                     Header = this.thisCurrentSheet.Columns[i],
                     Binding = new Binding($"Cells[{i}].Text") { Mode = BindingMode.TwoWay },
+                    DisplayPath = $"Cells[{i}].Text",
 
                     // *** EXPLICITLY EDITABLE, or NOTHING can be typed (reported 2026-09-24). ***
                     // Left unset, the grid works out read-only-ness from the binding path, and

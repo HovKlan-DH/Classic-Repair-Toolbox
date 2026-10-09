@@ -26,12 +26,12 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
     private string WorkbookPath =>
-        DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
     // Creates a draft holding the given components, the way DraftSeeder would.
     private void CreateDraft(params ComponentEntry[] components)
@@ -43,10 +43,10 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         BoardWorkbookWriter.Write(this.WorkbookPath, board);
 
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey),
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey),
             new DraftMarker
             {
-                SystemKey = DraftWorkbookStoreTests.SystemKey,
+                BoardKey = DraftWorkbookStoreTests.BoardKey,
                 BaseRevision = "2026-09-01",
             });
     }
@@ -91,7 +91,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
-        BoardData? board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         Assert.NotNull(board);
         Assert.Equal("CPU", board!.Components.Single().FriendlyName);
@@ -103,7 +103,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         // Null and "an empty board" mean very different things: the caller must be able to tell
         // "there is no draft" from "the draft has no rows", because the second is a real state a
         // contributor can create by emptying one.
-        Assert.Null(DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.Null(DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     // ------------------------------------------------------------------ Writing
@@ -115,12 +115,12 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         bool saved = DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
 
         Assert.True(saved);
 
-        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
         Assert.Equal("CPU (corrected)", reread!.Components.Single().FriendlyName);
     }
 
@@ -136,15 +136,15 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(this.WorkbookPath)!);
         BoardWorkbookWriter.Write(this.WorkbookPath, board);
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey),
-            new DraftMarker { SystemKey = DraftWorkbookStoreTests.SystemKey });
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey),
+            new DraftMarker { BoardKey = DraftWorkbookStoreTests.BoardKey });
 
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             current => DraftWorkbookStoreTests.WithFriendlyName(current, "U8", "CPU (corrected)"));
 
-        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         Assert.Single(reread!.Credits);
         Assert.Equal("Dennis", reread.Credits.Single().NameOrHandle);
@@ -190,28 +190,28 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         // The application saves its own, unrelated change to U8.
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             current => DraftWorkbookStoreTests.WithFriendlyName(current, "U8", "CPU (edited in app)"));
 
-        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         Assert.Equal("CPU (edited in app)", reread!.Components.Single(c => c.BoardLabel == "U8").FriendlyName);
         Assert.Equal("VIC (edited in Excel)", reread.Components.Single(c => c.BoardLabel == "U9").FriendlyName);
     }
 
     // ###########################################################################################
-    // Editing a system with no draft REFUSES rather than creating one.
+    // Editing a board with no draft REFUSES rather than creating one.
     //
     // Creating a draft means copying the published board (DraftSeeder). Quietly starting an empty
     // one here would produce a draft that compares as "every published row deleted" - and a
     // submission built from it would ask the server to delete the board.
     // ###########################################################################################
     [Fact]
-    public void Editing_a_system_with_NO_draft_refuses_rather_than_creating_one()
+    public void Editing_a_board_with_NO_draft_refuses_rather_than_creating_one()
     {
         bool saved = DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board => board);
 
         Assert.False(saved);
@@ -228,10 +228,10 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         Assert.Throws<InvalidOperationException>(() => DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             _ => throw new InvalidOperationException("the editor changed its mind")));
 
-        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         Assert.NotNull(reread);
         Assert.Equal("CPU", reread!.Components.Single().FriendlyName);
@@ -257,7 +257,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         bool saved = DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board =>
             {
                 var updated = DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU");
@@ -276,7 +276,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         Assert.True(saved);
 
-        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        BoardData? reread = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         ComponentHighlightEntry highlight = Assert.Single(reread!.ComponentHighlights);
         Assert.Equal("U8", highlight.BoardLabel);
@@ -298,7 +298,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         // A board with the schematic the calibration belongs to, so it is collectable.
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board =>
             {
                 var updated = DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU");
@@ -313,7 +313,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         // An unrelated edit.
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
 
         Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
@@ -330,20 +330,20 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
         Assert.True(DraftWorkbookStore.SetBaseRevision(
-            this.DraftsRoot, DraftWorkbookStoreTests.SystemKey, "2026-09-20"));
+            this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20"));
 
         DraftMarker? marker = DraftMarkerStore.Load(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         Assert.Equal("2026-09-20", marker!.BaseRevision);
-        Assert.Equal(DraftWorkbookStoreTests.SystemKey, marker.SystemKey);
+        Assert.Equal(DraftWorkbookStoreTests.BoardKey, marker.BoardKey);
     }
 
     [Fact]
-    public void Rebasing_a_system_with_NO_draft_answers_false()
+    public void Rebasing_a_board_with_NO_draft_answers_false()
     {
         Assert.False(DraftWorkbookStore.SetBaseRevision(
-            this.DraftsRoot, DraftWorkbookStoreTests.SystemKey, "2026-09-20"));
+            this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20"));
     }
 
     // ------------------------------------------------------------------ Discarding
@@ -360,16 +360,16 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
         string image = Path.Combine(
-            DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey),
+            DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey),
             "Sheet1.png");
 
         File.WriteAllText(image, "image bytes");
 
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         Assert.False(File.Exists(image));
         Assert.False(File.Exists(this.WorkbookPath));
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     // ###########################################################################################
@@ -388,16 +388,16 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
         }
 
-        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
         Assert.Empty(DraftFolderImport.ImportUnmarkedFolders(
-            this.DraftsRoot, [new KnownDraftSystem(DraftWorkbookStoreTests.SystemKey, IsPublished: true)], DateTimeOffset.UtcNow));
+            this.DraftsRoot, [new KnownDraftBoard(DraftWorkbookStoreTests.BoardKey, IsPublished: true)], DateTimeOffset.UtcNow));
 
         // Excel closed: discarding again finishes it.
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     // ###########################################################################################
@@ -420,7 +420,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         // Sorts AFTER the workbook, as the real board's images did.
         string image = Path.Combine(
-            DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey),
+            DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey),
             "Issue 4.B.png");
 
         File.WriteAllText(image, "image bytes");
@@ -428,16 +428,16 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         // Held the way an ordinary reader holds a file - reading, sharing reads only.
         using (new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
         }
 
         Assert.True(File.Exists(this.WorkbookPath));
         Assert.True(File.Exists(sidecar));
-        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         // Nothing holding it: discarding again finishes it.
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     // The workbook goes BEFORE its sidecar: held open in Excel - the usual stop - it must not be
@@ -454,16 +454,16 @@ public sealed class DraftWorkbookStoreTests : IDisposable
 
         using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+            Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
         }
 
         Assert.True(File.Exists(sidecar));
     }
 
     [Fact]
-    public void Discarding_a_system_with_NO_draft_answers_false_rather_than_throwing()
+    public void Discarding_a_board_with_NO_draft_answers_false_rather_than_throwing()
     {
-        Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.False(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     // ###########################################################################################
@@ -476,7 +476,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore", "C64")));
         Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore")));
@@ -493,9 +493,9 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Directory.CreateDirectory(otherBoard);
         File.WriteAllText(Path.Combine(otherBoard, "Data C64 250425.xlsx"), "x");
 
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
-        Assert.False(Directory.Exists(DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey)));
+        Assert.False(Directory.Exists(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)));
         Assert.True(Directory.Exists(otherBoard));
         Assert.True(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore")));
     }
@@ -508,7 +508,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         string shared = Path.Combine(this.DraftsRoot, "Commodore", "Shared files");
         Directory.CreateDirectory(shared);
 
-        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.True(DraftWorkbookStore.Discard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore", "C64")));
         Assert.True(Directory.Exists(shared));
@@ -522,12 +522,12 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     [Fact]
     public void The_fingerprint_is_empty_without_a_draft_and_stable_while_nothing_changes()
     {
-        Assert.Equal(string.Empty, DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.Equal(string.Empty, DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
 
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
-        string first = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
-        string second = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        string first = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        string second = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         Assert.Equal(64, first.Length);
         Assert.Equal(first, second);
@@ -537,50 +537,50 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     public void The_fingerprint_changes_when_the_workbooks_content_does()
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
-        string before = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        string before = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU 6510"));
 
-        Assert.NotEqual(before, DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey));
+        Assert.NotEqual(before, DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
     }
 
     [Fact]
     public void EditIfUnchanged_writes_when_the_fingerprint_still_matches()
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
-        string fingerprint = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        string fingerprint = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         DraftWorkbookEditOutcome outcome = DraftWorkbookStore.EditIfUnchanged(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             fingerprint,
             board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU 6510"));
 
         Assert.Equal(DraftWorkbookEditOutcome.Saved, outcome);
         Assert.Equal(
             "CPU 6510",
-            DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey)!.Components.Single().FriendlyName);
+            DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!.Components.Single().FriendlyName);
     }
 
     [Fact]
     public void EditIfUnchanged_REFUSES_a_stale_fingerprint_and_writes_nothing()
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
-        string stale = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey);
+        string stale = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
         // Edited behind the caller's back.
         DraftWorkbookStore.Edit(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "Edited in Excel"));
 
         bool transformRan = false;
         DraftWorkbookEditOutcome outcome = DraftWorkbookStore.EditIfUnchanged(
             this.DraftsRoot,
-            DraftWorkbookStoreTests.SystemKey,
+            DraftWorkbookStoreTests.BoardKey,
             stale,
             board =>
             {
@@ -592,7 +592,7 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.False(transformRan);
         Assert.Equal(
             "Edited in Excel",
-            DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey)!.Components.Single().FriendlyName);
+            DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!.Components.Single().FriendlyName);
     }
 
     [Fact]
@@ -600,6 +600,6 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     {
         Assert.Equal(
             DraftWorkbookEditOutcome.NoDraft,
-            DraftWorkbookStore.EditIfUnchanged(this.DraftsRoot, DraftWorkbookStoreTests.SystemKey, "anything", board => board));
+            DraftWorkbookStore.EditIfUnchanged(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "anything", board => board));
     }
 }

@@ -8,9 +8,9 @@ namespace ClassicRepairToolbox.Tests;
 // drop-down.
 //
 // *** THE DRAFTS HALF IS THE REPORTED BUG (2026-09-24). *** The list used to be built from the
-// data root alone, so a system created with "Add a new system" - which exists ONLY under the
+// data root alone, so a board created with "Add a new board" - which exists ONLY under the
 // drafts root - never offered its own "Scope baseline" folder. The drafts side of these tests is
-// built by DraftSeeder.CreateNewSystem itself rather than by hand, so if the seeder stops creating
+// built by DraftSeeder.CreateNewBoard itself rather than by hand, so if the seeder stops creating
 // that folder, or names it differently, the listing test fails with it.
 // ###########################################################################################
 public sealed class ContributionFileLocationsTests : IDisposable
@@ -31,13 +31,13 @@ public sealed class ContributionFileLocationsTests : IDisposable
         }
     }
 
-    private void CreateNewSystem(string manufacturer, string hardware, string board)
+    private void CreateNewBoard(string manufacturer, string hardware, string board)
     {
-        DraftSeedResult result = DraftSeeder.CreateNewSystem(this.DraftsRoot, new NewSystemRegistration
+        DraftSeedResult result = DraftSeeder.CreateNewBoard(this.DraftsRoot, new NewBoardRegistration
         {
             HardwareName = hardware,
             BoardName = board,
-            ExcelDataFile = NewSystemIdentity.BuildExcelDataFile(manufacturer, hardware, board),
+            ExcelDataFile = NewBoardIdentity.BuildExcelDataFile(manufacturer, hardware, board),
         });
 
         Assert.True(result.Created, result.Reason);
@@ -57,14 +57,14 @@ public sealed class ContributionFileLocationsTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE REGRESSION TEST FOR THE REPORT. *** A new system's "Scope baseline" folder is
+    // *** THE REGRESSION TEST FOR THE REPORT. *** A new board's "Scope baseline" folder is
     // offered, in the same Manufacturer/Hardware/Board form as a published board's.
     // ###########################################################################################
     [Fact]
-    public void A_NEW_systems_Scope_baseline_folder_is_offered_from_the_drafts_tree()
+    public void A_NEW_boards_Scope_baseline_folder_is_offered_from_the_drafts_tree()
     {
         this.CreateFolders(this.DataRoot, "Commodore/C64/250407/Scope baseline");
-        this.CreateNewSystem("Test Manu4", "HW4", "Board4");
+        this.CreateNewBoard("Test Manu4", "HW4", "Board4");
 
         List<string> folders = ContributionFileLocations.FindEndFolders(this.DataRoot, this.DraftsRoot);
 
@@ -128,7 +128,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
 
     // ---------------------------------------------------------------------- which folders are offered
 
-    private const string System = "Commodore/C64/250407";
+    private const string Board = "Commodore/C64/250407";
 
     // What the data tree and a draft together list for the C64 250407 before narrowing: the board's
     // own folders, other boards of the same maker, another maker, both kinds of shared folder, the
@@ -175,7 +175,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
                 "Generic shared files/Component images",
                 "Generic shared files/Component local files",
             },
-            ContributionFileLocations.WritableBy(ContributionFileLocationsTests.System, ContributionFileLocationsTests.EveryFolder));
+            ContributionFileLocations.WritableBy(ContributionFileLocationsTests.Board, ContributionFileLocationsTests.EveryFolder));
     }
 
     // ###########################################################################################
@@ -189,7 +189,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         foreach (string folder in ContributionFileLocationsTests.EveryFolder)
         {
-            bool offered = ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.System, folder);
+            bool offered = ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.Board, folder);
             IReadOnlyList<string> refusals = ContributionFileLocationsTests.ServerRefusals(folder + "/New.png");
 
             if (offered)
@@ -211,7 +211,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
 
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.NoFolder,
-            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, string.Empty, usedInPlace: false));
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.Board, string.Empty, usedInPlace: false));
     }
 
     [Theory]
@@ -222,7 +222,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.NoFolder,
-            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.Board, location, usedInPlace: false));
     }
 
     // A file at the very top of the data folder is outside every board too - being picked from
@@ -232,7 +232,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.NoFolder,
-            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, string.Empty, usedInPlace: true));
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.Board, string.Empty, usedInPlace: true));
     }
 
     [Theory]
@@ -244,7 +244,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.None,
-            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.Board, location, usedInPlace: false));
     }
 
     [Theory]
@@ -256,7 +256,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.FolderNotWritable,
-            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.System, location, usedInPlace: false));
+            ContributionFileLocations.CheckNewFile(ContributionFileLocationsTests.Board, location, usedInPlace: false));
     }
 
     // ###########################################################################################
@@ -270,7 +270,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
         Assert.Equal(
             ContributionFileLocations.NewFileProblem.None,
             ContributionFileLocations.CheckNewFile(
-                ContributionFileLocationsTests.System,
+                ContributionFileLocationsTests.Board,
                 "Commodore/C128/310378/Scope baseline",
                 usedInPlace: true));
     }
@@ -279,25 +279,25 @@ public sealed class ContributionFileLocationsTests : IDisposable
     [Fact]
     public void A_folder_differing_only_by_capitalisation_is_not_this_boards()
     {
-        Assert.False(ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.System, "commodore/C64/250407/Scope baseline"));
+        Assert.False(ContributionFileLocations.IsWritableFolder(ContributionFileLocationsTests.Board, "commodore/C64/250407/Scope baseline"));
     }
 
-    // An unrecognisable system filters nothing: the save refuses such a window anyway, and an empty
+    // An unrecognisable board filters nothing: the save refuses such a window anyway, and an empty
     // drop-down would only hide why.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("Commodore/C64")]
-    public void With_no_recognisable_system_nothing_is_filtered(string? systemId)
+    public void With_no_recognisable_board_nothing_is_filtered(string? boardId)
     {
         Assert.Equal(
             ContributionFileLocationsTests.EveryFolder,
-            ContributionFileLocations.WritableBy(systemId, ContributionFileLocationsTests.EveryFolder));
+            ContributionFileLocations.WritableBy(boardId, ContributionFileLocationsTests.EveryFolder));
     }
 
-    // A system that exists only as a draft offers its own folders the same way.
+    // A board that exists only as a draft offers its own folders the same way.
     [Fact]
-    public void A_new_systems_own_folders_are_offered()
+    public void A_new_boards_own_folders_are_offered()
     {
         Assert.Equal(
             new[] { "Generic shared files/Component images", "Test Manu4/HW4/Board4", "Test Manu4/HW4/Board4/Scope baseline" },
@@ -312,7 +312,7 @@ public sealed class ContributionFileLocationsTests : IDisposable
     {
         var manifest = new SubmissionManifest
         {
-            SystemId = ContributionFileLocationsTests.System,
+            BoardId = ContributionFileLocationsTests.Board,
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407",

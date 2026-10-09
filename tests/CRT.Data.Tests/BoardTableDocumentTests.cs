@@ -125,7 +125,7 @@ public sealed class BoardTableDocumentTests
 
     // ###########################################################################################
     // *** THE CALLER NAMES WHAT THE CELL IS COMPARED WITH (owner report, 2026-09-26). *** The
-    // maintainer's NEW-SYSTEM table compares the submission with ITSELF as it arrived, so its
+    // maintainer's NEW-BOARD table compares the submission with ITSELF as it arrived, so its
     // baseline is not a published board - and the tooltip still read "Published value: (empty)",
     // naming something that does not exist: "yes, it will always be empty, but it should state
     // [the contributor's value] if it was changed from empty to something".
@@ -136,7 +136,7 @@ public sealed class BoardTableDocumentTests
     [Fact]
     public void The_caller_can_name_what_a_changed_cell_is_compared_with()
     {
-        // The maintainer's new system: the submission is its own baseline, and the maintainer has
+        // The maintainer's new board: the submission is its own baseline, and the maintainer has
         // since filled in a description that arrived empty.
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U1", "CPU")),
@@ -163,6 +163,25 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(
             "Published value: CPU",
             Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).ToolTip);
+    }
+
+    // ###########################################################################################
+    // *** A TABLE COMPARED WITH A DATA SOURCE NAMES IT (owner request, 2026-10-05). *** A value the
+    // BETA source already held, shown as "Published value", was first taken for an error. The two
+    // names are the sources' own, as the rest of CRT writes them ("the BETA source", "the stable
+    // source"), capitalised to start the tooltip.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, "BETA source value: CPU")]
+    [InlineData(false, "Stable source value: CPU")]
+    public void A_changed_cell_names_the_data_source_it_is_compared_with(bool betaSource, string expected)
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU")),
+            Board(Component("U1", "Processor")),
+            BoardTableDocument.SourceBaselineLabel(betaSource));
+
+        Assert.Equal(expected, Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).ToolTip);
     }
 
     [Fact]
@@ -401,7 +420,7 @@ public sealed class BoardTableDocumentTests
 
     // ###########################################################################################
     // *** A BOARD COMPARED WITH ITSELF MARKS NOTHING - its duplicates included (2026-09-26). *** The
-    // maintainer's table compares a NEW system's submission with itself as it was opened, so only
+    // maintainer's table compares a NEW board's submission with itself as it was opened, so only
     // the maintainer's own edits are coloured. A duplicate in it is still told - it is one, the
     // server's error on Components - but its twin on the compared side must not come back as a
     // red "deleted" ghost.
@@ -1042,7 +1061,7 @@ public sealed class BoardTableDocumentTests
     [Fact]
     public void With_no_published_board_nothing_is_coloured_but_duplicates_are_still_told()
     {
-        // "Add a new system": every row would be green, which tells the contributor nothing. A
+        // "Add a new board": every row would be green, which tells the contributor nothing. A
         // duplicate is still a duplicate, though - on Components the server's error, whose corner
         // mark says so (it was violet until 2026-10-03).
         BoardTableDocument document = BoardTableDocument.Create(

@@ -23,7 +23,7 @@ namespace CRT.Server.Tests
     //                      The cheapest outcome and the one the strategy says not to skip.
     //
     // Since Phase 6 (2026-09-25) all three need the same authority - a maintainer of the
-    // submission's own system, or an administrator - and the per-system half of that is
+    // submission's own board, or an administrator - and the per-board half of that is
     // ReviewAuthorityTests' subject. What is pinned here is that each outcome asks it, and the
     // state interlock on top.
     //
@@ -58,14 +58,14 @@ namespace CRT.Server.Tests
         private static ReviewAccess Maintainer() =>
             ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C64]);
 
-        private static ReviewAccess MaintainerOfAnotherSystem() =>
+        private static ReviewAccess MaintainerOfAnotherBoard() =>
             ReviewAccess.For(ReviewDecisionRulesTests.Account(), [ReviewDecisionRulesTests.C128]);
 
         private static ReviewAccess Ordinary() => ReviewAccess.For(ReviewDecisionRulesTests.Account());
 
         private static SubmissionRecord Submission(string state, bool touchesShared = false) =>
             new(
-                Id: 1, SystemId: ReviewDecisionRulesTests.C64, AccountId: null, ContactEmail: "c@example.com",
+                Id: 1, BoardId: ReviewDecisionRulesTests.C64, AccountId: null, ContactEmail: "c@example.com",
                 UploadTokenHash: "h", BaseRevision: "r1", State: state, Summary: "x",
                 FormatVersion: 1, CreatedUtc: DateTimeOffset.UnixEpoch, ExpiresUtc: null, DecidedUtc: null,
                 DecisionComment: null, TouchesSharedFiles: touchesShared);
@@ -84,9 +84,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_MAINTAINER_of_the_system_may_approve_a_pending_submission()
+        public void A_MAINTAINER_of_the_board_may_approve_a_pending_submission()
         {
-            // The project owner's model: a maintainer assigned to a system publishes to it.
+            // The project owner's model: a maintainer assigned to a board publishes to it.
             Assert.True(ReviewDecisionRules.CanApprove(
                 ReviewDecisionRulesTests.Maintainer(),
                 ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
@@ -94,17 +94,17 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_maintainer_of_ANOTHER_system_may_NOT_approve()
+        public void A_maintainer_of_ANOTHER_board_may_NOT_approve()
         {
             // *** THE STRUCTURAL GUARANTEE. *** A maintainer's authority is bounded to their own
-            // systems; on any other it is exactly an ordinary account.
+            // boards; on any other it is exactly an ordinary account.
             Assert.False(ReviewDecisionRules.CanApprove(
-                ReviewDecisionRulesTests.MaintainerOfAnotherSystem(),
+                ReviewDecisionRulesTests.MaintainerOfAnotherBoard(),
                 ReviewDecisionRulesTests.Submission(SubmissionState.Pending),
                 out string reason));
 
             // And the refusal says WHY, so the app can explain rather than silently not drawing
-            // a button - it names the system the maintainer is not assigned to.
+            // a button - it names the board the maintainer is not assigned to.
             Assert.Contains(ReviewDecisionRulesTests.C64, reason, StringComparison.Ordinal);
         }
 
@@ -216,7 +216,7 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // REJECT and REQUEST CHANGES - the same per-system authority as approving.
+        // REJECT and REQUEST CHANGES - the same per-board authority as approving.
         // -----------------------------------------------------------------------------------
 
         [Fact]
@@ -259,11 +259,11 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_maintainer_of_ANOTHER_system_may_do_NONE_of_the_three_either()
+        public void A_maintainer_of_ANOTHER_board_may_do_NONE_of_the_three_either()
         {
             // Rejecting a submission on a board you do not review is as out of bounds as
             // publishing to it - the cheap outcomes are scoped exactly like the expensive one.
-            ReviewAccess other = ReviewDecisionRulesTests.MaintainerOfAnotherSystem();
+            ReviewAccess other = ReviewDecisionRulesTests.MaintainerOfAnotherBoard();
             SubmissionRecord pending = ReviewDecisionRulesTests.Submission(SubmissionState.Pending);
 
             Assert.False(ReviewDecisionRules.CanApprove(other, pending, out _));

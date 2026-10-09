@@ -73,11 +73,11 @@ namespace Handlers.DataHandling
         // more complex than re-applying a cheap in-memory merge on every call. The Excel read stays
         // a pure "what does the official file say" question; drafting is a concern layered on top.
         //
-        // allowMissingOfficialFile is for a system that exists ONLY as a local draft (session 2c,
+        // allowMissingOfficialFile is for a board that exists ONLY as a local draft (session 2c,
         // task 9) - it has no .xlsx under Data/ and never will, so the ordinary "file not found"
         // answer of null would make the board unopenable. The caller passes true ONLY when it has
-        // established that from the draft's own NewSystemRegistration; "the file happens to be
-        // missing" is deliberately NOT the trigger, because for a system the main workbook DOES
+        // established that from the draft's own NewBoardRegistration; "the file happens to be
+        // missing" is deliberately NOT the trigger, because for a board the main workbook DOES
         // list, a missing file is a genuine sync failure that must keep logging and returning null
         // rather than silently rendering as an empty board.
         // ###########################################################################################
@@ -93,7 +93,7 @@ namespace Handlers.DataHandling
             {
                 if (allowMissingOfficialFile)
                 {
-                    // A system that exists only as a local draft has no published workbook by
+                    // A board that exists only as a local draft has no published workbook by
                     // construction, and an empty board is the truthful answer for it: officially,
                     // none of it exists yet. Its own rows come from the DRAFT workbook, which the
                     // caller resolves separately (DraftBoardSource).
@@ -372,7 +372,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The board's revision date WITHOUT parsing the rest of the workbook - for the drift check
         // (NewContributeStrategy.md Phase 2, session 2d), which needs this one value per drafted
-        // system and has no use for its ten sheets or its JSON sidecar.
+        // board and has no use for its ten sheets or its JSON sidecar.
         //
         // Deliberately does NOT touch _cache: it produces no BoardData, and a board opened for its
         // revision alone must not look "loaded" to anything else. Returns empty for a missing or

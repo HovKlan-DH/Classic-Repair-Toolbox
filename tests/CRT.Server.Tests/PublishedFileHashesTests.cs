@@ -67,7 +67,7 @@ namespace CRT.Server.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"

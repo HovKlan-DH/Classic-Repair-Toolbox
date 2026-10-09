@@ -17,9 +17,9 @@
 
 		<TextBlock x:Name="IntroText" TextWrapping="Wrap" Text="This permanently discards your local, unpublished edits to:" />
 
-		<!-- The system's name, on its own line - set from code (Initialize), never a markup
+		<!-- The board's name, on its own line - set from code (Initialize), never a markup
 		     default, since it names a real board. -->
-		<TextBlock x:Name="SystemNameText"
+		<TextBlock x:Name="BoardNameText"
 				   TextWrapping="Wrap"
 				   FontWeight="Bold"
 				   Margin="0,8,0,8" />

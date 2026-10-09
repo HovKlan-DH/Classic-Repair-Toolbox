@@ -83,7 +83,7 @@ namespace CRT
             section.Children.Add(list);
         }
 
-        // What they wrote, then "#12 - system - state - sent ...", then what they were told.
+        // What they wrote, then "#12 - board - state - sent ...", then what they were told.
         private static StackPanel ContributorSubmissionRow(ContributorSubmissionEntry submission)
         {
             var row = new StackPanel { Spacing = 1 };

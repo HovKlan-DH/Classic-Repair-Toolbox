@@ -106,10 +106,10 @@ public sealed class ReviewDecisionWordingTests
     // ###########################################################################################
     // *** THE "PLEASE WAIT" WHILE A DECISION IS SENT (owner report, 2026-09-28). *** A small
     // "Working..." under the table was all an approval showed while it published, and the screen
-    // read as hung. The sentence on the overlay names the system and what is happening.
+    // read as hung. The sentence on the overlay names the board and what is happening.
     // ###########################################################################################
     [Fact]
-    public void An_approval_that_publishes_says_it_is_publishing_to_BETA_and_names_the_system()
+    public void An_approval_that_publishes_says_it_is_publishing_to_BETA_and_names_the_board()
     {
         // null is "one approval publishes" - the ordinary item, as ApprovalWording.ApproveButton reads it.
         foreach (ApprovalStatus? approval in new[] { null, Status(canApprove: true, publishes: true) })
@@ -137,7 +137,7 @@ public sealed class ReviewDecisionWordingTests
     [Theory]
     [InlineData(ReviewDecisionKind.Reject, "Rejecting")]
     [InlineData(ReviewDecisionKind.RequestChanges, "request for changes")]
-    public void Sending_a_decision_back_says_which_one_and_names_the_system(ReviewDecisionKind kind, string expected)
+    public void Sending_a_decision_back_says_which_one_and_names_the_board(ReviewDecisionKind kind, string expected)
     {
         string text = ReviewDecisionWording.Waiting(kind, null, "Commodore/C64/250407");
 
@@ -151,15 +151,15 @@ public sealed class ReviewDecisionWordingTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("  ")]
-    public void With_no_system_known_the_sentence_still_reads(string? systemId)
+    public void With_no_board_known_the_sentence_still_reads(string? boardId)
     {
         // The detail is read after the submission is chosen; a decision sent before it arrives has
-        // no system id to name.
+        // no board id to name.
         foreach (ReviewDecisionKind kind in Enum.GetValues<ReviewDecisionKind>())
         {
-            string text = ReviewDecisionWording.Waiting(kind, null, systemId);
+            string text = ReviewDecisionWording.Waiting(kind, null, boardId);
 
-            Assert.Contains("this system", text, StringComparison.Ordinal);
+            Assert.Contains("this board", text, StringComparison.Ordinal);
             Assert.DoesNotContain("  ", text, StringComparison.Ordinal);
         }
     }

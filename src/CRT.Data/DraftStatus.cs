@@ -11,38 +11,38 @@ namespace Handlers.DataHandling
     // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS IS WHAT THE DRAFTS TAB READS NOW. *** It used to take a BoardDraft and count its
-    // delta rows for the "N rows changed" chip, read NewSystem off it for the registration, and
+    // delta rows for the "N rows changed" chip, read NewBoard off it for the registration, and
     // read BaseRevision for the drift check. With the draft stored as a board workbook there is no
     // delta list to count - so the count is DERIVED, by comparing the draft workbook against the
     // published one (BoardDataDiffer), and the other two come off the marker.
     //
     // *** THE COUNT COSTS A BOARD PARSE, so it is opt-in. *** Resolve() answers the cheap
     // questions from the marker alone, which is all the tab needs to LIST a draft; the comparison
-    // runs only when a caller asks for ChangeCount. Listing twenty drafted systems must not mean
+    // runs only when a caller asks for ChangeCount. Listing twenty drafted boards must not mean
     // parsing forty workbooks.
     // ###########################################################################################
     public sealed class DraftStatus
     {
-        public string SystemKey { get; init; } = string.Empty;
+        public string BoardKey { get; init; } = string.Empty;
 
-        // The published RevisionDate this draft was taken from. Empty for a draft-only system,
+        // The published RevisionDate this draft was taken from. Empty for a draft-only board,
         // which has no published counterpart to be based on.
         public string BaseRevision { get; init; } = string.Empty;
 
-        // Set only on a system that exists purely as a draft - "Add a new system".
-        public NewSystemRegistration? NewSystem { get; init; }
+        // Set only on a board that exists purely as a draft - "Add a new board".
+        public NewBoardRegistration? NewBoard { get; init; }
 
-        public bool IsNewSystem => this.NewSystem != null;
+        public bool IsNewBoard => this.NewBoard != null;
 
         public string WorkbookPath { get; init; } = string.Empty;
 
-        // What the draft is compared against. Empty for a new system from Resolve; the LISTED
-        // board's workbook from ResolveForSystem, which retirement uses.
+        // What the draft is compared against. Empty for a new board from Resolve; the LISTED
+        // board's workbook from ResolveForBoard, which retirement uses.
         public string PublishedWorkbookPath { get; init; } = string.Empty;
 
         // When the draft was created, off its marker - null for a marker that does not say (one
         // written before markers carried it). The Drafts row's badge describes only submissions
-        // sent from this draft, not from an earlier one (SubmissionReceiptPresenter.LatestForSystem).
+        // sent from this draft, not from an earlier one (SubmissionReceiptPresenter.LatestForBoard).
         public DateTimeOffset? CreatedUtc { get; init; }
 
         public static DateTimeOffset? ParseCreated(string? createdUtc) =>
@@ -64,13 +64,13 @@ namespace Handlers.DataHandling
         // The cheap answer: is there a draft, and what does its marker say?
         //
         // Null when there is none. Reads ONE small JSON file and touches no workbook, so a surface
-        // listing every drafted system pays almost nothing.
+        // listing every drafted board pays almost nothing.
         // ###########################################################################################
         //
         // *** THE KEY IS THE BOARD'S WORKBOOK PATH ("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
-        // NOT A SYSTEM ID. *** Handed "Commodore/C64/250407" it strips the last segment as a file
+        // NOT A BOARD ID. *** Handed "Commodore/C64/250407" it strips the last segment as a file
         // name and looks in "Drafts/Commodore/C64" - finding nothing. A submission receipt names its
-        // system by id, so go through ResolveForSystem for one.
+        // board by id, so go through ResolveForBoard for one.
         //
         // listedAsPublished: HardwareBoardEntry.IsPublished when the caller knows it - it decides what
         // the draft's changes are counted against (DraftBoardSource.ComparisonBaselineOf).
@@ -86,22 +86,22 @@ namespace Handlers.DataHandling
 
             return new DraftStatus
             {
-                SystemKey = excelDataFile,
+                BoardKey = excelDataFile,
                 BaseRevision = marker.BaseRevision,
-                NewSystem = marker.NewSystem,
+                NewBoard = marker.NewBoard,
                 CreatedUtc = DraftStatus.ParseCreated(marker.CreatedUtc),
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile),
 
-                // Empty for a new system, so every one of its rows counts - see
+                // Empty for a new board, so every one of its rows counts - see
                 // DraftBoardSource.ComparisonBaselineOf for the legacy copy that made this matter.
                 PublishedWorkbookPath = DraftBoardSource.ComparisonBaselineOf(dataRoot, excelDataFile, marker, listedAsPublished),
             };
         }
 
         // ###########################################################################################
-        // The draft a SUBMISSION RECEIPT is about. A receipt names its system by id
+        // The draft a SUBMISSION RECEIPT is about. A receipt names its board by id
         // ("Commodore/C64/250407"), built from the board's workbook path by
-        // SystemDescriptorRules.SystemIdFromExcelDataFile when it was submitted; this finds that
+        // BoardDescriptorRules.BoardIdFromExcelDataFile when it was submitted; this finds that
         // workbook again among the boards the app knows, the same way round, and resolves it.
         //
         // It used to be Resolve called with the id itself, which looks one folder too high and finds
@@ -111,28 +111,28 @@ namespace Handlers.DataHandling
         // Null when no known board has that id - the draft is then left alone, which is the safe way.
         //
         // *** THE DRAFT AND THE PUBLISHED BOARD CAN HAVE DIFFERENT WORKBOOK NAMES (2026-09-25). ***
-        // A NEW system's draft is keyed by the name it was created with ("Data HW Board.xlsx"),
+        // A NEW board's draft is keyed by the name it was created with ("Data HW Board.xlsx"),
         // and its publish writes the tree's generation ("Data HW Board v2.0.0.xlsx"). So the draft
-        // is found by its FOLDER (the marker) and keeps its own key (the marker's SystemKey), and the
+        // is found by its FOLDER (the marker) and keeps its own key (the marker's BoardKey), and the
         // published side is the board the app lists. For an existing board the two are the same.
         // Where several listed boards carry the id, one whose published copy is on disk wins.
         // ###########################################################################################
-        public static DraftStatus? ResolveForSystem(
+        public static DraftStatus? ResolveForBoard(
             string dataRoot,
             string draftsRoot,
-            string systemId,
+            string boardId,
             IEnumerable<string>? excelDataFiles)
         {
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
             {
                 return null;
             }
 
-            string id = systemId.Trim();
+            string id = boardId.Trim();
 
             List<string> matching = (excelDataFiles ?? [])
                 .Where(file => string.Equals(
-                    SystemDescriptorRules.SystemIdFromExcelDataFile(file),
+                    BoardDescriptorRules.BoardIdFromExcelDataFile(file),
                     id,
                     StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -152,18 +152,18 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            // The draft's own key, when the marker names this same system; the listed board's
+            // The draft's own key, when the marker names this same board; the listed board's
             // otherwise (a marker written before the key was recorded).
-            string draftKey = !string.IsNullOrWhiteSpace(marker.SystemKey) &&
-                string.Equals(SystemDescriptorRules.SystemIdFromExcelDataFile(marker.SystemKey), id, StringComparison.OrdinalIgnoreCase)
-                    ? marker.SystemKey.Trim()
+            string draftKey = !string.IsNullOrWhiteSpace(marker.BoardKey) &&
+                string.Equals(BoardDescriptorRules.BoardIdFromExcelDataFile(marker.BoardKey), id, StringComparison.OrdinalIgnoreCase)
+                    ? marker.BoardKey.Trim()
                     : published;
 
             return new DraftStatus
             {
-                SystemKey = draftKey,
+                BoardKey = draftKey,
                 BaseRevision = marker.BaseRevision,
-                NewSystem = marker.NewSystem,
+                NewBoard = marker.NewBoard,
                 CreatedUtc = DraftStatus.ParseCreated(marker.CreatedUtc),
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, draftKey),
                 PublishedWorkbookPath = DraftBoardSource.PublishedPathOf(dataRoot, published),
@@ -174,14 +174,14 @@ namespace Handlers.DataHandling
         // How many rows differ between the draft and the published board - the "N rows changed"
         // number.
         //
-        // *** THIS PARSES TWO WORKBOOKS, so call it for the system being SHOWN, not for every row
+        // *** THIS PARSES TWO WORKBOOKS, so call it for the board being SHOWN, not for every row
         // in a list. *** Uncached on both sides deliberately: the whole point of the new layout is
         // that the contributor may have edited the workbook in Excel, and a cached count would go
         // on reporting the state from before they did.
         //
-        // A draft-only system compares against nothing, so every row in it counts as an addition -
+        // A draft-only board compares against nothing, so every row in it counts as an addition -
         // which is the literal truth, and is why the caller words that case differently ("New
-        // system, N rows so far") rather than as "N rows changed".
+        // board, N rows so far") rather than as "N rows changed".
         // ###########################################################################################
         public static int CountChanges(DraftStatus? status)
         {
@@ -210,7 +210,7 @@ namespace Handlers.DataHandling
         //
         // *** WHY THE DRAFTS TAB USES THIS, NOT CountChanges. *** RefreshDrafts runs after every
         // component save, label-editor save, table save, calibration save and board reload, and
-        // it counted EVERY drafted system each time - two full workbook parses per system,
+        // it counted EVERY drafted board each time - two full workbook parses per board,
         // synchronously on the UI thread. Three drafted boards of a few thousand rows made every
         // save freeze the window for seconds, re-counting boards nobody had touched.
         //
@@ -265,7 +265,7 @@ namespace Handlers.DataHandling
         // workbook changes or the table opens - re-asking every found file (thousands on a large
         // board) on every refresh is the cost the cache exists to avoid.
         // ###########################################################################################
-        public static BoardProblemCounts CountProblemsCached(DraftStatus? status, string dataRoot, string draftSystemFolder)
+        public static BoardProblemCounts CountProblemsCached(DraftStatus? status, string dataRoot, string draftBoardFolder)
         {
             if (status is null || string.IsNullOrWhiteSpace(status.WorkbookPath))
             {
@@ -277,17 +277,17 @@ namespace Handlers.DataHandling
                 DraftStatusReader.FileStamp(status.WorkbookPath),
                 DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(status.WorkbookPath)),
                 dataRoot,
-                draftSystemFolder);
+                draftBoardFolder);
 
             if (DraftStatusReader.ProblemCache.TryGetValue(status.WorkbookPath, out CachedProblems cached)
                 && string.Equals(cached.Stamp, stamp, StringComparison.Ordinal)
-                && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftSystemFolder))
+                && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftBoardFolder))
             {
                 return cached.Counts;
             }
 
             BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
-            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftSystemFolder));
+            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder));
 
             BoardProblemCounts counts = draft is null
                 ? BoardProblemCounts.None
@@ -306,14 +306,14 @@ namespace Handlers.DataHandling
         private static bool StillNotFound(
             IReadOnlyDictionary<string, BoardFileLookupResult> notFound,
             string dataRoot,
-            string draftSystemFolder)
+            string draftBoardFolder)
         {
             if (notFound.Count == 0)
             {
                 return true;
             }
 
-            var lookup = new DiskFileLookup(dataRoot, draftSystemFolder);
+            var lookup = new DiskFileLookup(dataRoot, draftBoardFolder);
 
             return notFound.All(item => lookup.Check(item.Key) == item.Value);
         }

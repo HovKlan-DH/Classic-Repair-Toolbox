@@ -13,7 +13,7 @@ namespace Handlers.DataHandling
     // an amendment may change - in CRT.Data so both ends use the same types and the same rule.
     // ###########################################################################################
 
-    // What the Maintainer tab's table opens on: the published board (null for a new system)
+    // What the Maintainer tab's table opens on: the published board (null for a new board)
     // and the submission's current rows, plus the amendment version the rows are at - sent back
     // with an amendment, so two maintainers editing at once cannot silently overwrite each other.
     public sealed record ReviewTableData(int Version, SubmissionRows? Published, SubmissionRows Submitted);

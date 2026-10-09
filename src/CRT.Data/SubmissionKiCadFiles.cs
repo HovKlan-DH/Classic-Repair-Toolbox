@@ -12,7 +12,7 @@ namespace Handlers.DataHandling
     //
     // The "KiCad data" folder is the one part of a board no row cites - CRT finds it by NAME
     // (DataTreeUsage.KiCadFolderName) - so the rows-only manifest silently left it behind: a new
-    // system was published without its traces, and a re-calibrated project never reached anyone.
+    // board was published without its traces, and a re-calibrated project never reached anyone.
     // This class is the ONE rule for which files that folder contributes:
     //
     //   - ONLY the types CRT itself reads (ComponentListBuilder.IsSupportedKiCadRawFile:
@@ -77,15 +77,15 @@ namespace Handlers.DataHandling
         // complete intended state: a published board's KiCad files travel as "already held" (the
         // server imports them from its own tree, nothing uploads) rather than reading as absent.
         //
-        // A root that does not exist contributes nothing - a draft-only system has no official
+        // A root that does not exist contributes nothing - a draft-only board has no official
         // folder, and most boards have no KiCad data at all.
         // ###########################################################################################
         public static IReadOnlyList<string> Collect(
-            string systemId,
-            string? draftSystemFolder,
-            string? officialSystemFolder)
+            string boardId,
+            string? draftBoardFolder,
+            string? officialBoardFolder)
         {
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return [];
 
             // ###########################################################################################
@@ -108,7 +108,7 @@ namespace Handlers.DataHandling
 
             // The OFFICIAL folder is read first, so its spelling is the one in the dictionary; the
             // draft then contributes only what the published board does not already hold.
-            foreach (string? root in new[] { officialSystemFolder, draftSystemFolder })
+            foreach (string? root in new[] { officialBoardFolder, draftBoardFolder })
             {
                 if (string.IsNullOrWhiteSpace(root))
                     continue;
@@ -125,7 +125,7 @@ namespace Handlers.DataHandling
 
                     string relative = Path.GetRelativePath(folder, file).Replace(Path.DirectorySeparatorChar, '/');
 
-                    byRelative.TryAdd(relative, $"{systemId}/{DataTreeUsage.KiCadFolderName}/{relative}");
+                    byRelative.TryAdd(relative, $"{boardId}/{DataTreeUsage.KiCadFolderName}/{relative}");
                 }
             }
 

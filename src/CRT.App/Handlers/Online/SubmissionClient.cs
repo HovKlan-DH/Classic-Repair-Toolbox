@@ -24,7 +24,7 @@ namespace Handlers.Online
     // whether a failure is worth another attempt, SubmissionProgress decides what the user is
     // told. What is left here is HttpClient and SHA256.
     //
-    // *** NOTHING HERE RUNS ON THE UI THREAD. *** Hashing a 76 MB system and uploading it are both
+    // *** NOTHING HERE RUNS ON THE UI THREAD. *** Hashing a 76 MB board and uploading it are both
     // long operations, and "do not let submission block the UI" is a named trap in
     // NewContributeStrategy.md. Every method is async throughout and takes a CancellationToken
     // that is honoured, so Cancel means cancelled rather than "stop reporting progress".
@@ -57,7 +57,7 @@ namespace Handlers.Online
         // Hashes every file the manifest will reference.
         //
         // STREAMED, never loaded whole: a board scan is tens of megabytes and the shipped C64
-        // system is 76 MB across 1100 files. "Never load a whole system into memory" is stated
+        // board is 76 MB across 1100 files. "Never load a whole board into memory" is stated
         // outright in the strategy document's performance note, and SHA256.HashDataAsync over a
         // FileStream is the cheap way to honour it.
         //
@@ -66,7 +66,7 @@ namespace Handlers.Online
         // ###########################################################################################
         public static async Task<FileHashResult> HashFilesAsync(
             string dataRoot,
-            string draftSystemFolder,
+            string draftBoardFolder,
             IReadOnlyList<string> relativePaths,
             IProgress<SubmissionProgress>? progress = null,
             CancellationToken cancellationToken = default)
@@ -85,16 +85,16 @@ namespace Handlers.Online
                 progress?.Report(new SubmissionProgress(
                     SubmissionPhase.Hashing, done, relativePaths.Count, 0, 0, relative));
 
-                // TWO ROOTS, not one - see SubmissionFileLocator. A draft over a published system
+                // TWO ROOTS, not one - see SubmissionFileLocator. A draft over a published board
                 // references officially published files (under Data/) and drafted ones (under the
                 // draft's own Files/ folder) in the same submission, so resolving against a single
-                // root reports most of a real system as missing.
+                // root reports most of a real board as missing.
                 //
                 // The path came from the app's own board data rather than over the network, but it
                 // is still checked: a hand-edited spreadsheet is untrusted input too, and this is
                 // the one place the app turns a stored string into a file read.
                 if (!SubmissionFileLocator.TryLocate(
-                        dataRoot, draftSystemFolder, relative, out string absolute, out string reason))
+                        dataRoot, draftBoardFolder, relative, out string absolute, out string reason))
                 {
                     problems.Add($"[{relative}] cannot be used: {reason}");
                     done++;
@@ -371,7 +371,7 @@ namespace Handlers.Online
         // *** TWO ANSWERS THROW INSTEAD, BECAUSE THE SERVER DID ANSWER (code review, 2026-10-04). ***
         //   - 404 throws SubmissionNotFoundException: the server does not know the submission (or
         //     it is not this token's - deliberately indistinguishable, so the id space cannot be
-        //     walked). It was deleted with its system or by a reset of the contribution data, and
+        //     walked). It was deleted with its board or by a reset of the contribution data, and
         //     every caller marks the receipt (SubmissionReceiptStore.NoteNotFound), which CRT then
         //     shows as "No longer on the server" - never as "could not be reached".
         //   - "update CRT" throws ClientOutdatedException, carrying the server's words.
@@ -394,7 +394,7 @@ namespace Handlers.Online
                 using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
 
                 // Not "unreachable": the server answered, and does not know it - deleted with its
-                // system, for one. Said apart so the minute check stops asking (code review,
+                // board, for one. Said apart so the minute check stops asking (code review,
                 // 2026-10-04; SubmissionStatusRefresh).
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                     throw new SubmissionNotFoundException(submissionId);

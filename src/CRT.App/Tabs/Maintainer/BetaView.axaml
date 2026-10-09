@@ -7,12 +7,12 @@
     <!--
     BETA TO PRODUCTION, AS THE RIGHT-HAND SIDE OF THE "BETA" SCREEN (owner request, 2026-09-27: the
     buttons at the top left, each showing "everything in the right-side menu"). This was the
-    "Publish to production" WINDOW until then; its list of systems is now the main window's left
+    "Publish to production" WINDOW until then; its list of boards is now the main window's left
     column (TabMaintainer.Beta.cs) and this is what it showed beside that list.
 
     Owner request, 2026-09-25: "first published to BETA and then it is published to the real
     production. The maintainer is still allowed to do this, but only after he has checked that the
-    data looks correct in BETA." What publishing the selected system would copy comes from the same
+    data looks correct in BETA." What publishing the selected board would copy comes from the same
     code on the server that then copies it; a box the maintainer ticks says they checked it in CRT
     with the BETA data; the button follows the server's answer AND the tick (ProductionDisplay.CanPress).
 
@@ -21,11 +21,11 @@
     -->
     <DockPanel>
 
-        <!-- The system's name - or, with nothing chosen, what to do (the Review screen's
+        <!-- The board's name - or, with nothing chosen, what to do (the Review screen's
              "Select a submission" look). -->
         <TextBlock DockPanel.Dock="Top"
-                   x:Name="SelectedSystemText"
-                   Text="Select a system"
+                   x:Name="SelectedBoardText"
+                   Text="Select a board"
                    FontSize="16"
                    Opacity="0.7"
                    TextWrapping="Wrap"
@@ -45,7 +45,7 @@
         <!--
         THE CHECK AND THE BUTTONS, docked to the bottom so they stay put however long the panel
         gets, and HIDDEN with nothing chosen - as the Review screen's decision bar is. The box is
-        unticked every time a system is shown: a tick is about ONE board as it stands, never
+        unticked every time a board is shown: a tick is about ONE board as it stands, never
         carried over to the next.
         -->
         <StackPanel DockPanel.Dock="Bottom"
@@ -110,7 +110,7 @@
         </StackPanel>
 
         <!--
-        What happened, OUTSIDE the button bar: a finished publish usually takes the system out of the
+        What happened, OUTSIDE the button bar: a finished publish usually takes the board out of the
         list, which empties this panel and hides the bar - and the message saying it went out must
         still be read.
         -->

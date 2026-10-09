@@ -116,9 +116,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_NEW_SYSTEM_has_no_published_files_at_all()
+        public void A_NEW_BOARD_has_no_published_files_at_all()
         {
-            // Null is what PublishedBoardReader returns for a system nobody has published, and it
+            // Null is what PublishedBoardReader returns for a board nobody has published, and it
             // correctly makes every image in the submission an addition.
             Assert.Empty(ReviewPublishedFilesTests.Invoke(null));
         }

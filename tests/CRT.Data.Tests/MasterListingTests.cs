@@ -10,8 +10,8 @@ using OfficeOpenXml;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// MasterListing - a new system's ONE row in the main Excel data file (owner request, 2026-09-27:
-// "When a system is added to BETA, and it is a NEW system, can you then make sure it gets added
+// MasterListing - a new board's ONE row in the main Excel data file (owner request, 2026-09-27:
+// "When a board is added to BETA, and it is a NEW board, can you then make sure it gets added
 // also to the main Excel data file"). The fixture is shaped like the real master: a preamble, the
 // header on row 9, and an Oscilloscope sheet that must come through untouched.
 // ###########################################################################################
@@ -99,7 +99,7 @@ public sealed class MasterListingTests : IDisposable
 
         // A blank hardware cell takes the name above it, like CRT's drop-downs.
         Assert.Equal("Commodore 128", rows[1].HardwareName);
-        Assert.Equal("Commodore/C128/250477", rows[1].SystemId);
+        Assert.Equal("Commodore/C128/250477", rows[1].BoardId);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class MasterListingTests : IDisposable
     // ------------------------------------------------------------------ inserting
 
     [Fact]
-    public void A_new_system_goes_straight_after_the_row_it_was_placed_after()
+    public void A_new_board_goes_straight_after_the_row_it_was_placed_after()
     {
         this.WriteRealisticMaster();
 
@@ -138,9 +138,9 @@ public sealed class MasterListingTests : IDisposable
         Assert.Equal(5, this.Rows().Count);
     }
 
-    // Re-running an interrupted publish must not list the system twice.
+    // Re-running an interrupted publish must not list the board twice.
     [Fact]
-    public void Inserting_a_system_already_listed_updates_its_row_instead_of_adding_one()
+    public void Inserting_a_board_already_listed_updates_its_row_instead_of_adding_one()
     {
         this.WriteRealisticMaster();
         Assert.True(MasterListing.Insert(this.Master, Open128Row, C128Dcr).IsDone);
@@ -149,7 +149,7 @@ public sealed class MasterListingTests : IDisposable
 
         Assert.True(again.IsDone);
         Assert.False(again.Changed);
-        Assert.Single(this.Rows(), row => row.SystemId == Open128Row.SystemId);
+        Assert.Single(this.Rows(), row => row.BoardId == Open128Row.BoardId);
 
         MasterListingEdit renamed = MasterListing.Insert(this.Master, Open128Row with { BoardName = "310378 Open128 (replica)" }, C64Long);
 
@@ -172,12 +172,12 @@ public sealed class MasterListingTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** TWO SYSTEMS UNDER THE SAME NAMES WOULD BE ONE BOARD TWICE. *** CRT keys a board by
+    // *** TWO BOARDS UNDER THE SAME NAMES WOULD BE ONE BOARD TWICE. *** CRT keys a board by
     // "hardware name|board name" without regard to case, so a second row with the same pair would
     // share every setting and workbook with the first. Refused, with the file left alone.
     // ###########################################################################################
     [Fact]
-    public void A_system_under_names_another_system_is_listed_under_is_refused_and_the_file_is_untouched()
+    public void A_board_under_names_another_board_is_listed_under_is_refused_and_the_file_is_untouched()
     {
         this.WriteRealisticMaster();
         byte[] before = File.ReadAllBytes(this.Master);
@@ -193,14 +193,14 @@ public sealed class MasterListingTests : IDisposable
     }
 
     [Fact]
-    public void Only_ANOTHER_systems_row_under_the_same_names_is_a_clash()
+    public void Only_ANOTHER_boards_row_under_the_same_names_is_a_clash()
     {
         this.WriteRealisticMaster();
         IReadOnlyList<MasterListingRow> rows = this.Rows();
 
         Assert.Equal(C128Dcr, MasterListing.NamesTakenBy(rows, "Commodore/C128/310378 Open128", "COMMODORE 128", "250477 (c128dcr)")?.ExcelDataFile);
 
-        // Its own row - updating a listed system keeps its names.
+        // Its own row - updating a listed board keeps its names.
         Assert.Null(MasterListing.NamesTakenBy(rows, "Commodore/C128/250477", "Commodore 128", "250477 (C128DCR)"));
 
         // The same hardware with a board name of its own, or the same board name under other hardware.
@@ -208,9 +208,9 @@ public sealed class MasterListingTests : IDisposable
         Assert.Null(MasterListing.NamesTakenBy(rows, "Commodore/C128/310378 Open128", "Commodore 64", "250477 (C128DCR)"));
     }
 
-    // Updating a listed system's own row under its own names is not a clash with itself.
+    // Updating a listed board's own row under its own names is not a clash with itself.
     [Fact]
-    public void A_listed_system_keeps_its_names_when_its_row_is_updated()
+    public void A_listed_board_keeps_its_names_when_its_row_is_updated()
     {
         this.WriteRealisticMaster();
 
@@ -292,12 +292,12 @@ public sealed class MasterListingTests : IDisposable
     // ------------------------------------------------------------------ removing
 
     [Fact]
-    public void Removing_takes_the_systems_row_out_and_nothing_else()
+    public void Removing_takes_the_boards_row_out_and_nothing_else()
     {
         this.WriteRealisticMaster();
         Assert.True(MasterListing.Insert(this.Master, Open128Row, C128Dcr).IsDone);
 
-        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.SystemId);
+        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.BoardId);
 
         Assert.True(edit.IsDone);
         Assert.True(edit.Changed);
@@ -310,20 +310,20 @@ public sealed class MasterListingTests : IDisposable
         this.WriteMaster(("Commodore 128", "310378 Open128", Open128), (null, "250477", C128Dcr), ("Commodore 64", "250407", C64Long));
         // The blank cell below now leans on the removed row for "Commodore 128".
 
-        Assert.True(MasterListing.Remove(this.Master, Open128Row.SystemId).IsDone);
+        Assert.True(MasterListing.Remove(this.Master, Open128Row.BoardId).IsDone);
 
         Assert.Equal("Commodore 128", this.Rows()[0].HardwareName);
         Assert.Equal("250477", this.Rows()[0].BoardName);
     }
 
     // ###########################################################################################
-    // Two rows whose workbooks sit in the same folder are one system: deleting it takes the whole
+    // Two rows whose workbooks sit in the same folder are one board: deleting it takes the whole
     // folder, so a row left behind would be a board CRT offers but cannot load (code review,
     // 2026-10-04). Every row goes, the rows between them stay, and a blank-named board after either
     // keeps its own hardware name.
     // ###########################################################################################
     [Fact]
-    public void Removing_takes_out_every_row_of_the_system()
+    public void Removing_takes_out_every_row_of_the_board()
     {
         const string Open128Second = "Commodore/C128/310378 Open128/Data C128 310378 Open128 rev B v2.0.0.xlsx";
 
@@ -334,7 +334,7 @@ public sealed class MasterListingTests : IDisposable
             (null, "310378", C128),
             ("Commodore 64", "250407", C64Long));
 
-        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.SystemId);
+        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.BoardId);
 
         Assert.True(edit.IsDone, edit.Failure);
         Assert.True(edit.Changed);
@@ -343,11 +343,11 @@ public sealed class MasterListingTests : IDisposable
     }
 
     [Fact]
-    public void Removing_a_system_not_listed_changes_nothing()
+    public void Removing_a_board_not_listed_changes_nothing()
     {
         this.WriteRealisticMaster();
 
-        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.SystemId);
+        MasterListingEdit edit = MasterListing.Remove(this.Master, Open128Row.BoardId);
 
         Assert.True(edit.IsDone);
         Assert.False(edit.Changed);
@@ -358,7 +358,7 @@ public sealed class MasterListingTests : IDisposable
     private static MasterListingRow Row(string workbook) => new("H", "B", workbook, string.Empty);
 
     // ###########################################################################################
-    // Production's list, when the system is promoted (owner decision: "insert at the same place").
+    // Production's list, when the board is promoted (owner decision: "insert at the same place").
     // After the nearest row above it that production also lists.
     // ###########################################################################################
     [Fact]
@@ -367,7 +367,7 @@ public sealed class MasterListingTests : IDisposable
         IReadOnlyList<MasterListingRow> beta = [Row(C64Long), Row(C128), Row(C128Dcr), Row(Open128), Row(Spectrum)];
         IReadOnlyList<MasterListingRow> production = [Row(C64Long), Row(C128), Row(Spectrum)];
 
-        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).SystemId, production, out string? after));
+        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).BoardId, production, out string? after));
         Assert.Equal(C128, after);
     }
 
@@ -377,18 +377,18 @@ public sealed class MasterListingTests : IDisposable
         IReadOnlyList<MasterListingRow> beta = [Row(Open128), Row(C128), Row(Spectrum)];
         IReadOnlyList<MasterListingRow> production = [Row(C64Long), Row(Spectrum)];
 
-        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).SystemId, production, out string? after));
+        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).BoardId, production, out string? after));
         Assert.Equal(C64Long, after);
 
         IReadOnlyList<MasterListingRow> spectrumFirst = [Row(Spectrum), Row(C64Long)];
-        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).SystemId, spectrumFirst, out after));
+        Assert.True(MasterListing.TryResolvePlacement(beta, Row(Open128).BoardId, spectrumFirst, out after));
         Assert.Null(after);
     }
 
     [Fact]
-    public void A_system_the_source_does_not_list_has_no_place()
+    public void A_board_the_source_does_not_list_has_no_place()
     {
-        Assert.False(MasterListing.TryResolvePlacement([Row(C64Long)], Row(Open128).SystemId, [Row(C64Long)], out _));
+        Assert.False(MasterListing.TryResolvePlacement([Row(C64Long)], Row(Open128).BoardId, [Row(C64Long)], out _));
     }
 
     // ------------------------------------------------------------------ every write: dates and panes
@@ -569,7 +569,7 @@ public sealed class MasterListingTests : IDisposable
     // ------------------------------------------------------------------ the order of the lists
 
     private static IReadOnlyList<string> Ids(params string[] workbooks) =>
-        workbooks.Select(workbook => Row(workbook).SystemId).ToList();
+        workbooks.Select(workbook => Row(workbook).BoardId).ToList();
 
     // ###########################################################################################
     // *** THE ORDER OF THE DROP-DOWN LISTS (owner request, 2026-10-04: "sort the list of systems,
@@ -585,9 +585,9 @@ public sealed class MasterListingTests : IDisposable
     }
 
     // ###########################################################################################
-    // The STABLE source's list follows BETA's order, but need not hold the same systems: one it
+    // The STABLE source's list follows BETA's order, but need not hold the same boards: one it
     // lists that BETA's order does not name stays straight after the row it followed - and first
-    // when it was first. A system BETA names that stable lacks is simply not there.
+    // when it was first. A board BETA names that stable lacks is simply not there.
     // ###########################################################################################
     [Fact]
     public void A_row_the_order_does_not_name_stays_after_the_row_it_followed()

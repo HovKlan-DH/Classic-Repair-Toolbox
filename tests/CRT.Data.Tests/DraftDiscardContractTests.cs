@@ -15,12 +15,12 @@ public sealed class DraftDiscardContractTests
 
     private static readonly DateTimeOffset DraftCreated = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
 
-    private static SubmissionReceipt Receipt(long id, string state, DateTimeOffset? sent = null, string systemId = C128, DateTimeOffset? discarded = null) =>
+    private static SubmissionReceipt Receipt(long id, string state, DateTimeOffset? sent = null, string boardId = C128, DateTimeOffset? discarded = null) =>
         new()
         {
             SubmissionId = id,
             UploadToken = "tok" + id,
-            SystemId = systemId,
+            BoardId = boardId,
             SentUtc = sent ?? DraftCreated.AddDays(1),
             LastKnownState = state,
             DraftDiscardedUtc = discarded
@@ -62,7 +62,7 @@ public sealed class DraftDiscardContractTests
             Receipt(1, "merged"),                                         // chosen
             Receipt(2, "pending"),                                        // chosen
             Receipt(3, "published"),                                      // finished
-            Receipt(4, "merged", systemId: "Commodore/C64/250407"),       // another board
+            Receipt(4, "merged", boardId: "Commodore/C64/250407"),       // another board
             Receipt(5, "merged", sent: DraftCreated.AddDays(-1)),         // an earlier draft's
             Receipt(6, "merged", discarded: DraftCreated.AddDays(2)),     // already reported
         ];
@@ -103,7 +103,7 @@ public sealed class DraftDiscardContractTests
     }
 
     // ###########################################################################################
-    // A submission the server no longer knows (2026-10-04: deleted with its system, or by the reset
+    // A submission the server no longer knows (2026-10-04: deleted with its board, or by the reset
     // at go-live) has nobody to tell - and the discard dialog must not call it "not finished yet".
     // ###########################################################################################
     [Fact]

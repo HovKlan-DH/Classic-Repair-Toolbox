@@ -28,17 +28,17 @@ namespace Handlers.OnlineHandling
         private DateTimeOffset thisSince;
         private bool thisCounted;
 
-        // The board on screen (its system id), or null.
+        // The board on screen (its board id), or null.
         public string? Shown => this.thisShown;
 
         // ###########################################################################################
-        // The board on screen is now `systemId` (null or blank: none, or one that is not counted).
+        // The board on screen is now `boardId` (null or blank: none, or one that is not counted).
         // True when that CHANGED the board on screen - a view of the new one starts now, and any
         // view of the old one still waiting to count never will.
         // ###########################################################################################
-        public bool Show(string? systemId, DateTimeOffset now)
+        public bool Show(string? boardId, DateTimeOffset now)
         {
-            string? shown = string.IsNullOrWhiteSpace(systemId) ? null : systemId.Trim();
+            string? shown = string.IsNullOrWhiteSpace(boardId) ? null : boardId.Trim();
 
             if (string.Equals(shown, this.thisShown, StringComparison.Ordinal))
                 return false;

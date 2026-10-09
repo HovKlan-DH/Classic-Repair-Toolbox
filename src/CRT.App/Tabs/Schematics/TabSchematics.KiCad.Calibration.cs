@@ -309,7 +309,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Saves the current interactive KiCad trace calibration box into the current system's draft
+    // Saves the current interactive KiCad trace calibration box into the current board's draft
     // (session 2c - NOT into the board JSON directly any more; see KiCadCalibrationDraftWriter's
     // own header for why) and then exits calibration mode so the persisted transform becomes the
     // active transform immediately - ResolveEffectiveKiCadCalibration reads the draft's row back
@@ -407,8 +407,8 @@ public partial class TabSchematics
         // ###########################################################################################
         // *** THE DRAFTS TAB HAS TO APPEAR HERE TOO (owner report, 2026-09-23). ***
         //
-        // Calibrating seeds a draft for a published system exactly as a component or label edit
-        // does - the seeding is a dozen lines above this - so it can be the moment a system gains
+        // Calibrating seeds a draft for a published board exactly as a component or label edit
+        // does - the seeding is a dozen lines above this - so it can be the moment a board gains
         // its first draft. It does NOT go through Main.ReloadCurrentBoardFromDisk, which is where
         // the other two editors get this for free: a calibration lives in the JSON sidecar rather
         // than in BoardData, so this path deliberately refreshes its own overlay instead of

@@ -59,11 +59,11 @@ public sealed class DraftDiscardWordingTests
     }
 
     [Fact]
-    public void The_systems_history_says_which_submission()
+    public void The_boards_history_says_which_submission()
     {
         Assert.Equal(
             "#41 - the contributor discarded the draft",
-            SystemsDisplay.HistoryWhat(new SystemHistoryEntry(Discarded, SystemHistoryEvents.DraftDiscarded, "dennis@example.com", 41, null)));
+            BoardsDisplay.HistoryWhat(new BoardHistoryEntry(Discarded, BoardHistoryEvents.DraftDiscarded, "dennis@example.com", 41, null)));
     }
 
     [Fact]

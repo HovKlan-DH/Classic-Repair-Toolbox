@@ -92,8 +92,8 @@ public sealed class ReviewWireContractTests
         ProductionPublishRequest publish = ReviewWireContractTests.Received<ProductionPublishRequest>(
             new ProductionPublishRequest("Commodore/C64/250407", new string('a', 64), ["Commodore/Shared files/x.png"]));
 
-        Assert.Equal("Commodore/C64/250407", plan.SystemId);
-        Assert.Equal("Commodore/C64/250407", publish.SystemId);
+        Assert.Equal("Commodore/C64/250407", plan.BoardId);
+        Assert.Equal("Commodore/C64/250407", publish.BoardId);
         Assert.Equal(new string('a', 64), publish.ExpectedBetaContentHash);
         Assert.Equal(["Commodore/Shared files/x.png"], publish.ExpectedRemovals);
     }
@@ -107,7 +107,7 @@ public sealed class ReviewWireContractTests
         UnusedFilesRemoveRequest remove = ReviewWireContractTests.Received<UnusedFilesRemoveRequest>(
             new UnusedFilesRemoveRequest("beta", ["Commodore/C64/250407/old.png"]));
 
-        Assert.Equal(("Commodore/C64/250407", 42L), (change.SystemId, change.AccountId));
+        Assert.Equal(("Commodore/C64/250407", 42L), (change.BoardId, change.AccountId));
         Assert.Equal("beta", remove.Tree);
         Assert.Equal(["Commodore/C64/250407/old.png"], remove.Files);
     }
@@ -178,7 +178,7 @@ public sealed class ReviewWireContractTests
             Carrying: [new CarriedSubmission(7, "hest@mailscan.dk", "Corrected U8.", ReviewWireContractTests.Decided)])));
 
         Assert.NotNull(plan);
-        Assert.Equal("Commodore/C64/250407", plan!.SystemId);
+        Assert.Equal("Commodore/C64/250407", plan!.BoardId);
         Assert.Equal("2026-September-25", plan.BetaRevision);
         Assert.Equal(new string('c', 64), plan.BetaContentHash);
         Assert.True(plan.TouchesSharedFiles);
@@ -241,28 +241,28 @@ public sealed class ReviewWireContractTests
         SubmissionFilesAnswer? answer = ReviewApiParser.ParseSubmissionFiles(ReviewWireContractTests.Answer(new SubmissionFilesAnswer(
             "Commodore/C128/310378",
             [
-                new SystemFileEntry("Commodore/C128/310378/a.png", SystemFileChange.Added, SystemFileSource.Submission, new string('d', 64)),
-                new SystemFileEntry("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed, SystemFileSource.Beta, WrittenOnApproval: true),
-                new SystemFileEntry("Commodore/C128/310378/old.png", SystemFileChange.Removed, SystemFileSource.Beta),
-                new SystemFileEntry("Commodore/C128/310378/new.json", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true)
+                new BoardFileEntry("Commodore/C128/310378/a.png", BoardFileChange.Added, BoardFileSource.Submission, new string('d', 64)),
+                new BoardFileEntry("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed, BoardFileSource.Beta, WrittenOnApproval: true),
+                new BoardFileEntry("Commodore/C128/310378/old.png", BoardFileChange.Removed, BoardFileSource.Beta),
+                new BoardFileEntry("Commodore/C128/310378/new.json", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true)
             ],
             "https://example.org/app-data-BETA/Data")));
 
         Assert.NotNull(answer);
-        Assert.Equal("Commodore/C128/310378", answer!.SystemId);
+        Assert.Equal("Commodore/C128/310378", answer!.BoardId);
         Assert.Equal("https://example.org/app-data-BETA/Data", answer.BetaDataUrl);
         Assert.Equal(
             [
-                new SystemFileEntry("Commodore/C128/310378/a.png", SystemFileChange.Added, SystemFileSource.Submission, new string('d', 64)),
-                new SystemFileEntry("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed, SystemFileSource.Beta, WrittenOnApproval: true),
-                new SystemFileEntry("Commodore/C128/310378/old.png", SystemFileChange.Removed, SystemFileSource.Beta),
-                new SystemFileEntry("Commodore/C128/310378/new.json", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true)
+                new BoardFileEntry("Commodore/C128/310378/a.png", BoardFileChange.Added, BoardFileSource.Submission, new string('d', 64)),
+                new BoardFileEntry("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed, BoardFileSource.Beta, WrittenOnApproval: true),
+                new BoardFileEntry("Commodore/C128/310378/old.png", BoardFileChange.Removed, BoardFileSource.Beta),
+                new BoardFileEntry("Commodore/C128/310378/new.json", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true)
             ],
             answer.Files);
 
         // Names, not numbers, on the wire - an enum reordered on one side cannot change a meaning.
         Assert.Contains("\"notWrittenYet\"", ReviewWireContractTests.Answer(new SubmissionFilesAnswer(
-            "x", [new SystemFileEntry("x/a", SystemFileChange.Added, SystemFileSource.NotWrittenYet)])), StringComparison.OrdinalIgnoreCase);
+            "x", [new BoardFileEntry("x/a", BoardFileChange.Added, BoardFileSource.NotWrittenYet)])), StringComparison.OrdinalIgnoreCase);
     }
 
     // An older server sends no `carrying` at all, which must read as "none named" rather than as a
@@ -344,7 +344,7 @@ public sealed class ReviewWireContractTests
     public void An_unknown_rollback_kind_is_read_as_the_safe_one()
     {
         BetaRollbackPlanView? plan = ReviewApiParser.ParseBetaRollbackPlan(
-            """{"systemId":"Commodore/C64/250407","kind":"something-else"}""");
+            """{"boardId":"Commodore/C64/250407","kind":"something-else"}""");
 
         Assert.NotNull(plan);
         Assert.Equal(BetaRollbackKind.RestoreFromProduction, plan!.Kind);
@@ -416,31 +416,31 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // DELETING A SYSTEM (owner request, 2026-10-03). The fingerprint is the one that matters: renamed
+    // DELETING A BOARD (owner request, 2026-10-03). The fingerprint is the one that matters: renamed
     // on either side, every delete would send nothing back and be refused as "changed since it was
     // shown" - and the reason, which is the only thing the contributors are told.
     // ###########################################################################################
     [Fact]
-    public void A_system_delete_arrives_with_its_fingerprint_and_reason()
+    public void A_board_delete_arrives_with_its_fingerprint_and_reason()
     {
-        SystemDeleteRequest received = ReviewWireContractTests.Received<SystemDeleteRequest>(
-            new SystemDeleteRequest("Commodore/C64/999999", new string('f', 64), "It was a test system."));
+        BoardDeleteRequest received = ReviewWireContractTests.Received<BoardDeleteRequest>(
+            new BoardDeleteRequest("Commodore/C64/999999", new string('f', 64), "It was a test board."));
 
-        Assert.Equal("Commodore/C64/999999", received.SystemId);
+        Assert.Equal("Commodore/C64/999999", received.BoardId);
         Assert.Equal(new string('f', 64), received.Fingerprint);
-        Assert.Equal("It was a test system.", received.Reason);
+        Assert.Equal("It was a test board.", received.Reason);
 
-        // The plan is asked for with the systems screen's own request.
+        // The plan is asked for with the boards screen's own request.
         Assert.Equal(
             "Commodore/C64/999999",
-            ReviewWireContractTests.Received<SystemDetailRequest>(new SystemDetailRequest("Commodore/C64/999999")).SystemId);
+            ReviewWireContractTests.Received<BoardDetailRequest>(new BoardDetailRequest("Commodore/C64/999999")).BoardId);
     }
 
     [Fact]
-    public void A_system_delete_plan_reads_back_field_for_field()
+    public void A_board_delete_plan_reads_back_field_for_field()
     {
-        SystemDeletePlanAnswer? plan = ReviewApiParser.ParseSystemDeletePlan(ReviewWireContractTests.Answer(
-            new SystemDeletePlanAnswer(
+        BoardDeletePlanAnswer? plan = ReviewApiParser.ParseBoardDeletePlan(ReviewWireContractTests.Answer(
+            new BoardDeletePlanAnswer(
                 "Commodore/C64/999999",
                 "Commodore",
                 "C64",
@@ -454,40 +454,40 @@ public sealed class ReviewWireContractTests
                 Submissions: 5,
                 Maintainers: 2,
                 Invitations: 1,
-                OpenSubmissions: [new SystemDeleteOpenSubmission(14, "returned", "anna@example.com", "Corrected U8.", ReviewWireContractTests.Decided)],
+                OpenSubmissions: [new BoardDeleteOpenSubmission(14, "returned", "anna@example.com", "Corrected U8.", ReviewWireContractTests.Decided)],
                 BlockedBecause: "Another board uses a file.")));
 
         Assert.NotNull(plan);
-        Assert.Equal(("Commodore/C64/999999", "Commodore", "C64", "999999"), (plan.SystemId, plan.Manufacturer, plan.Hardware, plan.Board));
+        Assert.Equal(("Commodore/C64/999999", "Commodore", "C64", "999999"), (plan.BoardId, plan.Manufacturer, plan.Hardware, plan.Board));
         Assert.Equal(new string('f', 64), plan.Fingerprint);
         Assert.Equal((12, 11, true, false, true), (plan.BetaFiles, plan.ProductionFiles, plan.ListedInBeta, plan.ListedInProduction, plan.HasRecord));
         Assert.Equal((5, 2, 1), (plan.Submissions, plan.Maintainers, plan.Invitations));
         Assert.Equal("Another board uses a file.", plan.BlockedBecause);
 
-        SystemDeleteOpenSubmission open = Assert.Single(plan.OpenSubmissions);
+        BoardDeleteOpenSubmission open = Assert.Single(plan.OpenSubmissions);
         Assert.Equal((14L, "returned", "anna@example.com", "Corrected U8."), (open.Id, open.State, open.Contributor, open.Summary));
         Assert.Equal(ReviewWireContractTests.Decided, open.CreatedUtc);
 
         // Nothing blocking is left out on the wire, and reads as nothing blocking.
-        SystemDeletePlanAnswer? clear = ReviewApiParser.ParseSystemDeletePlan(ReviewWireContractTests.Answer(
-            new SystemDeletePlanAnswer("Commodore/C64/999999", "Commodore", "C64", "999999", "f", 0, 0, false, false, true, 3, 0, 0, [])));
+        BoardDeletePlanAnswer? clear = ReviewApiParser.ParseBoardDeletePlan(ReviewWireContractTests.Answer(
+            new BoardDeletePlanAnswer("Commodore/C64/999999", "Commodore", "C64", "999999", "f", 0, 0, false, false, true, 3, 0, 0, [])));
 
         Assert.Null(clear!.BlockedBecause);
         Assert.Empty(clear.OpenSubmissions);
     }
 
     [Fact]
-    public void A_system_delete_reads_back_what_went()
+    public void A_board_delete_reads_back_what_went()
     {
-        SystemDeleteAnswer? answer = ReviewApiParser.ParseSystemDelete(ReviewWireContractTests.Answer(
-            new SystemDeleteAnswer("Commodore/C64/999999", BetaFilesRemoved: 12, ProductionFilesRemoved: 11, SubmissionsDeleted: 5, ContributorsMailed: 2)));
+        BoardDeleteAnswer? answer = ReviewApiParser.ParseBoardDelete(ReviewWireContractTests.Answer(
+            new BoardDeleteAnswer("Commodore/C64/999999", BetaFilesRemoved: 12, ProductionFilesRemoved: 11, SubmissionsDeleted: 5, ContributorsMailed: 2)));
 
-        Assert.Equal("Commodore/C64/999999", answer!.SystemId);
+        Assert.Equal("Commodore/C64/999999", answer!.BoardId);
         Assert.Equal((12, 11, 5, 2), (answer.BetaFilesRemoved, answer.ProductionFilesRemoved, answer.SubmissionsDeleted, answer.ContributorsMailed));
     }
 
     // The two answers that were shared records already, read through the server's settings too -
-    // including a new system's table, whose published side is null and so left out entirely.
+    // including a new board's table, whose published side is null and so left out entirely.
     [Fact]
     public void The_table_and_the_unused_file_list_read_back_through_the_servers_settings()
     {
@@ -511,7 +511,7 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // THE THREE LISTS (code review, 2026-09-25): the production list, the administrator's systems
+    // THE THREE LISTS (code review, 2026-09-25): the production list, the administrator's boards
     // and accounts. The server answered them as anonymous objects and the Maintainer tab read them by
     // hand-typed names, with nothing holding the two together. BetaContentHash is the one that
     // mattered: renamed on either side, every publish to production would have sent an empty hash
@@ -530,8 +530,8 @@ public sealed class ReviewWireContractTests
 
         Assert.True(list!.Configured);
 
-        ProductionSystemRow row = Assert.Single(list.Systems);
-        Assert.Equal("Commodore/C64/250407", row.SystemId);
+        ProductionBoardRow row = Assert.Single(list.Boards);
+        Assert.Equal("Commodore/C64/250407", row.BoardId);
         Assert.Equal("Commodore", row.Manufacturer);
         Assert.Equal("C64", row.Hardware);
         Assert.Equal("250407", row.Board);
@@ -545,11 +545,11 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // *** THE BETA BADGE'S FLAG (2026-09-27). *** Renamed on either side, a system this account had
+    // *** THE BETA BADGE'S FLAG (2026-09-27). *** Renamed on either side, a board this account had
     // already approved would read as waiting for it again, and the badge would count it for ever.
     // ###########################################################################################
     [Fact]
-    public void Whether_a_waiting_system_waits_for_you_reads_back()
+    public void Whether_a_waiting_board_waits_for_you_reads_back()
     {
         ProductionListResponse? list = ReviewApiParser.ParseProductionList(ReviewWireContractTests.Answer(
             new ProductionListAnswer(
@@ -559,7 +559,7 @@ public sealed class ReviewWireContractTests
                     new ProductionListEntry("Commodore/C128/310378", "Commodore", "C128", "310378", null, new string('d', 64), null, null, AwaitsYou: true)
                 ])));
 
-        Assert.Equal([false, true], list!.Systems.Select(row => row.AwaitsYou));
+        Assert.Equal([false, true], list!.Boards.Select(row => row.AwaitsYou));
     }
 
     // ###########################################################################################
@@ -568,7 +568,7 @@ public sealed class ReviewWireContractTests
     // Absent, it reads as not said.
     // ###########################################################################################
     [Fact]
-    public void Whether_a_waiting_system_waits_for_the_administrator_reads_back()
+    public void Whether_a_waiting_board_waits_for_the_administrator_reads_back()
     {
         ProductionListResponse? list = ReviewApiParser.ParseProductionList(ReviewWireContractTests.Answer(
             new ProductionListAnswer(
@@ -579,27 +579,39 @@ public sealed class ReviewWireContractTests
                     new ProductionListEntry("Amstrad/CPC/464", "Amstrad", "CPC", "464", null, new string('e', 64), null, null)
                 ])));
 
-        Assert.Equal([true, false, null], list!.Systems.Select(row => row.WaitsForAdministrator));
+        Assert.Equal([true, false, null], list!.Boards.Select(row => row.WaitsForAdministrator));
     }
 
     // ###########################################################################################
-    // THE "SYSTEMS" SCREEN (2026-09-27): the list, the detail request, and the detail - every
+    // THE "BOARDS" SCREEN (2026-09-27): the list, the detail request, and the detail - every
     // field, since each one is on screen and a renamed one would be blank there in silence.
     // ###########################################################################################
     [Fact]
-    public void The_systems_list_reads_back_field_for_field()
+    public void The_boards_list_reads_back_field_for_field()
     {
-        SystemOverviewEntry sent = new(
+        BoardOverviewEntry sent = new(
             "Commodore/C64/250407", "Commodore", "C64", "250407",
             InBeta: true, InProduction: false, IsAwaitingProduction: true, IsAccepting: false,
             BetaRevision: "2026-September-25", ProductionRevision: "2026-May-14",
             ProductionPublishedUtc: ReviewWireContractTests.Decided, MaintainerCount: 2,
-            ViewsLast30Days: 48);
+            ViewsLast30Days: 48,
+            SubmissionCounts: new BoardSubmissionCounts(Total: 19, Waiting: 1, Rejected: 2, InBeta: 1, InStable: 15));
 
-        SystemOverviewAnswer? answer = ReviewApiParser.ParseSystemOverview(
-            ReviewWireContractTests.Answer(new SystemOverviewAnswer([sent])));
+        BoardOverviewAnswer? answer = ReviewApiParser.ParseBoardOverview(
+            ReviewWireContractTests.Answer(new BoardOverviewAnswer([sent])));
 
-        Assert.Equal(sent, Assert.Single(answer!.Systems));
+        Assert.Equal(sent, Assert.Single(answer!.Boards));
+    }
+
+    // How a board's submissions went (2026-10-09): absent from an older server, and then nothing is
+    // said - never "0 submissions", which would be a claim about the board.
+    [Fact]
+    public void A_boards_submission_counts_stay_absent_from_an_older_server()
+    {
+        BoardOverviewEntry old = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0);
+
+        Assert.Null(Assert.Single(ReviewApiParser.ParseBoardOverview(
+            ReviewWireContractTests.Answer(new BoardOverviewAnswer([old])))!.Boards).SubmissionCounts);
     }
 
     // ###########################################################################################
@@ -607,89 +619,92 @@ public sealed class ReviewWireContractTests
     // not count, it stays null and the screen says nothing; a real 0 reads back as 0.
     // ###########################################################################################
     [Fact]
-    public void A_systems_view_count_reads_back_and_its_absence_stays_absent()
+    public void A_boards_view_count_reads_back_and_its_absence_stays_absent()
     {
-        SystemOverviewEntry counted = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0, ViewsLast30Days: 0);
-        SystemOverviewEntry uncounted = counted with { SystemId = "Commodore/C128/310378", ViewsLast30Days = null };
+        BoardOverviewEntry counted = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0, ViewsLast30Days: 0);
+        BoardOverviewEntry uncounted = counted with { BoardId = "Commodore/C128/310378", ViewsLast30Days = null };
 
-        SystemOverviewAnswer? answer = ReviewApiParser.ParseSystemOverview(
-            ReviewWireContractTests.Answer(new SystemOverviewAnswer([counted, uncounted])));
+        BoardOverviewAnswer? answer = ReviewApiParser.ParseBoardOverview(
+            ReviewWireContractTests.Answer(new BoardOverviewAnswer([counted, uncounted])));
 
-        Assert.Equal([(int?)0, null], answer!.Systems.Select(system => system.ViewsLast30Days));
+        Assert.Equal([(int?)0, null], answer!.Boards.Select(board => board.ViewsLast30Days));
     }
 
     [Fact]
-    public void A_systems_view_statistics_read_back_field_for_field()
+    public void A_boards_view_statistics_read_back_field_for_field()
     {
-        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0, 48);
-        BoardViewStatistics views = new(12, 48, 310, 3, [new("DK", "Denmark", 120), new("DE", "Germany", 60)]);
+        BoardOverviewEntry board = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0, 48);
+        BoardViewStatistics views = new(
+            12, 48, 310, 3, [new("DK", "Denmark", 120), new("DE", "Germany", 60)],
+            [new(new DateOnly(2025, 10, 10), 2), new(new DateOnly(2026, 9, 26), 7)]);
 
-        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(
-            ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [], Views: views)));
+        BoardDetailAnswer? read = ReviewApiParser.ParseBoardDetail(
+            ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [], Views: views)));
 
         Assert.Equal(
             (views.Last7Days, views.Last30Days, views.Last365Days, views.FromBetaLast30Days),
             (read!.Views!.Last7Days, read.Views.Last30Days, read.Views.Last365Days, read.Views.FromBetaLast30Days));
         Assert.Equal(views.TopCountries, read.Views.TopCountries);
-        Assert.Equal(48, read.System.ViewsLast30Days);
+        Assert.Equal(views.Daily!, read.Views.Daily!);
+        Assert.Equal(48, read.Board.ViewsLast30Days);
 
-        Assert.Null(ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])))!.Views);
+        Assert.Null(ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [])))!.Views);
     }
 
     // With no production tree the server says nothing about production - and that is kept, not
     // read as "not in production".
     [Fact]
-    public void A_system_the_server_could_not_look_up_in_production_reads_back_as_not_said()
+    public void A_board_the_server_could_not_look_up_in_production_reads_back_as_not_said()
     {
-        SystemOverviewAnswer? answer = ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(
-            new SystemOverviewAnswer([new SystemOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, null, false, true, null, null, null, 0)])));
+        BoardOverviewAnswer? answer = ReviewApiParser.ParseBoardOverview(ReviewWireContractTests.Answer(
+            new BoardOverviewAnswer([new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, null, false, true, null, null, null, 0)])));
 
-        Assert.Null(Assert.Single(answer!.Systems).InProduction);
+        Assert.Null(Assert.Single(answer!.Boards).InProduction);
     }
 
     // ###########################################################################################
-    // BETA's content hash (2026-10-04): what tells the Systems screen its open table and file list
+    // BETA's content hash (2026-10-04): what tells the Boards screen its open table and file list
     // are out of date (QueueRefreshRules.BetaBoardChanged). Arriving empty, the screen would fall
     // back on the revision date - which a second publish the same day does not move.
     // ###########################################################################################
     [Fact]
-    public void A_systems_BETA_content_hash_reads_back_in_the_list_and_in_the_detail()
+    public void A_boards_BETA_content_hash_reads_back_in_the_list_and_in_the_detail()
     {
         string hash = new('c', 64);
-        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", null, 1, BetaContentHash: hash);
+        BoardOverviewEntry board = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", null, 1, BetaContentHash: hash);
 
-        SystemOverviewAnswer? list = ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(new SystemOverviewAnswer([system])));
-        SystemDetailAnswer? detail = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])));
+        BoardOverviewAnswer? list = ReviewApiParser.ParseBoardOverview(ReviewWireContractTests.Answer(new BoardOverviewAnswer([board])));
+        BoardDetailAnswer? detail = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [])));
 
-        Assert.Equal(hash, Assert.Single(list!.Systems).BetaContentHash);
-        Assert.Equal(hash, detail!.System.BetaContentHash);
+        Assert.Equal(hash, Assert.Single(list!.Boards).BetaContentHash);
+        Assert.Equal(hash, detail!.Board.BetaContentHash);
 
         // None from the server (a board nothing has published) is none, not "".
-        Assert.Null(Assert.Single(ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(
-            new SystemOverviewAnswer([system with { BetaContentHash = null }])))!.Systems).BetaContentHash);
+        Assert.Null(Assert.Single(ReviewApiParser.ParseBoardOverview(ReviewWireContractTests.Answer(
+            new BoardOverviewAnswer([board with { BetaContentHash = null }])))!.Boards).BetaContentHash);
     }
 
     [Fact]
-    public void A_system_detail_request_arrives_with_its_id()
+    public void A_board_detail_request_arrives_with_its_id()
     {
         Assert.Equal(
             "Commodore/C64/250407",
-            ReviewWireContractTests.Received<SystemDetailRequest>(new SystemDetailRequest("Commodore/C64/250407")).SystemId);
+            ReviewWireContractTests.Received<BoardDetailRequest>(new BoardDetailRequest("Commodore/C64/250407")).BoardId);
     }
 
     [Fact]
-    public void A_systems_detail_reads_back_field_for_field()
+    public void A_boards_detail_reads_back_field_for_field()
     {
-        SystemDetailAnswer sent = new(
-            new SystemOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", ReviewWireContractTests.Decided, 1),
+        BoardDetailAnswer sent = new(
+            new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", ReviewWireContractTests.Decided, 1),
             [new PoolMaintainerEntry(7, "Anna", "anna@example.com")],
-            [new SystemContributorEntry("hest@mailscan.dk", "Hest", Accepted: 3, Waiting: 1, ChangesRequested: 2, Rejected: 4, LastSubmittedUtc: ReviewWireContractTests.Decided)],
-            [new SystemSubmissionEntry(41, "hest@mailscan.dk", "Corrected U8.", "returned", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided.AddDays(1), "U7 is the wrong revision.")]);
+            [new BoardContributorEntry("hest@mailscan.dk", "Hest", Accepted: 3, Waiting: 1, ChangesRequested: 2, Rejected: 4, LastSubmittedUtc: ReviewWireContractTests.Decided)],
+            [new BoardSubmissionEntry(41, "hest@mailscan.dk", "Corrected U8.", "returned", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided.AddDays(1), "U7 is the wrong revision.")]);
 
-        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(sent));
+        BoardDetailAnswer? read = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(sent));
 
         Assert.NotNull(read);
-        Assert.Equal(sent.System, read!.System);
+        Assert.Equal(sent.Board, read!.Board);
         Assert.Equal(sent.Maintainers, read.Maintainers);
         Assert.Equal(sent.Contributors, read.Contributors);
         Assert.Equal(sent.Submissions, read.Submissions);
@@ -697,21 +712,21 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // NO ADDRESSES FOR A SYSTEM THE ACCOUNT DOES NOT MAINTAIN (owner request, 2026-10-05). The
+    // NO ADDRESSES FOR A BOARD THE ACCOUNT DOES NOT MAINTAIN (owner request, 2026-10-05). The
     // server's word for it must arrive, or the tab reads a contributor without an account as one who
     // gave no address - and a maintainer's empty address must stay empty, not become "(no address)".
     // ###########################################################################################
     [Fact]
-    public void A_systems_detail_sent_without_addresses_says_so_and_reads_back_without_them()
+    public void A_boards_detail_sent_without_addresses_says_so_and_reads_back_without_them()
     {
-        SystemDetailAnswer sent = new(
-            new SystemOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", ReviewWireContractTests.Decided, 1),
+        BoardDetailAnswer sent = new(
+            new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, "r2", "r1", ReviewWireContractTests.Decided, 1),
             [new PoolMaintainerEntry(7, "Anna", string.Empty)],
-            [new SystemContributorEntry(null, null, Accepted: 1, Waiting: 0, ChangesRequested: 0, Rejected: 0, LastSubmittedUtc: ReviewWireContractTests.Decided)],
-            [new SystemSubmissionEntry(41, null, "Corrected U8.", "merged", ReviewWireContractTests.Decided, null, null)],
+            [new BoardContributorEntry(null, null, Accepted: 1, Waiting: 0, ChangesRequested: 0, Rejected: 0, LastSubmittedUtc: ReviewWireContractTests.Decided)],
+            [new BoardSubmissionEntry(41, null, "Corrected U8.", "merged", ReviewWireContractTests.Decided, null, null)],
             AddressesHidden: true);
 
-        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(sent));
+        BoardDetailAnswer? read = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(sent));
 
         Assert.True(read!.AddressesHidden);
         Assert.Equal(string.Empty, Assert.Single(read.Maintainers).Email);
@@ -720,23 +735,23 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // A SYSTEM'S BOARD DATA AND FILES (2026-10-03): the table the Systems screen opens on, the edit
+    // A BOARD'S BOARD DATA AND FILES (2026-10-03): the table the Boards screen opens on, the edit
     // sent back from it - fingerprint, description and rows - the submission it was queued as, and
     // the file listing. The fingerprint above all: arriving empty, every edit would be refused as
     // "BETA changed since you opened the table".
     // ###########################################################################################
     [Fact]
-    public void A_systems_table_reads_back_with_its_fingerprint_rows_and_whether_it_may_be_changed()
+    public void A_boards_table_reads_back_with_its_fingerprint_rows_and_whether_it_may_be_changed()
     {
         var rows = new SubmissionRows { RevisionDate = "2026-August-21" };
         rows.Components.Add(new ComponentEntry { BoardLabel = "U8", PartNumber = "251715-01" });
         rows.KiCadCalibrations.Add(new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "board", OffsetX = 2 });
 
-        SystemTableAnswer? read = ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(
-            new SystemTableAnswer("Commodore/C64/250407", new string('f', 64), rows, MayEdit: false, "Not yours.", "https://example.org/beta")));
+        BoardTableAnswer? read = ReviewApiParser.ParseBoardTable(ReviewWireContractTests.Answer(
+            new BoardTableAnswer("Commodore/C64/250407", new string('f', 64), rows, MayEdit: false, "Not yours.", "https://example.org/beta")));
 
         Assert.NotNull(read);
-        Assert.Equal("Commodore/C64/250407", read!.SystemId);
+        Assert.Equal("Commodore/C64/250407", read!.BoardId);
         Assert.Equal(new string('f', 64), read.Fingerprint);
         Assert.False(read.MayEdit);
         Assert.Equal("Not yours.", read.MayNotEditReason);
@@ -745,22 +760,22 @@ public sealed class ReviewWireContractTests
         Assert.Equal("board", Assert.Single(read.Rows.KiCadCalibrations).CadName);
         Assert.Equal("2026-August-21", read.Rows.RevisionDate);
 
-        Assert.True(ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(
-            new SystemTableAnswer("Commodore/C64/250407", "f", rows, MayEdit: true)))!.MayEdit);
+        Assert.True(ReviewApiParser.ParseBoardTable(ReviewWireContractTests.Answer(
+            new BoardTableAnswer("Commodore/C64/250407", "f", rows, MayEdit: true)))!.MayEdit);
     }
 
     // The edit and its check carry one request: the fingerprint, the reason, the rows - and the list
     // of removals the check answered, which the publish must find unchanged.
     [Fact]
-    public void A_systems_edit_arrives_with_its_fingerprint_reason_rows_and_the_removals_shown()
+    public void A_boards_edit_arrives_with_its_fingerprint_reason_rows_and_the_removals_shown()
     {
         var rows = new SubmissionRows();
         rows.Components.Add(new ComponentEntry { BoardLabel = "U8", PartNumber = "251715-02" });
 
-        SystemEditRequest received = ReviewWireContractTests.Received<SystemEditRequest>(
-            new SystemEditRequest("Commodore/C64/250407", new string('f', 64), "Corrected U8.", rows, ["Commodore/C64/250407/manual.pdf"]));
+        BoardEditRequest received = ReviewWireContractTests.Received<BoardEditRequest>(
+            new BoardEditRequest("Commodore/C64/250407", new string('f', 64), "Corrected U8.", rows, ["Commodore/C64/250407/manual.pdf"]));
 
-        Assert.Equal("Commodore/C64/250407", received.SystemId);
+        Assert.Equal("Commodore/C64/250407", received.BoardId);
         Assert.Equal(new string('f', 64), received.Fingerprint);
         Assert.Equal("Corrected U8.", received.Summary);
         Assert.Equal("251715-02", Assert.Single(received.Rows!.Components).PartNumber);
@@ -773,14 +788,14 @@ public sealed class ReviewWireContractTests
     // be shown what goes, and the server refuses a publish whose list differs.
     // ###########################################################################################
     [Fact]
-    public void A_systems_edit_check_reads_back_as_the_files_it_would_remove()
+    public void A_boards_edit_check_reads_back_as_the_files_it_would_remove()
     {
-        SystemEditCheckAnswer? read = ReviewApiParser.ParseSystemEditCheck(ReviewWireContractTests.Answer(
-            new SystemEditCheckAnswer(["Commodore/C64/250407/manual.pdf"])));
+        BoardEditCheckAnswer? read = ReviewApiParser.ParseBoardEditCheck(ReviewWireContractTests.Answer(
+            new BoardEditCheckAnswer(["Commodore/C64/250407/manual.pdf"])));
 
         Assert.Equal(["Commodore/C64/250407/manual.pdf"], read!.Removals);
-        Assert.Empty(ReviewApiParser.ParseSystemEditCheck(ReviewWireContractTests.Answer(new SystemEditCheckAnswer([])))!.Removals);
-        Assert.Null(ReviewApiParser.ParseSystemEditCheck("{}"));
+        Assert.Empty(ReviewApiParser.ParseBoardEditCheck(ReviewWireContractTests.Answer(new BoardEditCheckAnswer([])))!.Removals);
+        Assert.Null(ReviewApiParser.ParseBoardEditCheck("{}"));
     }
 
     // ###########################################################################################
@@ -789,10 +804,10 @@ public sealed class ReviewWireContractTests
     // arrives here, it refuses instead.
     // ###########################################################################################
     [Fact]
-    public void A_published_systems_edit_reads_back_with_its_revision_removals_and_warnings()
+    public void A_published_boards_edit_reads_back_with_its_revision_removals_and_warnings()
     {
-        SystemEditResult? read = ReviewApiParser.ParseSystemEdit(ReviewWireContractTests.Answer(
-            new SystemEditAnswer(
+        BoardEditResult? read = ReviewApiParser.ParseBoardEdit(ReviewWireContractTests.Answer(
+            new BoardEditAnswer(
                 57,
                 [ReviewWireContractTests.Finding(ValidationSeverity.Warning)],
                 Published: true,
@@ -810,10 +825,10 @@ public sealed class ReviewWireContractTests
     }
 
     [Fact]
-    public void A_systems_edit_made_but_not_published_reads_back_with_the_reason()
+    public void A_boards_edit_made_but_not_published_reads_back_with_the_reason()
     {
-        SystemEditResult? read = ReviewApiParser.ParseSystemEdit(ReviewWireContractTests.Answer(
-            new SystemEditAnswer(58, [], NotPublishedReason: "BETA moved.")));
+        BoardEditResult? read = ReviewApiParser.ParseBoardEdit(ReviewWireContractTests.Answer(
+            new BoardEditAnswer(58, [], NotPublishedReason: "BETA moved.")));
 
         Assert.NotNull(read);
         Assert.Equal(58, read!.SubmissionId);
@@ -822,24 +837,24 @@ public sealed class ReviewWireContractTests
     }
 
     [Fact]
-    public void A_systems_file_listing_reads_back_field_for_field()
+    public void A_boards_file_listing_reads_back_field_for_field()
     {
-        SystemFilesAnswer? read = ReviewApiParser.ParseSystemFiles(ReviewWireContractTests.Answer(new SystemFilesAnswer(
+        BoardFilesAnswer? read = ReviewApiParser.ParseBoardFiles(ReviewWireContractTests.Answer(new BoardFilesAnswer(
             "Commodore/C64/250407",
             [
                 // With its size (2026-10-04) - and the next without one, as an older server sends it.
-                new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta, SizeBytes: 5_242_880),
-                new SystemFileEntry("Commodore/Shared files/74LS08.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta)
+                new BoardFileEntry("Commodore/C64/250407/manual.pdf", BoardFileChange.Unchanged, BoardFileSource.Beta, SizeBytes: 5_242_880),
+                new BoardFileEntry("Commodore/Shared files/74LS08.pdf", BoardFileChange.Unchanged, BoardFileSource.Beta)
             ],
             "https://example.org/beta")));
 
         Assert.NotNull(read);
-        Assert.Equal("Commodore/C64/250407", read!.SystemId);
+        Assert.Equal("Commodore/C64/250407", read!.BoardId);
         Assert.Equal("https://example.org/beta", read.BetaDataUrl);
         Assert.Equal(
             [
-                new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta, SizeBytes: 5_242_880),
-                new SystemFileEntry("Commodore/Shared files/74LS08.pdf", SystemFileChange.Unchanged, SystemFileSource.Beta)
+                new BoardFileEntry("Commodore/C64/250407/manual.pdf", BoardFileChange.Unchanged, BoardFileSource.Beta, SizeBytes: 5_242_880),
+                new BoardFileEntry("Commodore/Shared files/74LS08.pdf", BoardFileChange.Unchanged, BoardFileSource.Beta)
             ],
             read.Files);
     }
@@ -849,29 +864,29 @@ public sealed class ReviewWireContractTests
     // server binds it - none (an older CRT) is BETA - and the stable source's address in both answers.
     // ###########################################################################################
     [Fact]
-    public void A_system_request_names_its_tree_and_the_answers_carry_the_stable_address()
+    public void A_board_request_names_its_tree_and_the_answers_carry_the_stable_address()
     {
-        SystemDetailRequest stable = ReviewWireContractTests.Received<SystemDetailRequest>(
-            new SystemDetailRequest("Commodore/C64/250407", DataTreeNames.Production));
-        SystemDetailRequest older = ReviewWireContractTests.Received<SystemDetailRequest>(new SystemDetailRequest("Commodore/C64/250407"));
+        BoardDetailRequest stable = ReviewWireContractTests.Received<BoardDetailRequest>(
+            new BoardDetailRequest("Commodore/C64/250407", DataTreeNames.Production));
+        BoardDetailRequest older = ReviewWireContractTests.Received<BoardDetailRequest>(new BoardDetailRequest("Commodore/C64/250407"));
 
         Assert.True(DataTreeNames.IsProduction(stable.Tree));
         Assert.False(DataTreeNames.IsProduction(older.Tree));
 
-        SystemTableAnswer? table = ReviewApiParser.ParseSystemTable(ReviewWireContractTests.Answer(new SystemTableAnswer(
+        BoardTableAnswer? table = ReviewApiParser.ParseBoardTable(ReviewWireContractTests.Answer(new BoardTableAnswer(
             "Commodore/C64/250407", new string('f', 64), new SubmissionRows(), MayEdit: false, "Read-only.", BetaDataUrl: null,
             ProductionDataUrl: "https://example.org/app-data/Data/")));
 
-        SystemFilesAnswer? files = ReviewApiParser.ParseSystemFiles(ReviewWireContractTests.Answer(new SystemFilesAnswer(
+        BoardFilesAnswer? files = ReviewApiParser.ParseBoardFiles(ReviewWireContractTests.Answer(new BoardFilesAnswer(
             "Commodore/C64/250407",
-            [new SystemFileEntry("Commodore/C64/250407/manual.pdf", SystemFileChange.Unchanged, SystemFileSource.Production, SizeBytes: 10)],
+            [new BoardFileEntry("Commodore/C64/250407/manual.pdf", BoardFileChange.Unchanged, BoardFileSource.Production, SizeBytes: 10)],
             BetaDataUrl: null,
             ProductionDataUrl: "https://example.org/app-data/Data/")));
 
         Assert.Equal("https://example.org/app-data/Data/", table!.ProductionDataUrl);
         Assert.False(table.MayEdit);
         Assert.Equal("https://example.org/app-data/Data/", files!.ProductionDataUrl);
-        Assert.Equal(SystemFileSource.Production, Assert.Single(files.Files).OpenFrom);
+        Assert.Equal(BoardFileSource.Production, Assert.Single(files.Files).OpenFrom);
     }
 
     // The production plan's FileSizes (2026-10-04): path -> bytes, the keys as the paths are spelled
@@ -911,14 +926,14 @@ public sealed class ReviewWireContractTests
 
     // ###########################################################################################
     // Inviting a new maintainer by email (2026-09-27): the three requests as the server binds them,
-    // the acceptance's answer, and the invitations on a system's detail.
+    // the acceptance's answer, and the invitations on a board's detail.
     // ###########################################################################################
     [Fact]
     public void The_invitation_requests_arrive_as_sent()
     {
         MaintainerInviteRequest invite = ReviewWireContractTests.Received<MaintainerInviteRequest>(
             new MaintainerInviteRequest("Commodore/C64/250407", "new@example.com"));
-        Assert.Equal("Commodore/C64/250407", invite.SystemId);
+        Assert.Equal("Commodore/C64/250407", invite.BoardId);
         Assert.Equal("new@example.com", invite.Email);
 
         Assert.Equal(3, ReviewWireContractTests.Received<InvitationWithdrawRequest>(new InvitationWithdrawRequest(3)).InvitationId);
@@ -928,23 +943,23 @@ public sealed class ReviewWireContractTests
         Assert.Equal(new AcceptInvitationRequest("code", "Anna", "correct horse battery staple"), accept);
     }
 
-    // The system's history (2026-09-27), field for field - and absent from an older server stays absent.
+    // The board's history (2026-09-27), field for field - and absent from an older server stays absent.
     [Fact]
-    public void A_systems_history_reads_back_field_for_field()
+    public void A_boards_history_reads_back_field_for_field()
     {
-        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0);
-        SystemHistoryEntry[] history =
+        BoardOverviewEntry board = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0);
+        BoardHistoryEntry[] history =
         [
-            new(ReviewWireContractTests.Decided, SystemHistoryEvents.Decided, "Anna", 9, "rejected", "Wrong board."),
-            new(ReviewWireContractTests.Decided.AddDays(-1), SystemHistoryEvents.Sent, "hest@mailscan.dk", 9, "Corrected U8."),
-            new(ReviewWireContractTests.Decided.AddDays(-2), SystemHistoryEvents.MaintainerAdded, "admin@example.com", null, "anna@example.com"),
+            new(ReviewWireContractTests.Decided, BoardHistoryEvents.Decided, "Anna", 9, "rejected", "Wrong board."),
+            new(ReviewWireContractTests.Decided.AddDays(-1), BoardHistoryEvents.Sent, "hest@mailscan.dk", 9, "Corrected U8."),
+            new(ReviewWireContractTests.Decided.AddDays(-2), BoardHistoryEvents.MaintainerAdded, "admin@example.com", null, "anna@example.com"),
         ];
 
-        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(
-            ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [], null, history)));
+        BoardDetailAnswer? read = ReviewApiParser.ParseBoardDetail(
+            ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [], null, history)));
 
         Assert.Equal(history, read!.History);
-        Assert.Null(ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])))!.History);
+        Assert.Null(ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [])))!.History);
     }
 
     // ###########################################################################################
@@ -1020,61 +1035,61 @@ public sealed class ReviewWireContractTests
 
         Assert.NotNull(read);
         Assert.Equal(sent.Email, read!.Email);
-        Assert.Equal(sent.SystemIds, read.SystemIds);
+        Assert.Equal(sent.BoardIds, read.BoardIds);
         Assert.Equal(sent.Message, read.Message);
     }
 
     // For an administrator the detail carries the open invitations; for anybody else there are none
     // (null), which must read back as none rather than as an empty list claimed by the server.
     [Fact]
-    public void A_systems_invitations_read_back_and_their_absence_stays_absent()
+    public void A_boards_invitations_read_back_and_their_absence_stays_absent()
     {
-        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0);
+        BoardOverviewEntry board = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 0);
         var invitation = new MaintainerInvitationEntry(3, "new@example.com", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided.AddDays(14));
 
-        SystemDetailAnswer? forAdmin = ReviewApiParser.ParseSystemDetail(
-            ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [], [invitation])));
+        BoardDetailAnswer? forAdmin = ReviewApiParser.ParseBoardDetail(
+            ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [], [invitation])));
         Assert.Equal([invitation], forAdmin!.Invitations);
 
-        SystemDetailAnswer? forMaintainer = ReviewApiParser.ParseSystemDetail(
-            ReviewWireContractTests.Answer(new SystemDetailAnswer(system, [], [], [])));
+        BoardDetailAnswer? forMaintainer = ReviewApiParser.ParseBoardDetail(
+            ReviewWireContractTests.Answer(new BoardDetailAnswer(board, [], [], [])));
         Assert.Null(forMaintainer!.Invitations);
     }
 
     // ###########################################################################################
-    // A new system's place in CRT's drop-down lists (2026-09-27): the lists and the systems not in
+    // A new board's place in CRT's drop-down lists (2026-09-27): the lists and the boards not in
     // them, the placement a maintainer saves, and what the server says it did.
     // ###########################################################################################
     [Fact]
     public void The_drop_down_listing_reads_back_field_for_field()
     {
-        SystemListingAnswer sent = new(
+        BoardListingAnswer sent = new(
             HasList: true,
             [
-                new SystemListingRow("Commodore/C64/250407", "Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
-                new SystemListingRow("Commodore/C128/310378", "Commodore 128", "310378", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
+                new BoardListingRow("Commodore/C64/250407", "Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
+                new BoardListingRow("Commodore/C128/310378", "Commodore 128", "310378", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
             ],
             [
-                new UnlistedSystemEntry(
+                new UnlistedBoardEntry(
                     "Commodore/C128/310378 Open128", "Commodore", "C128", "310378 Open128",
                     InBeta: true,
                     CanPlace: true,
-                    new SystemPlacement("Commodore 128", "310378 Open128", "Open-source replica.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
+                    new BoardPlacement("Commodore 128", "310378 Open128", "Open-source replica.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
 
-                    // The suggestion carries the contributor's notes from "Create system" (2026-10-05)
+                    // The suggestion carries the contributor's notes from "Create board" (2026-10-05)
                     // - dropped on either side, the maintainer's placement would start empty again.
-                    new SystemPlacement("Commodore 128", "310378 Open128", "Sent by its contributor.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx")),
+                    new BoardPlacement("Commodore 128", "310378 Open128", "Sent by its contributor.", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx")),
 
                 // Never placed, and placed FIRST by its suggestion (no row above it).
-                new UnlistedSystemEntry(
+                new UnlistedBoardEntry(
                     "Amstrad/CPC 6128/MC0020", "Amstrad", "CPC 6128", "MC0020",
                     InBeta: false,
                     CanPlace: false,
                     Placement: null,
-                    new SystemPlacement("CPC 6128", "MC0020", string.Empty, null)),
+                    new BoardPlacement("CPC 6128", "MC0020", string.Empty, null)),
             ]);
 
-        SystemListingAnswer? read = ReviewApiParser.ParseSystemListing(ReviewWireContractTests.Answer(sent));
+        BoardListingAnswer? read = ReviewApiParser.ParseBoardListing(ReviewWireContractTests.Answer(sent));
 
         Assert.NotNull(read);
         Assert.True(read!.HasList);
@@ -1092,7 +1107,7 @@ public sealed class ReviewWireContractTests
             "Open-source replica.",
             "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"));
 
-        Assert.Equal("Commodore/C128/310378 Open128", received.SystemId);
+        Assert.Equal("Commodore/C128/310378 Open128", received.BoardId);
         Assert.Equal("Commodore 128", received.HardwareName);
         Assert.Equal("310378 Open128", received.BoardName);
         Assert.Equal("Open-source replica.", received.Notes);
@@ -1104,45 +1119,45 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
-    // Whether each source's drop-down list names a system (2026-10-04) arrives as sent - and NULL,
+    // Whether each source's drop-down list names a board (2026-10-04) arrives as sent - and NULL,
     // a list the server could not read, stays null rather than turning into "not listed".
     // ###########################################################################################
     [Fact]
-    public void Whether_each_drop_down_list_names_a_system_arrives_including_not_known()
+    public void Whether_each_drop_down_list_names_a_board_arrives_including_not_known()
     {
-        SystemOverviewEntry listed = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1, ListedInBeta: false, ListedInStable: true);
-        SystemOverviewEntry unknown = listed with { SystemId = "Commodore/C128/310378", ListedInBeta = null, ListedInStable = null };
+        BoardOverviewEntry listed = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1, ListedInBeta: false, ListedInStable: true);
+        BoardOverviewEntry unknown = listed with { BoardId = "Commodore/C128/310378", ListedInBeta = null, ListedInStable = null };
 
-        SystemOverviewAnswer? read = ReviewApiParser.ParseSystemOverview(ReviewWireContractTests.Answer(new SystemOverviewAnswer([listed, unknown])));
+        BoardOverviewAnswer? read = ReviewApiParser.ParseBoardOverview(ReviewWireContractTests.Answer(new BoardOverviewAnswer([listed, unknown])));
 
-        Assert.Equal((false, true), (read!.Systems[0].ListedInBeta, read.Systems[0].ListedInStable));
-        Assert.Equal((null, null), (read.Systems[1].ListedInBeta, read.Systems[1].ListedInStable));
-        Assert.Equal(listed, read.Systems[0]);
+        Assert.Equal((false, true), (read!.Boards[0].ListedInBeta, read.Boards[0].ListedInStable));
+        Assert.Equal((null, null), (read.Boards[1].ListedInBeta, read.Boards[1].ListedInStable));
+        Assert.Equal(listed, read.Boards[0]);
     }
 
     // ###########################################################################################
-    // Account > "Order of systems" (2026-10-04): the order arrives as sent, every id in its place, and
+    // Account > "Order of boards" (2026-10-04): the order arrives as sent, every id in its place, and
     // what the server did to each list reads back - including null for a server with no stable
     // source, which must not turn into "not changed".
     // ###########################################################################################
     [Fact]
-    public void The_order_of_systems_arrives_in_order_and_what_was_done_reads_back()
+    public void The_order_of_boards_arrives_in_order_and_what_was_done_reads_back()
     {
         string[] order = ["ZX Spectrum/Spectrum 16K-48K/Issue 4B", "Commodore/C64/250407", "Commodore/C128/310378"];
 
-        Assert.Equal(order, ReviewWireContractTests.Received<SystemOrderRequest>(new SystemOrderRequest(order)).SystemIds);
+        Assert.Equal(order, ReviewWireContractTests.Received<BoardOrderRequest>(new BoardOrderRequest(order)).BoardIds);
 
-        SystemOrderAnswer both = new(true, true, null);
-        SystemOrderAnswer betaOnly = new(true, null, null);
-        SystemOrderAnswer failed = new(true, false, "The stable source's list could not be changed: locked.");
+        BoardOrderAnswer both = new(true, true, null);
+        BoardOrderAnswer betaOnly = new(true, null, null);
+        BoardOrderAnswer failed = new(true, false, "The stable source's list could not be changed: locked.");
 
-        Assert.Equal(both, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(both)));
-        Assert.Equal(betaOnly, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(betaOnly)));
-        Assert.Equal(failed, ReviewApiParser.ParseSystemOrder(ReviewWireContractTests.Answer(failed)));
+        Assert.Equal(both, ReviewApiParser.ParseBoardOrder(ReviewWireContractTests.Answer(both)));
+        Assert.Equal(betaOnly, ReviewApiParser.ParseBoardOrder(ReviewWireContractTests.Answer(betaOnly)));
+        Assert.Equal(failed, ReviewApiParser.ParseBoardOrder(ReviewWireContractTests.Answer(failed)));
     }
 
     // ###########################################################################################
-    // What a submission changed as it went into BETA (2026-10-04) rides on its entry in the system's
+    // What a submission changed as it went into BETA (2026-10-04) rides on its entry in the board's
     // detail - every list and field arriving as the server recorded it, and none for an entry the
     // server has no record for.
     // ###########################################################################################
@@ -1161,20 +1176,20 @@ public sealed class ReviewWireContractTests
             ],
             new FileChanges(1, 0, 1, ["Commodore/C64/250407/U7.png"], [], ["Commodore/C64/250407/old.pdf"]));
 
-        SystemOverviewEntry system = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1);
+        BoardOverviewEntry board = new("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1);
 
-        SystemDetailAnswer? read = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(
-            system,
+        BoardDetailAnswer? read = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(
+            board,
             [],
             [],
             [
-                new SystemSubmissionEntry(9, "a@example.com", "Fix.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null, Changes: changes),
-                new SystemSubmissionEntry(8, "a@example.com", "Older.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null)
+                new BoardSubmissionEntry(9, "a@example.com", "Fix.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null, Changes: changes),
+                new BoardSubmissionEntry(8, "a@example.com", "Older.", "merged", ReviewWireContractTests.Decided, ReviewWireContractTests.Decided, null)
             ])));
 
         SubmissionChanges back = read!.Submissions.Single(entry => entry.Id == 9).Changes!;
 
-        Assert.False(back.IsNewSystem);
+        Assert.False(back.IsNewBoard);
 
         SectionChanges section = Assert.Single(back.Sections);
         Assert.Equal((BoardWorkbookSchema.SheetComponents, 2, 1, 1, 1), (section.Section, section.AddedCount, section.ChangedCount, section.RemovedCount, section.RenamedCount));
@@ -1194,7 +1209,7 @@ public sealed class ReviewWireContractTests
     public void A_saved_placement_reads_back_with_what_the_server_did()
     {
         SetPlacementAnswer sent = new(
-            new SystemPlacement("Commodore 128", "310378 Open128", "Open-source replica.", null),
+            new BoardPlacement("Commodore 128", "310378 Open128", "Open-source replica.", null),
             ListedInBeta: true,
             "Placed, and added to BETA's drop-down lists.");
 
@@ -1203,7 +1218,7 @@ public sealed class ReviewWireContractTests
 
     // ###########################################################################################
     // The queue (2026-09-26 - an anonymous object until then), with the two badges the queue list
-    // shows: whether the system is published, and whether it waits for this account.
+    // shows: whether the board is published, and whether it waits for this account.
     // ###########################################################################################
     [Fact]
     public void The_queue_reads_back_field_for_field_with_its_badges()
@@ -1217,8 +1232,8 @@ public sealed class ReviewWireContractTests
                 Count: 2,
                 Submissions:
                 [
-                    new ReviewQueueEntry(4, "Commodore/C64/250407", "approved", "Corrected U8.", "c@example.com", "r1", created, null, TouchesSharedFiles: true, IsNewSystem: false, AwaitsYou: true),
-                    new ReviewQueueEntry(5, "Amstrad/CPC464/Z70200", "pending", null, null, "", created, null, TouchesSharedFiles: false, IsNewSystem: true, AwaitsYou: false)
+                    new ReviewQueueEntry(4, "Commodore/C64/250407", "approved", "Corrected U8.", "c@example.com", "r1", created, null, TouchesSharedFiles: true, IsNewBoard: false, AwaitsYou: true),
+                    new ReviewQueueEntry(5, "Amstrad/CPC464/Z70200", "pending", null, null, "", created, null, TouchesSharedFiles: false, IsNewBoard: true, AwaitsYou: false)
                 ])));
 
         Assert.True(queue!.CanPublish);
@@ -1227,17 +1242,17 @@ public sealed class ReviewWireContractTests
 
         ReviewQueueRow first = queue.Submissions[0];
         Assert.Equal(4, first.Id);
-        Assert.Equal("Commodore/C64/250407", first.SystemId);
+        Assert.Equal("Commodore/C64/250407", first.BoardId);
         Assert.Equal("approved", first.State);
         Assert.Equal("Corrected U8.", first.Summary);
         Assert.Equal("c@example.com", first.ContactEmail);
         Assert.Equal(created, first.CreatedUtc);
         Assert.True(first.TouchesSharedFiles);
-        Assert.False(first.IsNewSystem);
+        Assert.False(first.IsNewBoard);
         Assert.True(first.AwaitsYou);
 
         ReviewQueueRow second = queue.Submissions[1];
-        Assert.True(second.IsNewSystem);
+        Assert.True(second.IsNewBoard);
         Assert.False(second.AwaitsYou);
         Assert.Equal(string.Empty, second.Summary);
     }
@@ -1261,7 +1276,7 @@ public sealed class ReviewWireContractTests
 
     // ###########################################################################################
     // *** THE CONTRIBUTOR'S WHOLE RECORD (2026-09-30), THE SAME WAY. *** The Contributor view's
-    // account facts and every listed submission - its system, description, contributor-facing
+    // account facts and every listed submission - its board, description, contributor-facing
     // state, dates and what they were told - out of the server's settings and back through the real
     // parser. A renamed field would leave the view silently empty; this fails instead.
     // ###########################################################################################
@@ -1306,7 +1321,7 @@ public sealed class ReviewWireContractTests
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(
             """
             {"canPublish":true,
-             "submission":{"id":4,"systemId":"Manu1/Hardware1/Board1","state":"pending","summary":"x","contactEmail":"dh@hinet.dk","baseRevision":""},
+             "submission":{"id":4,"boardId":"Manu1/Hardware1/Board1","state":"pending","summary":"x","contactEmail":"dh@hinet.dk","baseRevision":""},
              "contributor":{"email":"dh@hinet.dk","name":null,"published":1,"waiting":0,"changesRequested":0,"rejected":0}}
             """);
 
@@ -1328,7 +1343,7 @@ public sealed class ReviewWireContractTests
                 [new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "x", "c@example.com", "r1", null, null, false)])));
 
         ReviewQueueRow row = Assert.Single(queue!.Submissions);
-        Assert.Null(row.IsNewSystem);
+        Assert.Null(row.IsNewBoard);
         Assert.Null(row.AwaitsYou);
     }
 
@@ -1340,22 +1355,22 @@ public sealed class ReviewWireContractTests
             ReviewWireContractTests.Answer(new ProductionListAnswer(false, [])));
 
         Assert.False(list!.Configured);
-        Assert.Empty(list.Systems);
+        Assert.Empty(list.Boards);
     }
 
     [Fact]
-    public void The_administrators_list_of_systems_reads_back_with_their_maintainers()
+    public void The_administrators_list_of_boards_reads_back_with_their_maintainers()
     {
-        ReviewSystemsResponse? systems = ReviewApiParser.ParseSystems(ReviewWireContractTests.Answer(
-            new MaintainerSystemsAnswer(
+        ReviewBoardsResponse? boards = ReviewApiParser.ParseBoards(ReviewWireContractTests.Answer(
+            new MaintainerBoardsAnswer(
             [
-                new MaintainerSystemEntry(
+                new MaintainerBoardEntry(
                     "Commodore/C64/250407", "Commodore", "C64", "250407", "2026-August-21", IsAccepting: false,
                     [new PoolMaintainerEntry(7, "Anna", "anna@example.com")])
             ])));
 
-        ReviewSystemRow row = Assert.Single(systems!.Systems);
-        Assert.Equal("Commodore/C64/250407", row.SystemId);
+        ReviewBoardRow row = Assert.Single(boards!.Boards);
+        Assert.Equal("Commodore/C64/250407", row.BoardId);
         Assert.Equal("Commodore", row.Manufacturer);
         Assert.Equal("C64", row.Hardware);
         Assert.Equal("250407", row.Board);
@@ -1385,7 +1400,7 @@ public sealed class ReviewWireContractTests
     // ###########################################################################################
     // *** "THE CONTRIBUTOR DISCARDED THEIR DRAFT" ON EVERY SCREEN IT IS SHOWN (owner request,
     // 2026-09-28). *** Four answers carry it - the queue (and the detail's `submission`), the
-    // production list, the production plan's carried submissions and the Systems detail - each
+    // production list, the production plan's carried submissions and the Boards detail - each
     // put through the server's own JSON settings and read back by the real parser. A field renamed
     // on one side only would drop the warning in silence, which is the one thing it must not do.
     // ###########################################################################################
@@ -1418,7 +1433,7 @@ public sealed class ReviewWireContractTests
                 new ProductionListEntry("Commodore/C64/250407", "Commodore", "C64", "250407", null, new string('d', 64), null, null)
             ])));
 
-        Assert.Equal([true, null], list!.Systems.Select(row => row.CarriesDiscardedDraft));
+        Assert.Equal([true, null], list!.Boards.Select(row => row.CarriesDiscardedDraft));
 
         ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan(ReviewWireContractTests.Answer(new ProductionPlanAnswer(
             "Commodore/C128/310378",
@@ -1437,13 +1452,13 @@ public sealed class ReviewWireContractTests
 
         Assert.Equal(discarded, Assert.Single(plan!.Carrying!).DraftDiscardedUtc);
 
-        SystemDetailAnswer? system = ReviewApiParser.ParseSystemDetail(ReviewWireContractTests.Answer(new SystemDetailAnswer(
-            new SystemOverviewEntry("Commodore/C128/310378", "Commodore", "C128", "310378", true, false, true, true, null, null, null, 0),
+        BoardDetailAnswer? board = ReviewApiParser.ParseBoardDetail(ReviewWireContractTests.Answer(new BoardDetailAnswer(
+            new BoardOverviewEntry("Commodore/C128/310378", "Commodore", "C128", "310378", true, false, true, true, null, null, null, 0),
             [],
             [],
-            [new SystemSubmissionEntry(4, "c@example.com", "x", "merged", discarded, discarded, null, DraftDiscardedUtc: discarded)])));
+            [new BoardSubmissionEntry(4, "c@example.com", "x", "merged", discarded, discarded, null, DraftDiscardedUtc: discarded)])));
 
-        Assert.Equal(discarded, Assert.Single(system!.Submissions).DraftDiscardedUtc);
+        Assert.Equal(discarded, Assert.Single(board!.Submissions).DraftDiscardedUtc);
     }
     // ###########################################################################################
     // *** SIGNING IN (2026-10-04). *** The session answer was an anonymous object on the server, and
@@ -1476,7 +1491,7 @@ public sealed class ReviewWireContractTests
     [Fact]
     public void A_submissions_detail_reads_back_field_for_field()
     {
-        var manifest = new SubmissionManifest { SystemId = "Commodore/C64/250407" };
+        var manifest = new SubmissionManifest { BoardId = "Commodore/C64/250407" };
         manifest.Files.Add(new SubmissionFile { Path = "Commodore/C64/250407/new.png", Sha256 = new string('a', 64), SizeBytes = 10 });
 
         var answer = new SubmissionDetailAnswer(
@@ -1563,7 +1578,7 @@ public sealed class ReviewWireContractTests
         Assert.NotNull(plan);
         Assert.False(plan!.IsEnabled);
         Assert.Equal(new string('f', 64), plan.Fingerprint);
-        Assert.Equal((14, 6, 1, 4, 2, 7), (plan.Submissions, plan.Accounts, plan.Administrators, plan.Maintainers, plan.Invitations, plan.Systems));
+        Assert.Equal((14, 6, 1, 4, 2, 7), (plan.Submissions, plan.Accounts, plan.Administrators, plan.Maintainers, plan.Invitations, plan.Boards));
         Assert.Equal((310, 1200, 80), (plan.HistoryEntries, plan.BoardViews, plan.ApiUsageRows));
         Assert.Equal("Switched off.", plan.NotEnabledBecause);
 
@@ -1586,7 +1601,7 @@ public sealed class ReviewWireContractTests
 
         Assert.Equal(
             (14, 6, 4, 2, 7, 310, 1200, 80, 23),
-            (done!.SubmissionsDeleted, done.AccountsDeleted, done.MaintainersDeleted, done.InvitationsDeleted, done.SystemsDeleted,
+            (done!.SubmissionsDeleted, done.AccountsDeleted, done.MaintainersDeleted, done.InvitationsDeleted, done.BoardsDeleted,
              done.HistoryEntriesDeleted, done.BoardViewsDeleted, done.ApiUsageRowsDeleted, done.StoredFilesRemoved));
     }
 
@@ -1605,7 +1620,7 @@ public sealed class ReviewWireContractTests
                 [
                     new ApiUsageRoute("POST", "/api/usage/check-in", "Forever", true, 900, ReviewWireContractTests.Decided,
                         [new ApiUsageVersion("2.5.0", 800, ReviewWireContractTests.Decided), new ApiUsageVersion(ApiUsageVersion.NotCrt, 100, ReviewWireContractTests.Decided)]),
-                    new ApiUsageRoute("POST", "/api/review/systems/edit", "Maintainer", false, 0, null, []),
+                    new ApiUsageRoute("POST", "/api/review/boards/edit", "Maintainer", false, 0, null, []),
                 ],
                 [new ApiUsageInstallations("3.0.0", 42, 305)])));
 

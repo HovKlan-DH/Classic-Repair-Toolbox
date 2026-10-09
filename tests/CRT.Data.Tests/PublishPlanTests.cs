@@ -4,7 +4,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // Covers PublishPlan - what a publish will write, decided before anything is written.
 //
-// WHY THESE TESTS MATTER MORE THAN MOST: publishing changes what every user of a system
+// WHY THESE TESTS MATTER MORE THAN MOST: publishing changes what every user of a board
 // downloads, and the project owner decided against retained revisions, so it cannot be undone. Every
 // refusal here is a thing that would otherwise be discovered halfway through replacing a board.
 //
@@ -15,7 +15,7 @@ namespace ClassicRepairToolbox.Tests;
 public sealed class PublishPlanTests
 {
     private const string Root = "/srv/beta";
-    private const string SystemFolder = "/srv/beta/Commodore/C64/250407";
+    private const string BoardFolder = "/srv/beta/Commodore/C64/250407";
     private const string Stem = "Data C64 250407";
 
     // The board's own folder, relative to the data root - the shape every real submitted path has.
@@ -32,7 +32,7 @@ public sealed class PublishPlanTests
     {
         var manifest = new SubmissionManifest
         {
-            SystemId = "Commodore/C64/250407",
+            BoardId = "Commodore/C64/250407",
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407",
@@ -60,14 +60,14 @@ public sealed class PublishPlanTests
         PublishedTreeView? tree = null) =>
         PublishPlan.Build(
             PublishPlanTests.Root,
-            PublishPlanTests.SystemFolder,
+            PublishPlanTests.BoardFolder,
             existing ?? ["Data C64 250407 v2.0.0.xlsx"],
             stem,
             manifest,
             revision,
             new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero),
             ["Someone"],
-            SystemDescriptorRules.SystemOrigin.Contributed,
+            BoardDescriptorRules.BoardOrigin.Contributed,
             tree);
 
     private static bool HasCode(PublishPlanResult result, string code) =>
@@ -151,21 +151,21 @@ public sealed class PublishPlanTests
     }
 
     [Fact]
-    public void A_brand_new_system_with_an_empty_folder_is_REFUSED_when_the_tree_has_no_generation()
+    public void A_brand_new_board_with_an_empty_folder_is_REFUSED_when_the_tree_has_no_generation()
     {
         // *** THIS TEST USED TO ASSERT THE OPPOSITE, AND THE OPPOSITE WAS A BUG. *** It read
-        // "A_brand_new_system_with_an_empty_folder_publishes_unversioned" and pinned exactly that
+        // "A_brand_new_board_with_an_empty_folder_publishes_unversioned" and pinned exactly that
         // - nothing in the folder means no generation, so the board publishes as
         // "Data C64 250407.xlsx".
         //
         // That file is the FROZEN generation serving every application build before 2.0.0, and the
-        // project owner's rule is that it is never written. So every new system - the highest-value
+        // project owner's rule is that it is never written. So every new board - the highest-value
         // kind of contribution there is - would have been published into the one place it must not
         // go, silently, and older builds would have received contributed data they cannot read.
         //
         // Found 2026-09-22 while wiring ApprovePublishFlow, whose own tests failed on the path the
         // published board landed at. The generation now comes from the TREE's master workbooks
-        // when the system's own folder is empty; with no versioned master anywhere, publishing is
+        // when the board's own folder is empty; with no versioned master anywhere, publishing is
         // refused rather than guessed at.
         //
         // This Build() helper points at a temp root with no master workbooks in it, which is the
@@ -177,14 +177,14 @@ public sealed class PublishPlanTests
     }
 
     [Fact]
-    public void An_EXISTING_unversioned_system_is_NOT_treated_as_a_new_one()
+    public void An_EXISTING_unversioned_board_is_NOT_treated_as_a_new_one()
     {
-        // *** THE DISTINCTION THE FIRST VERSION OF THE NEW-SYSTEM GUARD MISSED. ***
+        // *** THE DISTINCTION THE FIRST VERSION OF THE NEW-BOARD GUARD MISSED. ***
         // ResolveNewestGeneration answers null for BOTH "the folder is empty" and "the folder
         // holds only an unversioned board", and those are opposite situations:
         //
-        //   - empty            -> a new system, which must NOT land in the frozen unversioned file;
-        //   - unversioned only -> an existing system that legitimately lives there.
+        //   - empty            -> a new board, which must NOT land in the frozen unversioned file;
+        //   - unversioned only -> an existing board that legitimately lives there.
         //
         // Conflating them made every unversioned board unpublishable, which the existing test
         // above caught immediately. The folder's EMPTINESS is what separates them, and this pins
@@ -232,7 +232,7 @@ public sealed class PublishPlanTests
     [InlineData("../../evil.png")]
     [InlineData("Images/./../../evil.png")]
     [InlineData("/etc/passwd")]
-    public void A_path_escaping_the_system_folder_is_refused(string path)
+    public void A_path_escaping_the_board_folder_is_refused(string path)
     {
         // Delegated to SubmissionPathRules, which resolves and then checks containment. Asserted
         // here anyway: this is the last gate before bytes land, and a caller that forgot to check
@@ -290,7 +290,7 @@ public sealed class PublishPlanTests
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void A_system_id_that_disagrees_with_its_own_names_is_refused()
+    public void A_board_id_that_disagrees_with_its_own_names_is_refused()
     {
         // The id is a database primary key AND resolves a folder. A mismatch means everything
         // keyed off it disagrees with what is printed on screen.
@@ -300,19 +300,19 @@ public sealed class PublishPlanTests
         PublishPlanResult result = PublishPlanTests.Build(manifest);
 
         Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "system.id-mismatch"));
+        Assert.True(PublishPlanTests.HasCode(result, "board.id-mismatch"));
     }
 
     [Fact]
-    public void A_malformed_system_id_is_refused()
+    public void A_malformed_board_id_is_refused()
     {
         SubmissionManifest manifest = PublishPlanTests.Manifest();
-        manifest.SystemId = "../../etc";
+        manifest.BoardId = "../../etc";
 
         PublishPlanResult result = PublishPlanTests.Build(manifest);
 
         Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "system.id-invalid"));
+        Assert.True(PublishPlanTests.HasCode(result, "board.id-invalid"));
     }
 
     [Fact]
@@ -338,13 +338,13 @@ public sealed class PublishPlanTests
     // -----------------------------------------------------------------------------------
 
     // ###########################################################################################
-    // *** A FILE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE SYSTEM FOLDER (corrected
+    // *** A FILE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE BOARD FOLDER (corrected
     // 2026-09-23). ***
     //
-    // This test used to pass "Images/u8.png" and assert the result landed under the SYSTEM folder,
+    // This test used to pass "Images/u8.png" and assert the result landed under the BOARD folder,
     // and it passed - because those paths are not the shape a real submission carries. A real one
     // is already data-root-relative ("Commodore/C64/250407/Sheet1.png"), so resolving it against
-    // the system folder wrote it to "<root>/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
+    // the board folder wrote it to "<root>/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
     //
     // The first real publish duplicated 1,215 files into the board folder that way - the whole
     // board nested inside itself - and every client then re-downloaded the lot, which is how the
@@ -374,7 +374,7 @@ public sealed class PublishPlanTests
                 StringComparison.Ordinal);
 
             // ###########################################################################################
-            // *** AND THE SYSTEM SEGMENTS APPEAR EXACTLY ONCE. *** This is what fails against the
+            // *** AND THE BOARD SEGMENTS APPEAR EXACTLY ONCE. *** This is what fails against the
             // version that shipped, which produced
             // "/srv/beta/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
             //
@@ -392,7 +392,7 @@ public sealed class PublishPlanTests
     }
 
     // ###########################################################################################
-    // *** A SHARED FILE LIVES OUTSIDE THE SYSTEM FOLDER, and the old base could never write it. ***
+    // *** A SHARED FILE LIVES OUTSIDE THE BOARD FOLDER, and the old base could never write it. ***
     //
     // "Commodore/Shared files/Component images/6526.png" belongs beside the MANUFACTURER, cited by
     // boards across it. Containing a publish to one board's folder made that impossible to express,
@@ -440,19 +440,19 @@ public sealed class PublishPlanTests
     }
 
     [Fact]
-    public void The_descriptor_carries_the_systems_identity_and_the_revision()
+    public void The_descriptor_carries_the_boards_identity_and_the_revision()
     {
         PublishPlanResult result = PublishPlanTests.Build(
             PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
-        SystemDescriptor descriptor = result.Plan!.Descriptor;
+        BoardDescriptor descriptor = result.Plan!.Descriptor;
 
-        Assert.Equal("Commodore/C64/250407", descriptor.SystemId);
+        Assert.Equal("Commodore/C64/250407", descriptor.BoardId);
         Assert.Equal("Commodore", descriptor.Manufacturer);
         Assert.Equal("C64", descriptor.Hardware);
         Assert.Equal("250407", descriptor.Board);
         Assert.Equal("r2", descriptor.Revision);
-        Assert.Equal(SystemDescriptorRules.SystemOrigin.Contributed, descriptor.Origin);
+        Assert.Equal(BoardDescriptorRules.BoardOrigin.Contributed, descriptor.Origin);
         Assert.Equal(["Someone"], descriptor.Maintainers);
         Assert.NotEmpty(descriptor.ContentHash);
     }
@@ -461,7 +461,7 @@ public sealed class PublishPlanTests
     public void The_content_hash_does_not_depend_on_the_order_files_arrive_in()
     {
         // A directory walk or a database query returns whatever order it likes; two machines
-        // hashing the same system must agree, or every client reads as permanently stale.
+        // hashing the same board must agree, or every client reads as permanently stale.
         PublishPlanResult forwards = PublishPlanTests.Build(PublishPlanTests.Manifest(
             PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64)),
             PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64))));
@@ -598,10 +598,10 @@ public sealed class PublishPlanTests
         PublishPlanResult result = PublishPlanTests.Build(
             PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
 
-        SystemDescriptor planned = result.Plan!.Descriptor;
-        SystemDescriptor final = result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
+        BoardDescriptor planned = result.Plan!.Descriptor;
+        BoardDescriptor final = result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
 
-        Assert.Equal(planned.SystemId, final.SystemId);
+        Assert.Equal(planned.BoardId, final.BoardId);
         Assert.Equal(planned.Manufacturer, final.Manufacturer);
         Assert.Equal(planned.Hardware, final.Hardware);
         Assert.Equal(planned.Board, final.Board);
@@ -614,7 +614,7 @@ public sealed class PublishPlanTests
     [Fact]
     public void Folding_the_workbook_in_does_not_mutate_the_plan()
     {
-        // SystemDescriptor is a mutable class, so a plan that quietly changed under a caller
+        // BoardDescriptor is a mutable class, so a plan that quietly changed under a caller
         // holding it would defeat the whole "decide it all up front" design.
         PublishPlanResult result = PublishPlanTests.Build(
             PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
@@ -764,7 +764,7 @@ public sealed class PublishPlanTests
     [Fact]
     public void An_unchanged_foreign_file_still_counts_toward_the_content_hash()
     {
-        // Leaving it out would make two different systems - one citing it, one not - hash alike.
+        // Leaving it out would make two different boards - one citing it, one not - hash alike.
         string foreign = "Commodore/C128/310378/Scope baseline/notes.txt";
         string hash = new('3', 64);
         PublishedTreeView tree = PublishPlanTests.Tree((foreign, hash));
@@ -818,7 +818,7 @@ public sealed class PublishPlanTests
         Assert.Empty(result.Plan.UnchangedFiles);
     }
 
-    // Written or left alone, the file is part of what the system holds, so the content hash - what
+    // Written or left alone, the file is part of what the board holds, so the content hash - what
     // every client compares to decide whether to sync - must not depend on which it was.
     [Fact]
     public void Leaving_an_unchanged_file_alone_does_not_change_the_content_hash()
@@ -849,12 +849,12 @@ public sealed class PublishPlanTests
     }
 
     [Fact]
-    public void A_NEW_SYSTEM_whose_folder_differs_from_a_published_one_only_by_case_is_refused()
+    public void A_NEW_BOARD_whose_folder_differs_from_a_published_one_only_by_case_is_refused()
     {
         // "commodore/C64/250407" beside the real "Commodore/C64/250407": on a client the two are
-        // one folder, so the "new" system would replace the real board's files there.
+        // one folder, so the "new" board would replace the real board's files there.
         SubmissionManifest manifest = PublishPlanTests.Manifest();
-        manifest.SystemId = "commodore/C64/250407";
+        manifest.BoardId = "commodore/C64/250407";
         manifest.Manufacturer = "commodore";
 
         PublishPlanResult result = PublishPlanTests.Build(
@@ -862,7 +862,7 @@ public sealed class PublishPlanTests
             tree: PublishPlanTests.Tree(("Commodore/C64/250407/Sheet1.png", new string('5', 64))));
 
         Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "system.case-collision"));
+        Assert.True(PublishPlanTests.HasCode(result, "board.case-collision"));
     }
 
     [Fact]

@@ -17,7 +17,7 @@ using Avalonia.Headless;
 //       <- AvaloniaHeadlessPlatform.Initialize <- HeadlessUnitTestSession.EnsureIsolatedApplication
 //
 // - i.e. inside Avalonia's own per-test setup, BEFORE the named test's body runs, which is why it
-// landed on a different innocent test each time (NewSystemWindowTests, OscilloscopeSequencingTests,
+// landed on a different innocent test each time (NewBoardWindowTests, OscilloscopeSequencingTests,
 // DraftedHighlightMarkingTests) and why each passed in isolation.
 //
 // Avalonia's DEFAULT is AvaloniaTestIsolationLevel.PerTest, which tears down and rebuilds the

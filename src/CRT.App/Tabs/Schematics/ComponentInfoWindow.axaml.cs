@@ -77,7 +77,7 @@ namespace CRT
         private List<ComponentImageEntry> _allComponentImages = new List<ComponentImageEntry>();
         private string _boardLabel = string.Empty;
         private string _dataRoot = string.Empty;
-        private string _draftSystemFolder = string.Empty;
+        private string _draftBoardFolder = string.Empty;
         private bool _suppressThumbnailSelection = false;
         private bool _suppressRegionToggle = false;
         private double _normalWidth = 680.0;
@@ -732,7 +732,7 @@ namespace CRT
             string region,
             string dataRoot,
             bool hasExplicitRegionComponents,
-            string draftSystemFolder = "")
+            string draftBoardFolder = "")
         {
             this.ClearTemporaryCapturedOscilloscopeImage();
 
@@ -762,7 +762,7 @@ namespace CRT
                     .Select(f =>
                     {
                         string officialPath = Path.Combine(dataRoot, f.File.Replace('/', Path.DirectorySeparatorChar));
-                        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftSystemFolder, f.File);
+                        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, f.File);
 
                         return new ComponentLocalFileItem
                         {
@@ -796,7 +796,7 @@ namespace CRT
             this._allComponentEntries = componentEntries;
             this._allComponentImages = componentImages;
             this._dataRoot = dataRoot;
-            this._draftSystemFolder = draftSystemFolder;
+            this._draftBoardFolder = draftBoardFolder;
             this._localRegion = region;
             this._hasExplicitRegionComponents = hasExplicitRegionComponents;
             this.UpdateRegionButtonsState();
@@ -1012,7 +1012,7 @@ namespace CRT
             this._loadCts?.Cancel();
             this._loadCts = new CancellationTokenSource();
             var cts = this._loadCts;
-            string draftSystemFolder = this._draftSystemFolder;
+            string draftBoardFolder = this._draftBoardFolder;
 
             var displayableEntries = entries
                 .Where(ComponentImageQueries.HasDisplayableImageFile)
@@ -1041,7 +1041,7 @@ namespace CRT
                         // An image attached only in a local draft (not yet synced under Data/) is
                         // resolved via the same official-first/draft-fallback rule every other
                         // BoardData File value now uses - see DraftFileResolver.
-                        var fullPath = DraftFileResolver.Resolve(dataRoot, draftSystemFolder, entry.File) ??
+                        var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File) ??
                             Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
                         if (File.Exists(fullPath))
                         {

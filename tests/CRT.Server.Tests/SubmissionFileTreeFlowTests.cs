@@ -26,7 +26,7 @@ namespace CRT.Server.Tests
             this.thisDataTree = Path.Combine(this.thisRoot, "app-data-BETA");
             Directory.CreateDirectory(this.thisDataTree);
 
-            // The masters are the generations a new system's workbook is named after - see
+            // The masters are the generations a new board's workbook is named after - see
             // ApprovePublishFlowTests.
             File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.xlsx"), "master");
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard);
@@ -51,7 +51,7 @@ namespace CRT.Server.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = SubmissionFileTreeFlowTests.Board,
+                BoardId = SubmissionFileTreeFlowTests.Board,
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -75,36 +75,36 @@ namespace CRT.Server.Tests
             return manifest;
         }
 
-        private Task<IReadOnlyList<SystemFileEntry>> BuildAsync(SubmissionManifest manifest) =>
+        private Task<IReadOnlyList<BoardFileEntry>> BuildAsync(SubmissionManifest manifest) =>
             SubmissionFileTreeFlow.BuildAsync(
                 this.thisDataTree, manifest, new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance), SubmissionFileTreeFlowTests.Now);
 
-        private static SystemFileEntry Of(IReadOnlyList<SystemFileEntry> entries, string path) =>
+        private static BoardFileEntry Of(IReadOnlyList<BoardFileEntry> entries, string path) =>
             Assert.Single(entries, entry => entry.Path == path);
 
         // ###########################################################################################
-        // A NEW SYSTEM "should just show how the new file-system will look like": its file new, and
+        // A NEW BOARD "should just show how the new file-system will look like": its file new, and
         // the workbook and highlight file the approval writes new too, with nothing to open yet.
         // ###########################################################################################
         [Fact]
-        public async Task A_new_systems_tree_is_all_new()
+        public async Task A_new_boards_tree_is_all_new()
         {
-            IReadOnlyList<SystemFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest(
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest(
                 "b",
                 new SubmissionFile { Path = $"{SubmissionFileTreeFlowTests.Board}/manual.pdf", Sha256 = new string('a', 64), SizeBytes = 10 }));
 
-            Assert.All(entries, entry => Assert.Equal(SystemFileChange.Added, entry.Change));
-            Assert.Equal(SystemFileSource.Submission, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").OpenFrom);
+            Assert.All(entries, entry => Assert.Equal(BoardFileChange.Added, entry.Change));
+            Assert.Equal(BoardFileSource.Submission, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").OpenFrom);
 
-            SystemFileEntry workbook = Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
+            BoardFileEntry workbook = Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
             Assert.True(workbook.WrittenOnApproval);
-            Assert.Equal(SystemFileSource.NotWrittenYet, workbook.OpenFrom);
+            Assert.Equal(BoardFileSource.NotWrittenYet, workbook.OpenFrom);
 
             // Sizes (owner request, 2026-10-04): the upload's, from the manifest; none for a file
             // with nothing to open yet.
             Assert.Equal(10, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").SizeBytes);
             Assert.Null(workbook.SizeBytes);
-            Assert.Equal(SystemFileSource.NotWrittenYet, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").OpenFrom);
+            Assert.Equal(BoardFileSource.NotWrittenYet, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").OpenFrom);
         }
 
         // ###########################################################################################
@@ -127,20 +127,20 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Images"));
             File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Images/loose.png"), "x");
             File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/.Data.json.1234.writing.tmp"), "temporary");
-            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/{SystemDescriptorStore.FileName}"), "{}");
+            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/{BoardDescriptorStore.FileName}"), "{}");
 
-            IReadOnlyList<SystemFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest("b"));
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest("b"));
 
             Assert.Equal(
                 [$"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx"],
-                entries.Where(entry => entry.Change != SystemFileChange.Unchanged).Select(entry => entry.Path));
+                entries.Where(entry => entry.Change != BoardFileChange.Unchanged).Select(entry => entry.Path));
 
-            Assert.Equal(SystemFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
-            Assert.Equal(SystemFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407.xlsx").Change);
-            Assert.Equal(SystemFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Images/loose.png").Change);
+            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
+            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407.xlsx").Change);
+            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Images/loose.png").Change);
 
             Assert.DoesNotContain(entries, entry => entry.Path.Contains("/.", StringComparison.Ordinal));
-            Assert.DoesNotContain(entries, entry => entry.Path.EndsWith(SystemDescriptorStore.FileName, StringComparison.Ordinal));
+            Assert.DoesNotContain(entries, entry => entry.Path.EndsWith(BoardDescriptorStore.FileName, StringComparison.Ordinal));
         }
 
         // A moved highlight is a changed highlight file.
@@ -165,9 +165,9 @@ namespace CRT.Server.Tests
                 Height = "20"
             };
 
-            IReadOnlyList<SystemFileEntry> entries = await this.BuildAsync(moved);
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(moved);
 
-            Assert.Equal(SystemFileChange.Changed, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
+            Assert.Equal(BoardFileChange.Changed, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
         }
     }
 }

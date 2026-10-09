@@ -21,7 +21,7 @@ namespace Handlers.MaintainerHandling
     // *** A DELETION IS FOUND FROM THE PUBLISHED SIDE, NEVER FROM THE MANIFEST. *** There is no
     // blob for a removed file, so anything driven off what was uploaded misses it completely. A
     // removal is the least recoverable thing a submission can do, so it is found by asking what
-    // the published system HAS that this submission does not, and it is listed FIRST.
+    // the published board HAS that this submission does not, and it is listed FIRST.
     // ###########################################################################################
     public static class ReviewImageComparison
     {

@@ -46,8 +46,8 @@ public sealed class SubmitDraftWindowFindingsTests
     private static IReadOnlyList<ValidationFinding> TheLiveRejection() =>
     [
         SubmitDraftWindowFindingsTests.Error(
-            "identity.system_id_mismatch", string.Empty,
-            "The submission's system identifier does not match the manufacturer, hardware and board it names."),
+            "identity.board_id_mismatch", string.Empty,
+            "The submission's board identifier does not match the manufacturer, hardware and board it names."),
         SubmitDraftWindowFindingsTests.Error(
             "identity.hardware_missing", string.Empty, "The submission does not name the hardware."),
         SubmitDraftWindowFindingsTests.Error(
@@ -70,7 +70,7 @@ public sealed class SubmitDraftWindowFindingsTests
             Assert.Equal(3, blocks.Count);
             Assert.Contains(blocks, block => block.Text!.Contains("does not name the hardware"));
             Assert.Contains(blocks, block => block.Text!.Contains("does not name the board"));
-            Assert.Contains(blocks, block => block.Text!.Contains("system identifier does not match"));
+            Assert.Contains(blocks, block => block.Text!.Contains("board identifier does not match"));
         });
     }
 

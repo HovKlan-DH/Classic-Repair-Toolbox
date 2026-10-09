@@ -61,12 +61,12 @@ namespace Handlers.MaintainerHandling
                 // either, and saying so beats an empty panel.
                 lines.Add(new ReviewNoteLine("The changes in this submission could not be compared.", ReviewNoteKind.Error));
             }
-            else if (changes.IsNewSystem)
+            else if (changes.IsNewBoard)
             {
                 foreach (ReviewSectionView section in changes.Sections)
                 {
                     if (section.Added.Count > 0 && !ReviewNotInTable.TableSheets.Contains(section.Section))
-                        lines.Add(ReviewNoteLine.FromRuns(ReviewNotInTable.DescribeNewSystemSection(section), ReviewNoteKind.Change));
+                        lines.Add(ReviewNoteLine.FromRuns(ReviewNotInTable.DescribeNewBoardSection(section), ReviewNoteKind.Change));
                 }
             }
             else
@@ -221,8 +221,8 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // *** A NEW SYSTEM'S LINE SAYS HOW MUCH THERE IS, NOT WHICH (owner request, 2026-09-26). ***
-        // Everything of a new system is added, so "4 added (1N4148 / A1, ...)" listed the whole
+        // *** A NEW BOARD'S LINE SAYS HOW MUCH THERE IS, NOT WHICH (owner request, 2026-09-26). ***
+        // Everything of a new board is added, so "4 added (1N4148 / A1, ...)" listed the whole
         // board's highlights one by one - "it should probably only flag that it has highlights for
         // X components - not WHICH components". So: how many components have highlights, and how
         // many schematics have calibration points - "Highlights included for [2] components", in the
@@ -232,7 +232,7 @@ namespace Handlers.MaintainerHandling
         // than one schematic, so the components are counted by LABEL (case-insensitive, as keys
         // are). A calibration is keyed by its schematic alone.
         // ###########################################################################################
-        private static IReadOnlyList<ReviewNoteRun> DescribeNewSystemSection(ReviewSectionView section)
+        private static IReadOnlyList<ReviewNoteRun> DescribeNewBoardSection(ReviewSectionView section)
         {
             if (section.Section == ReviewSummary.SectionComponentHighlights)
             {

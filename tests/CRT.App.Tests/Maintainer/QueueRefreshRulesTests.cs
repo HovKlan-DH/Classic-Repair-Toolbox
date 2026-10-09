@@ -4,43 +4,43 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Maintainer;
 
 // ###########################################################################################
-// QueueRefreshRules - what the minute check reads beside the queue, and when a system's panel is
+// QueueRefreshRules - what the minute check reads beside the queue, and when a board's panel is
 // read again (code review, 2026-09-27). The check used to read every list on every screen, and
-// the Systems overview is the costly one on the server: both data trees walked and a month of
+// the Boards overview is the costly one on the server: both data trees walked and a month of
 // board views counted, every minute, for every open maintainer window.
 // ###########################################################################################
 public sealed class QueueRefreshRulesTests
 {
-    // The minute check reads the overview only on the Systems screen, once it has been read at all.
+    // The minute check reads the overview only on the Boards screen, once it has been read at all.
     [Theory]
     [InlineData(MaintainerMode.Review)]
     [InlineData(MaintainerMode.Beta)]
     [InlineData(MaintainerMode.Account)]
-    public void The_minute_check_away_from_the_Systems_screen_does_not_read_the_overview(MaintainerMode shown)
+    public void The_minute_check_away_from_the_Boards_screen_does_not_read_the_overview(MaintainerMode shown)
     {
-        Assert.False(QueueRefreshRules.ReadsSystemsOverview(minuteCheck: true, shown, overviewKnown: true));
+        Assert.False(QueueRefreshRules.ReadsBoardsOverview(minuteCheck: true, shown, overviewKnown: true));
     }
 
     [Fact]
-    public void The_minute_check_on_the_Systems_screen_reads_the_overview()
+    public void The_minute_check_on_the_Boards_screen_reads_the_overview()
     {
-        Assert.True(QueueRefreshRules.ReadsSystemsOverview(minuteCheck: true, MaintainerMode.Systems, overviewKnown: true));
+        Assert.True(QueueRefreshRules.ReadsBoardsOverview(minuteCheck: true, MaintainerMode.Boards, overviewKnown: true));
     }
 
-    // Its badge counts the systems, so an overview never read is read whatever the screen.
+    // Its badge counts the boards, so an overview never read is read whatever the screen.
     [Fact]
     public void An_overview_never_read_is_read_by_the_minute_check_too()
     {
-        Assert.True(QueueRefreshRules.ReadsSystemsOverview(minuteCheck: true, MaintainerMode.Review, overviewKnown: false));
+        Assert.True(QueueRefreshRules.ReadsBoardsOverview(minuteCheck: true, MaintainerMode.Review, overviewKnown: false));
     }
 
     // Signing in, a decision, a screen's own button: everything, as before.
     [Theory]
     [InlineData(MaintainerMode.Review)]
-    [InlineData(MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Boards)]
     public void Any_other_check_reads_the_overview(MaintainerMode shown)
     {
-        Assert.True(QueueRefreshRules.ReadsSystemsOverview(minuteCheck: false, shown, overviewKnown: true));
+        Assert.True(QueueRefreshRules.ReadsBoardsOverview(minuteCheck: false, shown, overviewKnown: true));
     }
 
     // ###########################################################################################
@@ -48,33 +48,33 @@ public sealed class QueueRefreshRulesTests
     // whole panel again. Anything else is.
     // ###########################################################################################
     [Fact]
-    public void A_system_whose_only_change_is_its_view_count_has_not_changed()
+    public void A_board_whose_only_change_is_its_view_count_has_not_changed()
     {
-        SystemOverviewEntry before = QueueRefreshRulesTests.System() with { ViewsLast30Days = 48 };
+        BoardOverviewEntry before = QueueRefreshRulesTests.Board() with { ViewsLast30Days = 48 };
 
-        Assert.False(QueueRefreshRules.SystemChanged(before, before with { ViewsLast30Days = 49 }));
-        Assert.False(QueueRefreshRules.SystemChanged(before, before with { ViewsLast30Days = null }));
+        Assert.False(QueueRefreshRules.BoardChanged(before, before with { ViewsLast30Days = 49 }));
+        Assert.False(QueueRefreshRules.BoardChanged(before, before with { ViewsLast30Days = null }));
     }
 
     [Fact]
-    public void A_system_whose_state_changed_has_changed()
+    public void A_board_whose_state_changed_has_changed()
     {
-        SystemOverviewEntry before = QueueRefreshRulesTests.System() with { ViewsLast30Days = 48 };
+        BoardOverviewEntry before = QueueRefreshRulesTests.Board() with { ViewsLast30Days = 48 };
 
-        Assert.True(QueueRefreshRules.SystemChanged(before, before with { IsAwaitingProduction = true }));
-        Assert.True(QueueRefreshRules.SystemChanged(before, before with { MaintainerCount = 3, ViewsLast30Days = 49 }));
+        Assert.True(QueueRefreshRules.BoardChanged(before, before with { IsAwaitingProduction = true }));
+        Assert.True(QueueRefreshRules.BoardChanged(before, before with { MaintainerCount = 3, ViewsLast30Days = 49 }));
     }
 
     // ###########################################################################################
-    // *** A SYSTEM'S TABLE AND FILES FOLLOW BETA (owner report, 2026-10-04). *** A fix approved
-    // and promoted went on showing, on the Systems screen, the warning it fixed - the table was read
-    // once and kept until another system was chosen. BETA's content hash, which every publish to
+    // *** A BOARD'S TABLE AND FILES FOLLOW BETA (owner report, 2026-10-04). *** A fix approved
+    // and promoted went on showing, on the Boards screen, the warning it fixed - the table was read
+    // once and kept until another board was chosen. BETA's content hash, which every publish to
     // BETA and every push-back moves, says when they are out of date.
     // ###########################################################################################
     [Fact]
     public void BETA_has_moved_when_its_content_hash_has()
     {
-        SystemOverviewEntry readAt = QueueRefreshRulesTests.System() with { BetaContentHash = "aaa" };
+        BoardOverviewEntry readAt = QueueRefreshRulesTests.Board() with { BetaContentHash = "aaa" };
 
         Assert.False(QueueRefreshRules.BetaBoardChanged(readAt, readAt with { ViewsLast30Days = 12, MaintainerCount = 5 }));
         Assert.True(QueueRefreshRules.BetaBoardChanged(readAt, readAt with { BetaContentHash = "bbb" }));
@@ -93,7 +93,7 @@ public sealed class QueueRefreshRulesTests
     [Fact]
     public void Without_a_content_hash_BETA_has_moved_when_its_revision_or_waiting_moved()
     {
-        SystemOverviewEntry readAt = QueueRefreshRulesTests.System();
+        BoardOverviewEntry readAt = QueueRefreshRulesTests.Board();
 
         Assert.False(QueueRefreshRules.BetaBoardChanged(readAt, readAt with { MaintainerCount = 7 }));
         Assert.True(QueueRefreshRules.BetaBoardChanged(readAt, readAt with { BetaRevision = "2026-October-4" }));
@@ -103,13 +103,13 @@ public sealed class QueueRefreshRulesTests
 
     // ###########################################################################################
     // THE STABLE SOURCE'S BOARD MOVED (2026-10-04): only a promotion moves it, and a promotion sets
-    // the stable revision and when it was published there - or the system appears there first.
-    // Anything else about the system leaves a stable table and files as they are.
+    // the stable revision and when it was published there - or the board appears there first.
+    // Anything else about the board leaves a stable table and files as they are.
     // ###########################################################################################
     [Fact]
     public void The_stable_board_moved_only_when_a_promotion_moved_it()
     {
-        var readAt = new SystemOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true,
+        var readAt = new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true,
             "2026-October-4", "2026-September-25", new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero), 1, BetaContentHash: "a");
 
         Assert.False(QueueRefreshRules.StableBoardChanged(readAt, readAt with { BetaContentHash = "b", IsAwaitingProduction = true, MaintainerCount = 2 }));
@@ -119,22 +119,22 @@ public sealed class QueueRefreshRulesTests
     }
 
     // ###########################################################################################
-    // The TABLE also carries whether this account may change it - off while the system waits under
-    // BETA > Stable, for a system closed to contributions, and by who maintains it. A promotion
+    // The TABLE also carries whether this account may change it - off while the board waits under
+    // BETA > Stable, for a board closed to contributions, and by who maintains it. A promotion
     // moves only that: the table read while it waited stayed read-only after it no longer did.
     // ###########################################################################################
     [Fact]
-    public void A_systems_table_is_out_of_date_when_its_board_or_who_may_change_it_moved()
+    public void A_boards_table_is_out_of_date_when_its_board_or_who_may_change_it_moved()
     {
-        SystemOverviewEntry readAt = QueueRefreshRulesTests.System() with { BetaContentHash = "aaa", IsAwaitingProduction = true };
+        BoardOverviewEntry readAt = QueueRefreshRulesTests.Board() with { BetaContentHash = "aaa", IsAwaitingProduction = true };
 
-        Assert.False(QueueRefreshRules.SystemTableChanged(readAt, readAt with { ViewsLast30Days = 3 }));
-        Assert.False(QueueRefreshRules.SystemTableChanged(readAt, readAt with { ProductionRevision = "2026-October-4" }));
+        Assert.False(QueueRefreshRules.BoardTableChanged(readAt, readAt with { ViewsLast30Days = 3 }));
+        Assert.False(QueueRefreshRules.BoardTableChanged(readAt, readAt with { ProductionRevision = "2026-October-4" }));
 
-        Assert.True(QueueRefreshRules.SystemTableChanged(readAt, readAt with { BetaContentHash = "bbb" }));
-        Assert.True(QueueRefreshRules.SystemTableChanged(readAt, readAt with { IsAwaitingProduction = false }));
-        Assert.True(QueueRefreshRules.SystemTableChanged(readAt, readAt with { IsAccepting = false }));
-        Assert.True(QueueRefreshRules.SystemTableChanged(readAt, readAt with { MaintainerCount = 3 }));
+        Assert.True(QueueRefreshRules.BoardTableChanged(readAt, readAt with { BetaContentHash = "bbb" }));
+        Assert.True(QueueRefreshRules.BoardTableChanged(readAt, readAt with { IsAwaitingProduction = false }));
+        Assert.True(QueueRefreshRules.BoardTableChanged(readAt, readAt with { IsAccepting = false }));
+        Assert.True(QueueRefreshRules.BoardTableChanged(readAt, readAt with { MaintainerCount = 3 }));
     }
 
     // ###########################################################################################
@@ -143,18 +143,18 @@ public sealed class QueueRefreshRulesTests
     // maintains it at both readings, the swap counts; the same people in another order do not.
     // ###########################################################################################
     [Fact]
-    public void A_maintainer_swapped_for_another_puts_a_systems_table_out_of_date()
+    public void A_maintainer_swapped_for_another_puts_a_boards_table_out_of_date()
     {
-        SystemOverviewEntry readAt = QueueRefreshRulesTests.System() with { BetaContentHash = "aaa", MaintainerCount = 2 };
+        BoardOverviewEntry readAt = QueueRefreshRulesTests.Board() with { BetaContentHash = "aaa", MaintainerCount = 2 };
 
-        Assert.True(QueueRefreshRules.SystemTableChanged(readAt, readAt, [1, 2], [1, 3]));
-        Assert.False(QueueRefreshRules.SystemTableChanged(readAt, readAt, [1, 2], [2, 1]));
+        Assert.True(QueueRefreshRules.BoardTableChanged(readAt, readAt, [1, 2], [1, 3]));
+        Assert.False(QueueRefreshRules.BoardTableChanged(readAt, readAt, [1, 2], [2, 1]));
 
         // Without the lists, the count stands in - and cannot see the swap.
-        Assert.False(QueueRefreshRules.SystemTableChanged(readAt, readAt, null, [1, 3]));
+        Assert.False(QueueRefreshRules.BoardTableChanged(readAt, readAt, null, [1, 3]));
     }
 
-    private static SystemOverviewEntry System() =>
+    private static BoardOverviewEntry Board() =>
         new("Commodore/C64/250407", "Commodore", "C64", "250407",
             InBeta: true, InProduction: true, IsAwaitingProduction: false, IsAccepting: true,
             BetaRevision: "2026-September-27", ProductionRevision: "2026-May-14",
@@ -180,7 +180,7 @@ public sealed class QueueRefreshRulesTests
     // ###########################################################################################
     // *** OFF SCREEN, ONLY THE BADGE'S TWO LISTS - AND ONLY WHILE THE BADGE CAN BE SEEN (owner
     // request, 2026-09-30). *** The tab's badge in CRT's row of tabs must stay current while the
-    // maintainer works elsewhere; the rest (the Systems overview walks both data trees) waits
+    // maintainer works elsewhere; the rest (the Boards overview walks both data trees) waits
     // until the tab is looked at, and a minimised CRT - or the tab turned off - asks nothing.
     // ###########################################################################################
     [Theory]

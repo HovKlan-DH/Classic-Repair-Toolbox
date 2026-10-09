@@ -86,7 +86,7 @@ public sealed class FileRemovalWordingTests
         string json = FileRemovalWordingTests.AsServer(new
         {
             canPublish = true,
-            submission = new { id = 42, systemId = "Commodore/C64/250407", state = "pending", summary = "x" },
+            submission = new { id = 42, boardId = "Commodore/C64/250407", state = "pending", summary = "x" },
             findings = Array.Empty<object>(),
             removals = new FileRemovalPreview(["Commodore/C64/250407/old.pdf"], null)
         });
@@ -102,7 +102,7 @@ public sealed class FileRemovalWordingTests
     {
         string json = FileRemovalWordingTests.AsServer(new
         {
-            systemId = "Commodore/C64/250407",
+            boardId = "Commodore/C64/250407",
             betaContentHash = "h1",
             canPublish = true,
             files = Array.Empty<object>(),
@@ -122,7 +122,7 @@ public sealed class FileRemovalWordingTests
         ReviewDecisionResult? decision = ReviewApiParser.ParseDecision(
             FileRemovalWordingTests.AsServer(new { state = "merged", revision = "r2", removedFiles = new[] { "a.pdf" } }));
         ProductionPublishResult? promotion = ReviewApiParser.ParseProductionPublish(
-            FileRemovalWordingTests.AsServer(new { systemId = "Commodore/C64/250407", state = "published", filesCopied = 3, removedFiles = new[] { "a.pdf", "b.pdf" } }));
+            FileRemovalWordingTests.AsServer(new { boardId = "Commodore/C64/250407", state = "published", filesCopied = 3, removedFiles = new[] { "a.pdf", "b.pdf" } }));
 
         Assert.Equal(["a.pdf"], decision!.RemovedFiles);
         Assert.Equal(["a.pdf", "b.pdf"], promotion!.RemovedFiles);

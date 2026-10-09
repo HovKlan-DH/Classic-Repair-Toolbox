@@ -82,15 +82,15 @@ public sealed class UnsavedTableEditsWindowTests
         });
     }
 
-    // A system's table on the Maintainer tab's Systems screen (2026-10-03): Save is offered, and the
+    // A board's table on the Maintainer tab's Boards screen (2026-10-03): Save is offered, and the
     // message says what Save does there - a reason is asked for and the change goes STRAIGHT TO BETA
     // (owner decision, the same day), so nobody saves expecting a review first.
     [Fact]
-    public void Leaving_a_systems_table_offers_Save_and_says_it_goes_straight_to_BETA()
+    public void Leaving_a_boards_table_offers_Save_and_says_it_goes_straight_to_BETA()
     {
         UiTest.Run(() =>
         {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingSystem);
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingBoard);
 
             Assert.True(ButtonWithContent(window, "Save changes").IsVisible);
             Assert.True(ButtonWithContent(window, "Discard edits").IsVisible);

@@ -564,7 +564,7 @@ changing it (`sudo systemctl restart crt-server`).
 
 - **`ProductionPublishingAdministratorsOnly`** - `true` (the default): only you publish from BETA to
   stable; maintainers see the publish greyed out with the reason, and can still push back or reject.
-  `false`: maintainers publish their own systems to stable too. You are mailed each time one does.
+  `false`: maintainers publish their own boards to stable too. You are mailed each time one does.
 - **`CountLocalNetworkBoardViews`** - `true` (the default) counts board views sent from your own
   network (your CRTs at home), marked `fromLocalNetwork = 1`; `false` stops storing them. Those
   already stored stay until you delete them:
@@ -586,7 +586,7 @@ changing it (`sudo systemctl restart crt-server`).
 **Closing one board to contributions** (when one is being flooded) is a database switch, no restart:
 
 ```sql
-UPDATE crt_review.systems SET is_accepting = 0 WHERE system_id = 'Commodore/C64/250407';   -- 1 reopens it
+UPDATE crt_review.boards SET is_accepting = 0 WHERE board_id = 'Commodore/C64/250407';   -- 1 reopens it
 ```
 
 ## Deleting feedback through the network share
@@ -626,7 +626,7 @@ SELECT s.id, a.email, s.created_utc, s.last_used_utc, s.expires_utc
 
 Account > **Reset contribution data** in CRT's Maintainer tab deletes everything people sent and did
 through the service - every submission and its uploaded files, every account that is not an
-administrator (so every maintainer and invitation), every system record, the history, the board
+administrator (so every maintainer and invitation), every board record, the history, the board
 views and the API usage counts. **It never touches the BETA or stable data**, the launch check-ins or
 the saved feedback; your administrator account stays. Use it once, when going live after testing:
 
@@ -670,5 +670,5 @@ mysql -u root -p -e "SELECT callDate, method, route, version, calls FROM crt_rev
 mysql -u root -p -e "SELECT createDateTime, version, osHighlevel, countryCode FROM crt_review.crt_update ORDER BY id DESC LIMIT 10;"
 ```
 
-CRT's Maintainer tab shows the same, worded: each system's **Statistics** view, and Account > **API
+CRT's Maintainer tab shows the same, worded: each board's **Statistics** view, and Account > **API
 usage**. No address or account is stored with a board view or an API call.

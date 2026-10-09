@@ -12,9 +12,9 @@ namespace Handlers.DataHandling
     // edits are written ONLY here; DataManager's sync continues to overwrite "Data/" freely and
     // never reads from or writes to this root, so a sync can never destroy a draft.
     //
-    // This class only resolves the root and maps a system to its folder under it - the same split
+    // This class only resolves the root and maps a board to its folder under it - the same split
     // DataManager (root resolution, sync) keeps from BoardDataReader (board file parsing).
-    // Reading/writing one system's draft.json is DraftDataStore, in CRT.Data, since that logic is
+    // Reading/writing one board's draft.json is DraftDataStore, in CRT.Data, since that logic is
     // pure and needed by the Maintainer tab too; only "where is Drafts/" is an app concern.
     //
     // Mirrors WorklogManager's own root-resolution pattern (its own "--workbooks-root=" beside
@@ -81,7 +81,7 @@ namespace Handlers.DataHandling
         // test, the same rule CLAUDE.md states for WorklogManager.Load/DataManager.InitializeAsync.
         //
         // A blank path resets to the unloaded state (no folder is created for an empty string, and
-        // GetSystemFolder/LoadDraftFor then fail soft) - used by the test suite to restore a known
+        // GetBoardFolder/LoadDraftFor then fail soft) - used by the test suite to restore a known
         // "not loaded" state between tests, since this is static singleton state that otherwise
         // persists across every test in the collection.
         // ###########################################################################################
@@ -99,7 +99,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Maps a system's ExcelDataFile ("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx") to its
+        // Maps a board's ExcelDataFile ("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx") to its
         // folder under Drafts/ ("<DraftsRoot>/Commodore/C64/250407") - the manufacturer/hardware/
         // board segments only, dropping the file name, so the draft folder mirrors the same
         // Manufacturer/Hardware/Board layout "Data/" itself uses (see CLAUDE.md's "Content"
@@ -110,7 +110,7 @@ namespace Handlers.DataHandling
         // Returns empty when the root has not loaded or the path has no folder segments to take -
         // callers must treat that as "no draft available" rather than resolving a bogus path.
         // ###########################################################################################
-        public static string GetSystemFolder(string excelDataFile)
+        public static string GetBoardFolder(string excelDataFile)
         {
             if (string.IsNullOrWhiteSpace(_draftsRoot) || string.IsNullOrWhiteSpace(excelDataFile))
             {
@@ -131,16 +131,16 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The draft folder whose files the SCREEN should show for this system - empty when the
+        // The draft folder whose files the SCREEN should show for this board - empty when the
         // board on screen is not the draft, which includes "View boards as officially published".
         //
-        // Use this, not GetSystemFolder, wherever a board's images, local files or KiCad data are
-        // looked up for DISPLAY. GetSystemFolder is where a draft lives and is still right for
+        // Use this, not GetBoardFolder, wherever a board's images, local files or KiCad data are
+        // looked up for DISPLAY. GetBoardFolder is where a draft lives and is still right for
         // writing into one; this is whether the board being shown IS that draft. The rule itself
         // is DraftBoardSource.ViewedDraftFolder (pure, unit tested) - this only supplies the roots
         // and the user's toggle.
         // ###########################################################################################
-        public static string GetViewedSystemFolder(string excelDataFile)
+        public static string GetViewedBoardFolder(string excelDataFile)
         {
             if (string.IsNullOrWhiteSpace(_draftsRoot) || string.IsNullOrWhiteSpace(excelDataFile))
             {
@@ -155,22 +155,22 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Every system in hardwareBoards that has a non-empty local draft - "list every system with
+        // Every board in hardwareBoards that has a non-empty local draft - "list every board with
         // local changes" (NewContributeStrategy.md Phase 2, session 2b, task 7).
         //
         // Takes the candidate list rather than reading DataManager.HardwareBoards itself, the same
         // split DraftDataStore/DraftManager already keep from DataManager: this class resolves
-        // WHERE a system's draft folder is, never which systems exist. It also sidesteps a real
-        // gap - GetSystemFolder's mapping is Manufacturer/Hardware/Board -> folder, but nothing
+        // WHERE a board's draft folder is, never which boards exist. It also sidesteps a real
+        // gap - GetBoardFolder's mapping is Manufacturer/Hardware/Board -> folder, but nothing
         // WALKS the folder tree back the other way (Drafts/ carries no manifest of its own, by
-        // design - one draft.json per system is the whole model, echoing WorklogManager's "one
+        // design - one draft.json per board is the whole model, echoing WorklogManager's "one
         // file per record" convention). Matching against the known board list, one lookup per
-        // entry, avoids inventing a second source of truth for "which systems exist" that Drafts/
+        // entry, avoids inventing a second source of truth for "which boards exist" that Drafts/
         // would have to stay in sync with.
         //
-        // A system whose draft folder exists but holds only an empty draft.json (BoardDraft.IsEmpty)
+        // A board whose draft folder exists but holds only an empty draft.json (BoardDraft.IsEmpty)
         // is excluded - see DraftDataStore.Load's own doc: a draft that was started (or is left
-        // over from a discarded edit) but carries no actual rows is not "a system with local
+        // over from a discarded edit) but carries no actual rows is not "a board with local
         // changes" from the user's point of view.
         // ###########################################################################################
         // ###########################################################################################
@@ -183,14 +183,14 @@ namespace Handlers.DataHandling
         //
         // That test cannot survive the new model. A draft workbook is a full copy of the published
         // board, so it is never empty; asking whether it DIFFERS would mean parsing two workbooks
-        // per system just to decide whether to list a row. And the answer would be wrong for the
+        // per board just to decide whether to list a row. And the answer would be wrong for the
         // case that matters most: a contributor who has seeded a draft and not yet edited it still
         // HAS a draft, and hiding it would leave them no way to discard it from inside the app.
         //
-        // So a draft is listed because it EXISTS - one small marker file read per system. The
+        // So a draft is listed because it EXISTS - one small marker file read per board. The
         // row's own summary says whether anything in it has actually changed.
         // ###########################################################################################
-        public static List<HardwareBoardEntry> EnumerateDraftedSystems(IEnumerable<HardwareBoardEntry> hardwareBoards)
+        public static List<HardwareBoardEntry> EnumerateDraftedBoards(IEnumerable<HardwareBoardEntry> hardwareBoards)
         {
             var result = new List<HardwareBoardEntry>();
 
@@ -205,14 +205,14 @@ namespace Handlers.DataHandling
             // ###########################################################################################
             // *** ONE ROW PER DRAFT FOLDER (code review, 2026-09-27). *** The marker is found by
             // FOLDER, so every listed entry in a draft's folder "has" it - including one under
-            // another workbook name that cannot read it: a new system listed in BETA as
+            // another workbook name that cannot read it: a new board listed in BETA as
             // "... v2.0.0.xlsx" beside its own draft entry ("....xlsx"). That one showed a second row
             // with nothing changed. Where one entry of a folder reads the draft's workbook, the
             // entries that cannot are left out; where none can (a marker whose workbook has gone),
             // all stay, so the draft can still be discarded.
             // ###########################################################################################
             return result
-                .GroupBy(entry => SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile), StringComparer.OrdinalIgnoreCase)
+                .GroupBy(entry => BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile), StringComparer.OrdinalIgnoreCase)
                 .SelectMany(folder =>
                 {
                     List<HardwareBoardEntry> reading = folder
@@ -226,27 +226,27 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Every system that exists ONLY as a local draft - one created through "Add a new system"
+        // Every board that exists ONLY as a local draft - one created through "Add a new board"
         // (NewContributeStrategy.md Phase 2, session 2c, task 9), which the main Excel workbook
-        // knows nothing about. DataManager merges these into HardwareBoards so a brand-new system
+        // knows nothing about. DataManager merges these into HardwareBoards so a brand-new board
         // appears in the hardware/board drop-downs exactly like a synced one.
         //
         // This is the one thing in the app that walks Drafts/ BACKWARDS - every other path maps a
-        // known ExcelDataFile to its folder via GetSystemFolder. It has to: a new system's identity
+        // known ExcelDataFile to its folder via GetBoardFolder. It has to: a new board's identity
         // exists nowhere else yet, so there is nothing to look it up by. The walk is what makes a
-        // separate registry file unnecessary (see NewSystemRegistration's own header for that
+        // separate registry file unnecessary (see NewBoardRegistration's own header for that
         // decision) - what is on disk IS the list, so a discarded folder cannot leave a stale entry
         // behind.
         //
         // Bounded to exactly three levels (Manufacturer/Hardware/Board), matching the layout
-        // GetSystemFolder creates and that "Data/" itself uses, so this is a handful of directory
-        // enumerations over at most a few dozen systems rather than an unbounded recursive walk.
+        // GetBoardFolder creates and that "Data/" itself uses, so this is a handful of directory
+        // enumerations over at most a few dozen boards rather than an unbounded recursive walk.
         //
         // Fails soft on any IO error, returning whatever it found: the same rule Load() follows,
         // and for the same reason - a drafts folder that cannot be read must never stop the app
         // from starting.
         // ###########################################################################################
-        public static List<HardwareBoardEntry> EnumerateDraftOnlySystems()
+        public static List<HardwareBoardEntry> EnumerateDraftOnlyBoards()
         {
             var result = new List<HardwareBoardEntry>();
 
@@ -264,15 +264,15 @@ namespace Handlers.DataHandling
                         foreach (string boardFolder in Directory.EnumerateDirectories(hardwareFolder))
                         {
                             // Read from the MARKER since Phase 6 - the one small file that makes a
-                            // folder a draft, and where a new system's registration now lives.
+                            // folder a draft, and where a new board's registration now lives.
                             DraftMarker? marker = DraftMarkerStore.Load(
                                 Path.Combine(boardFolder, DraftFolderLayout.DraftMarkerFileName));
 
-                            NewSystemRegistration? registration = marker?.NewSystem;
+                            NewBoardRegistration? registration = marker?.NewBoard;
 
                             if (registration == null || string.IsNullOrWhiteSpace(registration.ExcelDataFile))
                             {
-                                // Either an ordinary draft over an already-known system (the common
+                                // Either an ordinary draft over an already-known board (the common
                                 // case - it needs no registration, DataManager already lists it), or
                                 // a folder that is not a draft at all.
                                 continue;
@@ -292,7 +292,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to enumerate draft-only systems under [{_draftsRoot}] - [{ex.Message}]");
+                Logger.Warning($"Failed to enumerate draft-only boards under [{_draftsRoot}] - [{ex.Message}]");
             }
 
             return result;
@@ -302,7 +302,7 @@ namespace Handlers.DataHandling
         // Makes a draft of every board folder put into Drafts/ by hand (owner request, 2026-09-27) -
         // see DraftFolderImport for what counts and which kind of draft each becomes.
         //
-        // Called from DataManager.LoadMainExcel, the one moment the known systems are all in hand
+        // Called from DataManager.LoadMainExcel, the one moment the known boards are all in hand
         // and before anything is listed, so an imported folder shows on the Drafts tab and in the
         // drop-downs on the same launch. A folder dropped in while the application runs is picked
         // up at the next start.
@@ -310,7 +310,7 @@ namespace Handlers.DataHandling
         // Every folder it looked at is logged: one it could NOT import is otherwise exactly the
         // silent "my board is not on the Drafts tab" this exists to end.
         // ###########################################################################################
-        public static void ImportHandPlacedFolders(IEnumerable<KnownDraftSystem> knownSystems)
+        public static void ImportHandPlacedFolders(IEnumerable<KnownDraftBoard> knownBoards)
         {
             if (string.IsNullOrWhiteSpace(_draftsRoot))
             {
@@ -328,7 +328,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                outcomes = DraftFolderImport.ImportUnmarkedFolders(_draftsRoot, knownSystems, DateTimeOffset.UtcNow);
+                outcomes = DraftFolderImport.ImportUnmarkedFolders(_draftsRoot, knownBoards, DateTimeOffset.UtcNow);
             }
             catch (Exception ex)
             {
@@ -340,30 +340,30 @@ namespace Handlers.DataHandling
             {
                 if (!outcome.Imported)
                 {
-                    Logger.Warning($"Folder [{outcome.SystemFolder}] in the drafts folder was not taken in as a draft - {outcome.Reason}");
+                    Logger.Warning($"Folder [{outcome.BoardFolder}] in the drafts folder was not taken in as a draft - {outcome.Reason}");
                     continue;
                 }
 
-                string kind = outcome.Kind == DraftFolderImportKind.NewSystem
-                    ? "a new system"
+                string kind = outcome.Kind == DraftFolderImportKind.NewBoard
+                    ? "a new board"
                     : "a draft of the published board";
 
                 string renamed = outcome.RenamedFrom.Length > 0
                     ? $", its workbook renamed from [{outcome.RenamedFrom}]"
                     : string.Empty;
 
-                Logger.Info($"Took in folder [{outcome.SystemFolder}] as {kind} [{outcome.ExcelDataFile}]{renamed}");
+                Logger.Info($"Took in folder [{outcome.BoardFolder}] as {kind} [{outcome.ExcelDataFile}]{renamed}");
             }
         }
 
         // ###########################################################################################
-        // Permanently discards a system's entire draft - "per-system discard" (session 2b, task 7).
-        // Deletes the WHOLE system folder under Drafts/, not just draft.json, so any blob a future
+        // Permanently discards a board's entire draft - "per-board discard" (session 2b, task 7).
+        // Deletes the WHOLE board folder under Drafts/, not just draft.json, so any blob a future
         // authoring session (2c) stores alongside it (a new schematic image, say) is discarded with
         // it too - one folder is the whole draft, the same model WorklogManager.DeleteWorkbook uses
         // for "one folder is the whole workbook".
         //
-        // Silently does nothing for a system with no draft folder at all, so a double-discard (or a
+        // Silently does nothing for a board with no draft folder at all, so a double-discard (or a
         // discard racing a save) is never an error.
         //
         // *** ONE IMPLEMENTATION: DraftWorkbookStore.Discard. *** This used to run its own bare
@@ -380,7 +380,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static bool DiscardDraft(string excelDataFile)
         {
-            string folder = GetSystemFolder(excelDataFile);
+            string folder = GetBoardFolder(excelDataFile);
             if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
             {
                 return true;

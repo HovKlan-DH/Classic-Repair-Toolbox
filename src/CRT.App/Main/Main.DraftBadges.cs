@@ -9,12 +9,12 @@ namespace CRT
     // ###########################################################################################
     // The amber "Draft" chip on the Hardware and Board drop-down entries (owner request,
     // 2026-09-24) - the same chip a drafted component row carries in the component list, so a
-    // system with local, unpublished work is recognisable before it is even opened. See
+    // board with local, unpublished work is recognisable before it is even opened. See
     // Main.axaml.cs for the file map of the whole partial class.
     //
-    // WHICH ENTRIES are decided by DraftBadgeSet (pure, unit tested), built from the systems the
+    // WHICH ENTRIES are decided by DraftBadgeSet (pure, unit tested), built from the boards the
     // Drafts tab lists. WHEN is ApplyDraftsTabVisibility, which already runs whenever the set of
-    // drafts can change - startup, a save that creates a draft, a new system, a discard, a
+    // drafts can change - startup, a save that creates a draft, a new board, a discard, a
     // retirement - so the chips follow the Drafts tab in the same pass rather than on a schedule
     // of their own.
     //
@@ -40,7 +40,7 @@ namespace CRT
         // ###########################################################################################
         internal void ApplyDraftBadges()
         {
-            this.thisDraftBadges = DraftBadgeSet.From(this.TabDrafts.DraftedSystems);
+            this.thisDraftBadges = DraftBadgeSet.From(this.TabDrafts.DraftedBoards);
 
             this.HardwareComboBox.ItemTemplate = Main.BuildNameWithDraftChipTemplate(
                 name => this.thisDraftBadges.HardwareHasDraft(name),

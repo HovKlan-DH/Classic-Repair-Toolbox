@@ -79,16 +79,16 @@ namespace Handlers.MaintainerHandling
         // files"): each file as it is in its tree, opened from there, with its size. Nothing about a
         // change - the list is what is there; removing is the button's.
         // ###########################################################################################
-        public static IReadOnlyList<SystemFileEntry> TreeEntries(UnusedFileListing listing)
+        public static IReadOnlyList<BoardFileEntry> TreeEntries(UnusedFileListing listing)
         {
             ArgumentNullException.ThrowIfNull(listing);
 
-            SystemFileSource source = string.Equals(listing.Tree, "production", StringComparison.OrdinalIgnoreCase)
-                ? SystemFileSource.Production
-                : SystemFileSource.Beta;
+            BoardFileSource source = string.Equals(listing.Tree, "production", StringComparison.OrdinalIgnoreCase)
+                ? BoardFileSource.Production
+                : BoardFileSource.Beta;
 
             return listing.Files
-                .Select(file => new SystemFileEntry(file.Path, SystemFileChange.Unchanged, source, SizeBytes: file.SizeBytes))
+                .Select(file => new BoardFileEntry(file.Path, BoardFileChange.Unchanged, source, SizeBytes: file.SizeBytes))
                 .ToList();
         }
 

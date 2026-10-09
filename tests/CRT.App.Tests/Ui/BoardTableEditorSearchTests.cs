@@ -116,6 +116,15 @@ public sealed class BoardTableEditorSearchTests : IDisposable
             .Select(run => $"{run.Text}:{((ISolidColorBrush)run.Background!).Color}")
             .ToList();
 
+    // The text a cell shows - its runs when the search has split it, else its text.
+    private static string ShownText(DataGridCell cell)
+    {
+        TextBlock text = cell.GetVisualDescendants().OfType<TextBlock>().First();
+        return text.Inlines is { Count: > 0 } inlines
+            ? string.Concat(inlines.OfType<Run>().Select(run => run.Text))
+            : text.Text ?? string.Empty;
+    }
+
     private static Color ThemeColor(string key)
     {
         Application app = Application.Current!;
@@ -156,6 +165,71 @@ public sealed class BoardTableEditorSearchTests : IDisposable
             // "match" fill does not cover it.
             Assert.Equal(fileBefore, (CellOnScreen(window, Row(editor, "CR13"), file).Background as ISolidColorBrush)?.Color);
             Assert.Equal(nameBefore, (cr13Name.Background as ISolidColorBrush)?.Color);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** EVERY ROW SHOWS ITS OWN TEXT WHILE A SEARCH NARROWS THE ROWS (owner report, 2026-10-09:
+    // "rep" on "Board schematics" left "replica" unmarked in two rows). Those two rows were really
+    // "Schematics #1 of 2" and "#2 of 2", shown with the names of the rows whose cells they had been
+    // given: ProDataGrid's search text kept the previous row's text in a recycled cell. Typed a
+    // letter at a time, each narrowing the rows again, as a person types - see BoardTableCellText.
+    // ###########################################################################################
+    [Fact]
+    public void Every_row_shows_its_own_text_and_marks_while_a_search_narrows_the_rows()
+    {
+        UiTest.Run(() =>
+        {
+            static BoardSchematicEntry Schematic(string name, string file) => new()
+            {
+                SchematicName = name,
+                SchematicImageFile = $"Commodore/C64/250407/{file}",
+                SchematicHighlightColor = "Red",
+                SchematicHighlightOpacity = "30%",
+            };
+
+            var board = new BoardData
+            {
+                Schematics =
+                [
+                    Schematic("Board layout", "Board Layout 250407 NTSC.png"),
+                    Schematic("Board layout (CBM)", "c64-23.gif"),
+                    Schematic("Top (replica)", "C64 250407 PCB Replica.1.1 Top.png"),
+                    Schematic("Bottom (replica)", "C64 250407 PCB Replica.1.1 Bottom.png"),
+                    Schematic("Schematics #1 of 2", "C64 250407 PCB Replica 1of2.png"),
+                    Schematic("Schematics #2 of 2", "C64 250407 PCB Replica 2of2.png"),
+                ]
+            };
+
+            (Window window, BoardTableEditor editor) = Shown(board, board, BoardWorkbookSchema.SheetBoardSchematics);
+            int name = ColumnOf(editor, BoardWorkbookSchema.ColSchematicName);
+            int file = ColumnOf(editor, BoardWorkbookSchema.ColSchematicImageFile);
+            string mark = ThemeColor("Workbooks_SearchHit_Bg").ToString();
+
+            // Typed a letter at a time, each settling before the next - as a person types.
+            TextBox box = SearchBox(editor);
+            box.Focus();
+
+            foreach (string letter in new[] { "r", "e", "p" })
+            {
+                window.KeyTextInput(letter);
+                Dispatcher.UIThread.RunJobs();
+                editor.ApplyPendingSearchForTests();
+                Settle();
+            }
+
+            List<BoardTableRow> shown = ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>().ToList();
+            Assert.Equal(4, shown.Count);
+
+            foreach (BoardTableRow row in shown)
+            {
+                DataGridCell nameCell = CellOnScreen(window, row, name);
+                Assert.Equal(row.Cells[name].Text, ShownText(nameCell));
+                Assert.Equal(row.Cells[name].Text.Contains("rep", StringComparison.Ordinal) ? [$"rep:{mark}"] : [], MarkedRuns(nameCell));
+                Assert.Equal([$"Rep:{mark}"], MarkedRuns(CellOnScreen(window, row, file)));
+            }
 
             window.Close();
         });
@@ -320,9 +394,9 @@ public sealed class BoardTableEditorSearchTests : IDisposable
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
-    private void WriteDraft(string systemKey, BoardData board)
+    private void WriteDraft(string boardKey, BoardData board)
     {
-        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, systemKey);
+        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, boardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         CachedWorkbooks.Write(path, board);
     }

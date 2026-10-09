@@ -96,11 +96,11 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("maintainerLastBetaSystemId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? MaintainerLastBetaSystemId { get; set; }
+        public string? MaintainerLastBetaBoardId { get; set; }
 
         [JsonPropertyName("maintainerLastSystemId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? MaintainerLastSystemId { get; set; }
+        public string? MaintainerLastBoardId { get; set; }
 
         [JsonPropertyName("workbooksScope")] public string WorkbooksScope { get; set; } = "CurrentBoard";
 
@@ -837,7 +837,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The Maintainer tab's two queue screens open on the entry
         // looked at last, while it is still listed (owner request, 2026-09-30; MaintainerModes
-        // .EntryToOpen): the submission's id and the BETA system's id. Null for none. Not logged -
+        // .EntryToOpen): the submission's id and the BETA board's id. Null for none. Not logged -
         // they change on every click in either list.
         // ###########################################################################################
         public static long? MaintainerLastSubmissionId
@@ -853,33 +853,33 @@ namespace Handlers.DataHandling
             }
         }
 
-        public static string? MaintainerLastBetaSystemId
+        public static string? MaintainerLastBetaBoardId
         {
-            get => _data.MaintainerLastBetaSystemId;
+            get => _data.MaintainerLastBetaBoardId;
             set
             {
-                if (string.Equals(_data.MaintainerLastBetaSystemId, value, StringComparison.Ordinal))
+                if (string.Equals(_data.MaintainerLastBetaBoardId, value, StringComparison.Ordinal))
                     return;
 
-                _data.MaintainerLastBetaSystemId = value;
+                _data.MaintainerLastBetaBoardId = value;
                 Save();
             }
         }
 
         // ###########################################################################################
-        // The system the Maintainer tab's Systems screen was last on, which the tab opens on when
+        // The board the Maintainer tab's Boards screen was last on, which the tab opens on when
         // nothing waits in either queue (owner request, 2026-10-04: "go to "Systems" and show the
         // last selected system"). Null for none. Not logged, like the two above.
         // ###########################################################################################
-        public static string? MaintainerLastSystemId
+        public static string? MaintainerLastBoardId
         {
-            get => _data.MaintainerLastSystemId;
+            get => _data.MaintainerLastBoardId;
             set
             {
-                if (string.Equals(_data.MaintainerLastSystemId, value, StringComparison.Ordinal))
+                if (string.Equals(_data.MaintainerLastBoardId, value, StringComparison.Ordinal))
                     return;
 
-                _data.MaintainerLastSystemId = value;
+                _data.MaintainerLastBoardId = value;
                 Save();
             }
         }

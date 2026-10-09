@@ -9,12 +9,12 @@ namespace CRT.Data.Tests
     // ###########################################################################################
     // Covers SubmissionKiCadFiles - a board's KiCad data travelling in its submission (owner
     // decision, 2026-09-26). Before it, the "KiCad data" folder - the one part of a board no row
-    // cites - silently stayed on the contributor's machine, and a new system was published to BETA
+    // cites - silently stayed on the contributor's machine, and a new board was published to BETA
     // without its traces.
     // ###########################################################################################
     public sealed class SubmissionKiCadFilesTests : IDisposable
     {
-        private const string SystemId = "Manu1/Hardware1/Board1";
+        private const string BoardId = "Manu1/Hardware1/Board1";
 
         private readonly string thisRoot =
             Path.Combine(Path.GetTempPath(), "crt-kicad-files-" + Guid.NewGuid().ToString("N"));
@@ -43,7 +43,7 @@ namespace CRT.Data.Tests
         }
 
         private static SubmissionManifest Manifest() =>
-            new() { SystemId = SystemId, Manufacturer = "Manu1", Hardware = "Hardware1", Board = "Board1" };
+            new() { BoardId = BoardId, Manufacturer = "Manu1", Hardware = "Hardware1", Board = "Board1" };
 
         // ---------------------------------------------------------------------- The rule
 
@@ -96,7 +96,7 @@ namespace CRT.Data.Tests
             this.Put("official", "old.kicad_sch");
 
             IReadOnlyList<string> collected = SubmissionKiCadFiles.Collect(
-                SystemId, this.Folder("draft"), this.Folder("official"));
+                BoardId, this.Folder("draft"), this.Folder("official"));
 
             // ###########################################################################################
             // "BOARD.kicad_pcb" is the draft's "board.kicad_pcb" under another case - one file to
@@ -126,15 +126,15 @@ namespace CRT.Data.Tests
 
             Assert.Equal(
                 ["Manu1/Hardware1/Board1/KiCad data/board.kicad_pcb"],
-                SubmissionKiCadFiles.Collect(SystemId, this.Folder("draft"), officialSystemFolder: null));
+                SubmissionKiCadFiles.Collect(BoardId, this.Folder("draft"), officialBoardFolder: null));
         }
 
-        // Most boards have no KiCad data at all, and a draft-only system has no official folder.
+        // Most boards have no KiCad data at all, and a draft-only board has no official folder.
         [Fact]
         public void Missing_folders_contribute_nothing()
         {
-            Assert.Empty(SubmissionKiCadFiles.Collect(SystemId, this.Folder("nowhere"), this.Folder("also-nowhere")));
-            Assert.Empty(SubmissionKiCadFiles.Collect(SystemId, null, null));
+            Assert.Empty(SubmissionKiCadFiles.Collect(BoardId, this.Folder("nowhere"), this.Folder("also-nowhere")));
+            Assert.Empty(SubmissionKiCadFiles.Collect(BoardId, null, null));
             Assert.Empty(SubmissionKiCadFiles.Collect(string.Empty, this.Folder("draft"), null));
         }
     }

@@ -1,0 +1,328 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.BoardDetailView">
+
+    <!--
+    ONE BOARD, ON THE "BOARDS" SCREEN (owner request, 2026-09-27: "Right-side will show data per
+    board - e.g. who has contributed to it and who is set as maintainer etc.").
+
+    IN SIX VIEWS (five since 2026-10-03 - owner request: "I would like all the same
+    functionalities, as the 'Contributor Submissions' has" - and History since 2026-10-04), chosen
+    by the same joined switch a submission's views use (Button.Segment, TabMaintainer.axaml's
+    styles). BoardSections names them and says why each is where it is:
+
+      Board data  - BETA's board in the table editor; a save asks for a reason and goes straight
+                    to BETA (BoardDetailView.Table.cs).
+      Files       - every file the board uses in BETA, a listing (BoardDetailView.Files.cs).
+      Contributor - who has contributed, and how that went.
+      Maintainer  - its place in CRT's drop-down lists while it needs one, and who maintains it -
+                    a list only (owner request, 2026-10-04); changing who is Account > Maintainers.
+      History     - everything that has happened to it, a card per submission with what it
+                    changed (BoardDetailView.History.cs, BoardHistoryDisplay).
+      Statistics  - how often CRT users look at the board.
+
+    SWITCHING VIEW HIDES, IT NEVER CLOSES - the tab's own rule: the table, unsaved changes and all,
+    is where it was on coming back to Board data. The view chosen stays chosen for the next board.
+
+    *** NEITHER THE TABLE NOR THE FILE TREE IS INSIDE A SCROLLVIEWER. *** A list measured with
+    unlimited height realises every row - the submission panel's rule, for the same two controls.
+    The other three views scroll on their own.
+
+    The words are BoardsDisplay's and BoardSections', the facts the server's - every maintainer
+    may READ every board (owner decision, "Everything for everyone"), and BoardOverviewFlow and
+    BoardEditFlow say why.
+
+    WHERE IT IS (owner request, 2026-10-04): the STAGE LINE under its name - Submitted, BETA, Stable,
+    each with its state (BoardStagesDisplay; BoardDetailView.Stages.cs) - and a BETA / Stable switch on
+    Board data and Files (BoardDetailView.Stable.cs): BETA's table is the one a change is made in, the
+    stable source's a read-only table and file tree of its own beside it, so switching never touches
+    a change in BETA's.
+    -->
+    <UserControl.Styles>
+        <Style Selector="TextBlock.StageLabel">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.StageValue">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <!-- Not there, or not known: said, but quietly - only what IS there stands out. -->
+        <Style Selector="TextBlock.StageValue.Quiet">
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Opacity" Value="0.6" />
+        </Style>
+        <Style Selector="TextBlock.StageDetail">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="StackPanel.Stage">
+            <Setter Property="MaxWidth" Value="280" />
+            <Setter Property="Spacing" Value="1" />
+        </Style>
+        <!-- Each stage a card, the one where the newest work sits outlined (owner request,
+             2026-10-09: the three columns were not clear enough). -->
+        <Style Selector="Border.StageCard">
+            <Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="MinWidth" Value="190" />
+        </Style>
+        <Style Selector="Border.StageCard.Current">
+            <Setter Property="BorderBrush" Value="{DynamicResource Stage_Current_Border}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Background" Value="{DynamicResource Stage_Current_Bg}" />
+        </Style>
+        <Style Selector="TextBlock.StageNote">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+        </Style>
+        <Style Selector="TextBlock.StageArrow">
+            <Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Opacity" Value="0.4" />
+            <Setter Property="Margin" Value="18,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+
+        <!-- The board's name - or, with nothing chosen, what to do (the other screens' look). -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="BoardTitleText"
+                   Text="Select a board"
+                   FontSize="16"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,2" />
+
+        <!-- Only what is off (owner request, 2026-10-03): where its data is when that is not the
+             ordinary, who maintains it, closed to contributions. -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="BoardStateText"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <!-- THE STAGE LINE (owner request, 2026-10-04): where the board is - its newest submission,
+             BETA and the stable source - each said, "Not there" included. It replaced the revisions
+             line, whose revisions it carries. Chevrons are Font Awesome's (chevron-right). -->
+        <Grid DockPanel.Dock="Top"
+              x:Name="BoardStagesPanel"
+              ColumnDefinitions="Auto,Auto,Auto,Auto,Auto"
+              HorizontalAlignment="Left"
+              IsVisible="False"
+              Margin="0,8,0,0">
+            <Border Grid.Column="0" x:Name="StageSubmittedCard" Classes="StageCard">
+                <StackPanel Classes="Stage">
+                    <TextBlock x:Name="StageSubmittedLabel" Classes="StageLabel" />
+                    <TextBlock x:Name="StageSubmittedNote" Classes="StageNote" />
+                    <TextBlock x:Name="StageSubmittedValue" Classes="StageValue" />
+                    <TextBlock x:Name="StageSubmittedDetail" Classes="StageDetail" />
+                </StackPanel>
+            </Border>
+            <TextBlock Grid.Column="1" Classes="StageArrow" Text="&#xf054;" />
+            <Border Grid.Column="2" x:Name="StageBetaCard" Classes="StageCard">
+                <StackPanel Classes="Stage">
+                    <TextBlock x:Name="StageBetaLabel" Classes="StageLabel" />
+                    <TextBlock x:Name="StageBetaNote" Classes="StageNote" />
+                    <TextBlock x:Name="StageBetaValue" Classes="StageValue" />
+                    <TextBlock x:Name="StageBetaDetail" Classes="StageDetail" />
+                </StackPanel>
+            </Border>
+            <TextBlock Grid.Column="3" Classes="StageArrow" Text="&#xf054;" />
+            <Border Grid.Column="4" x:Name="StageStableCard" Classes="StageCard">
+                <StackPanel Classes="Stage">
+                    <TextBlock x:Name="StageStableLabel" Classes="StageLabel" />
+                    <TextBlock x:Name="StageStableNote" Classes="StageNote" />
+                    <TextBlock x:Name="StageStableValue" Classes="StageValue" />
+                    <TextBlock x:Name="StageStableDetail" Classes="StageDetail" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Where the newest work is now and what comes next, in words (BoardStagesDisplay.Now). -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="BoardStageNowText"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,6,0,0" />
+
+        <!-- Where CRT's drop-down lists show it - once it is in them. -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="BoardListingText"
+                   FontSize="12"
+                   Opacity="0.7"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <!-- Not in the lists yet: so, and where it is given a place (BoardSections.PlacementLine). -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="BoardPlacementText"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   IsVisible="False" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,6,0,0" />
+
+        <!-- THE FIVE VIEWS, ONE JOINED SWITCH - the look of a submission's own (SubmissionViewBar).
+             Shown once a board is chosen. -->
+        <StackPanel DockPanel.Dock="Top"
+                    x:Name="BoardSectionBar"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Left"
+                    Spacing="0"
+                    IsVisible="False"
+                    Margin="0,12,0,10">
+            <Button x:Name="BoardDataSectionButton" Classes="Segment First Selected" Content="Board data" Click="OnSectionClick" />
+            <Button x:Name="FilesSectionButton" Classes="Segment" Content="Files" Click="OnSectionClick" />
+            <Button x:Name="ContributorSectionButton" Classes="Segment" Content="Contributor" Click="OnSectionClick" />
+            <Button x:Name="MaintainerSectionButton" Classes="Segment" Content="Maintainer" Click="OnSectionClick" />
+            <Button x:Name="HistorySectionButton" Classes="Segment" Content="History" Click="OnSectionClick" />
+            <Button x:Name="StatisticsSectionButton" Classes="Segment Last" Content="Statistics" Click="OnSectionClick" />
+        </StackPanel>
+
+        <!-- BETA OR THE STABLE SOURCE, for Board data and Files (owner request, 2026-10-04) - shown
+             with those two views only. A half the board is not in cannot be chosen
+             (BoardSections.CanChooseBeta / CanChooseStable). -->
+        <StackPanel DockPanel.Dock="Top"
+                    x:Name="TreeSwitchBar"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    IsVisible="False"
+                    Margin="0,0,0,10">
+            <TextBlock Text="Data source:" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="0">
+                <Button x:Name="BetaTreeButton" Classes="Segment First Selected" Content="BETA" Click="OnTreeClick" />
+                <Button x:Name="StableTreeButton" Classes="Segment Last" Content="Stable" Click="OnTreeClick" />
+            </StackPanel>
+        </StackPanel>
+
+        <Panel x:Name="SectionsPanel" IsVisible="False">
+
+            <!-- Board data: BETA's board. The reason for a change is asked when Save is pressed
+                 (PublishBoardChangeWindow) - there is no description box above the table. -->
+            <Panel x:Name="BoardDataSection">
+                <!-- What the table is and what happened to it (opened, published, refused) - JUST
+                     UNDER THE SWITCH, above the table, not in the table's own line under its search
+                     box (owner request, 2026-10-04). -->
+                <DockPanel x:Name="BetaBoardPart">
+                    <!-- WHY BETA'S TABLE CANNOT BE CHANGED, AS A PANEL OF ITS OWN (owner request,
+                         2026-10-09: "I do think the information for this should be more visible, so
+                         please highlight the text ... as its own panel") - waiting under the BETA queue,
+                         or a board this account does not maintain. The ordinary notes stay a line. -->
+                    <Border DockPanel.Dock="Top"
+                            x:Name="ReadOnlyNotice"
+                            IsVisible="False"
+                            Background="{DynamicResource Notice_Bg}"
+                            BorderBrush="{DynamicResource Notice_Border}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12,8"
+                            Margin="0,0,0,10">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <!-- Font Awesome "circle-info" - not the padlock, which marks what only the
+                                 administrator can use. -->
+                            <TextBlock Grid.Column="0"
+                                       Text="&#xf05a;"
+                                       FontFamily="{DynamicResource FontAwesomeSolid}"
+                                       FontSize="16"
+                                       Foreground="{DynamicResource Notice_Fg}"
+                                       VerticalAlignment="Top"
+                                       Margin="0,1,10,0" />
+                            <TextBlock Grid.Column="1"
+                                       x:Name="ReadOnlyNoticeText"
+                                       Foreground="{DynamicResource Notice_Fg}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="TableLoadMessageText"
+                               TextWrapping="Wrap"
+                               IsVisible="False"
+                               Margin="0,0,0,8" />
+
+                    <local:BoardTableEditor x:Name="BoardDataTable" />
+                </DockPanel>
+
+                <!-- The stable source's board: read-only, its own table (BoardDetailView.Stable.cs). -->
+                <DockPanel x:Name="StableBoardPart" IsVisible="False">
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="StableTableMessageText"
+                               TextWrapping="Wrap"
+                               IsVisible="False"
+                               Margin="0,0,0,8" />
+
+                    <local:BoardTableEditor x:Name="StableTable" />
+                </DockPanel>
+            </Panel>
+
+            <!-- Files: every file the board uses in BETA - a listing, nothing marked as changing. -->
+            <Panel x:Name="FilesSection" IsVisible="False">
+                <DockPanel x:Name="BetaFilesPart">
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="FilesHeadingText"
+                               TextWrapping="Wrap"
+                               Opacity="0.75"
+                               Margin="0,0,0,8" />
+
+                    <local:FileTreeView x:Name="BoardFileTree" />
+                </DockPanel>
+
+                <!-- The stable source's files, opened from its own address (BoardDetailView.Stable.cs). -->
+                <DockPanel x:Name="StableFilesPart" IsVisible="False">
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="StableFilesHeadingText"
+                               TextWrapping="Wrap"
+                               Opacity="0.75"
+                               Margin="0,0,0,8" />
+
+                    <local:FileTreeView x:Name="StableFileTree" />
+                </DockPanel>
+            </Panel>
+
+            <ScrollViewer x:Name="ContributorSection" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="ContributorsSection" Spacing="6" Margin="0,0,12,0" />
+            </ScrollViewer>
+
+            <ScrollViewer x:Name="MaintainerSection" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="16" Margin="0,0,12,0">
+                    <!-- A board not in CRT's drop-down lists yet is placed first (2026-09-27): it
+                         cannot be published to BETA until it has a place. -->
+                    <local:BoardPlacementView x:Name="PlacementView" />
+
+                    <!-- Who maintains it - a list, nothing more (owner request, 2026-10-04: "The stuff
+                         that should be visible in here, is just the selected maintainer(s)"). Adding,
+                         inviting and removing them is Account > Maintainers (MaintainerPoolView). -->
+                    <StackPanel x:Name="MaintainersSection" Spacing="4" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Everything that has happened to it, by month, newest first (owner request,
+                 2026-10-04) - BoardDetailView.History.cs draws BoardHistoryDisplay's cards and lines. -->
+            <ScrollViewer x:Name="HistorySection" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="HistoryItemsSection" Spacing="6" Margin="0,0,12,0" />
+            </ScrollViewer>
+
+            <!-- How often CRT users look at the board (owner request, 2026-09-27) - BoardsDisplay
+                 words it. Graphs are to come ("we can take this later"). -->
+            <ScrollViewer x:Name="StatisticsSection" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="ViewsSection" Spacing="2" Margin="0,0,12,0" />
+            </ScrollViewer>
+        </Panel>
+    </DockPanel>
+</UserControl>

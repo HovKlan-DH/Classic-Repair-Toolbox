@@ -10,7 +10,7 @@ namespace ClassicRepairToolbox.Tests;
 // SubmissionChangeFacts - what a submission changed as it went into BETA (owner request,
 // 2026-10-04: "Is it possible to summarize each submission change in a textual form ... to get an
 // idea, besides the sometimes vague description from the contributor"). Built at the publish from
-// the review's own comparison (ReviewSummary), stored, and worded by the Systems screen's History
+// the review's own comparison (ReviewSummary), stored, and worded by the Boards screen's History
 // view - so these pin what is kept: the sections that changed, the rows and fields named the way the
 // table names them, the files, and the bounds.
 // ###########################################################################################
@@ -32,7 +32,7 @@ public sealed class SubmissionChangesTests
 
         SubmissionChanges changes = SubmissionChangeFacts.Build(ReviewSummary.Compare(before, after));
 
-        Assert.False(changes.IsNewSystem);
+        Assert.False(changes.IsNewBoard);
 
         SectionChanges components = Assert.Single(changes.Sections);
         Assert.Equal(BoardWorkbookSchema.SheetComponents, components.Section);
@@ -71,17 +71,17 @@ public sealed class SubmissionChangesTests
     }
 
     // ###########################################################################################
-    // *** BOUNDED. *** A new system adds every row it has; the history keeps the count and the first
-    // ListedPerKind names, so one board cannot make every system's history answer huge.
+    // *** BOUNDED. *** A new board adds every row it has; the history keeps the count and the first
+    // ListedPerKind names, so one board cannot make every board's history answer huge.
     // ###########################################################################################
     [Fact]
-    public void A_new_system_is_counted_whole_and_named_only_in_part()
+    public void A_new_board_is_counted_whole_and_named_only_in_part()
     {
         ComponentEntry[] many = Enumerable.Range(1, SubmissionChangeFacts.ListedPerKind + 15).Select(i => Component($"C{i}")).ToArray();
 
         SubmissionChanges changes = SubmissionChangeFacts.Build(ReviewSummary.Compare(null, SubmissionChangesTests.Board(many)));
 
-        Assert.True(changes.IsNewSystem);
+        Assert.True(changes.IsNewBoard);
 
         SectionChanges components = Assert.Single(changes.Sections);
         Assert.Equal(SubmissionChangeFacts.ListedPerKind + 15, components.AddedCount);
@@ -141,7 +141,7 @@ public sealed class SubmissionChangesTests
         Assert.True(SubmissionChangeFacts.HasChanges(none with { Files = SubmissionChangeFacts.Files(["a.png"], null, null) }));
     }
 
-    // The server stores it as JSON and reads it back for every system screen - the round trip keeps it.
+    // The server stores it as JSON and reads it back for every board screen - the round trip keeps it.
     [Fact]
     public void The_facts_survive_a_round_trip_through_json()
     {

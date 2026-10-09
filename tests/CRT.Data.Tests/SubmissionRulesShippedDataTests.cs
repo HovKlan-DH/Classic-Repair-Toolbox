@@ -119,7 +119,7 @@ namespace CRT.Data.Tests
                 // compares it with what is published; every other hash is not looked at here.
                 var manifest = new SubmissionManifest
                 {
-                    SystemId = folder,
+                    BoardId = folder,
                     Manufacturer = parts[0],
                     Hardware = parts[1],
                     Board = parts[2],
@@ -176,7 +176,7 @@ namespace CRT.Data.Tests
 
                 var manifest = new SubmissionManifest
                 {
-                    SystemId = folder,
+                    BoardId = folder,
                     Manufacturer = parts[0],
                     Hardware = parts[1],
                     Board = parts[2]

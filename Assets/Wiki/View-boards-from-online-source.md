@@ -31,7 +31,7 @@ Every board shows exactly what CRT downloaded from its online source, as if you 
 * The marks that say which rows you changed are hidden, and so is the warning that the online data
   has changed since you started your draft.
 
-A board that exists ONLY as your draft - a new system you created yourself - shows as an empty
+A board that exists ONLY as your draft - a new board you created yourself - shows as an empty
 board, because officially it does not exist yet.
 
 "Online source" means whichever source you download board data from: the stable source, or the

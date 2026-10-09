@@ -198,7 +198,7 @@ public class OnlineServicesTests
 
         // windows-path-literal: a hostile input, in a test that returns early off Windows.
         Assert.False(TryResolveValidatedLocalPath(
-            DataRoot, @"C:\Windows\System32\evil.dll", out _, out string driveFailure));
+            DataRoot, @"C:\Windows\Board32\evil.dll", out _, out string driveFailure));
         Assert.Equal("manifest file path must be relative", driveFailure);
 
         Assert.False(TryResolveValidatedLocalPath(

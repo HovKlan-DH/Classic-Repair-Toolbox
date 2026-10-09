@@ -6,7 +6,7 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // The DISK half of a BETA rollback (owner decision, 2026-09-27): listing each tree's copy of
-    // one system's folder, comparing files, and finding what the returning submissions did to the
+    // one board's folder, comparing files, and finding what the returning submissions did to the
     // shared folders - so BetaRollbackPlan can stay pure.
     //
     // *** CHEAP COMPARISONS FIRST (code review, 2026-09-27). *** The first version SHA-256'd both
@@ -29,23 +29,23 @@ namespace CRT.Server.Handlers.Submissions
     public static class BetaRollbackFiles
     {
         // ###########################################################################################
-        // The plan for one system, with the production hash of every path it restores - the value
+        // The plan for one board, with the production hash of every path it restores - the value
         // the writer's verified copy must see, so the bytes copied are the bytes compared.
         // ###########################################################################################
         public static async Task<BetaRollbackFilePlan> PlanAsync(
             string betaRoot,
             string productionRoot,
-            SystemRecord system,
+            BoardRecord board,
             IReadOnlyList<CarriedSubmission> returning,
             IReadOnlyList<SubmissionFileRecord> returningFiles,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(betaRoot);
             ArgumentException.ThrowIfNullOrWhiteSpace(productionRoot);
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(returningFiles);
 
-            string folder = BetaRollbackFiles.SystemFolder(system);
+            string folder = BetaRollbackFiles.BoardFolder(board);
 
             IReadOnlyList<string> beta = BetaRollbackFiles.FilesUnder(betaRoot, folder);
             IReadOnlyList<string> production = BetaRollbackFiles.FilesUnder(productionRoot, folder);
@@ -57,13 +57,13 @@ namespace CRT.Server.Handlers.Submissions
                 same[path] = await BetaRollbackFiles.SameBytesAsync(betaRoot, productionRoot, path, cancellationToken);
 
             IReadOnlyList<BetaRollbackSharedFile> shared = await BetaRollbackFiles.SharedFilesAsync(
-                betaRoot, productionRoot, system, returningFiles, cancellationToken);
+                betaRoot, productionRoot, board, returningFiles, cancellationToken);
 
-            // "Never promoted" is what the system's record says, never what an empty listing
+            // "Never promoted" is what the board's record says, never what an empty listing
             // suggests - a missing or unreadable production folder lists nothing too.
             bool promotedBefore =
-                system.ProductionPublishedUtc is not null ||
-                !string.IsNullOrWhiteSpace(system.ProductionContentHash);
+                board.ProductionPublishedUtc is not null ||
+                !string.IsNullOrWhiteSpace(board.ProductionContentHash);
 
             BetaRollbackPlanResult plan = BetaRollbackPlan.Build(
                 beta,
@@ -89,20 +89,20 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // *** ONLY THE SYSTEM'S OWN FOLDER is listed here. *** The shared folders are handled one
+        // *** ONLY THE BOARD'S OWN FOLDER is listed here. *** The shared folders are handled one
         // file at a time, and only for files a returning submission carried - see SharedFilesAsync.
         // Restoring a whole shared folder from production would revert every other board's change.
         // ###########################################################################################
-        public static string SystemFolder(SystemRecord system)
+        public static string BoardFolder(BoardRecord board)
         {
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
 
-            return $"{system.Manufacturer.Trim()}/{system.Hardware.Trim()}/{system.Board.Trim()}";
+            return $"{board.Manufacturer.Trim()}/{board.Hardware.Trim()}/{board.Board.Trim()}";
         }
 
         // Every file under one folder of a tree, as data-root-relative forward-slashed paths.
         // A folder that does not exist is no files, which is a real answer: production has none for
-        // a system never promoted.
+        // a board never promoted.
         public static IReadOnlyList<string> FilesUnder(string root, string folder)
         {
             if (!SubmissionPathRules.TryResolve(root, folder, out string resolved, out _))
@@ -184,7 +184,7 @@ namespace CRT.Server.Handlers.Submissions
         public static async Task<IReadOnlyList<BetaRollbackSharedFile>> SharedFilesAsync(
             string betaRoot,
             string productionRoot,
-            SystemRecord system,
+            BoardRecord board,
             IReadOnlyList<SubmissionFileRecord> returningFiles,
             CancellationToken cancellationToken = default)
         {
@@ -193,7 +193,7 @@ namespace CRT.Server.Handlers.Submissions
             // One entry per path. Two returning submissions naming one shared file both count as
             // "ours" if BETA holds EITHER one's bytes - both are being rolled back.
             foreach (IGrouping<string, SubmissionFileRecord> byPath in returningFiles
-                .Where(file => BetaRollbackFiles.IsShared(system, file.Path))
+                .Where(file => BetaRollbackFiles.IsShared(board, file.Path))
                 .GroupBy(file => file.Path.Trim(), StringComparer.Ordinal))
             {
                 string path = byPath.Key;
@@ -220,9 +220,9 @@ namespace CRT.Server.Handlers.Submissions
             return result;
         }
 
-        // Is this path in one of the two shared folders, for this system's manufacturer?
-        private static bool IsShared(SystemRecord system, string? path) =>
-            SubmissionFileScopes.Classify(system.Manufacturer, system.Hardware, system.Board, path) is
+        // Is this path in one of the two shared folders, for this board's manufacturer?
+        private static bool IsShared(BoardRecord board, string? path) =>
+            SubmissionFileScopes.Classify(board.Manufacturer, board.Hardware, board.Board, path) is
                 SubmissionFileScope.ManufacturerShared or SubmissionFileScope.GenericShared;
 
         // ###########################################################################################

@@ -14,7 +14,7 @@ namespace CRT
     // and sending views is BoardViewReporter's; both are tested. See Main.axaml.cs for the file map.
     //
     //   - LoadSelectedBoardAsync calls NoteBoardOnScreen after every board load, with the board now
-    //     on screen or null. Only a PUBLISHED board is counted: a contributor's draft-only system
+    //     on screen or null. Only a PUBLISHED board is counted: a contributor's draft-only board
     //     (and a legacy "_UserContribution" one) never leaves this machine.
     //   - The count timer fires when the board on screen has had its ten seconds.
     //   - The send timer fires BoardViewSendDelay after a view was counted, so several boards in a
@@ -50,14 +50,14 @@ namespace CRT
 
         private void NoteBoardOnScreen(HardwareBoardEntry? entry)
         {
-            string? systemId = entry is { IsPublished: true }
-                ? SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile)
+            string? boardId = entry is { IsPublished: true }
+                ? BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile)
                 : null;
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
             // The same board re-read: its view, counted or waiting, carries on.
-            if (!this.thisBoardViewTracker.Show(systemId, now))
+            if (!this.thisBoardViewTracker.Show(boardId, now))
                 return;
 
             this.thisBoardViewCountTimer?.Stop();
@@ -87,9 +87,9 @@ namespace CRT
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
-            if (this.thisBoardViewTracker.TakeDue(now) is string systemId)
+            if (this.thisBoardViewTracker.TakeDue(now) is string boardId)
             {
-                BoardViewReporter.Record(systemId, UserSettings.DownloadDataFromTestSource, now);
+                BoardViewReporter.Record(boardId, UserSettings.DownloadDataFromTestSource, now);
                 this.ScheduleBoardViewSend();
                 return;
             }

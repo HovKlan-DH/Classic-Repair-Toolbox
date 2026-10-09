@@ -346,20 +346,20 @@ namespace CRT
                 return (link.Target, null);
             }
 
-            string draftSystemFolder = this._mainWindow?.GetCurrentBoardEntry() is { } entry
-                ? DraftManager.GetViewedSystemFolder(entry.ExcelDataFile)
+            string draftBoardFolder = this._mainWindow?.GetCurrentBoardEntry() is { } entry
+                ? DraftManager.GetViewedBoardFolder(entry.ExcelDataFile)
                 : string.Empty;
 
-            return TabOverview.ResolveLocalFileTarget(DataManager.DataRoot, draftSystemFolder, link.Target);
+            return TabOverview.ResolveLocalFileTarget(DataManager.DataRoot, draftBoardFolder, link.Target);
         }
 
         // Pure apart from File.Exists, so the root pairing is testable without a window.
         internal static (string Target, string? Root) ResolveLocalFileTarget(
             string dataRoot,
-            string draftSystemFolder,
+            string draftBoardFolder,
             string storedFile)
         {
-            DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftSystemFolder, storedFile);
+            DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, storedFile);
 
             return resolved is not null
                 ? (resolved.FullPath, resolved.Root)

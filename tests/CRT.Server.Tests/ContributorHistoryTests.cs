@@ -93,26 +93,26 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** ONE READ OF THE SYSTEMS, HOWEVER MANY BOARDS THE CONTRIBUTOR HAS (code review,
-        // 2026-10-01). *** Each distinct system used to cost its own FindSystemAsync round-trip, on
+        // *** ONE READ OF THE BOARDS, HOWEVER MANY BOARDS THE CONTRIBUTOR HAS (code review,
+        // 2026-10-01). *** Each distinct board used to cost its own FindBoardAsync round-trip, on
         // every submission opened in the queue. The same lesson as GET /api/review/production,
-        // which asks a fixed number of queries however many systems wait.
+        // which asks a fixed number of queries however many boards wait.
         // ###########################################################################################
         [Fact]
-        public async Task The_history_reads_the_systems_once_however_many_boards_it_lists()
+        public async Task The_history_reads_the_boards_once_however_many_boards_it_lists()
         {
             var store = new FakeSubmissionStore();
 
-            store.Submissions[1] = Record(1, state: SubmissionState.Merged) with { SystemId = "Commodore/C64/250407" };
-            store.Submissions[2] = Record(2, state: SubmissionState.Merged) with { SystemId = "Commodore/C128/310378" };
-            store.Submissions[3] = Record(3, state: SubmissionState.Merged) with { SystemId = "Amstrad/CPC/464" };
+            store.Submissions[1] = Record(1, state: SubmissionState.Merged) with { BoardId = "Commodore/C64/250407" };
+            store.Submissions[2] = Record(2, state: SubmissionState.Merged) with { BoardId = "Commodore/C128/310378" };
+            store.Submissions[3] = Record(3, state: SubmissionState.Merged) with { BoardId = "Amstrad/CPC/464" };
             store.Submissions[4] = Record(4);
 
             ReviewContributorFacts facts = await ContributorHistory.BuildAsync(store.Submissions[4], store, new FakeAccountStore());
 
             Assert.Equal(3, facts.Submissions!.Count);
-            Assert.Equal(0, store.FindSystemCalls);
-            Assert.Equal(1, store.ListSystemsCalls);
+            Assert.Equal(0, store.FindBoardCalls);
+            Assert.Equal(1, store.ListBoardsCalls);
         }
 
         // A rejection counts when a maintainer made it - SetDecisionAsync records who; the automatic
@@ -182,8 +182,8 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // Each in the word its CONTRIBUTOR is told - the Systems screen's rule, so a submission reads
-        // the same on every screen: merged after its system last reached production is still
+        // Each in the word its CONTRIBUTOR is told - the Boards screen's rule, so a submission reads
+        // the same on every screen: merged after its board last reached production is still
         // "merged" (in BETA), merged before it is "published", and one a BETA rollback returned is
         // "returned" rather than plain "pending".
         // ###########################################################################################
@@ -244,12 +244,12 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** "[1] PUBLISHED TO STABLE" (owner request, 2026-10-01). *** Published counts the BETA
-        // data and the stable source together; PublishedToStable is the part whose system was
+        // data and the stable source together; PublishedToStable is the part whose board was
         // promoted after the decision - by the same rule that words each listed submission, so the
         // count and the list agree. This submission is left out, as every count leaves it out.
         // ###########################################################################################
         [Fact]
-        public void Published_to_stable_counts_the_published_submissions_whose_system_was_promoted_since()
+        public void Published_to_stable_counts_the_published_submissions_whose_board_was_promoted_since()
         {
             ContributorSubmission[] all =
             [
@@ -278,15 +278,15 @@ namespace CRT.Server.Tests
         {
             var store = new FakeSubmissionStore();
 
-            store.Submissions[1] = Record(1, state: SubmissionState.Merged) with { SystemId = "Commodore/C64/250407", DecidedUtc = Now.AddDays(-8) };
-            store.Submissions[2] = Record(2, state: SubmissionState.Merged) with { SystemId = "Commodore/C128/310378", DecidedUtc = Now.AddDays(-1) };
+            store.Submissions[1] = Record(1, state: SubmissionState.Merged) with { BoardId = "Commodore/C64/250407", DecidedUtc = Now.AddDays(-8) };
+            store.Submissions[2] = Record(2, state: SubmissionState.Merged) with { BoardId = "Commodore/C128/310378", DecidedUtc = Now.AddDays(-1) };
             store.Submissions[3] = Record(3);
 
             // The C64 reached production after #1 was decided; the C128 never has.
-            store.Systems["Commodore/C64/250407"] = new NewSubmission(
+            store.Boards["Commodore/C64/250407"] = new NewSubmission(
                 "Commodore/C64/250407", "Commodore", "C64", "250407",
                 null, "dennis@example.com", "192.0.2.1", "hash", "r0", "A change.", 1, [], Now, Now.AddHours(24));
-            store.ProductionSystems["Commodore/C64/250407"] = new PublishedSystemRow("2026-September-21", "production-hash", Now.AddDays(-5));
+            store.ProductionBoards["Commodore/C64/250407"] = new PublishedBoardRow("2026-September-21", "production-hash", Now.AddDays(-5));
 
             ReviewContributorFacts facts = await ContributorHistory.BuildAsync(store.Submissions[3], store, new FakeAccountStore());
 

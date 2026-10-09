@@ -7,7 +7,7 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     // Performs a publish: copies the submitted blobs into the data tree, generates the board
     // workbook and its sidecar, and records the new revision (NewContributeStrategy.md Phase 5,
-    // task 6). It no longer writes system.json - retired 2026-09-25, see RetiredSystemDescriptor -
+    // task 6). It no longer writes system.json - retired 2026-09-25, see RetiredBoardDescriptor -
     // and removes one an earlier build left in the board's folder.
     //
     // *** THIS WRITES THE BETA TREE AND NEVER PRODUCTION. *** Since 2026-09-25 Production IS
@@ -21,7 +21,7 @@ namespace CRT.Server.Handlers.Submissions
     // that plan and nothing more - it does not re-derive a path, and it must not, because
     // re-joining the original strings is exactly the traversal hole SubmissionPathRules closes.
     //
-    // *** PUBLISHING IS NOT ATOMIC AND CANNOT BE MADE SO HERE. *** A system is hundreds of files
+    // *** PUBLISHING IS NOT ATOMIC AND CANNOT BE MADE SO HERE. *** A board is hundreds of files
     // across a tree that a sync reads concurrently; there is no rename that swaps them all at
     // once. What this does instead is order the writes so a partial publish is RECOVERABLE:
     //
@@ -31,7 +31,7 @@ namespace CRT.Server.Handlers.Submissions
     //      half way through used to leave half a board replaced;
     //   1. files next, each hashed as it is copied and renamed into place only on a match;
     //   2. the workbook next, which is what makes those files reachable;
-    //   3. the database row last of all, which is what records the system as being at this
+    //   3. the database row last of all, which is what records the board as being at this
     //      revision.
     //
     // An interrupted publish therefore leaves a tree carrying files nothing points at - wasted
@@ -77,7 +77,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default) =>
             this.ExecuteAsync(plan, boardData, calibrations, submissionId, nowUtc, listing: null, cancellationToken);
 
-        // `listing`: a NEW system's row for the main Excel data file (2026-09-27), written after the
+        // `listing`: a NEW board's row for the main Excel data file (2026-09-27), written after the
         // board and before the database - see step 2c. Null for everything already listed.
         public async Task<PublishOutcome> ExecuteAsync(
             PublishPlanDetail plan,
@@ -152,8 +152,8 @@ namespace CRT.Server.Handlers.Submissions
                     // ###########################################################################################
                     this.thisLogger.LogError(
                         ex,
-                        "Publish of {SystemId} stopped: [{Path}] could not be written.",
-                        plan.SystemId,
+                        "Publish of {BoardId} stopped: [{Path}] could not be written.",
+                        plan.BoardId,
                         file.RelativePath);
 
                     return PublishOutcome.Failed(
@@ -177,8 +177,8 @@ namespace CRT.Server.Handlers.Submissions
                     // Stopping here leaves the tree as it was for everything downstream, because
                     // the workbook has not been touched.
                     this.thisLogger.LogError(
-                        "Publish of {SystemId} stopped: blob {Hash} for {Path} is not in the store.",
-                        plan.SystemId,
+                        "Publish of {BoardId} stopped: blob {Hash} for {Path} is not in the store.",
+                        plan.BoardId,
                         file.Sha256,
                         file.RelativePath);
 
@@ -217,7 +217,7 @@ namespace CRT.Server.Handlers.Submissions
                 //
                 // *** TAKEN FROM THE PLAN, NOT COMPUTED AGAIN (2026-09-26). *** It used to stamp
                 // FormatRevisionDate(nowUtc) here while the plan's descriptor - which is what
-                // reaches `systems.current_revision` at step 4 below - was built from the SUBMITTED
+                // reaches `boards.current_revision` at step 4 below - was built from the SUBMITTED
                 // date. So the workbook and the database row disagreed, and the row is what the
                 // next draft re-bases against. ApprovePublishFlow.BuildPlan now stamps it once and
                 // both read that one value.
@@ -246,14 +246,14 @@ namespace CRT.Server.Handlers.Submissions
                 // ###########################################################################################
                 this.thisLogger.LogError(
                     ex,
-                    "Publish of {SystemId} stopped while writing the workbook [{Path}]. The board's "
+                    "Publish of {BoardId} stopped while writing the workbook [{Path}]. The board's "
                     + "FILES were already replaced, so the tree is part-published until this is re-run.",
-                    plan.SystemId,
+                    plan.BoardId,
                     plan.WorkbookPath);
 
                 return PublishOutcome.Failed(
                     $"The board workbook could not be written ({ex.Message}). The board's image and "
-                    + "attachment files were already replaced, so this system is part-published - "
+                    + "attachment files were already replaced, so this board is part-published - "
                     + "re-run the publish once the server configuration is fixed.");
             }
 
@@ -285,7 +285,7 @@ namespace CRT.Server.Handlers.Submissions
                 // holding these highlights keeps its bytes, so "Publish to production" does not list
                 // it as a file to copy when nothing in it changed - see WriteIfChanged.
                 if (!BoardSidecarWriter.WriteIfChanged(plan.WorkbookPath, boardData.ComponentHighlights, calibrations))
-                    this.thisLogger.LogInformation("The highlight file of {SystemId} is unchanged and was kept as it is.", plan.SystemId);
+                    this.thisLogger.LogInformation("The highlight file of {BoardId} is unchanged and was kept as it is.", plan.BoardId);
 
                 sidecarHash = await PublishExecutor
                     .ComputeFileHashAsync(plan.SidecarPath, cancellationToken)
@@ -304,18 +304,18 @@ namespace CRT.Server.Handlers.Submissions
                 // ###########################################################################################
                 this.thisLogger.LogError(
                     ex,
-                    "Publish of {SystemId} stopped while writing the highlight file [{Path}]. The board's "
+                    "Publish of {BoardId} stopped while writing the highlight file [{Path}]. The board's "
                     + "FILES and WORKBOOK were already replaced, so the tree is part-published until this is re-run.",
-                    plan.SystemId,
+                    plan.BoardId,
                     plan.SidecarPath);
 
                 return PublishOutcome.Failed(
                     $"The board's highlight file could not be written ({ex.Message}). The board's files and "
-                    + "workbook were already replaced, so this system is part-published - approve again once the "
+                    + "workbook were already replaced, so this board is part-published - approve again once the "
                     + "server configuration is fixed.");
             }
 
-            // ---- 2c. A NEW system's row in the main Excel data file (owner request, 2026-09-27) --
+            // ---- 2c. A NEW board's row in the main Excel data file (owner request, 2026-09-27) --
             //
             // What makes the board appear in CRT's drop-downs at all - CRT finds boards only through
             // that file. After the board's two files, so the row never names a board that is not
@@ -331,8 +331,8 @@ namespace CRT.Server.Handlers.Submissions
                 if (!edit.IsDone)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {SystemId} stopped: the board is written but could not be added to [{Master}]: {Failure}",
-                        plan.SystemId, listing.MasterPath, edit.Failure);
+                        "Publish of {BoardId} stopped: the board is written but could not be added to [{Master}]: {Failure}",
+                        plan.BoardId, listing.MasterPath, edit.Failure);
 
                     return PublishOutcome.Failed(
                         $"The board was written, but it could not be added to the drop-down lists: {edit.Failure} " +
@@ -351,11 +351,11 @@ namespace CRT.Server.Handlers.Submissions
             // promotion - which compares exactly this hash to decide what is waiting - would never
             // offer the board. A submission that only MOVES A HIGHLIGHT touches neither a row nor
             // an uploaded file, so the sidecar's hash is the only thing that can move it at all.
-            SystemDescriptor descriptor = plan.DescriptorWithWorkbook(workbookHash, sidecarHash);
+            BoardDescriptor descriptor = plan.DescriptorWithWorkbook(workbookHash, sidecarHash);
 
             // A system.json an earlier build wrote into this folder: not relevant to users, and
-            // no longer kept. See RetiredSystemDescriptor.
-            RetiredSystemDescriptor.TryRemove(plan.DataRoot, plan.SystemFolder, this.thisLogger);
+            // no longer kept. See RetiredBoardDescriptor.
+            RetiredBoardDescriptor.TryRemove(plan.DataRoot, plan.BoardFolder, this.thisLogger);
 
             // ---- 4. The database ---------------------------------------------------------------
             //
@@ -363,8 +363,8 @@ namespace CRT.Server.Handlers.Submissions
             // it. The reverse order would leave a contributor's next submission diffing against a
             // revision that was never written.
             await this.thisStore
-                .SetSystemPublishedAsync(
-                    plan.SystemId,
+                .SetBoardPublishedAsync(
+                    plan.BoardId,
                     descriptor.Revision,
                     descriptor.ContentHash,
                     nowUtc,
@@ -379,8 +379,8 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             this.thisLogger.LogInformation(
-                "Published {SystemId} revision {Revision} ({FileCount} files, workbook {Workbook}).",
-                plan.SystemId,
+                "Published {BoardId} revision {Revision} ({FileCount} files, workbook {Workbook}).",
+                plan.BoardId,
                 descriptor.Revision,
                 plan.Files.Count,
                 plan.WorkbookFileName);
@@ -401,7 +401,7 @@ namespace CRT.Server.Handlers.Submissions
                 .Append(plan.WorkbookPath)
                 .Append(plan.SidecarPath);
 
-            // The main Excel data file too, for a new system: written through the same root.
+            // The main Excel data file too, for a new board: written through the same root.
             if (listing is not null)
             {
                 destinations = destinations.Append(listing.MasterPath);
@@ -409,16 +409,16 @@ namespace CRT.Server.Handlers.Submissions
                 // Checked before the first byte, like everything else here: a row placed after one
                 // that has since left the list must not be found out after the board is written.
                 if (!MasterListing.TryRead(listing.MasterPath, out IReadOnlyList<MasterListingRow> rows, out string why))
-                    return $"The main Excel data file could not be read ({why}), so the new system could not be listed. Nothing was changed.";
+                    return $"The main Excel data file could not be read ({why}), so the new board could not be listed. Nothing was changed.";
 
-                if (MasterListing.IndexOfSystem(rows, listing.Row.SystemId) < 0 &&
-                    !SystemListingRules.AfterIsListed(rows, listing.AfterExcelDataFile))
+                if (MasterListing.IndexOfBoard(rows, listing.Row.BoardId) < 0 &&
+                    !BoardListingRules.AfterIsListed(rows, listing.AfterExcelDataFile))
                 {
-                    return $"The new system was placed after [{listing.AfterExcelDataFile}], which is no longer in the " +
-                        "drop-down lists. Place it again in the Systems screen. Nothing was changed.";
+                    return $"The new board was placed after [{listing.AfterExcelDataFile}], which is no longer in the " +
+                        "drop-down lists. Place it again in the Boards screen. Nothing was changed.";
                 }
 
-                if (MasterListing.NamesTakenBy(rows, listing.Row.SystemId, listing.Row.HardwareName, listing.Row.BoardName) is MasterListingRow taken)
+                if (MasterListing.NamesTakenBy(rows, listing.Row.BoardId, listing.Row.HardwareName, listing.Row.BoardName) is MasterListingRow taken)
                     return $"{MasterListing.NamesTakenMessage(taken)} Nothing was changed.";
             }
 
@@ -429,8 +429,8 @@ namespace CRT.Server.Handlers.Submissions
                 if (link is not null)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {SystemId} refused: [{Link}] is a symbolic link on the way to [{Destination}].",
-                        plan.SystemId, link, destination);
+                        "Publish of {BoardId} refused: [{Link}] is a symbolic link on the way to [{Destination}].",
+                        plan.BoardId, link, destination);
 
                     return $"The published tree contains a symbolic link at [{link}], and publishing through it " +
                         "could write outside the data tree. Nothing was changed. Remove the link on the server.";
@@ -448,9 +448,9 @@ namespace CRT.Server.Handlers.Submissions
             if (refusing.Count > 0)
             {
                 this.thisLogger.LogError(
-                    "Publish of {SystemId} refused before writing anything: the service may not write into {Folders}. "
+                    "Publish of {BoardId} refused before writing anything: the service may not write into {Folders}. "
                     + "Files copied in by hand as another user do this. Give the service its access back with: {Command}",
-                    plan.SystemId,
+                    plan.BoardId,
                     string.Join(", ", refusing),
                     TreeWriteAccess.FixCommand(refusing));
 
@@ -468,8 +468,8 @@ namespace CRT.Server.Handlers.Submissions
                 if (!blob.Exists)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {SystemId} stopped: blob {Hash} for {Path} is not in the store.",
-                        plan.SystemId, file.Sha256, file.RelativePath);
+                        "Publish of {BoardId} stopped: blob {Hash} for {Path} is not in the store.",
+                        plan.BoardId, file.Sha256, file.RelativePath);
 
                     return $"The content for [{file.RelativePath}] is no longer in the blob store, so the publish " +
                         "was stopped before any board file was changed.";
@@ -478,8 +478,8 @@ namespace CRT.Server.Handlers.Submissions
                 if (!blob.HashMatches)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {SystemId} stopped: blob {Hash} for {Path} no longer hashes to its name.",
-                        plan.SystemId, file.Sha256, file.RelativePath);
+                        "Publish of {BoardId} stopped: blob {Hash} for {Path} no longer hashes to its name.",
+                        plan.BoardId, file.Sha256, file.RelativePath);
 
                     return $"The stored content for [{file.RelativePath}] no longer matches what was submitted, so " +
                         "the publish was stopped before any board file was changed.";
@@ -497,11 +497,11 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // The SHA-256 of a file on disk, streamed.
         //
-        // Streamed rather than read into memory because a board workbook for a large system is not
+        // Streamed rather than read into memory because a board workbook for a large board is not
         // small, and the strategy document's own performance note is explicit: never load a whole
-        // system into memory to compute a hash.
+        // board into memory to compute a hash.
         //
-        // Lower-case hex, matching SystemDescriptorRules.ComputeContentHash and
+        // Lower-case hex, matching BoardDescriptorRules.ComputeContentHash and
         // dataChecksums.json - a hash that differs only in case compares unequal everywhere it is
         // used, which reads as every client being permanently out of date.
         // ###########################################################################################
@@ -522,7 +522,7 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     // ###########################################################################################
-    // A new system's row for the main Excel data file: which file, the row, and the row it goes
+    // A new board's row for the main Excel data file: which file, the row, and the row it goes
     // after (null: first). See MasterListing.
     // ###########################################################################################
     public sealed record MasterRowInsert(string MasterPath, MasterListingRow Row, string? AfterExcelDataFile);
@@ -536,7 +536,7 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public sealed class PublishOutcome
     {
-        private PublishOutcome(bool isPublished, SystemDescriptor? descriptor, string workbookSha256, int fileCount, string? failure)
+        private PublishOutcome(bool isPublished, BoardDescriptor? descriptor, string workbookSha256, int fileCount, string? failure)
         {
             this.IsPublished = isPublished;
             this.Descriptor = descriptor;
@@ -547,7 +547,7 @@ namespace CRT.Server.Handlers.Submissions
 
         public bool IsPublished { get; }
 
-        public SystemDescriptor? Descriptor { get; }
+        public BoardDescriptor? Descriptor { get; }
 
         public string WorkbookSha256 { get; }
 
@@ -556,7 +556,7 @@ namespace CRT.Server.Handlers.Submissions
         // Written for a human reading a log or a review screen, not for a machine to branch on.
         public string? Failure { get; }
 
-        public static PublishOutcome Published(SystemDescriptor descriptor, string workbookSha256, int fileCount) =>
+        public static PublishOutcome Published(BoardDescriptor descriptor, string workbookSha256, int fileCount) =>
             new(true, descriptor, workbookSha256, fileCount, null);
 
         public static PublishOutcome Failed(string failure) =>

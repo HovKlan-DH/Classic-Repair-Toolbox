@@ -58,8 +58,11 @@ namespace Handlers.DataHandling
         // Additions never raise it. And from CRT 3.0.0's release it should not move at all - a break
         // of a released CRT is refused by the same test (crt-<version>.txt) unless the project owner
         // decides it, and raising this then turns away every CRT built before.
+        //
+        // Raised to 2 on 2026-10-09: every route and field that said "system" says "board" (owner
+        // decision - /api/review/systems/... is /api/review/boards/..., systemId is boardId).
         // ###########################################################################################
-        public const int ApiRevision = 1;
+        public const int ApiRevision = 2;
 
         // The header the review and submission clients send ApiRevision in.
         public const string ApiRevisionHeader = "X-CRT-Api-Revision";

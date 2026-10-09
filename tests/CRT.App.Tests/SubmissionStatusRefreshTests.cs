@@ -49,7 +49,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         {
             SubmissionId = id,
             UploadToken = "token",
-            SystemId = "Commodore/C64/250407/Data.xlsx",
+            BoardId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-1),
             LastKnownState = state
         });
@@ -126,7 +126,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         {
             SubmissionId = 7,
             UploadToken = "token",
-            SystemId = "Commodore/C64/250407/Data.xlsx",
+            BoardId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-3),
             DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-2),
             LastKnownState = "merged"
@@ -136,7 +136,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         {
             SubmissionId = 8,
             UploadToken = "token",
-            SystemId = "Commodore/C64/250407/Data.xlsx",
+            BoardId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-90),
             DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-89),
             LastKnownState = "merged",
@@ -149,7 +149,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         {
             SubmissionId = 9,
             UploadToken = "token",
-            SystemId = "Commodore/C64/250407/Data.xlsx",
+            BoardId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-90),
             DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-89),
             LastKnownState = "merged",
@@ -180,7 +180,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         {
             SubmissionId = 11,
             UploadToken = "token",
-            SystemId = "Commodore/C64/250407/Data.xlsx",
+            BoardId = "Commodore/C64/250407/Data.xlsx",
             SentUtc = SubmissionStatusRefreshTests.Now.AddDays(-5),
             DecidedUtc = SubmissionStatusRefreshTests.Now.AddDays(-4),
             LastKnownState = "merged",
@@ -323,7 +323,7 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
 
     // ###########################################################################################
     // *** A SUBMISSION THE SERVER NO LONGER KNOWS (code review, 2026-10-04). *** One deleted with
-    // its system answers 404, and was asked about every minute for ever. Now it is marked, keeps its
+    // its board answers 404, and was asked about every minute for ever. Now it is marked, keeps its
     // last state, and is asked about once a day - and any later answer clears the mark.
     // ###########################################################################################
     [Fact]

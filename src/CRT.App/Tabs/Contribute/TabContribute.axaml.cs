@@ -31,6 +31,11 @@ namespace CRT
         {
             // Nothing can be contributed - not even a new component - until a board is loaded.
             this.AddNewComponentButton.IsEnabled = boardData != null;
+            this.EditBoardAsDraftButton.IsEnabled = boardData != null;
+
+            // Why "Edit board as draft" made no draft is about the board it was pressed on - never
+            // left standing under another one (code review, 2026-10-09).
+            this.ShowEditAsDraftProblem(null);
 
             if (boardData == null)
             {
@@ -135,11 +140,33 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // "Edit board as draft" - the board shown as the contributor's own draft, in the Drafts tab's
+        // table; the draft there is when it has one (Main.EditBoardAsDraft.cs). Fire and forget, as
+        // "Add a new board" below.
+        // ###########################################################################################
+        private void OnEditBoardAsDraftClick(object? sender, RoutedEventArgs e)
+        {
+            if (this.thisMainWindow == null)
+            {
+                return;
+            }
+
+            _ = this.thisMainWindow.EditBoardAsDraftAsync();
+        }
+
+        // Why "Edit board as draft" made no draft - or nothing, to clear it.
+        internal void ShowEditAsDraftProblem(string? problem)
+        {
+            this.EditAsDraftProblemText.Text = problem ?? string.Empty;
+            this.EditAsDraftProblemText.IsVisible = !string.IsNullOrWhiteSpace(problem);
+        }
+
+        // ###########################################################################################
         // Creates a whole new hardware/board of the user's own as a local draft (session 2c, task 9)
         // - the board that is not in the list at all, rather than the component that is not on the
         // board. Unlike "Add new component" this needs no loaded board, which is the point.
         // ###########################################################################################
-        private void OnAddNewSystemClick(object? sender, RoutedEventArgs e)
+        private void OnAddNewBoardClick(object? sender, RoutedEventArgs e)
         {
             if (this.thisMainWindow == null)
             {
@@ -148,7 +175,7 @@ namespace CRT
 
             // Fire and forget: the dialog owns the rest of the sequence, and awaiting here would
             // mean an async void handler for no benefit - the same shape the worklog buttons use.
-            _ = this.thisMainWindow.OpenNewSystemWindowAsync();
+            _ = this.thisMainWindow.OpenNewBoardWindowAsync();
         }
     }
 

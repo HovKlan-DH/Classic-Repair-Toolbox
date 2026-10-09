@@ -27,7 +27,7 @@ namespace CRT
 
         // Whether a file whose two sides hold the same bytes is headed "Unchanged". It is worth
         // saying where the cell could hide a file replaced under its own name; the Maintainer
-        // tab says no for a NEW system, whose two sides are both the submission, so the
+        // tab says no for a NEW board, whose two sides are both the submission, so the
         // word said nothing there (owner request, 2026-09-26).
         bool SaysUnchanged => true;
 

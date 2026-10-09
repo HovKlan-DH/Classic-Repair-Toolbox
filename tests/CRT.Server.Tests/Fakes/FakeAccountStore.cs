@@ -39,9 +39,9 @@ namespace CRT.Server.Tests.Fakes
 
         public List<(string? Email, string? Ip, DateTimeOffset When)> AuthFailures { get; } = [];
 
-        // The maintainer pools: (system id, account id), exactly the `maintainers` table's key. A
+        // The maintainer pools: (board id, account id), exactly the `maintainers` table's key. A
         // test puts an account in a pool by adding to this directly.
-        public HashSet<(string SystemId, long AccountId)> Maintainers { get; } = [];
+        public HashSet<(string BoardId, long AccountId)> Maintainers { get; } = [];
 
         // -----------------------------------------------------------------------------------
         // Accounts.
@@ -57,8 +57,27 @@ namespace CRT.Server.Tests.Fakes
 
         public Task<AccountRecord?> FindByIdAsync(long accountId, CancellationToken cancellationToken = default)
         {
+            this.FindByIdCount++;
+
             return Task.FromResult(this.Accounts.TryGetValue(accountId, out AccountRecord? account) ? account : null);
         }
+
+        public Task<IReadOnlyDictionary<long, AccountRecord>> FindByIdsAsync(IReadOnlyCollection<long> accountIds, CancellationToken cancellationToken = default)
+        {
+            this.FindByIdsCount++;
+
+            IReadOnlyDictionary<long, AccountRecord> found = accountIds
+                .Distinct()
+                .Where(this.Accounts.ContainsKey)
+                .ToDictionary(id => id, id => this.Accounts[id]);
+
+            return Task.FromResult(found);
+        }
+
+        // How often each lookup was asked - for a test holding a screen to one query for its people.
+        public int FindByIdCount { get; private set; }
+
+        public int FindByIdsCount { get; private set; }
 
         public Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
         {
@@ -334,19 +353,19 @@ namespace CRT.Server.Tests.Fakes
         // Maintainer pools (Phase 6 roles).
         // -----------------------------------------------------------------------------------
 
-        public Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
+        public Task<IReadOnlySet<string>> GetReviewedBoardIdsAsync(long accountId, CancellationToken cancellationToken = default)
         {
             IReadOnlySet<string> ids = this.Maintainers
                 .Where(row => row.AccountId == accountId)
-                .Select(row => row.SystemId)
+                .Select(row => row.BoardId)
                 .ToHashSet(StringComparer.Ordinal);
 
             return Task.FromResult(ids);
         }
 
-        public Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(this.MaintainerRows(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal)));
+            return Task.FromResult(this.MaintainerRows(row => string.Equals(row.BoardId, boardId, StringComparison.Ordinal)));
         }
 
         public Task<IReadOnlyList<MaintainerRecord>> ListMaintainersAsync(CancellationToken cancellationToken = default)
@@ -356,34 +375,34 @@ namespace CRT.Server.Tests.Fakes
 
         // Joined to the account the way the real query is, and an orphan pair (no such account)
         // is dropped the way an inner join drops it.
-        private IReadOnlyList<MaintainerRecord> MaintainerRows(Func<(string SystemId, long AccountId), bool> where)
+        private IReadOnlyList<MaintainerRecord> MaintainerRows(Func<(string BoardId, long AccountId), bool> where)
         {
             return this.Maintainers
                 .Where(where)
                 .Where(row => this.Accounts.ContainsKey(row.AccountId))
                 .Select(row => new MaintainerRecord(
-                    row.SystemId,
+                    row.BoardId,
                     row.AccountId,
                     this.Accounts[row.AccountId].DisplayName,
                     this.Accounts[row.AccountId].Email,
                     this.Accounts[row.AccountId].IsAdministrator,
                     this.Accounts[row.AccountId].IsVerified,
                     this.Accounts[row.AccountId].IsLocked))
-                .OrderBy(row => row.SystemId, StringComparer.Ordinal)
+                .OrderBy(row => row.BoardId, StringComparer.Ordinal)
                 .ThenBy(row => row.DisplayName, StringComparer.Ordinal)
                 .ThenBy(row => row.AccountId)
                 .ToList();
         }
 
-        public Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        public Task AddMaintainerAsync(string boardId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
-            this.Maintainers.Add((systemId, accountId));
+            this.Maintainers.Add((boardId, accountId));
             return Task.CompletedTask;
         }
 
-        public Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        public Task RemoveMaintainerAsync(string boardId, long accountId, CancellationToken cancellationToken = default)
         {
-            this.Maintainers.Remove((systemId, accountId));
+            this.Maintainers.Remove((boardId, accountId));
             return Task.CompletedTask;
         }
 
@@ -425,7 +444,7 @@ namespace CRT.Server.Tests.Fakes
 
             this.Invitations[id] = new MaintainerInvitationRecord(
                 id,
-                invitation.SystemId,
+                invitation.BoardId,
                 invitation.Email,
                 invitation.NormalisedEmail,
                 invitation.InvitedByAccountId,
@@ -452,7 +471,7 @@ namespace CRT.Server.Tests.Fakes
         {
             IReadOnlyList<MaintainerInvitationRecord> open = this.Invitations.Values
                 .Where(invitation => invitation.IsOpenAt(nowUtc))
-                .OrderBy(invitation => invitation.SystemId, StringComparer.Ordinal)
+                .OrderBy(invitation => invitation.BoardId, StringComparer.Ordinal)
                 .ThenBy(invitation => invitation.CreatedUtc)
                 .ThenBy(invitation => invitation.Id)
                 .ToList();
@@ -486,7 +505,7 @@ namespace CRT.Server.Tests.Fakes
                 .Where(invitation => invitation.NormalisedEmail == account.NormalisedEmail && invitation.IsOpenAt(whenUtc))
                 .ToList())
             {
-                this.Maintainers.Add((invitation.SystemId, id));
+                this.Maintainers.Add((invitation.BoardId, id));
                 this.Invitations[invitation.Id] = invitation with { AcceptedUtc = whenUtc };
             }
 

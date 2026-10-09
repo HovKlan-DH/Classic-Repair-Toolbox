@@ -25,7 +25,7 @@ namespace Handlers.DataHandling
         // as "newer".
         Changed,
 
-        // No comparison is possible or meaningful: a draft-only system (which has no official
+        // No comparison is possible or meaningful: a draft-only board (which has no official
         // counterpart at all), or a draft written before base revisions were recorded on every
         // path. Never warned about - an unknown base is not evidence of drift.
         Unknown,

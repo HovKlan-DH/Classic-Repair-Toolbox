@@ -27,11 +27,11 @@ public sealed class BoardTableEditorTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
-    private string WorkbookPath => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, BoardTableEditorTests.SystemKey);
+    private string WorkbookPath => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, BoardTableEditorTests.BoardKey);
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -56,7 +56,7 @@ public sealed class BoardTableEditorTests : IDisposable
         this.WriteDraft(draft);
 
         var editor = new BoardTableEditor();
-        Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.SystemKey, published));
+        Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published));
         editor.SelectSheet(Components(editor));
 
         return editor;
@@ -355,8 +355,8 @@ public sealed class BoardTableEditorTests : IDisposable
             DataGridRow ghostRow = window.GetVisualDescendants().OfType<DataGridRow>().Single(r => ReferenceEquals(r.DataContext, ghost));
             Assert.Contains("BoardTableDeleted", ghostRow.Classes);
 
-            // The class alone proves nothing: the grid draws cell text with DataGridSearchTextBlock,
-            // a TextBlock SUBCLASS, and a plain "TextBlock" style selector matches only the exact
+            // The class alone proves nothing: cell text is drawn by BoardTableCellText, a TextBlock
+            // SUBCLASS, and a plain "TextBlock" style selector matches only the exact
             // type - so the strike-through once matched nothing while the class sat there looking
             // right. Read the decoration off the text actually drawn.
             TextBlock ghostText = CellOnScreen(window, ghost, Column(BoardWorkbookSchema.ColBoardLabel))
@@ -771,7 +771,52 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
             Assert.Equal(
                 "CPU 6510",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.SystemKey)!.Components.Single().FriendlyName);
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
+        });
+    }
+
+    // ###########################################################################################
+    // The host's name for the published side - the data source it came from (owner request,
+    // 2026-10-05) - outlives a save. Both saves reopen the table on the file they wrote, and a
+    // reopened table that forgot the name went back to "Published value". Both paths, as each
+    // builds its own re-read.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_published_sides_name_is_kept_when_a_save_reopens_the_table()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            this.WriteDraft(Board(Component("U1", "CPU 6510"), Component("U2", "RAM")));
+
+            var editor = new BoardTableEditor();
+            Assert.True(editor.Load(
+                this.DraftsRoot,
+                BoardTableEditorTests.BoardKey,
+                Board(Component("U1", "CPU"), Component("U2", "RAM")),
+                baselineLabel: "BETA source value"));
+
+            var overlay = new BusyOverlay { LimitOverrideForTests = token => Task.Delay(Timeout.Infinite, token) };
+            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            string? ToolTipOfU1() => Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].ToolTip;
+
+            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
+
+            DraftTableSession opened = editor.SessionForTests!;
+            Row(editor, "U2").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "SRAM";
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
+            Assert.NotSame(opened, editor.SessionForTests);
+            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
+
+            DraftTableSession saved = editor.SessionForTests!;
+            Row(editor, "U2").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "DRAM";
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+            Assert.NotSame(saved, editor.SessionForTests);
+            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
+
+            window.Close();
         });
     }
 
@@ -809,7 +854,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
             Assert.Equal(
                 "CPU 6510",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.SystemKey)!.Components.Single().FriendlyName);
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
 
             window.Close();
         });
@@ -902,7 +947,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.True(editor.HasUnsavedChanges);
             Assert.Equal(
                 "From Excel",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.SystemKey)!.Components.Single().FriendlyName);
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
         });
     }
 
@@ -2140,7 +2185,7 @@ public sealed class BoardTableEditorTests : IDisposable
     // *** THE PICK OUTLIVES A TABLE IT WOULD SHOW NOTHING OF. *** The filter is off there - in a
     // table with nothing published nothing is added, changed or deleted, and the three pills are
     // hidden - and on again for the next table with such rows, as a maintainer moves through the
-    // queue past a new system.
+    // queue past a new board.
     // ###########################################################################################
     [Fact]
     public void A_pick_comes_back_after_a_table_it_would_show_nothing_of()
@@ -2168,7 +2213,7 @@ public sealed class BoardTableEditorTests : IDisposable
     // *** A HOST IS TOLD WHEN THE PICK CHANGES - AND ONLY THEN (2026-09-29). *** CRT's Maintainer
     // tab remembers the filter between runs through FilterWantedChanged. A table it would show
     // nothing of turns the FILTER off by itself; were that reported, the host would save "nothing
-    // picked" as the maintainer's choice every time a new system went past. A pill raises it, the
+    // picked" as the maintainer's choice every time a new board went past. A pill raises it, the
     // same pick twice does not, and a table turning its own filter off does not.
     // ###########################################################################################
     [Fact]
@@ -2243,7 +2288,7 @@ public sealed class BoardTableEditorTests : IDisposable
     {
         // Reported as "the Board schematics sheet is empty although it has 3 schematic images":
         // "Show changes only" was ticked on a published board's table, and the SAME editor then
-        // opened a system with nothing published - where every row is unchanged, and so a filter
+        // opened a board with nothing published - where every row is unchanged, and so a filter
         // still on hid every row with no way to see why. The change pills picked are the same case.
         UiTest.Run(() =>
         {
@@ -2600,7 +2645,7 @@ public sealed class BoardTableEditorTests : IDisposable
                 "owner");
 
             var editor = new BoardTableEditor();
-            Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.SystemKey, published: null));
+            Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published: null));
 
             Assert.True(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
         });

@@ -112,11 +112,11 @@ namespace Handlers.DataHandling
             }
 
             // ###########################################################################################
-            // THE SystemId IS REQUIRED AND MUST BE THE RIGHT SHAPE.
+            // THE BoardId IS REQUIRED AND MUST BE THE RIGHT SHAPE.
             //
             // It is "Manufacturer/Hardware/Board" and the client can always compute it from what
             // the contributor typed, so an absent or malformed one is a broken client rather than
-            // a new system - a NEW system carries an id too, and is new because no `systems` row
+            // a new board - a NEW board carries an id too, and is new because no `boards` row
             // holds that id yet.
             //
             // This matters more than an ordinary field check: the value is a DATABASE PRIMARY KEY
@@ -124,41 +124,41 @@ namespace Handlers.DataHandling
             // published tree. A malformed one is either a broken client or an attempt to attach a
             // submission to something it does not belong to.
             //
-            // Shape is all that can be decided here. Whether the id names a system that EXISTS,
+            // Shape is all that can be decided here. Whether the id names a board that EXISTS,
             // and whether this contributor may submit to it, are database questions the server
             // answers separately.
             // ###########################################################################################
-            if (!SystemDescriptorRules.IsValidSystemId(manifest.SystemId))
+            if (!BoardDescriptorRules.IsValidBoardId(manifest.BoardId))
             {
                 findings.Add(SubmissionValidator.Error(
-                    "identity.system_id_malformed",
+                    "identity.board_id_malformed",
                     string.Empty,
-                    "The submission does not carry a valid system identifier. " +
+                    "The submission does not carry a valid board identifier. " +
                     "This is a fault in the submitting application rather than in your data."));
             }
 
             // The id is built from these three, so a disagreement means the client assembled the
             // manifest inconsistently - and the id is what everything keys off, so the parts would
             // silently be the wrong ones on any screen that showed them.
-            if (SystemDescriptorRules.IsValidSystemId(manifest.SystemId)
+            if (BoardDescriptorRules.IsValidBoardId(manifest.BoardId)
                 && !string.Equals(
-                    manifest.SystemId,
-                    SystemDescriptorRules.BuildSystemId(manifest.Manufacturer, manifest.Hardware, manifest.Board),
+                    manifest.BoardId,
+                    BoardDescriptorRules.BuildBoardId(manifest.Manufacturer, manifest.Hardware, manifest.Board),
                     StringComparison.Ordinal))
             {
                 findings.Add(SubmissionValidator.Error(
-                    "identity.system_id_mismatch",
+                    "identity.board_id_mismatch",
                     string.Empty,
-                    "The submission's system identifier does not match the manufacturer, hardware " +
+                    "The submission's board identifier does not match the manufacturer, hardware " +
                     "and board it names. This is a fault in the submitting application."));
             }
 
             // ###########################################################################################
             // *** THE PARTS MUST ALREADY BE IN THEIR CANONICAL FORM (security review, 2026-09-25). ***
             //
-            // BuildSystemId trims and collapses whitespace before joining, so "Commodore" followed
+            // BuildBoardId trims and collapses whitespace before joining, so "Commodore" followed
             // by a thousand spaces produced a VALID, MATCHING id - and the raw thousand-character
-            // part then went into systems.manufacturer, a VARCHAR(100), failing the insert with a
+            // part then went into boards.manufacturer, a VARCHAR(100), failing the insert with a
             // 500. The client builds these from folder names, which are already canonical, so
             // requiring equality refuses nothing real.
             // ###########################################################################################
@@ -175,7 +175,7 @@ namespace Handlers.DataHandling
 
             // ###########################################################################################
             // *** A BOARD MAY NOT SIT WHERE THE SHARED FOLDERS DO. *** A manufacturer called
-            // "Generic shared files", or hardware called "Shared files", would make this system's
+            // "Generic shared files", or hardware called "Shared files", would make this board's
             // own folder the same place as a shared one - and a submission may change its own folder
             // freely, so that would turn the shared-folder rules in SubmissionFileScope inside out.
             //
@@ -187,8 +187,8 @@ namespace Handlers.DataHandling
             {
                 findings.Add(SubmissionValidator.Error(
                     "identity.reserved_folder",
-                    manifest.SystemId,
-                    $"A board cannot be named [{manifest.SystemId}]: that is where the shared files live."));
+                    manifest.BoardId,
+                    $"A board cannot be named [{manifest.BoardId}]: that is where the shared files live."));
             }
 
             if ((manifest.BaseRevision?.Length ?? 0) > SubmissionFormat.MaximumRevisionLength ||
@@ -209,7 +209,7 @@ namespace Handlers.DataHandling
                     "characters. Shorten it - the maintainer sees the full list of changes anyway."));
             }
 
-            // A new system's notes go into the main Excel data file's notes column, which holds no
+            // A new board's notes go into the main Excel data file's notes column, which holds no
             // more than this (MasterListing.IsWritableRow) - refused here, where the contributor
             // can shorten them, rather than when the maintainer tries to save the placement.
             if ((manifest.HardwareNotes?.Length ?? 0) > MasterListing.MaximumNotesLength)
@@ -284,7 +284,7 @@ namespace Handlers.DataHandling
         // under two codes helps nobody.
         private static bool IsCanonical(string? part) =>
             string.IsNullOrEmpty(part) ||
-            string.Equals(part, NewSystemIdentity.SanitizePathSegment(part), StringComparison.Ordinal);
+            string.Equals(part, NewBoardIdentity.SanitizePathSegment(part), StringComparison.Ordinal);
 
         private static ValidationFinding Error(string code, string subject, string message) =>
             new() { Severity = ValidationSeverity.Error, Code = code, Subject = subject, Message = message };

@@ -57,9 +57,22 @@ namespace CRT
             }
         }
 
+        // Opens this draft's table, or keeps it open when it already is - for the Contribute tab's
+        // "Edit board as draft" and its "Open the draft" (Main.EditBoardAsDraft.cs).
+        internal async Task ShowTableAsync(HardwareBoardEntry entry)
+        {
+            if (this.IsTableOpenFor(entry))
+            {
+                this.FocusTableIfOpen();
+                return;
+            }
+
+            await this.OpenTableAsync(entry);
+        }
+
         // ###########################################################################################
         // Opens one draft's table. The published board is what the colours compare against - none
-        // for a system that exists only as a draft, where nothing is coloured.
+        // for a board that exists only as a draft, where nothing is coloured.
         // ###########################################################################################
         internal async Task OpenTableAsync(HardwareBoardEntry entry)
         {
@@ -74,20 +87,30 @@ namespace CRT
                 entry.ExcelDataFile,
                 entry.IsPublished);
 
-            // Reading the published board to colour against is a noticeable wait on a large system,
+            // Reading the published board to colour against is a noticeable wait on a large board,
             // so it runs under the "please wait" overlay (2026-09-28).
             BoardData? published = this.PublishedBoardOverrideForTests is not null
                 ? this.PublishedBoardOverrideForTests(entry)
                 : await BusyOverlay.RunLocalAsync(this, CrtWaitWording.OpeningTable, () => TabDrafts.LoadPublishedBoardAsync(entry, status));
 
+            // The published side is named after the source it was downloaded from (owner request,
+            // 2026-10-05): a value BETA holds and stable does not yet is otherwise taken for a mistake.
+            bool betaSource = this.BetaSourceOverrideForTests ?? UserSettings.DownloadDataFromTestSource;
+
             // Resting on a file cell shows the file - the published copy and the draft's.
             this.TableEditor.FileSource = new DraftTableFileSource(
                 DataManager.DataRoot,
-                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                betaSource);
 
             // The downloaded data too, so the table's checks find a row's files where a submit
             // finds them (owner request, 2026-10-02).
-            if (!this.TableEditor.Load(DraftManager.DraftsRoot, entry.ExcelDataFile, published, DataManager.DataRoot))
+            if (!this.TableEditor.Load(
+                    DraftManager.DraftsRoot,
+                    entry.ExcelDataFile,
+                    published,
+                    DataManager.DataRoot,
+                    BoardTableDocument.SourceBaselineLabel(betaSource)))
             {
                 Logger.Warning($"Could not open the table for the draft of [{entry.ExcelDataFile}] - its workbook could not be read");
                 return;
@@ -136,7 +159,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Closes the table, without asking, if it is open on this system's draft - for a draft that
+        // Closes the table, without asking, if it is open on this board's draft - for a draft that
         // is about to be deleted by something other than this tab (retirement after publishing).
         // The caller has already made sure nothing unsaved is lost: see HasUnsavedTableEditsFor.
         // ###########################################################################################
@@ -289,12 +312,12 @@ namespace CRT
             }
         }
 
-        // The published board to colour against, or null when there is none (a draft-only system,
+        // The published board to colour against, or null when there is none (a draft-only board,
         // or a published file that is missing - the table then simply shows no colours rather
         // than calling every row an addition).
         private static async Task<BoardData?> LoadPublishedBoardAsync(HardwareBoardEntry entry, DraftStatus? status)
         {
-            if (entry.IsDraftOnly || status?.IsNewSystem == true)
+            if (entry.IsDraftOnly || status?.IsNewBoard == true)
             {
                 return null;
             }

@@ -135,9 +135,10 @@
 		     roughly one man in twelve who cannot tell red from green. The row's "-" marker says
 		     the same thing a third way. The class is set per row in OnLoadingRow.
 
-		     *** :is(TextBlock), NOT TextBlock. *** The grid draws cell text with
-		     DataGridSearchTextBlock, a SUBCLASS, and a plain type selector matches only the exact
-		     type - so "TextBlock" here matched nothing at all while the row class looked right. -->
+		     *** :is(TextBlock), NOT TextBlock. *** Cell text is drawn by a TextBlock SUBCLASS
+		     (BoardTableCellText; the marker column's is the grid's own), and a plain type selector
+		     matches only the exact type - so "TextBlock" here matched nothing at all while the row
+		     class looked right. -->
 		<Style Selector="DataGridRow.BoardTableDeleted :is(TextBlock)">
 			<Setter Property="TextDecorations" Value="Strikethrough" />
 		</Style>
@@ -274,6 +275,28 @@
 			<Setter Property="FontWeight" Value="SemiBold" />
 		</Style>
 
+		<!-- A HEADING WRAPS LIKE ITS CELLS (owner request, 2026-10-09: "can the table header also
+		     please wrap"): a column narrower than its name shows the name on more lines, and the
+		     heading row grows to the tallest - the grid's ColumnHeaderHeight is left to size itself,
+		     never below the 28 it was fixed at. -->
+		<Style Selector="DataGrid#TableGrid DataGridColumnHeader">
+			<Setter Property="MinHeight" Value="28" />
+		</Style>
+
+		<Style Selector="DataGrid#TableGrid DataGridColumnHeader TextBlock">
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+
+		<!-- *** NO ROOM KEPT FOR ICONS THE TABLE NEVER SHOWS. *** The heading's template keeps a
+		     32px column right of the name for its sort and filter icons, and this table sorts and
+		     filters nothing through its headings - so a name wrapped 32px early, and a column fitted
+		     to its heading had a wide empty band after the name (owner report, 2026-10-09). The
+		     name spans that column too; a style with a class outranks the template (the grip's
+		     trick). -->
+		<Style Selector="DataGrid#TableGrid.HeaderStyled DataGridColumnHeader /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Grid.ColumnSpan" Value="2" />
+		</Style>
+
 		<!-- The template sets this line's colour and height ITSELF, and a value set in a template
 		     outranks a plain style - so the selector carries the grid's HeaderStyled class, which
 		     makes the style a trigger, and a trigger outranks the template (the grip's trick). -->
@@ -286,8 +309,7 @@
 		     column size gets reduced" - it was a "Wrap text" check box the same day). With the grid's
 		     CellsWrap class a cell's text - and a cell being typed in - runs over as many lines as it
 		     needs within its column, and the row grows to fit (the grid has no fixed row height).
-		     :is(TextBlock) for the grid's DataGridSearchTextBlock, a subclass - see the
-		     strike-through's note. A class makes each a trigger, which outranks what the cell's own
+		     :is(TextBlock) for BoardTableCellText, a subclass - see the strike-through's note. A class makes each a trigger, which outranks what the cell's own
 		     text theme sets. -->
 		<Style Selector="DataGrid#TableGrid.CellsWrap DataGridCell :is(TextBlock)">
 			<Setter Property="TextWrapping" Value="Wrap" />
@@ -360,7 +382,7 @@
 					     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
 				</StackPanel>
 
-				<!-- For a system with nothing published, the Added, Modified and Deleted pills are
+				<!-- For a board with nothing published, the Added, Modified and Deleted pills are
 				     hidden (Attach): there is nothing to be added, changed or deleted against. An
 				     error and a warning are what they are either way.
 
@@ -526,7 +548,6 @@
 				  x:Name="TableGrid"
 				  Classes="HeaderStyled CellsWrap"
 				  FontSize="12"
-				  ColumnHeaderHeight="28"
 				  AutoGenerateColumns="False"
 				  CanUserSortColumns="False"
 				  CanUserReorderColumns="False"

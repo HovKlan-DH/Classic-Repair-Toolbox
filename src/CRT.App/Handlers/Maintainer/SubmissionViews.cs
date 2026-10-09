@@ -14,7 +14,7 @@ namespace Handlers.MaintainerHandling
     //   Board data  - the table, as it always was: the nine sheets, and above them what the table
     //                 cannot show (ReviewNotInTable). The one a submission OPENS on - the owner's
     //                 "make the table the default first view" (2026-09-26) still stands.
-    //   Files       - the system's files after approving, against BETA now (FileTreeView). Was the
+    //   Files       - the board's files after approving, against BETA now (FileTreeView). Was the
     //                 "Files..." button's window.
     //   Contributor - who sent it and everything they have sent before (ReviewContributorHistory).
     //
@@ -54,7 +54,7 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         // The files the SUBMISSION adds, replaces or removes - the Files button's count.
         //
-        // *** THROUGH THE TREE'S OWN RULE. *** SystemFileEntries.ForApproval is what the server
+        // *** THROUGH THE TREE'S OWN RULE. *** BoardFileEntries.ForApproval is what the server
         // builds the tree with, and what the tree then counts; asking it here, with the same facts
         // the submission detail already carries, is what keeps the button and the tree's headline
         // from ever disagreeing about a file. Left out, as the headline leaves them out: the
@@ -62,9 +62,9 @@ namespace Handlers.MaintainerHandling
         // view) and which the detail does not name.
         // ###########################################################################################
         public static int ChangingFiles(IReadOnlyList<SubmittedFileFact>? submitted, FileRemovalPreview? removals) =>
-            SystemFileEntries
+            BoardFileEntries
                 .ForApproval(submitted, removals?.Files, ownInBeta: null, workbook: null, sidecar: null)
-                .Count(entry => entry.Change != SystemFileChange.Unchanged);
+                .Count(entry => entry.Change != BoardFileChange.Unchanged);
 
         // The button's count, or null for no badge: a submission that changes no file has nothing
         // to look at there, and a "0" would read as something to check.

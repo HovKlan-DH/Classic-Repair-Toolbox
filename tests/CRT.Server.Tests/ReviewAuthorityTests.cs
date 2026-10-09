@@ -6,14 +6,14 @@ using Xunit;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers ReviewAuthority - who may review, and who may publish, PER SYSTEM (Phase 6 roles as
-    // the project owner decided them on 2026-09-25: Administrator, and Maintainer assigned to systems).
+    // Covers ReviewAuthority - who may review, and who may publish, PER BOARD (Phase 6 roles as
+    // the project owner decided them on 2026-09-25: Administrator, and Maintainer assigned to boards).
     //
     // *** THIS IS A SECURITY BOUNDARY, NOT A UI CONVENIENCE. *** Phase 6 task 6 is explicit that
     // the desktop app hiding a button is not enforcement, because the app is public source and an
     // attacker calls the API directly. These tests are the enforcement's own proof.
     //
-    // THE ONES THAT MATTER MOST: a maintainer of one system gets NOTHING on another (threat 3's
+    // THE ONES THAT MATTER MOST: a maintainer of one board gets NOTHING on another (threat 3's
     // "check the object, not just the verb"), and a submission changing SHARED FILES is refused to
     // every maintainer, because those files reach every board. The negative cases are deliberately
     // as thorough as the positive ones: an authority check is only worth what it REFUSES.
@@ -42,24 +42,24 @@ namespace CRT.Server.Tests
         private static ReviewAccess Admin(bool verified = true, bool locked = false) =>
             ReviewAccess.For(ReviewAuthorityTests.Account(isAdministrator: true, isVerified: verified, isLocked: locked));
 
-        private static ReviewAccess MaintainerOf(params string[] systems) =>
-            ReviewAccess.For(ReviewAuthorityTests.Account(), systems);
+        private static ReviewAccess MaintainerOf(params string[] boards) =>
+            ReviewAccess.For(ReviewAuthorityTests.Account(), boards);
 
         private static ReviewAccess Ordinary() => ReviewAccess.For(ReviewAuthorityTests.Account());
 
-        private static SubmissionRecord Submission(string systemId = ReviewAuthorityTests.C64, bool touchesShared = false) =>
+        private static SubmissionRecord Submission(string boardId = ReviewAuthorityTests.C64, bool touchesShared = false) =>
             new(
-                Id: 1, SystemId: systemId, AccountId: null, ContactEmail: "c@example.com",
+                Id: 1, BoardId: boardId, AccountId: null, ContactEmail: "c@example.com",
                 UploadTokenHash: "h", BaseRevision: "r1", State: SubmissionState.Pending, Summary: "x",
                 FormatVersion: 1, CreatedUtc: DateTimeOffset.UnixEpoch, ExpiresUtc: null, DecidedUtc: null,
                 DecisionComment: null, TouchesSharedFiles: touchesShared);
 
         // -----------------------------------------------------------------------------------
-        // Per system - the line that must not move
+        // Per board - the line that must not move
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_maintainer_of_a_system_may_review_and_publish_THAT_system()
+        public void A_maintainer_of_a_board_may_review_and_publish_THAT_board()
         {
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
 
@@ -68,10 +68,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_maintainer_of_ONE_system_gets_NOTHING_on_ANOTHER()
+        public void A_maintainer_of_ONE_board_gets_NOTHING_on_ANOTHER()
         {
             // *** THE MOST IMPORTANT ASSERTION IN THIS FILE. *** A maintainer's token must be
-            // useless against systems they do not review - threat 2's "keep authority narrow".
+            // useless against boards they do not review - threat 2's "keep authority narrow".
             // Not seeing it, not rejecting it, not publishing it.
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
             SubmissionRecord other = ReviewAuthorityTests.Submission(ReviewAuthorityTests.C128);
@@ -81,7 +81,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_maintainer_of_SEVERAL_systems_may_act_on_each_of_them()
+        public void A_maintainer_of_SEVERAL_boards_may_act_on_each_of_them()
         {
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64, ReviewAuthorityTests.C128);
 
@@ -90,9 +90,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void The_system_id_is_compared_EXACTLY_like_the_database_key()
+        public void The_board_id_is_compared_EXACTLY_like_the_database_key()
         {
-            // utf8mb4_bin since migration 0005: "commodore/c64/250407" is a different system,
+            // utf8mb4_bin since migration 0005: "commodore/c64/250407" is a different board,
             // and a case-folding comparison here would grant what the database refuses.
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf("commodore/c64/250407");
 
@@ -132,9 +132,9 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void An_administrator_may_review_and_publish_EVERY_system_without_being_in_any_pool()
+        public void An_administrator_may_review_and_publish_EVERY_board_without_being_in_any_pool()
         {
-            // No "override" path and no rows: the administrator is a maintainer of every system by
+            // No "override" path and no rows: the administrator is a maintainer of every board by
             // definition, which is what Phase 6's traps mean by "compute authority once".
             ReviewAccess admin = ReviewAuthorityTests.Admin();
 
@@ -170,12 +170,12 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // Publishing from BETA to the stable source (owner request, 2026-10-05: "for now ... Only
         // me, as admin, should be able to publish to stable"). While the server lets only
-        // administrators, a maintainer of the very system is refused; switched off, it is
+        // administrators, a maintainer of the very board is refused; switched off, it is
         // CanPublish exactly. Never wider than CanPublish either way - a locked administrator and a
-        // maintainer of another system stay refused.
+        // maintainer of another board stay refused.
         // ###########################################################################################
         [Fact]
-        public void While_only_administrators_publish_to_stable_a_maintainer_of_the_system_may_not()
+        public void While_only_administrators_publish_to_stable_a_maintainer_of_the_board_may_not()
         {
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
 
@@ -195,12 +195,12 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // Whose addresses an account sees on the Systems screen (owner request, 2026-10-05: "They
-        // should be able to see all mail addresses for their own system(s)") - the system's own
-        // maintainers and the administrator; a maintainer of ANOTHER system sees the system, not them.
+        // Whose addresses an account sees on the Boards screen (owner request, 2026-10-05: "They
+        // should be able to see all mail addresses for their own system(s)") - the board's own
+        // maintainers and the administrator; a maintainer of ANOTHER board sees the board, not them.
         // ###########################################################################################
         [Fact]
-        public void Only_a_systems_own_maintainers_and_the_administrator_see_its_addresses()
+        public void Only_a_boards_own_maintainers_and_the_administrator_see_its_addresses()
         {
             ReviewAccess maintainer = ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C64);
 
@@ -244,7 +244,7 @@ namespace CRT.Server.Tests
         public void CanReviewAnything_is_true_for_anyone_in_at_least_one_pool()
         {
             // What lets the queue answer 403 to an account with no role, and an empty list to a
-            // maintainer whose systems simply have nothing waiting.
+            // maintainer whose boards simply have nothing waiting.
             Assert.True(ReviewAuthority.CanReviewAnything(ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128)));
             Assert.True(ReviewAuthority.CanReviewAnything(ReviewAuthorityTests.Admin()));
         }
@@ -267,7 +267,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_LOCKED_maintainer_may_not_review_their_own_system()
+        public void A_LOCKED_maintainer_may_not_review_their_own_board()
         {
             ReviewAccess locked = ReviewAccess.For(
                 ReviewAuthorityTests.Account(isLocked: true), [ReviewAuthorityTests.C64]);
@@ -294,7 +294,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void Reviewing_and_publishing_are_the_same_authority()
         {
-            // The project owner's model: whoever may review a system may publish to it. Stated as a
+            // The project owner's model: whoever may review a board may publish to it. Stated as a
             // property over every kind of caller and submission, so that a later change that
             // split them again does so deliberately.
             ReviewAccess?[] callers =
@@ -327,7 +327,7 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void The_refusal_names_the_system_for_a_maintainer_of_another_one()
+        public void The_refusal_names_the_board_for_a_maintainer_of_another_one()
         {
             string why = ReviewAuthority.DescribeRefusal(
                 ReviewAuthorityTests.MaintainerOf(ReviewAuthorityTests.C128), ReviewAuthorityTests.Submission(ReviewAuthorityTests.C64));

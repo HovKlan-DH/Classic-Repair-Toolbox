@@ -58,7 +58,7 @@ namespace CRT.Server.Handlers.Usage
                 insert.Transaction = transaction;
 
                 var sql = new StringBuilder(
-                    "INSERT INTO crt_board_views (viewedUtc, systemId, hardwareName, boardName, version, " +
+                    "INSERT INTO crt_board_views (viewedUtc, boardId, hardwareName, boardName, version, " +
                     "osHighlevel, osVersion, cpu, countryCode, countryName, fromBeta, fromLocalNetwork) VALUES ");
 
                 for (int index = 0; index < rows.Count; index++)
@@ -69,10 +69,10 @@ namespace CRT.Server.Handlers.Usage
                     if (index > 0)
                         sql.Append(", ");
 
-                    sql.Append($"(@at{n}, @system{n}, @hardware{n}, @board{n}, @version{n}, @os{n}, @osVersion{n}, @cpu{n}, @code{n}, @country{n}, @beta{n}, @local{n})");
+                    sql.Append($"(@at{n}, @boardId{n}, @hardware{n}, @board{n}, @version{n}, @os{n}, @osVersion{n}, @cpu{n}, @code{n}, @country{n}, @beta{n}, @local{n})");
 
                     insert.Parameters.AddWithValue($"@at{n}", row.ViewedUtc.UtcDateTime);
-                    insert.Parameters.AddWithValue($"@system{n}", row.SystemId);
+                    insert.Parameters.AddWithValue($"@boardId{n}", row.BoardId);
                     insert.Parameters.AddWithValue($"@hardware{n}", row.HardwareName);
                     insert.Parameters.AddWithValue($"@board{n}", row.BoardName);
                     insert.Parameters.AddWithValue($"@version{n}", row.Version);
@@ -102,7 +102,7 @@ namespace CRT.Server.Handlers.Usage
             return true;
         }
 
-        public async Task<IReadOnlyDictionary<string, int>> CountSinceBySystemAsync(
+        public async Task<IReadOnlyDictionary<string, int>> CountSinceByBoardAsync(
             DateTimeOffset sinceUtc,
             CancellationToken cancellationToken = default)
         {
@@ -110,8 +110,8 @@ namespace CRT.Server.Handlers.Usage
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText =
-                "SELECT systemId, COUNT(*) FROM crt_board_views " +
-                "WHERE viewedUtc >= @since AND fromBeta = 0 GROUP BY systemId;";
+                "SELECT boardId, COUNT(*) FROM crt_board_views " +
+                "WHERE viewedUtc >= @since AND fromBeta = 0 GROUP BY boardId;";
             command.Parameters.AddWithValue("@since", sinceUtc.UtcDateTime);
 
             var counts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -124,8 +124,8 @@ namespace CRT.Server.Handlers.Usage
             return counts;
         }
 
-        public async Task<IReadOnlyList<BoardViewFact>> FactsForSystemAsync(
-            string systemId,
+        public async Task<IReadOnlyList<BoardViewFact>> FactsForBoardAsync(
+            string boardId,
             DateTimeOffset sinceUtc,
             CancellationToken cancellationToken = default)
         {
@@ -134,9 +134,9 @@ namespace CRT.Server.Handlers.Usage
 
             command.CommandText =
                 "SELECT DATE(viewedUtc), fromBeta, countryCode, countryName, COUNT(*) FROM crt_board_views " +
-                "WHERE systemId = @system AND viewedUtc >= @since " +
+                "WHERE boardId = @boardId AND viewedUtc >= @since " +
                 "GROUP BY DATE(viewedUtc), fromBeta, countryCode, countryName;";
-            command.Parameters.AddWithValue("@system", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@since", sinceUtc.UtcDateTime);
 
             var facts = new List<BoardViewFact>();
@@ -156,13 +156,13 @@ namespace CRT.Server.Handlers.Usage
             return facts;
         }
 
-        public async Task<int> DeleteForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public async Task<int> DeleteForBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            command.CommandText = "DELETE FROM crt_board_views WHERE systemId = @system;";
-            command.Parameters.AddWithValue("@system", systemId);
+            command.CommandText = "DELETE FROM crt_board_views WHERE boardId = @boardId;";
+            command.Parameters.AddWithValue("@boardId", boardId);
 
             return await command.ExecuteNonQueryAsync(cancellationToken);
         }

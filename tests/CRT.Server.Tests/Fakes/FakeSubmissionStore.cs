@@ -25,26 +25,26 @@ namespace CRT.Server.Tests.Fakes
         public Dictionary<long, List<ValidationFinding>> Findings { get; } = [];
 
         // ###########################################################################################
-        // The `systems` rows a submission implies, keyed by system id.
+        // The `boards` rows a submission implies, keyed by board id.
         //
-        // THIS EXISTS BECAUSE ITS ABSENCE HID A REAL BUG. submissions.system_id is NOT NULL with a
-        // foreign key to systems(system_id), and nothing ever wrote to `systems` - so every real
+        // THIS EXISTS BECAUSE ITS ABSENCE HID A REAL BUG. submissions.board_id is NOT NULL with a
+        // foreign key to boards(board_id), and nothing ever wrote to `boards` - so every real
         // submission would have failed against MariaDB. Every test passed, because this fake
-        // silently accepted a submission for a system that did not exist and threw the name parts
+        // silently accepted a submission for a board that did not exist and threw the name parts
         // away.
         //
         // A fake that is more permissive than the real store is a fake that certifies bugs. This
         // one now records what the real store would have to insert, so the tests below can assert
         // it happens.
         // ###########################################################################################
-        public Dictionary<string, NewSubmission> Systems { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, NewSubmission> Boards { get; } = new(StringComparer.Ordinal);
 
         // Every NewSubmission as it was created, keyed by id - the address and byte count the rate
         // limit reads back, exactly as the real store's created_ip and bytes_to_upload columns do.
         public Dictionary<long, NewSubmission> Created { get; } = [];
 
-        // Systems the administrator has closed (is_accepting = 0).
-        public HashSet<string> ClosedSystems { get; } = new(StringComparer.Ordinal);
+        // Boards the administrator has closed (is_accepting = 0).
+        public HashSet<string> ClosedBoards { get; } = new(StringComparer.Ordinal);
 
         public Task<long> CreateAsync(NewSubmission submission, CancellationToken cancellationToken = default)
         {
@@ -52,14 +52,14 @@ namespace CRT.Server.Tests.Fakes
 
             this.Created[id] = submission;
 
-            // INSERT IGNORE in the real store: an existing system is left completely alone, so a
+            // INSERT IGNORE in the real store: an existing board is left completely alone, so a
             // second submission cannot rewrite its origin or its created date.
-            if (!this.Systems.ContainsKey(submission.SystemId))
-                this.Systems[submission.SystemId] = submission;
+            if (!this.Boards.ContainsKey(submission.BoardId))
+                this.Boards[submission.BoardId] = submission;
 
             this.Submissions[id] = new SubmissionRecord(
                 id,
-                submission.SystemId,
+                submission.BoardId,
                 submission.AccountId,
                 submission.ContactEmail,
                 submission.UploadTokenHash,
@@ -126,7 +126,7 @@ namespace CRT.Server.Tests.Fakes
         // This fake used to store the manifest OBJECT and return that same instance, so every field
         // survived the round trip for free. The real store does not work that way: it writes only
         // the rows and renames as JSON, and rebuilds everything else from the `submissions` and
-        // `systems` tables.
+        // `boards` tables.
         //
         // It rebuilt everything EXCEPT Manufacturer/Hardware/Board, which came back as empty
         // strings - so the finalise-time validation pass, which runs against the RELOADED manifest,
@@ -136,7 +136,7 @@ namespace CRT.Server.Tests.Fakes
         //
         // Every test passed throughout, because this fake never lost anything. So it now models the
         // real store's actual behaviour: keep the rows, rebuild the rest from the submission and
-        // system records. A fake that is kinder than the thing it stands in for certifies bugs.
+        // board records. A fake that is kinder than the thing it stands in for certifies bugs.
         // ###########################################################################################
         public Task SavePayloadAsync(long submissionId, SubmissionManifest manifest, CancellationToken cancellationToken = default)
         {
@@ -152,16 +152,16 @@ namespace CRT.Server.Tests.Fakes
             if (!this.Submissions.TryGetValue(submissionId, out SubmissionRecord? record))
                 return Task.FromResult<SubmissionManifest?>(null);
 
-            // The three name parts come from the SYSTEM row, exactly as the real store's join does.
-            this.Systems.TryGetValue(record.SystemId, out NewSubmission? system);
+            // The three name parts come from the BOARD row, exactly as the real store's join does.
+            this.Boards.TryGetValue(record.BoardId, out NewSubmission? board);
 
             var rebuilt = new SubmissionManifest
             {
                 FormatVersion = stored.FormatVersion,
-                SystemId = record.SystemId,
-                Manufacturer = system?.Manufacturer ?? string.Empty,
-                Hardware = system?.Hardware ?? string.Empty,
-                Board = system?.Board ?? string.Empty,
+                BoardId = record.BoardId,
+                Manufacturer = board?.Manufacturer ?? string.Empty,
+                Hardware = board?.Hardware ?? string.Empty,
+                Board = board?.Board ?? string.Empty,
                 BaseRevision = record.BaseRevision,
                 Summary = record.Summary ?? string.Empty,
                 ContactEmail = record.ContactEmail ?? string.Empty,
@@ -242,39 +242,39 @@ namespace CRT.Server.Tests.Fakes
         // Records a publish. Modelled on the REAL store's behaviour rather than on convenience -
         // see this class's own header on why a permissive fake certifies bugs.
         //
-        // In particular it REFUSES a system that was never registered, because the real statement
+        // In particular it REFUSES a board that was never registered, because the real statement
         // is an UPDATE against a row CreateAsync inserts. A fake that happily invented the row
-        // would hide a caller publishing a system with no `systems` entry, which against MariaDB
+        // would hide a caller publishing a board with no `boards` entry, which against MariaDB
         // updates nothing at all and silently leaves current_revision NULL.
         // ###########################################################################################
-        public Task SetSystemPublishedAsync(
-            string systemId,
+        public Task SetBoardPublishedAsync(
+            string boardId,
             string revision,
             string contentHash,
             DateTimeOffset publishedUtc,
             CancellationToken cancellationToken = default)
         {
-            if (!this.Systems.ContainsKey(systemId))
+            if (!this.Boards.ContainsKey(boardId))
             {
                 throw new InvalidOperationException(
-                    $"No `systems` row exists for [{systemId}], so a publish could not be recorded.");
+                    $"No `boards` row exists for [{boardId}], so a publish could not be recorded.");
             }
 
-            this.PublishedSystems[systemId] = new PublishedSystemRow(revision, contentHash, publishedUtc);
+            this.PublishedBoards[boardId] = new PublishedBoardRow(revision, contentHash, publishedUtc);
 
             return Task.CompletedTask;
         }
 
         // ###########################################################################################
         // A BETA rollback's bookkeeping (2026-09-27). Like the real store: only a row still MERGED
-        // moves, its approvals go, and a system with no row is refused rather than invented.
+        // moves, its approvals go, and a board with no row is refused rather than invented.
         //
         // FailRollbackRecord makes it throw BEFORE changing anything - the real store's transaction
         // rolls back whole - so a test can prove the flow survives a failed record and that pushing
         // back again finishes the job.
         // ###########################################################################################
         public Task RecordRollbackAsync(
-            string systemId,
+            string boardId,
             IReadOnlyList<long> returningSubmissionIds,
             long decidedByAccountId,
             string comment,
@@ -287,10 +287,10 @@ namespace CRT.Server.Tests.Fakes
             if (this.FailRollbackRecord)
                 throw new InvalidOperationException("The database is not reachable.");
 
-            if (!this.Systems.ContainsKey(systemId))
+            if (!this.Boards.ContainsKey(boardId))
             {
                 throw new InvalidOperationException(
-                    $"No `systems` row exists for [{systemId}], so a rollback could not be recorded.");
+                    $"No `boards` row exists for [{boardId}], so a rollback could not be recorded.");
             }
 
             foreach (long id in returningSubmissionIds)
@@ -315,28 +315,28 @@ namespace CRT.Server.Tests.Fakes
                 this.Approvals.Remove(id);
             }
 
-            this.BetaStates[systemId] = (betaRevision, betaContentHash);
+            this.BetaStates[boardId] = (betaRevision, betaContentHash);
 
-            // The real store writes `systems.current_revision` / `content_hash`, which FindSystemAsync
-            // reads back - so the fake moves the same row, or a caller re-reading the system would
+            // The real store writes `boards.current_revision` / `content_hash`, which FindBoardAsync
+            // reads back - so the fake moves the same row, or a caller re-reading the board would
             // still see the old BETA state.
             if (betaRevision is null && betaContentHash is null)
-                this.PublishedSystems.Remove(systemId);
+                this.PublishedBoards.Remove(boardId);
             else
-                this.PublishedSystems[systemId] = new PublishedSystemRow(betaRevision ?? string.Empty, betaContentHash ?? string.Empty, default);
+                this.PublishedBoards[boardId] = new PublishedBoardRow(betaRevision ?? string.Empty, betaContentHash ?? string.Empty, default);
 
             return Task.CompletedTask;
         }
 
         public bool FailRollbackRecord { get; set; }
 
-        // What RecordRollbackAsync wrote for each system, so a test can assert the recorded BETA
+        // What RecordRollbackAsync wrote for each board, so a test can assert the recorded BETA
         // state followed the tree rather than still naming data that was removed.
         public Dictionary<string, (string? Revision, string? ContentHash)> BetaStates { get; } = new(StringComparer.Ordinal);
 
-        // What SetSystemPublishedAsync wrote, so tests can assert the revision and content hash
-        // actually reached the systems row.
-        public Dictionary<string, PublishedSystemRow> PublishedSystems { get; } = new(StringComparer.Ordinal);
+        // What SetBoardPublishedAsync wrote, so tests can assert the revision and content hash
+        // actually reached the boards row.
+        public Dictionary<string, PublishedBoardRow> PublishedBoards { get; } = new(StringComparer.Ordinal);
 
         // ###########################################################################################
         // Records a decision. STRICTER than convenient, for the same reason the publish method is:
@@ -393,69 +393,69 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(recent);
         }
 
-        // Null for a system with no row, like the real SELECT finding nothing.
-        public Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default)
+        // Null for a board with no row, like the real SELECT finding nothing.
+        public Task<IReadOnlyList<BoardRecord>> ListBoardsAsync(CancellationToken cancellationToken = default)
         {
-            this.ListSystemsCalls++;
+            this.ListBoardsCalls++;
 
-            IReadOnlyList<SystemRecord> systems = this.Systems.Values
-                .Select(system => this.ToSystemRecord(system))
-                .OrderBy(system => system.SystemId, StringComparer.Ordinal)
+            IReadOnlyList<BoardRecord> boards = this.Boards.Values
+                .Select(board => this.ToBoardRecord(board))
+                .OrderBy(board => board.BoardId, StringComparer.Ordinal)
                 .ToList();
 
-            return Task.FromResult(systems);
+            return Task.FromResult(boards);
         }
 
-        // The row as the real SELECT assembles it: the BETA half from PublishedSystems, the
-        // Production half from ProductionSystems.
-        private SystemRecord ToSystemRecord(NewSubmission system)
+        // The row as the real SELECT assembles it: the BETA half from PublishedBoards, the
+        // Production half from ProductionBoards.
+        private BoardRecord ToBoardRecord(NewSubmission board)
         {
-            this.PublishedSystems.TryGetValue(system.SystemId, out PublishedSystemRow? beta);
-            this.ProductionSystems.TryGetValue(system.SystemId, out PublishedSystemRow? production);
+            this.PublishedBoards.TryGetValue(board.BoardId, out PublishedBoardRow? beta);
+            this.ProductionBoards.TryGetValue(board.BoardId, out PublishedBoardRow? production);
 
-            return new SystemRecord(
-                system.SystemId,
-                system.Manufacturer,
-                system.Hardware,
-                system.Board,
+            return new BoardRecord(
+                board.BoardId,
+                board.Manufacturer,
+                board.Hardware,
+                board.Board,
                 beta?.Revision,
-                !this.ClosedSystems.Contains(system.SystemId),
+                !this.ClosedBoards.Contains(board.BoardId),
                 beta?.ContentHash,
                 production?.Revision,
                 production?.ContentHash,
                 production?.PublishedUtc);
         }
 
-        // What SetSystemInProductionAsync wrote.
-        public Dictionary<string, PublishedSystemRow> ProductionSystems { get; } = new(StringComparer.Ordinal);
+        // What SetBoardInProductionAsync wrote.
+        public Dictionary<string, PublishedBoardRow> ProductionBoards { get; } = new(StringComparer.Ordinal);
 
-        // How many times each way of reading systems was asked - for a test that a caller reads the
-        // list ONCE rather than a system at a time.
-        public int FindSystemCalls { get; private set; }
+        // How many times each way of reading boards was asked - for a test that a caller reads the
+        // list ONCE rather than a board at a time.
+        public int FindBoardCalls { get; private set; }
 
-        public int ListSystemsCalls { get; private set; }
+        public int ListBoardsCalls { get; private set; }
 
-        public Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<BoardRecord?> FindBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
-            this.FindSystemCalls++;
+            this.FindBoardCalls++;
 
             return Task.FromResult(
-                this.Systems.TryGetValue(systemId, out NewSubmission? system) ? this.ToSystemRecord(system) : null);
+                this.Boards.TryGetValue(boardId, out NewSubmission? board) ? this.ToBoardRecord(board) : null);
         }
 
         // ###########################################################################################
-        // The real DELETE and its ON DELETE CASCADE: the system's row and everything the schema
+        // The real DELETE and its ON DELETE CASCADE: the board's row and everything the schema
         // hangs off it - every submission of it, whatever its state, with all of their rows. A
-        // submission of ANOTHER system is untouched, which is what a test of a delete must be able
+        // submission of ANOTHER board is untouched, which is what a test of a delete must be able
         // to see. (The maintainer pool and invitations live in FakeAccountStore, as their tables'
         // owner does; the cascade empties them in MariaDB.)
         // ###########################################################################################
-        public Task<IReadOnlyList<long>> DeleteSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<long>> DeleteBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
-            this.Systems.Remove(systemId);
+            this.Boards.Remove(boardId);
 
             List<long> deleted = this.Submissions.Values
-                .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .Where(record => string.Equals(record.BoardId, boardId, StringComparison.Ordinal))
                 .Select(record => record.Id)
                 .ToList();
 
@@ -474,50 +474,50 @@ namespace CRT.Server.Tests.Fakes
                 this.Amendments.RemoveAll(amendment => amendment.SubmissionId == id);
             }
 
-            this.ClosedSystems.Remove(systemId);
-            this.BetaStates.Remove(systemId);
-            this.PublishedSystems.Remove(systemId);
-            this.ProductionSystems.Remove(systemId);
-            this.Placements.Remove(systemId);
+            this.ClosedBoards.Remove(boardId);
+            this.BetaStates.Remove(boardId);
+            this.PublishedBoards.Remove(boardId);
+            this.ProductionBoards.Remove(boardId);
+            this.Placements.Remove(boardId);
 
-            foreach ((string SystemId, string Hash) key in this.ProductionApprovals.Keys.Where(key => key.SystemId == systemId).ToList())
+            foreach ((string BoardId, string Hash) key in this.ProductionApprovals.Keys.Where(key => key.BoardId == boardId).ToList())
                 this.ProductionApprovals.Remove(key);
 
-            this.AfterSystemDeleted?.Invoke();
+            this.AfterBoardDeleted?.Invoke();
 
             return Task.FromResult<IReadOnlyList<long>>(deleted);
         }
 
-        // Run once a system's row is deleted - a test cancels the request there, as a client giving
+        // Run once a board's row is deleted - a test cancels the request there, as a client giving
         // up after the delete would.
-        public Action? AfterSystemDeleted { get; set; }
+        public Action? AfterBoardDeleted { get; set; }
 
-        // ---- Placements (migration 0011): an UPDATE of the system's row, so a system with no row
+        // ---- Placements (migration 0011): an UPDATE of the board's row, so a board with no row
         // is refused (false) rather than invented - as the real store's matched-rows count says.
-        public Dictionary<string, SystemPlacement> Placements { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, BoardPlacement> Placements { get; } = new(StringComparer.Ordinal);
 
-        public Task<SystemPlacement?> GetPlacementAsync(string systemId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(this.Placements.TryGetValue(systemId, out SystemPlacement? placement) ? placement : null);
+        public Task<BoardPlacement?> GetPlacementAsync(string boardId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Placements.TryGetValue(boardId, out BoardPlacement? placement) ? placement : null);
 
         public Task<bool> SetPlacementAsync(
-            string systemId,
-            SystemPlacement placement,
+            string boardId,
+            BoardPlacement placement,
             long setByAccountId,
             DateTimeOffset setUtc,
             CancellationToken cancellationToken = default)
         {
-            if (!this.Systems.ContainsKey(systemId))
+            if (!this.Boards.ContainsKey(boardId))
                 return Task.FromResult(false);
 
-            this.Placements[systemId] = placement;
+            this.Placements[boardId] = placement;
             return Task.FromResult(true);
         }
 
         // submission_notes (migration 0019): read off what each submission was created with, joined
         // to its state NOW - as the real store's JOIN does - newest first.
-        public Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string systemId, CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string boardId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SubmissionNotes>>(this.Created
-                .Where(pair => string.Equals(pair.Value.SystemId, systemId, StringComparison.Ordinal) &&
+                .Where(pair => string.Equals(pair.Value.BoardId, boardId, StringComparison.Ordinal) &&
                     !string.IsNullOrWhiteSpace(pair.Value.HardwareNotes) &&
                     this.Submissions.ContainsKey(pair.Key))
                 .Select(pair => new SubmissionNotes(pair.Key, this.Submissions[pair.Key].State, this.Submissions[pair.Key].CreatedUtc, pair.Value.HardwareNotes!))
@@ -525,22 +525,22 @@ namespace CRT.Server.Tests.Fakes
                 .ThenByDescending(notes => notes.SubmissionId)
                 .ToList());
 
-        // An UPDATE in the real store, so - like SetSystemPublishedAsync - a system with no row is
+        // An UPDATE in the real store, so - like SetBoardPublishedAsync - a board with no row is
         // refused rather than invented.
-        public Task SetSystemInProductionAsync(
-            string systemId,
+        public Task SetBoardInProductionAsync(
+            string boardId,
             string? revision,
             string? contentHash,
             DateTimeOffset publishedUtc,
             CancellationToken cancellationToken = default)
         {
-            if (!this.Systems.ContainsKey(systemId))
+            if (!this.Boards.ContainsKey(boardId))
             {
                 throw new InvalidOperationException(
-                    $"No `systems` row exists for [{systemId}], so a production publish could not be recorded.");
+                    $"No `boards` row exists for [{boardId}], so a production publish could not be recorded.");
             }
 
-            this.ProductionSystems[systemId] = new PublishedSystemRow(revision ?? string.Empty, contentHash ?? string.Empty, publishedUtc);
+            this.ProductionBoards[boardId] = new PublishedBoardRow(revision ?? string.Empty, contentHash ?? string.Empty, publishedUtc);
 
             return Task.CompletedTask;
         }
@@ -602,30 +602,51 @@ namespace CRT.Server.Tests.Fakes
             return new AmendStoreResult(AmendStoreOutcome.Amended, version);
         }
 
-        // Pending only, this system only (exact, as the BINARY column compares), oldest first.
-        public Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        // Pending only, this board only (exact, as the BINARY column compares), oldest first.
+        public Task<IReadOnlyList<SubmissionRecord>> GetPendingForBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
             IReadOnlyList<SubmissionRecord> records = this.Submissions.Values
-                .Where(record => record.State == SubmissionState.Pending && string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .Where(record => record.State == SubmissionState.Pending && string.Equals(record.BoardId, boardId, StringComparison.Ordinal))
                 .OrderBy(record => record.Id)
                 .ToList();
 
             return Task.FromResult(records);
         }
 
-        // The real query: this system exactly, never 'uploading' or 'abandoned', newest first, at
+        // The real query: this board exactly, never 'uploading' or 'abandoned', newest first, at
         // most `limit`. A maintainer decided it when SetDecisionAsync recorded it, as below.
-        public Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
-            string systemId,
+        // The real query's rule: no upload under way, no abandoned one, no replaced one; a
+        // maintainer decided it when SetDecisionAsync recorded it; "in stable" by the rule the
+        // query's SQL mirrors, ProductionPromotionRules.ContributorFacingState.
+        public Task<IReadOnlyList<SubmissionStateCount>> GetSubmissionStateCountsAsync(CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<SubmissionStateCount> counts = this.Submissions.Values
+                .Where(record => record.State is not (SubmissionState.Uploading or SubmissionState.Abandoned or SubmissionState.Withdrawn))
+                .GroupBy(record => (
+                    record.BoardId,
+                    record.State,
+                    ByMaintainer: this.Decisions.ContainsKey(record.Id),
+                    InStable: record.DecidedUtc is not null &&
+                              this.Boards.TryGetValue(record.BoardId, out NewSubmission? board) &&
+                              this.ToBoardRecord(board).ProductionPublishedUtc is DateTimeOffset published &&
+                              published >= record.DecidedUtc.Value))
+                .Select(group => new SubmissionStateCount(group.Key.BoardId, group.Key.State, group.Key.ByMaintainer, group.Key.InStable, group.Count()))
+                .ToList();
+
+            return Task.FromResult(counts);
+        }
+
+        public Task<IReadOnlyList<BoardSubmissionRecord>> GetSubmissionsForBoardAsync(
+            string boardId,
             int limit,
             CancellationToken cancellationToken = default)
         {
-            IReadOnlyList<SystemSubmissionRecord> records = this.Submissions.Values
-                .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+            IReadOnlyList<BoardSubmissionRecord> records = this.Submissions.Values
+                .Where(record => string.Equals(record.BoardId, boardId, StringComparison.Ordinal))
                 .Where(record => record.State is not (SubmissionState.Uploading or SubmissionState.Abandoned))
                 .OrderByDescending(record => record.Id)
                 .Take(Math.Clamp(limit, 1, 1000))
-                .Select(record => new SystemSubmissionRecord(
+                .Select(record => new BoardSubmissionRecord(
                     record,
                     this.Decisions.ContainsKey(record.Id),
                     this.Decisions.TryGetValue(record.Id, out var decision) ? decision.DecidedByAccountId : null))
@@ -653,7 +674,7 @@ namespace CRT.Server.Tests.Fakes
                     record.Id,
                     record.State,
                     this.Decisions.ContainsKey(record.Id),
-                    record.SystemId,
+                    record.BoardId,
                     record.Summary,
                     record.CreatedUtc,
                     record.DecidedUtc,
@@ -707,7 +728,7 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
-        public Dictionary<(string SystemId, string Hash), List<GivenApproval>> ProductionApprovals { get; } = [];
+        public Dictionary<(string BoardId, string Hash), List<GivenApproval>> ProductionApprovals { get; } = [];
 
         public Task<IReadOnlyList<GivenApproval>> GetApprovalsAsync(long submissionId, CancellationToken cancellationToken = default)
         {
@@ -736,7 +757,7 @@ namespace CRT.Server.Tests.Fakes
         }
 
         // How many times each of the list's reads was asked - so a test can pin that the Beta > Prod
-        // list asks a fixed number of times however many systems wait (code review, 2026-09-29).
+        // list asks a fixed number of times however many boards wait (code review, 2026-09-29).
         public int ProductionApprovalReads { get; private set; }
 
         public int MergedSubmissionReads { get; private set; }
@@ -744,7 +765,7 @@ namespace CRT.Server.Tests.Fakes
         public int DraftDiscardReads { get; private set; }
 
         public Task<IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>>> GetProductionApprovalsForAsync(
-            IReadOnlyCollection<(string SystemId, string BetaContentHash)> states,
+            IReadOnlyCollection<(string BoardId, string BetaContentHash)> states,
             CancellationToken cancellationToken = default)
         {
             this.ProductionApprovalReads++;
@@ -752,39 +773,39 @@ namespace CRT.Server.Tests.Fakes
             IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>> found = states
                 .Distinct()
                 .Where(this.ProductionApprovals.ContainsKey)
-                .ToDictionary(state => state.SystemId, state => (IReadOnlyList<GivenApproval>)this.ProductionApprovals[state].ToList(), StringComparer.Ordinal);
+                .ToDictionary(state => state.BoardId, state => (IReadOnlyList<GivenApproval>)this.ProductionApprovals[state].ToList(), StringComparer.Ordinal);
 
             return Task.FromResult(found);
         }
 
-        public Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
-            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+        public Task<IReadOnlySet<string>> GetBoardsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string BoardId, DateTimeOffset? DecidedAfter)> windows,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default)
         {
             this.DraftDiscardReads++;
 
-            IReadOnlySet<string> systems = windows
+            IReadOnlySet<string> boards = windows
                 .Where(window => this.Submissions.Values.Any(record =>
-                    string.Equals(record.SystemId, window.SystemId, StringComparison.Ordinal) &&
+                    string.Equals(record.BoardId, window.BoardId, StringComparison.Ordinal) &&
                     record.State == SubmissionState.Merged &&
                     record.DecidedUtc is not null && record.DecidedUtc <= decidedUpTo &&
                     (window.DecidedAfter is null || record.DecidedUtc > window.DecidedAfter) &&
                     this.DraftDiscards.ContainsKey(record.Id)))
-                .Select(window => window.SystemId)
+                .Select(window => window.BoardId)
                 .ToHashSet(StringComparer.Ordinal);
 
-            return Task.FromResult(systems);
+            return Task.FromResult(boards);
         }
 
         public Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             CancellationToken cancellationToken = default)
         {
             this.ProductionApprovalReads++;
 
-            IReadOnlyList<GivenApproval> approvals = this.ProductionApprovals.TryGetValue((systemId, betaContentHash), out List<GivenApproval>? list)
+            IReadOnlyList<GivenApproval> approvals = this.ProductionApprovals.TryGetValue((boardId, betaContentHash), out List<GivenApproval>? list)
                 ? list.ToList()
                 : [];
 
@@ -792,7 +813,7 @@ namespace CRT.Server.Tests.Fakes
         }
 
         public Task AddProductionApprovalAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             ApproverRole role,
             long accountId,
@@ -800,8 +821,8 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset approvedUtc,
             CancellationToken cancellationToken = default)
         {
-            if (!this.ProductionApprovals.TryGetValue((systemId, betaContentHash), out List<GivenApproval>? list))
-                this.ProductionApprovals[(systemId, betaContentHash)] = list = [];
+            if (!this.ProductionApprovals.TryGetValue((boardId, betaContentHash), out List<GivenApproval>? list))
+                this.ProductionApprovals[(boardId, betaContentHash)] = list = [];
 
             if (list.All(approval => approval.Role != role))
                 list.Add(new GivenApproval(role, accountLabel, approvedUtc, accountId));
@@ -810,7 +831,7 @@ namespace CRT.Server.Tests.Fakes
         }
 
         public Task<IReadOnlyList<SubmissionRecord>> GetMergedSubmissionsAsync(
-            string systemId,
+            string boardId,
             DateTimeOffset? decidedAfter,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default)
@@ -818,7 +839,7 @@ namespace CRT.Server.Tests.Fakes
             this.MergedSubmissionReads++;
 
             IReadOnlyList<SubmissionRecord> records = this.Submissions.Values
-                .Where(record => string.Equals(record.SystemId, systemId, StringComparison.Ordinal))
+                .Where(record => string.Equals(record.BoardId, boardId, StringComparison.Ordinal))
                 .Where(record => record.State == SubmissionState.Merged)
                 .Where(record => record.DecidedUtc is not null && record.DecidedUtc <= decidedUpTo)
                 .Where(record => decidedAfter is null || record.DecidedUtc > decidedAfter)
@@ -892,8 +913,8 @@ namespace CRT.Server.Tests.Fakes
         }
 
         // INSERT IGNORE, like CreateAsync: an existing row is left completely alone.
-        public Task EnsureSystemAsync(
-            string systemId,
+        public Task EnsureBoardAsync(
+            string boardId,
             string manufacturer,
             string hardware,
             string board,
@@ -901,10 +922,10 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset createdUtc,
             CancellationToken cancellationToken = default)
         {
-            if (!this.Systems.ContainsKey(systemId))
+            if (!this.Boards.ContainsKey(boardId))
             {
-                this.Systems[systemId] = new NewSubmission(
-                    systemId, manufacturer, hardware, board,
+                this.Boards[boardId] = new NewSubmission(
+                    boardId, manufacturer, hardware, board,
                     null, null, null, string.Empty, string.Empty, string.Empty,
                     0, [], createdUtc, createdUtc);
             }
@@ -912,10 +933,10 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
-        public Task<bool?> IsSystemAcceptingAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<bool?> IsBoardAcceptingAsync(string boardId, CancellationToken cancellationToken = default)
         {
-            bool? accepting = this.Systems.ContainsKey(systemId)
-                ? !this.ClosedSystems.Contains(systemId)
+            bool? accepting = this.Boards.ContainsKey(boardId)
+                ? !this.ClosedBoards.Contains(boardId)
                 : null;
 
             return Task.FromResult(accepting);
@@ -958,7 +979,7 @@ namespace CRT.Server.Tests.Fakes
         }
     }
 
-    public sealed record PublishedSystemRow(string Revision, string ContentHash, DateTimeOffset PublishedUtc);
+    public sealed record PublishedBoardRow(string Revision, string ContentHash, DateTimeOffset PublishedUtc);
 
     public sealed record RecordedDecision(
         string State,

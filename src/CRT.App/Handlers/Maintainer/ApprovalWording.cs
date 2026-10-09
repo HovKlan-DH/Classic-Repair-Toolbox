@@ -84,7 +84,7 @@ namespace Handlers.MaintainerHandling
 
         public static bool CanApprove(ApprovalStatus? status) => status is null || status.CanApprove;
 
-        public const string NotAMaintainer = "This account is not a maintainer of this system, so it cannot approve this. Ask the administrator.";
+        public const string NotAMaintainer = "This account is not a maintainer of this board, so it cannot approve this. Ask the administrator.";
 
         // ###########################################################################################
         // What the maintainer is told after an approval that did NOT publish.

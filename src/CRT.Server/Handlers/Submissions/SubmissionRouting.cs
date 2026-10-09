@@ -8,10 +8,10 @@ namespace CRT.Server.Handlers.Submissions
     // WHO IS TOLD that a submission is waiting (Phase 6 tasks 2, 3 and 11; 2026-09-25).
     //
     // The rule is the mirror of ApprovalRules, stated once for the people rather than for the
-    // request: whoever must approve is told. The system's maintainers ordinarily; the maintainers AND
+    // request: whoever must approve is told. The board's maintainers ordinarily; the maintainers AND
     // the administrators when a shared file changes (both must approve - owner decision,
-    // 2026-09-25); the administrators alone when the system has no maintainers. "A new system routes
-    // to the administrator, always" falls out of the last case, since a system nobody has reviewed
+    // 2026-09-25); the administrators alone when the board has no maintainers. "A new board routes
+    // to the administrator, always" falls out of the last case, since a board nobody has reviewed
     // yet has an empty pool.
     //
     // Each comes with the name on their account, to greet them by (2026-10-03).
@@ -29,7 +29,7 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(accounts);
 
             IReadOnlyList<MaintainerRecord> pool =
-                await accounts.GetMaintainersOfSystemAsync(submission.SystemId, cancellationToken);
+                await accounts.GetMaintainersOfBoardAsync(submission.BoardId, cancellationToken);
 
             // Only maintainers who can approve as maintainers decide WHICH approvals are needed - the
             // rule the approval itself counts by (ReviewAuthority.CanGiveMaintainerApproval), so who
@@ -38,9 +38,9 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyList<ApproverRole> required = ApprovalRules.Required(submission.TouchesSharedFiles, hasMaintainers);
 
-            // Ordinary: any one approval, and the system's maintainers are the ones to ask - or the
+            // Ordinary: any one approval, and the board's maintainers are the ones to ask - or the
             // administrators when there are none. An ADMINISTRATOR in the pool (2026-10-05) is one of
-            // the system's maintainers here: named as its maintainer, so told like one - and once,
+            // the board's maintainers here: named as its maintainer, so told like one - and once,
             // however many roles they hold (Distinct, and SubmissionNotifier's own).
             if (required.Count == 0)
             {
@@ -54,16 +54,16 @@ namespace CRT.Server.Handlers.Submissions
                     : await SubmissionRouting.AdministratorAddressesAsync(accounts, cancellationToken);
             }
 
-            return await SubmissionRouting.RecipientsForRolesAsync(required, submission.SystemId, accounts, cancellationToken);
+            return await SubmissionRouting.RecipientsForRolesAsync(required, submission.BoardId, accounts, cancellationToken);
         }
 
         // ###########################################################################################
-        // Everybody who approves in these roles for this system - for "your approval is needed"
+        // Everybody who approves in these roles for this board - for "your approval is needed"
         // once the other half has approved. De-duplicated, in role order.
         // ###########################################################################################
         public static async Task<IReadOnlyList<MailRecipient>> RecipientsForRolesAsync(
             IEnumerable<ApproverRole> roles,
-            string systemId,
+            string boardId,
             IAccountStore accounts,
             CancellationToken cancellationToken = default)
         {
@@ -76,7 +76,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 if (role == ApproverRole.Maintainer)
                 {
-                    recipients.AddRange((await accounts.GetMaintainersOfSystemAsync(systemId, cancellationToken))
+                    recipients.AddRange((await accounts.GetMaintainersOfBoardAsync(boardId, cancellationToken))
                         .Where(ReviewAuthority.CanGiveMaintainerApproval)
                         .Select(maintainer => new MailRecipient(maintainer.Email, maintainer.DisplayName)));
                 }

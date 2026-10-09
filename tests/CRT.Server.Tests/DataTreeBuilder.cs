@@ -28,8 +28,8 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // The v2.0.0 master as CRT reads it - all four columns under the real names, a preamble above
-        // the header - listing these rows in order. What a NEW system's publish adds its row to
-        // (2026-09-27); a placeholder text file cannot take a row, and a new system is then refused.
+        // the header - listing these rows in order. What a NEW board's publish adds its row to
+        // (2026-09-27); a placeholder text file cannot take a row, and a new board is then refused.
         // ###########################################################################################
         public static void ListingMaster(string root, params MasterListingRow[] rows)
         {

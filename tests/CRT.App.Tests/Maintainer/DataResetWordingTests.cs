@@ -55,9 +55,9 @@ public sealed class DataResetWordingTests
             [
                 "[14] submissions - every one, whatever its state, with its uploaded files",
                 "[6] accounts - every one but the administrators (1 administrator kept)",
-                "[4] maintainers of a system",
+                "[4] maintainers of a board",
                 "[2] invitations to maintain",
-                "[7] system records - made again as each system is next used; the systems themselves stay",
+                "[7] board records - made again as each board is next used; the boards themselves stay",
                 "[310] history entries - the reset itself becomes the first",
                 "[1,200] board views",
                 "[80] API usage rows"
@@ -85,7 +85,7 @@ public sealed class DataResetWordingTests
 
         Assert.Equal(
             "The contribution data was reset: [14] submissions, [6] accounts, [4] maintainers, [2] invitations, " +
-            "[7] system records, [310] history entries, [1,200] board views and [80] API usage rows deleted, " +
+            "[7] board records, [310] history entries, [1,200] board views and [80] API usage rows deleted, " +
             "and [23] stored files removed from the disk.",
             DataResetWordingTests.Text(done));
     }

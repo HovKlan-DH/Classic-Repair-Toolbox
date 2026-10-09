@@ -9,22 +9,22 @@ using Handlers.MaintainerHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // THE "BETA" SCREEN'S LIST (owner request, 2026-09-27): the systems whose BETA data is ahead of
+    // THE "BETA" SCREEN'S LIST (owner request, 2026-09-27): the boards whose BETA data is ahead of
     // production that this account may publish - the SERVER decides the list. Choosing one shows it
     // in BetaView on the right. It was the left half of the "Publish to production" window.
     //
     // *** A CHECK NOBODY ASKED FOR NEVER THROWS AWAY A TICK. *** The list is read with the queue
-    // every minute. The system on screen keeps its plan - and the maintainer's "I have checked this
+    // every minute. The board on screen keeps its plan - and the maintainer's "I have checked this
     // in BETA" tick - unless its row CHANGED (BETA moved, or the other approver acted), when the plan
-    // is worked out again: a tick given to other content must not carry over. A system that LEFT the
+    // is worked out again: a tick given to other content must not carry over. A board that LEFT the
     // list meanwhile (published or pushed back by somebody else) empties the panel and says so.
     //
-    // A system that waits only for the OTHER approver is dimmed and says so, the queue's way, and is
+    // A board that waits only for the OTHER approver is dimmed and says so, the queue's way, and is
     // not counted on the BETA button's badge.
     // ###########################################################################################
     public partial class TabMaintainer
     {
-        private readonly List<ProductionSystemRow> thisBeta = [];
+        private readonly List<ProductionBoardRow> thisBeta = [];
 
         // Whether the list has been read since signing in - the badge says nothing until it has.
         private bool thisBetaKnown;
@@ -50,22 +50,22 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Puts the server's list on screen, keeping the chosen system chosen - see the header for
+        // Puts the server's list on screen, keeping the chosen board chosen - see the header for
         // what happens to the panel beside it. Internal so a test can hand it an answer.
         // ###########################################################################################
         internal async Task ApplyBetaListAsync(ProductionListResponse response, bool background)
         {
             ArgumentNullException.ThrowIfNull(response);
 
-            ProductionSystemRow? before = this.SelectedBetaRow;
+            ProductionBoardRow? before = this.SelectedBetaRow;
 
             this.thisBeta.Clear();
-            this.thisBeta.AddRange(response.Systems);
+            this.thisBeta.AddRange(response.Boards);
             this.thisBetaKnown = true;
 
-            ProductionSystemRow? kept = before is null
+            ProductionBoardRow? kept = before is null
                 ? null
-                : this.thisBeta.FirstOrDefault(row => string.Equals(row.SystemId, before.SystemId, StringComparison.Ordinal));
+                : this.thisBeta.FirstOrDefault(row => string.Equals(row.BoardId, before.BoardId, StringComparison.Ordinal));
 
             if (this.FindControl<ListBox>("BetaList") is ListBox list)
             {
@@ -86,13 +86,13 @@ namespace CRT
             if (!response.Configured)
                 this.ShowBetaListMessage("Publishing to the stable source is not switched on for this server.", isError: true);
             else if (this.thisBeta.Count == 0)
-                this.ShowBetaListMessage("The stable source is up to date with BETA for every system you review.", isError: false);
+                this.ShowBetaListMessage("The stable source is up to date with BETA for every board you review.", isError: false);
             else
                 this.ShowBetaListMessage(null, isError: false);
 
             this.UpdateModeBadges();
 
-            // A system arriving in or leaving BETA changes whether the open submission may be approved.
+            // A board arriving in or leaving BETA changes whether the open submission may be approved.
             this.ReapplyApprovalGate();
 
             if (before is null)
@@ -103,13 +103,13 @@ namespace CRT
                 if (background)
                     this.BetaDetail.ShowGoneElsewhere();
                 else
-                    await this.BetaDetail.ShowSystemAsync(null);
+                    await this.BetaDetail.ShowBoardAsync(null);
 
                 return;
             }
 
             if (!background || !Equals(before, kept))
-                await this.BetaDetail.ShowSystemAsync(kept);
+                await this.BetaDetail.ShowBoardAsync(kept);
         }
 
         private async void OnBetaSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -117,45 +117,45 @@ namespace CRT
             if (this.thisSuppressBetaSelection)
                 return;
 
-            ProductionSystemRow? row = this.SelectedBetaRow;
+            ProductionBoardRow? row = this.SelectedBetaRow;
 
             if (row is null)
             {
-                await this.BetaDetail.ShowSystemAsync(null);
+                await this.BetaDetail.ShowBoardAsync(null);
                 return;
             }
 
             // What the screen opens on next time (TabMaintainer.OpenOnEntry.cs).
-            this.RememberBetaSystem(row.SystemId);
+            this.RememberBetaBoard(row.BoardId);
 
             // Chosen by the maintainer, so waited for under the overlay (2026-09-28) - the queue's
             // own minute check re-reads a changed row without it.
-            if (!await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingProductionPlan(row.SystemId), () => this.BetaDetail.ShowSystemAsync(row)))
+            if (!await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingProductionPlan(row.BoardId), () => this.BetaDetail.ShowBoardAsync(row)))
                 this.BetaDetail.ShowMessage(WaitWording.NoAnswer, isError: true);
         }
 
         // ###########################################################################################
-        // After a publish or a push-back: the BETA list (the system usually leaves it), the queue (a
-        // push-back returns its submissions there) and the systems. Awaited by BetaView before it
+        // After a publish or a push-back: the BETA list (the board usually leaves it), the queue (a
+        // push-back returns its submissions there) and the boards. Awaited by BetaView before it
         // says what happened, so the re-read cannot clear that sentence.
         // ###########################################################################################
         private async Task AfterBetaChangeAsync()
         {
             await this.RefreshBetaAsync(background: false);
             await this.RefreshQueueAsync(background: true);
-            await this.RefreshSystemsAsync(background: true);
+            await this.RefreshBoardsAsync(background: true);
         }
 
-        private ProductionSystemRow? SelectedBetaRow =>
-            (this.FindControl<ListBox>("BetaList")?.SelectedItem as ListBoxItem)?.Tag as ProductionSystemRow;
+        private ProductionBoardRow? SelectedBetaRow =>
+            (this.FindControl<ListBox>("BetaList")?.SelectedItem as ListBoxItem)?.Tag as ProductionBoardRow;
 
-        internal ProductionSystemRow? SelectedBetaRowForTests => this.SelectedBetaRow;
+        internal ProductionBoardRow? SelectedBetaRowForTests => this.SelectedBetaRow;
 
-        // Chooses a system in the list as the maintainer would - for tests.
-        internal void SelectBetaRowForTests(string systemId)
+        // Chooses a board in the list as the maintainer would - for tests.
+        internal void SelectBetaRowForTests(string boardId)
         {
             if (this.FindControl<ListBox>("BetaList") is ListBox list && list.ItemsSource is IEnumerable<ListBoxItem> items)
-                list.SelectedItem = items.FirstOrDefault(item => (item.Tag as ProductionSystemRow)?.SystemId == systemId);
+                list.SelectedItem = items.FirstOrDefault(item => (item.Tag as ProductionBoardRow)?.BoardId == boardId);
         }
 
         // Every text the list shows, top to bottom - for tests.
@@ -184,15 +184,15 @@ namespace CRT
         private void ShowBetaListMessage(string? message, bool isError) =>
             WindowMessage.Show(this.FindControl<TextBlock>("BetaListMessageText"), message, isError);
 
-        // One system: its name, and one grey line - where BETA and production stand, and when it
+        // One board: its name, and one grey line - where BETA and production stand, and when it
         // waits for the other approver rather than this account (then dimmed, the queue's way).
-        private static ListBoxItem BetaItem(ProductionSystemRow row)
+        private static ListBoxItem BetaItem(ProductionBoardRow row)
         {
             var content = new StackPanel { Spacing = 1, Opacity = row.AwaitsYou == false ? 0.55 : 1 };
 
             content.Children.Add(new TextBlock
             {
-                Text = ProductionDisplay.SystemName(row),
+                Text = ProductionDisplay.BoardDisplayName(row),
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -206,7 +206,7 @@ namespace CRT
             });
 
             // A contributor whose work this carries discarded their own draft (owner request,
-            // 2026-09-28) - said on the list, before the system is even opened.
+            // 2026-09-28) - said on the list, before the board is even opened.
             if (row.CarriesDiscardedDraft == true)
             {
                 content.Children.Add(new TextBlock

@@ -70,7 +70,7 @@ namespace CRT
 
         // ###########################################################################################
         // A pick made in ANOTHER table that shows the same thing - the Maintainer tab's submission
-        // table and its system table (code review, 2026-10-04: each wrote the one remembered pick
+        // table and its board table (code review, 2026-10-04: each wrote the one remembered pick
         // without telling the other, so the next launch opened both on whichever was picked last).
         // Taken as this table's pick and applied the way a table being opened applies one (Attach):
         // not at all where this table would show nothing of it. Raises nothing - the host has

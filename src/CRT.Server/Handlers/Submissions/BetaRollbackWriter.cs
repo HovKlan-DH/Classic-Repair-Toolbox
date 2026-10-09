@@ -24,7 +24,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** NO SHARED FILE IS EVER REMOVED HERE (owner decision, 2026-09-27). *** A shared file is
     // only ever RESTORED to production's bytes; one the rolled-back submissions added stays, unused,
-    // for Account > Unused files (AutomaticRemovalScope). The system's own BETA-only files are removed
+    // for Account > Unused files (AutomaticRemovalScope). The board's own BETA-only files are removed
     // directly: production's workbook, now in place, does not cite them.
     // ###########################################################################################
     public static class BetaRollbackWriter
@@ -35,7 +35,7 @@ namespace CRT.Server.Handlers.Submissions
             BetaRollbackFilePlan filePlan,
             string betaRoot,
             string productionRoot,
-            SystemRecord system,
+            BoardRecord board,
             ILogger logger,
             CancellationToken cancellationToken = default,
             Func<string, bool>? canWriteFolder = null)
@@ -43,7 +43,7 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(filePlan);
             ArgumentException.ThrowIfNullOrWhiteSpace(betaRoot);
             ArgumentException.ThrowIfNullOrWhiteSpace(productionRoot);
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(logger);
 
             BetaRollbackPlanResult plan = filePlan.Plan;
@@ -109,9 +109,9 @@ namespace CRT.Server.Handlers.Submissions
             if (refusing.Count > 0)
             {
                 logger.LogError(
-                    "Push-back of {SystemId} refused before changing anything: the service may not write into {Folders}. "
+                    "Push-back of {BoardId} refused before changing anything: the service may not write into {Folders}. "
                     + "Files copied in by hand as another user do this. Give the service its access back with: {Command}",
-                    system.SystemId,
+                    board.BoardId,
                     string.Join(", ", refusing),
                     TreeWriteAccess.FixCommand(refusing));
 
@@ -151,7 +151,7 @@ namespace CRT.Server.Handlers.Submissions
                 restored++;
             }
 
-            // ---- 2. The system's own BETA-only files -------------------------------------------
+            // ---- 2. The board's own BETA-only files -------------------------------------------
             int removed = 0;
 
             foreach (string target in deletions)
@@ -174,10 +174,10 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             // ###########################################################################################
-            // A system that was never promoted leaves BETA entirely, so its now-empty folders go too.
+            // A board that was never promoted leaves BETA entirely, so its now-empty folders go too.
             // ###########################################################################################
             if (plan.Kind == BetaRollbackKind.RemoveFromBeta &&
-                SubmissionPathRules.TryResolve(betaRoot, BetaRollbackFiles.SystemFolder(system), out string folderPath, out _))
+                SubmissionPathRules.TryResolve(betaRoot, BetaRollbackFiles.BoardFolder(board), out string folderPath, out _))
             {
                 try
                 {
@@ -186,7 +186,7 @@ namespace CRT.Server.Handlers.Submissions
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    logger.LogWarning(ex, "The emptied system folder could not be removed from BETA: {Path}", folderPath);
+                    logger.LogWarning(ex, "The emptied board folder could not be removed from BETA: {Path}", folderPath);
                 }
             }
 

@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT PUBLISHING ONE SYSTEM FROM BETA TO PRODUCTION WILL COPY (owner request,
+    // WHAT PUBLISHING ONE BOARD FROM BETA TO PRODUCTION WILL COPY (owner request,
     // 2026-09-25: "it should be a two-fold process, where it is first published to BETA and then it
     // is published to the real production").
     //
@@ -19,11 +19,11 @@ namespace Handlers.DataHandling
     // BETA tree holds right now, so the most a promotion can publish is what a maintainer could
     // already look at there. That is the whole of the argument for letting a maintainer do it.
     //
-    // *** PER SYSTEM, NOT PER SUBMISSION. *** BETA is one tree: two submissions merged into one
+    // *** PER BOARD, NOT PER SUBMISSION. *** BETA is one tree: two submissions merged into one
     // board cannot be promoted separately, because the board's workbook already holds both.
     //
     // WHAT IS COPIED:
-    //   - every file under the system's own BETA folder ("<Manufacturer>/<Hardware>/<Board>/...")
+    //   - every file under the board's own BETA folder ("<Manufacturer>/<Hardware>/<Board>/...")
     //     that Production lacks or holds different bytes for - the workbook and sidecar of every
     //     generation, images, attachments, KiCad files. Never a system.json: that file is retired
     //     (2026-09-25) and a copy an earlier build left in BETA is not carried;
@@ -53,7 +53,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Builds the list.
         //
-        //   ownFiles     - every file under the system's folder in BETA, data-root-relative with
+        //   ownFiles     - every file under the board's folder in BETA, data-root-relative with
         //                  forward slashes, as the server's walk found them.
         //   citedFiles   - every file the BETA board's rows cite (SubmissionManifestBuilder.
         //                  CollectReferencedFiles over the BETA board).
@@ -73,7 +73,7 @@ namespace Handlers.DataHandling
             ArgumentNullException.ThrowIfNull(beta);
             ArgumentNullException.ThrowIfNull(production);
 
-            string systemFolder = $"{manufacturer}/{hardware}/{board}";
+            string boardFolder = $"{manufacturer}/{hardware}/{board}";
 
             var problems = new List<ValidationFinding>();
             var copies = new Dictionary<string, PromotionFile>(StringComparer.Ordinal);
@@ -86,7 +86,7 @@ namespace Handlers.DataHandling
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => path.Replace('\\', '/'))
                 .Where(path => !ProductionPromotionPlan.IsHidden(path))
-                .Where(path => !ProductionPromotionPlan.IsRetired(systemFolder, path))
+                .Where(path => !ProductionPromotionPlan.IsRetired(boardFolder, path))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
 
@@ -98,21 +98,21 @@ namespace Handlers.DataHandling
             {
                 problems.Add(ProductionPromotionPlan.Error(
                     "promote.not_in_beta",
-                    systemFolder,
-                    $"[{systemFolder}] has nothing in the BETA data, so there is nothing to publish to the stable source."));
+                    boardFolder,
+                    $"[{boardFolder}] has nothing in the BETA data, so there is nothing to publish to the stable source."));
 
                 return new ProductionPromotionResult([], 0, problems, TouchesSharedFiles: false);
             }
 
-            // ---- The system's own folder -------------------------------------------------------
+            // ---- The board's own folder -------------------------------------------------------
             foreach (string path in own)
             {
-                if (!path.StartsWith(systemFolder + "/", StringComparison.Ordinal))
+                if (!path.StartsWith(boardFolder + "/", StringComparison.Ordinal))
                 {
                     // The walk handed over something outside the folder it was asked for. Not
-                    // this system's to promote, whatever it is.
+                    // this board's to promote, whatever it is.
                     problems.Add(ProductionPromotionPlan.Error(
-                        "promote.outside_system", path, $"[{path}] is not inside [{systemFolder}]."));
+                        "promote.outside_board", path, $"[{path}] is not inside [{boardFolder}]."));
                     continue;
                 }
 
@@ -192,7 +192,7 @@ namespace Handlers.DataHandling
             }
 
             IReadOnlyList<PromotionFile> ordered = copies.Values
-                .Select(file => file with { Stage = ProductionPromotionPlan.StageOf(systemFolder, file.Path) })
+                .Select(file => file with { Stage = ProductionPromotionPlan.StageOf(boardFolder, file.Path) })
                 .OrderBy(file => file.Stage)
                 .ThenBy(file => file.Path, StringComparer.Ordinal)
                 .ToList();
@@ -263,12 +263,12 @@ namespace Handlers.DataHandling
         // Which of the two write stages a file belongs to. The board's workbooks and sidecars are
         // the .xlsx and .json files at the folder's TOP level, and go after everything they cite.
         // ###########################################################################################
-        internal static PromotionStage StageOf(string systemFolder, string path)
+        internal static PromotionStage StageOf(string boardFolder, string path)
         {
-            if (!path.StartsWith(systemFolder + "/", StringComparison.Ordinal))
+            if (!path.StartsWith(boardFolder + "/", StringComparison.Ordinal))
                 return PromotionStage.Content;
 
-            string rest = path[(systemFolder.Length + 1)..];
+            string rest = path[(boardFolder.Length + 1)..];
 
             if (rest.Contains('/'))
                 return PromotionStage.Content;
@@ -284,10 +284,10 @@ namespace Handlers.DataHandling
         private static bool IsHidden(string path) =>
             path.Split('/').Any(segment => segment.StartsWith('.'));
 
-        // The retired system.json at the board folder's top level - see SystemDescriptorStore. The
+        // The retired system.json at the board folder's top level - see BoardDescriptorStore. The
         // promotion removes one from production instead of carrying one there.
-        private static bool IsRetired(string systemFolder, string path) =>
-            string.Equals(path, $"{systemFolder}/{SystemDescriptorStore.FileName}", StringComparison.Ordinal);
+        private static bool IsRetired(string boardFolder, string path) =>
+            string.Equals(path, $"{boardFolder}/{BoardDescriptorStore.FileName}", StringComparison.Ordinal);
 
         private static ValidationFinding Error(string code, string subject, string message) =>
             new()

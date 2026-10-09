@@ -3,7 +3,7 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Maintainer;
 
-// Covers ReviewQueueDisplay - how a queue row reads: the badges, the system part by part, the
+// Covers ReviewQueueDisplay - how a queue row reads: the badges, the board part by part, the
 // contributor's comment and the footer (owner request, 2026-09-26).
 //
 // The wording is tested rather than eyeballed because the queue is the screen a maintainer decides
@@ -16,14 +16,14 @@ public sealed class ReviewQueueDisplayTests
 
     private static ReviewQueueRow Row(
         long id = 42,
-        string systemId = "Commodore/C64/250407",
+        string boardId = "Commodore/C64/250407",
         string summary = "Corrected R12.",
         DateTimeOffset? createdUtc = null,
         bool touchesSharedFiles = false,
-        bool? isNewSystem = null,
+        bool? isNewBoard = null,
         bool? awaitsYou = null,
         string state = "pending") =>
-        new(id, systemId, state, summary, "someone@example.com", createdUtc, touchesSharedFiles, isNewSystem, awaitsYou);
+        new(id, boardId, state, summary, "someone@example.com", createdUtc, touchesSharedFiles, isNewBoard, awaitsYou);
 
     // -----------------------------------------------------------------------------------
     // Grouped by board (2026-09-26)
@@ -39,13 +39,13 @@ public sealed class ReviewQueueDisplayTests
     {
         IReadOnlyList<ReviewQueueGroup> groups = ReviewQueueDisplay.Group(
         [
-            ReviewQueueDisplayTests.Row(id: 1, systemId: "Commodore/C64/250407"),
-            ReviewQueueDisplayTests.Row(id: 2, systemId: "Commodore/C65/Prototype"),
-            ReviewQueueDisplayTests.Row(id: 3, systemId: "Commodore/C64/250407"),
-            ReviewQueueDisplayTests.Row(id: 4, systemId: "Amstrad/CPC464/Z70200")
+            ReviewQueueDisplayTests.Row(id: 1, boardId: "Commodore/C64/250407"),
+            ReviewQueueDisplayTests.Row(id: 2, boardId: "Commodore/C65/Prototype"),
+            ReviewQueueDisplayTests.Row(id: 3, boardId: "Commodore/C64/250407"),
+            ReviewQueueDisplayTests.Row(id: 4, boardId: "Amstrad/CPC464/Z70200")
         ]);
 
-        Assert.Equal(["Commodore/C64/250407", "Commodore/C65/Prototype", "Amstrad/CPC464/Z70200"], groups.Select(group => group.SystemId));
+        Assert.Equal(["Commodore/C64/250407", "Commodore/C65/Prototype", "Amstrad/CPC464/Z70200"], groups.Select(group => group.BoardId));
         Assert.Equal([1L, 3L], groups[0].Rows.Select(row => row.Id));
         Assert.Equal([2L], groups[1].Rows.Select(row => row.Id));
     }
@@ -58,27 +58,27 @@ public sealed class ReviewQueueDisplayTests
 
     // A board is new or not as a whole - the server's answer, from whichever row carries one.
     [Fact]
-    public void A_group_is_a_new_system_when_the_server_says_so()
+    public void A_group_is_a_new_board_when_the_server_says_so()
     {
-        Assert.True(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewSystem: true)])[0].IsNewSystem);
-        Assert.False(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewSystem: false)])[0].IsNewSystem);
-        Assert.Null(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row()])[0].IsNewSystem);
+        Assert.True(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewBoard: true)])[0].IsNewBoard);
+        Assert.False(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row(isNewBoard: false)])[0].IsNewBoard);
+        Assert.Null(ReviewQueueDisplay.Group([ReviewQueueDisplayTests.Row()])[0].IsNewBoard);
     }
 
     [Fact]
     public void A_heading_names_the_board_part_by_part()
     {
-        Assert.Equal("Commodore / C64 / 250407", ReviewQueueDisplay.SystemHeading("Commodore/C64/250407"));
+        Assert.Equal("Commodore / C64 / 250407", ReviewQueueDisplay.BoardHeading("Commodore/C64/250407"));
     }
 
     // Not three parts: shown whole - and a missing one said to be missing, not left as a gap that
     // looks like a rendering fault.
     [Fact]
-    public void A_malformed_or_missing_system_is_headed_as_it_is()
+    public void A_malformed_or_missing_board_is_headed_as_it_is()
     {
-        Assert.Equal("Commodore/C64", ReviewQueueDisplay.SystemHeading("Commodore/C64"));
-        Assert.Equal("(unknown system)", ReviewQueueDisplay.SystemHeading(""));
-        Assert.Equal("(unknown system)", ReviewQueueDisplay.SystemHeading(null));
+        Assert.Equal("Commodore/C64", ReviewQueueDisplay.BoardHeading("Commodore/C64"));
+        Assert.Equal("(unknown board)", ReviewQueueDisplay.BoardHeading(""));
+        Assert.Equal("(unknown board)", ReviewQueueDisplay.BoardHeading(null));
     }
 
     // -----------------------------------------------------------------------------------
@@ -86,9 +86,9 @@ public sealed class ReviewQueueDisplayTests
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void A_system_is_named_part_by_part()
+    public void A_board_is_named_part_by_part()
     {
-        Assert.Equal(("Commodore", "C64", "250407"), ReviewQueueDisplay.SystemParts("Commodore/C64/250407"));
+        Assert.Equal(("Commodore", "C64", "250407"), ReviewQueueDisplay.BoardParts("Commodore/C64/250407"));
     }
 
     // Not three well-formed parts: no parts at all - the row then shows the id whole rather than
@@ -99,9 +99,9 @@ public sealed class ReviewQueueDisplayTests
     [InlineData("Commodore/C64")]
     [InlineData("Commodore/C64/250407/extra")]
     [InlineData("Commodore//250407")]
-    public void A_malformed_system_id_has_no_parts(string? systemId)
+    public void A_malformed_board_id_has_no_parts(string? boardId)
     {
-        Assert.Null(ReviewQueueDisplay.SystemParts(systemId));
+        Assert.Null(ReviewQueueDisplay.BoardParts(boardId));
     }
 
     [Fact]
@@ -113,15 +113,15 @@ public sealed class ReviewQueueDisplayTests
         Assert.Equal("(no description given)", ReviewQueueDisplay.Comment(ReviewQueueDisplayTests.Row(summary: "   ")));
     }
 
-    // "New system" is the one badge a maintainer must never miss - the highest-risk submission
+    // "New board" is the one badge a maintainer must never miss - the highest-risk submission
     // there is. It is the server's to say; a server that did not say gets no badge, not a guess.
-    // A published system - the ordinary case - is not marked at all (2026-09-26).
+    // A published board - the ordinary case - is not marked at all (2026-09-26).
     [Fact]
-    public void Only_a_new_system_is_badged()
+    public void Only_a_new_board_is_badged()
     {
-        Assert.Equal("New system", ReviewQueueDisplay.SystemBadge(true));
-        Assert.Null(ReviewQueueDisplay.SystemBadge(false));
-        Assert.Null(ReviewQueueDisplay.SystemBadge(null));
+        Assert.Equal("New board", ReviewQueueDisplay.BoardBadge(true));
+        Assert.Null(ReviewQueueDisplay.BoardBadge(false));
+        Assert.Null(ReviewQueueDisplay.BoardBadge(null));
     }
 
     // ###########################################################################################

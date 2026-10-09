@@ -19,19 +19,24 @@ namespace Handlers.DataHandling
     // published side is resolved through the same rule's containment check. Opening goes through
     // ExternalTargetLauncher, the only sanctioned way to hand a file to the operating system, with
     // the root the file was really found under.
+    //
+    // The published side is named after the source the data came from, as a changed cell's tooltip
+    // is (BoardTableDocument.SourceBaselineLabel, owner request 2026-10-05).
     // ###########################################################################################
     internal sealed class DraftTableFileSource : IBoardTableFileSource
     {
         private readonly string thisDataRoot;
-        private readonly string thisDraftSystemFolder;
+        private readonly string thisDraftBoardFolder;
 
-        public DraftTableFileSource(string dataRoot, string draftSystemFolder)
+        // `betaSource`: whether the downloaded data is the BETA source's rather than the stable one's.
+        public DraftTableFileSource(string dataRoot, string draftBoardFolder, bool betaSource = false)
         {
             this.thisDataRoot = dataRoot ?? string.Empty;
-            this.thisDraftSystemFolder = draftSystemFolder ?? string.Empty;
+            this.thisDraftBoardFolder = draftBoardFolder ?? string.Empty;
+            this.PublishedLabel = betaSource ? "BETA source" : "Stable source";
         }
 
-        public string PublishedLabel => "Published";
+        public string PublishedLabel { get; }
 
         public string CurrentLabel => "Your draft";
 
@@ -82,9 +87,9 @@ namespace Handlers.DataHandling
 
             if (side == BoardTableFileSide.Current)
             {
-                return this.thisDraftSystemFolder.Length == 0
+                return this.thisDraftBoardFolder.Length == 0
                     ? null
-                    : DraftFileResolver.ResolveWithSource(this.thisDataRoot, this.thisDraftSystemFolder, trimmed);
+                    : DraftFileResolver.ResolveWithSource(this.thisDataRoot, this.thisDraftBoardFolder, trimmed);
             }
 
             if (this.thisDataRoot.Length == 0 ||

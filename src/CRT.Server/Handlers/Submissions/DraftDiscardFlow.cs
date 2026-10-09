@@ -8,8 +8,8 @@ namespace CRT.Server.Handlers.Submissions
     // DraftDiscardContract for why a maintainer is told.
     //
     // The endpoint has already proved the request holds the submission's capability token; this
-    // records the notice and, the first time only, writes the audit row that puts it in the system's
-    // history on the Systems screen (SystemHistoryRules shows DraftDiscarded audited under "#{id}").
+    // records the notice and, the first time only, writes the audit row that puts it in the board's
+    // history on the Boards screen (BoardHistoryRules shows DraftDiscarded audited under "#{id}").
     //
     // *** ANY STATE IS RECORDED. *** CRT only reports submissions still open, but a notice that
     // arrives late - the submission published meanwhile - is still true, and the screens decide what
@@ -46,7 +46,7 @@ namespace CRT.Server.Handlers.Submissions
                 new AuditEntry(
                     submission.AccountId,
                     who,
-                    SystemHistoryEvents.DraftDiscarded,
+                    BoardHistoryEvents.DraftDiscarded,
                     FormattableString.Invariant($"#{submission.Id}"),
                     null,
                     nowUtc),

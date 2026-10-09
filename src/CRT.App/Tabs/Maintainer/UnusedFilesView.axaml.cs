@@ -21,7 +21,7 @@ namespace CRT
     // *** A LIST SHOWN IS A LIST SENT. *** Remove sends exactly the paths on screen, and the server
     // removes only those it still finds unused - never one the administrator did not see.
     //
-    // *** DRAWN AS THE FILE TREE (owner request, 2026-10-04). *** The same FileTreeView a system's
+    // *** DRAWN AS THE FILE TREE (owner request, 2026-10-04). *** The same FileTreeView a board's
     // Files view uses, as a listing with every folder open: each file with its size, its picture on
     // pointing at it, and opened on a double-click - from the tree's public address, which the list
     // carries (UnusedFileListing.PublicDataUrl). UnusedFilesDisplay.TreeEntries turns the list into

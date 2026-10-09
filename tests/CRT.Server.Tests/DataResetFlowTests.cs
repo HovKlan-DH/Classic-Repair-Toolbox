@@ -24,7 +24,7 @@ namespace CRT.Server.Tests
 
         private static readonly DataResetCounts Before =
             new(Submissions: 14, LastSubmissionId: 52, Accounts: 6, LastAccountId: 9, Administrators: 1,
-                Maintainers: 4, Invitations: 2, ProductionApprovals: 1, Systems: 7, HistoryEntries: 310,
+                Maintainers: 4, Invitations: 2, ProductionApprovals: 1, Boards: 7, HistoryEntries: 310,
                 BoardViews: 1200, ApiUsageRows: 80);
 
         private static AccountRecord Account(bool administrator) =>
@@ -102,7 +102,7 @@ namespace CRT.Server.Tests
             Assert.False(off.Plan!.IsEnabled);
             Assert.Equal(DataResetRules.NotEnabledMessage, off.Plan.NotEnabledBecause);
             Assert.Contains("AllowDataReset", off.Plan.NotEnabledBecause);
-            Assert.Equal((14, 6, 1, 4, 2, 7), (off.Plan.Submissions, off.Plan.Accounts, off.Plan.Administrators, off.Plan.Maintainers, off.Plan.Invitations, off.Plan.Systems));
+            Assert.Equal((14, 6, 1, 4, 2, 7), (off.Plan.Submissions, off.Plan.Accounts, off.Plan.Administrators, off.Plan.Maintainers, off.Plan.Invitations, off.Plan.Boards));
             Assert.Equal((310, 1200, 80), (off.Plan.HistoryEntries, off.Plan.BoardViews, off.Plan.ApiUsageRows));
             Assert.Equal(DataResetFlowTests.Shown, off.Plan.Fingerprint);
 
@@ -161,7 +161,7 @@ namespace CRT.Server.Tests
 
             // What went, as the answer says it - and the stored files the blob store gave up.
             DataResetAnswer answer = outcome.Answer!;
-            Assert.Equal((14, 6, 4, 2, 7), (answer.SubmissionsDeleted, answer.AccountsDeleted, answer.MaintainersDeleted, answer.InvitationsDeleted, answer.SystemsDeleted));
+            Assert.Equal((14, 6, 4, 2, 7), (answer.SubmissionsDeleted, answer.AccountsDeleted, answer.MaintainersDeleted, answer.InvitationsDeleted, answer.BoardsDeleted));
             Assert.Equal((310, 1200, 80, 23), (answer.HistoryEntriesDeleted, answer.BoardViewsDeleted, answer.ApiUsageRowsDeleted, answer.StoredFilesRemoved));
 
             // The new history's first row: who, and what went.

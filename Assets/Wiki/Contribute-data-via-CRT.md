@@ -80,7 +80,7 @@ A file you pick from elsewhere on your computer starts with **no folder chosen, 
 Until you do, **Save to draft** will not save, and the **File location** box turns red. A file
 you pick from CRT's own data folder keeps the folder it is already in.
 
-A system you added yourself is in that list too. Its `Scope baseline` folder is where scope
+A board you added yourself is in that list too. Its `Scope baseline` folder is where scope
 images from a known good board go.
 
 > **Can't find your component in the list?** Use **Add new component** on the Contribute tab to
@@ -109,16 +109,16 @@ Use **Cancel** to close the editor without saving whatever you have not saved ye
 ## Adding a board that is not in the list at all
 
 Everything above assumes the board you want to improve is already there. If it is not, the
-**Add a new system** button on the Contribute tab creates one: give it a manufacturer, hardware and
-board name (and, if you like, notes about the hardware for the maintainer who adds it to CRT's lists), choose **Create system**, and it appears in
+**Add a new board** button on the Contribute tab creates one: give it a manufacturer, hardware and
+board name (and, if you like, notes about the hardware for the maintainer who adds it to CRT's lists), choose **Create board**, and it appears in
 the lists immediately as your own local draft, with CRT on the Drafts tab. From that point it is an
 ordinary board in every respect - you add board images, label the components and attach files with
 exactly the same tools described above.
 
 Before it is created you are asked to accept the role of **maintainer** for it ("Becoming the
-system's maintainer" - **Accept and create** or **Decline**). If you later submit the system for the
+board's maintainer" - **Accept and create** or **Decline**). If you later submit the board for the
 community to use, you agree to review the changes others submit for it and publish the ones that are
-right. Accepting sends nothing by itself: the administrator invites a system's maintainers by email -
+right. Accepting sends nothing by itself: the administrator invites a board's maintainers by email -
 see [Maintainer tab](Maintainer-tab#getting-a-maintainer-account).
 
 The full walkthrough, including importing a KiCad project so that clicking a component lights up its
@@ -140,7 +140,7 @@ it inside. The next time CRT starts, it takes the folder in as a draft and shows
 
 * A folder for a board CRT already lists becomes your draft of that board, and the Drafts tab shows
   what you changed compared with the published version.
-* Any other folder becomes a new system, named after its folders. A board you set up the old way
+* Any other folder becomes a new board, named after its folders. A board you set up the old way
   (with a `_UserContribution` workbook) is one of these, because it has never been published - it
   stays where it already is in the hardware and board lists.
 * The board folder should hold one Excel file. For a board CRT already lists, a file with a
@@ -219,7 +219,8 @@ Everything that differs from the official data is coloured:
 
 * **green** - a row you added;
 * **orange** - a value you changed. Only the changed cell is coloured, and hovering over it shows
-  the "Published value";
+  the value it had in the data you downloaded - the "BETA source value" or the "Stable source
+  value", depending on which source you download from;
 * **red, and struck through** - a row you deleted. It is shown where it used to be, so you can see
   what was around it.
 
@@ -474,7 +475,7 @@ KiCad calibration and no other files - the draft is removed on its own, the next
 application starts or when you close "My submissions", along with any folders it leaves empty in the
 Drafts folder. If you kept working in the draft after
 submitting, or it is open in the table editor with unsaved edits, it stays, and nothing of yours is
-lost. **A whole new system is tidied away the same way**, once CRT lists the published system in
+lost. **A whole new board is tidied away the same way**, once CRT lists the published board in
 its hardware and board lists. Until then your draft is the only place you can see it, so it stays.
 A board you set up the old way, with a `_UserContribution` workbook, is never counted as published
 by its own copy in your data folder - only the real published board can tidy its draft away.
@@ -561,12 +562,12 @@ A few things worth knowing about that list:
 * With no internet connection the list still opens and shows what it last knew, rather than going
   blank.
 
-### If you contributed a whole new system
+### If you contributed a whole new board
 
 For a brand new hardware and board, the administrator may invite you, by email, to be a
-**maintainer** of that system once it is published, so you can look after it from then on -
+**maintainer** of that board once it is published, so you can look after it from then on -
 reviewing what others send in for it, and publishing what is right, in CRT's
-[Maintainer tab](Maintainer-tab). Accepting the maintainer role when you created the system does not
+[Maintainer tab](Maintainer-tab). Accepting the maintainer role when you created the board does not
 do that by itself - the invitation does (see
 [Getting a maintainer account](Maintainer-tab#getting-a-maintainer-account)). It is never something
 you need before contributing.

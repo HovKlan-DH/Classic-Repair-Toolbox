@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     //
     // A submission may CHANGE only three places:
     //
-    //   Own                - "<Manufacturer>/<Hardware>/<Board>/..." - the system it names.
+    //   Own                - "<Manufacturer>/<Hardware>/<Board>/..." - the board it names.
     //   ManufacturerShared - "<Manufacturer>/Shared files/..." - shared by that maker's boards.
     //   GenericShared      - "Generic shared files/..." - shared by every board.
     //
@@ -27,7 +27,7 @@ namespace Handlers.DataHandling
     // published there.
     //
     // CASE-SENSITIVE, like every path comparison against the Linux tree: "commodore/C64/250407/"
-    // is not this system's folder, and treating it as one would let a case-variant pass as own.
+    // is not this board's folder, and treating it as one would let a case-variant pass as own.
     //
     // Serialised as its NAME, not its number, because the Maintainer tab reads it off the
     // wire - a number that shifted when a member was added would mislabel every file silently.
@@ -52,7 +52,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Is this folder name one of the two SHARED folders? The ONE rule for it (code review,
         // 2026-09-25): SubmissionValidator refuses a board named with either name in either of the
-        // first two positions, and DataTreeUsage and PublishedSystemLister skip exactly those
+        // first two positions, and DataTreeUsage and PublishedBoardLister skip exactly those
         // folders. Three hand-written copies had drifted apart - the validator checked one name per
         // position - so a board publishable under "Shared files/..." was invisible to the other two.
         //

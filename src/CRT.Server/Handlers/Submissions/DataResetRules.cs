@@ -31,7 +31,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // *** WHAT THE FINGERPRINT COVERS. *** The submissions and the accounts by count AND highest
         // id - a count alone stays the same when one goes and another arrives - and the maintainers,
-        // invitations, production approvals and system records by count.
+        // invitations, production approvals and board records by count.
         //
         // NOT the history, the board views or the API usage counts: they grow by themselves (a
         // sign-in writes history, CRTs report board views every 15 minutes, API usage is written every
@@ -53,7 +53,7 @@ namespace CRT.Server.Handlers.Submissions
                 counts.Maintainers,
                 counts.Invitations,
                 counts.ProductionApprovals,
-                counts.Systems);
+                counts.Boards);
 
             return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
         }
@@ -70,7 +70,7 @@ namespace CRT.Server.Handlers.Submissions
                 counts.Administrators,
                 counts.Maintainers,
                 counts.Invitations,
-                counts.Systems,
+                counts.Boards,
                 counts.HistoryEntries,
                 counts.BoardViews,
                 counts.ApiUsageRows,
@@ -86,7 +86,7 @@ namespace CRT.Server.Handlers.Submissions
                 deleted.Accounts,
                 deleted.Maintainers,
                 deleted.Invitations,
-                deleted.Systems,
+                deleted.Boards,
                 deleted.HistoryEntries,
                 deleted.BoardViews,
                 deleted.ApiUsageRows,
@@ -102,7 +102,7 @@ namespace CRT.Server.Handlers.Submissions
                 CultureInfo.InvariantCulture,
                 $"{deleted.Submissions} submission(s), {deleted.Accounts} account(s), {deleted.Maintainers} maintainer(s), " +
                 $"{deleted.Invitations} invitation(s), {deleted.ProductionApprovals} production approval(s), " +
-                $"{deleted.Systems} system record(s), {deleted.HistoryEntries} history row(s), " +
+                $"{deleted.Boards} board record(s), {deleted.HistoryEntries} history row(s), " +
                 $"{deleted.BoardViews} board view(s) and {deleted.ApiUsageRows} API usage row(s) deleted; " +
                 $"{deleted.Administrators} administrator(s) kept");
         }

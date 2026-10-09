@@ -30,12 +30,12 @@ namespace Handlers.DataHandling
     public static class ApprovalRules
     {
         // An empty list means "any one approval": the ordinary case.
-        public static IReadOnlyList<ApproverRole> Required(bool touchesSharedFiles, bool systemHasMaintainers)
+        public static IReadOnlyList<ApproverRole> Required(bool touchesSharedFiles, bool boardHasMaintainers)
         {
             if (!touchesSharedFiles)
                 return [];
 
-            return systemHasMaintainers
+            return boardHasMaintainers
                 ? [ApproverRole.Maintainer, ApproverRole.Administrator]
                 : [ApproverRole.Administrator];
         }

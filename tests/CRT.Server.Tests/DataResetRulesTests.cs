@@ -13,7 +13,7 @@ namespace CRT.Server.Tests
     {
         private static readonly DataResetCounts Counts =
             new(Submissions: 14, LastSubmissionId: 52, Accounts: 6, LastAccountId: 9, Administrators: 1,
-                Maintainers: 4, Invitations: 2, ProductionApprovals: 1, Systems: 7, HistoryEntries: 310,
+                Maintainers: 4, Invitations: 2, ProductionApprovals: 1, Boards: 7, HistoryEntries: 310,
                 BoardViews: 1200, ApiUsageRows: 80);
 
         [Fact]
@@ -36,7 +36,7 @@ namespace CRT.Server.Tests
             { "a maintainer more", DataResetRulesTests.Counts with { Maintainers = 5 } },
             { "an invitation more", DataResetRulesTests.Counts with { Invitations = 3 } },
             { "a production approval more", DataResetRulesTests.Counts with { ProductionApprovals = 2 } },
-            { "a system record more", DataResetRulesTests.Counts with { Systems = 8 } },
+            { "a board record more", DataResetRulesTests.Counts with { Boards = 8 } },
         };
 
         [Theory]
@@ -73,7 +73,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(DataResetRules.Fingerprint(DataResetRulesTests.Counts), on.Fingerprint);
             Assert.Equal((14, 6, 1, 4, 2, 7, 310, 1200, 80),
-                (on.Submissions, on.Accounts, on.Administrators, on.Maintainers, on.Invitations, on.Systems, on.HistoryEntries, on.BoardViews, on.ApiUsageRows));
+                (on.Submissions, on.Accounts, on.Administrators, on.Maintainers, on.Invitations, on.Boards, on.HistoryEntries, on.BoardViews, on.ApiUsageRows));
             Assert.True(on.IsEnabled);
             Assert.Null(on.NotEnabledBecause);
 
@@ -92,7 +92,7 @@ namespace CRT.Server.Tests
             Assert.Contains("4 maintainer(s)", detail);
             Assert.Contains("2 invitation(s)", detail);
             Assert.Contains("1 production approval(s)", detail);
-            Assert.Contains("7 system record(s)", detail);
+            Assert.Contains("7 board record(s)", detail);
             Assert.Contains("1200 board view(s)", detail);
             Assert.Contains("80 API usage row(s)", detail);
             Assert.Contains("1 administrator(s) kept", detail);

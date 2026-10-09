@@ -18,10 +18,10 @@ namespace CRT.Server.Handlers.Submissions
     // group and inherits the wrong rule - the kind of mistake that reads as a one-line diff.
     //
     // *** EVERY ROUTE HERE CHECKS AUTHORITY SERVER-SIDE, ON EVERY REQUEST, AGAINST THE
-    // SUBMISSION'S OWN SYSTEM. *** Phase 6 task 6 states it: the desktop app hiding a button is
+    // SUBMISSION'S OWN BOARD. *** Phase 6 task 6 states it: the desktop app hiding a button is
     // not enforcement, because the app is public source and an attacker calls the API directly.
-    // Since 2026-09-25 a maintainer is somebody in a system's pool, so every route that names a
-    // submission loads it and asks ReviewAuthority about THAT system - threat 3's "check the
+    // Since 2026-09-25 a maintainer is somebody in a board's pool, so every route that names a
+    // submission loads it and asks ReviewAuthority about THAT board - threat 3's "check the
     // object, not just the verb". The queue is filtered by the same rule. No route makes its own
     // judgement.
     //
@@ -29,10 +29,10 @@ namespace CRT.Server.Handlers.Submissions
     //   200 OK       - here is the queue, or the submission.
     //   401          - no usable credentials.
     //   403          - authenticated, but this account may not review - at all, or not THIS
-    //                  system. DISTINCT from 401 on purpose: a maintainer whose account lacks the
+    //                  board. DISTINCT from 401 on purpose: a maintainer whose account lacks the
     //                  role needs to be told that, not handed a login prompt that will not help.
     //                  Not 404 either: the caller is a named, trusted account, and learning that
-    //                  a submission id exists for a system they do not review tells them nothing
+    //                  a submission id exists for a board they do not review tells them nothing
     //                  worth hiding - while an honest maintainer on a stale link needs the reason.
     //   404          - no such submission.
     // ###########################################################################################
@@ -70,7 +70,7 @@ namespace CRT.Server.Handlers.Submissions
             // is a correction. ApprovePublishFlow refuses early and often, and every refusal
             // before its final step leaves the tree untouched.
             //
-            // All three need the same authority: a maintainer of the submission's system, or an
+            // All three need the same authority: a maintainer of the submission's board, or an
             // administrator (ReviewDecisionRules).
             // ###########################################################################################
             review.MapPost("/submissions/{submissionId:long}/approve", ReviewEndpoints.ApproveAsync)
@@ -88,7 +88,7 @@ namespace CRT.Server.Handlers.Submissions
         // POST /api/review/submissions/{id}/approve
         //
         // Publishes the submission into the data tree. **The one irreversible operation in the
-        // system** - see ApprovePublishFlow, which owns the whole sequence.
+        // board** - see ApprovePublishFlow, which owns the whole sequence.
         //
         // This route is a rim and nothing more: it authorises, delegates, and maps the outcome to
         // a status code. It deliberately makes no judgement of its own about whether the publish
@@ -127,7 +127,7 @@ namespace CRT.Server.Handlers.Submissions
                 // REQUEST (owner report, 2026-09-23). ***
                 //
                 // The board is on disk and the state is Merged. Publishing is the one irreversible
-                // operation in the system, so an exception escaping this block is the worst
+                // operation in the board, so an exception escaping this block is the worst
                 // possible answer: the maintainer is told 500, reads it as "the publish failed", and
                 // tries again against a tree that has already been overwritten.
                 //
@@ -178,11 +178,11 @@ namespace CRT.Server.Handlers.Submissions
                     if (waiting is not null)
                     {
                         IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForRolesAsync(
-                            outcome.WaitingFor, waiting.SystemId, accounts, cancellationToken);
+                            outcome.WaitingFor, waiting.BoardId, accounts, cancellationToken);
 
                         await notifier.NotifyApprovalNeededAsync(
                             recipients,
-                            waiting.SystemId,
+                            waiting.BoardId,
                             $"submission #{waiting.Id} (\"{waiting.Summary}\") to the BETA source",
                             ApprovePublishFlow.Label(access!),
                             cancellationToken);
@@ -246,7 +246,7 @@ namespace CRT.Server.Handlers.Submissions
             // DataTreeRoot.
             //
             // *** IT MUST NOT FAIL THE PUBLISH. *** The tree is already overwritten and this is
-            // the one irreversible operation in the system; an error here would be read as
+            // the one irreversible operation in the board; an error here would be read as
             // "the publish failed" and retried against data that has already changed. A failed
             // regeneration leaves the PREVIOUS manifest in place, so clients stay on what they
             // have until it is rebuilt - stale, but never inconsistent.
@@ -254,7 +254,7 @@ namespace CRT.Server.Handlers.Submissions
             ReviewEndpoints.RewriteBetaManifest(submissionId, options, logger);
 
             // ###########################################################################################
-            // *** THE MAIL COMES LAST, AFTER THE ONE IRREVERSIBLE OPERATION IN THE SYSTEM. ***
+            // *** THE MAIL COMES LAST, AFTER THE ONE IRREVERSIBLE OPERATION IN THE BOARD. ***
             //
             // The board is already written and the state already Merged. Nothing here may throw
             // back to the maintainer - they would read the error as "the publish failed" and try
@@ -287,7 +287,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // BETA's dataChecksums.json, rewritten after a publish into BETA - see AfterPublishAsync for
         // why it must happen and must never fail the publish. Also called after a change published
-        // from the Systems screen (SystemEndpoints), which goes into BETA the same way.
+        // from the Boards screen (BoardEndpoints), which goes into BETA the same way.
         // ###########################################################################################
         internal static void RewriteBetaManifest(long submissionId, ServerOptions options, ILogger logger)
         {
@@ -408,7 +408,7 @@ namespace CRT.Server.Handlers.Submissions
 
             if (!rule(access, record, out string why))
             {
-                // 409, not 403: the account may well be allowed to review THIS system, and what
+                // 409, not 403: the account may well be allowed to review THIS board, and what
                 // is wrong is the SUBMISSION's state - somebody else decided it first. A 403
                 // would send the maintainer looking at their own permissions for a conflict that is
                 // about timing.
@@ -574,7 +574,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            // The bytes of a submission are for its system's maintainers alone - the store is shared
+            // The bytes of a submission are for its board's maintainers alone - the store is shared
             // across every submission, so this is where a maintainer of one board would otherwise
             // read another board's uploads.
             IResult? notMine = await ReviewEndpoints.RefuseUnlessMaintainerOfAsync(
@@ -605,7 +605,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/published/{path}
         //
-        // The bytes CURRENTLY PUBLISHED for this system, so the Maintainer tab can draw the "before"
+        // The bytes CURRENTLY PUBLISHED for this board, so the Maintainer tab can draw the "before"
         // side. Without it every comparison is one-sided: a maintainer can see the new image but not
         // what it replaces, which is the whole question for a replaced schematic.
         //
@@ -638,9 +638,9 @@ namespace CRT.Server.Handlers.Submissions
             if (notMine is not null)
                 return notMine;
 
-            // Scoped to the submission being reviewed rather than taking a system id directly:
-            // the maintainer is looking at a submission, and deriving the system from it means the
-            // route cannot be pointed at a system the caller simply named.
+            // Scoped to the submission being reviewed rather than taking a board id directly:
+            // the maintainer is looking at a submission, and deriving the board from it means the
+            // route cannot be pointed at a board the caller simply named.
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
@@ -660,7 +660,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // What the PUBLISHED board of a submission's system cites - so the old picture of a changed
+        // What the PUBLISHED board of a submission's board cites - so the old picture of a changed
         // or deleted row can be shown beside the new one (2026-09-26). Read through the preview
         // cache (WorkbookReadCache), since this only decides what may be SHOWN; a workbook that
         // cannot be read cites nothing here, which only means that file is not served.
@@ -791,7 +791,7 @@ namespace CRT.Server.Handlers.Submissions
                 // are judged against the tree as it is now.
                 Submission: ReviewQueueFlow.Entry(
                     record with { TouchesSharedFiles = touchesSharedFiles },
-                    isNewSystem: comparison.Changes?.IsNewSystem,
+                    isNewBoard: comparison.Changes?.IsNewBoard,
                     awaitsYou: canPublish && approval.CanApprove,
                     draftDiscardedUtc: discarded.TryGetValue(record.Id, out DateTimeOffset discardedUtc) ? discardedUtc : null),
                 Manifest: manifest,
@@ -838,9 +838,9 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // GET /api/review/submissions/{id}/files
         //
-        // The system's files as the BETA data will hold them after approving this, against BETA now
+        // The board's files as the BETA data will hold them after approving this, against BETA now
         // - CRT.Data's SubmissionFilesAnswer, worked out by SubmissionFileTreeFlow (owner request,
-        // 2026-09-28). The same authority as the detail: a maintainer of the system, or an
+        // 2026-09-28). The same authority as the detail: a maintainer of the board, or an
         // administrator. A submission whose contents cannot be loaded has no tree to show, and says
         // so rather than showing an empty one.
         // ###########################################################################################
@@ -872,10 +872,10 @@ namespace CRT.Server.Handlers.Submissions
             if (manifest is null || string.IsNullOrWhiteSpace(options.DataTreeRoot))
                 return Results.Conflict(new { error = "This submission's contents could not be loaded, so there are no files to show." });
 
-            IReadOnlyList<SystemFileEntry> files = await SubmissionFileTreeFlow.BuildAsync(
+            IReadOnlyList<BoardFileEntry> files = await SubmissionFileTreeFlow.BuildAsync(
                 options.DataTreeRoot, manifest, publishedBoards, DateTimeOffset.UtcNow, cancellationToken);
 
-            return Results.Ok(new SubmissionFilesAnswer(record.SystemId, files, options.PublicDataBaseUrl));
+            return Results.Ok(new SubmissionFilesAnswer(record.BoardId, files, options.PublicDataBaseUrl));
         }
 
         // ###########################################################################################
@@ -944,7 +944,7 @@ namespace CRT.Server.Handlers.Submissions
             // here would let a contributor's calibration change reach the published tree with no
             // maintainer having seen it - which is the one thing this screen exists to prevent.
             //
-            // The PUBLISHED side comes from the sidecar beside the published workbook; a system
+            // The PUBLISHED side comes from the sidecar beside the published workbook; a board
             // with none yields an empty list, which correctly reports every submitted calibration
             // as an addition.
             return new ReviewComparison(
@@ -1012,7 +1012,7 @@ namespace CRT.Server.Handlers.Submissions
         // only place both halves exist - the same reasoning the change summary itself is computed
         // here rather than in the app.
         //
-        // A new system yields an EMPTY list, which correctly makes every image an addition.
+        // A new board yields an EMPTY list, which correctly makes every image an addition.
         // ###########################################################################################
         // ###########################################################################################
         // The calibrations the PUBLISHED board carries, read from its JSON sidecar.
@@ -1021,7 +1021,7 @@ namespace CRT.Server.Handlers.Submissions
         // sidecar, under their own root, so this reads the file directly - the same file the
         // publish writes.
         //
-        // A system with no sidecar, or no calibrations in it, yields an EMPTY list, which
+        // A board with no sidecar, or no calibrations in it, yields an EMPTY list, which
         // correctly reports every submitted calibration as an addition. Never throws: an
         // unreadable sidecar must not make a submission impossible to open, and the maintainer sees
         // the findings instead.
@@ -1193,7 +1193,7 @@ namespace CRT.Server.Handlers.Submissions
             if (account is null)
                 return (null, Results.Unauthorized());
 
-            IReadOnlySet<string> maintainerOf = await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
+            IReadOnlySet<string> maintainerOf = await accounts.GetReviewedBoardIdsAsync(account.Id, cancellationToken);
 
             return (new ReviewAccess(account, maintainerOf), null);
         }
@@ -1218,7 +1218,7 @@ namespace CRT.Server.Handlers.Submissions
                 : ReviewEndpoints.NotMaintainerOf(access, record);
         }
 
-        // The 403 for a maintainer asking about a submission on a system they do not review, or a
+        // The 403 for a maintainer asking about a submission on a board they do not review, or a
         // shared-files submission that is the administrator's. The sentence is ReviewAuthority's.
         internal static IResult NotMaintainerOf(ReviewAccess? access, SubmissionRecord? submission) =>
             Results.Json(

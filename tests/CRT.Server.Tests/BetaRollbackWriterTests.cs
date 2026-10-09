@@ -47,7 +47,7 @@ namespace CRT.Server.Tests
             }
         }
 
-        private static SystemRecord System() =>
+        private static BoardRecord Board() =>
             new("Commodore/C64/250407", "Commodore", "C64", "250407", "r2", true, "beta", "r1", "production", DateTimeOffset.UtcNow);
 
         private static string Sha(string content) =>
@@ -73,7 +73,7 @@ namespace CRT.Server.Tests
 
             BetaRollbackWriteOutcome outcome = await BetaRollbackWriter.ApplyAsync(
                 BetaRollbackWriterTests.RestoreOf(BetaRollbackWriterTests.Sheet, BetaRollbackWriterTests.Sha("PUBLISHED")),
-                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance);
+                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.Board(), NullLogger.Instance);
 
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.Equal("PUBLISHED", File.ReadAllText(this.In(this.thisBeta, BetaRollbackWriterTests.Sheet)));
@@ -100,7 +100,7 @@ namespace CRT.Server.Tests
 
             BetaRollbackWriteOutcome outcome = await BetaRollbackWriter.ApplyAsync(
                 BetaRollbackWriterTests.RestoreOf(BetaRollbackWriterTests.Sheet, BetaRollbackWriterTests.Sha("PUBLISHED")),
-                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance,
+                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.Board(), NullLogger.Instance,
                 canWriteFolder: folder => folder != images);
 
             Assert.False(outcome.IsDone);
@@ -108,7 +108,7 @@ namespace CRT.Server.Tests
             Assert.Equal("SUBMITTED", File.ReadAllText(betaSheet));
         }
 
-        // A plan for a promoted system whose production folder cannot be read does nothing, even if
+        // A plan for a promoted board whose production folder cannot be read does nothing, even if
         // a caller hands it over without checking (the flow refuses it first).
         [Fact]
         public async Task A_plan_whose_production_cannot_be_read_changes_nothing()
@@ -119,7 +119,7 @@ namespace CRT.Server.Tests
                 new BetaRollbackFilePlan(
                     new BetaRollbackPlanResult(BetaRollbackKind.ProductionUnreadable, [], [BetaRollbackWriterTests.Sheet], [], []),
                     new Dictionary<string, string>()),
-                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance);
+                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.Board(), NullLogger.Instance);
 
             Assert.False(outcome.IsDone);
             Assert.True(File.Exists(this.In(this.thisBeta, BetaRollbackWriterTests.Sheet)));
@@ -140,7 +140,7 @@ namespace CRT.Server.Tests
 
             BetaRollbackWriteOutcome outcome = await BetaRollbackWriter.ApplyAsync(
                 BetaRollbackWriterTests.RestoreOf(BetaRollbackWriterTests.Sheet, BetaRollbackWriterTests.Sha("WHAT THE PLAN SAW")),
-                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance);
+                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.Board(), NullLogger.Instance);
 
             Assert.False(outcome.IsDone);
             Assert.Contains("changed in the stable source after it was checked", outcome.Error, StringComparison.Ordinal);
@@ -221,7 +221,7 @@ namespace CRT.Server.Tests
 
             BetaRollbackWriteOutcome outcome = await BetaRollbackWriter.ApplyAsync(
                 BetaRollbackWriterTests.RestoreOf(BetaRollbackWriterTests.Sheet, BetaRollbackWriterTests.Sha("PUBLISHED")),
-                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.System(), NullLogger.Instance);
+                this.thisBeta, this.thisProduction, BetaRollbackWriterTests.Board(), NullLogger.Instance);
 
             Assert.True(outcome.IsDone, outcome.Error);
 

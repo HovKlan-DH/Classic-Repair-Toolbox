@@ -37,7 +37,8 @@ namespace CRT
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
-        //   Main.NewSystem.cs         - "Add a new system": the create dialog, draft creation, navigation
+        //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation
+        //   Main.EditBoardAsDraft.cs - "Edit board as draft": a draft of the board shown, or the one there is
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
         //   Main.DraftBadges.cs       - the "Draft" chip on Hardware and Board drop-down entries
         //   Main.SourceSwitchNotice.cs - the banner about the source: "now in BETA - tick BETA to try
@@ -238,11 +239,11 @@ namespace CRT
                 filter => UserSettings.MaintainerTableFilter = filter);
             this.TabMaintainer.UseRememberedSelections(
                 UserSettings.MaintainerLastSubmissionId,
-                UserSettings.MaintainerLastBetaSystemId,
+                UserSettings.MaintainerLastBetaBoardId,
                 id => UserSettings.MaintainerLastSubmissionId = id,
-                systemId => UserSettings.MaintainerLastBetaSystemId = systemId,
-                UserSettings.MaintainerLastSystemId,
-                systemId => UserSettings.MaintainerLastSystemId = systemId);
+                boardId => UserSettings.MaintainerLastBetaBoardId = boardId,
+                UserSettings.MaintainerLastBoardId,
+                boardId => UserSettings.MaintainerLastBoardId = boardId);
             this.TabMaintainer.UseTabBadge(() => this.MaintainerTabBadgeCanBeSeen, this.ShowMaintainerTabBadge);
             this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
 
@@ -735,7 +736,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Shows or hides the "Drafts" tab (session 2b, task 7) to match whether ANY system has a
+        // Shows or hides the "Drafts" tab (session 2b, task 7) to match whether ANY board has a
         // local draft - unlike EnableWorklog/EnableNetworkConnectedOscilloscopeTab, this is not a
         // user preference; it is a plain fact about the Drafts/ folder's current contents. Called
         // from StartAsync (once DataManager.HardwareBoards exists) and from TabDrafts itself after
@@ -786,7 +787,7 @@ namespace CRT
         //
         // *** THE DECISION IS DraftRetirement'S, NOT THIS METHOD'S. *** Everything about when a
         // draft may safely go - published state, equality with the synced board, never a
-        // draft-only system - lives in that pure class so it is unit tested rather than trusted.
+        // draft-only board - lives in that pure class so it is unit tested rather than trusted.
         // What happens here is only the deletion and the logging, which is the same division
         // TabDrafts' own Discard button keeps.
         //
@@ -835,14 +836,14 @@ namespace CRT
                 string draftsRoot = DraftManager.DraftsRoot;
 
                 // Copied here, on the UI thread: the search runs on the pool. A receipt names its
-                // system by id, and these are what that id is matched against - the PUBLISHED boards
+                // board by id, and these are what that id is matched against - the PUBLISHED boards
                 // CRT lists: a draft is only retired against a published board the contributor can
-                // open instead (see DraftRetirement's header). Neither a draft-only system nor a
+                // open instead (see DraftRetirement's header). Neither a draft-only board nor a
                 // _UserContribution board, whose file in Data/ is the contributor's own copy - that
                 // one retired a just-submitted draft against itself (2026-09-27).
                 List<string> excelDataFiles = DataManager.PublishedExcelDataFiles();
 
-                // Which drafts are draft-only systems: retiring one removes a whole entry from the
+                // Which drafts are draft-only boards: retiring one removes a whole entry from the
                 // hardware and board lists, not just a draft.
                 var draftOnly = new HashSet<string>(
                     DataManager.HardwareBoards.Where(entry => entry.IsDraftOnly).Select(entry => entry.ExcelDataFile),
@@ -859,7 +860,7 @@ namespace CRT
                     DraftRetirementOutcome outcome = PublishedDraftRetirer.Retire(
                         candidates,
                         // Each draft is named by its WORKBOOK path (RetirableDraft.ExcelDataFile),
-                        // never by the receipt's system id - passing the id here is the mix-up that
+                        // never by the receipt's board id - passing the id here is the mix-up that
                         // kept every published draft on screen until 2026-09-25.
                         isInUse: excelDataFile => this.TabDrafts.HasUnsavedTableEditsFor(excelDataFile),
                         discard: excelDataFile =>
@@ -872,12 +873,12 @@ namespace CRT
                         },
                         afterDiscard: DataManager.ClearBoardCache);
 
-                    // A NEW system's draft retired (2026-09-25): its draft-only entry is gone, and the
+                    // A NEW board's draft retired (2026-09-25): its draft-only entry is gone, and the
                     // published board the master lists takes its place in the lists - the same
                     // refresh a manual discard does (TabDrafts.DiscardConfirmed).
                     if (outcome.Touched.Any(draftOnly.Contains))
                     {
-                        DataManager.RefreshDraftOnlySystems();
+                        DataManager.RefreshDraftOnlyBoards();
                         this.RefreshHardwareAndBoardSelectionsAfterDraftChange();
                     }
 
@@ -1043,7 +1044,7 @@ namespace CRT
 
             // The Maintainer tab owns the keyboard whenever it is shown, not only while its table
             // is open: its sign-in panel has the password box, its decision bar a comment box and
-            // its Systems screen an invitation address - and the component filter it would steal
+            // its Boards screen an invitation address - and the component filter it would steal
             // focus for is hidden with the sidebar anyway (Main.Maintainer.cs).
             if (ReferenceEquals(selectedTab, this.MaintainerTabItem))
             {

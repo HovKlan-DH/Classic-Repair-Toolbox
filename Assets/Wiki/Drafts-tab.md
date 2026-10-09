@@ -44,22 +44,25 @@ with one folder per board below it - manufacturer, hardware, board - for example
 
 ## How a draft is made
 
-You never create a draft yourself. It is made the first time you save a change to a board, as a copy
-of the board as CRT has it downloaded:
+A draft is made the first time you save a change to a board, as a copy of the board as CRT has it
+downloaded - or straight away, when you ask for one:
 
+* **Edit board as draft** on the [Contribute tab](Contribute-tab) - CRT makes the draft of the board you
+  have selected and brings you here with its table open. A board has only one draft: if it has one
+  already, CRT says so and offers to open it
 * **Save to draft** in the component editor on the [Contribute tab](Contribute-tab) - CRT then brings
   you here
 * saving new or changed component labels in the label editor on the [Schematics tab](Schematics-tab)
 * **Apply KiCad calibration** on the Schematics tab
-* **Add a new system** - on the Contribute tab, or at the top of this tab - for a hardware and board
+* **Add a new board** - on the Contribute tab, or at the top of this tab - for a hardware and board
   that is not in the lists at all. Fill in **Manufacturer**, **Hardware**, **Board** and, if you like,
-  **Notes (optional)**, choose **Create system**, then **Accept and create** in "Becoming the system's
+  **Notes (optional)**, choose **Create board**, then **Accept and create** in "Becoming the board's
   maintainer". CRT selects the new board and brings you here. The full walkthrough is
   [Add new board with KiCad data](Add-new-board-with-KiCad-data).
 * copying a board folder you already have into the drafts folder yourself - see
   [Bringing in a board you already have work on](Contribute-data-via-CRT#bringing-in-a-board-you-already-have-work-on)
 
-Accepting the maintainer role when you create a system sends nothing by itself. A system's
+Accepting the maintainer role when you create a board sends nothing by itself. A board's
 maintainers are invited by the administrator, by email - see [Maintainer tab](Maintainer-tab).
 
 ## A draft's row
@@ -72,7 +75,7 @@ Each board with a draft has one row, in alphabetical order:
 | A coloured badge | How your last submission from this draft is getting on, in the same words and colour as **My submissions** (see [Submission states](#submission-states)). Point at it to see when you sent it |
 | **N errors** (red) | Problems the server would refuse. Every one has to be fixed before the draft can be submitted |
 | **N warnings** (amber) | Worth a look, but they never stop a submission |
-| **N rows changed** | How many rows differ from the published board. A board you created yourself says "New system, nothing added yet" or "New system, N rows so far" |
+| **N rows changed** | How many rows differ from the published board. A board you created yourself says "New board, nothing added yet" or "New board, N rows so far" |
 | A line about the official data | Only when the published board has changed since you started: "The official data for this board has been updated since you started. Your edits are still applied." |
 
 The numbers are worked out again whenever you open the tab or come back to CRT's window, so a change
@@ -90,7 +93,7 @@ The buttons on the row:
 | **Discard** | Throw the draft away - see [Discard](#discard) |
 
 At the top of the tab are **My submissions** (with the red number when there is news) and
-**Add a new system**.
+**Add a new board**.
 
 ## What changed
 
@@ -139,7 +142,9 @@ The long-form explanation is
 ### Colours
 
 * **green** - a row you added, marked `+`
-* **orange** - a cell you changed, in a row marked `~`. Point at it to see its "Published value"
+* **orange** - a cell you changed, in a row marked `~`. Point at it to see the value it had in the
+  data you downloaded - "BETA source value" or "Stable source value", after the source you picked
+  in the [Configuration tab](Configuration-tab)
 * **red, struck through** - a row you deleted, marked `-`, shown where it used to be
 
 A row where only the cells saying which row it is changed - a component's board label or region, a
@@ -246,7 +251,7 @@ save will not save that board - they ask you to save or discard the table's chan
 
 **Submit** sends the draft in for review. It is greyed out - point at it to see why - when:
 
-* there is nothing to send yet: "There is nothing to send yet. Add some data to this system first."
+* there is nothing to send yet: "There is nothing to send yet. Add some data to this board first."
 * the draft holds exactly what you last sent from it: "You have already sent this draft as it is now,
   on [date]. Change something to send it again." Saving the Excel file without changing a value, or
   changing one and changing it back, does not count. If the earlier send never finished, the same
@@ -302,7 +307,7 @@ it went.
 | Taken back out of BETA - waiting for review again | orange | A maintainer took it back out of the BETA data for another look |
 | Not accepted | red | Rejected - the feedback says why |
 | Replaced by a newer submission | amber | You sent the same board again before this one was reviewed |
-| No longer on the server | amber | It was deleted on the server, for example together with its system. You can send it again |
+| No longer on the server | amber | It was deleted on the server, for example together with its board. You can send it again |
 | Never finished sending | red | The upload did not complete - send it again |
 | Expired before it was finished | red | The upload was left unfinished for too long - send it again |
 | Not checked yet | amber | CRT has not heard from the server about it yet |
@@ -319,15 +324,15 @@ that board is lost, and the published data is not affected. Enter and Escape bot
   not withdrawn, but the board's maintainers are told that you discarded the draft.
 * If a file of the draft is open in another program - its workbook in Excel, say - part of it stays,
   and a line at the top of the tab says so. Close the file there and press **Discard** again.
-* A system you created yourself disappears from the hardware and board lists together with its draft.
+* A board you created yourself disappears from the hardware and board lists together with its draft.
 
 ## When your work is published
 
 Once a contribution reaches the stable source, CRT removes its draft by itself - as soon as CRT has
 downloaded the published board and the draft holds nothing the published board does not. Not before:
 while it is only in the BETA source, a maintainer can still take it back out. A draft you kept working
-on after submitting stays, and so does one whose table has unsaved changes. A whole new system's draft
-goes once CRT's hardware and board lists include the published system.
+on after submitting stays, and so does one whose table has unsaved changes. A whole new board's draft
+goes once CRT's hardware and board lists include the published board.
 
 ## BETA and stable notices
 

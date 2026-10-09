@@ -324,7 +324,7 @@
 				<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
 						  Content="View boards as officially coming from online source (hide my local draft changes)"
 						  VerticalAlignment="Center"
-						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a system where you have unpublished local edits" />
+						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a board where you have unpublished local edits" />
 				<Button x:Name="ViewOfficialPublishedOnlyHelpButton"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
@@ -370,7 +370,7 @@
 			     never taken away mid-review, is MaintainerModes.TabIsShown. -->
 			<CheckBox x:Name="ShowMaintainerTabOnlyWhenWorkWaitingCheckBox"
 					  Content="Hide the Maintainer tab while no work is waiting for me"
-					  ToolTip.Tip="The tab appears only while its badge shows a number - a submission to review, or a system waiting to go from BETA to stable. A tab you are already on stays until you leave it" />
+					  ToolTip.Tip="The tab appears only while its badge shows a number - a submission to review, or a board waiting to go from BETA to stable. A tab you are already on stays until you leave it" />
 
 			<TextBlock Text="The Maintainer tab requires a maintainer account, given by the administrator through an invitation."
                        TextWrapping="Wrap"

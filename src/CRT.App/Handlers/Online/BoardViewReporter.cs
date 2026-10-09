@@ -103,14 +103,14 @@ namespace Handlers.OnlineHandling
         }
 
         // A board counted as viewed, and when.
-        public static void Record(string systemId, bool fromBeta, DateTimeOffset viewedUtc)
+        public static void Record(string boardId, bool fromBeta, DateTimeOffset viewedUtc)
         {
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return;
 
             lock (BoardViewReporter.Gate)
             {
-                _outbox.Add(new BoardView(systemId, viewedUtc, fromBeta));
+                _outbox.Add(new BoardView(boardId, viewedUtc, fromBeta));
                 BoardViewReporter.Save();
             }
         }

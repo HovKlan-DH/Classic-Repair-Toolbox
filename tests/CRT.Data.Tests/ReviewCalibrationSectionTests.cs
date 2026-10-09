@@ -168,7 +168,7 @@ public sealed class ReviewCalibrationSectionTests
     }
 
     [Fact]
-    public void A_NEW_SYSTEM_counts_its_calibrations_as_additions()
+    public void A_NEW_BOARD_counts_its_calibrations_as_additions()
     {
         ReviewChangeSummary summary = ReviewSummary.Compare(
             published: null,
@@ -177,7 +177,7 @@ public sealed class ReviewCalibrationSectionTests
             publishedCalibrations: null,
             submittedCalibrations: [ReviewCalibrationSectionTests.Calibration("Sheet 1")]);
 
-        Assert.True(summary.IsNewSystem);
+        Assert.True(summary.IsNewBoard);
         Assert.Single(ReviewCalibrationSectionTests.SectionOf(summary).Added);
     }
 }

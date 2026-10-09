@@ -256,9 +256,9 @@ namespace Handlers.DataHandling
             {
                 DraftMarkerStore.Save(markerPath, new DraftMarker
                 {
-                    SystemKey = marker.SystemKey,
+                    BoardKey = marker.BoardKey,
                     BaseRevision = baseRevision?.Trim() ?? string.Empty,
-                    NewSystem = marker.NewSystem,
+                    NewBoard = marker.NewBoard,
                     CreatedUtc = marker.CreatedUtc,
                 });
 
@@ -273,7 +273,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Deletes a draft outright - the whole system folder, workbook, sidecar, copied files and
+        // Deletes a draft outright - the whole board folder, workbook, sidecar, copied files and
         // marker together.
         //
         // "One folder is the whole draft", the same model DraftManager.DiscardDraft used and the
@@ -302,7 +302,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static bool Discard(string draftsRoot, string excelDataFile)
         {
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
 
             if (folder.Length == 0 || !Directory.Exists(folder))
             {

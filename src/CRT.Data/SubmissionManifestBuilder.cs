@@ -6,18 +6,18 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // Turns a drafted system into the SubmissionManifest the server expects. Pure: it takes the
+    // Turns a drafted board into the SubmissionManifest the server expects. Pure: it takes the
     // merged board data, the set of files with their hashes already computed, and the identity -
     // and returns the manifest. It reads no files and computes no hashes, so every rule is a unit
     // test.
     //
-    // WHY HASHING IS NOT DONE HERE. Hashing a 76 MB system is seconds of work that must happen off
+    // WHY HASHING IS NOT DONE HERE. Hashing a 76 MB board is seconds of work that must happen off
     // the UI thread with progress reported, and it touches the filesystem. Keeping it outside
     // leaves this class testable without fixtures and leaves the caller free to report progress
     // however it likes - the same split ExportOverlayGeometry uses against the PDF exporter.
     //
     // THE MANIFEST IS THE COMPLETE INTENDED STATE, not a list of changes. That is the contract's
-    // central idea: the server diffs the base revision against what it is told the system should
+    // central idea: the server diffs the base revision against what it is told the board should
     // be, so the client never computes a diff at all. It also means a file the draft did NOT touch
     // still has to appear here - leaving it out would read as a deletion.
     //
@@ -110,7 +110,7 @@ namespace Handlers.DataHandling
             var manifest = new SubmissionManifest
             {
                 FormatVersion = SubmissionFormat.CurrentVersion,
-                SystemId = identity.SystemId,
+                BoardId = identity.BoardId,
                 Manufacturer = identity.Manufacturer,
                 Hardware = identity.Hardware,
                 Board = identity.Board,
@@ -156,7 +156,7 @@ namespace Handlers.DataHandling
         // are two files to the server, and collapsing them here would silently drop one and leave
         // the row that named it pointing at nothing.
         //
-        // ORDERED, so the same system produces the same manifest twice. That matters for a
+        // ORDERED, so the same board produces the same manifest twice. That matters for a
         // contributor comparing two submissions, and it makes the hash-negotiation step
         // reproducible when something goes wrong and has to be diagnosed.
         // ###########################################################################################
@@ -254,14 +254,14 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public sealed class SubmissionIdentity
     {
-        public string SystemId { get; init; } = string.Empty;
+        public string BoardId { get; init; } = string.Empty;
         public string Manufacturer { get; init; } = string.Empty;
         public string Hardware { get; init; } = string.Empty;
         public string Board { get; init; } = string.Empty;
         public string BaseRevision { get; init; } = string.Empty;
         public string Summary { get; init; } = string.Empty;
 
-        // A NEW system's notes from "Create system" (its NewSystemRegistration) - see
+        // A NEW board's notes from "Create board" (its NewBoardRegistration) - see
         // SubmissionManifest.HardwareNotes. Empty for a draft of a published board.
         public string HardwareNotes { get; init; } = string.Empty;
 

@@ -65,7 +65,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_listed_system_is_found_with_the_drop_down_names()
+        public void A_listed_board_is_found_with_the_drop_down_names()
         {
             this.thisContents[this.Master("prod")] = [BoardViewNameDirectoryTests.Row("Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407.xlsx")];
 
@@ -80,14 +80,14 @@ namespace CRT.Server.Tests
         [InlineData("commodore/c64/250407")]
         [InlineData("")]
         [InlineData(null)]
-        public void A_system_no_listing_has_is_not_found(string? systemId)
+        public void A_board_no_listing_has_is_not_found(string? boardId)
         {
             this.thisContents[this.Master("prod")] = [BoardViewNameDirectoryTests.Row("Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407.xlsx")];
 
-            Assert.Null(this.Names("prod").Find(systemId));
+            Assert.Null(this.Names("prod").Find(boardId));
         }
 
-        // Production names win; a system only BETA lists (placed, not yet promoted) is still found.
+        // Production names win; a board only BETA lists (placed, not yet promoted) is still found.
         [Fact]
         public void Production_is_asked_first_and_beta_after_it()
         {

@@ -6,21 +6,21 @@ namespace ClassicRepairToolbox.Tests.Maintainer;
 // Covers MaintainerModes - what the badges on the four screen buttons count (owner request,
 // 2026-09-27: "should show a badge in button, how many systems need your attention").
 //
-// SYSTEMS, not submissions, and only those that wait for THIS account - the server's answer each
+// BOARDS, not submissions, and only those that wait for THIS account - the server's answer each
 // time. A board waiting only for the other approver is not this account's to act on, and a badge
 // that counted it would never go away.
 // ###########################################################################################
 public sealed class MaintainerModesTests
 {
-    private static ReviewQueueRow Row(long id, string system, bool? awaitsYou = true) =>
-        new(id, system, "pending", "summary", "c@example.com", null, false, false, awaitsYou);
+    private static ReviewQueueRow Row(long id, string board, bool? awaitsYou = true) =>
+        new(id, board, "pending", "summary", "c@example.com", null, false, false, awaitsYou);
 
-    private static ProductionSystemRow Beta(string system, bool? awaitsYou = true) =>
-        new(system, "Commodore", "C64", "250407", null, "hash", null, null, awaitsYou);
+    private static ProductionBoardRow Beta(string board, bool? awaitsYou = true) =>
+        new(board, "Commodore", "C64", "250407", null, "hash", null, null, awaitsYou);
 
-    // Two submissions to one board are one system to look at.
+    // Two submissions to one board are one board to look at.
     [Fact]
-    public void Review_counts_the_systems_waiting_for_you_not_the_submissions()
+    public void Review_counts_the_boards_waiting_for_you_not_the_submissions()
     {
         Assert.Equal(2, MaintainerModes.ReviewAttention(
         [
@@ -36,7 +36,7 @@ public sealed class MaintainerModesTests
     // way the queue shows it (undimmed).
     // ###########################################################################################
     [Fact]
-    public void Review_leaves_out_a_system_that_waits_only_for_the_other_approver()
+    public void Review_leaves_out_a_board_that_waits_only_for_the_other_approver()
     {
         Assert.Equal(2, MaintainerModes.ReviewAttention(
         [
@@ -51,7 +51,7 @@ public sealed class MaintainerModesTests
     }
 
     [Fact]
-    public void Beta_counts_the_systems_that_wait_for_you()
+    public void Beta_counts_the_boards_that_wait_for_you()
     {
         Assert.Equal(2, MaintainerModes.BetaAttention(
         [
@@ -75,10 +75,10 @@ public sealed class MaintainerModesTests
         Assert.Equal("99+", MaintainerModes.AttentionBadge(100));
     }
 
-    // The Systems count is shown once the list has been read - zero included - and not before, so
-    // a failed request never reads as "0 systems".
+    // The Boards count is shown once the list has been read - zero included - and not before, so
+    // a failed request never reads as "0 boards".
     [Fact]
-    public void The_systems_count_shows_once_known_and_never_before()
+    public void The_boards_count_shows_once_known_and_never_before()
     {
         Assert.Null(MaintainerModes.CountBadge(null));
         Assert.Equal("0", MaintainerModes.CountBadge(0));
@@ -86,7 +86,7 @@ public sealed class MaintainerModesTests
     }
 
     // ###########################################################################################
-    // *** THE TAB'S OWN BADGE IS THE TWO BUTTONS ADDED UP (owner request, 2026-09-30). *** A system
+    // *** THE TAB'S OWN BADGE IS THE TWO BUTTONS ADDED UP (owner request, 2026-09-30). *** A board
     // with a submission queued AND an earlier one in BETA waits for you twice, and each button
     // counts it - so the tab must say 3 over a 2 and a 1, or the maintainer opens it expecting two
     // things and finds three.
@@ -100,7 +100,7 @@ public sealed class MaintainerModesTests
             MaintainerModesTests.Row(2, "Commodore/C128/310378")
         ];
 
-        ProductionSystemRow[] beta = [MaintainerModesTests.Beta("Commodore/C64/250407")];
+        ProductionBoardRow[] beta = [MaintainerModesTests.Beta("Commodore/C64/250407")];
 
         Assert.Equal(
             MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta),
@@ -109,7 +109,7 @@ public sealed class MaintainerModesTests
         Assert.Equal(3, MaintainerModes.TabAttention(queue, beta));
     }
 
-    // "Until it is fully processed": nothing waiting for THIS account - including a system that
+    // "Until it is fully processed": nothing waiting for THIS account - including a board that
     // waits only for the other approver, in either list - is no badge at all.
     [Fact]
     public void The_tabs_badge_is_gone_when_nothing_waits_for_you()
@@ -220,21 +220,21 @@ public sealed class MaintainerModesTests
     // ###########################################################################################
     // The screen the tab opens on (owner request, 2026-10-04: "if there is no queue awaiting, when
     // opening the "Maintainer" tab, then go to "Systems" and show the last selected system"):
-    // Systems when nothing waits for this account in either queue - a queue screen gives way,
-    // unless something is open on it; Systems and Account, chosen, stay.
+    // Boards when nothing waits for this account in either queue - a queue screen gives way,
+    // unless something is open on it; Boards and Account, chosen, stay.
     // ###########################################################################################
     [Theory]
-    [InlineData(MaintainerMode.Review, 0, false, MaintainerMode.Systems)]
-    [InlineData(MaintainerMode.Beta, 0, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Review, 0, false, MaintainerMode.Boards)]
+    [InlineData(MaintainerMode.Beta, 0, false, MaintainerMode.Boards)]
     [InlineData(MaintainerMode.Review, 1, false, MaintainerMode.Review)]
     [InlineData(MaintainerMode.Beta, 2, false, MaintainerMode.Beta)]
     [InlineData(MaintainerMode.Review, 0, true, MaintainerMode.Review)]
     [InlineData(MaintainerMode.Beta, 0, true, MaintainerMode.Beta)]
-    [InlineData(MaintainerMode.Systems, 3, false, MaintainerMode.Systems)]
-    [InlineData(MaintainerMode.Systems, 0, false, MaintainerMode.Systems)]
+    [InlineData(MaintainerMode.Boards, 3, false, MaintainerMode.Boards)]
+    [InlineData(MaintainerMode.Boards, 0, false, MaintainerMode.Boards)]
     [InlineData(MaintainerMode.Account, 0, false, MaintainerMode.Account)]
     [InlineData(MaintainerMode.Account, 4, false, MaintainerMode.Account)]
-    public void The_tab_opens_on_Systems_when_nothing_waits_and_nothing_is_open(
+    public void The_tab_opens_on_Boards_when_nothing_waits_and_nothing_is_open(
         MaintainerMode shown, int attention, bool somethingOpen, MaintainerMode expected)
     {
         Assert.Equal(expected, MaintainerModes.ScreenOnOpening(shown, attention, somethingOpen));

@@ -153,12 +153,12 @@ public sealed class ReviewNotInTableTests
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM SAYS HOW MUCH, NOT WHICH (owner request, 2026-09-26). *** Everything of it is
+    // *** A NEW BOARD SAYS HOW MUCH, NOT WHICH (owner request, 2026-09-26). *** Everything of it is
     // added, so listing the rows listed the whole board. Highlights count COMPONENTS - one
     // component highlighted on two schematics is one - and calibration points count schematics.
     // ###########################################################################################
     [Fact]
-    public void A_new_system_counts_the_components_with_highlights_and_names_none()
+    public void A_new_board_counts_the_components_with_highlights_and_names_none()
     {
         var changes = new ReviewChangeSummaryView(true,
         [
@@ -214,17 +214,17 @@ public sealed class ReviewNotInTableTests
     {
         var published = new ReviewChangeSummaryView(false,
             [Section(ReviewSummary.SectionComponentHighlights, added: [Key("Schematic 1", "U10")])]);
-        var newSystem = new ReviewChangeSummaryView(true,
+        var newBoard = new ReviewChangeSummaryView(true,
             [Section(ReviewSummary.SectionComponentHighlights, added: [Key("Schematic 1", "U10")])]);
 
         Assert.All(
-            ReviewNotInTable.Lines(published, []).Concat(ReviewNotInTable.Lines(newSystem, [])),
+            ReviewNotInTable.Lines(published, []).Concat(ReviewNotInTable.Lines(newBoard, [])),
             line => Assert.DoesNotContain("not in the table", line.Text, StringComparison.OrdinalIgnoreCase));
     }
 
-    // A new system with no highlights or calibration points has nothing to say about them.
+    // A new board with no highlights or calibration points has nothing to say about them.
     [Fact]
-    public void A_new_system_without_highlights_has_no_line_for_them()
+    public void A_new_board_without_highlights_has_no_line_for_them()
     {
         var changes = new ReviewChangeSummaryView(true,
         [

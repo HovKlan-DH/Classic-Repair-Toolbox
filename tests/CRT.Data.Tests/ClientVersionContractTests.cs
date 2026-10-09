@@ -235,7 +235,7 @@ public class ClientVersionContractTests
 
     [Theory]
     [InlineData("""{"message":"Write at least 10 characters."}""", "Write at least 10 characters.")]
-    [InlineData("""{"error":"This system is closed to contributions."}""", "This system is closed to contributions.")]
+    [InlineData("""{"error":"This board is closed to contributions."}""", "This board is closed to contributions.")]
     [InlineData("""{"message":"  Spaced.  "}""", "Spaced.")]
     [InlineData("""{"message":"First.","error":"Second."}""", "First.")]
     [InlineData("""{"message":"   ","error":"The error, since the message is blank."}""", "The error, since the message is blank.")]

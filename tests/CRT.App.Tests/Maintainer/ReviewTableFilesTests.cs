@@ -15,7 +15,7 @@ public sealed class ReviewTableFilesTests
 
     // ###########################################################################################
     // A file opened from the table is written into the temp folder and handed to the operating
-    // system, so it cannot be deleted while a viewer may still hold it - but nothing deleted them
+    // board, so it cannot be deleted while a viewer may still hold it - but nothing deleted them
     // at all, and months of reviewing piled up contributor files there (code review, 2026-09-26).
     // Swept on the next open, a day later.
     // ###########################################################################################
@@ -55,10 +55,10 @@ public sealed class ReviewTableFilesTests
         Assert.Null(ReviewTableFiles.SubmittedHashFor(null, "Commodore/C64/250407/a.png"));
     }
 
-    // A published system: the current side is the submission's file, the published side the
+    // A published board: the current side is the submission's file, the published side the
     // published tree's (null = read the tree by path).
     [Fact]
-    public void For_a_published_system_only_the_current_side_reads_the_submission()
+    public void For_a_published_board_only_the_current_side_reads_the_submission()
     {
         IReadOnlyList<SubmittedFileFact> files = [ReviewTableFilesTests.Fact("Commodore/C64/250407/a.png", "hash-a")];
 
@@ -67,13 +67,13 @@ public sealed class ReviewTableFilesTests
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM'S "PUBLISHED" SIDE IS THE SUBMISSION TOO. *** Its table is compared with the
+    // *** A NEW BOARD'S "PUBLISHED" SIDE IS THE SUBMISSION TOO. *** Its table is compared with the
     // submission as opened, and the published tree holds nothing of it - read from there, every
     // picture showed beside "There is no file at this path" (reported, 2026-09-26). Both sides
     // reading the same file is what lets the card show it once.
     // ###########################################################################################
     [Fact]
-    public void For_a_new_system_both_sides_read_the_submission()
+    public void For_a_new_board_both_sides_read_the_submission()
     {
         IReadOnlyList<SubmittedFileFact> files = [ReviewTableFilesTests.Fact("Manu1/Hardware1/Board1/1N4148.png", "hash-d")];
 
@@ -84,13 +84,14 @@ public sealed class ReviewTableFilesTests
         Assert.Null(ReviewTableFiles.HashToRead(files, "Manu1/Hardware1/Board1/other.png", CRT.BoardTableFileSide.Current, nothingPublished: true));
     }
 
-    // Two sides are shown only when they differ - for a new system, when the maintainer has named
-    // another file - and are then named for what they are. Nothing of it is "published".
+    // Two sides are shown only when they differ - for a new board, when the maintainer has named
+    // another file - and are then named for what they are. Nothing of it is "published". A
+    // published board's older side is the BETA source, as its text cells' tooltips say.
     [Fact]
-    public void A_new_systems_two_sides_are_the_submission_and_the_maintainers_change()
+    public void A_new_boards_two_sides_are_the_submission_and_the_maintainers_change()
     {
         Assert.Equal(("As submitted", "Your change"), ReviewTableFiles.SideLabels(nothingPublished: true));
-        Assert.Equal(("Before (published)", "After (submitted)"), ReviewTableFiles.SideLabels(nothingPublished: false));
+        Assert.Equal(("Before (BETA source)", "After (submitted)"), ReviewTableFiles.SideLabels(nothingPublished: false));
     }
 
     [Theory]

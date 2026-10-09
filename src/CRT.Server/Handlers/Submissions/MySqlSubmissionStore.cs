@@ -21,7 +21,7 @@ namespace CRT.Server.Handlers.Submissions
     // read, never by the database.
     //
     // FILE MAP (split 2026-09-27, past ~1,500 lines): this file - submissions, their files,
-    // payloads, findings and the queue; MySqlSubmissionStore.Systems.cs - the `systems` rows;
+    // payloads, findings and the queue; MySqlSubmissionStore.Boards.cs - the `boards` rows;
     // MySqlSubmissionStore.Approvals.cs - amendments and approvals.
     // ###########################################################################################
     public sealed partial class MySqlSubmissionStore : ISubmissionStore
@@ -58,43 +58,43 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
 
             // ###########################################################################################
-            // THE SYSTEM ROW HAS TO EXIST FIRST, or the foreign key below refuses the insert.
+            // THE BOARD ROW HAS TO EXIST FIRST, or the foreign key below refuses the insert.
             //
-            // submissions.system_id is NOT NULL with a foreign key to systems(system_id), and until
-            // this was added NOTHING ever wrote to `systems` - so the table was empty and every
+            // submissions.board_id is NOT NULL with a foreign key to boards(board_id), and until
+            // this was added NOTHING ever wrote to `boards` - so the table was empty and every
             // real submission would have failed. It was invisible because every test uses an
             // in-memory fake store; see 0004's header.
             //
             // INSERT IGNORE rather than "check then insert": two contributors submitting for the
-            // same new system at the same moment would both see it absent and both insert, and the
+            // same new board at the same moment would both see it absent and both insert, and the
             // second would fail on the primary key. Letting the database settle it is the only
             // version without a race.
             //
-            // A system that already exists is left completely alone - origin in particular. A
-            // system records where it CAME FROM, so one that shipped with CRT stays 'shipped'
+            // A board that already exists is left completely alone - origin in particular. A
+            // board records where it CAME FROM, so one that shipped with CRT stays 'shipped'
             // however many contributions it later receives; an ON DUPLICATE KEY UPDATE here would
             // rewrite that on every submission.
             //
-            // current_revision stays NULL: this system has not been published yet. Publishing is
+            // current_revision stays NULL: this board has not been published yet. Publishing is
             // the project owner's act and is what fills it in.
             // ###########################################################################################
             await using (MySqlCommand command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = """
-                    INSERT IGNORE INTO systems
-                        (system_id, manufacturer, hardware, board, origin, is_accepting, created_utc)
-                    VALUES (@systemId, @manufacturer, @hardware, @board, @origin, 1, @created);
+                    INSERT IGNORE INTO boards
+                        (board_id, manufacturer, hardware, board, origin, is_accepting, created_utc)
+                    VALUES (@boardId, @manufacturer, @hardware, @board, @origin, 1, @created);
                     """;
 
-                command.Parameters.AddWithValue("@systemId", submission.SystemId);
+                command.Parameters.AddWithValue("@boardId", submission.BoardId);
                 command.Parameters.AddWithValue("@manufacturer", submission.Manufacturer);
                 command.Parameters.AddWithValue("@hardware", submission.Hardware);
                 command.Parameters.AddWithValue("@board", submission.Board);
 
-                // A system that first appears through this pipeline is 'contributed' by
+                // A board that first appears through this pipeline is 'contributed' by
                 // definition - a shipped one was already in the tree before any submission.
-                command.Parameters.AddWithValue("@origin", SystemDescriptorRules.SystemOrigin.Contributed);
+                command.Parameters.AddWithValue("@origin", BoardDescriptorRules.BoardOrigin.Contributed);
                 command.Parameters.AddWithValue("@created", submission.CreatedUtc.UtcDateTime);
 
                 await command.ExecuteNonQueryAsync(cancellationToken);
@@ -107,16 +107,16 @@ namespace CRT.Server.Handlers.Submissions
                 command.Transaction = transaction;
                 command.CommandText = """
                     INSERT INTO submissions
-                        (system_id, account_id, contact_email, created_ip, upload_token_hash,
+                        (board_id, account_id, contact_email, created_ip, upload_token_hash,
                          base_revision, state, format_version, summary, created_utc, expires_utc,
                          bytes_to_upload, touches_shared_files)
-                    VALUES (@systemId, @accountId, @contactEmail, @createdIp, @uploadTokenHash,
+                    VALUES (@boardId, @accountId, @contactEmail, @createdIp, @uploadTokenHash,
                             @baseRevision, @state, @formatVersion, @summary, @created, @expires,
                             @bytesToUpload, @touchesShared);
                     SELECT LAST_INSERT_ID();
                     """;
 
-                command.Parameters.AddWithValue("@systemId", submission.SystemId);
+                command.Parameters.AddWithValue("@boardId", submission.BoardId);
                 command.Parameters.AddWithValue("@accountId", (object?)submission.AccountId ?? DBNull.Value);
                 command.Parameters.AddWithValue("@contactEmail", (object?)submission.ContactEmail ?? DBNull.Value);
                 command.Parameters.AddWithValue("@createdIp", (object?)submission.CreatedIp ?? DBNull.Value);
@@ -152,7 +152,7 @@ namespace CRT.Server.Handlers.Submissions
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            // A new system's notes (2026-10-05, migration 0019) - in the same transaction, so a
+            // A new board's notes (2026-10-05, migration 0019) - in the same transaction, so a
             // submission never exists without the notes it was sent with.
             if (!string.IsNullOrWhiteSpace(submission.HardwareNotes))
             {
@@ -181,7 +181,7 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files
                 FROM submissions WHERE id = @id LIMIT 1;
@@ -244,19 +244,19 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Records a system's published revision and content hash (Phase 5, task 6).
+        // Records a board's published revision and content hash (Phase 5, task 6).
         //
-        // An UPDATE rather than an upsert: the `systems` row is inserted by CreateAsync when the
-        // first submission for that system arrives, so by publish time it always exists. An
+        // An UPDATE rather than an upsert: the `boards` row is inserted by CreateAsync when the
+        // first submission for that board arrives, so by publish time it always exists. An
         // INSERT ... ON DUPLICATE KEY here could create a row with no manufacturer/hardware/board
         // and no origin, which the NOT NULL columns would refuse anyway - failing loudly at the
-        // wrong layer instead of revealing that the caller published a system nobody registered.
+        // wrong layer instead of revealing that the caller published a board nobody registered.
         //
-        // origin is deliberately UNTOUCHED. It records where a system CAME FROM and is set once,
-        // so a contributed system stays contributed however many times it is later revised -
+        // origin is deliberately UNTOUCHED. It records where a board CAME FROM and is set once,
+        // so a contributed board stays contributed however many times it is later revised -
         // including by the project owner.
         //
-        // *** THERE IS NO `updated_utc` COLUMN ON `systems`, AND THIS SETS NONE. *** A first
+        // *** THERE IS NO `updated_utc` COLUMN ON `boards`, AND THIS SETS NONE. *** A first
         // version of this method wrote one; the schema has only created_utc. It would have thrown
         // against MariaDB on the very first publish while every test passed, because the tests run
         // against an in-memory fake - which is precisely the failure migration 0004 exists to
@@ -264,8 +264,8 @@ namespace CRT.Server.Handlers.Submissions
         // When the publish time is wanted, system.json carries PublishedUtc, and the audit table
         // records the act.
         // ###########################################################################################
-        public Task SetSystemPublishedAsync(
-            string systemId,
+        public Task SetBoardPublishedAsync(
+            string boardId,
             string revision,
             string contentHash,
             DateTimeOffset publishedUtc,
@@ -273,16 +273,16 @@ namespace CRT.Server.Handlers.Submissions
         {
             return this.ExecuteAsync(
                 """
-                UPDATE systems
+                UPDATE boards
                    SET current_revision = @revision,
                        content_hash = @hash
-                 WHERE system_id = @systemId;
+                 WHERE board_id = @boardId;
                 """,
                 command =>
                 {
                     command.Parameters.AddWithValue("@revision", revision);
                     command.Parameters.AddWithValue("@hash", contentHash);
-                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@boardId", boardId);
                 },
                 cancellationToken);
         }
@@ -391,9 +391,9 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            // The three name parts come from the `systems` row, joined via the submission's own
-            // system_id - see the comment on the manifest below for why they have to be here at
-            // all. A LEFT JOIN, so a payload whose system row is somehow absent still loads rather
+            // The three name parts come from the `boards` row, joined via the submission's own
+            // board_id - see the comment on the manifest below for why they have to be here at
+            // all. A LEFT JOIN, so a payload whose board row is somehow absent still loads rather
             // than vanishing; the validator then reports the missing names, which is the truth.
             command.CommandText = """
                 SELECT p.format_version, p.rows_json, p.renames_json,
@@ -401,7 +401,7 @@ namespace CRT.Server.Handlers.Submissions
                        COALESCE(n.hardware_notes, '')
                 FROM submission_payloads p
                 JOIN submissions s ON s.id = p.submission_id
-                LEFT JOIN systems y ON y.system_id = s.system_id
+                LEFT JOIN boards y ON y.board_id = s.board_id
                 LEFT JOIN submission_notes n ON n.submission_id = p.submission_id
                 WHERE p.submission_id = @id
                 LIMIT 1;
@@ -436,7 +436,7 @@ namespace CRT.Server.Handlers.Submissions
                 hardware = reader.GetString(4);
                 board = reader.GetString(5);
 
-                // A new system's notes (migration 0019), so the manifest read back is the one sent.
+                // A new board's notes (migration 0019), so the manifest read back is the one sent.
                 hardwareNotes = reader.GetString(6);
             }
 
@@ -448,7 +448,7 @@ namespace CRT.Server.Handlers.Submissions
             return new SubmissionManifest
             {
                 FormatVersion = formatVersion,
-                SystemId = submission.SystemId,
+                BoardId = submission.BoardId,
 
                 // ###########################################################################################
                 // *** THE THREE NAME PARTS MUST BE RESTORED, OR FINALISE REJECTS EVERY SUBMISSION. ***
@@ -457,14 +457,14 @@ namespace CRT.Server.Handlers.Submissions
                 // finalise against the manifest as RELOADED from here. This method used to leave
                 // Manufacturer/Hardware/Board unset, so the reloaded manifest carried three empty
                 // strings and the second pass answered "does not name the hardware", "does not name
-                // the board", and - because BuildSystemId("","","") cannot equal the stored id -
-                // "system identifier does not match".
+                // the board", and - because BuildBoardId("","","") cannot equal the stored id -
+                // "board identifier does not match".
                 //
                 // Every submission that reached finalise was therefore rejected, whatever the
                 // client sent, and the findings blamed the CLIENT for it ("a fault in the
                 // submitting application"), which is where two days of looking went.
                 //
-                // They come from the `systems` row rather than the payload JSON because that is
+                // They come from the `boards` row rather than the payload JSON because that is
                 // where they live: the schema stores them as their own columns precisely "so the
                 // Maintainer tab can list by manufacturer without parsing" (0001_initial.sql).
                 // ###########################################################################################
@@ -598,7 +598,7 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files
                 FROM submissions WHERE account_id = @accountId
@@ -635,7 +635,7 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files
                 FROM submissions WHERE state IN (@state, @approved)
@@ -658,22 +658,22 @@ namespace CRT.Server.Handlers.Submissions
             return records;
         }
 
-        // system_id is BINARY (0005), so this is the exact comparison the rest of the store makes;
-        // ix_submissions_system (system_id, state) serves it.
-        public async Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        // board_id is BINARY (0005), so this is the exact comparison the rest of the store makes;
+        // ix_submissions_board (board_id, state) serves it.
+        public async Task<IReadOnlyList<SubmissionRecord>> GetPendingForBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files
-                FROM submissions WHERE system_id = @system AND state = @state
+                FROM submissions WHERE board_id = @boardId AND state = @state
                 ORDER BY id ASC;
                 """;
 
-            command.Parameters.AddWithValue("@system", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@state", SubmissionState.Pending);
 
             var records = new List<SubmissionRecord>();
@@ -687,13 +687,13 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // One system's submissions, newest first, for the "Systems" screen. ix_submissions_system
-        // (system_id, state) serves the filter; system_id is BINARY, so the comparison is exact.
+        // One board's submissions, newest first, for the "Boards" screen. ix_submissions_board
+        // (board_id, state) serves the filter; board_id is BINARY, so the comparison is exact.
         // decided_by is read LAST, after the fourteen columns ReadSubmission reads by ordinal - a
         // column added in the middle would shift every field after it without failing.
         // ###########################################################################################
-        public async Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
-            string systemId,
+        public async Task<IReadOnlyList<BoardSubmissionRecord>> GetSubmissionsForBoardAsync(
+            string boardId,
             int limit,
             CancellationToken cancellationToken = default)
         {
@@ -701,20 +701,20 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files, decided_by
                 FROM submissions
-                WHERE system_id = @system AND state NOT IN (@uploading, @abandoned)
+                WHERE board_id = @boardId AND state NOT IN (@uploading, @abandoned)
                 ORDER BY id DESC LIMIT @limit;
                 """;
 
-            command.Parameters.AddWithValue("@system", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@uploading", SubmissionState.Uploading);
             command.Parameters.AddWithValue("@abandoned", SubmissionState.Abandoned);
             command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
 
-            var records = new List<SystemSubmissionRecord>();
+            var records = new List<BoardSubmissionRecord>();
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -722,13 +722,58 @@ namespace CRT.Server.Handlers.Submissions
             {
                 long? decidedBy = reader.IsDBNull(14) ? null : Convert.ToInt64(reader.GetValue(14), CultureInfo.InvariantCulture);
 
-                records.Add(new SystemSubmissionRecord(
+                records.Add(new BoardSubmissionRecord(
                     MySqlSubmissionStore.ReadSubmission(reader),
                     decidedBy is not null,
                     decidedBy));
             }
 
             return records;
+        }
+
+        // ###########################################################################################
+        // How every board's submissions stand, counted - see ISubmissionStore.GetSubmissionStateCountsAsync.
+        // `in_stable` is ProductionPromotionRules.ContributorFacingState's own test for "published"
+        // - a decision, and a publish to stable at or after it - and must stay that test.
+        // ###########################################################################################
+        public async Task<IReadOnlyList<SubmissionStateCount>> GetSubmissionStateCountsAsync(CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = """
+                SELECT s.board_id,
+                       s.state,
+                       s.decided_by IS NOT NULL AS by_maintainer,
+                       (s.decided_utc IS NOT NULL
+                        AND b.production_published_utc IS NOT NULL
+                        AND b.production_published_utc >= s.decided_utc) AS in_stable,
+                       COUNT(*)
+                FROM submissions s
+                LEFT JOIN boards b ON b.board_id = s.board_id
+                WHERE s.state NOT IN (@uploading, @abandoned, @withdrawn)
+                GROUP BY s.board_id, s.state, by_maintainer, in_stable;
+                """;
+
+            command.Parameters.AddWithValue("@uploading", SubmissionState.Uploading);
+            command.Parameters.AddWithValue("@abandoned", SubmissionState.Abandoned);
+            command.Parameters.AddWithValue("@withdrawn", SubmissionState.Withdrawn);
+
+            var counts = new List<SubmissionStateCount>();
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                counts.Add(new SubmissionStateCount(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture) != 0,
+                    Convert.ToInt64(reader.GetValue(3), CultureInfo.InvariantCulture) != 0,
+                    (int)Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture)));
+            }
+
+            return counts;
         }
 
         // The contributor's submissions: by account, or by email among those sent without one.
@@ -751,7 +796,7 @@ namespace CRT.Server.Handlers.Submissions
             if (accountId is not null)
             {
                 command.CommandText = """
-                    SELECT id, state, decided_by IS NOT NULL, system_id, summary, created_utc, decided_utc, decision_comment
+                    SELECT id, state, decided_by IS NOT NULL, board_id, summary, created_utc, decided_utc, decision_comment
                     FROM submissions WHERE account_id = @account;
                     """;
                 command.Parameters.AddWithValue("@account", accountId.Value);
@@ -759,7 +804,7 @@ namespace CRT.Server.Handlers.Submissions
             else
             {
                 command.CommandText = """
-                    SELECT id, state, decided_by IS NOT NULL, system_id, summary, created_utc, decided_utc, decision_comment
+                    SELECT id, state, decided_by IS NOT NULL, board_id, summary, created_utc, decided_utc, decision_comment
                     FROM submissions
                     WHERE account_id IS NULL AND LOWER(TRIM(contact_email)) = LOWER(@email);
                     """;
@@ -881,7 +926,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public async Task<IReadOnlyList<SubmissionRecord>> GetMergedSubmissionsAsync(
-            string systemId,
+            string boardId,
             DateTimeOffset? decidedAfter,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default)
@@ -890,17 +935,17 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT id, system_id, account_id, contact_email, upload_token_hash, base_revision,
+                SELECT id, board_id, account_id, contact_email, upload_token_hash, base_revision,
                        state, summary, format_version, created_utc, expires_utc, decided_utc,
                        decision_comment, touches_shared_files
                 FROM submissions
-                WHERE system_id = @systemId AND state = @state
+                WHERE board_id = @boardId AND state = @state
                   AND decided_utc <= @upTo
                   AND (@after IS NULL OR decided_utc > @after)
                 ORDER BY id ASC LIMIT 500;
                 """;
 
-            command.Parameters.AddWithValue("@systemId", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@state", SubmissionState.Merged);
             command.Parameters.AddWithValue("@upTo", decidedUpTo.UtcDateTime);
             command.Parameters.AddWithValue("@after", decidedAfter is null ? DBNull.Value : decidedAfter.Value.UtcDateTime);
@@ -969,17 +1014,17 @@ namespace CRT.Server.Handlers.Submissions
             return discards;
         }
 
-        // See ISubmissionStore.GetSystemsCarryingDiscardedDraftsAsync - one query for every system on
-        // the list, with GetMergedSubmissionsAsync's bounds per system.
-        public async Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
-            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+        // See ISubmissionStore.GetBoardsCarryingDiscardedDraftsAsync - one query for every board on
+        // the list, with GetMergedSubmissionsAsync's bounds per board.
+        public async Task<IReadOnlySet<string>> GetBoardsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string BoardId, DateTimeOffset? DecidedAfter)> windows,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default)
         {
-            var systems = new HashSet<string>(StringComparer.Ordinal);
+            var boards = new HashSet<string>(StringComparer.Ordinal);
 
             if (windows is null || windows.Count == 0)
-                return systems;
+                return boards;
 
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
@@ -987,12 +1032,12 @@ namespace CRT.Server.Handlers.Submissions
             List<string> conditions = [];
             int index = 0;
 
-            foreach ((string systemId, DateTimeOffset? after) in windows)
+            foreach ((string boardId, DateTimeOffset? after) in windows)
             {
-                string system = FormattableString.Invariant($"@s{index}");
+                string board = FormattableString.Invariant($"@s{index}");
                 string since = FormattableString.Invariant($"@a{index++}");
-                conditions.Add($"(s.system_id = {system} AND ({since} IS NULL OR s.decided_utc > {since}))");
-                command.Parameters.AddWithValue(system, systemId);
+                conditions.Add($"(s.board_id = {board} AND ({since} IS NULL OR s.decided_utc > {since}))");
+                command.Parameters.AddWithValue(board, boardId);
                 command.Parameters.AddWithValue(since, after is null ? DBNull.Value : after.Value.UtcDateTime);
             }
 
@@ -1000,7 +1045,7 @@ namespace CRT.Server.Handlers.Submissions
             command.Parameters.AddWithValue("@upTo", decidedUpTo.UtcDateTime);
 
             command.CommandText =
-                "SELECT DISTINCT s.system_id FROM submissions s " +
+                "SELECT DISTINCT s.board_id FROM submissions s " +
                 "JOIN submission_draft_discards d ON d.submission_id = s.id " +
                 "WHERE s.state = @state AND s.decided_utc <= @upTo " +
                 $"AND ({string.Join(" OR ", conditions)});";
@@ -1008,9 +1053,9 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
 
             while (await reader.ReadAsync(cancellationToken))
-                systems.Add(reader.GetString(0));
+                boards.Add(reader.GetString(0));
 
-            return systems;
+            return boards;
         }
 
         // See ISubmissionStore.GetBetaReturnsAsync - the same one-query shape as GetDraftDiscardsAsync.
@@ -1075,7 +1120,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // See ISubmissionStore.GetChangesAsync - the same one-query shape as GetDraftDiscardsAsync. A
         // record that no longer reads (hand-edited, or a shape this version does not know) is left
-        // out rather than failing the whole system's screen.
+        // out rather than failing the whole board's screen.
         // ###########################################################################################
         public async Task<IReadOnlyDictionary<long, SubmissionChanges>> GetChangesAsync(
             IReadOnlyCollection<long> submissionIds,
@@ -1122,8 +1167,8 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // The same INSERT IGNORE CreateAsync performs, on its own - see ISubmissionStore.
-        public async Task EnsureSystemAsync(
-            string systemId,
+        public async Task EnsureBoardAsync(
+            string boardId,
             string manufacturer,
             string hardware,
             string board,
@@ -1135,12 +1180,12 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                INSERT IGNORE INTO systems
-                    (system_id, manufacturer, hardware, board, origin, is_accepting, created_utc)
-                VALUES (@systemId, @manufacturer, @hardware, @board, @origin, 1, @created);
+                INSERT IGNORE INTO boards
+                    (board_id, manufacturer, hardware, board, origin, is_accepting, created_utc)
+                VALUES (@boardId, @manufacturer, @hardware, @board, @origin, 1, @created);
                 """;
 
-            command.Parameters.AddWithValue("@systemId", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@manufacturer", manufacturer);
             command.Parameters.AddWithValue("@hardware", hardware);
             command.Parameters.AddWithValue("@board", board);
@@ -1150,13 +1195,13 @@ namespace CRT.Server.Handlers.Submissions
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        public async Task<bool?> IsSystemAcceptingAsync(string systemId, CancellationToken cancellationToken = default)
+        public async Task<bool?> IsBoardAcceptingAsync(string boardId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            command.CommandText = "SELECT is_accepting FROM systems WHERE system_id = @systemId LIMIT 1;";
-            command.Parameters.AddWithValue("@systemId", systemId);
+            command.CommandText = "SELECT is_accepting FROM boards WHERE board_id = @boardId LIMIT 1;";
+            command.Parameters.AddWithValue("@boardId", boardId);
 
             object? value = await command.ExecuteScalarAsync(cancellationToken);
 

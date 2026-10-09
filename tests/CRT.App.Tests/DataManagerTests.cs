@@ -112,7 +112,7 @@ public sealed class DataManagerTests : IDisposable
 
     // ###########################################################################################
     // *** THE SERVER WRITES THE ROW, CRT READS IT - ONE FORMAT, BOTH SIDES (2026-09-27). *** A new
-    // system published to BETA gets its row in the main Excel data file from MasterListing (CRT.Data,
+    // board published to BETA gets its row in the main Excel data file from MasterListing (CRT.Data,
     // run by the server). This drives that writer and then CRT's own reader, so a column renamed or
     // a row placed where CRT does not look fails here rather than as a board missing from everyone's
     // drop-downs.
@@ -412,6 +412,6 @@ public sealed class DataManagerTests : IDisposable
     public void A_path_entirely_outside_the_data_root_is_not_within_it()
     {
         Assert.False(IsPathWithinDataRoot(
-            DataRootPath, Path.Combine("elsewhere", "System32", "config")));
+            DataRootPath, Path.Combine("elsewhere", "Board32", "config")));
     }
 }

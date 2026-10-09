@@ -13,7 +13,7 @@ namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 // BETA to PROD queue, but also in the normal queue"). ***
 //
 // The review queue's row, the opened submission (above its table), the "Beta > Prod" list and its
-// plan, and the Systems screen's submission list - each drawn here from an answer carrying it, and
+// plan, and the Boards screen's submission list - each drawn here from an answer carrying it, and
 // checked to say nothing where it is absent. No server: every screen is handed its answer.
 // ###########################################################################################
 [Collection("HeadlessUi")]
@@ -25,7 +25,7 @@ public sealed class DraftDiscardShownTests
 
     private static ReviewQueueRow Row(long id, DateTimeOffset? discarded) =>
         new(id, "Commodore/C128/310378", "pending", $"Change {id}", "dennis@example.com",
-            DateTimeOffset.UtcNow.AddHours(-1), IsNewSystem: false, AwaitsYou: true, DraftDiscardedUtc: discarded);
+            DateTimeOffset.UtcNow.AddHours(-1), IsNewBoard: false, AwaitsYou: true, DraftDiscardedUtc: discarded);
 
     [Fact]
     public void The_queue_row_says_the_contributor_discarded_their_draft_and_only_that_row()
@@ -75,7 +75,7 @@ public sealed class DraftDiscardShownTests
     }
 
     [Fact]
-    public async Task The_beta_list_marks_a_system_carrying_a_discarded_draft()
+    public async Task The_beta_list_marks_a_board_carrying_a_discarded_draft()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -83,8 +83,8 @@ public sealed class DraftDiscardShownTests
 
             await main.ApplyBetaListAsync(new ProductionListResponse(true,
             [
-                new ProductionSystemRow("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null, CarriesDiscardedDraft: true),
-                new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", null, "hash", null, null)
+                new ProductionBoardRow("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null, CarriesDiscardedDraft: true),
+                new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", null, "hash", null, null)
             ]), background: false);
 
             Assert.Single(main.BetaTextsForTests(), text => text == DraftDiscardWording.ListMark);
@@ -114,7 +114,7 @@ public sealed class DraftDiscardShownTests
                     Approval: null,
                     Removals: null,
                     Carrying: [carried]),
-                new ProductionSystemRow("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null));
+                new ProductionBoardRow("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null));
 
             List<string> lines = view.FindControl<StackPanel>("CarryingPanel")!.Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
 
@@ -124,19 +124,19 @@ public sealed class DraftDiscardShownTests
     }
 
     [Fact]
-    public void The_systems_screen_marks_the_submission_whose_draft_was_discarded()
+    public void The_boards_screen_marks_the_submission_whose_draft_was_discarded()
     {
         UiTest.Run(() =>
         {
-            var view = new SystemView();
+            var view = new BoardDetailView();
 
-            view.ShowDetailForTests(new SystemDetailAnswer(
-                new SystemOverviewEntry("Commodore/C128/310378", "Commodore", "C128", "310378", true, false, true, true, null, null, null, 1),
+            view.ShowDetailForTests(new BoardDetailAnswer(
+                new BoardOverviewEntry("Commodore/C128/310378", "Commodore", "C128", "310378", true, false, true, true, null, null, null, 1),
                 [],
                 [],
                 [
-                    new SystemSubmissionEntry(41, "dennis@example.com", "Change 41", "merged", Discarded.AddDays(-2), Discarded.AddDays(-1), null, DraftDiscardedUtc: Discarded),
-                    new SystemSubmissionEntry(40, "dennis@example.com", "Change 40", "published", Discarded.AddDays(-9), Discarded.AddDays(-8), null)
+                    new BoardSubmissionEntry(41, "dennis@example.com", "Change 41", "merged", Discarded.AddDays(-2), Discarded.AddDays(-1), null, DraftDiscardedUtc: Discarded),
+                    new BoardSubmissionEntry(40, "dennis@example.com", "Change 40", "published", Discarded.AddDays(-9), Discarded.AddDays(-8), null)
                 ]));
 
             Assert.Single(view.TextsForTests(), text => text == DraftDiscardWording.Mark(Discarded));

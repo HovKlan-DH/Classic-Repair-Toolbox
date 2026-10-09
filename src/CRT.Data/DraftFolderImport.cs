@@ -6,11 +6,11 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // A system the application already knows about, as the import needs to see it: its identity,
+    // A board the application already knows about, as the import needs to see it: its identity,
     // and whether the MAIN workbook lists it (published) or only a local source does - a legacy
     // "_UserContribution" workbook, say, whose board lives in Data/ but has never been published.
     // ###########################################################################################
-    public sealed record KnownDraftSystem(string ExcelDataFile, bool IsPublished);
+    public sealed record KnownDraftBoard(string ExcelDataFile, bool IsPublished);
 
     public enum DraftFolderImportKind
     {
@@ -19,18 +19,18 @@ namespace Handlers.DataHandling
         // A copy of a board the main workbook lists - an ordinary draft over the published board.
         DraftOfPublishedBoard,
 
-        // Anything else - a system with nothing published, exactly as "Add a new system" makes one.
-        NewSystem,
+        // Anything else - a board with nothing published, exactly as "Add a new board" makes one.
+        NewBoard,
     }
 
     // ###########################################################################################
     // What the import did with one board folder, so the caller can log it. Reason says why a
     // folder was NOT imported; RenamedFrom names the workbook's original file when it had to be
-    // renamed to the name the known system uses.
+    // renamed to the name the known board uses.
     // ###########################################################################################
     public sealed class DraftFolderImportOutcome
     {
-        public string SystemFolder { get; init; } = string.Empty;
+        public string BoardFolder { get; init; } = string.Empty;
 
         public string ExcelDataFile { get; init; } = string.Empty;
 
@@ -58,23 +58,23 @@ namespace Handlers.DataHandling
     // there is no second notion of "draft" to keep in step.
     //
     // WHAT IS A BOARD FOLDER: exactly three levels down (Manufacturer/Hardware/Board, the layout
-    // Data/ uses and DraftManager.EnumerateDraftOnlySystems walks), holding an .xlsx directly. The
+    // Data/ uses and DraftManager.EnumerateDraftOnlyBoards walks), holding an .xlsx directly. The
     // two SHARED folders are skipped by name at either upper level - a "Shared files/Board local
-    // files" folder can hold an .xlsx datasheet, and taking that for a board would put a system
+    // files" folder can hold an .xlsx datasheet, and taking that for a board would put a board
     // called "Shared files" in the lists.
     //
-    // WHICH KIND OF DRAFT, decided by the known systems and nothing else:
+    // WHICH KIND OF DRAFT, decided by the known boards and nothing else:
     //   - the main workbook lists this folder: a draft of that PUBLISHED board. Its base revision is
     //     the one written inside the copy itself, which is the honest answer to "what were these
     //     edits made on top of" - the published board may have moved on since the copy was taken,
     //     and the drift warning then says so;
-    //   - anything else: a NEW system, registered under its FOLDER names. Those have to be the
+    //   - anything else: a NEW board, registered under its FOLDER names. Those have to be the
     //     folder names and never a display name from a workbook: a submission sends the
-    //     registration's names as the system's parts and the server rebuilds the system id from
-    //     them (the identity.system_id_mismatch of 2026-09-23). A folder a legacy
+    //     registration's names as the board's parts and the server rebuilds the board id from
+    //     them (the identity.board_id_mismatch of 2026-09-23). A folder a legacy
     //     "_UserContribution" workbook lists is one of these - it has never been published.
     //
-    // A KNOWN system's workbook must carry the name that system uses, because every draft lookup
+    // A KNOWN board's workbook must carry the name that board uses, because every draft lookup
     // builds the workbook path from it. A folder holding ONE workbook under another name (a copy
     // from an older data generation, say) has it renamed, with its JSON sidecar; with several and
     // none of them right, nothing is guessed.
@@ -86,7 +86,7 @@ namespace Handlers.DataHandling
     {
         public static IReadOnlyList<DraftFolderImportOutcome> ImportUnmarkedFolders(
             string draftsRoot,
-            IEnumerable<KnownDraftSystem>? knownSystems,
+            IEnumerable<KnownDraftBoard>? knownBoards,
             DateTimeOffset nowUtc)
         {
             var outcomes = new List<DraftFolderImportOutcome>();
@@ -96,7 +96,7 @@ namespace Handlers.DataHandling
                 return outcomes;
             }
 
-            Dictionary<string, KnownDraftSystem> knownById = DraftFolderImport.IndexBySystemId(knownSystems);
+            Dictionary<string, KnownDraftBoard> knownById = DraftFolderImport.IndexByBoardId(knownBoards);
 
             foreach (string boardFolder in DraftFolderImport.EnumerateBoardFolders(draftsRoot))
             {
@@ -114,7 +114,7 @@ namespace Handlers.DataHandling
 
         private static DraftFolderImportOutcome ImportOne(
             string boardFolder,
-            Dictionary<string, KnownDraftSystem> knownById,
+            Dictionary<string, KnownDraftBoard> knownById,
             DateTimeOffset nowUtc)
         {
             string board = Path.GetFileName(boardFolder);
@@ -122,7 +122,7 @@ namespace Handlers.DataHandling
             string hardware = Path.GetFileName(hardwareFolder);
             string manufacturer = Path.GetFileName(Path.GetDirectoryName(hardwareFolder) ?? string.Empty);
 
-            string systemId = $"{manufacturer}/{hardware}/{board}";
+            string boardId = $"{manufacturer}/{hardware}/{board}";
 
             try
             {
@@ -132,24 +132,24 @@ namespace Handlers.DataHandling
                     return DraftFolderImport.NotImported(boardFolder, "it holds no board workbook (.xlsx)");
                 }
 
-                knownById.TryGetValue(systemId, out KnownDraftSystem? known);
+                knownById.TryGetValue(boardId, out KnownDraftBoard? known);
 
                 // ###########################################################################################
                 // *** THE CAPITALS MUST MATCH, because the published tree's do. *** The lookup is
                 // case-insensitive so this case is SEEN rather than silently imported as a second,
-                // new system beside the real one. On Linux "commodore/c64" is simply a different
+                // new board beside the real one. On Linux "commodore/c64" is simply a different
                 // folder from "Commodore/C64", so importing it under either name would be wrong.
                 // ###########################################################################################
                 if (known is not null &&
-                    !string.Equals(SystemDescriptorRules.SystemIdFromExcelDataFile(known.ExcelDataFile), systemId, StringComparison.Ordinal))
+                    !string.Equals(BoardDescriptorRules.BoardIdFromExcelDataFile(known.ExcelDataFile), boardId, StringComparison.Ordinal))
                 {
                     return DraftFolderImport.NotImported(
                         boardFolder,
-                        $"its folder names differ only in capitals from [{SystemDescriptorRules.SystemIdFromExcelDataFile(known.ExcelDataFile)}] - " +
+                        $"its folder names differ only in capitals from [{BoardDescriptorRules.BoardIdFromExcelDataFile(known.ExcelDataFile)}] - " +
                         "rename the folders to match exactly");
                 }
 
-                if (known is null && !DraftFolderImport.IsUsableNewSystemIdentity(manufacturer, hardware, board, out string identityReason))
+                if (known is null && !DraftFolderImport.IsUsableNewBoardIdentity(manufacturer, hardware, board, out string identityReason))
                 {
                     return DraftFolderImport.NotImported(boardFolder, identityReason);
                 }
@@ -181,7 +181,7 @@ namespace Handlers.DataHandling
                     DraftFolderImport.RenameWorkbook(workbooks[0], workbookPath);
                 }
 
-                string excelDataFile = known?.ExcelDataFile ?? $"{systemId}/{wantedName}";
+                string excelDataFile = known?.ExcelDataFile ?? $"{boardId}/{wantedName}";
                 string createdUtc = nowUtc.ToUniversalTime().ToString("o");
 
                 bool isPublished = known?.IsPublished == true;
@@ -191,16 +191,16 @@ namespace Handlers.DataHandling
                     isPublished
                         ? new DraftMarker
                         {
-                            SystemKey = excelDataFile,
+                            BoardKey = excelDataFile,
                             BaseRevision = BoardDataReader.ReadRevisionDateOnly(workbookPath).Trim(),
                             CreatedUtc = createdUtc,
                         }
                         : new DraftMarker
                         {
-                            SystemKey = excelDataFile,
+                            BoardKey = excelDataFile,
                             BaseRevision = string.Empty,
                             CreatedUtc = createdUtc,
-                            NewSystem = new NewSystemRegistration
+                            NewBoard = new NewBoardRegistration
                             {
                                 HardwareName = hardware,
                                 BoardName = board,
@@ -211,9 +211,9 @@ namespace Handlers.DataHandling
 
                 return new DraftFolderImportOutcome
                 {
-                    SystemFolder = boardFolder,
+                    BoardFolder = boardFolder,
                     ExcelDataFile = excelDataFile,
-                    Kind = isPublished ? DraftFolderImportKind.DraftOfPublishedBoard : DraftFolderImportKind.NewSystem,
+                    Kind = isPublished ? DraftFolderImportKind.DraftOfPublishedBoard : DraftFolderImportKind.NewBoard,
                     RenamedFrom = renamedFrom,
                 };
             }
@@ -291,21 +291,21 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // A new system's folder names become its identity, so they must be names "Add a new system"
+        // A new board's folder names become its identity, so they must be names "Add a new board"
         // would have accepted - including the server's rule that they carry no extra spaces
         // (SubmissionValidator's identity.parts_not_canonical).
         // ###########################################################################################
-        private static bool IsUsableNewSystemIdentity(string manufacturer, string hardware, string board, out string reason)
+        private static bool IsUsableNewBoardIdentity(string manufacturer, string hardware, string board, out string reason)
         {
             foreach ((string part, string label) in new[] { (manufacturer, "manufacturer"), (hardware, "hardware"), (board, "board") })
             {
-                if (!NewSystemIdentity.IsValidPathSegment(part, out string segmentReason))
+                if (!NewBoardIdentity.IsValidPathSegment(part, out string segmentReason))
                 {
                     reason = $"its {label} folder name {segmentReason}";
                     return false;
                 }
 
-                if (!string.Equals(NewSystemIdentity.SanitizePathSegment(part), part, StringComparison.Ordinal))
+                if (!string.Equals(NewBoardIdentity.SanitizePathSegment(part), part, StringComparison.Ordinal))
                 {
                     reason = $"its {label} folder name [{part}] has extra spaces";
                     return false;
@@ -345,21 +345,21 @@ namespace Handlers.DataHandling
             }
         }
 
-        // One entry per system id, and a PUBLISHED listing wins over a local one for the same
+        // One entry per board id, and a PUBLISHED listing wins over a local one for the same
         // folder - it is the one the server knows.
-        private static Dictionary<string, KnownDraftSystem> IndexBySystemId(IEnumerable<KnownDraftSystem>? knownSystems)
+        private static Dictionary<string, KnownDraftBoard> IndexByBoardId(IEnumerable<KnownDraftBoard>? knownBoards)
         {
-            var byId = new Dictionary<string, KnownDraftSystem>(StringComparer.OrdinalIgnoreCase);
+            var byId = new Dictionary<string, KnownDraftBoard>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (KnownDraftSystem known in knownSystems ?? [])
+            foreach (KnownDraftBoard known in knownBoards ?? [])
             {
-                string id = SystemDescriptorRules.SystemIdFromExcelDataFile(known.ExcelDataFile);
+                string id = BoardDescriptorRules.BoardIdFromExcelDataFile(known.ExcelDataFile);
                 if (id.Length == 0)
                 {
                     continue;
                 }
 
-                if (!byId.TryGetValue(id, out KnownDraftSystem? existing) || (known.IsPublished && !existing.IsPublished))
+                if (!byId.TryGetValue(id, out KnownDraftBoard? existing) || (known.IsPublished && !existing.IsPublished))
                 {
                     byId[id] = known;
                 }
@@ -371,7 +371,7 @@ namespace Handlers.DataHandling
         private static DraftFolderImportOutcome NotImported(string boardFolder, string reason) =>
             new()
             {
-                SystemFolder = boardFolder,
+                BoardFolder = boardFolder,
                 Kind = DraftFolderImportKind.NotImported,
                 Reason = reason,
             };

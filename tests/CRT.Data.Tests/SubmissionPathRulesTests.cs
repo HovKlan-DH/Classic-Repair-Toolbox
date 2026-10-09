@@ -12,7 +12,7 @@ namespace CRT.Data.Tests
     //
     // THIS IS THE MOST SECURITY-SENSITIVE LOGIC IN PHASE 4. Every path here arrives over the
     // network from anyone with an account and names a location the server will create a file at.
-    // A hole means writing outside the system folder - into another system's data, into the
+    // A hole means writing outside the board folder - into another board's data, into the
     // service's own directory, or over a published file.
     //
     // The traversal tests are written as a LIST OF KNOWN TRICKS rather than one representative
@@ -24,7 +24,7 @@ namespace CRT.Data.Tests
     // ###########################################################################################
     public class SubmissionPathRulesTests
     {
-        private static string SystemFolder()
+        private static string BoardFolder()
         {
             return Path.Combine(Path.GetTempPath(), "crt-test", "Commodore", "C64", "250407");
         }
@@ -32,7 +32,7 @@ namespace CRT.Data.Tests
         private static bool Allows(string relativePath)
         {
             return SubmissionPathRules.TryResolve(
-                SubmissionPathRulesTests.SystemFolder(), relativePath, out _, out _);
+                SubmissionPathRulesTests.BoardFolder(), relativePath, out _, out _);
         }
 
         // -----------------------------------------------------------------------------------
@@ -73,7 +73,7 @@ namespace CRT.Data.Tests
             // "foo.pdf" on Windows and fail on the Linux server - the exact failure the strategy
             // document warns about, appearing only in production.
             SubmissionPathRules.TryResolve(
-                SubmissionPathRulesTests.SystemFolder(), "Datasheets/74LS08.PDF", out string resolved, out _);
+                SubmissionPathRulesTests.BoardFolder(), "Datasheets/74LS08.PDF", out string resolved, out _);
 
             Assert.EndsWith("74LS08.PDF", resolved, StringComparison.Ordinal);
         }
@@ -95,7 +95,7 @@ namespace CRT.Data.Tests
         {
             Assert.False(
                 SubmissionPathRulesTests.Allows(relativePath),
-                $"Expected [{relativePath}] to be REFUSED - it escapes the system folder.");
+                $"Expected [{relativePath}] to be REFUSED - it escapes the board folder.");
         }
 
         [Fact]
@@ -115,7 +115,7 @@ namespace CRT.Data.Tests
         [Theory]
         [InlineData("/etc/passwd")]
         [InlineData("/tmp/evil.png")]
-        [InlineData("C:/Windows/System32/evil.dll")]
+        [InlineData("C:/Windows/Board32/evil.dll")]
         [InlineData("C:\\Windows\\evil.dll")] // windows-path-literal: a hostile input, refused on every OS.
         [InlineData("//server/share/evil.png")]
         [InlineData("\\\\server\\share\\evil.png")]
@@ -241,7 +241,7 @@ namespace CRT.Data.Tests
             // The reason reaches the contributor, who has to fix it. A bare "invalid path"
             // produces a resubmission of the same thing.
             SubmissionPathRules.TryResolve(
-                SubmissionPathRulesTests.SystemFolder(), "../evil.png", out _, out string reason);
+                SubmissionPathRulesTests.BoardFolder(), "../evil.png", out _, out string reason);
 
             Assert.False(string.IsNullOrWhiteSpace(reason));
             Assert.Contains("evil.png", reason, StringComparison.Ordinal);
@@ -255,7 +255,7 @@ namespace CRT.Data.Tests
             string longPath = "../" + new string('x', 150) + ".png";
 
             SubmissionPathRules.TryResolve(
-                SubmissionPathRulesTests.SystemFolder(), longPath, out _, out string reason);
+                SubmissionPathRulesTests.BoardFolder(), longPath, out _, out string reason);
 
             Assert.Contains("...", reason, StringComparison.Ordinal);
             Assert.True(reason.Length < longPath.Length + 60);
@@ -308,7 +308,7 @@ namespace CRT.Data.Tests
             };
 
             Assert.Empty(SubmissionPathRules.ValidateManifestPaths(
-                manifest, SubmissionPathRulesTests.SystemFolder()));
+                manifest, SubmissionPathRulesTests.BoardFolder()));
         }
 
         [Fact]
@@ -327,7 +327,7 @@ namespace CRT.Data.Tests
             };
 
             IReadOnlyList<ValidationFinding> findings = SubmissionPathRules.ValidateManifestPaths(
-                manifest, SubmissionPathRulesTests.SystemFolder());
+                manifest, SubmissionPathRulesTests.BoardFolder());
 
             Assert.Equal(3, findings.Count);
             Assert.All(findings, finding => Assert.Equal(ValidationSeverity.Error, finding.Severity));
@@ -346,7 +346,7 @@ namespace CRT.Data.Tests
             };
 
             Assert.Contains(
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder()),
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder()),
                 finding => finding.Code == "path.duplicate");
         }
 
@@ -366,7 +366,7 @@ namespace CRT.Data.Tests
             };
 
             ValidationFinding finding = Assert.Single(
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder()),
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder()),
                 finding => finding.Code == "path.case_collision");
 
             // The message must name BOTH paths, or the contributor cannot tell which pair collided.
@@ -393,7 +393,7 @@ namespace CRT.Data.Tests
             };
 
             IReadOnlyList<ValidationFinding> findings =
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder());
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder());
 
             Assert.Contains(findings, finding => finding.Code == "path.duplicate");
             Assert.Contains(findings, finding => finding.Code == "path.case_collision");
@@ -421,7 +421,7 @@ namespace CRT.Data.Tests
             };
 
             IReadOnlyList<ValidationFinding> findings =
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder());
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder());
 
             Assert.Contains(findings, finding => finding.Code == "hash.malformed");
             Assert.Contains(findings, finding => finding.Code == "path.case_collision");
@@ -436,7 +436,7 @@ namespace CRT.Data.Tests
             };
 
             Assert.Contains(
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder()),
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder()),
                 finding => finding.Code == "hash.malformed");
         }
 
@@ -449,7 +449,7 @@ namespace CRT.Data.Tests
             };
 
             Assert.Contains(
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder()),
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder()),
                 finding => finding.Code == "file.too_large");
         }
 
@@ -464,7 +464,7 @@ namespace CRT.Data.Tests
             };
 
             Assert.Contains(
-                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.SystemFolder()),
+                SubmissionPathRules.ValidateManifestPaths(manifest, SubmissionPathRulesTests.BoardFolder()),
                 finding => finding.Code == "file.too_large");
         }
 
@@ -482,7 +482,7 @@ namespace CRT.Data.Tests
             };
 
             IReadOnlyList<ValidationFinding> findings = SubmissionPathRules.ValidateManifestPaths(
-                manifest, SubmissionPathRulesTests.SystemFolder());
+                manifest, SubmissionPathRulesTests.BoardFolder());
 
             Assert.All(findings, finding => Assert.False(string.IsNullOrWhiteSpace(finding.Subject)));
         }

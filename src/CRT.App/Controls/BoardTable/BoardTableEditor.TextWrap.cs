@@ -155,8 +155,7 @@ namespace CRT
 
             if (this.TableGrid.GetVisualDescendants().OfType<DataGridColumnHeader>().FirstOrDefault(header => ReferenceEquals(header.OwningColumn, column)) is DataGridColumnHeader shownHeader)
             {
-                shownHeader.Measure(Size.Infinity);
-                headerWidth = shownHeader.DesiredSize.Width;
+                headerWidth = BoardTableEditor.HeadingWidth(shownHeader);
             }
 
             // A cell the grid has built, for the font and the margins around the text. With none -
@@ -195,6 +194,26 @@ namespace CRT
             // the old one.
             this.TableGrid.UpdateLayout();
             this.TableGrid.ScrollIntoView(null!, column);
+        }
+
+        // ###########################################################################################
+        // The width a heading needs for its name on one line: the name, with the heading's own space
+        // before it repeated after it (owner report, 2026-10-09: a column fitted to its heading had a
+        // wide empty band after the name). The heading's own width is not it - its template keeps
+        // room on the right for a sort arrow this table never shows.
+        // ###########################################################################################
+        private static double HeadingWidth(DataGridColumnHeader header)
+        {
+            if (header.Content is string name &&
+                header.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(text => text.Text == name) is TextBlock shown &&
+                shown.TranslatePoint(default, header) is Point at)
+            {
+                var typeface = new Typeface(shown.FontFamily, shown.FontStyle, shown.FontWeight, shown.FontStretch);
+                return ColumnAutoFitGeometry.HeadingWidth(at.X, BoardTableEditor.TextWidth(name, typeface, shown.FontSize));
+            }
+
+            header.Measure(Size.Infinity);
+            return header.DesiredSize.Width;
         }
 
         private static string CellText(BoardTableRow row, int index) =>

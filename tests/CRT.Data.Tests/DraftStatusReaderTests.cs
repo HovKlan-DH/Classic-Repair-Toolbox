@@ -7,9 +7,9 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // DraftStatusReader.CountChangesCached - the "N rows changed" number the Drafts tab shows for
-// every drafted system (code review, 2026-09-25).
+// every drafted board (code review, 2026-09-25).
 //
-// *** WHY IT IS CACHED. *** The tab re-lists every drafted system after every save of any kind,
+// *** WHY IT IS CACHED. *** The tab re-lists every drafted board after every save of any kind,
 // and each count is two full workbook parses on the UI thread. With a few large boards drafted,
 // each save froze the window for seconds re-counting boards nobody had touched.
 //
@@ -30,7 +30,7 @@ public sealed class DraftStatusReaderTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -88,7 +88,7 @@ public sealed class DraftStatusReaderTests : IDisposable
         this.WriteDraft(DraftStatusReaderTests.BoardWith(2));
 
         DraftStatus? status = this.Status();
-        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
         Assert.Equal(new BoardProblemCounts(0, 2), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
 
@@ -123,7 +123,7 @@ public sealed class DraftStatusReaderTests : IDisposable
         this.WriteDraft(draft);
 
         DraftStatus? status = this.Status();
-        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
         Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
     }
@@ -136,7 +136,7 @@ public sealed class DraftStatusReaderTests : IDisposable
         this.WriteDraft(DraftStatusReaderTests.BoardWith(3));
 
         DraftStatus? status = this.Status();
-        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
         Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
 
         string workbook = status!.WorkbookPath;
@@ -167,7 +167,7 @@ public sealed class DraftStatusReaderTests : IDisposable
         this.WriteDraft(draft);
 
         DraftStatus? status = this.Status();
-        string draftFolder = DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
         BoardProblemCounts before = DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder);
         Assert.True(before.Errors >= 1);
@@ -244,7 +244,7 @@ public sealed class DraftStatusReaderTests : IDisposable
     // ------------------------------------------------------------------ helpers
 
     private DraftStatus? Status() =>
-        DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
     private static BoardData BoardWith(int components)
     {
@@ -260,7 +260,7 @@ public sealed class DraftStatusReaderTests : IDisposable
 
     private void WritePublished(BoardData board)
     {
-        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftStatusReaderTests.SystemKey);
+        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftStatusReaderTests.BoardKey);
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         BoardWorkbookWriter.Write(path, board);
@@ -269,65 +269,65 @@ public sealed class DraftStatusReaderTests : IDisposable
 
     private void WriteDraft(BoardData board)
     {
-        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         BoardWorkbookWriter.Write(path, board);
         BoardDataReader.ClearCache(path);
 
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftStatusReaderTests.SystemKey),
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftStatusReaderTests.BoardKey),
             new DraftMarker
             {
-                SystemKey = DraftStatusReaderTests.SystemKey,
+                BoardKey = DraftStatusReaderTests.BoardKey,
                 BaseRevision = "2026-09-01",
                 CreatedUtc = "2026-09-25T00:00:00Z",
             });
     }
     // ###########################################################################################
-    // ResolveForSystem - a submission receipt's system id back to its draft (2026-09-25).
+    // ResolveForBoard - a submission receipt's board id back to its draft (2026-09-25).
     // ###########################################################################################
 
-    // Resolve takes a WORKBOOK path. Handed a system id it looks one folder too high and finds
+    // Resolve takes a WORKBOOK path. Handed a board id it looks one folder too high and finds
     // nothing - which is exactly what the application did, so no published draft was ever retired.
     [Fact]
-    public void Resolve_handed_a_system_id_instead_of_a_workbook_finds_nothing()
+    public void Resolve_handed_a_board_id_instead_of_a_workbook_finds_nothing()
     {
         this.WriteDraftMarker();
 
-        Assert.NotNull(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftStatusReaderTests.SystemKey));
+        Assert.NotNull(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftStatusReaderTests.BoardKey));
         Assert.Null(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407"));
     }
 
     // The id is built from the workbook path when a draft is submitted; the lookup goes back the
-    // same way, so the two cannot disagree about what a system is called.
+    // same way, so the two cannot disagree about what a board is called.
     [Fact]
-    public void A_receipts_system_id_finds_the_draft_of_the_board_it_was_built_from()
+    public void A_receipts_board_id_finds_the_draft_of_the_board_it_was_built_from()
     {
         this.WriteDraftMarker();
-        string systemId = SystemDescriptorRules.SystemIdFromExcelDataFile(DraftStatusReaderTests.SystemKey);
+        string boardId = BoardDescriptorRules.BoardIdFromExcelDataFile(DraftStatusReaderTests.BoardKey);
 
-        DraftStatus? status = DraftStatusReader.ResolveForSystem(
-            this.DataRoot, this.DraftsRoot, systemId,
-            ["Amstrad/CPC 664/MC0005A/Data CPC 664 MC0005A.xlsx", DraftStatusReaderTests.SystemKey]);
+        DraftStatus? status = DraftStatusReader.ResolveForBoard(
+            this.DataRoot, this.DraftsRoot, boardId,
+            ["Amstrad/CPC 664/MC0005A/Data CPC 664 MC0005A.xlsx", DraftStatusReaderTests.BoardKey]);
 
         Assert.NotNull(status);
-        Assert.Equal(DraftStatusReaderTests.SystemKey, status!.SystemKey);
+        Assert.Equal(DraftStatusReaderTests.BoardKey, status!.BoardKey);
     }
 
     [Fact]
-    public void A_system_id_no_known_board_has_resolves_to_nothing()
+    public void A_board_id_no_known_board_has_resolves_to_nothing()
     {
         this.WriteDraftMarker();
 
-        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", []));
-        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", null));
-        Assert.Null(DraftStatusReader.ResolveForSystem(this.DataRoot, this.DraftsRoot, "  ", [DraftStatusReaderTests.SystemKey]));
+        Assert.Null(DraftStatusReader.ResolveForBoard(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", []));
+        Assert.Null(DraftStatusReader.ResolveForBoard(this.DataRoot, this.DraftsRoot, "Commodore/C64/250407", null));
+        Assert.Null(DraftStatusReader.ResolveForBoard(this.DataRoot, this.DraftsRoot, "  ", [DraftStatusReaderTests.BoardKey]));
     }
 
     private void WriteDraftMarker()
     {
-        string marker = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftStatusReaderTests.SystemKey);
+        string marker = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
         DraftMarkerStore.Save(marker, new DraftMarker { BaseRevision = "2026-September-25" });
     }

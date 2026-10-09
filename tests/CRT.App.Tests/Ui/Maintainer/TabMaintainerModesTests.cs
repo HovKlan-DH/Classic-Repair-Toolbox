@@ -12,7 +12,7 @@ using ClassicRepairToolbox.Tests.Maintainer;
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
 // ###########################################################################################
-// THE FOUR SCREENS (owner request, 2026-09-27): Review, BETA, Systems and Account (Admin until
+// THE FOUR SCREENS (owner request, 2026-09-27): Review, BETA, Boards and Account (Admin until
 // 2026-10-04), chosen by the buttons at the top left - each its own list on the left and its own panel on the right, where
 // three windows used to open over the queue. TabMaintainer.Modes.cs and its three siblings.
 //
@@ -26,14 +26,14 @@ public sealed class TabMaintainerModesTests
 {
     private static readonly BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
-    private static ReviewQueueRow Row(long id, string system = "Commodore/C64/250407", bool? awaitsYou = true) =>
-        new(id, system, "pending", $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, awaitsYou);
+    private static ReviewQueueRow Row(long id, string board = "Commodore/C64/250407", bool? awaitsYou = true) =>
+        new(id, board, "pending", $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, awaitsYou);
 
-    private static ProductionSystemRow Beta(string system = "Commodore/C64/250407", string hash = "hash-1", bool? awaitsYou = true) =>
-        new(system, "Commodore", system.Split('/')[1], system.Split('/')[2], "2026-September-25", hash, "2026-May-14", null, awaitsYou);
+    private static ProductionBoardRow Beta(string board = "Commodore/C64/250407", string hash = "hash-1", bool? awaitsYou = true) =>
+        new(board, "Commodore", board.Split('/')[1], board.Split('/')[2], "2026-September-25", hash, "2026-May-14", null, awaitsYou);
 
-    private static SystemOverviewEntry System(string system = "Commodore/C64/250407", int maintainers = 1) =>
-        new(system, "Commodore", system.Split('/')[1], system.Split('/')[2], true, true, false, true, null, null, null, maintainers);
+    private static BoardOverviewEntry Board(string board = "Commodore/C64/250407", int maintainers = 1) =>
+        new(board, "Commodore", board.Split('/')[1], board.Split('/')[2], true, true, false, true, null, null, null, maintainers);
 
     private static void Queue(TabMaintainer main, bool isAdministrator, params ReviewQueueRow[] rows) =>
         main.ApplyQueueResponse(new ReviewQueueResponse(CanPublish: true, Submissions: rows, IsAdministrator: isAdministrator));
@@ -41,7 +41,7 @@ public sealed class TabMaintainerModesTests
     private static void Mode(TabMaintainer main, MaintainerMode mode) =>
         main.ShowModeAsync(mode).GetAwaiter().GetResult();
 
-    private static void BetaList(TabMaintainer main, bool background, params ProductionSystemRow[] rows) =>
+    private static void BetaList(TabMaintainer main, bool background, params ProductionBoardRow[] rows) =>
         main.ApplyBetaListAsync(new ProductionListResponse(true, rows), background).GetAwaiter().GetResult();
 
     private static bool Shown(TabMaintainer main, string name) => main.FindControl<Control>(name)!.IsVisible;
@@ -68,7 +68,7 @@ public sealed class TabMaintainerModesTests
             (MaintainerMode Mode, string Button, string List, string Panel)[] screens =
             [
                 (MaintainerMode.Beta, "BetaModeButton", "BetaListPanel", "BetaDetailView"),
-                (MaintainerMode.Systems, "SystemsModeButton", "SystemsListPanel", "SystemDetailView"),
+                (MaintainerMode.Boards, "BoardsModeButton", "BoardsListPanel", "BoardDetailPane"),
                 (MaintainerMode.Account, "AccountModeButton", "AccountList", "MyAccountPanel"),
                 (MaintainerMode.Review, "ReviewModeButton", "ReviewList", "ReviewPanel")
             ];
@@ -95,8 +95,8 @@ public sealed class TabMaintainerModesTests
     // *** ACCOUNT OPENS ON "MY ACCOUNT" (owner request, 2026-10-04: "Move the current account
     // functionality from the bottom-left corner to a new left-side entry named "My account""). ***
     // Then "Server version", every maintainer's too, and below them the administrator's own:
-    // "Maintainers" (back from the Systems screen, 2026-10-04), "Order of systems", "Unused files",
-    // "Rebuild checksum manifests", "Delete a system", "API usage" and - LAST, used once at go-live
+    // "Maintainers" (back from the Boards screen, 2026-10-04), "Order of boards", "Unused files",
+    // "Rebuild checksum manifests", "Delete a board", "API usage" and - LAST, used once at go-live
     // and deleting the most - "Reset contribution data".
     //
     // The panel chosen first reads nothing and writes nothing - and only that panel is shown.
@@ -116,12 +116,12 @@ public sealed class TabMaintainerModesTests
                 Assert.False(TabMaintainerModesTests.Shown(main, other), other);
 
             Assert.Equal(
-                ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"],
+                ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"],
                 main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>().Select(item => item.Name));
 
-            main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>("SystemOrderItem");
+            main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>("BoardOrderItem");
 
-            Assert.True(TabMaintainerModesTests.Shown(main, "SystemOrderAdminView"));
+            Assert.True(TabMaintainerModesTests.Shown(main, "BoardOrderAdminView"));
             Assert.False(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
         });
     }
@@ -129,8 +129,8 @@ public sealed class TabMaintainerModesTests
     // Every panel the Account screen shows on the right.
     private static readonly string[] AccountPanels =
     [
-        "MyAccountPanel", "ServerVersionView", "MaintainerPoolAdminView", "SystemOrderAdminView", "UnusedFilesAdminView",
-        "RebuildManifestsAdminView", "SystemDeletionAdminView", "ApiUsageAdminView", "DataResetAdminView"
+        "MyAccountPanel", "ServerVersionView", "MaintainerPoolAdminView", "BoardOrderAdminView", "UnusedFilesAdminView",
+        "RebuildManifestsAdminView", "BoardDeletionAdminView", "ApiUsageAdminView", "DataResetAdminView"
     ];
 
     // ###########################################################################################
@@ -173,17 +173,17 @@ public sealed class TabMaintainerModesTests
 
             Assert.True(TabMaintainerModesTests.Shown(main, "RebuildManifestsAdminView"));
             Assert.False(TabMaintainerModesTests.Shown(main, "UnusedFilesAdminView"));
-            Assert.False(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "BoardDeletionAdminView"));
         });
     }
 
     // ###########################################################################################
-    // "DELETE A SYSTEM" ON THE ACCOUNT SCREEN (owner request, 2026-10-03: "maybe this should be a
+    // "DELETE A BOARD" ON THE ACCOUNT SCREEN (owner request, 2026-10-03: "maybe this should be a
     // part of the 'Admin' menu, that only I do have access to"). Choosing it shows its panel alone,
     // and leaving Account hides it with the rest.
     // ###########################################################################################
     [Fact]
-    public void Choosing_delete_a_system_shows_its_panel_alone()
+    public void Choosing_delete_a_board_shows_its_panel_alone()
     {
         UiTest.Run(() =>
         {
@@ -192,34 +192,34 @@ public sealed class TabMaintainerModesTests
             TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
 
             main.FindControl<ListBox>("AccountList")!.SelectedItem =
-                main.FindControl<ListBoxItem>("DeleteSystemItem");
+                main.FindControl<ListBoxItem>("DeleteBoardItem");
 
-            Assert.True(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+            Assert.True(TabMaintainerModesTests.Shown(main, "BoardDeletionAdminView"));
             Assert.False(TabMaintainerModesTests.Shown(main, "UnusedFilesAdminView"));
             Assert.False(TabMaintainerModesTests.Shown(main, "RebuildManifestsAdminView"));
 
-            TabMaintainerModesTests.Mode(main, MaintainerMode.Systems);
+            TabMaintainerModesTests.Mode(main, MaintainerMode.Boards);
 
-            Assert.False(TabMaintainerModesTests.Shown(main, "SystemDeletionAdminView"));
+            Assert.False(TabMaintainerModesTests.Shown(main, "BoardDeletionAdminView"));
         });
     }
 
     // ###########################################################################################
-    // The Systems screen's Maintainer view is a LIST for everybody, the administrator included
+    // The Boards screen's Maintainer view is a LIST for everybody, the administrator included
     // (owner request, 2026-10-04: "The stuff that should be visible in here, is just the selected
     // maintainer(s)") - no Remove button, no list to add from, no invitation box.
     // ###########################################################################################
     [Fact]
-    public void The_systems_panel_lists_maintainers_without_controls_even_for_an_administrator()
+    public void The_boards_panel_lists_maintainers_without_controls_even_for_an_administrator()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
-            SystemView view = main.FindControl<SystemView>("SystemDetailView")!;
+            BoardDetailView view = main.FindControl<BoardDetailView>("BoardDetailPane")!;
 
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
-            view.ShowDetailForTests(new SystemDetailAnswer(
-                TabMaintainerModesTests.System(),
+            view.ShowDetailForTests(new BoardDetailAnswer(
+                TabMaintainerModesTests.Board(),
                 [new PoolMaintainerEntry(7, "Anna", "anna@example.com")],
                 [],
                 [],
@@ -255,9 +255,9 @@ public sealed class TabMaintainerModesTests
             Assert.Equal(["MyAccountItem", "ServerVersionItem"], main.AccountEntriesShownForTests);
             Assert.True(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
 
-            // BETA and Systems are every maintainer's too.
+            // BETA and Boards are every maintainer's too.
             Assert.True(TabMaintainerModesTests.Shown(main, "BetaModeButton"));
-            Assert.True(TabMaintainerModesTests.Shown(main, "SystemsModeButton"));
+            Assert.True(TabMaintainerModesTests.Shown(main, "BoardsModeButton"));
 
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
             Assert.Equal(TabMaintainerModesTests.AllAccountEntries, main.AccountEntriesShownForTests);
@@ -317,7 +317,7 @@ public sealed class TabMaintainerModesTests
     }
 
     private static readonly string[] AllAccountEntries =
-        ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"];
+        ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"];
 
     // ###########################################################################################
     // *** EVERY ADMINISTRATOR'S ENTRY CARRIES THE PADLOCK, AND NOTHING ELSE DOES (owner request,
@@ -344,7 +344,7 @@ public sealed class TabMaintainerModesTests
             TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
             Dispatcher.UIThread.RunJobs();
 
-            string[] administrators = ["MaintainersItem", "SystemOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteSystemItem", "ApiUsageItem", "ResetDataItem"];
+            string[] administrators = ["MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"];
 
             foreach (ListBoxItem item in main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>())
             {
@@ -402,7 +402,7 @@ public sealed class TabMaintainerModesTests
     // -----------------------------------------------------------------------------------
 
     // ###########################################################################################
-    // *** REVIEW COUNTS SYSTEMS THAT WAIT FOR YOU. *** Two submissions to one board are one; a board
+    // *** REVIEW COUNTS BOARDS THAT WAIT FOR YOU. *** Two submissions to one board are one; a board
     // whose only submission is with the other approver is none; nothing waiting is no badge at all.
     // ###########################################################################################
     [Fact]
@@ -427,9 +427,9 @@ public sealed class TabMaintainerModesTests
         });
     }
 
-    // BETA counts the systems that wait for you - none shown until the list has been read.
+    // BETA counts the boards that wait for you - none shown until the list has been read.
     [Fact]
-    public void The_beta_badge_counts_the_systems_waiting_for_you_once_the_list_is_read()
+    public void The_beta_badge_counts_the_boards_waiting_for_you_once_the_list_is_read()
     {
         UiTest.Run(() =>
         {
@@ -448,25 +448,25 @@ public sealed class TabMaintainerModesTests
         });
     }
 
-    // The discreet Systems count: hidden until the list is read, then the number of systems.
+    // The discreet Boards count: hidden until the list is read, then the number of boards.
     [Fact]
-    public void The_systems_badge_is_the_count_of_systems_once_known()
+    public void The_boards_badge_is_the_count_of_boards_once_known()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
-            Assert.Null(main.ModeBadgeForTests(MaintainerMode.Systems));
+            Assert.Null(main.ModeBadgeForTests(MaintainerMode.Boards));
 
-            main.ApplySystemsListAsync(new SystemOverviewAnswer(
+            main.ApplyBoardsListAsync(new BoardOverviewAnswer(
             [
-                TabMaintainerModesTests.System("Commodore/C64/250407"),
-                TabMaintainerModesTests.System("Commodore/C128/310378"),
-                TabMaintainerModesTests.System("Commodore/VIC-20/250403")
+                TabMaintainerModesTests.Board("Commodore/C64/250407"),
+                TabMaintainerModesTests.Board("Commodore/C128/310378"),
+                TabMaintainerModesTests.Board("Commodore/VIC-20/250403")
             ]), background: true).GetAwaiter().GetResult();
 
-            Assert.Equal("3", main.ModeBadgeForTests(MaintainerMode.Systems));
-            Assert.Contains("Count", main.FindControl<Border>("SystemsBadge")!.Classes);
+            Assert.Equal("3", main.ModeBadgeForTests(MaintainerMode.Boards));
+            Assert.Contains("Count", main.FindControl<Border>("BoardsBadge")!.Classes);
             Assert.Contains("Attention", main.FindControl<Border>("ReviewBadge")!.Classes);
         });
     }
@@ -475,9 +475,9 @@ public sealed class TabMaintainerModesTests
     // The BETA list
     // -----------------------------------------------------------------------------------
 
-    // A system this account already approved waits for the other approver - dimmed, and saying so.
+    // A board this account already approved waits for the other approver - dimmed, and saying so.
     [Fact]
-    public void A_beta_system_waiting_for_the_other_approver_is_dimmed_and_says_why()
+    public void A_beta_board_waiting_for_the_other_approver_is_dimmed_and_says_why()
     {
         UiTest.Run(() =>
         {
@@ -496,9 +496,9 @@ public sealed class TabMaintainerModesTests
 
     // ###########################################################################################
     // *** A CHECK NOBODY ASKED FOR NEVER THROWS AWAY A TICK. *** The list is read every minute; the
-    // "I have checked this in BETA" tick on the system shown survives it unless the system's row
+    // "I have checked this in BETA" tick on the board shown survives it unless the board's row
     // CHANGED (BETA moved) - when the plan is worked out again and the tick, given to other
-    // content, goes. Fails against a refresh that re-plans the shown system every time.
+    // content, goes. Fails against a refresh that re-plans the shown board every time.
     // ###########################################################################################
     [Fact]
     public void A_background_refresh_keeps_the_tick_until_beta_moves()
@@ -506,15 +506,15 @@ public sealed class TabMaintainerModesTests
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
-            ProductionSystemRow row = TabMaintainerModesTests.Beta();
+            ProductionBoardRow row = TabMaintainerModesTests.Beta();
 
             TabMaintainerModesTests.BetaList(main, background: false, row);
-            main.SelectBetaRowForTests(row.SystemId);
+            main.SelectBetaRowForTests(row.BoardId);
             Dispatcher.UIThread.RunJobs();
 
             BetaView view = main.FindControl<BetaView>("BetaDetailView")!;
             view.ShowPlanForTests(
-                new ProductionPlanView(row.SystemId, row.BetaRevision, row.BetaContentHash, false, true, null, 10, [], []),
+                new ProductionPlanView(row.BoardId, row.BetaRevision, row.BetaContentHash, false, true, null, 10, [], []),
                 row);
 
             CheckBox tick = view.FindControl<CheckBox>("CheckedInBetaCheckBox")!;
@@ -533,15 +533,15 @@ public sealed class TabMaintainerModesTests
 
     // Published or pushed back by somebody else meanwhile: the panel empties and says so.
     [Fact]
-    public void A_beta_system_that_left_the_list_meanwhile_says_so()
+    public void A_beta_board_that_left_the_list_meanwhile_says_so()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
-            ProductionSystemRow row = TabMaintainerModesTests.Beta();
+            ProductionBoardRow row = TabMaintainerModesTests.Beta();
 
             TabMaintainerModesTests.BetaList(main, background: false, row);
-            main.SelectBetaRowForTests(row.SystemId);
+            main.SelectBetaRowForTests(row.BoardId);
             Dispatcher.UIThread.RunJobs();
 
             TabMaintainerModesTests.BetaList(main, background: true);
@@ -550,28 +550,28 @@ public sealed class TabMaintainerModesTests
 
             Assert.Null(view.ShownRow);
             Assert.Contains("no longer waiting to go to stable", view.FindControl<TextBlock>("MessageText")!.Text, StringComparison.Ordinal);
-            Assert.Equal("The stable source is up to date with BETA for every system you review.", main.FindControl<TextBlock>("BetaListMessageText")!.Text);
+            Assert.Equal("The stable source is up to date with BETA for every board you review.", main.FindControl<TextBlock>("BetaListMessageText")!.Text);
         });
     }
 
     // -----------------------------------------------------------------------------------
-    // The Systems list
+    // The Boards list
     // -----------------------------------------------------------------------------------
 
     // The ordinary "in BETA and the stable source" is not said (owner request, 2026-10-03).
     [Fact]
-    public void Each_system_is_listed_by_name_with_who_maintains_it()
+    public void Each_board_is_listed_by_name_with_who_maintains_it()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
-            main.ApplySystemsListAsync(new SystemOverviewAnswer(
+            main.ApplyBoardsListAsync(new BoardOverviewAnswer(
             [
-                TabMaintainerModesTests.System("Commodore/C64/250407", maintainers: 2)
+                TabMaintainerModesTests.Board("Commodore/C64/250407", maintainers: 2)
             ]), background: true).GetAwaiter().GetResult();
 
-            Assert.Equal(["Commodore / C64 / 250407", "2 maintainers"], main.SystemsTextsForTests());
+            Assert.Equal(["Commodore / C64 / 250407", "2 maintainers"], main.BoardsTextsForTests());
         });
     }
 
@@ -595,7 +595,7 @@ public sealed class TabMaintainerModesTests
 
             TabMaintainerModesTests.Queue(main, isAdministrator: true);
             TabMaintainerModesTests.BetaList(main, background: true, TabMaintainerModesTests.Beta());
-            main.ApplySystemsListAsync(new SystemOverviewAnswer([TabMaintainerModesTests.System()]), background: true).GetAwaiter().GetResult();
+            main.ApplyBoardsListAsync(new BoardOverviewAnswer([TabMaintainerModesTests.Board()]), background: true).GetAwaiter().GetResult();
             TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
 
             TabMaintainerModesTests.Invoke(main, "ResetScreens");
@@ -603,9 +603,9 @@ public sealed class TabMaintainerModesTests
             Assert.Equal(MaintainerMode.Review, main.ShownMode);
             Assert.Equal(["MyAccountItem", "ServerVersionItem"], main.AccountEntriesShownForTests);
             Assert.Empty(main.BetaTextsForTests());
-            Assert.Empty(main.SystemsTextsForTests());
+            Assert.Empty(main.BoardsTextsForTests());
             Assert.Null(main.ModeBadgeForTests(MaintainerMode.Beta));
-            Assert.Null(main.ModeBadgeForTests(MaintainerMode.Systems));
+            Assert.Null(main.ModeBadgeForTests(MaintainerMode.Boards));
             Assert.Null(main.FindControl<ListBox>("AccountList")!.SelectedItem);
         });
     }
@@ -639,7 +639,7 @@ public sealed class TabMaintainerModesTests
 
             Assert.Equal("12", main.ModeBadgeForTests(MaintainerMode.Review));
             Assert.Equal("12", main.ModeBadgeForTests(MaintainerMode.Beta));
-            Assert.Equal("42", main.ModeBadgeForTests(MaintainerMode.Systems));
+            Assert.Equal("42", main.ModeBadgeForTests(MaintainerMode.Boards));
 
             List<Rect> tabs = TabMaintainerModesTests.ScreenTabsInside(main, window);
 
@@ -680,7 +680,7 @@ public sealed class TabMaintainerModesTests
         double tabRight = queuePanel.TranslatePoint(new Point(queuePanel.Bounds.Width, 0), window)!.Value.X;
         var tabs = new List<Rect>();
 
-        foreach (string name in new[] { "SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton" })
+        foreach (string name in new[] { "BoardsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton" })
         {
             Button button = main.FindControl<Button>(name)!;
             Point origin = button.TranslatePoint(default, window)!.Value;
@@ -703,8 +703,8 @@ public sealed class TabMaintainerModesTests
 
         Queue(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Row(id, $"Commodore/C{id}/1")).ToArray());
         TabMaintainerModesTests.BetaList(main, true, Enumerable.Range(1, 12).Select(id => TabMaintainerModesTests.Beta($"Commodore/C{id}/1")).ToArray());
-        main.ApplySystemsListAsync(new SystemOverviewAnswer(
-            Enumerable.Range(1, 42).Select(id => TabMaintainerModesTests.System($"Commodore/C{id}/1")).ToList()), background: true).GetAwaiter().GetResult();
+        main.ApplyBoardsListAsync(new BoardOverviewAnswer(
+            Enumerable.Range(1, 42).Select(id => TabMaintainerModesTests.Board($"Commodore/C{id}/1")).ToList()), background: true).GetAwaiter().GetResult();
 
         Invoke(main, "ShowQueuePanel");
         typeof(TabMaintainer).GetMethod("SetAdministrator", TabMaintainerModesTests.Any)!.Invoke(main, [true]);
@@ -713,69 +713,69 @@ public sealed class TabMaintainerModesTests
     }
 
     // ###########################################################################################
-    // A new system waiting for a place in CRT's drop-down lists (2026-09-27): it leads the Systems
-    // list, marked, and the Systems button's discreet count becomes an attention badge counting the
-    // systems this account can place - since nothing it approves can be published until then.
+    // A new board waiting for a place in CRT's drop-down lists (2026-09-27): it leads the Boards
+    // list, marked, and the Boards button's discreet count becomes an attention badge counting the
+    // boards this account can place - since nothing it approves can be published until then.
     // ###########################################################################################
     [Fact]
-    public void A_system_waiting_for_a_place_leads_the_list_and_turns_the_systems_badge_to_attention()
+    public void A_board_waiting_for_a_place_leads_the_list_and_turns_the_boards_badge_to_attention()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
-            var listing = new SystemListingAnswer(
+            var listing = new BoardListingAnswer(
                 true,
                 [
-                    new SystemListingRow("Commodore/C64/250407", "Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
-                    new SystemListingRow("Commodore/C128/310378", "Commodore 128", "310378", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
+                    new BoardListingRow("Commodore/C64/250407", "Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"),
+                    new BoardListingRow("Commodore/C128/310378", "Commodore 128", "310378", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx"),
                 ],
                 [
-                    new UnlistedSystemEntry(
+                    new UnlistedBoardEntry(
                         "Commodore/C128/310378 Open128", "Commodore", "C128", "310378 Open128", false, true, null,
-                        new SystemPlacement("Commodore 128", "310378 Open128", string.Empty, null)),
+                        new BoardPlacement("Commodore 128", "310378 Open128", string.Empty, null)),
                 ]);
 
-            main.ApplySystemsListAsync(
-                new SystemOverviewAnswer(
+            main.ApplyBoardsListAsync(
+                new BoardOverviewAnswer(
                 [
-                    TabMaintainerModesTests.System("Commodore/C128/310378"),
-                    TabMaintainerModesTests.System("Commodore/C64/250407"),
-                    TabMaintainerModesTests.System("Commodore/C128/310378 Open128"),
+                    TabMaintainerModesTests.Board("Commodore/C128/310378"),
+                    TabMaintainerModesTests.Board("Commodore/C64/250407"),
+                    TabMaintainerModesTests.Board("Commodore/C128/310378 Open128"),
                 ]),
                 background: true,
                 listing).GetAwaiter().GetResult();
 
-            IReadOnlyList<string> texts = main.SystemsTextsForTests();
+            IReadOnlyList<string> texts = main.BoardsTextsForTests();
 
             Assert.Equal("Commodore / C128 / 310378 Open128", texts[0]);
             Assert.Equal("Needs a place in the drop-down lists", texts[2]);
             Assert.Equal("Commodore / C64 / 250407", texts[3]);
             Assert.Equal("Commodore / C128 / 310378", texts[5]);
 
-            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Systems));
-            Assert.Contains("Attention", main.FindControl<Border>("SystemsBadge")!.Classes);
-            Assert.DoesNotContain("Count", main.FindControl<Border>("SystemsBadge")!.Classes);
+            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Boards));
+            Assert.Contains("Attention", main.FindControl<Border>("BoardsBadge")!.Classes);
+            Assert.DoesNotContain("Count", main.FindControl<Border>("BoardsBadge")!.Classes);
 
             // A check that could not read the lists keeps what was known - never "nothing waits".
-            main.ApplySystemsListAsync(
-                new SystemOverviewAnswer([TabMaintainerModesTests.System("Commodore/C128/310378 Open128")]),
+            main.ApplyBoardsListAsync(
+                new BoardOverviewAnswer([TabMaintainerModesTests.Board("Commodore/C128/310378 Open128")]),
                 background: true).GetAwaiter().GetResult();
 
-            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Systems));
+            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Boards));
 
-            // Placed: back to the discreet count of all systems.
-            main.ApplySystemsListAsync(
-                new SystemOverviewAnswer([TabMaintainerModesTests.System("Commodore/C128/310378 Open128")]),
+            // Placed: back to the discreet count of all boards.
+            main.ApplyBoardsListAsync(
+                new BoardOverviewAnswer([TabMaintainerModesTests.Board("Commodore/C128/310378 Open128")]),
                 background: true,
                 listing with
                 {
-                    Unlisted = [listing.Unlisted[0] with { Placement = new SystemPlacement("Commodore 128", "Open128", string.Empty, null) }]
+                    Unlisted = [listing.Unlisted[0] with { Placement = new BoardPlacement("Commodore 128", "Open128", string.Empty, null) }]
                 }).GetAwaiter().GetResult();
 
-            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Systems));
-            Assert.Contains("Count", main.FindControl<Border>("SystemsBadge")!.Classes);
-            Assert.Equal("Placed - listed when published to BETA", main.SystemsTextsForTests()[2]);
+            Assert.Equal("1", main.ModeBadgeForTests(MaintainerMode.Boards));
+            Assert.Contains("Count", main.FindControl<Border>("BoardsBadge")!.Classes);
+            Assert.Equal("Placed - listed when published to BETA", main.BoardsTextsForTests()[2]);
         });
     }
 
@@ -824,7 +824,7 @@ public sealed class TabMaintainerModesTests
             Assert.Null(main.ServerVersionLineForTests);
 
             await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
-            await main.ShowModeAsync(MaintainerMode.Systems);
+            await main.ShowModeAsync(MaintainerMode.Boards);
             Assert.Null(main.ServerVersionLineForTests);
 
             // A deploy since: showing Account again, the entry still chosen, asks again.
@@ -900,7 +900,7 @@ public sealed class TabMaintainerModesTests
                     var other => throw new InvalidOperationException($"{button} holds {other}")
                 };
 
-            Assert.Equal("Systems", Label("SystemsModeButton"));
+            Assert.Equal("Boards", Label("BoardsModeButton"));
             Assert.Equal("Queue: Contributor submissions", Label("ReviewModeButton"));
             Assert.Equal("Queue: Awaiting push from BETA to stable", Label("BetaModeButton"));
             Assert.Equal("Account", Label("AccountModeButton"));
@@ -912,36 +912,36 @@ public sealed class TabMaintainerModesTests
         });
     }
 
-    // Systems is the FIRST screen button (owner request, 2026-09-27); a sign-in still opens on Review.
+    // Boards is the FIRST screen button (owner request, 2026-09-27); a sign-in still opens on Review.
     [Fact]
-    public void Systems_is_the_first_screen_button_and_Review_still_opens_first()
+    public void Boards_is_the_first_screen_button_and_Review_still_opens_first()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
             Assert.Equal(
-                ["SystemsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton"],
+                ["BoardsModeButton", "ReviewModeButton", "BetaModeButton", "AccountModeButton"],
                 main.FindControl<WrapPanel>("ModeBar")!.Children.Select(child => child.Name));
 
             Assert.Contains("Selected", main.FindControl<Button>("ReviewModeButton")!.Classes);
-            Assert.DoesNotContain("Selected", main.FindControl<Button>("SystemsModeButton")!.Classes);
+            Assert.DoesNotContain("Selected", main.FindControl<Button>("BoardsModeButton")!.Classes);
         });
     }
 
-    // In the Systems list, the part of a system's grey line still to be done is BOLD - and only it.
+    // In the Boards list, the part of a board's grey line still to be done is BOLD - and only it.
     [Fact]
-    public void In_the_systems_list_nobody_assigned_is_bold_and_nothing_else_is()
+    public void In_the_boards_list_nobody_assigned_is_bold_and_nothing_else_is()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
-            main.ApplySystemsListAsync(
-                new SystemOverviewAnswer([TabMaintainerModesTests.System("Commodore/C64/250407", maintainers: 0)]),
+            main.ApplyBoardsListAsync(
+                new BoardOverviewAnswer([TabMaintainerModesTests.Board("Commodore/C64/250407", maintainers: 0)]),
                 background: true).GetAwaiter().GetResult();
 
-            ListBoxItem item = ((IEnumerable<ListBoxItem>)main.FindControl<ListBox>("SystemsList")!.ItemsSource!).Single();
+            ListBoxItem item = ((IEnumerable<ListBoxItem>)main.FindControl<ListBox>("BoardsList")!.ItemsSource!).Single();
             TextBlock line = ((StackPanel)item.Content!).Children.OfType<TextBlock>().ElementAt(1);
             List<Avalonia.Controls.Documents.Run> runs = line.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
 

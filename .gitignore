@@ -75,6 +75,7 @@ Assets/Webserver/
 .claude/.tests-green
 .claude/.wiki-reminded
 .claude/.server-version-reminded
+.claude/.api-version-reported
 
 # Server configuration that can hold credentials.
 #

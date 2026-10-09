@@ -31,7 +31,7 @@ namespace CRT;
 public partial class TabSchematics
 {
     // ###########################################################################################
-    // Maps one KiCad world-space point into the local image coordinate system currently used by
+    // Maps one KiCad world-space point into the local image coordinate board currently used by
     // the schematics image and overlays using the active box-based calibration model.
     // ###########################################################################################
     private Point MapKiCadWorldToLocal(

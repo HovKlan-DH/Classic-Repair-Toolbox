@@ -312,13 +312,13 @@ public sealed class ReviewSummaryTests
     }
 
     // -----------------------------------------------------------------------------------
-    // A new system
+    // A new board
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void A_new_system_is_summarised_as_such_rather_than_row_by_row()
+    public void A_new_board_is_summarised_as_such_rather_than_row_by_row()
     {
-        // A new system is the highest-risk submission there is (Phase 6 task 3). Listing every
+        // A new board is the highest-risk submission there is (Phase 6 task 3). Listing every
         // row as an addition would be true and useless - hundreds of items long.
         BoardData submitted = ReviewSummaryTests.Board(
             ReviewSummaryTests.Component("U8"),
@@ -326,13 +326,13 @@ public sealed class ReviewSummaryTests
 
         ReviewChangeSummary summary = ReviewSummary.Compare(published: null, submitted);
 
-        Assert.True(summary.IsNewSystem);
-        Assert.Contains("New system", summary.Describe());
+        Assert.True(summary.IsNewBoard);
+        Assert.Contains("New board", summary.Describe());
         Assert.Contains("2 rows", summary.Describe());
     }
 
     [Fact]
-    public void A_new_system_with_one_row_reads_as_one_row_not_one_rows()
+    public void A_new_board_with_one_row_reads_as_one_row_not_one_rows()
     {
         BoardData submitted = ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8"));
 

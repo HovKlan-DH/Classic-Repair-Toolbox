@@ -8,10 +8,10 @@ namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 // ###########################################################################################
 // Account > Maintainers, MaintainerPoolView (owner request, 2026-10-04: "please make sure that the
 // actual 'Send invitation' and 'Add as maintainer' gets moved to the 'Admin' tab (in top menu), as
-// this is something only the admin should be able to do"). These are the Systems screen's pool tests
-// of 2026-09-27, moved with the controls - plus choosing the system, which the Account screen needs
-// and the Systems screen did not. Drawn without a server: the lists through UseListsForTests, every
-// read of a system and every change answered by the test.
+// this is something only the admin should be able to do"). These are the Boards screen's pool tests
+// of 2026-09-27, moved with the controls - plus choosing the board, which the Account screen needs
+// and the Boards screen did not. Drawn without a server: the lists through UseListsForTests, every
+// read of a board and every change answered by the test.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class MaintainerPoolViewTests
@@ -21,7 +21,7 @@ public sealed class MaintainerPoolViewTests
     private const string C64 = "Commodore/C64/250407";
     private const string C128 = "Commodore/C128/310378";
 
-    private static readonly IReadOnlyList<ReviewSystemRow> Systems =
+    private static readonly IReadOnlyList<ReviewBoardRow> Boards =
     [
         new(C64, "Commodore", "C64", "250407", null, true, [new MaintainerRow(7, "Anna", "anna@example.com")]),
         new(C128, "Commodore", "C128", "310378", null, true, []),
@@ -34,11 +34,11 @@ public sealed class MaintainerPoolViewTests
         new(9, "cy@example.com", "Cy", false, false, false),
     ];
 
-    private static SystemOverviewEntry System(string id) =>
+    private static BoardOverviewEntry Board(string id) =>
         new(id, "Commodore", id.Split('/')[1], id.Split('/')[2], true, true, false, true, null, null, null, 1);
 
-    private static SystemDetailAnswer Detail(string id, IReadOnlyList<PoolMaintainerEntry>? maintainers = null, IReadOnlyList<MaintainerInvitationEntry>? invitations = null) =>
-        new(MaintainerPoolViewTests.System(id), maintainers ?? [new PoolMaintainerEntry(7, "Anna", "anna@example.com")], [], [], invitations ?? []);
+    private static BoardDetailAnswer Detail(string id, IReadOnlyList<PoolMaintainerEntry>? maintainers = null, IReadOnlyList<MaintainerInvitationEntry>? invitations = null) =>
+        new(MaintainerPoolViewTests.Board(id), maintainers ?? [new PoolMaintainerEntry(7, "Anna", "anna@example.com")], [], [], invitations ?? []);
 
     // The view with both lists read, the C64 chosen, and every change answered and remembered.
     private static async Task<(MaintainerPoolView View, List<PoolAction> Sent)> ChosenAsync(
@@ -56,8 +56,8 @@ public sealed class MaintainerPoolViewTests
 
         view.PoolDetailOverrideForTests = id => Task.FromResult(MaintainerPoolViewTests.Detail(id, id == C64 ? maintainers : [], invitations));
 
-        await view.UseListsForTests(MaintainerPoolViewTests.Systems, MaintainerPoolViewTests.Accounts);
-        await view.ChooseSystemForTests(C64);
+        await view.UseListsForTests(MaintainerPoolViewTests.Boards, MaintainerPoolViewTests.Accounts);
+        await view.ChooseBoardForTests(C64);
 
         return (view, sent);
     }
@@ -75,31 +75,31 @@ public sealed class MaintainerPoolViewTests
     private static string PoolMessage(MaintainerPoolView view) => view.FindControl<TextBlock>("PoolMessageText")!.Text ?? string.Empty;
 
     // ###########################################################################################
-    // Every system in the list, by name, each with how many maintain it - and nothing of a pool
+    // Every board in the list, by name, each with how many maintain it - and nothing of a pool
     // until one is chosen.
     // ###########################################################################################
     [Fact]
-    public async Task Every_system_is_offered_with_its_count_and_nothing_shows_until_one_is_chosen()
+    public async Task Every_board_is_offered_with_its_count_and_nothing_shows_until_one_is_chosen()
     {
         await UiTest.RunAsync(async () =>
         {
             var view = new MaintainerPoolView();
-            await view.UseListsForTests(MaintainerPoolViewTests.Systems, MaintainerPoolViewTests.Accounts);
+            await view.UseListsForTests(MaintainerPoolViewTests.Boards, MaintainerPoolViewTests.Accounts);
 
-            ComboBox systems = view.FindControl<ComboBox>("SystemCombo")!;
+            ComboBox boards = view.FindControl<ComboBox>("BoardCombo")!;
 
             Assert.Equal(
                 ["Commodore / C128 / 310378  -  nobody assigned", "Commodore / C64 / 250407  -  1 maintainer"],
-                systems.Items.Cast<string>());
+                boards.Items.Cast<string>());
             Assert.False(view.FindControl<StackPanel>("PoolPanel")!.IsVisible);
-            Assert.Null(view.ShownSystemId);
+            Assert.Null(view.ShownBoardId);
         });
     }
 
-    // Choosing a system shows its maintainers, each with Remove, and its open invitations, each with
+    // Choosing a board shows its maintainers, each with Remove, and its open invitations, each with
     // Withdraw; the list to add from offers everybody not already in the pool.
     [Fact]
-    public async Task A_chosen_system_shows_its_pool_with_its_buttons()
+    public async Task A_chosen_board_shows_its_pool_with_its_buttons()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -107,7 +107,7 @@ public sealed class MaintainerPoolViewTests
                 [new MaintainerInvitationEntry(3, "new@example.com", MaintainerPoolViewTests.Noon, MaintainerPoolViewTests.Noon.AddDays(14))]);
 
             Assert.True(view.FindControl<StackPanel>("PoolPanel")!.IsVisible);
-            Assert.Equal(C64, view.ShownSystemId);
+            Assert.Equal(C64, view.ShownBoardId);
             Assert.Equal(
                 [
                     "Maintainer",
@@ -122,10 +122,10 @@ public sealed class MaintainerPoolViewTests
         });
     }
 
-    // The list offers everybody not already maintaining this system; choosing one and pressing Add
-    // sends that account for this system.
+    // The list offers everybody not already maintaining this board; choosing one and pressing Add
+    // sends that account for this board.
     [Fact]
-    public async Task Adding_sends_the_chosen_account_for_the_chosen_system()
+    public async Task Adding_sends_the_chosen_account_for_the_chosen_board()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -226,11 +226,11 @@ public sealed class MaintainerPoolViewTests
     }
 
     // ###########################################################################################
-    // *** SEVERAL MAINTAINERS PER SYSTEM (owner request, 2026-09-27) *** - one line and one Remove
+    // *** SEVERAL MAINTAINERS PER BOARD (owner request, 2026-09-27) *** - one line and one Remove
     // each, the list offering everybody not already among them, and the hint saying so.
     // ###########################################################################################
     [Fact]
-    public async Task A_system_can_show_and_keep_adding_several_maintainers()
+    public async Task A_board_can_show_and_keep_adding_several_maintainers()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -247,24 +247,24 @@ public sealed class MaintainerPoolViewTests
         });
     }
 
-    // Another system chosen: its own pool, nothing of the first one's.
+    // Another board chosen: its own pool, nothing of the first one's.
     [Fact]
-    public async Task Choosing_another_system_shows_that_systems_pool()
+    public async Task Choosing_another_board_shows_that_boards_pool()
     {
         await UiTest.RunAsync(async () =>
         {
             (MaintainerPoolView view, _) = await MaintainerPoolViewTests.ChosenAsync();
 
-            await view.ChooseSystemForTests(C128);
+            await view.ChooseBoardForTests(C128);
 
-            Assert.Equal(C128, view.ShownSystemId);
-            Assert.Equal(["Nobody maintains this system - its submissions go to the administrator."], view.PoolTextsForTests());
+            Assert.Equal(C128, view.ShownBoardId);
+            Assert.Equal(["Nobody maintains this board - its submissions go to the administrator."], view.PoolTextsForTests());
             Assert.Empty(MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer"));
             Assert.Equal(3, view.FindControl<ComboBox>("AddAccountCombo")!.ItemCount);
         });
     }
 
-    // Signed out: nothing of the previous account's systems or people stays.
+    // Signed out: nothing of the previous account's boards or people stays.
     [Fact]
     public async Task Clearing_leaves_nothing_of_the_lists_or_the_pool()
     {
@@ -274,8 +274,8 @@ public sealed class MaintainerPoolViewTests
 
             view.Clear();
 
-            Assert.Null(view.ShownSystemId);
-            Assert.Equal(0, view.FindControl<ComboBox>("SystemCombo")!.ItemCount);
+            Assert.Null(view.ShownBoardId);
+            Assert.Equal(0, view.FindControl<ComboBox>("BoardCombo")!.ItemCount);
             Assert.False(view.FindControl<StackPanel>("PoolPanel")!.IsVisible);
             Assert.Empty(view.PoolTextsForTests());
         });

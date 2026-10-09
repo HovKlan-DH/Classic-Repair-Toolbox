@@ -18,15 +18,15 @@ namespace Handlers.DataHandling
     //      still on the server. (This was believed otherwise when the question was first asked, and
     //      the owner corrected it - "everything stays shadowed ... data is still there".)
     //   2. PRODUCTION HOLDS A COMPLETE BOARD, not a partial set. ProductionPromotionPlan copies the
-    //      whole system folder plus the shared files it cites, so the last promoted state is a
+    //      whole board folder plus the shared files it cites, so the last promoted state is a
     //      board that loads on its own.
     //
-    // *** PER SYSTEM, NEVER PER SUBMISSION - the one limit that survives, and it is structural. ***
+    // *** PER BOARD, NEVER PER SUBMISSION - the one limit that survives, and it is structural. ***
     // ProductionPromotionPlan's header puts it the other way round: "two submissions merged into one
     // board cannot be promoted separately, because the board's workbook already holds both". So a
     // rollback reverts ALL of them, and the plan NAMES them (owner decision: all back to `pending`).
     //
-    // *** A SYSTEM NEVER PROMOTED IS A DIFFERENT OPERATION. *** Production has nothing of its own
+    // *** A BOARD NEVER PROMOTED IS A DIFFERENT OPERATION. *** Production has nothing of its own
     // folder to restore FROM, so its folder leaves the BETA tree entirely (owner decision). Kind says
     // which of the two a plan is, so a caller cannot perform one believing it is the other.
     //
@@ -34,23 +34,23 @@ namespace Handlers.DataHandling
     // An empty production listing also comes from a folder that is missing, renamed by hand, on a
     // mount that is down, or refused by SubmissionPathRules. Read as "never promoted", that wiped a
     // board that IS in production out of BETA, took its row out of BETA's lists and told the
-    // maintainer "Nothing of this system is in production". So the caller says whether the system
-    // was ever promoted (promotedBefore), and a promoted system with nothing readable in production
+    // maintainer "Nothing of this board is in production". So the caller says whether the board
+    // was ever promoted (promotedBefore), and a promoted board with nothing readable in production
     // is ProductionUnreadable: a plan that does nothing and that the server refuses.
     //
     // *** PATHS ARE COMPARED ORDINALLY (code review, 2026-09-27). *** The server's trees are on a
     // case-sensitive filesystem and SubmissionPathRules resolves ordinally on purpose, so BETA's
     // "Images/Sheet.png" and production's "Images/sheet.png" are TWO files there. Pairing them
     // case-insensitively left BETA holding both after a rollback - the submission's own variant
-    // neither restored over nor removed, and still served. A rollback makes the system's folder
+    // neither restored over nor removed, and still served. A rollback makes the board's folder
     // IDENTICAL to production's, so a BETA-only spelling goes like any other BETA-only file.
     //
     // *** SHARED FILES - only the ones THESE submissions changed (code review, 2026-09-27). *** The
-    // system's own folder is replaced wholesale, but a shared file reaches every board citing it, so
+    // board's own folder is replaced wholesale, but a shared file reaches every board citing it, so
     // it is touched only when the rollback can prove the change is its own: BETA still holds exactly
     // the bytes a returning submission carried at that path. Then it is put back to production's
     // bytes. One production never had STAYS (owner decision, 2026-09-27 - AutomaticRemovalScope):
-    // nothing outside the system's own folder is removed automatically, so it becomes an unused
+    // nothing outside the board's own folder is removed automatically, so it becomes an unused
     // file for Account > Unused files. A shared file BETA holds DIFFERENT bytes for was written again
     // by somebody later; it is theirs and is left alone.
     //
@@ -66,9 +66,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Builds the plan.
         //
-        // betaOwnFiles       - every file under the system's folder in BETA, data-root-relative.
+        // betaOwnFiles       - every file under the board's folder in BETA, data-root-relative.
         // productionOwnFiles - the same under production. EMPTY means never promoted, which is what
-        //                      makes the system's own folder a removal rather than a restore.
+        //                      makes the board's own folder a removal rather than a restore.
         // sameBytes          - true when both trees hold identical bytes at that path. The caller
         //                      hashes; this class reads no disk.
         // sharedFiles        - the shared files the returning submissions carried, with what the
@@ -104,7 +104,7 @@ namespace Handlers.DataHandling
                     SharedRestored: []);
             }
 
-            // ---- Never promoted: the system's folder leaves BETA ------------------------------
+            // ---- Never promoted: the board's folder leaves BETA ------------------------------
             //
             // Not "restore nothing", which would silently leave the bad board exactly as it is.
             if (production.Count == 0)
@@ -164,7 +164,7 @@ namespace Handlers.DataHandling
                 string path = file.Path.Trim();
 
                 // A shared file the submission ADDED stays, unused (owner decision, 2026-09-27):
-                // nothing outside the system's own folder is removed automatically - see
+                // nothing outside the board's own folder is removed automatically - see
                 // AutomaticRemovalScope. Account > Unused files clears it on purpose.
                 if (file.InProduction && !file.SameAsProduction)
                     restored.Add(path);
@@ -199,9 +199,9 @@ namespace Handlers.DataHandling
         bool InProduction,
         bool SameAsProduction);
 
-    // Which operation a rollback plan describes for the system's own folder. A caller must not
+    // Which operation a rollback plan describes for the board's own folder. A caller must not
     // perform one believing it is the other: one puts a board back, the other takes it away.
-    // ProductionUnreadable is neither - a promoted system whose production folder cannot be read,
+    // ProductionUnreadable is neither - a promoted board whose production folder cannot be read,
     // which the server refuses rather than performs (see the class header).
     public enum BetaRollbackKind
     {
@@ -213,8 +213,8 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // What a rollback would do.
     //
-    //   Restored                - the system's own files taken from production, overwriting BETA;
-    //   Removed                 - the system's own files that leave BETA;
+    //   Restored                - the board's own files taken from production, overwriting BETA;
+    //   Removed                 - the board's own files that leave BETA;
     //   Returning               - the submissions that go back to the queue - named, because a
     //                             rollback reverts the whole board and every one of them loses its
     //                             place in BETA;
@@ -236,7 +236,7 @@ namespace Handlers.DataHandling
             this.Removed.Count == 0 &&
             !this.TouchesSharedFiles;
 
-        // Every path whose bytes come from production - the system's own and the shared ones.
+        // Every path whose bytes come from production - the board's own and the shared ones.
         public IEnumerable<string> AllRestored => this.Restored.Concat(this.SharedRestored);
     }
 }

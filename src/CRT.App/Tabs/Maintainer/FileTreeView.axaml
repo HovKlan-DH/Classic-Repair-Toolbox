@@ -4,7 +4,7 @@
              x:Class="CRT.FileTreeView">
 
     <!--
-    A SYSTEM'S FILES AS A FOLDER TREE, with what the next step does to each (owner request,
+    A BOARD'S FILES AS A FOLDER TREE, with what the next step does to each (owner request,
     2026-09-28: "a file-structure for all existing files in BETA or PROD, and then a highlighting of
     files changed (added, removed, changed) ... a possibility to 'show only changed files' ...
     including their parent folder"). On "Beta > Prod" under the plan, and in the window the

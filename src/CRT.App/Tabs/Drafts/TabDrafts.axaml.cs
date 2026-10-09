@@ -17,7 +17,7 @@ namespace CRT
 {
     // ###########################################################################################
     // THE DRAFTS TAB (NewContributeStrategy.md Phase 2, session 2b) - lists every hardware/board
-    // system with a local, unpublished draft, and lets the user discard one. Hidden entirely when
+    // board with a local, unpublished draft, and lets the user discard one. Hidden entirely when
     // there are none - see Main.ApplyDraftsTabVisibility, the same conditional-tab pattern
     // WorkbooksTabItem/OscilloscopeTabItem already use.
     //
@@ -47,7 +47,7 @@ namespace CRT
     {
         private Main? thisMainWindow;
 
-        // The system whose table is open, or null when the tab is showing its ordinary list.
+        // The board whose table is open, or null when the tab is showing its ordinary list.
         private HardwareBoardEntry? thisTableEntry;
 
         // Lets a headless test answer the unsaved-edits prompt, which would otherwise block on
@@ -57,6 +57,10 @@ namespace CRT
         // Lets a headless test open a table without a real published board on disk. null is the
         // shipped path: the published workbook, read through BoardDataReader's cache.
         internal Func<HardwareBoardEntry, BoardData?>? PublishedBoardOverrideForTests { get; set; }
+
+        // Lets a headless test say which source the data came from without touching UserSettings.
+        // null is the shipped path: "Download data from the BETA source" as set.
+        internal bool? BetaSourceOverrideForTests { get; set; }
 
         // The same override-then-real-static pattern TabWorkbooks.BoardKeyOverrideForTests uses,
         // and for the same reason: RefreshDrafts normally reads DataManager.HardwareBoards, a
@@ -71,12 +75,12 @@ namespace CRT
 
         public ObservableCollection<DraftListItem> Drafts { get; } = new();
 
-        // The systems behind the rows above, as of the last RefreshDrafts. Main builds the Hardware
+        // The boards behind the rows above, as of the last RefreshDrafts. Main builds the Hardware
         // and Board drop-downs' "Draft" chips from exactly this list (see Main.DraftBadges.cs), so a
-        // chip appears for precisely the systems this tab lists and for no others.
-        private readonly List<HardwareBoardEntry> thisDraftedSystems = new();
+        // chip appears for precisely the boards this tab lists and for no others.
+        private readonly List<HardwareBoardEntry> thisDraftedBoards = new();
 
-        internal IReadOnlyList<HardwareBoardEntry> DraftedSystems => this.thisDraftedSystems;
+        internal IReadOnlyList<HardwareBoardEntry> DraftedBoards => this.thisDraftedBoards;
 
         public TabDrafts()
         {
@@ -99,7 +103,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Rebuilds the drafted-systems list from disk and shows/hides the tab to match - called from
+        // Rebuilds the drafted-boards list from disk and shows/hides the tab to match - called from
         // Main whenever the set of drafts could have changed: at startup, after a board load (a
         // draft's own row count could have changed since the tab was last shown), and after a
         // discard on this tab itself.
@@ -112,15 +116,15 @@ namespace CRT
             this.RefreshSubmissionBadge();
 
             this.Drafts.Clear();
-            this.thisDraftedSystems.Clear();
+            this.thisDraftedBoards.Clear();
 
             var hardwareBoards = this.HardwareBoardsOverrideForTests ?? DataManager.HardwareBoards;
-            var draftedSystems = DraftManager.EnumerateDraftedSystems(hardwareBoards);
+            var draftedBoards = DraftManager.EnumerateDraftedBoards(hardwareBoards);
 
-            // Read once for every row - each row's badge is its system's latest submission.
+            // Read once for every row - each row's badge is its board's latest submission.
             IReadOnlyList<SubmissionReceipt> receipts = this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All;
 
-            foreach (var entry in draftedSystems.OrderBy(e => e.ShortHardwareBoardLabel, StringComparer.OrdinalIgnoreCase))
+            foreach (var entry in draftedBoards.OrderBy(e => e.ShortHardwareBoardLabel, StringComparer.OrdinalIgnoreCase))
             {
                 DraftStatus? status = DraftStatusReader.Resolve(
                     DataManager.DataRoot,
@@ -130,7 +134,7 @@ namespace CRT
 
                 if (status == null)
                 {
-                    // Vanished between EnumerateDraftedSystems' own read and this one (discarded
+                    // Vanished between EnumerateDraftedBoards' own read and this one (discarded
                     // from another surface, or the folder was deleted by hand) - skip rather than
                     // show a row with nothing behind it.
                     continue;
@@ -142,15 +146,15 @@ namespace CRT
                 // answer is to compare the two workbooks.
                 //
                 // *** CountChangesCached, NOT CountChanges (code review, 2026-09-25). *** This runs
-                // after every save of any kind, for EVERY drafted system, on the UI thread - and
+                // after every save of any kind, for EVERY drafted board, on the UI thread - and
                 // re-parsing boards nobody had touched froze the window for seconds per save. The
                 // cached count is keyed by each file's size and write time, so a board edited
                 // anywhere (Excel included) is still counted afresh.
-                this.thisDraftedSystems.Add(entry);
+                this.thisDraftedBoards.Add(entry);
 
-                SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForSystem(
+                SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForBoard(
                     receipts,
-                    SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                    BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
                     status.CreatedUtc);
 
                 this.Drafts.Add(new DraftListItem(
@@ -164,7 +168,7 @@ namespace CRT
                     DraftStatusReader.CountProblemsCached(
                         status,
                         DataManager.DataRoot,
-                        DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                        DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
                     ResolveDriftState(entry, status),
                     this.DiscardAsync,
                     this.ManageFilesAsync,
@@ -240,7 +244,7 @@ namespace CRT
 
             return DraftDiscardContract.WhichToReport(
                 SubmissionReceiptStore.All,
-                SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
                 status?.CreatedUtc);
         }
 
@@ -272,11 +276,11 @@ namespace CRT
                 this.ShowDiscardFailure(entry.ToString());
             }
 
-            // A discarded system that was DRAFT-ONLY (session 2c, task 9) has just stopped existing
+            // A discarded board that was DRAFT-ONLY (session 2c, task 9) has just stopped existing
             // entirely - not merely lost its edits. Without this it would linger in the
             // hardware/board drop-downs until the next restart, pointing at a folder that is gone.
-            // Harmless for an ordinary draft over a synced system, which this leaves in place.
-            DataManager.RefreshDraftOnlySystems();
+            // Harmless for an ordinary draft over a synced board, which this leaves in place.
+            DataManager.RefreshDraftOnlyBoards();
 
             // ###########################################################################################
             // *** THE MAINTAINERS ARE TOLD (owner request, 2026-09-28). *** Recorded on the receipts
@@ -299,12 +303,12 @@ namespace CRT
         // likely cause and the fix, since "could not delete" alone leaves the contributor with
         // nothing to do about it.
         // ###########################################################################################
-        private void ShowDiscardFailure(string? systemName)
+        private void ShowDiscardFailure(string? boardDisplayName)
         {
-            this.DiscardFailedText.IsVisible = systemName is not null;
-            this.DiscardFailedText.Text = systemName is null
+            this.DiscardFailedText.IsVisible = boardDisplayName is not null;
+            this.DiscardFailedText.Text = boardDisplayName is null
                 ? string.Empty
-                : $"Part of the draft for {systemName} could not be deleted. This usually means one of its " +
+                : $"Part of the draft for {boardDisplayName} could not be deleted. This usually means one of its " +
                   "files is open in another program, such as its workbook in Excel. Close it there and press " +
                   "Discard again.";
         }
@@ -314,13 +318,13 @@ namespace CRT
             this.DiscardFailedText.IsVisible ? this.DiscardFailedText.Text : null;
 
         // ###########################################################################################
-        // Whether the official data has moved under one drafted system, resolved CHEAPLY - this
-        // runs for every drafted system on every refresh, and RefreshDrafts is called at startup,
+        // Whether the official data has moved under one drafted board, resolved CHEAPLY - this
+        // runs for every drafted board on every refresh, and RefreshDrafts is called at startup,
         // after every discard and after every file import.
         //
         // So it never loads a board: it reads the cached revision for a board already parsed (always
         // true of the selected one), and otherwise reads ONLY the revision date off the workbook
-        // rather than its ten sheets (BoardDataReader.ReadRevisionDateOnly). A draft-only system is
+        // rather than its ten sheets (BoardDataReader.ReadRevisionDateOnly). A draft-only board is
         // skipped entirely - it has no official file, and drift is meaningless for it.
         //
         // The full per-row report is deliberately NOT built here. That needs the whole board and is
@@ -328,16 +332,16 @@ namespace CRT
         // ###########################################################################################
         private static DraftDriftState ResolveDriftState(HardwareBoardEntry entry, DraftStatus status)
         {
-            if (entry.IsDraftOnly || status.IsNewSystem)
+            if (entry.IsDraftOnly || status.IsNewBoard)
             {
                 return DraftDriftState.Unknown;
             }
 
-            // *** KEYED BY PATH, NOT BY THE SYSTEM IDENTITY (Phase 6). *** The board cache is keyed
-            // by the file that was actually read, because a drafted system has two workbooks and
+            // *** KEYED BY PATH, NOT BY THE BOARD IDENTITY (Phase 6). *** The board cache is keyed
+            // by the file that was actually read, because a drafted board has two workbooks and
             // "view as officially published" switches between them. Asking with the ExcelDataFile
             // would always miss, quietly falling through to the re-read below - correct, but a
-            // whole Excel open per system on a tab that lists them all.
+            // whole Excel open per board on a tab that lists them all.
             string excelPath = DraftBoardSource.PublishedPathOf(
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
@@ -350,13 +354,13 @@ namespace CRT
             }
 
             // Compared directly rather than through DraftDriftDetector.CompareRevisions, which takes
-            // a BoardDraft - the new-system guard it applies is already handled above, off the
+            // a BoardDraft - the new-board guard it applies is already handled above, off the
             // marker, so all that is left is the revision comparison itself.
             return DraftRevisionComparer.Compare(status.BaseRevision, officialRevision);
         }
 
         // ###########################################################################################
-        // Shows how one system's drafted rows line up against the official data as it stands now.
+        // Shows how one board's drafted rows line up against the official data as it stands now.
         //
         // This is the ONE place a full board load is justified for drift - the per-row report needs
         // the official BoardData, and the contributor has explicitly asked for it by clicking. The
@@ -403,7 +407,7 @@ namespace CRT
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
 
-            // Reading the published board of a large system is a noticeable wait (2026-09-28).
+            // Reading the published board of a large board is a noticeable wait (2026-09-28).
             BoardData? official = await BusyOverlay.RunLocalAsync(
                 this,
                 CrtWaitWording.ComparingWithOfficial,
@@ -427,14 +431,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the board-image OR the KiCad import window for one drafted system (session 2c,
-        // task 9) - one button each since 2026-09-24, both landing in SystemFilesWindow.
+        // Opens the board-image OR the KiCad import window for one drafted board (session 2c,
+        // task 9) - one button each since 2026-09-24, both landing in BoardFilesWindow.
         //
-        // The board labels handed over come from the MERGED BoardData for that system - official
+        // The board labels handed over come from the MERGED BoardData for that board - official
         // plus draft - so the KiCad report compares against exactly what the board renders, whether
-        // this is a brand-new system (every label drafted) or an overlay on a published one.
+        // this is a brand-new board (every label drafted) or an overlay on a published one.
         // ###########################################################################################
-        private async Task ManageFilesAsync(HardwareBoardEntry entry, SystemFilesSection section)
+        private async Task ManageFilesAsync(HardwareBoardEntry entry, BoardFilesSection section)
         {
             if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
             {
@@ -455,7 +459,7 @@ namespace CRT
                 .Where(label => !string.IsNullOrWhiteSpace(label))
                 .ToList() ?? new List<string>();
 
-            var window = new SystemFilesWindow();
+            var window = new BoardFilesWindow();
             window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, section);
 
             await window.ShowDialog(ownerWindow);
@@ -474,10 +478,10 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Sends one drafted system for review (Phase 4) - the point of the whole Drafts tab.
+        // Sends one drafted board for review (Phase 4) - the point of the whole Drafts tab.
         //
         // WHAT IS SUBMITTED IS THE MERGED BOARD, not the draft. The server diffs the submission
-        // against the base revision itself, so what it needs is the system as it should READ after
+        // against the base revision itself, so what it needs is the board as it should READ after
         // publishing - official rows with the drafted ones applied over them. Sending only the
         // drafted rows would mean the server had to reconstruct that merge from a draft format it
         // has no reason to know about.
@@ -485,7 +489,7 @@ namespace CRT
         // NO ACCOUNT IS INVOLVED. The dialog asks for an email address purely so a MAINTAINER can
         // contact the contributor if they need to; there is no sign-in, and pressing this button
         // is the whole interaction. A maintainer account is created by the project owner afterwards,
-        // for a NEW system's author, and has nothing to do with sending.
+        // for a NEW board's author, and has nothing to do with sending.
         //
         // *** NOTHING EMAILS THE CONTRIBUTOR THE OUTCOME (corrected 2026-09-23). *** That address
         // is stored and shown to the maintainer, and no submission flow sends to it - the outcome is
@@ -529,9 +533,9 @@ namespace CRT
             // ###########################################################################################
             string draftFingerprint = TabDrafts.FingerprintOf(entry, status);
 
-            SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForSystem(
+            SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForBoard(
                 this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All,
-                SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
+                BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
                 status.CreatedUtc);
 
             if (SubmissionReceiptPresenter.IsAlreadySent(lastSubmission, draftFingerprint))
@@ -563,56 +567,56 @@ namespace CRT
             }
 
             // ###########################################################################################
-            // THE REGISTRATION IS THE SOURCE OF TRUTH FOR A DRAFT-ONLY SYSTEM, not the board entry.
+            // THE REGISTRATION IS THE SOURCE OF TRUTH FOR A DRAFT-ONLY BOARD, not the board entry.
             //
             // A board entry is built ONCE, when the hardware/board list is assembled, and it is only
-            // rebuilt when something calls RefreshDraftOnlySystems. So an entry can be stale - and
-            // for a draft-only system it can carry blank names, because EnumerateDraftOnlySystems
+            // rebuilt when something calls RefreshDraftOnlyBoards. So an entry can be stale - and
+            // for a draft-only board it can carry blank names, because EnumerateDraftOnlyBoards
             // reads them out of the draft's own registration and a draft whose registration was
             // missing at that moment produces an entry with nothing in it.
             //
             // That is exactly what happened on 2026-09-21: the label editor had destroyed the
-            // registration (see DraftWriterNewSystemPreservationTests), the entry was built from
+            // registration (see DraftWriterNewBoardPreservationTests), the entry was built from
             // the damaged draft, and the submission went out with empty Hardware and Board. The
             // server answered "does not name the hardware" / "does not name the board" - correct,
             // and impossible to act on from the client's own screen, which showed both names.
             //
             // Reading the draft we have just loaded closes that window: it is the freshest copy on
-            // disk, and for a draft-only system it is where these values actually live.
+            // disk, and for a draft-only board it is where these values actually live.
             //
             // ###########################################################################################
             // *** THE FALLBACK IS THE PATH SEGMENT, NOT THE BOARD ENTRY'S DISPLAY NAME (fixed
             // 2026-09-23). ***
             //
-            // SystemId below is built from the ExcelDataFile path, and SubmissionValidator rebuilds
+            // BoardId below is built from the ExcelDataFile path, and SubmissionValidator rebuilds
             // the id from Manufacturer/Hardware/Board and compares the two. entry.HardwareName and
             // entry.BoardName are the MASTER WORKBOOK's display names - for the C64 250407 they are
             // "Commodore 64" and "250407 (long board)", while the path segments are "C64" and
             // "250407" - so using them made the rebuilt id "Commodore/Commodore 64/250407 (long
             // board)" and every submission for a published board was refused with 400
-            // "identity.system_id_mismatch".
+            // "identity.board_id_mismatch".
             //
-            // A draft-only system is unaffected either way: NewSystemIdentity builds its folders
+            // A draft-only board is unaffected either way: NewBoardIdentity builds its folders
             // FROM the registered names, so for those the two agree by construction. That is why
             // the registration still wins here - it remains the right answer for the case this
             // fallback chain was originally written for.
             // ###########################################################################################
-            string hardwareName = status.NewSystem?.HardwareName is { Length: > 0 } registeredHardware
+            string hardwareName = status.NewBoard?.HardwareName is { Length: > 0 } registeredHardware
                 ? registeredHardware
-                : NewSystemIdentity.ExtractHardware(entry.ExcelDataFile);
+                : NewBoardIdentity.ExtractHardware(entry.ExcelDataFile);
 
-            string boardName = status.NewSystem?.BoardName is { Length: > 0 } registeredBoard
+            string boardName = status.NewBoard?.BoardName is { Length: > 0 } registeredBoard
                 ? registeredBoard
-                : NewSystemIdentity.ExtractBoard(entry.ExcelDataFile);
+                : NewBoardIdentity.ExtractBoard(entry.ExcelDataFile);
 
             var identity = new SubmissionIdentity
             {
                 // "Manufacturer/Hardware/Board", NOT the ExcelDataFile - the .xlsx on the end names
-                // a file, and for a draft-only system one that does not exist. This is the
-                // `systems` table's primary key (see 0001_initial.sql), so the shape has to be
+                // a file, and for a draft-only board one that does not exist. This is the
+                // `boards` table's primary key (see 0001_initial.sql), so the shape has to be
                 // exactly what the server expects.
-                SystemId = SystemDescriptorRules.SystemIdFromExcelDataFile(entry.ExcelDataFile),
-                Manufacturer = NewSystemIdentity.ExtractManufacturer(entry.ExcelDataFile),
+                BoardId = BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
+                Manufacturer = NewBoardIdentity.ExtractManufacturer(entry.ExcelDataFile),
                 Hardware = hardwareName,
                 Board = boardName,
 
@@ -621,10 +625,10 @@ namespace CRT
                 // the current one here would claim the contributor had seen changes they never saw.
                 BaseRevision = status.BaseRevision,
 
-                // A new system's notes from "Create system" (owner request, 2026-10-05): the
+                // A new board's notes from "Create board" (owner request, 2026-10-05): the
                 // maintainer's placement starts with them, and from it they reach the main Excel
                 // data file's notes column. A draft of a published board has none.
-                HardwareNotes = status.NewSystem?.NotesForSubmission() ?? string.Empty,
+                HardwareNotes = status.NewBoard?.NotesForSubmission() ?? string.Empty,
                 ApplicationVersion = AppConfig.AppDisplayVersionString,
                 CreatedUtc = DateTimeOffset.UtcNow
             };
@@ -635,7 +639,7 @@ namespace CRT
                 entry.ToString(),
                 mergedData,
                 identity,
-                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
                 DataManager.DataRoot,
 
                 // The draft's KiCad calibrations, read from the draft's own JSON SIDECAR rather
@@ -664,7 +668,7 @@ namespace CRT
         private static string FingerprintOf(HardwareBoardEntry entry, DraftStatus status) =>
             DraftFingerprint.Compute(
                 status.WorkbookPath,
-                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
 
         // Whether the row's Submit is greyed out because the draft was already sent as it is. The
         // draft is only read when its latest submission remembers what it sent, so a draft never
@@ -700,7 +704,7 @@ namespace CRT
         private static int CountErrors(HardwareBoardEntry entry, BoardData board) =>
             BoardDataChecks.Check(
                     BoardCheckRows.From(board),
-                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
                     BoardCheckScope.Everything)
                 .Count(problem => problem.Level == BoardProblemLevel.Error);
 
@@ -829,27 +833,27 @@ namespace CRT
         // The same, for the rows' submission badges. null is the shipped path: the real store.
         internal IReadOnlyList<SubmissionReceipt>? ReceiptsOverrideForTests { get; set; }
 
-        private void OnAddNewSystemClick(object? sender, RoutedEventArgs e)
+        private void OnAddNewBoardClick(object? sender, RoutedEventArgs e)
         {
             if (this.thisMainWindow == null)
             {
                 return;
             }
 
-            _ = this.thisMainWindow.OpenNewSystemWindowAsync();
+            _ = this.thisMainWindow.OpenNewBoardWindowAsync();
         }
     }
 
     // ###########################################################################################
-    // One row of the Drafts tab's list - a system with a local draft, plus how many rows it has
+    // One row of the Drafts tab's list - a board with a local draft, plus how many rows it has
     // changed in total (across every BoardData section, not just Components) so a user can tell a
-    // typo fix from a whole new system's worth of edits at a glance.
+    // typo fix from a whole new board's worth of edits at a glance.
     // ###########################################################################################
     public sealed class DraftListItem
     {
         public string DisplayName { get; }
 
-        // The badge beside the name: this system's latest submission, in "My submissions"' words
+        // The badge beside the name: this board's latest submission, in "My submissions"' words
         // and colour. Hidden when it was never sent.
         // ###########################################################################################
         // *** THE DRAFT'S ERRORS AND WARNINGS, ON ITS ROW (owner report, 2026-10-02: "It must
@@ -869,7 +873,7 @@ namespace CRT
         public string SubmissionTooltip { get; } = string.Empty;
         public Avalonia.Media.IBrush? SubmissionAccentBrush { get; }
 
-        // Which system this row is - how table mode finds the open draft's row again after a
+        // Which board this row is - how table mode finds the open draft's row again after a
         // refresh has rebuilt every item.
         public string ExcelDataFile { get; }
 
@@ -882,7 +886,7 @@ namespace CRT
         public string RowSummary { get; }
         public ICommand DiscardCommand { get; }
 
-        // One per button - "Schematic images" and "KiCad data" each open SystemFilesWindow on its
+        // One per button - "Schematic images" and "KiCad data" each open BoardFilesWindow on its
         // own section (owner request, 2026-09-24).
         public ICommand ManageSchematicImagesCommand { get; }
         public ICommand ManageKiCadDataCommand { get; }
@@ -912,7 +916,7 @@ namespace CRT
             BoardProblemCounts problems,
             DraftDriftState driftState,
             Func<HardwareBoardEntry, Task> discard,
-            Func<HardwareBoardEntry, SystemFilesSection, Task> manageFiles,
+            Func<HardwareBoardEntry, BoardFilesSection, Task> manageFiles,
             Func<HardwareBoardEntry, Task> viewDrift,
             Func<HardwareBoardEntry, Task> submit,
             bool isTableOpen,
@@ -958,14 +962,14 @@ namespace CRT
 
             int rowCount = changeCount;
 
-            // A system that exists only as a draft (session 2c, task 9) is described as what it is
+            // A board that exists only as a draft (session 2c, task 9) is described as what it is
             // rather than by a row count. "0 rows changed" would be actively misleading on a
-            // freshly created system: nothing was CHANGED because the whole board is new, and the
+            // freshly created board: nothing was CHANGED because the whole board is new, and the
             // number says nothing about the thing the user actually made.
             string rowText = rowCount == 1 ? "1 row" : $"{rowCount} rows";
 
-            this.RowSummary = status.IsNewSystem
-                ? (rowCount == 0 ? "New system, nothing added yet" : $"New system, {rowText} so far")
+            this.RowSummary = status.IsNewBoard
+                ? (rowCount == 0 ? "New board, nothing added yet" : $"New board, {rowText} so far")
                 : $"{rowText} changed";
 
             this.HasDrift = driftState is DraftDriftState.OfficialIsNewer or DraftDriftState.Changed;
@@ -980,11 +984,11 @@ namespace CRT
             };
 
             // An EMPTY draft has nothing to review. That is a real state, not a theoretical one: a
-            // system created through "Add a new system" exists as a registration before a single
+            // board created through "Add a new board" exists as a registration before a single
             // row or image is added to it, and this tab lists it from that moment. Sending it would
-            // put an empty system in front of a maintainer, so the button says why instead.
+            // put an empty board in front of a maintainer, so the button says why instead.
             //
-            // A drafted system with rows is submittable, drift or no drift - the server diffs
+            // A drafted board with rows is submittable, drift or no drift - the server diffs
             // against the base revision itself, and refusing to send while the official data has
             // moved would strand a contributor behind a change they did not make.
             //
@@ -994,19 +998,19 @@ namespace CRT
             this.CanSubmit = rowCount > 0 && !alreadySent;
 
             this.SubmitTooltip = rowCount == 0
-                ? "There is nothing to send yet. Add some data to this system first."
+                ? "There is nothing to send yet. Add some data to this board first."
                 : alreadySent && lastSubmission is not null
                     ? SubmissionReceiptPresenter.DescribeAlreadySent(lastSubmission)
                 : this.HasErrors
                     ? $"This draft has {this.ErrorsText} to fix first - Submit opens its table on them instead of sending."
-                    : "Send this system for review. You do not need an account - only an email address, " +
+                    : "Send this board for review. You do not need an account - only an email address, " +
                       "so you can be told whether it was accepted.";
 
             this.DiscardCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => discard(entry)));
             this.ManageSchematicImagesCommand = new ActionCommand(() =>
-                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, SystemFilesSection.SchematicImages)));
+                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, BoardFilesSection.SchematicImages)));
             this.ManageKiCadDataCommand = new ActionCommand(() =>
-                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, SystemFilesSection.KiCadData)));
+                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, BoardFilesSection.KiCadData)));
             this.ViewDriftCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => viewDrift(entry)));
             this.SubmitCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => submit(entry)));
         }

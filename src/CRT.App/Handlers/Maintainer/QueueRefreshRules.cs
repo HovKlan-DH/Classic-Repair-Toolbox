@@ -42,10 +42,10 @@ namespace Handlers.MaintainerHandling
         // the maintainer works on another tab - "It should check from server once every minute".
         //
         //   - the tab ON SCREEN with CRT's window in front: EVERYTHING, as before - the queue, the
-        //     BETA list and whatever the screen on show reads (ReadsSystemsOverview);
+        //     BETA list and whatever the screen on show reads (ReadsBoardsOverview);
         //   - otherwise, while the badge can be SEEN (the tab turned on, CRT's window not
         //     minimised): only the two lists the badge counts are READ - the queue and the BETA
-        //     list. Not the drop-down listing, and never the Systems overview, which walks both data
+        //     list. Not the drop-down listing, and never the Boards overview, which walks both data
         //     trees. (Reading the queue is the same background read as on screen, so what it does
         //     with a changed row is unchanged: it re-reads that submission's detail - touching no
         //     table - and an expired session lands on the sign-in screen, which is what empties the
@@ -65,25 +65,25 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // *** WHAT THE MINUTE CHECK READS BESIDE THE QUEUE (code review, 2026-09-27). *** It read
-        // every list whatever screen was shown - and the Systems overview is the costly one: the
+        // every list whatever screen was shown - and the Boards overview is the costly one: the
         // server walks both data trees and counts a month of board views for it, every minute, for
         // every open maintainer window. The BETA list and the drop-down listing are still read every
         // time, because the Approve gate and the mode badges read them on any screen; the overview
-        // only while the Systems screen is shown, or before it has been read at all (its badge
-        // counts the systems). A check that is not the minute check - signing in, after a decision,
+        // only while the Boards screen is shown, or before it has been read at all (its badge
+        // counts the boards). A check that is not the minute check - signing in, after a decision,
         // pressing a screen's button - reads everything, as before.
         // ###########################################################################################
-        public static bool ReadsSystemsOverview(bool minuteCheck, MaintainerMode shown, bool overviewKnown) =>
-            !minuteCheck || !overviewKnown || shown == MaintainerMode.Systems;
+        public static bool ReadsBoardsOverview(bool minuteCheck, MaintainerMode shown, bool overviewKnown) =>
+            !minuteCheck || !overviewKnown || shown == MaintainerMode.Boards;
 
         // ###########################################################################################
-        // Whether a system's row changed enough to read its panel again. The view count moves with
+        // Whether a board's row changed enough to read its panel again. The view count moves with
         // every board anybody opens in CRT, so comparing it too re-read the whole panel - accounts,
         // audit trail and a year of view facts - nearly every minute while nothing else had changed.
         // The panel's own numbers are read again the next time something else changes, or the
-        // system is chosen again.
+        // board is chosen again.
         // ###########################################################################################
-        public static bool SystemChanged(SystemOverviewEntry before, SystemOverviewEntry after)
+        public static bool BoardChanged(BoardOverviewEntry before, BoardOverviewEntry after)
         {
             ArgumentNullException.ThrowIfNull(before);
             ArgumentNullException.ThrowIfNull(after);
@@ -92,18 +92,18 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // *** WHETHER BETA'S BOARD MOVED BETWEEN TWO READINGS OF A SYSTEM (owner report, 2026-10-04). ***
-        // The Systems screen read a system's table and files once and kept them until another system
+        // *** WHETHER BETA'S BOARD MOVED BETWEEN TWO READINGS OF A BOARD (owner report, 2026-10-04). ***
+        // The Boards screen read a board's table and files once and kept them until another board
         // was chosen - so a fix approved, and even promoted, went on showing the warning it fixed
         // ("it continues to show the error ... After an app restart ... it did not show as an error
-        // any more"). `readAt` is the system as it was when the table or files were read, `now` as it
+        // any more"). `readAt` is the board as it was when the table or files were read, `now` as it
         // is; true means they are out of date.
         //
         // The server's record of BETA's content when either reading carries it - every publish to
         // BETA and every push-back moves it. From a server older than that, the facts that move with
-        // both: the BETA revision, and whether the system waits for production.
+        // both: the BETA revision, and whether the board waits for production.
         // ###########################################################################################
-        public static bool BetaBoardChanged(SystemOverviewEntry readAt, SystemOverviewEntry now)
+        public static bool BetaBoardChanged(BoardOverviewEntry readAt, BoardOverviewEntry now)
         {
             ArgumentNullException.ThrowIfNull(readAt);
             ArgumentNullException.ThrowIfNull(now);
@@ -117,12 +117,12 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // Whether the STABLE source's board moved between two readings of a system (2026-10-04, the
+        // Whether the STABLE source's board moved between two readings of a board (2026-10-04, the
         // Board data and Files views' Stable half) - only a promotion moves it, and a promotion sets
-        // the system's stable revision and when it was published there. True means the stable
+        // the board's stable revision and when it was published there. True means the stable
         // table or files read at `readAt` are out of date.
         // ###########################################################################################
-        public static bool StableBoardChanged(SystemOverviewEntry readAt, SystemOverviewEntry now)
+        public static bool StableBoardChanged(BoardOverviewEntry readAt, BoardOverviewEntry now)
         {
             ArgumentNullException.ThrowIfNull(readAt);
             ArgumentNullException.ThrowIfNull(now);
@@ -133,20 +133,20 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // Whether a system's TABLE is out of date: its board moved (BetaBoardChanged), or whether this
-        // account may change it did - the server's MayEdit, which is off while the system waits under
-        // BETA > Stable and for a system closed to contributions, and follows who maintains it. A
+        // Whether a board's TABLE is out of date: its board moved (BetaBoardChanged), or whether this
+        // account may change it did - the server's MayEdit, which is off while the board waits under
+        // BETA > Stable and for a board closed to contributions, and follows who maintains it. A
         // promotion moves only the first of those, and left the table read-only with "it waits
         // under BETA > Stable" after it no longer did. The Files view follows the board alone.
         //
         // *** WHO maintains it, not how many (code review, 2026-10-04). *** One maintainer swapped
         // for another keeps the count, and the account swapped in or out had a table that said the
-        // opposite of what the server would do. With the system's maintainers at both readings (its
+        // opposite of what the server would do. With the board's maintainers at both readings (its
         // detail's account ids), any difference counts; without them, the count stands in.
         // ###########################################################################################
-        public static bool SystemTableChanged(
-            SystemOverviewEntry readAt,
-            SystemOverviewEntry now,
+        public static bool BoardTableChanged(
+            BoardOverviewEntry readAt,
+            BoardOverviewEntry now,
             IReadOnlyCollection<long>? maintainersReadAt = null,
             IReadOnlyCollection<long>? maintainersNow = null)
         {

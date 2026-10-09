@@ -533,8 +533,8 @@ public sealed class BoardSidecarWriterTests : IDisposable
     [Fact]
     public void The_folder_is_CREATED_when_it_does_not_exist()
     {
-        // A brand-new system's folder does not exist before its first publish.
-        string nested = Path.Combine(this.thisRoot, "new", "system", "Data X Y v2.0.0.xlsx");
+        // A brand-new board's folder does not exist before its first publish.
+        string nested = Path.Combine(this.thisRoot, "new", "board", "Data X Y v2.0.0.xlsx");
 
         BoardSidecarWriter.Write(
             nested, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")], []);

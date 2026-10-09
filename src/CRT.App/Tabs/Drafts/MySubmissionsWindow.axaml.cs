@@ -221,7 +221,7 @@ namespace CRT
                 }
                 catch (SubmissionNotFoundException)
                 {
-                    // The server ANSWERED: it does not know it any more (deleted with its system, or
+                    // The server ANSWERED: it does not know it any more (deleted with its board, or
                     // by a reset of the contribution data). The row says "No longer on the server",
                     // and the minute check stops asking every minute. Counted apart from the rows
                     // that could not be reached (code review, 2026-10-04): counted with them, the
@@ -310,7 +310,7 @@ namespace CRT
         private async Task ForgetAsync(SubmissionListItem item)
         {
             var confirm = new ForgetSubmissionWindow();
-            confirm.Initialize(item.SystemName);
+            confirm.Initialize(item.BoardDisplayName);
 
             bool? confirmed = await confirm.ShowDialog<bool?>(this);
             if (confirmed != true)
@@ -359,7 +359,7 @@ namespace CRT
     public sealed class SubmissionListItem
     {
         public long SubmissionId { get; }
-        public string SystemName { get; }
+        public string BoardDisplayName { get; }
         public string Summary { get; }
         public string StateText { get; }
         public string SentText { get; }
@@ -502,10 +502,10 @@ namespace CRT
 
             this.SubmissionId = receipt.SubmissionId;
 
-            // The system's own identity is an ExcelDataFile key ("Commodore/C64/250407/Data...xlsx").
+            // The board's own identity is an ExcelDataFile key ("Commodore/C64/250407/Data...xlsx").
             // Shown as the folder segments only - a file name nobody typed is noise on a row whose
             // job is to say which board this was.
-            this.SystemName = SubmissionListItem.DescribeSystem(receipt.SystemId);
+            this.BoardDisplayName = SubmissionListItem.DescribeBoard(receipt.BoardId);
 
             this.Summary = receipt.Summary ?? string.Empty;
             this.StateText = SubmissionReceiptPresenter.DescribeReceiptState(receipt);
@@ -548,10 +548,10 @@ namespace CRT
 
         // ###########################################################################################
         // "Commodore/C128/310378 Open128" -> "Commodore C128 310378 Open128" - through the shared
-        // presenter, which the Drafts tab's "switch back from BETA" notice names systems with too.
+        // presenter, which the Drafts tab's "switch back from BETA" notice names boards with too.
         // It used to drop the last segment as a file name, which on a real receipt was the BOARD.
         // ###########################################################################################
-        private static string DescribeSystem(string? systemId) =>
-            SubmissionReceiptPresenter.DescribeSystem(systemId);
+        private static string DescribeBoard(string? boardId) =>
+            SubmissionReceiptPresenter.DescribeBoard(boardId);
     }
 }

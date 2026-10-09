@@ -23,7 +23,7 @@ New here? Start with [Getting started](Getting-started).
 * [Resources](Resources-tab) - datasheets, manuals and links for this board
 * [Workbooks](Workbooks-tab) - record a repair from first fault to finished write-up
 * [Oscilloscope](Oscilloscope-tab) - connect to a network-capable scope
-* [Contribute](Contribute-tab) - fix or add board data, or a whole new system, from inside CRT
+* [Contribute](Contribute-tab) - fix or add board data, or a whole new board, from inside CRT
 * [Drafts](Drafts-tab) - your local edits, as a table you can edit, and sending them in for review
 * [Maintainer](Maintainer-tab) - review and publish what others send in, for maintainers only
 * [Configuration](Configuration-tab) - every setting, and where your files are
@@ -32,7 +32,7 @@ New here? Start with [Getting started](Getting-started).
 
 ## Contributing data
 
-* [Contribute data via CRT](Contribute-data-via-CRT) - fix or add board data, or a whole new system, and send it in for review
+* [Contribute data via CRT](Contribute-data-via-CRT) - fix or add board data, or a whole new board, and send it in for review
   - [View boards from online source](View-boards-from-online-source) - see a board as everybody else sees it, without your own drafts
 * [Add a new board with KiCad data](Add-new-board-with-KiCad-data) - the full walkthrough
 * [Explanation of data files](Explanation-of-data-files) - reference for every file and column:

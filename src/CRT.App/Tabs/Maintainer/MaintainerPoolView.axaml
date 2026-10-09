@@ -3,15 +3,15 @@
              x:Class="CRT.MaintainerPoolView">
 
     <!--
-    WHO MAINTAINS WHICH SYSTEM, ON THE ACCOUNT SCREEN (the Admin screen until 2026-10-04; owner request, 2026-10-04: "please make sure
+    WHO MAINTAINS WHICH BOARD, ON THE ACCOUNT SCREEN (the Admin screen until 2026-10-04; owner request, 2026-10-04: "please make sure
     that the actual 'Send invitation' and 'Add as maintainer' gets moved to the 'Admin' tab (in top
     menu), as this is something only the admin should be able to do"). ADMINISTRATOR ONLY, like
     every padlocked entry there - the server refuses everybody else regardless.
 
-    It was on the Systems screen, in a system's Maintainer view, from 2026-09-27 (when it moved there
+    It was on the Boards screen, in a board's Maintainer view, from 2026-09-27 (when it moved there
     FROM Admin) until 2026-10-04; that view now lists the maintainers and nothing more.
 
-    Choose a system, then: each maintainer with a Remove button, each invitation nobody has accepted
+    Choose a board, then: each maintainer with a Remove button, each invitation nobody has accepted
     yet with a Withdraw button, and the two ways to add somebody - an account chosen from the list, or
     an address invited by email (the server mails it a code; CRT.Server's MaintainerInvitationFlows).
     MaintainerPoolView.axaml.cs says what each press does.
@@ -25,21 +25,21 @@
                    Margin="0,0,0,8" />
 
         <TextBlock DockPanel.Dock="Top"
-                   Text="Who maintains each system. Choose a system, then add somebody who has an account, invite somebody new by email, or take a maintainer off it."
+                   Text="Who maintains each board. Choose a board, then add somebody who has an account, invite somebody new by email, or take a maintainer off it."
                    TextWrapping="Wrap"
                    Opacity="0.8"
                    Margin="0,0,0,12" />
 
         <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="0,0,0,8">
             <TextBlock Grid.Column="0"
-                       Text="System"
+                       Text="Board"
                        VerticalAlignment="Center"
                        Margin="0,0,12,0" />
             <ComboBox Grid.Column="1"
-                      x:Name="SystemCombo"
+                      x:Name="BoardCombo"
                       HorizontalAlignment="Stretch"
-                      PlaceholderText="Choose a system"
-                      SelectionChanged="OnSystemChanged" />
+                      PlaceholderText="Choose a board"
+                      SelectionChanged="OnBoardChanged" />
         </Grid>
 
         <TextBlock DockPanel.Dock="Top"
@@ -81,9 +81,9 @@
 
                 <!-- Said, because the list shows one line per person and nothing else hints at it
                      (owner request, 2026-09-27: "I should be able to attach more than one maintainer
-                     per system"). -->
+                     per board"). -->
                 <TextBlock x:Name="SeveralMaintainersHint"
-                           Text="A system can have as many maintainers as you like - add them one at a time. Any one of them can approve its submissions (replacing a shared file other boards use also needs you)."
+                           Text="A board can have as many maintainers as you like - add them one at a time. Any one of them can approve its submissions (replacing a shared file other boards use also needs you)."
                            FontSize="11"
                            Opacity="0.7"
                            TextWrapping="Wrap" />

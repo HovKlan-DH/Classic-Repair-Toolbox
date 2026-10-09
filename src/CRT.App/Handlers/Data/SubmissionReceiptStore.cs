@@ -276,7 +276,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The server answered that it does not know this submission (HTTP 404) - deleted with its
-        // system, for one. Its state is kept as it was; it is then asked about only once per
+        // board, for one. Its state is kept as it was; it is then asked about only once per
         // SubmissionReceiptPresenter.NotFoundRecheckInterval (code review, 2026-10-04: it was asked
         // every minute for ever).
         // ###########################################################################################

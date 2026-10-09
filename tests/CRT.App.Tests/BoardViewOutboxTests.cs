@@ -19,8 +19,8 @@ public sealed class BoardViewOutboxTests
 
     private static readonly BoardViewMachine Machine = new("CRT 2026.10.0", "Windows", "Microsoft Windows 10.0.19045", "64-bit");
 
-    private static BoardView View(string systemId = "Commodore/C64/250407", double minutesAgo = 1) =>
-        new(systemId, BoardViewOutboxTests.Now.AddMinutes(-minutesAgo), false);
+    private static BoardView View(string boardId = "Commodore/C64/250407", double minutesAgo = 1) =>
+        new(boardId, BoardViewOutboxTests.Now.AddMinutes(-minutesAgo), false);
 
     [Fact]
     public void Waiting_views_become_one_report_carrying_the_machine()
@@ -61,7 +61,7 @@ public sealed class BoardViewOutboxTests
         BoardViewReport next = outbox.NextReport(BoardViewOutboxTests.Now.AddMinutes(6), BoardViewOutboxTests.Machine)!;
 
         Assert.NotEqual(first.BatchId, next.BatchId);
-        Assert.Equal("Commodore/VIC-20/250403", Assert.Single(next.Views!).SystemId);
+        Assert.Equal("Commodore/VIC-20/250403", Assert.Single(next.Views!).BoardId);
     }
 
     // Finished only by its own batch id - a late answer to an older report finishes nothing.
@@ -92,7 +92,7 @@ public sealed class BoardViewOutboxTests
 
         BoardViewReport first = outbox.NextReport(BoardViewOutboxTests.Now, BoardViewOutboxTests.Machine)!;
         Assert.Equal(BoardViewRules.MaxViewsPerReport, first.Views!.Count);
-        Assert.Equal("Commodore/C64/0", first.Views[0].SystemId);
+        Assert.Equal("Commodore/C64/0", first.Views[0].BoardId);
 
         outbox.Finished(first.BatchId);
         Assert.Equal(5, outbox.NextReport(BoardViewOutboxTests.Now, BoardViewOutboxTests.Machine)!.Views!.Count);
@@ -129,7 +129,7 @@ public sealed class BoardViewOutboxTests
             outbox.Add(new BoardView($"Commodore/C64/{index}", BoardViewOutboxTests.Now, false));
 
         Assert.Equal(BoardViewRules.MaxWaitingViews, outbox.Waiting.Count);
-        Assert.Equal("Commodore/C64/3", outbox.Waiting[0].SystemId);
+        Assert.Equal("Commodore/C64/3", outbox.Waiting[0].BoardId);
     }
 
     // The file: a report being sent survives a restart WITH its batch id, so the retry after a
@@ -150,13 +150,30 @@ public sealed class BoardViewOutboxTests
         Assert.DoesNotContain("hasAnything", outbox.ToJson(), StringComparison.OrdinalIgnoreCase);
     }
 
+    // ###########################################################################################
+    // *** A VIEW AN OLDER CRT WROTE IS STILL SENT (owner decision, 2026-10-09). *** Until "system"
+    // became "board" a view named its board "systemId", and an outbox file written then may still
+    // be waiting on disk. Its views carry on under the new name.
+    // ###########################################################################################
+    [Fact]
+    public void A_view_written_as_systemId_before_the_rename_is_read_and_sent_as_boardId()
+    {
+        BoardViewOutbox read = BoardViewOutbox.FromJson(
+            """{"waiting":[{"systemId":"Commodore/C64/250407","viewedUtc":"2026-09-27T12:00:00+00:00","fromBeta":false}]}""");
+
+        BoardView view = Assert.Single(read.Waiting);
+        Assert.Equal("Commodore/C64/250407", view.BoardId);
+        Assert.Null(view.SystemId);
+        Assert.DoesNotContain("systemId", read.ToJson(), StringComparison.Ordinal);
+    }
+
     // A file that will not read costs its views, never the application.
     [Theory]
     [InlineData("")]
     [InlineData("not json")]
     [InlineData("[]")]
     [InlineData("null")]
-    [InlineData("""{"waiting":[{"systemId":null,"viewedUtc":"2026-09-27T12:00:00+00:00","fromBeta":false}]}""")]
+    [InlineData("""{"waiting":[{"boardId":null,"viewedUtc":"2026-09-27T12:00:00+00:00","fromBeta":false}]}""")]
     public void A_file_that_will_not_read_is_an_empty_outbox(string json)
     {
         BoardViewOutbox read = BoardViewOutbox.FromJson(json);

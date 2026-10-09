@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -324,6 +325,106 @@ public sealed class BoardTableEditorTextWrapTests
 
             Assert.Equal(markerBefore, marker.ActualWidth, precision: 0);
             Assert.Equal(labelBefore, label.ActualWidth, precision: 0);
+
+            window.Close();
+        });
+    }
+    // The Board schematics sheet with nothing longer than its headings - "30%", "Red" - as the
+    // owner's C64 250407 has it.
+    private static BoardTableEditor SchematicsEditor()
+    {
+        var board = new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Board layout", SchematicImageFile = "a/b.png", SchematicHighlightColor = "Red", SchematicHighlightOpacity = "30%" },
+                new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "a/c.png", SchematicHighlightColor = "Red", SchematicHighlightOpacity = "30%" }
+            ]
+        };
+
+        var editor = new BoardTableEditor();
+        editor.Open(BoardTableDocument.Create(board, board));
+        editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!);
+
+        return editor;
+    }
+
+    private static DataGridColumn SchematicsColumn(BoardTableEditor editor, string name) =>
+        Column(editor, BoardWorkbookSchema.BoardSchematics.ColumnOrder.ToList().IndexOf(name));
+
+    // The text block a heading's name is drawn with.
+    private static TextBlock HeadingText(DataGridColumnHeader header) =>
+        header.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == (string)header.Content!);
+
+    private static int Lines(TextBlock text) => text.TextLayout.TextLines.Count;
+
+    private static double OneLineWidth(TextBlock text)
+    {
+        using var layout = new Avalonia.Media.TextFormatting.TextLayout(
+            text.Text!, new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch), text.FontSize, foreground: null);
+        return layout.WidthIncludingTrailingWhitespace;
+    }
+
+    // ###########################################################################################
+    // *** A COLUMN FITTED TO ITS HEADING HAS AS MUCH ROOM AFTER THE NAME AS BEFORE IT (owner report,
+    // 2026-10-09: double-clicking the edge after "Schematic highlight opacity" left a wide empty
+    // band after the name). *** The fit measured the whole heading, whose template keeps room for
+    // a sort arrow the table never shows; it now measures the name, with the heading's own space
+    // before it repeated after it.
+    // ###########################################################################################
+    [Fact]
+    public void A_column_fitted_to_its_heading_has_as_much_room_after_the_name_as_before_it()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = SchematicsEditor();
+            Window window = Show(editor);
+
+            DataGridColumn opacity = SchematicsColumn(editor, BoardWorkbookSchema.ColSchematicHighlightOpacity);
+            editor.FitColumnToText(opacity);
+            Dispatcher.UIThread.RunJobs();
+
+            DataGridColumnHeader header = Header(window, BoardWorkbookSchema.ColSchematicHighlightOpacity);
+            TextBlock name = HeadingText(header);
+            double before = name.TranslatePoint(default, header)!.Value.X;
+            double after = opacity.ActualWidth - before - OneLineWidth(name);
+
+            // The same, give or take the slack that keeps the name off a second line and the
+            // rounding to whole pixels.
+            Assert.True(before > 0, $"before [{before}]");
+            Assert.InRange(after, before - 1, before + ColumnAutoFitGeometry.RoundingSlack + 1);
+            Assert.Equal(1, Lines(name));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A HEADING WRAPS LIKE ITS CELLS (owner request, 2026-10-09: "can the table header also
+    // please wrap"). *** A column made narrower than its name shows the name on more lines, every
+    // word of it, and the heading row grows to fit - it was cut off at one line.
+    // ###########################################################################################
+    [Fact]
+    public void A_heading_narrower_than_its_name_wraps_onto_more_lines_and_the_heading_row_grows()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = SchematicsEditor();
+            Window window = Show(editor);
+
+            DataGridColumnHeader header = Header(window, BoardWorkbookSchema.ColSchematicHighlightOpacity);
+            double oneLineHeight = HeadingText(header).Bounds.Height;
+            double rowBefore = header.Bounds.Height;
+
+            editor.FreeColumnWidths();
+            SchematicsColumn(editor, BoardWorkbookSchema.ColSchematicHighlightOpacity).Width = new DataGridLength(90);
+            Dispatcher.UIThread.RunJobs();
+
+            TextBlock name = HeadingText(header);
+            Assert.Equal(TextWrapping.Wrap, name.TextWrapping);
+            Assert.True(name.Bounds.Height >= 2 * oneLineHeight - 1, $"name [{name.Bounds.Height}] against one line [{oneLineHeight}]");
+            Assert.True(header.Bounds.Height > rowBefore, $"heading [{header.Bounds.Height}] against [{rowBefore}]");
+            Assert.True(name.Bounds.Width <= header.Bounds.Width, $"name [{name.Bounds.Width}] in heading [{header.Bounds.Width}]");
 
             window.Close();
         });

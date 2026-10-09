@@ -51,50 +51,50 @@ namespace Handlers.MaintainerHandling
         // Account > Maintainers (2026-10-04): every account, for the "choose somebody" list.
         public const string ReadingAccounts = "Reading the accounts...";
 
-        // Account > Order of systems (2026-10-04): the new order written into both sources' lists.
-        public const string SavingSystemOrder = "Saving the order of the drop-down lists in BETA and the stable source...";
+        // Account > Order of boards (2026-10-04): the new order written into both sources' lists.
+        public const string SavingBoardOrder = "Saving the order of the drop-down lists in BETA and the stable source...";
 
-        public static string OpeningSubmission(string systemId) => $"Opening the submission to {systemId}...";
+        public static string OpeningSubmission(string boardId) => $"Opening the submission to {boardId}...";
 
-        public static string ReadingSystem(string systemId) => $"Reading {systemId}...";
+        public static string ReadingBoard(string boardId) => $"Reading {boardId}...";
 
-        // A system's Board data and Files views (2026-10-03).
-        public static string ReadingSystemTable(string systemId) => $"Reading {systemId}'s board from BETA...";
+        // A board's Board data and Files views (2026-10-03).
+        public static string ReadingBoardTable(string boardId) => $"Reading {boardId}'s board from BETA...";
 
-        public static string ReadingSystemFiles(string systemId) => $"Listing {systemId}'s files in BETA...";
+        public static string ReadingBoardFiles(string boardId) => $"Listing {boardId}'s files in BETA...";
 
         // The file tree (2026-09-28): working out a submission's, and fetching one file to open.
-        public static string ReadingSubmissionFiles(string systemId) =>
-            $"Working out {systemId}'s files after approving - every file in its BETA folder is checked...";
+        public static string ReadingSubmissionFiles(string boardId) =>
+            $"Working out {boardId}'s files after approving - every file in its BETA folder is checked...";
 
         public static string OpeningFile(string fileName) => $"Fetching {fileName} to open it...";
 
-        public static string ReadingProductionPlan(string systemId) =>
-            $"Working out what publishing {systemId} to the stable source would copy...";
+        public static string ReadingProductionPlan(string boardId) =>
+            $"Working out what publishing {boardId} to the stable source would copy...";
 
-        public static string ReadingRollbackPlan(string systemId) =>
-            $"Working out what pushing {systemId} back to the queue would do...";
+        public static string ReadingRollbackPlan(string boardId) =>
+            $"Working out what pushing {boardId} back to the queue would do...";
 
         public static string RemovingUnusedFiles(int count) =>
             count == 1 ? "Removing 1 unused file..." : string.Create(CultureInfo.InvariantCulture, $"Removing {count} unused files...");
 
-        public static string SavingPlacement(string systemId) =>
-            $"Saving where {systemId} goes in CRT's drop-down lists...";
+        public static string SavingPlacement(string boardId) =>
+            $"Saving where {boardId} goes in CRT's drop-down lists...";
 
-        public static string AddingMaintainer(string who, string systemId) => $"Adding {who} as a maintainer of {systemId}...";
+        public static string AddingMaintainer(string who, string boardId) => $"Adding {who} as a maintainer of {boardId}...";
 
-        public static string RemovingMaintainer(string who, string systemId) => $"Removing {who} as a maintainer of {systemId}...";
+        public static string RemovingMaintainer(string who, string boardId) => $"Removing {who} as a maintainer of {boardId}...";
 
-        public static string Inviting(string email, string systemId) => $"Inviting {email} to maintain {systemId}...";
+        public static string Inviting(string email, string boardId) => $"Inviting {email} to maintain {boardId}...";
 
         public static string WithdrawingInvitation(string email) => $"Withdrawing the invitation to {email}...";
 
-        // Deleting a system (2026-10-03): the plan reads every workbook in both trees.
-        public static string ReadingDeletionPlan(string systemId) => $"Working out what deleting {systemId} would remove...";
+        // Deleting a board (2026-10-03): the plan reads every workbook in both trees.
+        public static string ReadingDeletionPlan(string boardId) => $"Working out what deleting {boardId} would remove...";
 
-        public static string DeletingSystem(string systemId) => $"Deleting {systemId} from both data sources and the database...";
+        public static string DeletingBoard(string boardId) => $"Deleting {boardId} from both data sources and the database...";
 
-        public const string ReadingSystems = "Reading the systems...";
+        public const string ReadingBoards = "Reading the boards...";
 
         // Account > Reset contribution data and Account > API usage (2026-10-04).
         public const string ReadingResetCounts = "Counting what a reset would delete...";
@@ -196,40 +196,40 @@ namespace Handlers.MaintainerHandling
                 "your changes are not saved yet");
 
         // ###########################################################################################
-        // A change sent from a system's table (2026-10-03): finished when the queue now holds a
-        // submission of it - this system, with the description that was sent, waiting for review.
+        // A change sent from a board's table (2026-10-03): finished when the queue now holds a
+        // submission of it - this board, with the description that was sent, waiting for review.
         // The number is named, since that is where it waits. Null when the queue could not be read.
         // ###########################################################################################
         // ###########################################################################################
-        // A change published from a system's table, after no answer: what the system's submissions
-        // say about it (SystemSections.FindSent) - in BETA, made but waiting in the queue, or not
-        // there at all. `read` false: the system could not be read to look.
+        // A change published from a board's table, after no answer: what the board's submissions
+        // say about it (BoardSections.FindSent) - in BETA, made but waiting in the queue, or not
+        // there at all. `read` false: the board could not be read to look.
         // ###########################################################################################
-        public static string SystemEditAfterTimeout(bool read, SystemSubmissionEntry? found) =>
+        public static string BoardEditAfterTimeout(bool read, BoardSubmissionEntry? found) =>
             WaitWording.AfterTimeout(
                 read ? found is not null : null,
-                found is not null && SystemSections.ReachedBeta(found)
+                found is not null && BoardSections.ReachedBeta(found)
                     ? $"your change was published to BETA as submission #{found.Id}"
                     : $"your change was saved as submission #{found?.Id}, but not published to BETA - it waits under {MaintainerScreenWording.ContributorQueueQuoted}",
-                "your change is not among the system's submissions, so it was not published");
+                "your change is not among the board's submissions, so it was not published");
 
-        public static string PublishAfterTimeout(string systemId, bool? stillInBeta) =>
+        public static string PublishAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{systemId} is published to the stable source",
-                $"{systemId} is still waiting in BETA");
+                $"{boardId} is published to the stable source",
+                $"{boardId} is still waiting in BETA");
 
-        public static string PushBackAfterTimeout(string systemId, bool? stillInBeta) =>
+        public static string PushBackAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{systemId} is pushed back to the queue",
-                $"{systemId} is still in BETA");
+                $"{boardId} is pushed back to the queue",
+                $"{boardId} is still in BETA");
 
-        public static string RejectAfterTimeout(string systemId, bool? stillInBeta) =>
+        public static string RejectAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{systemId} is rejected and out of BETA",
-                $"{systemId} is still in BETA");
+                $"{boardId} is rejected and out of BETA",
+                $"{boardId} is still in BETA");
 
         public static string RemovalAfterTimeout(int? stillThere) =>
             WaitWording.AfterTimeout(
@@ -237,16 +237,16 @@ namespace Handlers.MaintainerHandling
                 "the files are removed",
                 stillThere == 1 ? "1 of them is still there" : $"{stillThere} of them are still there");
 
-        // `stillListed`: whether the systems list, read again, still holds it. A delete that finished
+        // `stillListed`: whether the boards list, read again, still holds it. A delete that finished
         // part-way leaves it listed too, and says so when Delete is pressed again.
-        public static string DeleteAfterTimeout(string systemId, bool? stillListed) =>
+        public static string DeleteAfterTimeout(string boardId, bool? stillListed) =>
             WaitWording.AfterTimeout(
                 stillListed is bool listed ? !listed : null,
-                $"{systemId} is deleted",
-                $"{systemId} is still there");
+                $"{boardId} is deleted",
+                $"{boardId} is still there");
 
-        public static string PlacementAfterTimeout(string systemId, bool? saved) =>
-            WaitWording.AfterTimeout(saved, $"{systemId}'s place is saved", $"{systemId}'s place is not saved yet");
+        public static string PlacementAfterTimeout(string boardId, bool? saved) =>
+            WaitWording.AfterTimeout(saved, $"{boardId}'s place is saved", $"{boardId}'s place is not saved yet");
 
         // ###########################################################################################
         // *** A REBUILD THAT TIMED OUT IS NOT "TRY AGAIN" WITHOUT A WORD (code review, 2026-10-01).
@@ -261,7 +261,7 @@ namespace Handlers.MaintainerHandling
             "cannot be checked from here - it may still be working on it. Pressing the button again is safe: " +
             "it rebuilds them once more from the files as they are.";
 
-        // Adding, removing, inviting, withdrawing - `done` read back from the system's detail.
+        // Adding, removing, inviting, withdrawing - `done` read back from the board's detail.
         public static string MaintainersAfterTimeout(bool? done, string doneClause, string notDoneClause) =>
             WaitWording.AfterTimeout(done, doneClause, notDoneClause);
     }

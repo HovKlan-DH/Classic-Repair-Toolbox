@@ -51,7 +51,7 @@ Nothing you edit leaves your computer until you click **Submit** on the "Drafts"
   - So the maintainers can reply, and so you are told how it went. When you are signed in on the "Maintainer" tab, your account's address is used.
 - The CRT version
 
-Your email address is shown only to the maintainers of that system and to the administrator. Maintainers of other systems never see it - at most the name on your account, if you were signed in when you sent it.
+Your email address is shown only to the maintainers of that board and to the administrator. Maintainers of other boards never see it - at most the name on your account, if you were signed in when you sent it.
 
 While a submission is still open, CRT asks the server how it is getting on - at launch, and every minute while CRT's window is open and not minimised - using its number and the private code CRT was given when you sent it.
 

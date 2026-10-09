@@ -261,7 +261,7 @@ public sealed class DataChecksumManifestTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** TWO REBUILDS AT ONCE BOTH SUCCEED (code review, 2026-09-27). *** A new system's placement
+    // *** TWO REBUILDS AT ONCE BOTH SUCCEED (code review, 2026-09-27). *** A new board's placement
     // rebuilds the manifest outside the publish lock, so it can run beside a publish's own rebuild.
     // The temporary file was named by the Unix second, so rebuilds in the same second shared it and
     // one of them failed its move (or wrote into the other's file). Every one must succeed, leave a

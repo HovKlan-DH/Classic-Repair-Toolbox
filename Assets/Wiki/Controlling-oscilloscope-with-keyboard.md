@@ -13,7 +13,7 @@ To enable and use the controls, do this:
 * Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
 * Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it - see
   [Oscilloscope tab](Oscilloscope-tab).
-* Click a component that has an oscilloscope baseline (images depicting a working system), and
+* Click a component that has an oscilloscope baseline (images depicting a working board), and
   select one of its images.
 * In the component information window, tick `Numpad controls oscilloscope`. The checkbox is only
   available while CRT is actually connected to the oscilloscope.

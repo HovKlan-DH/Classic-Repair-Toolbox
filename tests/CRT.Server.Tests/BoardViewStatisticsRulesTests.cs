@@ -4,7 +4,7 @@ using Handlers.DataHandling;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers BoardViewStatisticsRules - the Systems screen's view numbers from a system's facts.
+    // Covers BoardViewStatisticsRules - the Boards screen's view numbers from a board's facts.
     //
     // The windows are WHOLE UTC DAYS INCLUDING TODAY, and BETA-source views count only in their own
     // number: those are mostly maintainers checking their work, and must not make a board look used.
@@ -103,5 +103,40 @@ namespace CRT.Server.Tests
             Assert.Equal((0, 0, 0, 0), (stats.Last7Days, stats.Last30Days, stats.Last365Days, stats.FromBetaLast30Days));
             Assert.Empty(stats.TopCountries);
         }
-    }
+    
+        // ###########################################################################################
+        // *** VIEWS PER DAY, FOR THE GRAPH (owner request, 2026-10-09: "please create a graph for
+        // showing usage of board per day"). *** Each UTC day of the last 365 with a view, its
+        // countries added up, oldest first; a day with none, a day older than the year and the BETA
+        // source's views are not in it.
+        // ###########################################################################################
+        [Fact]
+        public void Each_day_of_the_year_with_a_view_is_listed_oldest_first_and_BETA_views_are_left_out()
+        {
+            BoardViewStatistics stats = BoardViewStatisticsRules.Build(
+                [
+                    BoardViewStatisticsRulesTests.Fact(0, 1, "DK"),
+                    BoardViewStatisticsRulesTests.Fact(0, 2, "DE"),
+                    BoardViewStatisticsRulesTests.Fact(0, 4, "DK", fromBeta: true),
+                    BoardViewStatisticsRulesTests.Fact(3, 5),
+                    BoardViewStatisticsRulesTests.Fact(364, 6),
+                    BoardViewStatisticsRulesTests.Fact(365, 7)
+                ],
+                BoardViewStatisticsRulesTests.Now);
+
+            Assert.Equal(
+                [
+                    new BoardViewDay(BoardViewStatisticsRulesTests.DaysAgo(364), 6),
+                    new BoardViewDay(BoardViewStatisticsRulesTests.DaysAgo(3), 5),
+                    new BoardViewDay(BoardViewStatisticsRulesTests.DaysAgo(0), 3)
+                ],
+                stats.Daily!);
+        }
+
+        [Fact]
+        public void A_board_nobody_looked_at_has_no_days()
+        {
+            Assert.Empty(BoardViewStatisticsRules.Build([], BoardViewStatisticsRulesTests.Now).Daily!);
+        }
+}
 }

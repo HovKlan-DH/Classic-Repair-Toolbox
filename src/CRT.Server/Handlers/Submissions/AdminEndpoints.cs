@@ -7,9 +7,9 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // The ADMINISTRATOR's API (Phase 6 roles, 2026-09-25): which accounts exist, which systems
+    // The ADMINISTRATOR's API (Phase 6 roles, 2026-09-25): which accounts exist, which boards
     // exist, and who reviews what - a rim over MaintainerAssignmentFlows - the "Unused files"
-    // screen, a rim over UnusedFileFlows, deleting a system, a rim over SystemDeletionFlow,
+    // screen, a rim over UnusedFileFlows, deleting a board, a rim over BoardDeletionFlow,
     // resetting the contribution data (DataResetFlow) and the API usage counts (ApiUsageFlow).
     //
     // Its own group, "/api/admin", rather than routes under "/api/review": everything here is
@@ -17,7 +17,7 @@ namespace CRT.Server.Handlers.Submissions
     // quietly inherits the wrong one.
     //
     // THE STATUS CODES match ReviewEndpoints: 401 no credentials, 403 signed in but not an
-    // administrator, 404 no such system or account, 400 a grant the rules refuse (unverified,
+    // administrator, 404 no such board or account, 400 a grant the rules refuse (unverified,
     // locked, already an administrator).
     // ###########################################################################################
     public static class AdminEndpoints
@@ -28,10 +28,10 @@ namespace CRT.Server.Handlers.Submissions
 
             RouteGroupBuilder admin = app.MapGroup("/api/admin");
 
-            admin.MapGet("/systems", AdminEndpoints.GetSystemsAsync);
+            admin.MapGet("/boards", AdminEndpoints.GetBoardsAsync);
             admin.MapGet("/accounts", AdminEndpoints.GetAccountsAsync);
 
-            // Both POST with a body. A system id carries slashes, so it cannot ride in the route
+            // Both POST with a body. A board id carries slashes, so it cannot ride in the route
             // without a catch-all, and a catch-all cannot be followed by the account id.
             admin.MapPost("/maintainers", AdminEndpoints.AddMaintainerAsync);
             admin.MapPost("/maintainers/remove", AdminEndpoints.RemoveMaintainerAsync);
@@ -52,16 +52,16 @@ namespace CRT.Server.Handlers.Submissions
             // does both trees, so there is nothing to send and no body limit to set.
             admin.MapPost("/manifest/rebuild", AdminEndpoints.RebuildManifestsAsync);
 
-            // Deleting a system completely (owner request, 2026-10-03) - see SystemDeletionFlow. The
+            // Deleting a board completely (owner request, 2026-10-03) - see BoardDeletionFlow. The
             // plan first, shown in the confirmation; the delete is held to it by its fingerprint.
-            // Both POST a body, because a system id carries slashes; both bodies are small.
-            admin.MapPost("/systems/delete/plan", AdminEndpoints.PlanSystemDeletionAsync);
-            admin.MapPost("/systems/delete", AdminEndpoints.DeleteSystemAsync);
+            // Both POST a body, because a board id carries slashes; both bodies are small.
+            admin.MapPost("/boards/delete/plan", AdminEndpoints.PlanBoardDeletionAsync);
+            admin.MapPost("/boards/delete", AdminEndpoints.DeleteBoardAsync);
 
             // The order of CRT's drop-down lists, in BETA and the stable source (owner request,
-            // 2026-10-04) - see SystemOrderFlow. The body is every system id BETA lists, so it gets
+            // 2026-10-04) - see BoardOrderFlow. The body is every board id BETA lists, so it gets
             // the path-list limit rather than the 64 KB default.
-            admin.MapPost("/systems/order", AdminEndpoints.SetSystemOrderAsync)
+            admin.MapPost("/boards/order", AdminEndpoints.SetBoardOrderAsync)
                 .WithBodyLimit(RequestBodyLimits.PathListBytes);
 
             // Resetting the contribution data for going live (owner request, 2026-10-04) - see
@@ -193,12 +193,12 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // POST /api/admin/systems/order  { systemIds } - every system in BETA's drop-down lists, in
+        // POST /api/admin/boards/order  { boardIds } - every board in BETA's drop-down lists, in
         // the order wanted. 400 for a list that is not one, 409 for one that no longer matches BETA's
         // (or a file that cannot be read or written), 200 with what was rewritten.
         // ###########################################################################################
-        private static async Task<IResult> SetSystemOrderAsync(
-            SystemOrderRequest request,
+        private static async Task<IResult> SetBoardOrderAsync(
+            BoardOrderRequest request,
             HttpContext context,
             IAccountStore accounts,
             ServerOptions options,
@@ -212,7 +212,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            SystemOrderOutcome outcome = await SystemOrderFlow.SetAsync(
+            BoardOrderOutcome outcome = await BoardOrderFlow.SetAsync(
                 access!,
                 request,
                 options,
@@ -221,7 +221,7 @@ namespace CRT.Server.Handlers.Submissions
                 accounts,
                 DateTimeOffset.UtcNow,
                 cancellationToken,
-                loggerFactory.CreateLogger(typeof(SystemOrderFlow).FullName!));
+                loggerFactory.CreateLogger(typeof(BoardOrderFlow).FullName!));
 
             if (outcome.Answer is not null)
                 return Results.Ok(outcome.Answer);
@@ -232,14 +232,14 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // The two lists, and the bodies of changing a pool and removing unused files, are CRT.Data's
-        // ReviewApiContract records (MaintainerSystemsAnswer, MaintainerAccountsAnswer,
+        // ReviewApiContract records (MaintainerBoardsAnswer, MaintainerAccountsAnswer,
         // MaintainerChangeRequest, UnusedFilesRemoveRequest, UnusedFilesRemoveAnswer), shared with the
         // Maintainer tab.
 
         // ###########################################################################################
-        // GET /api/admin/systems - every system with its maintainers.
+        // GET /api/admin/boards - every board with its maintainers.
         // ###########################################################################################
-        private static async Task<IResult> GetSystemsAsync(
+        private static async Task<IResult> GetBoardsAsync(
             HttpContext context,
             IAccountStore accounts,
             ISubmissionStore submissions,
@@ -252,18 +252,18 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            IReadOnlyList<SystemWithMaintainers> systems = await MaintainerAssignmentFlows.ListSystemsAsync(
-                PublishedSystemLister.List(options.DataTreeRoot), submissions, accounts, cancellationToken);
+            IReadOnlyList<BoardWithMaintainers> boards = await MaintainerAssignmentFlows.ListBoardsAsync(
+                PublishedBoardLister.List(options.DataTreeRoot), submissions, accounts, cancellationToken);
 
-            return Results.Ok(new MaintainerSystemsAnswer(
-                systems.Select(system => new MaintainerSystemEntry(
-                    system.SystemId,
-                    system.Manufacturer,
-                    system.Hardware,
-                    system.Board,
-                    system.CurrentRevision,
-                    system.IsAccepting,
-                    system.Maintainers.Select(AdminEndpoints.ToMaintainer).ToList())).ToList()));
+            return Results.Ok(new MaintainerBoardsAnswer(
+                boards.Select(board => new MaintainerBoardEntry(
+                    board.BoardId,
+                    board.Manufacturer,
+                    board.Hardware,
+                    board.Board,
+                    board.CurrentRevision,
+                    board.IsAccepting,
+                    board.Maintainers.Select(AdminEndpoints.ToMaintainer).ToList())).ToList()));
         }
 
         // ###########################################################################################
@@ -296,7 +296,7 @@ namespace CRT.Server.Handlers.Submissions
                     account.IsLocked)).ToList()));
         }
 
-        // POST /api/admin/maintainers  { systemId, accountId }
+        // POST /api/admin/maintainers  { boardId, accountId }
         private static async Task<IResult> AddMaintainerAsync(
             MaintainerChangeRequest request,
             HttpContext context,
@@ -313,9 +313,9 @@ namespace CRT.Server.Handlers.Submissions
 
             MaintainerAssignmentOutcome outcome = await MaintainerAssignmentFlows.AddAsync(
                 access,
-                request?.SystemId,
+                request?.BoardId,
                 request?.AccountId ?? 0,
-                PublishedSystemLister.List(options.DataTreeRoot),
+                PublishedBoardLister.List(options.DataTreeRoot),
                 accounts,
                 submissions,
                 DateTimeOffset.UtcNow,
@@ -324,7 +324,7 @@ namespace CRT.Server.Handlers.Submissions
             return AdminEndpoints.ToResult(outcome, request);
         }
 
-        // POST /api/admin/maintainers/remove  { systemId, accountId }
+        // POST /api/admin/maintainers/remove  { boardId, accountId }
         private static async Task<IResult> RemoveMaintainerAsync(
             MaintainerChangeRequest request,
             HttpContext context,
@@ -338,12 +338,12 @@ namespace CRT.Server.Handlers.Submissions
                 return refusal;
 
             MaintainerAssignmentOutcome outcome = await MaintainerAssignmentFlows.RemoveAsync(
-                access, request?.SystemId, request?.AccountId ?? 0, accounts, DateTimeOffset.UtcNow, cancellationToken);
+                access, request?.BoardId, request?.AccountId ?? 0, accounts, DateTimeOffset.UtcNow, cancellationToken);
 
             return AdminEndpoints.ToResult(outcome, request);
         }
 
-        // POST /api/admin/maintainers/invite  { systemId, email }
+        // POST /api/admin/maintainers/invite  { boardId, email }
         private static async Task<IResult> InviteMaintainerAsync(
             MaintainerInviteRequest request,
             HttpContext context,
@@ -361,9 +361,9 @@ namespace CRT.Server.Handlers.Submissions
 
             MaintainerInvitationOutcome outcome = await MaintainerInvitationFlows.InviteAsync(
                 access,
-                request?.SystemId,
+                request?.BoardId,
                 request?.Email,
-                PublishedSystemLister.List(options.DataTreeRoot),
+                PublishedBoardLister.List(options.DataTreeRoot),
                 accounts,
                 submissions,
                 mailer,
@@ -502,15 +502,15 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // POST /api/admin/systems/delete/plan  { systemId } - what deleting it would remove. Reads
-        // every workbook in both trees when the system has files, so it takes seconds; writes nothing.
+        // POST /api/admin/boards/delete/plan  { boardId } - what deleting it would remove. Reads
+        // every workbook in both trees when the board has files, so it takes seconds; writes nothing.
         // A plan that cannot go ahead is still 200, carrying blockedBecause.
         // ###########################################################################################
-        private static async Task<IResult> PlanSystemDeletionAsync(
-            SystemDetailRequest request,
+        private static async Task<IResult> PlanBoardDeletionAsync(
+            BoardDetailRequest request,
             HttpContext context,
             IAccountStore accounts,
-            SystemDeletionFlow flow,
+            BoardDeletionFlow flow,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
@@ -520,18 +520,18 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            SystemDeletionOutcome outcome = await flow.PlanAsync(
-                access, request?.SystemId, options, DateTimeOffset.UtcNow, cancellationToken);
+            BoardDeletionOutcome outcome = await flow.PlanAsync(
+                access, request?.BoardId, options, DateTimeOffset.UtcNow, cancellationToken);
 
             return AdminEndpoints.RefusalFor(outcome) ?? Results.Ok(outcome.Plan!.ToAnswer());
         }
 
-        // POST /api/admin/systems/delete  { systemId, fingerprint, reason }
-        private static async Task<IResult> DeleteSystemAsync(
-            SystemDeleteRequest request,
+        // POST /api/admin/boards/delete  { boardId, fingerprint, reason }
+        private static async Task<IResult> DeleteBoardAsync(
+            BoardDeleteRequest request,
             HttpContext context,
             IAccountStore accounts,
-            SystemDeletionFlow flow,
+            BoardDeletionFlow flow,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
@@ -541,14 +541,14 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            SystemDeletionOutcome outcome = await flow.DeleteAsync(
-                access, request?.SystemId, request?.Fingerprint, request?.Reason, options, DateTimeOffset.UtcNow, cancellationToken);
+            BoardDeletionOutcome outcome = await flow.DeleteAsync(
+                access, request?.BoardId, request?.Fingerprint, request?.Reason, options, DateTimeOffset.UtcNow, cancellationToken);
 
             if (AdminEndpoints.RefusalFor(outcome) is IResult problem)
                 return problem;
 
-            return Results.Ok(new SystemDeleteAnswer(
-                outcome.Plan!.SystemId,
+            return Results.Ok(new BoardDeleteAnswer(
+                outcome.Plan!.BoardId,
                 outcome.BetaFilesRemoved,
                 outcome.ProductionFilesRemoved,
                 outcome.Plan.Submissions.Count,
@@ -557,7 +557,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // The same codes BETA's push-back answers: 503 not switched on, 403, 404, 409 blocked or
         // changed since it was shown, 400 anything else refused.
-        private static IResult? RefusalFor(SystemDeletionOutcome outcome)
+        private static IResult? RefusalFor(BoardDeletionOutcome outcome)
         {
             if (outcome.IsNotConfigured)
                 return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -577,7 +577,7 @@ namespace CRT.Server.Handlers.Submissions
         private static IResult ToResult(MaintainerAssignmentOutcome outcome, MaintainerChangeRequest? request)
         {
             if (outcome.IsDone)
-                return Results.Ok(new MaintainerChangeAnswer(request?.SystemId, request?.AccountId));
+                return Results.Ok(new MaintainerChangeAnswer(request?.BoardId, request?.AccountId));
 
             if (outcome.IsForbidden)
                 return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);

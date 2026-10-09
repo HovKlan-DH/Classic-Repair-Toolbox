@@ -16,21 +16,21 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
     <UserControl.Styles>
         <!-- THE QUEUE, GROUPED BY BOARD (2026-09-26, TabMaintainer.QueueItems.cs). -->
 
-        <!-- "New system" on a board's heading - the one badge left: a published system is the
+        <!-- "New board" on a board's heading - the one badge left: a published board is the
              ordinary case. Colours from CRT's App.axaml, per theme. -->
         <Style Selector="Border.Badge">
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="8,1" />
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Background" Value="{DynamicResource Badge_NewSystem_Bg}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Badge_NewSystem_Border}" />
+            <Setter Property="Background" Value="{DynamicResource Badge_NewBoard_Bg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Badge_NewBoard_Border}" />
         </Style>
 
         <Style Selector="Border.Badge TextBlock">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource Badge_NewSystem_Fg}" />
+            <Setter Property="Foreground" Value="{DynamicResource Badge_NewBoard_Fg}" />
         </Style>
 
         <!-- A board's heading: a disabled item, so it cannot be selected - drawn in the ordinary
@@ -56,7 +56,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
             <Setter Property="Padding" Value="22,5,10,6" />
         </Style>
 
-        <!-- A row in the BETA, Systems and Account lists: not under a heading, so not indented. -->
+        <!-- A row in the BETA, Boards and Account lists: not under a heading, so not indented. -->
         <Style Selector="ListBoxItem.ListEntry">
             <Setter Property="Padding" Value="10,6,10,7" />
         </Style>
@@ -143,7 +143,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 
         <!--
         The count on a button. ATTENTION (Review, BETA) is filled and only there when something waits
-        for this account; COUNT (Systems) is the discreet one the owner asked for - grey, always there
+        for this account; COUNT (Boards) is the discreet one the owner asked for - grey, always there
         once the list is read.
         -->
         <Style Selector="Border.ModeBadge">
@@ -251,7 +251,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                            Margin="0,4,0,0" />
                 <!--
                 PasswordChar, so a shoulder-surfer at a bench cannot read a maintainer credential -
-                this account can publish to every user of a system.
+                this account can publish to every user of a board.
                 -->
                 <TextBox x:Name="PasswordTextBox"
                          PasswordChar="*"
@@ -444,7 +444,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 
             <!--
             THE FOUR SCREENS (owner request, 2026-09-27: "it has these buttons in the top-left:
-            Review, BETA, Systems, Admin"; since named Systems, Contributor Submissions, BETA > Stable
+            Review, BETA, Boards, Admin"; since named Boards, Contributor Submissions, BETA > Stable
             and Admin, in that order - and since 2026-10-04 "Queue: Contributor submissions", "Queue:
             Awaiting push from BETA to stable" and "Administrator activities", from CRT.Data's
             MaintainerScreenWording, which every message naming a screen reads too - and the last
@@ -460,8 +460,8 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
             as tabs under them (the same red underline, ScreenTab), and a submission's views as one
             joined switch (Segment). Still Buttons, so the screens and their tests are unchanged.
 
-            Review and BETA carry a badge counting the SYSTEMS that wait for this account; Systems a
-            discreet one counting all systems. Account is every maintainer's since 2026-10-04 (owner
+            Review and BETA carry a badge counting the BOARDS that wait for this account; Boards a
+            discreet one counting all boards. Account is every maintainer's since 2026-10-04 (owner
             request: "make this tab available to all maintainers") - it was "Admin", hidden from all
             but the administrator. Its administrator's entries still are hidden from everybody else,
             the server refusing them anyway (isAdministrator in the queue answer).
@@ -476,13 +476,13 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                            Orientation="Horizontal"
                            ItemSpacing="4">
 
-                    <!-- Systems FIRST (owner request, 2026-09-27); Review is still the screen a
+                    <!-- Boards FIRST (owner request, 2026-09-27); Review is still the screen a
                          sign-in opens on. -->
-                    <Button x:Name="SystemsModeButton" Classes="ScreenTab" Click="OnModeClick">
+                    <Button x:Name="BoardsModeButton" Classes="ScreenTab" Click="OnModeClick">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Systems}" VerticalAlignment="Center" />
-                            <Border x:Name="SystemsBadge" Classes="ModeBadge Count" IsVisible="False">
-                                <TextBlock x:Name="SystemsBadgeText" />
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Boards}" VerticalAlignment="Center" />
+                            <Border x:Name="BoardsBadge" Classes="ModeBadge Count" IsVisible="False">
+                                <TextBlock x:Name="BoardsBadgeText" />
                             </Border>
                         </StackPanel>
                     </Button>
@@ -552,7 +552,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                  SelectionChanged="OnQueueSelectionChanged" />
                     </DockPanel>
 
-                    <!-- BETA: the systems waiting for production that this account may publish
+                    <!-- BETA: the boards waiting for production that this account may publish
                          (TabMaintainer.Beta.cs). -->
                     <DockPanel x:Name="BetaListPanel" IsVisible="False">
                         <TextBlock DockPanel.Dock="Top"
@@ -566,17 +566,17 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                  SelectionChanged="OnBetaSelectionChanged" />
                     </DockPanel>
 
-                    <!-- Systems: every system (TabMaintainer.Systems.cs). -->
-                    <DockPanel x:Name="SystemsListPanel" IsVisible="False">
+                    <!-- Boards: every board (TabMaintainer.Boards.cs). -->
+                    <DockPanel x:Name="BoardsListPanel" IsVisible="False">
                         <TextBlock DockPanel.Dock="Top"
-                                   x:Name="SystemsListMessageText"
+                                   x:Name="BoardsListMessageText"
                                    TextWrapping="Wrap"
                                    IsVisible="False"
                                    Margin="0,0,0,8" />
 
-                        <ListBox x:Name="SystemsList"
+                        <ListBox x:Name="BoardsList"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 SelectionChanged="OnSystemsSelectionChanged" />
+                                 SelectionChanged="OnBoardsSelectionChanged" />
                     </DockPanel>
 
                     <!--
@@ -587,7 +587,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                     padlock after its name (owner request, 2026-10-04; App.axaml's AdminLock style,
                     CRT's one padlock for anything only the administrator can use). It was "Admin", the administrator's
                     alone, until then. Maintainers are set here again since 2026-10-04 (owner
-                    request) - they were on the Systems screen from 2026-09-27.
+                    request) - they were on the Boards screen from 2026-09-27.
                     -->
                     <ListBox x:Name="AccountList"
                              IsVisible="False"
@@ -621,16 +621,16 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                     <TextBlock Text="Maintainers" FontSize="13" />
                                     <TextBlock Classes="AdminLock" Text="&#xf023;" />
                                 </StackPanel>
-                                <TextBlock Text="Who maintains each system - add, invite or remove" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                                <TextBlock Text="Who maintains each board - add, invite or remove" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
                         <!-- The order of CRT's drop-down lists, in BETA and the stable source
                              (owner request, 2026-10-04). -->
-                        <ListBoxItem x:Name="SystemOrderItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="BoardOrderItem" Classes="ListEntry AdminOnly">
                             <StackPanel Spacing="1">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Order of systems" FontSize="13" />
+                                    <TextBlock Text="Order of boards" FontSize="13" />
                                     <TextBlock Classes="AdminLock" Text="&#xf023;" />
                                 </StackPanel>
                                 <TextBlock Text="The order of CRT's drop-down lists, in BETA and the stable source" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
@@ -657,11 +657,11 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                             </StackPanel>
                         </ListBoxItem>
 
-                        <!-- Deleting a system completely (owner request, 2026-10-03). -->
-                        <ListBoxItem x:Name="DeleteSystemItem" Classes="ListEntry AdminOnly">
+                        <!-- Deleting a board completely (owner request, 2026-10-03). -->
+                        <ListBoxItem x:Name="DeleteBoardItem" Classes="ListEntry AdminOnly">
                             <StackPanel Spacing="1">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Delete a system" FontSize="13" />
+                                    <TextBlock Text="Delete a board" FontSize="13" />
                                     <TextBlock Classes="AdminLock" Text="&#xf023;" />
                                 </StackPanel>
                                 <TextBlock Text="From the BETA and the stable data and the database, for good" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
@@ -704,7 +704,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 
                 <DockPanel x:Name="ReviewPanel">
                     <!--
-                    Said until a submission is chosen. The submission's details - badges, system, what
+                    Said until a submission is chosen. The submission's details - badges, board, what
                     the contributor wrote - are in its queue row (TabMaintainer.QueueItems.cs), not
                     repeated here, so the table gets the room (owner request, 2026-09-26).
                     -->
@@ -829,7 +829,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                     when there is something to say, what the table CANNOT show:
                                     highlights, calibration points, the automatic checks' warnings
                                     (ReviewNotInTable). A submission always opens on it.
-                      Files       - the system's files after approving (TabMaintainer.Files.cs). Its
+                      Files       - the board's files after approving (TabMaintainer.Files.cs). Its
                                     button counts the files the submission adds, replaces or removes.
                       Contributor - who sent it and everything they sent before
                                     (TabMaintainer.Contributor.cs).
@@ -929,20 +929,20 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                     </DockPanel>
                 </DockPanel>
 
-                <!-- BETA: one system's way to production, or back to the queue. -->
+                <!-- BETA: one board's way to production, or back to the queue. -->
                 <local:BetaView x:Name="BetaDetailView" IsVisible="False" />
 
-                <!-- Systems: one system's maintainers, contributors and submissions. -->
-                <local:SystemView x:Name="SystemDetailView" IsVisible="False" />
+                <!-- Boards: one board's maintainers, contributors and submissions. -->
+                <local:BoardDetailView x:Name="BoardDetailPane" IsVisible="False" />
 
                 <!-- Account: whichever is chosen on the left - "My account" for everybody, then the
                      administrator's own panels. -->
                 <local:MyAccountView x:Name="MyAccountPanel" IsVisible="False" />
                 <local:MaintainerPoolView x:Name="MaintainerPoolAdminView" IsVisible="False" />
-                <local:SystemOrderView x:Name="SystemOrderAdminView" IsVisible="False" />
+                <local:BoardOrderView x:Name="BoardOrderAdminView" IsVisible="False" />
                 <local:UnusedFilesView x:Name="UnusedFilesAdminView" IsVisible="False" />
                 <local:RebuildManifestsView x:Name="RebuildManifestsAdminView" IsVisible="False" />
-                <local:SystemDeletionView x:Name="SystemDeletionAdminView" IsVisible="False" />
+                <local:BoardDeletionView x:Name="BoardDeletionAdminView" IsVisible="False" />
                 <local:ApiUsageView x:Name="ApiUsageAdminView" IsVisible="False" />
                 <local:DataResetView x:Name="DataResetAdminView" IsVisible="False" />
 

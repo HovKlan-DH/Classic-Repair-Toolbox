@@ -13,7 +13,7 @@ namespace CRT.Data.Tests;
 // well-defined restore.
 //
 // The limit that survives, and the reason the plan names its submissions: a rollback is PER
-// SYSTEM. Three contributors merged since the last promotion means all three go back.
+// BOARD. Three contributors merged since the last promotion means all three go back.
 // ###########################################################################################
 public sealed class BetaRollbackPlanTests
 {
@@ -60,13 +60,13 @@ public sealed class BetaRollbackPlanTests
     }
 
     // ###########################################################################################
-    // *** A SYSTEM NEVER PROMOTED IS A REMOVAL, NOT A RESTORE (owner decision, 2026-09-27). ***
+    // *** A BOARD NEVER PROMOTED IS A REMOVAL, NOT A RESTORE (owner decision, 2026-09-27). ***
     // Production has nothing to restore from, so the board leaves the BETA tree entirely. The
     // alternative - "restore nothing" - would silently leave the bad board exactly as it is while
     // reporting success.
     // ###########################################################################################
     [Fact]
-    public void A_system_never_promoted_is_removed_from_beta_rather_than_restored()
+    public void A_board_never_promoted_is_removed_from_beta_rather_than_restored()
     {
         BetaRollbackPlanResult plan = BetaRollbackPlan.Build(
             betaOwnFiles: ["board/sheet.png", "board/u8.png"],
@@ -81,7 +81,7 @@ public sealed class BetaRollbackPlanTests
 
     // ###########################################################################################
     // *** EVERY SUBMISSION SINCE THE LAST PROMOTION GOES BACK, and the plan says so by name. ***
-    // A rollback is per SYSTEM: PublishMerge replaces rows wholesale, so nothing records whose row
+    // A rollback is per BOARD: PublishMerge replaces rows wholesale, so nothing records whose row
     // was whose and one contributor's work cannot be picked out. Naming them is what stops the
     // feature quietly discarding two other people's accepted work.
     // ###########################################################################################
@@ -171,12 +171,12 @@ public sealed class BetaRollbackPlanTests
 
     // ###########################################################################################
     // *** AN EMPTY PRODUCTION LISTING IS NOT "NEVER PROMOTED" (code review, 2026-09-27). *** A
-    // promoted system whose production folder is missing or unreadable lists nothing too - and read
+    // promoted board whose production folder is missing or unreadable lists nothing too - and read
     // as never promoted, its board was wiped out of BETA. Only the record decides; with it, the plan
     // does nothing at all.
     // ###########################################################################################
     [Fact]
-    public void A_promoted_system_whose_production_folder_lists_nothing_is_neither_restored_nor_removed()
+    public void A_promoted_board_whose_production_folder_lists_nothing_is_neither_restored_nor_removed()
     {
         BetaRollbackPlanResult plan = BetaRollbackPlan.Build(
             betaOwnFiles: ["board/sheet.png", "board/Data C64 250407.xlsx"],
@@ -191,9 +191,9 @@ public sealed class BetaRollbackPlanTests
         Assert.Empty(plan.SharedRestored);
     }
 
-    // The same empty listing for a system never promoted is still the removal it always was.
+    // The same empty listing for a board never promoted is still the removal it always was.
     [Fact]
-    public void A_system_never_promoted_is_still_removed_when_production_lists_nothing()
+    public void A_board_never_promoted_is_still_removed_when_production_lists_nothing()
     {
         BetaRollbackPlanResult plan = BetaRollbackPlan.Build(
             betaOwnFiles: ["board/sheet.png"],
@@ -221,7 +221,7 @@ public sealed class BetaRollbackPlanTests
 
     // ###########################################################################################
     // A shared file the submission ADDED has nothing in production to go back to - and it STAYS
-    // (owner decision, 2026-09-27): nothing outside the system's own folder is removed
+    // (owner decision, 2026-09-27): nothing outside the board's own folder is removed
     // automatically. Unused, it is Account > Unused files' to clear.
     // ###########################################################################################
     [Fact]
@@ -261,10 +261,10 @@ public sealed class BetaRollbackPlanTests
         Assert.False(plan.TouchesSharedFiles);
     }
 
-    // A never-promoted system's shared changes follow the same rule: its own folder leaves BETA,
+    // A never-promoted board's shared changes follow the same rule: its own folder leaves BETA,
     // and a shared file it changed goes back to what production has for the OTHER boards.
     [Fact]
-    public void A_never_promoted_system_still_puts_its_shared_changes_back()
+    public void A_never_promoted_board_still_puts_its_shared_changes_back()
     {
         BetaRollbackPlanResult plan = BetaRollbackPlan.Build(
             betaOwnFiles: ["board/sheet.png"],

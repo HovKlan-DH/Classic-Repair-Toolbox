@@ -104,7 +104,7 @@ namespace CRT.Server.Handlers.Submissions
 
             // A maintainer or administrator is exempt from the per-address submission limit - trusted
             // by the database rows, not by anything the request says. See SubmissionRateLimitPolicy.
-            // "Maintainer" means in at least one system's pool (Phase 6 roles), read here per request
+            // "Maintainer" means in at least one board's pool (Phase 6 roles), read here per request
             // like everywhere else.
             Submitter submitter = account is null
                 ? Submitter.Anonymous(manifest.ContactEmail, SubmissionEndpoints.ClientAddress(context))
@@ -112,9 +112,9 @@ namespace CRT.Server.Handlers.Submissions
                     account.Id,
                     SubmissionEndpoints.ClientAddress(context),
                     isTrusted: ReviewAuthority.CanReviewAnything(new ReviewAccess(
-                        account, await accounts.GetReviewedSystemIdsAsync(account.Id, cancellationToken))));
+                        account, await accounts.GetReviewedBoardIdsAsync(account.Id, cancellationToken))));
 
-            // Where this system's files would land. Used ONLY to resolve and containment-check the
+            // Where this board's files would land. Used ONLY to resolve and containment-check the
             // submitted paths - nothing is written here at submission time, because nothing is
             // published until a maintainer promotes it by hand.
             string containmentRoot = SubmissionEndpoints.ResolveContainmentRoot(options);
@@ -259,7 +259,7 @@ namespace CRT.Server.Handlers.Submissions
             // *** THE MAINTAINERS ARE TOLD, AFTER THE SUBMISSION IS DURABLY QUEUED (Phase 6 task 11,
             // 2026-09-25). *** Nothing here may fail the request: the contributor's upload is
             // complete and recorded, and a mail problem is the server's to log, not theirs to
-            // retry. Who is told is SubmissionRouting's decision - the system's maintainers, or the
+            // retry. Who is told is SubmissionRouting's decision - the board's maintainers, or the
             // administrators when there are none or the submission changes shared files.
             // ###########################################################################################
             if (result.IsAccepted)
@@ -273,13 +273,13 @@ namespace CRT.Server.Handlers.Submissions
                         IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForAsync(
                             record, accounts, cancellationToken);
 
-                        // A completely new system or an update (owner request, 2026-10-03) - new when
+                        // A completely new board or an update (owner request, 2026-10-03) - new when
                         // the BETA tree holds nothing of it, the review queue's own test
-                        // (ReviewQueueFlow), so the mail and the queue's "New system" heading agree.
-                        bool isNewSystem = !PublishedBoardLocator.LocateSystem(options.DataTreeRoot, record.SystemId).Exists;
+                        // (ReviewQueueFlow), so the mail and the queue's "New board" heading agree.
+                        bool isNewBoard = !PublishedBoardLocator.LocateBoard(options.DataTreeRoot, record.BoardId).Exists;
 
                         await notifier.NotifyMaintainersAsync(
-                            recipients, record.SystemId, record.Id, record.Summary, isNewSystem, cancellationToken);
+                            recipients, record.BoardId, record.Id, record.Summary, isNewBoard, cancellationToken);
                     }
                 }
                 catch (Exception ex)
@@ -321,10 +321,10 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<ValidationFinding> findings =
                 await store.GetFindingsAsync(submissionId, cancellationToken);
 
-            // "merged" is in BETA; once the system has been published to production since, the
+            // "merged" is in BETA; once the board has been published to production since, the
             // contributor is told "published" - see ProductionPromotionRules.ContributorFacingState.
-            SystemRecord? system = submission!.State == SubmissionState.Merged
-                ? await store.FindSystemAsync(submission.SystemId, cancellationToken)
+            BoardRecord? board = submission!.State == SubmissionState.Merged
+                ? await store.FindBoardAsync(submission.BoardId, cancellationToken)
                 : null;
 
             // Whether a BETA rollback returned it (migration 0015) - only a pending row can read so.
@@ -336,7 +336,7 @@ namespace CRT.Server.Handlers.Submissions
             return Results.Ok(SubmissionEndpoints.BuildStatus(
                 submission,
                 ProductionPromotionRules.ContributorFacingState(
-                    submission.State, submission.DecidedUtc, system?.ProductionPublishedUtc, returnedUtc),
+                    submission.State, submission.DecidedUtc, board?.ProductionPublishedUtc, returnedUtc),
                 amendedByMaintainer: await store.GetLatestAmendmentAsync(submissionId, cancellationToken) is not null,
                 findings));
         }
@@ -362,7 +362,7 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<ValidationFinding> findings) => new()
         {
             Id = submission.Id,
-            SystemId = submission.SystemId,
+            BoardId = submission.BoardId,
             State = contributorFacingState,
             Summary = submission.Summary ?? string.Empty,
             CreatedUtc = submission.CreatedUtc,
@@ -440,12 +440,12 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Where this system's files would live in the BETA tree.
+        // Where this board's files would live in the BETA tree.
         //
         // BUILT FROM THE CONFIGURED ROOT PLUS THE MANIFEST'S OWN IDENTITY, and every path in the
         // submission is then containment-checked against it. The identity values are untrusted, so
         // they are passed through SubmissionPathRules like everything else - a manufacturer of
-        // "../.." would otherwise relocate the whole system folder.
+        // "../.." would otherwise relocate the whole board folder.
         //
         // The folder is NOT created here and nothing is written to it: a submission is queued, and
         // publication remains a manual act by the project owner.
@@ -453,14 +453,14 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // The root a submission's file paths are contained to.
         //
-        // *** THE DATA ROOT, NOT THE SYSTEM'S OWN FOLDER (fixed 2026-09-23). *** This used to
+        // *** THE DATA ROOT, NOT THE BOARD'S OWN FOLDER (fixed 2026-09-23). *** This used to
         // resolve down to "<root>/Commodore/C64/250407" and hand that over as the containment base,
         // which was wrong twice over:
         //
         //   - a submitted path is ALREADY data-root-relative ("Commodore/C64/250407/Sheet1.png"),
-        //     so validating it against the system folder measured it from one level too deep;
+        //     so validating it against the board folder measured it from one level too deep;
         //   - a SHARED file ("Commodore/Shared files/Component images/6526.png") sits outside the
-        //     system folder by design, so a submission citing one would have been refused.
+        //     board folder by design, so a submission citing one would have been refused.
         //
         // The publish side made the identical mistake and it is what actually broke: PublishPlan
         // wrote 1,215 files into "250407/Commodore/C64/250407/...", duplicating the whole board

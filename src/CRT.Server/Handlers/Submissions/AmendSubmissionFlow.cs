@@ -161,7 +161,7 @@ namespace CRT.Server.Handlers.Submissions
             var amended = new SubmissionManifest
             {
                 FormatVersion = current.FormatVersion,
-                SystemId = current.SystemId,
+                BoardId = current.BoardId,
                 Manufacturer = current.Manufacturer,
                 Hardware = current.Hardware,
                 Board = current.Board,
@@ -240,7 +240,7 @@ namespace CRT.Server.Handlers.Submissions
                     access.Account.Email,
                     AmendSubmissionFlow.AmendedAction,
                     $"#{submissionId}",
-                    $"{record.SystemId}: amendment {newVersion}, {amended.Files.Count} file(s)",
+                    $"{record.BoardId}: amendment {newVersion}, {amended.Files.Count} file(s)",
                     nowUtc),
                 cancellationToken).ConfigureAwait(false);
 

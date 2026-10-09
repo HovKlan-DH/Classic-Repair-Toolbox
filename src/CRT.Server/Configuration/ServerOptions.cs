@@ -73,15 +73,15 @@ namespace CRT.Server.Configuration
             !string.IsNullOrWhiteSpace(this.ProductionPublicDataBaseUrl);
 
         // -----------------------------------------------------------------------------------
-        // Whether ONLY ADMINISTRATORS may publish a system from BETA to the stable source (owner
+        // Whether ONLY ADMINISTRATORS may publish a board from BETA to the stable source (owner
         // request, 2026-10-05: "for now ... I do not want to pollute the stable yet. Only me, as
         // admin, should be able to publish to stable").
         //
-        // ON: a maintainer still sees the system waiting, its plan, and may push it back or reject
+        // ON: a maintainer still sees the board waiting, its plan, and may push it back or reject
         // it - but the publish itself is refused (403, CRT.Data's StablePublishing sentence), the
         // plan says so, and CRT greys the button out. The shared-file rule's maintainer approval is
         // not asked for: nobody but the administrator could give it, and the administrator's own
-        // approval is what that rule exists to get. OFF: a maintainer publishes their own systems,
+        // approval is what that rule exists to get. OFF: a maintainer publishes their own boards,
         // as designed on 2026-09-25.
         //
         // A control, and its safe value is knowable, so it defaults ON - forgetting it keeps the
@@ -91,9 +91,9 @@ namespace CRT.Server.Configuration
         public bool ProductionPublishingAdministratorsOnly { get; set; } = true;
 
         // ###########################################################################################
-        // The tree the Systems screen READS as the stable source: the promotion's own root, else the
+        // The tree the Boards screen READS as the stable source: the promotion's own root, else the
         // older ProductionTreeRoot - or null when neither is set. Reading needs no publishing switched
-        // on. ONE rule for every reader (code review, 2026-10-04): the overview said a system was
+        // on. ONE rule for every reader (code review, 2026-10-04): the overview said a board was
         // in the stable source from this root, which offers CRT's "Data: Stable" switch, while the
         // stable table and files asked for publishing to be configured - so every pick of the switch
         // answered 404 on a server that only had ProductionTreeRoot.

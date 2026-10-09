@@ -12,33 +12,33 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Merged = new(2026, 9, 25, 10, 0, 0, TimeSpan.Zero);
 
-        private static SystemRecord System(string? beta, string? production) =>
+        private static BoardRecord Board(string? beta, string? production) =>
             new("A/B/C", "A", "B", "C", beta is null ? null : "2026-September-25", true, beta, null, production, null);
 
         [Fact]
-        public void A_system_whose_BETA_hash_differs_from_productions_is_awaiting_production()
+        public void A_board_whose_BETA_hash_differs_from_productions_is_awaiting_production()
         {
-            Assert.True(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.System("new", "old")));
-            Assert.True(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.System("new", null)));
+            Assert.True(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.Board("new", "old")));
+            Assert.True(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.Board("new", null)));
         }
 
         [Fact]
-        public void A_system_production_already_matches_is_not_awaiting()
+        public void A_board_production_already_matches_is_not_awaiting()
         {
-            Assert.False(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.System("same", "same")));
+            Assert.False(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.Board("same", "same")));
         }
 
         [Fact]
-        public void A_system_never_published_through_the_pipeline_is_waiting_for_NOTHING()
+        public void A_board_never_published_through_the_pipeline_is_waiting_for_NOTHING()
         {
             // A shipped board nobody has touched has no BETA content hash; listing it would offer
             // every shipped board as "ahead of production".
-            Assert.False(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.System(null, null)));
+            Assert.False(ProductionPromotionRules.IsAwaitingProduction(ProductionPromotionRulesTests.Board(null, null)));
             Assert.False(ProductionPromotionRules.IsAwaitingProduction(null));
         }
 
         [Fact]
-        public void A_merged_submission_reads_as_PUBLISHED_once_its_system_went_to_production_after_it()
+        public void A_merged_submission_reads_as_PUBLISHED_once_its_board_went_to_production_after_it()
         {
             Assert.Equal("published", ProductionPromotionRules.ContributorFacingState(
                 SubmissionState.Merged, ProductionPromotionRulesTests.Merged, ProductionPromotionRulesTests.Merged.AddHours(2)));
@@ -237,12 +237,12 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** ONCE THIS ACCOUNT HAS APPROVED, THE SYSTEM WAITS FOR SOMEBODY ELSE. *** A shared-file
+        // *** ONCE THIS ACCOUNT HAS APPROVED, THE BOARD WAITS FOR SOMEBODY ELSE. *** A shared-file
         // promotion needs the maintainer AND the administrator; after the first of them, the badge
         // must stop counting it for that person and keep counting it for the other.
         // ###########################################################################################
         [Fact]
-        public void A_system_this_account_already_approved_waits_for_the_other_approver()
+        public void A_board_this_account_already_approved_waits_for_the_other_approver()
         {
             GivenApproval[] given = [new(ApproverRole.Maintainer, "Anna", ProductionPromotionRulesTests.Merged, AccountId: 7)];
 
@@ -252,7 +252,7 @@ namespace CRT.Server.Tests
 
         // Nothing approved yet: anyone who may publish it can act on it.
         [Fact]
-        public void With_no_approval_given_the_system_waits_for_everyone_who_may_publish_it()
+        public void With_no_approval_given_the_board_waits_for_everyone_who_may_publish_it()
         {
             Assert.True(ProductionPromotionRules.AwaitsAccount([], accountId: 7));
             Assert.True(ProductionPromotionRules.AwaitsAccount(null, accountId: 7));
@@ -260,11 +260,11 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // While only administrators publish to stable, an administrator's approval always completes
-        // the publish - so a system waits for them even when they approved it before the setting was
+        // the publish - so a board waits for them even when they approved it before the setting was
         // switched on (code review, 2026-10-05).
         // ###########################################################################################
         [Fact]
-        public void While_only_administrators_publish_the_system_waits_for_an_administrator_who_already_approved()
+        public void While_only_administrators_publish_the_board_waits_for_an_administrator_who_already_approved()
         {
             GivenApproval[] given = [new(ApproverRole.Administrator, "Dennis", ProductionPromotionRulesTests.Merged, AccountId: 1)];
 

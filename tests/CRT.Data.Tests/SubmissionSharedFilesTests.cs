@@ -6,7 +6,7 @@ namespace CRT.Data.Tests
 {
     // ###########################################################################################
     // Covers SubmissionSharedFiles - whether a submission changes a shared file, which is what
-    // sends it to the administrator rather than to the system's maintainers (Phase 6 roles).
+    // sends it to the administrator rather than to the board's maintainers (Phase 6 roles).
     //
     // The property that matters most is the NEGATIVE one: a board that merely USES a shared image
     // unchanged must not count, or nearly every submission would bypass its maintainers.
@@ -20,7 +20,7 @@ namespace CRT.Data.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"

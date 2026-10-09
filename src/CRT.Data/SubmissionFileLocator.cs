@@ -6,15 +6,15 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // WHERE ONE SUBMITTED FILE'S BYTES ACTUALLY ARE.
     //
-    // A submission carries the system as it should READ after the merge, which means its file list
+    // A submission carries the board as it should READ after the merge, which means its file list
     // is drawn from the MERGED board data - official rows plus drafted ones. Those two kinds of row
     // do not keep their bytes in the same place, and that is not an accident:
     //
     //   - an OFFICIALLY published file lives under Data/, the sync-owned tree;
-    //   - a DRAFTED file lives under "<draft system folder>/Files/", because Data/ is freely
+    //   - a DRAFTED file lives under "<draft board folder>/Files/", because Data/ is freely
     //     overwritten by the next sync and a drafted attachment there would simply vanish.
     //
-    // So a draft over a published system - a typo fix that adds one new photo to a board with 240
+    // So a draft over a published board - a typo fix that adds one new photo to a board with 240
     // existing ones - references BOTH roots in a single submission. Resolving the whole list
     // against only the draft folder reports 240 published files as "not on disk"; resolving it
     // against only Data/ misses the one file the contributor actually made.
@@ -46,7 +46,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static bool TryLocate(
             string dataRoot,
-            string draftSystemFolder,
+            string draftBoardFolder,
             string relativePath,
             out string absolutePath,
             out string reason)
@@ -61,7 +61,7 @@ namespace Handlers.DataHandling
             //
             // It used to live under a "Files" subfolder of the draft, with the stored path appended
             // whole. A draft folder is now a BOARD folder, so the file sits where a published board
-            // keeps it - which means the system's own "Manufacturer/Hardware/Board/" prefix has to
+            // keeps it - which means the board's own "Manufacturer/Hardware/Board/" prefix has to
             // be stripped, because the draft folder already IS those segments.
             //
             // Order flipped to match DraftFileResolver: when a draft exists its files ARE the
@@ -77,10 +77,10 @@ namespace Handlers.DataHandling
             string draftedRelative = relativePath;
             string draftRoot = string.Empty;
 
-            if (!string.IsNullOrWhiteSpace(draftSystemFolder))
+            if (!string.IsNullOrWhiteSpace(draftBoardFolder))
             {
-                string? withinSystem = DraftFolderLayout.RelativeToSystemFolder(
-                    SubmissionFileLocator.SystemKeyFromFolder(draftSystemFolder),
+                string? withinBoard = DraftFolderLayout.RelativeToBoardFolder(
+                    SubmissionFileLocator.BoardKeyFromFolder(draftBoardFolder),
                     relativePath);
 
                 // A file OUTSIDE the board - a new image the contributor filed in a shared folder -
@@ -88,8 +88,8 @@ namespace Handlers.DataHandling
                 // DraftFileResolver.BuildDraftFileDestination writes it. Looking only for the
                 // board's own files reported such an attachment as missing although it was on disk
                 // (owner report, 2026-09-25: "HotCPU.png").
-                draftRoot = draftSystemFolder;
-                draftedRelative = withinSystem ?? relativePath;
+                draftRoot = draftBoardFolder;
+                draftedRelative = withinBoard ?? relativePath;
             }
 
             foreach ((string root, string relative) in new[]
@@ -134,13 +134,13 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The system identity a draft folder represents - see DraftFileResolver.SystemKeyFromFolder,
-        // which does the same job for the same reason. RelativeToSystemFolder ignores everything
+        // The board identity a draft folder represents - see DraftFileResolver.BoardKeyFromFolder,
+        // which does the same job for the same reason. RelativeToBoardFolder ignores everything
         // after the last "/", so only the folder's own last three segments matter.
         // ###########################################################################################
-        private static string SystemKeyFromFolder(string draftSystemFolder)
+        private static string BoardKeyFromFolder(string draftBoardFolder)
         {
-            string[] segments = (draftSystemFolder ?? string.Empty)
+            string[] segments = (draftBoardFolder ?? string.Empty)
                 .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
                     StringSplitOptions.RemoveEmptyEntries);
 

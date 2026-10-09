@@ -9,7 +9,7 @@ namespace CRT.Server.Handlers.Submissions
     // A submission sent while SIGNED IN carries the account, and usually no contact address of its
     // own - so everything reading SubmissionRecord.ContactEmail alone found nobody for exactly the
     // account-holding contributors: the production panel listed "(no contact address)", and the
-    // push-back and "now in production" mails were skipped for them, while the Systems screen beside
+    // push-back and "now in production" mails were skipped for them, while the Boards screen beside
     // them did name the account's address. This is the one rule for all of them, the same one
     // ContributorHistory already applied: the account's address when there is an account, the
     // contact address otherwise.

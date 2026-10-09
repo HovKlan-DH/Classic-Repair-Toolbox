@@ -9,27 +9,27 @@ namespace CRT.Server.Handlers.Submissions
     public static class ProductionPromotionRules
     {
         // ###########################################################################################
-        // Is this system's BETA state newer than what Production has?
+        // Is this board's BETA state newer than what Production has?
         //
-        // Only a system with a BETA content hash can be - that hash is written by every publish,
+        // Only a board with a BETA content hash can be - that hash is written by every publish,
         // so a shipped board nobody has published through the pipeline is waiting for nothing.
         // Compared on the HASH rather than the revision date, because two publishes on one day
         // share a revision date and the second would otherwise never reach Production.
         // ###########################################################################################
-        public static bool IsAwaitingProduction(SystemRecord? system)
+        public static bool IsAwaitingProduction(BoardRecord? board)
         {
-            if (system is null || string.IsNullOrWhiteSpace(system.ContentHash))
+            if (board is null || string.IsNullOrWhiteSpace(board.ContentHash))
                 return false;
 
-            return !string.Equals(system.ContentHash, system.ProductionContentHash, StringComparison.Ordinal);
+            return !string.Equals(board.ContentHash, board.ProductionContentHash, StringComparison.Ordinal);
         }
 
         // ###########################################################################################
         // The state a CONTRIBUTOR is told about their submission.
         //
         // *** "merged" NOW MEANS "IN BETA". *** A merged submission is in the BETA data and reaches
-        // everyone only when its system is promoted. So a merged submission decided at or before
-        // the system's last promotion went out with it, and the contributor is told "published" -
+        // everyone only when its board is promoted. So a merged submission decided at or before
+        // the board's last promotion went out with it, and the contributor is told "published" -
         // which CRT shows as "Published to the stable source". Before that they are told "merged", which CRT
         // shows as "Published to the BETA source".
         //
@@ -39,7 +39,7 @@ namespace CRT.Server.Handlers.Submissions
         public static string ContributorFacingState(
             string state,
             DateTimeOffset? decidedUtc,
-            DateTimeOffset? systemProductionPublishedUtc,
+            DateTimeOffset? boardProductionPublishedUtc,
             DateTimeOffset? returnedUtc = null)
         {
             // ###########################################################################################
@@ -66,10 +66,10 @@ namespace CRT.Server.Handlers.Submissions
             if (!string.Equals(state, SubmissionState.Merged, StringComparison.Ordinal))
                 return state;
 
-            if (decidedUtc is null || systemProductionPublishedUtc is null)
+            if (decidedUtc is null || boardProductionPublishedUtc is null)
                 return state;
 
-            return systemProductionPublishedUtc.Value >= decidedUtc.Value
+            return boardProductionPublishedUtc.Value >= decidedUtc.Value
                 ? ProductionPromotionRules.PublishedState
                 : state;
         }
@@ -133,11 +133,11 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Does this system, waiting for production, wait for THIS account (owner request,
-        // 2026-09-27 - the BETA button's badge counts "systems that need your attention")?
+        // Does this board, waiting for production, wait for THIS account (owner request,
+        // 2026-09-27 - the BETA button's badge counts "boards that need your attention")?
         //
         // Yes unless the account has already given its production approval for the BETA state on
-        // offer: then the system waits for the OTHER approver a shared-file change needs, and there
+        // offer: then the board waits for the OTHER approver a shared-file change needs, and there
         // is nothing for this account to do. The approvals are per BETA content hash, so one given
         // for an earlier BETA state never counts - new content needs a new look.
         //
@@ -147,7 +147,7 @@ namespace CRT.Server.Handlers.Submissions
         //
         // *** WHILE ONLY ADMINISTRATORS PUBLISH TO STABLE, ALWAYS YES (code review, 2026-10-05). ***
         // Nobody else's approval is asked for then, so an administrator's own always completes the
-        // publish - even one given BEFORE the setting was switched on, which left the system "with the
+        // publish - even one given BEFORE the setting was switched on, which left the board "with the
         // other approver", dimmed and off the badge, with nobody prompted to finish it. Asked only of
         // an account that may publish to stable (ReviewAuthority.CanPublishToProduction).
         // ###########################################################################################

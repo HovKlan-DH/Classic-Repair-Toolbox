@@ -31,8 +31,8 @@ namespace Handlers.MaintainerHandling
             ArgumentNullException.ThrowIfNull(table);
 
             return table.Published is null
-                ? "Nothing of this system is published yet, so only a change you make here is marked. A change you save becomes the submission's content before you decide on it."
-                : "Coloured against the published board. A change you save here becomes the submission's content before you decide on it.";
+                ? "Nothing of this board is published yet, so only a change you make here is marked. A change you save becomes the submission's content before you decide on it."
+                : "Coloured against the board in the BETA source. A change you save here becomes the submission's content before you decide on it.";
         }
 
         // After a save: what it did, and any warnings the server raised about the new content.

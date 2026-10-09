@@ -14,27 +14,27 @@ namespace Handlers.DataHandling
         public string HardwareNotes { get; init; } = string.Empty;
 
         // ###########################################################################################
-        // True for a system that exists only as a local draft - created through "Add a new system"
+        // True for a board that exists only as a local draft - created through "Add a new board"
         // (NewContributeStrategy.md Phase 2, session 2c, task 9) and never synced, so its
-        // ExcelDataFile names a file that does not exist and never will (see NewSystemIdentity).
+        // ExcelDataFile names a file that does not exist and never will (see NewBoardIdentity).
         //
         // This is a stored flag rather than an inferred File.Exists check because four places have
         // to act on it and inferring would be four copies of the same guess. Two of them matter a
         // great deal: DataManager's sync/orphan bookkeeping must not add a phantom path to the set
         // of board files it expects on disk, and thisTryAddMappedFilesFromBoardExcel FAILS CLOSED
-        // when a board Excel cannot be read - so without this flag a single draft-only system would
+        // when a board Excel cannot be read - so without this flag a single draft-only board would
         // silently disable orphan cleanup for every real board too.
         // ###########################################################################################
         public bool IsDraftOnly { get; init; }
 
         // ###########################################################################################
-        // True for a system listed only by a legacy "_UserContribution" workbook - a board made the
+        // True for a board listed only by a legacy "_UserContribution" workbook - a board made the
         // old way, whose files sit in Data/ but were never published by anyone.
         // ###########################################################################################
         public bool IsUserContribution { get; init; }
 
         // ###########################################################################################
-        // Whether the MAIN workbook lists this system - whether the file at its path in Data/ is
+        // Whether the MAIN workbook lists this board - whether the file at its path in Data/ is
         // really the published board.
         //
         // *** A _UserContribution BOARD IS NOT (2026-09-27). *** Its file in Data/ is the

@@ -33,25 +33,25 @@ public sealed class FileTreeViewTests
 
         public List<string> Opened { get; } = [];
 
-        public Task<byte[]?> ReadAsync(SystemFileEntry file)
+        public Task<byte[]?> ReadAsync(BoardFileEntry file)
         {
             this.Read.Add(file.Path);
             return Task.FromResult<byte[]?>(file.Path.EndsWith(".png", StringComparison.Ordinal) ? FileTreeViewTests.Pixel : null);
         }
 
-        public Task<string?> OpenAsync(SystemFileEntry file)
+        public Task<string?> OpenAsync(BoardFileEntry file)
         {
             this.Opened.Add(file.Path);
             return Task.FromResult<string?>(null);
         }
     }
 
-    private static SystemFileEntry E(string path, SystemFileChange change = SystemFileChange.Unchanged, SystemFileSource from = SystemFileSource.Beta) =>
+    private static BoardFileEntry E(string path, BoardFileChange change = BoardFileChange.Unchanged, BoardFileSource from = BoardFileSource.Beta) =>
         new(path, change, from);
 
-    private static IReadOnlyList<SystemFileEntry> Board() =>
+    private static IReadOnlyList<BoardFileEntry> Board() =>
     [
-        FileTreeViewTests.E("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed),
+        FileTreeViewTests.E("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed),
         FileTreeViewTests.E("Commodore/C128/310378/Images/a.png"),
         FileTreeViewTests.E("Commodore/C128/310378/Images/b.png"),
         FileTreeViewTests.E("Commodore/C128/310378/Manuals/m.pdf"),
@@ -149,7 +149,7 @@ public sealed class FileTreeViewTests
 
     // ###########################################################################################
     // "Collapse all" and "Expand all" (owner request, 2026-09-28). Expand opens every folder -
-    // unchanged ones too when the whole system is shown; collapse leaves the top folder alone.
+    // unchanged ones too when the whole board is shown; collapse leaves the top folder alone.
     // ###########################################################################################
     [Fact]
     public void Expand_all_and_collapse_all_open_and_close_every_folder()
@@ -185,9 +185,9 @@ public sealed class FileTreeViewTests
         });
     }
 
-    // The box is the switch: unticked shows the rest of the system around the change.
+    // The box is the switch: unticked shows the rest of the board around the change.
     [Fact]
-    public void Unticking_only_changed_shows_the_whole_system()
+    public void Unticking_only_changed_shows_the_whole_board()
     {
         UiTest.Run(() =>
         {
@@ -210,7 +210,7 @@ public sealed class FileTreeViewTests
             var files = new FakeFiles();
             var view = new FileTreeView { Files = files };
 
-            view.Show([new SystemFileEntry("Amstrad/CPC/464/Data.xlsx", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true)]);
+            view.Show([new BoardFileEntry("Amstrad/CPC/464/Data.xlsx", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true)]);
 
             ListBox list = view.FindControl<ListBox>("RowsList")!;
             list.SelectedItem = view.RowsForTests.Single(row => row.Name == "Data.xlsx");
@@ -230,7 +230,7 @@ public sealed class FileTreeViewTests
         UiTest.Run(() =>
         {
             var view = new FileTreeView();
-            view.Show([FileTreeViewTests.E("a/old.png", SystemFileChange.Removed, SystemFileSource.Production)]);
+            view.Show([FileTreeViewTests.E("a/old.png", BoardFileChange.Removed, BoardFileSource.Production)]);
 
             FileTreeRowView row = view.RowsForTests.Single(candidate => candidate.Name == "old.png");
 
@@ -242,7 +242,7 @@ public sealed class FileTreeViewTests
 
     // ------------------------------------------------------------------ The hover card
 
-    private static (Window Window, FileTreeView View, FakeFiles Files) ShownInAWindow(params SystemFileEntry[] entries)
+    private static (Window Window, FileTreeView View, FakeFiles Files) ShownInAWindow(params BoardFileEntry[] entries)
     {
         var files = new FakeFiles();
         var view = new FileTreeView { Files = files };
@@ -311,7 +311,7 @@ public sealed class FileTreeViewTests
         await UiTest.RunAsync(async () =>
         {
             (Window window, FileTreeView view, FakeFiles files) = ShownInAWindow(
-                FileTreeViewTests.E("Commodore/C128/310378/Images/a.png", SystemFileChange.Changed));
+                FileTreeViewTests.E("Commodore/C128/310378/Images/a.png", BoardFileChange.Changed));
 
             MoveTo(window, CentreOfRow(window, "a.png"));
 
@@ -346,7 +346,7 @@ public sealed class FileTreeViewTests
         UiTest.Run(() =>
         {
             (Window window, FileTreeView view, FakeFiles files) = ShownInAWindow(
-                FileTreeViewTests.E("Commodore/C128/310378/Images/a.png", SystemFileChange.Changed));
+                FileTreeViewTests.E("Commodore/C128/310378/Images/a.png", BoardFileChange.Changed));
 
             ContentPresenter rowBackground = RowItem(window, "a.png").GetVisualDescendants()
                 .OfType<ContentPresenter>()
@@ -412,8 +412,8 @@ public sealed class FileTreeViewTests
         UiTest.Run(() =>
         {
             (Window window, FileTreeView view, _) = ShownInAWindow(
-                new SystemFileEntry("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed, SystemFileSource.Beta, WrittenOnApproval: true),
-                new SystemFileEntry("Commodore/C128/310378/Data.json", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true));
+                new BoardFileEntry("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed, BoardFileSource.Beta, WrittenOnApproval: true),
+                new BoardFileEntry("Commodore/C128/310378/Data.json", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true));
 
             MoveTo(window, CentreOfRow(window, "Data.xlsx"));
 

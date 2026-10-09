@@ -297,7 +297,7 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
         // cleanup cannot reach a draft.
         DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
 
-        string draftFolder = DraftManager.GetSystemFolder(excelDataFile);
+        string draftFolder = DraftManager.GetBoardFolder(excelDataFile);
 
         // *** A DRAFT IS A BOARD FOLDER SINCE PHASE 6 (2026-09-23). *** Written the way
         // DraftSeeder would - a workbook plus the marker that makes the folder a draft - so what
@@ -316,7 +316,7 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
-            new DraftMarker { SystemKey = excelDataFile, BaseRevision = "2026-01-15" });
+            new DraftMarker { BoardKey = excelDataFile, BaseRevision = "2026-01-15" });
 
         // A DRAFTED ATTACHMENT - bytes that exist in no other copy. The cleanup walks Data/ for
         // files the manifest does not name; reaching into Drafts/ would destroy this one, and the

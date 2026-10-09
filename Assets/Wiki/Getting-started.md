@@ -45,7 +45,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 | **[Resources](Resources-tab)** | Datasheets, service manuals and links for this board |
 | **[Workbooks](Workbooks-tab)** | Record what you find as you repair |
 | **[Oscilloscope](Oscilloscope-tab)** | Drive a network-connected scope |
-| **[Contribute](Contribute-tab)** | Correct or add board data, or add a whole new system |
+| **[Contribute](Contribute-tab)** | Correct or add board data, or add a whole new board |
 | **[Drafts](Drafts-tab)** | Your local edits waiting to be sent in - edit them as a table and submit them for review |
 | **[Maintainer](Maintainer-tab)** | For maintainers only: review and publish what others send in |
 | **[Configuration](Configuration-tab)** | Settings, and the buttons that open your data, workbooks and settings folders |

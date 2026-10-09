@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     // A BOARD carries it when it has a local draft. A HARDWARE carries it when ANY of its boards
     // does, so a draft is findable from the hardware list without opening every board under it.
     //
-    // *** BUILT FROM THE SYSTEMS THE DRAFTS TAB LISTS, and nothing else. *** Main hands this the
+    // *** BUILT FROM THE BOARDS THE DRAFTS TAB LISTS, and nothing else. *** Main hands this the
     // very list TabDrafts.RefreshDrafts produced, so the chip and the Drafts tab cannot disagree
     // about what "has a draft" means - including for a draft that was started and not yet edited,
     // which the tab lists (a draft exists because its marker does; see DraftManager) and which is
@@ -27,9 +27,9 @@ namespace Handlers.DataHandling
         private readonly HashSet<string> thisHardware = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> thisBoards = new(StringComparer.OrdinalIgnoreCase);
 
-        private DraftBadgeSet(IEnumerable<HardwareBoardEntry> draftedSystems)
+        private DraftBadgeSet(IEnumerable<HardwareBoardEntry> draftedBoards)
         {
-            foreach (HardwareBoardEntry entry in draftedSystems)
+            foreach (HardwareBoardEntry entry in draftedBoards)
             {
                 string hardware = entry.HardwareName?.Trim() ?? string.Empty;
                 string board = entry.BoardName?.Trim() ?? string.Empty;
@@ -48,8 +48,8 @@ namespace Handlers.DataHandling
             }
         }
 
-        public static DraftBadgeSet From(IEnumerable<HardwareBoardEntry>? draftedSystems) =>
-            draftedSystems == null ? DraftBadgeSet.Empty : new DraftBadgeSet(draftedSystems.ToList());
+        public static DraftBadgeSet From(IEnumerable<HardwareBoardEntry>? draftedBoards) =>
+            draftedBoards == null ? DraftBadgeSet.Empty : new DraftBadgeSet(draftedBoards.ToList());
 
         public bool HardwareHasDraft(string? hardwareName) =>
             this.thisHardware.Contains(hardwareName?.Trim() ?? string.Empty);

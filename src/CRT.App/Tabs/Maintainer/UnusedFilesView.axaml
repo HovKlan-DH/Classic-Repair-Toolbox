@@ -17,7 +17,7 @@
     server and takes seconds, so it is asked for on purpose rather than every minute.
 
     THE LIST IS THE FILE TREE (owner request, 2026-10-04: "the exact same tree-view like it does in
-    'Systems' and 'Files' ... including visualization of images and opening of files") - FileTreeView
+    'Boards' and 'Files' ... including visualization of images and opening of files") - FileTreeView
     as a listing, every folder open, each file with its size; pointing at one shows it, and
     double-clicking opens it, from the tree's public address (FileTreeFiles). Its own line is off:
     the summary above says the count and the size.

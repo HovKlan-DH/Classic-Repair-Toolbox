@@ -16,7 +16,7 @@ namespace CRT.Server.Handlers.Submissions
     //     payloads, findings, approvals, amendments, discards, BETA returns, change summaries);
     //   - every account that is not an administrator, with its sessions and tokens ("yes, just
     //     delete them as I need real data anyway"), and so every maintainer and invitation;
-    //   - every production approval and every SYSTEM RECORD - see below;
+    //   - every production approval and every BOARD RECORD - see below;
     //   - the whole history (audit), the board views ("yes, delete them") and the API usage counts;
     //   - and then, on disk, every stored file no submission needs any more (all of them) and every
     //     partial upload - the blob store's own collection, run at once rather than at the sweeper's
@@ -30,16 +30,16 @@ namespace CRT.Server.Handlers.Submissions
     //   - the launch check-ins (crt_update - CRT 2.x's history, no migration's), the board view batch
     //     ids, the saved feedback folders.
     //
-    // *** THE SYSTEM RECORDS GO TOO, AND THAT IS SAFE. *** A record is made on demand by every flow
-    // that needs one (EnsureSystemAsync: a submission, a maintainer or invitation, a placement) and
-    // every flow reads a missing one as a system the pipeline never touched. What a record holds
+    // *** THE BOARD RECORDS GO TOO, AND THAT IS SAFE. *** A record is made on demand by every flow
+    // that needs one (EnsureBoardAsync: a submission, a maintainer or invitation, a placement) and
+    // every flow reads a missing one as a board the pipeline never touched. What a record holds
     // about the trees - BETA's and the stable source's content hashes - describes the TEST period's
-    // publishes; keeping it would leave a system "waiting for the stable source" with no submission
+    // publishes; keeping it would leave a board "waiting for the stable source" with no submission
     // to say why. The owner copies the stable data over BETA and rebuilds the manifests around the
     // reset (owner, 2026-10-04: "I will anyway copy everything from stable to BETA and then update the
     // manifest from admin page"), so the trees are level and no record is the truth.
     //
-    // *** NOTHING STANDS IN THE WAY BUT THE SWITCH. *** Unlike deleting a system, nothing waiting in
+    // *** NOTHING STANDS IN THE WAY BUT THE SWITCH. *** Unlike deleting a board, nothing waiting in
     // the queue or under BETA > Stable refuses it (owner answer: "yes, just delete them").
     //
     // *** ADMINISTRATOR ONLY, AND ONLY WHILE ServerOptions.AllowDataReset IS ON. *** Off by default;

@@ -30,7 +30,7 @@ public sealed class ReviewApiParserTests
     // Exactly what GET /api/review/queue answers.
     private const string QueueJson = """
         {"canPublish":true,"count":1,
-         "submissions":[{"id":42,"systemId":"Commodore/C64/250407","state":"pending",
+         "submissions":[{"id":42,"boardId":"Commodore/C64/250407","state":"pending",
                          "summary":"Corrected R12.","contactEmail":"someone@example.com",
                          "baseRevision":"r1","createdUtc":"2026-09-21T12:00:00+00:00",
                          "decidedUtc":null}]}
@@ -105,7 +105,7 @@ public sealed class ReviewApiParserTests
 
         ReviewQueueRow row = Assert.Single(queue.Submissions);
         Assert.Equal(42, row.Id);
-        Assert.Equal("Commodore/C64/250407", row.SystemId);
+        Assert.Equal("Commodore/C64/250407", row.BoardId);
         Assert.Equal("pending", row.State);
         Assert.Equal("Corrected R12.", row.Summary);
         Assert.Equal("someone@example.com", row.ContactEmail);
@@ -133,10 +133,10 @@ public sealed class ReviewApiParserTests
         // A single bad record must not conceal every other contribution waiting behind it.
         ReviewQueueResponse? queue = ReviewApiParser.ParseQueue("""
             {"canPublish":false,"submissions":[
-                {"id":1,"systemId":"A/B/C","state":"pending","summary":"First."},
-                {"systemId":"no id here","state":"pending"},
+                {"id":1,"boardId":"A/B/C","state":"pending","summary":"First."},
+                {"boardId":"no id here","state":"pending"},
                 "a string where an object should be",
-                {"id":3,"systemId":"D/E/F","state":"pending","summary":"Third."}]}
+                {"id":3,"boardId":"D/E/F","state":"pending","summary":"Third."}]}
             """);
 
         Assert.NotNull(queue);
@@ -149,7 +149,7 @@ public sealed class ReviewApiParserTests
         // "Waiting since" is shown to the maintainer; a defaulted timestamp would read as a
         // submission that has been waiting fifty years.
         ReviewQueueResponse? queue = ReviewApiParser.ParseQueue("""
-            {"canPublish":false,"submissions":[{"id":1,"systemId":"A/B/C","state":"pending"}]}
+            {"canPublish":false,"submissions":[{"id":1,"boardId":"A/B/C","state":"pending"}]}
             """);
 
         Assert.Null(Assert.Single(queue!.Submissions).CreatedUtc);
@@ -171,8 +171,8 @@ public sealed class ReviewApiParserTests
     {
         ReviewQueueResponse? queue = ReviewApiParser.ParseQueue("""
             {"submissions":[
-                {"id":1,"systemId":"A/B/C","state":"pending","touchesSharedFiles":true},
-                {"id":2,"systemId":"A/B/C","state":"pending"}]}
+                {"id":1,"boardId":"A/B/C","state":"pending","touchesSharedFiles":true},
+                {"id":2,"boardId":"A/B/C","state":"pending"}]}
             """);
 
         Assert.True(queue!.Submissions[0].TouchesSharedFiles);
@@ -263,47 +263,47 @@ public sealed class ReviewApiParserTests
     }
 
     // -----------------------------------------------------------------------------------
-    // The "Systems" screen (2026-09-27)
+    // The "Boards" screen (2026-09-27)
     // -----------------------------------------------------------------------------------
 
     // ###########################################################################################
     // ONE BAD ROW DOES NOT HIDE THE OTHERS, and "could not read it" is not "there are none" - the
-    // queue parser's two rules. A system with no id is skipped; an answer that is not the expected
-    // shape is null, which the list reports as a failure rather than showing no systems.
+    // queue parser's two rules. A board with no id is skipped; an answer that is not the expected
+    // shape is null, which the list reports as a failure rather than showing no boards.
     // ###########################################################################################
     [Fact]
-    public void A_system_with_no_id_is_skipped_and_an_unreadable_list_is_not_an_empty_one()
+    public void A_board_with_no_id_is_skipped_and_an_unreadable_list_is_not_an_empty_one()
     {
-        SystemOverviewAnswer? answer = ReviewApiParser.ParseSystemOverview("""
-            {"systems":[{"manufacturer":"Acme"},{"systemId":"Commodore/C64/250407","inBeta":true}]}
+        BoardOverviewAnswer? answer = ReviewApiParser.ParseBoardOverview("""
+            {"boards":[{"manufacturer":"Acme"},{"boardId":"Commodore/C64/250407","inBeta":true}]}
             """);
 
-        Assert.Equal("Commodore/C64/250407", Assert.Single(answer!.Systems).SystemId);
+        Assert.Equal("Commodore/C64/250407", Assert.Single(answer!.Boards).BoardId);
 
-        Assert.Null(ReviewApiParser.ParseSystemOverview("<html>Bad gateway</html>"));
-        Assert.Null(ReviewApiParser.ParseSystemOverview("""{"systemz":[]}"""));
-        Assert.Empty(ReviewApiParser.ParseSystemOverview("""{"systems":[]}""")!.Systems);
+        Assert.Null(ReviewApiParser.ParseBoardOverview("<html>Bad gateway</html>"));
+        Assert.Null(ReviewApiParser.ParseBoardOverview("""{"boardz":[]}"""));
+        Assert.Empty(ReviewApiParser.ParseBoardOverview("""{"boards":[]}""")!.Boards);
     }
 
     // ###########################################################################################
-    // The drop-down listing (2026-09-27): forgiving like every other answer. A row with no system or
+    // The drop-down listing (2026-09-27): forgiving like every other answer. A row with no board or
     // workbook is dropped rather than shown as a blank line in the list a maintainer drags through,
     // a placement with no hardware name is no placement, and a missing suggestion becomes the
-    // system's own folder names.
+    // board's own folder names.
     // ###########################################################################################
     [Fact]
     public void A_listing_drops_what_it_cannot_use_and_fills_in_a_missing_suggestion()
     {
-        SystemListingAnswer? listing = ReviewApiParser.ParseSystemListing("""
+        BoardListingAnswer? listing = ReviewApiParser.ParseBoardListing("""
             {
               "hasList": true,
               "rows": [
-                { "systemId": "Commodore/C64/250407", "hardwareName": "Commodore 64", "boardName": "250407", "excelDataFile": "Commodore/C64/250407/Data.xlsx" },
-                { "systemId": "", "hardwareName": "Nothing", "boardName": "x", "excelDataFile": "a.xlsx" },
-                { "systemId": "Commodore/C128/310378", "hardwareName": "Commodore 128" }
+                { "boardId": "Commodore/C64/250407", "hardwareName": "Commodore 64", "boardName": "250407", "excelDataFile": "Commodore/C64/250407/Data.xlsx" },
+                { "boardId": "", "hardwareName": "Nothing", "boardName": "x", "excelDataFile": "a.xlsx" },
+                { "boardId": "Commodore/C128/310378", "hardwareName": "Commodore 128" }
               ],
               "unlisted": [
-                { "systemId": "Commodore/C128/310378 Open128", "manufacturer": "Commodore", "hardware": "C128", "board": "310378 Open128",
+                { "boardId": "Commodore/C128/310378 Open128", "manufacturer": "Commodore", "hardware": "C128", "board": "310378 Open128",
                   "inBeta": false, "canPlace": true, "placement": { "hardwareName": "  ", "boardName": "b" } },
                 { "manufacturer": "No id" }
               ]
@@ -311,30 +311,30 @@ public sealed class ReviewApiParserTests
             """);
 
         Assert.NotNull(listing);
-        Assert.Equal(["Commodore/C64/250407"], listing!.Rows.Select(row => row.SystemId));
+        Assert.Equal(["Commodore/C64/250407"], listing!.Rows.Select(row => row.BoardId));
 
-        UnlistedSystemEntry entry = Assert.Single(listing.Unlisted);
+        UnlistedBoardEntry entry = Assert.Single(listing.Unlisted);
         Assert.Null(entry.Placement);
-        Assert.Equal(new SystemPlacement("C128", "310378 Open128", string.Empty, null), entry.Suggested);
+        Assert.Equal(new BoardPlacement("C128", "310378 Open128", string.Empty, null), entry.Suggested);
         Assert.True(entry.CanPlace);
     }
 
     [Fact]
     public void An_unreadable_listing_or_placement_answer_is_null()
     {
-        Assert.Null(ReviewApiParser.ParseSystemListing("<html>Bad gateway</html>"));
+        Assert.Null(ReviewApiParser.ParseBoardListing("<html>Bad gateway</html>"));
         Assert.Null(ReviewApiParser.ParseSetPlacement("""{"listedInBeta":true}"""));
-        Assert.Null(ReviewApiParser.ParseSystemListing("""{"hasList":false}"""));
-        Assert.Empty(ReviewApiParser.ParseSystemListing("""{"hasList":false,"rows":[]}""")!.Rows);
+        Assert.Null(ReviewApiParser.ParseBoardListing("""{"hasList":false}"""));
+        Assert.Empty(ReviewApiParser.ParseBoardListing("""{"hasList":false,"rows":[]}""")!.Rows);
     }
 
-    // A detail missing its lists still reads - with nothing in them - and one without its system
+    // A detail missing its lists still reads - with nothing in them - and one without its board
     // is not a detail at all. A submission with no id or state is skipped.
     [Fact]
-    public void A_system_detail_is_read_forgivingly()
+    public void A_board_detail_is_read_forgivingly()
     {
-        SystemDetailAnswer? detail = ReviewApiParser.ParseSystemDetail("""
-            {"system":{"systemId":"Commodore/C64/250407"},
+        BoardDetailAnswer? detail = ReviewApiParser.ParseBoardDetail("""
+            {"board":{"boardId":"Commodore/C64/250407"},
              "submissions":[{"summary":"no id"},{"id":4,"state":"pending","createdUtc":"2026-09-21T12:00:00+00:00"}]}
             """);
 
@@ -344,10 +344,10 @@ public sealed class ReviewApiParserTests
         Assert.Equal(4, Assert.Single(detail.Submissions).Id);
 
         // Defaults a missing flag the safe way: open to contributions, not claimed in production.
-        Assert.True(detail.System.IsAccepting);
-        Assert.Null(detail.System.InProduction);
+        Assert.True(detail.Board.IsAccepting);
+        Assert.Null(detail.Board.InProduction);
 
-        Assert.Null(ReviewApiParser.ParseSystemDetail("""{"maintainers":[]}"""));
+        Assert.Null(ReviewApiParser.ParseBoardDetail("""{"maintainers":[]}"""));
     }
 
     // ###########################################################################################

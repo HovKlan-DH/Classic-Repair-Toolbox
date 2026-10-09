@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.NewBoardMaintainerWindow"
+        Title="Board maintainer"
+        Width="480"
+        MinWidth="420"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock Text="Becoming the board's maintainer" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock TextWrapping="Wrap" Text="You are about to create a new board:" />
+
+		<!-- The board's name, on its own line - set from code (Initialize), never a markup
+		     default, since the agreement is about one specific board. -->
+		<TextBlock x:Name="BoardNameText"
+				   TextWrapping="Wrap"
+				   FontWeight="Bold"
+				   Margin="0,8,0,8" />
+
+		<TextBlock TextWrapping="Wrap"
+				   Text="If you submit this board to Classic Repair Toolbox for general use by the community, you agree to be registered as its maintainer." />
+
+		<TextBlock TextWrapping="Wrap"
+				   Margin="0,8,0,0"
+				   Text="As its maintainer, you are responsible for reviewing the changes other members of the community submit for this board, and for publishing the ones that are right." />
+
+		<TextBlock TextWrapping="Wrap"
+				   Margin="0,8,0,0"
+				   FontWeight="SemiBold"
+				   Text="A new board can only be created if you accept this. If you decline, nothing is created." />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Decline" Click="OnDeclineClick" />
+			<Button x:Name="AcceptButton"
+					Content="Accept and create"
+					Foreground="{DynamicResource Button_Ok_Fg}"
+					Background="{DynamicResource Button_Ok_Bg}"
+					BorderBrush="{DynamicResource Button_Ok_Border}"
+					Click="OnAcceptClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

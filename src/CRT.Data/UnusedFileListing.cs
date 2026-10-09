@@ -10,7 +10,7 @@ namespace Handlers.DataHandling
     // record, so the two cannot drift apart.
     //
     // `PublicDataUrl` (2026-10-04) is where the tree is published, so the list - drawn as the same
-    // folder tree as a system's Files - can show a file and open it, exactly as CRT downloads it.
+    // folder tree as a board's Files - can show a file and open it, exactly as CRT downloads it.
     // Null from a server older than 4.4.0: the tree then opens nothing.
     // ###########################################################################################
     public sealed record UnusedFileListing(

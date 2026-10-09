@@ -7,7 +7,7 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // Covers ProductionPromotionPlan - what publishing one system from BETA to Production copies,
+    // Covers ProductionPromotionPlan - what publishing one board from BETA to Production copies,
     // and what it refuses (owner request, 2026-09-25).
     //
     // Production is what every user downloads, so the refusals matter as much as the copies: a
@@ -145,7 +145,7 @@ namespace CRT.Data.Tests
         }
 
         [Fact]
-        public void A_system_json_left_in_BETA_by_an_earlier_build_is_NEVER_promoted()
+        public void A_board_json_left_in_BETA_by_an_earlier_build_is_NEVER_promoted()
         {
             // Retired by the project owner (2026-09-25): it is not relevant to users and must not be
             // downloaded by them. One still in BETA is left behind, not carried to production.
@@ -185,7 +185,7 @@ namespace CRT.Data.Tests
         public void Nothing_to_copy_is_still_a_promotion_that_records_the_revision()
         {
             // The case where BETA and Production were brought level by hand before this existed:
-            // promoting copies nothing and marks the system as in production.
+            // promoting copies nothing and marks the board as in production.
             PublishedTreeView tree = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan([P("main.png")], [], tree, tree);
@@ -333,7 +333,7 @@ namespace CRT.Data.Tests
         }
 
         [Fact]
-        public void A_system_with_NOTHING_in_BETA_is_refused()
+        public void A_board_with_NOTHING_in_BETA_is_refused()
         {
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
                 [], [], ProductionPromotionPlanTests.Tree(), ProductionPromotionPlanTests.Tree());
@@ -343,7 +343,7 @@ namespace CRT.Data.Tests
         }
 
         [Fact]
-        public void A_walked_file_OUTSIDE_the_system_folder_is_refused()
+        public void A_walked_file_OUTSIDE_the_board_folder_is_refused()
         {
             PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
                 (P("main.png"), "m"),
@@ -353,7 +353,7 @@ namespace CRT.Data.Tests
                 [P("main.png"), "Commodore/C64/250425/main.png"], [], beta, ProductionPromotionPlanTests.Tree());
 
             Assert.False(result.CanPromote);
-            Assert.Equal("promote.outside_system", Assert.Single(result.Problems).Code);
+            Assert.Equal("promote.outside_board", Assert.Single(result.Problems).Code);
         }
 
         [Fact]

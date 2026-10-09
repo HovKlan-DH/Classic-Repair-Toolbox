@@ -108,7 +108,7 @@ namespace Handlers.MaintainerHandling
         // *** THE SERVER ALWAYS ANSWERS 202, whether or not the address is known, and this must
         // NOT try to be more helpful than that. *** Reporting "no such account" would turn the
         // sign-in screen into a tool for discovering which addresses hold maintainer accounts -
-        // and those are the accounts that can publish to every user of a system.
+        // and those are the accounts that can publish to every user of a board.
         //
         // So there is nothing to parse: a 202 is the whole answer, and the caller shows the same
         // sentence either way.
@@ -693,14 +693,14 @@ namespace Handlers.MaintainerHandling
         // the two changes POST a body and read the server's own sentence back on a refusal, the
         // way a decision does.
         // ###########################################################################################
-        public async Task<ReviewApiResult<ReviewSystemsResponse>> GetSystemsAsync(
+        public async Task<ReviewApiResult<ReviewBoardsResponse>> GetBoardsAsync(
             ReviewSession session,
             CancellationToken cancellationToken = default)
         {
             return await this
                 .SendAsync(
-                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminSystems(this.thisBaseAddress)),
-                    ReviewApiParser.ParseSystems,
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminBoards(this.thisBaseAddress)),
+                    ReviewApiParser.ParseBoards,
                     session,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -721,28 +721,28 @@ namespace Handlers.MaintainerHandling
 
         public Task<ReviewApiResult<string>> AddMaintainerAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             long accountId,
             CancellationToken cancellationToken = default) =>
             this.PostMaintainerChangeAsync(
-                ReviewApiRoutes.AdminAddMaintainer(this.thisBaseAddress), new MaintainerChangeRequest(systemId, accountId), session, cancellationToken);
+                ReviewApiRoutes.AdminAddMaintainer(this.thisBaseAddress), new MaintainerChangeRequest(boardId, accountId), session, cancellationToken);
 
         public Task<ReviewApiResult<string>> RemoveMaintainerAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             long accountId,
             CancellationToken cancellationToken = default) =>
             this.PostMaintainerChangeAsync(
-                ReviewApiRoutes.AdminRemoveMaintainer(this.thisBaseAddress), new MaintainerChangeRequest(systemId, accountId), session, cancellationToken);
+                ReviewApiRoutes.AdminRemoveMaintainer(this.thisBaseAddress), new MaintainerChangeRequest(boardId, accountId), session, cancellationToken);
 
         // Inviting an address with no account (2026-09-27) - the answer is the server's sentence.
         public Task<ReviewApiResult<string>> InviteMaintainerAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string email,
             CancellationToken cancellationToken = default) =>
             this.PostMaintainerChangeAsync(
-                ReviewApiRoutes.AdminInviteMaintainer(this.thisBaseAddress), new MaintainerInviteRequest(systemId, email), session, cancellationToken);
+                ReviewApiRoutes.AdminInviteMaintainer(this.thisBaseAddress), new MaintainerInviteRequest(boardId, email), session, cancellationToken);
 
         public Task<ReviewApiResult<string>> WithdrawInvitationAsync(
             ReviewSession session,
@@ -773,7 +773,7 @@ namespace Handlers.MaintainerHandling
                     await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 // The server's refusals here are SENTENCES written for the administrator - "has
-                // not verified their address", "no such system" - so they are read back rather
+                // not verified their address", "no such board" - so they are read back rather
                 // than replaced by a status code's generic wording.
                 if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
                 {
@@ -867,11 +867,11 @@ namespace Handlers.MaintainerHandling
 
         public Task<ReviewApiResult<ProductionPlanView>> GetProductionPlanAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
                 ReviewApiRoutes.ProductionPlan(this.thisBaseAddress),
-                new ProductionPlanRequest(systemId),
+                new ProductionPlanRequest(boardId),
                 ReviewApiParser.ParseProductionPlan,
                 session,
                 cancellationToken);
@@ -883,11 +883,11 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         public Task<ReviewApiResult<BetaRollbackPlanView>> GetBetaRollbackPlanAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
                 ReviewApiRoutes.BetaRollbackPlan(this.thisBaseAddress),
-                new BetaRollbackPlanRequest(systemId),
+                new BetaRollbackPlanRequest(boardId),
                 ReviewApiParser.ParseBetaRollbackPlan,
                 session,
                 cancellationToken);
@@ -896,13 +896,13 @@ namespace Handlers.MaintainerHandling
         // rejected rather than returned to the queue.
         public Task<ReviewApiResult<BetaRollbackResult>> RollBackBetaAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string comment,
             bool reject = false,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
                 ReviewApiRoutes.BetaRollback(this.thisBaseAddress),
-                new BetaRollbackRequest(systemId, comment, reject),
+                new BetaRollbackRequest(boardId, comment, reject),
                 ReviewApiParser.ParseBetaRollback,
                 session,
                 cancellationToken);
@@ -911,111 +911,111 @@ namespace Handlers.MaintainerHandling
         // ApproveAsync.
         public Task<ReviewApiResult<ProductionPublishResult>> PublishToProductionAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string expectedBetaContentHash,
             IReadOnlyList<string>? shownRemovals = null,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
                 ReviewApiRoutes.ProductionPublish(this.thisBaseAddress),
-                new ProductionPublishRequest(systemId, expectedBetaContentHash, shownRemovals ?? []),
+                new ProductionPublishRequest(boardId, expectedBetaContentHash, shownRemovals ?? []),
                 ReviewApiParser.ParseProductionPublish,
                 session,
                 cancellationToken);
 
         // ###########################################################################################
-        // The "Systems" screen (2026-09-27): every system through the shared GET path, and one
-        // system's facts as a POST with its id, reading the server's own sentence back on a refusal.
+        // The "Boards" screen (2026-09-27): every board through the shared GET path, and one
+        // board's facts as a POST with its id, reading the server's own sentence back on a refusal.
         // ###########################################################################################
-        public async Task<ReviewApiResult<SystemOverviewAnswer>> GetSystemOverviewAsync(
+        public async Task<ReviewApiResult<BoardOverviewAnswer>> GetBoardOverviewAsync(
             ReviewSession session,
             CancellationToken cancellationToken = default)
         {
             return await this
                 .SendAsync(
-                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.Systems(this.thisBaseAddress)),
-                    ReviewApiParser.ParseSystemOverview,
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.Boards(this.thisBaseAddress)),
+                    ReviewApiParser.ParseBoardOverview,
                     session,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        public Task<ReviewApiResult<SystemDetailAnswer>> GetSystemDetailAsync(
+        public Task<ReviewApiResult<BoardDetailAnswer>> GetBoardDetailAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemDetail(this.thisBaseAddress),
-                new SystemDetailRequest(systemId),
-                ReviewApiParser.ParseSystemDetail,
+                ReviewApiRoutes.BoardDetail(this.thisBaseAddress),
+                new BoardDetailRequest(boardId),
+                ReviewApiParser.ParseBoardDetail,
                 session,
                 cancellationToken);
 
         // ###########################################################################################
-        // A system's Board data and Files views (2026-10-03). The edit is PUBLISHED to BETA as a
+        // A board's Board data and Files views (2026-10-03). The edit is PUBLISHED to BETA as a
         // submission from this account, after a check of what it would remove - the server's
-        // SystemEditFlow; a refusal reads the server's sentence.
+        // BoardEditFlow; a refusal reads the server's sentence.
         // ###########################################################################################
         // `tree` (2026-10-04): DataTreeNames.Production for the stable source's board, read-only -
         // none for BETA's, as before.
-        public Task<ReviewApiResult<SystemTableAnswer>> GetSystemTableAsync(
+        public Task<ReviewApiResult<BoardTableAnswer>> GetBoardTableAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string? tree = null,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemTable(this.thisBaseAddress),
-                new SystemDetailRequest(systemId, tree),
-                ReviewApiParser.ParseSystemTable,
+                ReviewApiRoutes.BoardDataTable(this.thisBaseAddress),
+                new BoardDetailRequest(boardId, tree),
+                ReviewApiParser.ParseBoardTable,
                 session,
                 cancellationToken);
 
-        public Task<ReviewApiResult<SystemEditCheckAnswer>> CheckSystemEditAsync(
+        public Task<ReviewApiResult<BoardEditCheckAnswer>> CheckBoardEditAsync(
             ReviewSession session,
-            SystemEditRequest request,
+            BoardEditRequest request,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemEditCheck(this.thisBaseAddress),
+                ReviewApiRoutes.BoardEditCheck(this.thisBaseAddress),
                 request,
-                ReviewApiParser.ParseSystemEditCheck,
+                ReviewApiParser.ParseBoardEditCheck,
                 session,
                 cancellationToken);
 
-        public Task<ReviewApiResult<SystemEditResult>> SendSystemEditAsync(
+        public Task<ReviewApiResult<BoardEditResult>> SendBoardEditAsync(
             ReviewSession session,
-            SystemEditRequest request,
+            BoardEditRequest request,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemEdit(this.thisBaseAddress),
+                ReviewApiRoutes.BoardEdit(this.thisBaseAddress),
                 request,
-                ReviewApiParser.ParseSystemEdit,
+                ReviewApiParser.ParseBoardEdit,
                 session,
                 cancellationToken);
 
         // `tree` as for the table: the stable source's files, or BETA's.
-        public Task<ReviewApiResult<SystemFilesAnswer>> GetSystemFilesAsync(
+        public Task<ReviewApiResult<BoardFilesAnswer>> GetBoardFilesAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string? tree = null,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemFiles(this.thisBaseAddress),
-                new SystemDetailRequest(systemId, tree),
-                ReviewApiParser.ParseSystemFiles,
+                ReviewApiRoutes.BoardFiles(this.thisBaseAddress),
+                new BoardDetailRequest(boardId, tree),
+                ReviewApiParser.ParseBoardFiles,
                 session,
                 cancellationToken);
 
         // ###########################################################################################
-        // The drop-down lists as CRT shows them from BETA, and the systems not in them yet; and
+        // The drop-down lists as CRT shows them from BETA, and the boards not in them yet; and
         // saving where one goes (owner request, 2026-09-27). A refusal reads the server's sentence.
         // ###########################################################################################
-        public async Task<ReviewApiResult<SystemListingAnswer>> GetSystemListingAsync(
+        public async Task<ReviewApiResult<BoardListingAnswer>> GetBoardListingAsync(
             ReviewSession session,
             CancellationToken cancellationToken = default)
         {
             return await this
                 .SendAsync(
-                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.SystemListing(this.thisBaseAddress)),
-                    ReviewApiParser.ParseSystemListing,
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.BoardListing(this.thisBaseAddress)),
+                    ReviewApiParser.ParseBoardListing,
                     session,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -1026,24 +1026,24 @@ namespace Handlers.MaintainerHandling
             SetPlacementRequest request,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.SystemListing(this.thisBaseAddress),
+                ReviewApiRoutes.BoardListing(this.thisBaseAddress),
                 request,
                 ReviewApiParser.ParseSetPlacement,
                 session,
                 cancellationToken);
 
         // ###########################################################################################
-        // The administrator's "Order of systems" (2026-10-04): every system BETA's drop-down lists
+        // The administrator's "Order of boards" (2026-10-04): every board BETA's drop-down lists
         // hold, in the order wanted. Refused (Conflict) when the list changed since it was read.
         // ###########################################################################################
-        public Task<ReviewApiResult<SystemOrderAnswer>> SetSystemOrderAsync(
+        public Task<ReviewApiResult<BoardOrderAnswer>> SetBoardOrderAsync(
             ReviewSession session,
-            IReadOnlyList<string> systemIds,
+            IReadOnlyList<string> boardIds,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.AdminSystemOrder(this.thisBaseAddress),
-                new SystemOrderRequest(systemIds),
-                ReviewApiParser.ParseSystemOrder,
+                ReviewApiRoutes.AdminBoardOrder(this.thisBaseAddress),
+                new BoardOrderRequest(boardIds),
+                ReviewApiParser.ParseBoardOrder,
                 session,
                 cancellationToken);
 
@@ -1095,31 +1095,31 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // Deleting a system completely (owner request, 2026-10-03). The plan reads every workbook in
-        // both trees on the server when the system has files, so it takes seconds; the delete is
-        // held to the plan's fingerprint and refused (Conflict) when the system changed since.
+        // Deleting a board completely (owner request, 2026-10-03). The plan reads every workbook in
+        // both trees on the server when the board has files, so it takes seconds; the delete is
+        // held to the plan's fingerprint and refused (Conflict) when the board changed since.
         // ###########################################################################################
-        public Task<ReviewApiResult<SystemDeletePlanAnswer>> GetSystemDeletePlanAsync(
+        public Task<ReviewApiResult<BoardDeletePlanAnswer>> GetBoardDeletePlanAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.AdminSystemDeletePlan(this.thisBaseAddress),
-                new SystemDetailRequest(systemId),
-                ReviewApiParser.ParseSystemDeletePlan,
+                ReviewApiRoutes.AdminBoardDeletePlan(this.thisBaseAddress),
+                new BoardDetailRequest(boardId),
+                ReviewApiParser.ParseBoardDeletePlan,
                 session,
                 cancellationToken);
 
-        public Task<ReviewApiResult<SystemDeleteAnswer>> DeleteSystemAsync(
+        public Task<ReviewApiResult<BoardDeleteAnswer>> DeleteBoardAsync(
             ReviewSession session,
-            string systemId,
+            string boardId,
             string fingerprint,
             string? reason,
             CancellationToken cancellationToken = default) =>
             this.PostProductionAsync(
-                ReviewApiRoutes.AdminSystemDelete(this.thisBaseAddress),
-                new SystemDeleteRequest(systemId, fingerprint, reason),
-                ReviewApiParser.ParseSystemDelete,
+                ReviewApiRoutes.AdminBoardDelete(this.thisBaseAddress),
+                new BoardDeleteRequest(boardId, fingerprint, reason),
+                ReviewApiParser.ParseBoardDelete,
                 session,
                 cancellationToken);
 

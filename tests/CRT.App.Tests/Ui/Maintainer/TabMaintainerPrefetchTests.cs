@@ -56,7 +56,7 @@ public sealed class TabMaintainerPrefetchTests
                 long id = long.Parse(path[(path.LastIndexOf('/') + 1)..]);
 
                 return AnsweringHttpHandler.Json(
-                    $$"""{"canPublish":true,"submission":{"id":{{id}},"systemId":"Commodore/C64/250407","state":"pending"},"findings":[]}""");
+                    $$"""{"canPublish":true,"submission":{"id":{{id}},"boardId":"Commodore/C64/250407","state":"pending"},"findings":[]}""");
             }
 
             return AnsweringHttpHandler.Refused();

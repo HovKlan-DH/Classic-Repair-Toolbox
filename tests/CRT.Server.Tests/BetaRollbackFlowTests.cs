@@ -27,7 +27,7 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
-        private const string SystemId = "Commodore/C64/250407";
+        private const string BoardId = "Commodore/C64/250407";
         private const string Sheet = "Commodore/C64/250407/Images/sheet1.png";
 
         private readonly string thisRoot;
@@ -100,7 +100,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // A system whose BETA state is ahead of production, with one merged submission behind it.
+        // A board whose BETA state is ahead of production, with one merged submission behind it.
         // The trees are written directly rather than published through ApprovePublishFlow: this
         // class is about what a rollback WRITES, and a real publish would only add noise.
         // ###########################################################################################
@@ -108,20 +108,20 @@ namespace CRT.Server.Tests
         {
             var store = new FakeSubmissionStore();
 
-            store.Systems[BetaRollbackFlowTests.SystemId] = new NewSubmission(
-                BetaRollbackFlowTests.SystemId, "Commodore", "C64", "250407",
+            store.Boards[BetaRollbackFlowTests.BoardId] = new NewSubmission(
+                BetaRollbackFlowTests.BoardId, "Commodore", "C64", "250407",
                 null, "contributor@example.com", "192.0.2.1", "hash", "r0", "A change.", 1, [],
                 BetaRollbackFlowTests.Now, BetaRollbackFlowTests.Now.AddHours(24));
 
-            // The fake derives SystemRecord from these two rows, as the real store derives it from
-            // the `systems` columns - so the state is set the way a publish and a promotion set it.
-            store.PublishedSystems[BetaRollbackFlowTests.SystemId] =
-                new PublishedSystemRow("2026-September-27", "beta-hash", BetaRollbackFlowTests.Now.AddDays(-1));
+            // The fake derives BoardRecord from these two rows, as the real store derives it from
+            // the `boards` columns - so the state is set the way a publish and a promotion set it.
+            store.PublishedBoards[BetaRollbackFlowTests.BoardId] =
+                new PublishedBoardRow("2026-September-27", "beta-hash", BetaRollbackFlowTests.Now.AddDays(-1));
 
             if (everPromoted)
             {
-                store.ProductionSystems[BetaRollbackFlowTests.SystemId] =
-                    new PublishedSystemRow("2026-May-14", "production-hash", BetaRollbackFlowTests.Now.AddDays(-30));
+                store.ProductionBoards[BetaRollbackFlowTests.BoardId] =
+                    new PublishedBoardRow("2026-May-14", "production-hash", BetaRollbackFlowTests.Now.AddDays(-30));
             }
 
             return store;
@@ -135,7 +135,7 @@ namespace CRT.Server.Tests
         {
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    BetaRollbackFlowTests.SystemId, "Commodore", "C64", "250407",
+                    BetaRollbackFlowTests.BoardId, "Commodore", "C64", "250407",
                     null, email, "192.0.2.1", "hash", "r0", "Corrected U8.", 1, [.. files],
                     BetaRollbackFlowTests.Now.AddDays(-2), BetaRollbackFlowTests.Now.AddDays(-1)),
                 CancellationToken.None);
@@ -165,7 +165,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "The U8 pinout is wrong.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "The U8 pinout is wrong.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -176,7 +176,7 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** EVERY SUBMISSION MERGED SINCE THE LAST PROMOTION GOES BACK TO THE QUEUE (owner
-        // decision). *** A rollback is per SYSTEM - the board's workbook holds all of them - so
+        // decision). *** A rollback is per BOARD - the board's workbook holds all of them - so
         // picking one out is impossible. All of them return to `pending` with the reason.
         // ###########################################################################################
         [Fact]
@@ -190,7 +190,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Needs the revision date.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Needs the revision date.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -230,7 +230,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
 
             BetaRollbackOutcome outcome = await this.Flow(store, accounts).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Not what this board needs.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not what this board needs.",
                 this.Options(), BetaRollbackFlowTests.Now, reject: true);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -238,7 +238,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal("PUBLISHED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
             Assert.False(File.Exists(this.InBeta("Commodore/C64/250407/Images/new.png")));
-            Assert.Equal(("2026-May-14", "production-hash"), store.BetaStates[BetaRollbackFlowTests.SystemId]);
+            Assert.Equal(("2026-May-14", "production-hash"), store.BetaStates[BetaRollbackFlowTests.BoardId]);
 
             foreach (long id in new[] { first, second })
             {
@@ -252,7 +252,7 @@ namespace CRT.Server.Tests
             }
 
             AuditEntry audit = Assert.Single(accounts.Audit);
-            Assert.Equal(SystemHistoryEvents.RejectedFromBeta, audit.Action);
+            Assert.Equal(BoardHistoryEvents.RejectedFromBeta, audit.Action);
             Assert.Contains("2 submission(s) rejected; Not what this board needs.", audit.Detail, StringComparison.Ordinal);
         }
 
@@ -267,7 +267,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, " ",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, " ",
                 this.Options(), BetaRollbackFlowTests.Now, reject: true);
 
             Assert.False(outcome.IsDone);
@@ -283,7 +283,7 @@ namespace CRT.Server.Tests
         // describing nothing.
         // ###########################################################################################
         [Fact]
-        public async Task A_restored_system_is_recorded_as_level_with_production()
+        public async Task A_restored_board_is_recorded_as_level_with_production()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
@@ -292,17 +292,17 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong data.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
-            (string? revision, string? hash) = store.BetaStates[BetaRollbackFlowTests.SystemId];
+            (string? revision, string? hash) = store.BetaStates[BetaRollbackFlowTests.BoardId];
 
             Assert.Equal("2026-May-14", revision);
             Assert.Equal("production-hash", hash);
         }
 
         // -----------------------------------------------------------------------------------
-        // A system never promoted
+        // A board never promoted
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
@@ -311,15 +311,15 @@ namespace CRT.Server.Tests
         // as it is while reporting success.
         // ###########################################################################################
         [Fact]
-        public async Task A_system_never_promoted_is_removed_from_beta_entirely()
+        public async Task A_board_never_promoted_is_removed_from_beta_entirely()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: false);
             await this.MergedSubmissionAsync(store);
 
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW SYSTEM");
+            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW BOARD");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Not ready.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not ready.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -331,19 +331,19 @@ namespace CRT.Server.Tests
             Assert.False(Directory.Exists(this.InBeta("Commodore/C64/250407")));
 
             // And it has no BETA state at all any more.
-            (string? revision, string? hash) = store.BetaStates[BetaRollbackFlowTests.SystemId];
+            (string? revision, string? hash) = store.BetaStates[BetaRollbackFlowTests.BoardId];
             Assert.Null(revision);
             Assert.Null(hash);
         }
 
         // ###########################################################################################
-        // *** A PROMOTED SYSTEM WHOSE PRODUCTION FOLDER IS GONE IS REFUSED, NOT REMOVED (code review,
+        // *** A PROMOTED BOARD WHOSE PRODUCTION FOLDER IS GONE IS REFUSED, NOT REMOVED (code review,
         // 2026-09-27). *** An empty production listing used to mean "never promoted", so a mount
         // that was down or a folder renamed by hand wiped a board that IS in production out of
         // BETA. The record decides now: the plan is refused, and BETA is not touched.
         // ###########################################################################################
         [Fact]
-        public async Task A_promoted_system_whose_production_folder_cannot_be_read_is_refused_and_beta_kept()
+        public async Task A_promoted_board_whose_production_folder_cannot_be_read_is_refused_and_beta_kept()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: true);
             long id = await this.MergedSubmissionAsync(store);
@@ -352,13 +352,13 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE BOARD");
 
             BetaRollbackOutcome planned = await this.Flow(store).PlanAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, this.Options());
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
 
             Assert.True(planned.IsConflict);
             Assert.Equal(BetaRollbackFlow.ProductionUnreadableMessage, planned.Error);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Not ready.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not ready.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsConflict);
@@ -388,7 +388,7 @@ namespace CRT.Server.Tests
             Assert.Contains("new.png", File.ReadAllText(this.BetaManifest), StringComparison.Ordinal);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong data.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -419,7 +419,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Needs another look.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Needs another look.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.Empty(await store.GetApprovalsAsync(id, CancellationToken.None));
@@ -444,7 +444,7 @@ namespace CRT.Server.Tests
             store.FailRollbackRecord = true;
 
             BetaRollbackOutcome first = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong data.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.False(first.IsDone);
@@ -457,7 +457,7 @@ namespace CRT.Server.Tests
             store.FailRollbackRecord = false;
 
             BetaRollbackOutcome second = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong data.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(second.IsDone, second.Error);
@@ -492,7 +492,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.SharedChip), "CHANGED CHIP");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong chip picture.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong chip picture.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -520,7 +520,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.SharedChip), "ANOTHER BOARD'S NEWER CHIP");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong data.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -551,10 +551,10 @@ namespace CRT.Server.Tests
             DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "That datasheet is the wrong chip.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "That datasheet is the wrong chip.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
-            // Nothing outside the system's own folder is removed automatically (owner decision,
+            // Nothing outside the board's own folder is removed automatically (owner decision,
             // 2026-09-27): the datasheet stays, unused, for Account > Unused files.
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.True(File.Exists(this.InBeta(Added)));
@@ -582,7 +582,7 @@ namespace CRT.Server.Tests
             DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Wrong chip.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong chip.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
@@ -609,7 +609,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "   ",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "   ",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.False(outcome.IsDone);
@@ -633,7 +633,7 @@ namespace CRT.Server.Tests
             ReviewAccess outsider = ReviewAccess.For(BetaRollbackFlowTests.Account(2, administrator: false));
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                outsider, BetaRollbackFlowTests.SystemId, "Not mine.", this.Options(), BetaRollbackFlowTests.Now);
+                outsider, BetaRollbackFlowTests.BoardId, "Not mine.", this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsForbidden);
             Assert.Equal("SUBMITTED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
@@ -642,23 +642,23 @@ namespace CRT.Server.Tests
         // A board already level with production has nothing to roll back - the same question
         // "is BETA ahead?" the production list is built on.
         [Fact]
-        public async Task A_system_level_with_production_is_refused()
+        public async Task A_board_level_with_production_is_refused()
         {
             var store = new FakeSubmissionStore();
 
-            store.Systems[BetaRollbackFlowTests.SystemId] = new NewSubmission(
-                BetaRollbackFlowTests.SystemId, "Commodore", "C64", "250407",
+            store.Boards[BetaRollbackFlowTests.BoardId] = new NewSubmission(
+                BetaRollbackFlowTests.BoardId, "Commodore", "C64", "250407",
                 null, "c@example.com", "192.0.2.1", "hash", "r0", "A change.", 1, [],
                 BetaRollbackFlowTests.Now, BetaRollbackFlowTests.Now.AddHours(24));
 
-            store.PublishedSystems[BetaRollbackFlowTests.SystemId] =
-                new PublishedSystemRow("2026-May-14", "same", BetaRollbackFlowTests.Now.AddDays(-1));
+            store.PublishedBoards[BetaRollbackFlowTests.BoardId] =
+                new PublishedBoardRow("2026-May-14", "same", BetaRollbackFlowTests.Now.AddDays(-1));
 
-            store.ProductionSystems[BetaRollbackFlowTests.SystemId] =
-                new PublishedSystemRow("2026-May-14", "same", BetaRollbackFlowTests.Now.AddDays(-1));
+            store.ProductionBoards[BetaRollbackFlowTests.BoardId] =
+                new PublishedBoardRow("2026-May-14", "same", BetaRollbackFlowTests.Now.AddDays(-1));
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Why not.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Why not.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsConflict);
@@ -679,7 +679,7 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
 
             BetaRollbackOutcome outcome = await this.Flow(store).PlanAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, this.Options());
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
 
             Assert.True(outcome.IsPlanned, outcome.Error);
             Assert.Equal(BetaRollbackKind.RestoreFromProduction, outcome.Plan!.Kind);
@@ -695,7 +695,7 @@ namespace CRT.Server.Tests
         // *** A SIGNED-IN CONTRIBUTOR IS NAMED BY THEIR ACCOUNT'S ADDRESS (code review, 2026-09-29).
         // *** Their submission carries the account and no contact address, so the confirmation named
         // "(no contact address)" and the push-back mail - sent to Returning's addresses - reached
-        // nobody. The plan now resolves the account's address, as the Systems screen already did.
+        // nobody. The plan now resolves the account's address, as the Boards screen already did.
         // ###########################################################################################
         [Fact]
         public async Task A_signed_in_contributor_is_named_and_mailed_at_their_accounts_address()
@@ -708,7 +708,7 @@ namespace CRT.Server.Tests
 
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    BetaRollbackFlowTests.SystemId, "Commodore", "C64", "250407",
+                    BetaRollbackFlowTests.BoardId, "Commodore", "C64", "250407",
                     42, null, "192.0.2.1", "hash", "r0", "Corrected U8.", 1, [],
                     BetaRollbackFlowTests.Now.AddDays(-2), BetaRollbackFlowTests.Now.AddDays(-1)),
                 CancellationToken.None);
@@ -718,19 +718,19 @@ namespace CRT.Server.Tests
             BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
 
             BetaRollbackOutcome outcome = await this.Flow(store, accounts).PlanAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, this.Options());
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
 
             Assert.True(outcome.IsPlanned, outcome.Error);
             Assert.Equal("anna@example.com", Assert.Single(outcome.Plan!.Returning).ContactEmail);
         }
 
         // ###########################################################################################
-        // *** A NEW SYSTEM LEAVING BETA LEAVES BETA'S DROP-DOWN LISTS TOO (2026-09-27). *** Its row
+        // *** A NEW BOARD LEAVING BETA LEAVES BETA'S DROP-DOWN LISTS TOO (2026-09-27). *** Its row
         // was added when it was published there; left in, every BETA user would be offered a board
         // that is gone. Its PLACEMENT is kept, so publishing it again puts it back in the same place.
         // ###########################################################################################
         [Fact]
-        public async Task A_system_never_promoted_is_taken_out_of_BETAs_list_and_keeps_its_placement()
+        public async Task A_board_never_promoted_is_taken_out_of_BETAs_list_and_keeps_its_placement()
         {
             MasterListingRow other = ApprovePublishFlowTests.OtherListedBoard;
             MasterListingRow listed = new("Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", string.Empty);
@@ -738,17 +738,17 @@ namespace CRT.Server.Tests
 
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: false);
             await this.MergedSubmissionAsync(store);
-            await store.SetPlacementAsync(BetaRollbackFlowTests.SystemId, ApprovePublishFlowTests.Placement(), 1, BetaRollbackFlowTests.Now, CancellationToken.None);
+            await store.SetPlacementAsync(BetaRollbackFlowTests.BoardId, ApprovePublishFlowTests.Placement(), 1, BetaRollbackFlowTests.Now, CancellationToken.None);
 
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW SYSTEM");
+            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW BOARD");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.SystemId, "Not ready.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not ready.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.Equal([other], DataTreeBuilder.ListedIn(this.thisBeta));
-            Assert.True(store.Placements.ContainsKey(BetaRollbackFlowTests.SystemId));
+            Assert.True(store.Placements.ContainsKey(BetaRollbackFlowTests.BoardId));
         }
     }
 }

@@ -26,11 +26,11 @@ namespace CRT.Server.Handlers.Submissions
     //
     //   PUBLISHED bytes are addressed by a caller-supplied PATH into the data tree. That IS the
     //   traversal risk, and it goes through SubmissionPathRules - the same containment the write
-    //   paths use, resolved against this system's own folder rather than against the tree, so a
+    //   paths use, resolved against this board's own folder rather than against the tree, so a
     //   maintainer opening a C64 submission cannot read an Amstrad board through it.
     //
     // *** THE IDENTITY IS UNTRUSTED TOO. *** Manufacturer/Hardware/Board arrive inside the
-    // submission, so the system folder is resolved through the same rules before anything is
+    // submission, so the board folder is resolved through the same rules before anything is
     // contained to it - otherwise a manufacturer of ".." would move the folder being contained to
     // and every subsequent check would guard the wrong place. Same reasoning as
     // PublishedBoardLocator, which has the longer write-up.
@@ -90,7 +90,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Where a PUBLISHED file for this system is, if the request may have it at all.
+        // Where a PUBLISHED file for this board is, if the request may have it at all.
         //
         // Returns false for anything unsafe, anything the submission does not reference, and
         // anything that is not there - the caller turns all three into one 404. They are
@@ -98,24 +98,24 @@ namespace CRT.Server.Handlers.Submissions
         // "absent" lets the tree be probed for what exists.
         //
         // ###########################################################################################
-        // *** THE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE SYSTEM FOLDER (fixed
+        // *** THE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE BOARD FOLDER (fixed
         // 2026-09-23). ***
         //
         // A board stores its file references RELATIVE TO THE DATA TREE ROOT - "Commodore/C64/250407/
         // Board Layout 250407 NTSC.png" - which is how the desktop app resolves them too
         // (Main.BoardSelection.cs combines DataManager.DataRoot with the stored value). Resolving
-        // against the system folder therefore looked for
+        // against the board folder therefore looked for
         // "<root>/Commodore/C64/250407/Commodore/C64/250407/Board Layout 250407 NTSC.png",
         // which never exists, and every published image answered 404. The maintainer saw "No
         // published file at this path" beside a picture that is in fact published.
         //
         // It also could not have worked for SHARED files: "Commodore/Shared files/Component
-        // images/6526.png" lives outside the system folder by design, so a system-relative base
+        // images/6526.png" lives outside the board folder by design, so a board-relative base
         // excludes an entire legitimate category of board reference.
         //
         // *** CONTAINMENT IS NOT WEAKENED, AND THE SCOPE IS NOW STRICTER THAN IT WAS. *** The
         // resolve still refuses anything escaping the root, and the request must additionally name
-        // a file THIS SUBMISSION'S OWN BOARD REFERENCES (the check below). The system folder was
+        // a file THIS SUBMISSION'S OWN BOARD REFERENCES (the check below). The board folder was
         // serving as a crude scope limit; naming the referenced files is the real one, and unlike
         // the folder it cannot be satisfied by an unrelated file that happens to sit nearby.
         // ###########################################################################################
@@ -123,7 +123,7 @@ namespace CRT.Server.Handlers.Submissions
         // *** OR A FILE THE PUBLISHED BOARD CITES (owner request, 2026-09-26). *** A row changed to
         // another picture, or deleted, leaves its OLD file cited by the published board alone - and
         // the old picture is exactly the "before" side of the comparison, in the change summary and
-        // in the table's hover card. Scoped to this submission's own system still: the published
+        // in the table's hover card. Scoped to this submission's own board still: the published
         // board is the one the submission would replace. `publishedBoardFiles` is asked only when
         // the submission does not cite the path itself, so the ordinary request never reads it.
         // ###########################################################################################
@@ -217,15 +217,15 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The system's own folder inside the data tree, resolved through the same rules that guard
+        // The board's own folder inside the data tree, resolved through the same rules that guard
         // every other use of these three untrusted values.
         // ###########################################################################################
-        private static bool TryResolveSystemFolder(
+        private static bool TryResolveBoardFolder(
             string dataTreeRoot,
             SubmissionManifest manifest,
-            out string systemFolder)
+            out string boardFolder)
         {
-            systemFolder = string.Empty;
+            boardFolder = string.Empty;
 
             string relative = string.Join('/',
                 new[] { manifest.Manufacturer, manifest.Hardware, manifest.Board }
@@ -237,7 +237,7 @@ namespace CRT.Server.Handlers.Submissions
             if (!SubmissionPathRules.TryResolve(dataTreeRoot, relative, out string resolved, out _))
                 return false;
 
-            systemFolder = resolved;
+            boardFolder = resolved;
             return true;
         }
 

@@ -12,8 +12,8 @@ namespace CRT.Server.Handlers.Submissions
     // Compute authority once and use it everywhere. Special-casing invites a site that forgets the
     // check." This is that one place.
     //
-    // *** THE QUESTION IS ALWAYS ABOUT ONE SYSTEM. *** "Is this account an administrator, OR in
-    // THIS system's pool" - the exact phrasing the plan insists on. There is no "may review
+    // *** THE QUESTION IS ALWAYS ABOUT ONE BOARD. *** "Is this account an administrator, OR in
+    // THIS board's pool" - the exact phrasing the plan insists on. There is no "may review
     // somewhere" that grants anything about a particular submission; CanReviewAnything below
     // exists only so the queue can answer 403 to an account with no role at all rather than an
     // empty list.
@@ -43,53 +43,53 @@ namespace CRT.Server.Handlers.Submissions
             (access!.Account.IsAdministrator || access.MaintainerOf.Count > 0);
 
         // ###########################################################################################
-        // May this account SEE and DECIDE this submission (or this system)? Deciding includes
+        // May this account SEE and DECIDE this submission (or this board)? Deciding includes
         // giving one of two approvals a shared-file change needs - ApprovalRules says whether the
         // approval publishes.
         // ###########################################################################################
         public static bool CanReview(ReviewAccess? access, SubmissionRecord? submission) =>
-            submission is not null && ReviewAuthority.CanReview(access, submission.SystemId);
+            submission is not null && ReviewAuthority.CanReview(access, submission.BoardId);
 
-        public static bool CanReview(ReviewAccess? access, string? systemId) =>
-            ReviewAuthority.RoleIn(access, systemId) is not null;
+        public static bool CanReview(ReviewAccess? access, string? boardId) =>
+            ReviewAuthority.RoleIn(access, boardId) is not null;
 
         // ###########################################################################################
-        // May this account APPROVE a publish of this submission or system - on its own, or as one
+        // May this account APPROVE a publish of this submission or board - on its own, or as one
         // of two? The same answer as CanReview; kept as its own question because opening something
         // and writing the tree are different acts, and a later read-only role would split them.
         // ###########################################################################################
         public static bool CanPublish(ReviewAccess? access, SubmissionRecord? submission) =>
             ReviewAuthority.CanReview(access, submission);
 
-        public static bool CanPublish(ReviewAccess? access, string? systemId) =>
-            ReviewAuthority.CanReview(access, systemId);
+        public static bool CanPublish(ReviewAccess? access, string? boardId) =>
+            ReviewAuthority.CanReview(access, boardId);
 
         // ###########################################################################################
-        // May this account PUBLISH THIS SYSTEM FROM BETA TO THE STABLE SOURCE? CanPublish - unless
+        // May this account PUBLISH THIS BOARD FROM BETA TO THE STABLE SOURCE? CanPublish - unless
         // the server lets only administrators do that (ServerOptions.ProductionPublishingAdministratorsOnly,
-        // owner request, 2026-10-05). Seeing the system in the BETA queue, reading its plan, and
+        // owner request, 2026-10-05). Seeing the board in the BETA queue, reading its plan, and
         // pushing it back or rejecting it are not this question: they stay CanPublish's.
         // ###########################################################################################
-        public static bool CanPublishToProduction(ReviewAccess? access, string? systemId, bool administratorsOnly) =>
-            ReviewAuthority.CanPublish(access, systemId) && (!administratorsOnly || access!.Account.IsAdministrator);
+        public static bool CanPublishToProduction(ReviewAccess? access, string? boardId, bool administratorsOnly) =>
+            ReviewAuthority.CanPublish(access, boardId) && (!administratorsOnly || access!.Account.IsAdministrator);
 
         // ###########################################################################################
-        // May this account see the EMAIL ADDRESSES of this system's people - its maintainers, its
+        // May this account see the EMAIL ADDRESSES of this board's people - its maintainers, its
         // contributors, and whoever its history names (owner request, 2026-10-05: "I do not think that
         // normal maintainer should be able to see other email addresses if they are not set as
         // maintainer for that system. They should be able to see all mail addresses for their own
-        // system(s)")? The administrator and the system's own maintainers: CanReview. Everybody else
-        // on the Systems screen sees the same system with names and no addresses (SystemOverviewFlow).
+        // system(s)")? The administrator and the board's own maintainers: CanReview. Everybody else
+        // on the Boards screen sees the same board with names and no addresses (BoardOverviewFlow).
         // ###########################################################################################
-        public static bool CanSeeAddressesOf(ReviewAccess? access, string? systemId) =>
-            ReviewAuthority.CanReview(access, systemId);
+        public static bool CanSeeAddressesOf(ReviewAccess? access, string? boardId) =>
+            ReviewAuthority.CanReview(access, boardId);
 
         // ###########################################################################################
-        // The role this account approves as, for this system: Administrator for an administrator
-        // (in every pool by definition), Maintainer for a member of the system's pool, null for
+        // The role this account approves as, for this board: Administrator for an administrator
+        // (in every pool by definition), Maintainer for a member of the board's pool, null for
         // anyone else. What ApprovalRules counts.
         // ###########################################################################################
-        public static ApproverRole? RoleIn(ReviewAccess? access, string? systemId)
+        public static ApproverRole? RoleIn(ReviewAccess? access, string? boardId)
         {
             if (!ReviewAuthority.IsUsable(access))
                 return null;
@@ -97,7 +97,7 @@ namespace CRT.Server.Handlers.Submissions
             if (access!.Account.IsAdministrator)
                 return ApproverRole.Administrator;
 
-            return !string.IsNullOrWhiteSpace(systemId) && access.MaintainerOf.Contains(systemId)
+            return !string.IsNullOrWhiteSpace(boardId) && access.MaintainerOf.Contains(boardId)
                 ? ApproverRole.Maintainer
                 : null;
         }
@@ -107,7 +107,7 @@ namespace CRT.Server.Handlers.Submissions
         // 2026-09-25)?
         //
         // Not every row in a pool can. An ADMINISTRATOR's row - granted directly since 2026-10-05, so
-        // others see who maintains a system, or kept by an account made administrator by hand later
+        // others see who maintains a board, or kept by an account made administrator by hand later
         // (the documented SQL step) - approves as the administrator (RoleIn); a locked or unverified
         // account cannot approve at all. Counting such a row as
         // "the board has a maintainer" made a shared-file change demand a maintainer approval nobody
@@ -134,9 +134,9 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanReviewAnything(access))
                 return "This account is not allowed to review submissions.";
 
-            string system = string.IsNullOrWhiteSpace(submission?.SystemId) ? "this system" : submission!.SystemId;
+            string board = string.IsNullOrWhiteSpace(submission?.BoardId) ? "this board" : submission!.BoardId;
 
-            return $"This account is not a maintainer of {system}.";
+            return $"This account is not a maintainer of {board}.";
         }
 
         // ###########################################################################################

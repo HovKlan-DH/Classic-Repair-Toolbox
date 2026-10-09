@@ -26,7 +26,7 @@ namespace Handlers.DataHandling
     //   - BaseRevision: WHICH published revision this draft was taken from. Nothing in the draft
     //     folder records that, and without it the drift warning cannot tell "the published board
     //     moved on underneath you" from "you edited these rows yourself".
-    //   - NewSystem: the registration for a system that exists ONLY as a draft. There is no
+    //   - NewBoard: the registration for a board that exists ONLY as a draft. There is no
     //     published counterpart to derive a manufacturer/hardware/board identity from.
     //
     // *** NEVER SUBMITTED, NEVER PUBLISHED. *** See DraftFolderLayout.DraftMarkerFileName for the
@@ -34,23 +34,30 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public sealed class DraftMarker
     {
-        // The system's ExcelDataFile identity, carried so a marker found on disk can be checked
+        // The board's ExcelDataFile identity, carried so a marker found on disk can be checked
         // against the folder it was found in - a folder copied by hand to a new name would
-        // otherwise claim to be a draft of the system it was copied FROM.
-        public string SystemKey { get; init; } = string.Empty;
+        // otherwise claim to be a draft of the board it was copied FROM.
+        //
+        // Written as "SystemKey", the name it had before "system" became "board" everywhere
+        // (owner decision, 2026-10-09): every draft folder already on a contributor's disk carries
+        // that name, and a marker that no longer reads would turn the draft into an unknown folder.
+        [JsonPropertyName("SystemKey")]
+        public string BoardKey { get; init; } = string.Empty;
 
         // ###########################################################################################
         // The published RevisionDate this draft was seeded from.
         //
-        // EMPTY for a draft-only system, deliberately: it has no official counterpart, and stamping
+        // EMPTY for a draft-only board, deliberately: it has no official counterpart, and stamping
         // today's date here would make a later drift check compare against a revision that never
         // existed. The same reasoning BoardDraft.BaseRevision carried.
         // ###########################################################################################
         public string BaseRevision { get; init; } = string.Empty;
 
-        // Set only on a system that exists purely as a draft. Null for the ordinary case - a draft
-        // seeded from a published board, whose identity is already established.
-        public NewSystemRegistration? NewSystem { get; init; }
+        // Set only on a board that exists purely as a draft. Null for the ordinary case - a draft
+        // seeded from a published board, whose identity is already established. Written as
+        // "NewSystem" for the reason BoardKey keeps "SystemKey".
+        [JsonPropertyName("NewSystem")]
+        public NewBoardRegistration? NewBoard { get; init; }
 
         // When the draft was created, so a contributor with several can tell which is which. UTC,
         // round-trip format, for the same reason receipts use it: a file that travels between time
@@ -59,7 +66,7 @@ namespace Handlers.DataHandling
 
         // True when this draft has no published counterpart at all.
         [JsonIgnore]
-        public bool IsNewSystem => this.NewSystem != null;
+        public bool IsNewBoard => this.NewBoard != null;
     }
 
     // ###########################################################################################

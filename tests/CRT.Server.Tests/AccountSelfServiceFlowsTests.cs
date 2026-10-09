@@ -492,7 +492,7 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task The_account_lists_the_systems_it_maintains_in_order()
+        public async Task The_account_lists_the_boards_it_maintains_in_order()
         {
             Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
             setup.Store.Maintainers.Add(("Commodore/C64/250407", setup.AccountId));

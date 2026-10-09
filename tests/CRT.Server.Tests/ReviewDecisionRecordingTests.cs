@@ -217,7 +217,7 @@ namespace CRT.Server.Tests
             Assert.NotEmpty(why);
         }
 
-        // A maintainer OF THE FIXTURE'S SYSTEM - authority is per system since Phase 6.
+        // A maintainer OF THE FIXTURE'S BOARD - authority is per board since Phase 6.
         private static ReviewAccess Maintainer() =>
             ReviewAccess.For(
                 new Handlers.Accounts.AccountRecord(

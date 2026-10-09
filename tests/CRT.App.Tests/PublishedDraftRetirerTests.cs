@@ -26,7 +26,7 @@ public sealed class PublishedDraftRetirerTests : IDisposable
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
-    private const string SystemKey = "Commodore/C64/250407/Data.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data.xlsx";
 
     // A draft folder holding one file, and a candidate stamped as it is now.
     private RetirableDraft CandidateOnDisk()
@@ -35,7 +35,7 @@ public sealed class PublishedDraftRetirerTests : IDisposable
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "Data.xlsx"), "workbook");
 
-        return new RetirableDraft(PublishedDraftRetirerTests.SystemKey, folder, DraftRetirement.FolderStamp(folder));
+        return new RetirableDraft(PublishedDraftRetirerTests.BoardKey, folder, DraftRetirement.FolderStamp(folder));
     }
 
     // ###########################################################################################
@@ -57,7 +57,7 @@ public sealed class PublishedDraftRetirerTests : IDisposable
             callingThread = Environment.CurrentManagedThreadId;
 
             PublishedDraftRetirer.FindAsync(
-                [new SubmissionReceipt { SubmissionId = 1, SystemId = PublishedDraftRetirerTests.SystemKey, LastKnownState = "published" }],
+                [new SubmissionReceipt { SubmissionId = 1, BoardId = PublishedDraftRetirerTests.BoardKey, LastKnownState = "published" }],
                 _ =>
                 {
                     checkingThread = Environment.CurrentManagedThreadId;
@@ -82,13 +82,13 @@ public sealed class PublishedDraftRetirerTests : IDisposable
         DraftRetirementOutcome outcome = PublishedDraftRetirer.Retire(
             [candidate],
             isInUse: _ => false,
-            discard: systemId => { discarded.Add(systemId); return true; },
+            discard: boardId => { discarded.Add(boardId); return true; },
             afterDiscard: cleared.Add);
 
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], discarded);
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], cleared);
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], outcome.Retired);
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], outcome.Touched);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], discarded);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], cleared);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], outcome.Retired);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], outcome.Touched);
     }
 
     // ###########################################################################################
@@ -149,9 +149,9 @@ public sealed class PublishedDraftRetirerTests : IDisposable
             discard: _ => false,
             afterDiscard: cleared.Add);
 
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], cleared);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], cleared);
         Assert.Empty(outcome.Retired);
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], outcome.Failed);
-        Assert.Equal([PublishedDraftRetirerTests.SystemKey], outcome.Touched);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], outcome.Failed);
+        Assert.Equal([PublishedDraftRetirerTests.BoardKey], outcome.Touched);
     }
 }

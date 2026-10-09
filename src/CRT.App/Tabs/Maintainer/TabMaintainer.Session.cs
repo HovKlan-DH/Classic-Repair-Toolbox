@@ -116,7 +116,7 @@ namespace CRT
         // ###########################################################################################
         // For the badge, with the tab turned on - at launch, or when it is ticked later: the
         // remembered session, then the two lists the badge counts - with no overlay, since CRT's
-        // window must stay usable while the server answers, or does not. The rest (the Systems
+        // window must stay usable while the server answers, or does not. The rest (the Boards
         // overview, the drop-down listing) is read when the tab is first shown, which is when
         // anything reads them. Once: Main calls this on every change of the tab's visibility.
         //

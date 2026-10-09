@@ -49,16 +49,16 @@ namespace CRT
             // *** THE SUBMISSION'S OWN RECORD, NOT THE QUEUE'S ROW (code review, 2026-10-01). *** A
             // submission another maintainer decided stays open with its decisions off, and its row
             // has left the queue list - SelectedQueueRow is then null and the overlay named no
-            // system ("Working out 's files..."). The detail read for this very submission always
+            // board ("Working out 's files..."). The detail read for this very submission always
             // carries it; the row stays as the fallback for the moment before that arrives.
             ReviewQueueRow? row = this.thisShownDetail is { } shown && shown.Submission.Id == id
                 ? shown.Submission
                 : this.SelectedQueueRow;
-            string systemId = row?.SystemId ?? string.Empty;
+            string boardId = row?.BoardId ?? string.Empty;
 
             ReviewApiResult<SubmissionFilesAnswer> answer = await ServerWait.CallAsync(
                 this,
-                MaintainerWaitWording.ReadingSubmissionFiles(systemId),
+                MaintainerWaitWording.ReadingSubmissionFiles(boardId),
                 token => client.GetSubmissionFilesAsync(session, id, token));
 
             // Another submission chosen while it was asked for: that one's view is not this answer's.

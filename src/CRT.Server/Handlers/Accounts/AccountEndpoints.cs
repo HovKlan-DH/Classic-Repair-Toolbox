@@ -42,7 +42,7 @@ namespace CRT.Server.Handlers.Accounts
             accounts.MapPost("/forgot-password", AccountEndpoints.ForgotPasswordAsync);
             accounts.MapPost("/reset-password", AccountEndpoints.ResetPasswordAsync);
 
-            // Accepting an invitation to maintain a system (2026-09-27) - the one way a new
+            // Accepting an invitation to maintain a board (2026-09-27) - the one way a new
             // maintainer's account is made. See MaintainerInvitationFlows.
             accounts.MapPost("/accept-invitation", AccountEndpoints.AcceptInvitationAsync);
 

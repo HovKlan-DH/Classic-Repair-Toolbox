@@ -28,7 +28,7 @@ public sealed class DraftSeederTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -55,7 +55,7 @@ public sealed class DraftSeederTests : IDisposable
                 BoardLabel = "U8",
                 Pin = "1",
                 Name = "Clock",
-                // A manufacturer shared file - referenced, but NOT this system's to own.
+                // A manufacturer shared file - referenced, but NOT this board's to own.
                 File = "Commodore/Shared files/scope.png",
             },
         ],
@@ -84,7 +84,7 @@ public sealed class DraftSeederTests : IDisposable
     [Fact]
     public async Task Seeding_from_the_file_copies_it_as_it_is_now_not_as_it_was_cached()
     {
-        string published = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftSeederTests.SystemKey);
+        string published = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftSeederTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(published)!);
 
         BoardWorkbookWriter.Write(published, DraftSeederTests.PublishedBoard());
@@ -98,11 +98,11 @@ public sealed class DraftSeederTests : IDisposable
 
         try
         {
-            DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey);
+            DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey);
 
             Assert.True(seeded.Created, seeded.Reason);
             Assert.Contains(
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftSeederTests.SystemKey)!.Components,
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftSeederTests.BoardKey)!.Components,
                 component => component.BoardLabel == "U99");
         }
         finally
@@ -114,11 +114,11 @@ public sealed class DraftSeederTests : IDisposable
     [Fact]
     public void Seeding_from_a_file_that_is_not_there_says_so_and_creates_nothing()
     {
-        DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey);
+        DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey);
 
         Assert.False(seeded.Created);
         Assert.NotEmpty(seeded.Reason);
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftSeederTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftSeederTests.BoardKey));
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class DraftSeederTests : IDisposable
         this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
         Assert.True(File.Exists(result.WorkbookPath));
@@ -152,7 +152,7 @@ public sealed class DraftSeederTests : IDisposable
         BoardData published = DraftSeederTests.PublishedBoard();
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, published);
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, published);
 
         Assert.True(result.Created, result.Reason);
 
@@ -174,14 +174,14 @@ public sealed class DraftSeederTests : IDisposable
         File.WriteAllText(publishedSidecar, "{\"Component highlights\":{}}");
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
 
         // Byte-copied rather than rewritten: the sidecar holds roots this app does not model
         // ("KiCad calibration points", and whatever a future version adds), and rewriting it from
         // a partial model would discard them.
-        string draftSidecar = DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.SystemKey);
+        string draftSidecar = DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.BoardKey);
         Assert.True(File.Exists(draftSidecar));
         Assert.Equal(File.ReadAllText(publishedSidecar), File.ReadAllText(draftSidecar));
     }
@@ -193,10 +193,10 @@ public sealed class DraftSeederTests : IDisposable
         this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
-        Assert.False(File.Exists(DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.SystemKey)));
+        Assert.False(File.Exists(DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.BoardKey)));
     }
 
     // ------------------------------------------------------------------ Which files travel
@@ -207,7 +207,7 @@ public sealed class DraftSeederTests : IDisposable
         this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         string copied = Path.Combine(
             this.DraftsRoot, "Commodore", "C64", "250407", "Sheet1.png");
@@ -232,7 +232,7 @@ public sealed class DraftSeederTests : IDisposable
             "Commodore/Shared files/scope.png");
 
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.Contains("Commodore/Shared files/scope.png", result.FilesShared);
 
@@ -249,7 +249,7 @@ public sealed class DraftSeederTests : IDisposable
     {
         // Deliberately writes nothing: every referenced file is absent.
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
         Assert.Contains("Commodore/C64/250407/Sheet1.png", result.FilesMissing);
@@ -270,7 +270,7 @@ public sealed class DraftSeederTests : IDisposable
             "Commodore/C64/250407/thumbs.db");
 
         DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         string draftFolder = Path.Combine(this.DraftsRoot, "Commodore", "C64", "250407");
 
@@ -286,18 +286,18 @@ public sealed class DraftSeederTests : IDisposable
         this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
 
         DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         DraftMarker? marker = DraftMarkerStore.Load(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftSeederTests.SystemKey));
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftSeederTests.BoardKey));
 
         Assert.NotNull(marker);
 
         // Without this the drift warning cannot tell "the published board moved on underneath you"
         // from "you edited these rows yourself" - and nothing else in the folder records it.
         Assert.Equal("2026-09-01", marker!.BaseRevision);
-        Assert.Equal(DraftSeederTests.SystemKey, marker.SystemKey);
-        Assert.False(marker.IsNewSystem);
+        Assert.Equal(DraftSeederTests.BoardKey, marker.BoardKey);
+        Assert.False(marker.IsNewBoard);
     }
 
     // ###########################################################################################
@@ -313,10 +313,10 @@ public sealed class DraftSeederTests : IDisposable
         this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
 
         DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         // The contributor's own edit, which must survive.
-        string workbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftSeederTests.SystemKey);
+        string workbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftSeederTests.BoardKey);
         var edited = new BoardData
         {
             RevisionDate = "2026-09-01",
@@ -326,7 +326,7 @@ public sealed class DraftSeederTests : IDisposable
         BoardWorkbookWriter.Write(workbook, edited);
 
         DraftSeedResult second = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.SystemKey, DraftSeederTests.PublishedBoard());
+            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.False(second.Created);
         Assert.Contains("already exists", second.Reason, StringComparison.OrdinalIgnoreCase);
@@ -336,20 +336,20 @@ public sealed class DraftSeederTests : IDisposable
         Assert.Equal("MY EDIT", after.Components.Single(c => c.BoardLabel == "U8").Description);
     }
 
-    // ------------------------------------------------------------------ A brand-new system
+    // ------------------------------------------------------------------ A brand-new board
 
     [Fact]
-    public async Task A_NEW_system_gets_an_empty_but_readable_workbook()
+    public async Task A_NEW_board_gets_an_empty_but_readable_workbook()
     {
-        var registration = new NewSystemRegistration
+        var registration = new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
-            ExcelDataFile = DraftSeederTests.SystemKey,
+            ExcelDataFile = DraftSeederTests.BoardKey,
             CreatedUtc = DateTimeOffset.UtcNow.ToString("o"),
         };
 
-        DraftSeedResult result = DraftSeeder.CreateNewSystem(this.DraftsRoot, registration);
+        DraftSeedResult result = DraftSeeder.CreateNewBoard(this.DraftsRoot, registration);
 
         Assert.True(result.Created, result.Reason);
         Assert.True(File.Exists(result.WorkbookPath));
@@ -363,10 +363,10 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM IS SEEDED WITH NO REVISION DATE, AND THAT IS FINE - THE SERVER STAMPS IT.
-    // *** It once was not: approving a new system answered "This submission cannot be published: A
+    // *** A NEW BOARD IS SEEDED WITH NO REVISION DATE, AND THAT IS FINE - THE SERVER STAMPS IT.
+    // *** It once was not: approving a new board answered "This submission cannot be published: A
     // publish must carry a revision" (reported by the project owner, 2026-09-26), because
-    // PublishPlan was built from the SUBMITTED date and a new system has none to give.
+    // PublishPlan was built from the SUBMITTED date and a new board has none to give.
     //
     // The project owner settled it the same day: "when the maintainer publish it to BETA, the
     // revision date gets updated from server. Same happens when it gets published to real
@@ -382,16 +382,16 @@ public sealed class DraftSeederTests : IDisposable
     // ApprovePublishFlowTests.A_NEW_system_that_carries_no_revision_date_can_still_be_planned.
     // ###########################################################################################
     [Fact]
-    public async Task A_NEW_system_is_seeded_with_no_revision_date_because_the_server_stamps_it()
+    public async Task A_NEW_board_is_seeded_with_no_revision_date_because_the_server_stamps_it()
     {
-        var registration = new NewSystemRegistration
+        var registration = new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
-            ExcelDataFile = DraftSeederTests.SystemKey,
+            ExcelDataFile = DraftSeederTests.BoardKey,
         };
 
-        DraftSeedResult result = DraftSeeder.CreateNewSystem(this.DraftsRoot, registration);
+        DraftSeedResult result = DraftSeeder.CreateNewBoard(this.DraftsRoot, registration);
         Assert.True(result.Created, result.Reason);
 
         // 1. Nothing stamped a revision date into the seeded workbook.
@@ -401,7 +401,7 @@ public sealed class DraftSeederTests : IDisposable
         // 2. With no published board to fall back to, the merged board carries none either.
         var manifest = new SubmissionManifest
         {
-            SystemId = "Commodore/C64/250407",
+            BoardId = "Commodore/C64/250407",
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407",
@@ -413,22 +413,22 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM GETS AN EMPTY "Scope baseline" FOLDER (owner request, 2026-09-24). ***
+    // *** A NEW BOARD GETS AN EMPTY "Scope baseline" FOLDER (owner request, 2026-09-24). ***
     //
     // Beside the workbook, so the contributor can pick it straight away when referencing their
     // first baseline image rather than first creating it by hand with the exact name.
     // ###########################################################################################
     [Fact]
-    public void A_NEW_system_gets_an_empty_Scope_baseline_folder_beside_its_workbook()
+    public void A_NEW_board_gets_an_empty_Scope_baseline_folder_beside_its_workbook()
     {
-        var registration = new NewSystemRegistration
+        var registration = new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
-            ExcelDataFile = DraftSeederTests.SystemKey,
+            ExcelDataFile = DraftSeederTests.BoardKey,
         };
 
-        DraftSeedResult result = DraftSeeder.CreateNewSystem(this.DraftsRoot, registration);
+        DraftSeedResult result = DraftSeeder.CreateNewBoard(this.DraftsRoot, registration);
 
         Assert.True(result.Created, result.Reason);
 
@@ -450,46 +450,46 @@ public sealed class DraftSeederTests : IDisposable
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
             this.DraftsRoot,
             this.DataRoot,
-            DraftSeederTests.SystemKey,
+            DraftSeederTests.BoardKey,
             DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
-        Assert.False(Directory.Exists(DraftFolderLayout.GetScopeBaselineFolder(this.DraftsRoot, DraftSeederTests.SystemKey)));
+        Assert.False(Directory.Exists(DraftFolderLayout.GetScopeBaselineFolder(this.DraftsRoot, DraftSeederTests.BoardKey)));
     }
 
     [Fact]
-    public void A_NEW_systems_marker_carries_its_registration_and_NO_base_revision()
+    public void A_NEW_boards_marker_carries_its_registration_and_NO_base_revision()
     {
-        var registration = new NewSystemRegistration
+        var registration = new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
             HardwareNotes = "Test board",
-            ExcelDataFile = DraftSeederTests.SystemKey,
+            ExcelDataFile = DraftSeederTests.BoardKey,
         };
 
-        DraftSeeder.CreateNewSystem(this.DraftsRoot, registration);
+        DraftSeeder.CreateNewBoard(this.DraftsRoot, registration);
 
         DraftMarker? marker = DraftMarkerStore.Load(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftSeederTests.SystemKey));
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftSeederTests.BoardKey));
 
         Assert.NotNull(marker);
-        Assert.True(marker!.IsNewSystem);
-        Assert.Equal("C64", marker.NewSystem!.HardwareName);
+        Assert.True(marker!.IsNewBoard);
+        Assert.Equal("C64", marker.NewBoard!.HardwareName);
 
-        // EMPTY, deliberately: this system has no published counterpart, so there is no revision
+        // EMPTY, deliberately: this board has no published counterpart, so there is no revision
         // it is based on. Stamping today's date would make a later drift check compare against a
         // revision that never existed.
         Assert.Equal(string.Empty, marker.BaseRevision);
     }
 
     [Fact]
-    public void Creating_a_NEW_system_also_refuses_to_overwrite_an_existing_draft()
+    public void Creating_a_NEW_board_also_refuses_to_overwrite_an_existing_draft()
     {
-        var registration = new NewSystemRegistration { ExcelDataFile = DraftSeederTests.SystemKey };
+        var registration = new NewBoardRegistration { ExcelDataFile = DraftSeederTests.BoardKey };
 
-        Assert.True(DraftSeeder.CreateNewSystem(this.DraftsRoot, registration).Created);
-        Assert.False(DraftSeeder.CreateNewSystem(this.DraftsRoot, registration).Created);
+        Assert.True(DraftSeeder.CreateNewBoard(this.DraftsRoot, registration).Created);
+        Assert.False(DraftSeeder.CreateNewBoard(this.DraftsRoot, registration).Created);
     }
 
     [Fact]
@@ -498,7 +498,7 @@ public sealed class DraftSeederTests : IDisposable
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
             draftsRoot: string.Empty,
             this.DataRoot,
-            DraftSeederTests.SystemKey,
+            DraftSeederTests.BoardKey,
             DraftSeederTests.PublishedBoard());
 
         Assert.False(result.Created);
@@ -508,7 +508,7 @@ public sealed class DraftSeederTests : IDisposable
     // ###########################################################################################
     // Reads a workbook back the way the app does.
     //
-    // The cache key is the PATH rather than the system identity, so each test's own temp folder
+    // The cache key is the PATH rather than the board identity, so each test's own temp folder
     // gets its own cache entry - BoardDataReader keeps loaded boards in a static dictionary, and
     // sharing a key across tests would hand one test another's board.
     // ###########################################################################################

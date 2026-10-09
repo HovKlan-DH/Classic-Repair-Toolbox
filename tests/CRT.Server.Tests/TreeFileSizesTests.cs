@@ -64,12 +64,12 @@ namespace CRT.Server.Tests
         [Fact]
         public void Each_entry_has_the_size_of_where_its_bytes_are()
         {
-            IReadOnlyList<SystemFileEntry> entries = TreeFileSizes.Attach(
+            IReadOnlyList<BoardFileEntry> entries = TreeFileSizes.Attach(
                 [
-                    new SystemFileEntry("Commodore/C64/250407/a.png", SystemFileChange.Unchanged, SystemFileSource.Beta),
-                    new SystemFileEntry("Commodore/C64/250407/old.png", SystemFileChange.Removed, SystemFileSource.Production),
-                    new SystemFileEntry("Commodore/C64/250407/new.png", SystemFileChange.Added, SystemFileSource.Submission, new string('a', 64)),
-                    new SystemFileEntry("Commodore/C64/250407/Data.xlsx", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true)
+                    new BoardFileEntry("Commodore/C64/250407/a.png", BoardFileChange.Unchanged, BoardFileSource.Beta),
+                    new BoardFileEntry("Commodore/C64/250407/old.png", BoardFileChange.Removed, BoardFileSource.Production),
+                    new BoardFileEntry("Commodore/C64/250407/new.png", BoardFileChange.Added, BoardFileSource.Submission, new string('a', 64)),
+                    new BoardFileEntry("Commodore/C64/250407/Data.xlsx", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true)
                 ],
                 this.thisBeta,
                 this.thisProduction,

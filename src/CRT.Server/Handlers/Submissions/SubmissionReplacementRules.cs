@@ -15,7 +15,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // Which submissions a newly queued one replaces (ReplacedBy), all of these holding:
     //
-    //   - the SAME SYSTEM;
+    //   - the SAME BOARD;
     //   - the SAME CONTRIBUTOR: the same signed-in account, or - for the ordinary contributor, who
     //     has none - the same contact email. *** The email is not verified ***, so anyone who knows
     //     a contributor's address and board can replace their waiting submission with their own;
@@ -47,7 +47,7 @@ namespace CRT.Server.Handlers.Submissions
                 .Where(older =>
                     older.Id < arrived.Id &&
                     older.State == SubmissionState.Pending &&
-                    string.Equals(older.SystemId, arrived.SystemId, StringComparison.Ordinal) &&
+                    string.Equals(older.BoardId, arrived.BoardId, StringComparison.Ordinal) &&
                     SubmissionReplacementRules.IsSameContributor(older, arrived))
                 .OrderBy(older => older.Id)
                 .ToList();

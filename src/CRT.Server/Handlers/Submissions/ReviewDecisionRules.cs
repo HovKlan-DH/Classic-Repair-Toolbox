@@ -2,7 +2,7 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // WHETHER a review decision may be made at all (NewContributeStrategy.md Phase 5, task 5;
-    // per-system authority from Phase 6, 2026-09-25).
+    // per-board authority from Phase 6, 2026-09-25).
     //
     // *** APPROVE PUBLISHES, AND PUBLISHING CANNOT BE UNDONE. *** Task 7 was struck by the
     // project owner, so no publish history is retained: a published file is overwritten in place and
@@ -10,11 +10,11 @@ namespace CRT.Server.Handlers.Submissions
     // live in their own unit-tested class rather than as a few `if`s inside an endpoint - each one
     // is the last thing between a wrong request and a data tree that cannot be restored.
     //
-    // *** ALL THREE OUTCOMES NEED THE SAME AUTHORITY NOW: a maintainer OF THIS SYSTEM, or an
-    // administrator. *** ReviewAuthority answers that, against the submission's own system and
+    // *** ALL THREE OUTCOMES NEED THE SAME AUTHORITY NOW: a maintainer OF THIS BOARD, or an
+    // administrator. *** ReviewAuthority answers that, against the submission's own board and
     // whether it touches shared files. The four-role plan gave a recommend-only Reviewer the two
     // cheap outcomes and withheld Approve; the project owner collapsed the roles, so a maintainer
-    // assigned to a system decides everything about it. What stays true is that rejecting and
+    // assigned to a board decides everything about it. What stays true is that rejecting and
     // returning never need MORE authority than approving - if they did, the cheap outcome would be
     // the harder one to reach and maintainers would reject things that could have been a
     // conversation.
@@ -24,7 +24,7 @@ namespace CRT.Server.Handlers.Submissions
     // splits the outcomes again changes one method rather than an enum switch.
     //
     // Every refusal hands back a REASON. The Maintainer tab shows it rather than silently not drawing
-    // a button: a maintainer whose account is not in this system's pool needs telling that, and a
+    // a button: a maintainer whose account is not in this board's pool needs telling that, and a
     // submission somebody else already decided needs saying so rather than appearing broken.
     // ###########################################################################################
     public static class ReviewDecisionRules
@@ -65,7 +65,7 @@ namespace CRT.Server.Handlers.Submissions
             ReviewDecisionRules.CanDecide(access, submission, out reason);
 
         // ###########################################################################################
-        // The one rule the three share: authority over THIS submission's system, then the state
+        // The one rule the three share: authority over THIS submission's board, then the state
         // interlock. Authority first, so an account that may not act is never told anything about
         // the submission's state.
         // ###########################################################################################

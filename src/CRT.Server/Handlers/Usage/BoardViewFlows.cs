@@ -14,7 +14,7 @@ namespace CRT.Server.Handlers.Usage
     // batch id that is not a GUID, no version, no list of views, or more views than one report may
     // carry. Everything a report can be right about is then judged VIEW BY VIEW, and a view that
     // cannot be counted is IGNORED, never the report: a board no published listing has (a made-up
-    // id, or a system since removed), a view older than BoardViewRules.MaxAge or too far ahead.
+    // id, or a board since removed), a view older than BoardViewRules.MaxAge or too far ahead.
     //
     // The COUNTRY is looked up once per report, and only when something is to be stored. The
     // sender's address is handed to the lookup and to nothing else.
@@ -66,17 +66,17 @@ namespace CRT.Server.Handlers.Usage
             if (fromLocalNetwork && !countLocalNetwork)
                 return BoardViewOutcome.NotCountedFromLocalNetwork(report.Views.Count);
 
-            var kept = new List<(BoardView View, string SystemId, BoardViewNames Names)>();
+            var kept = new List<(BoardView View, string BoardId, BoardViewNames Names)>();
 
             foreach (BoardView? view in report.Views)
             {
-                string? systemId = BoardViewRules.Clip(view?.SystemId, BoardViewRules.SystemIdLength);
+                string? boardId = BoardViewRules.Clip(BoardView.IdOf(view), BoardViewRules.BoardIdLength);
 
-                if (view is null || systemId is null || !BoardViewRules.IsCountable(view.ViewedUtc, now))
+                if (view is null || boardId is null || !BoardViewRules.IsCountable(view.ViewedUtc, now))
                     continue;
 
-                if (namesOf(systemId) is BoardViewNames names)
-                    kept.Add((view, systemId, names));
+                if (namesOf(boardId) is BoardViewNames names)
+                    kept.Add((view, boardId, names));
             }
 
             int ignored = report.Views.Count - kept.Count;
@@ -96,7 +96,7 @@ namespace CRT.Server.Handlers.Usage
             List<BoardViewRow> rows = kept
                 .Select(item => new BoardViewRow(
                     BoardViewRules.StoredTime(item.View.ViewedUtc, now),
-                    item.SystemId,
+                    item.BoardId,
                     item.Names.HardwareName,
                     item.Names.BoardName,
                     version,
@@ -136,11 +136,11 @@ namespace CRT.Server.Handlers.Usage
     }
 
     // ###########################################################################################
-    // The Systems screen's numbers from a system's facts (IBoardViewStore.FactsForSystemAsync).
+    // The Boards screen's numbers from a board's facts (IBoardViewStore.FactsForBoardAsync).
     // Pure, so the windows are tested.
     //
     // *** WHOLE UTC DAYS, TODAY INCLUDED. *** "The last 7 days" is today and the six before it -
-    // the list's "views in 30 days" (CountSinceBySystemAsync from WindowStart) counts the same days
+    // the list's "views in 30 days" (CountSinceByBoardAsync from WindowStart) counts the same days
     // as the detail's, so the two never disagree on screen. BETA-source views count only in
     // FromBetaLast30Days; views with no country count everywhere but in TopCountries.
     // ###########################################################################################
@@ -179,12 +179,23 @@ namespace CRT.Server.Handlers.Usage
                 .Take(BoardViewStatisticsRules.TopCountryCount)
                 .ToList();
 
+            // Each day of the last 365 with a view, oldest first (2026-10-09) - the Statistics view's
+            // graph. The BETA source's views are left out, as from every count above but its own.
+            List<BoardViewDay> daily = all
+                .Where(fact => !fact.FromBeta && fact.Day >= From(365))
+                .GroupBy(fact => fact.Day)
+                .Select(group => new BoardViewDay(group.Key, group.Sum(fact => fact.Views)))
+                .Where(day => day.Views > 0)
+                .OrderBy(day => day.Day)
+                .ToList();
+
             return new BoardViewStatistics(
                 Last7Days: Count(7, fromBeta: false),
                 Last30Days: Count(30, fromBeta: false),
                 Last365Days: Count(365, fromBeta: false),
                 FromBetaLast30Days: Count(30, fromBeta: true),
-                TopCountries: countries);
+                TopCountries: countries,
+                Daily: daily);
         }
     }
 }

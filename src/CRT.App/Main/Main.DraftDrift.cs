@@ -13,7 +13,7 @@ namespace CRT
     //
     // It puts the warning in front of someone who is looking at the board rather than at the
     // Drafts tab, which is where a contributor actually spends their time. The Drafts tab remains
-    // the primary home: it is the one surface that is ABOUT drafts, and drift is a per-system fact.
+    // the primary home: it is the one surface that is ABOUT drafts, and drift is a per-board fact.
     //
     // This reuses the existing SyncBanner rather than adding a fourth banner mechanism, and follows
     // _isShowingDataSyncDisabledBanner's precedent for shared ownership of that one text slot:
@@ -61,12 +61,12 @@ namespace CRT
         // ###########################################################################################
         // The drift state of the board on screen, or Unknown when there is nothing to compare.
         //
-        // A draft-only system is Unknown by construction: it has no official counterpart, so its
+        // A draft-only board is Unknown by construction: it has no official counterpart, so its
         // deliberately blank base revision must never be read as drift.
         // ###########################################################################################
         private DraftDriftState ResolveCurrentBoardDriftState()
         {
-            if (this._currentBoardData == null || DataManager.LastLoadedDraftIsNewSystem)
+            if (this._currentBoardData == null || DataManager.LastLoadedDraftIsNewBoard)
             {
                 return DraftDriftState.Unknown;
             }

@@ -34,7 +34,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The board to write.
         //
-        // published may be null - that is a NEW SYSTEM, the ordinary case for the highest-risk kind
+        // published may be null - that is a NEW BOARD, the ordinary case for the highest-risk kind
         // of submission, not an error.
         //
         // *** THE REVISION DATE IS THE ONE FIELD THAT FALLS BACK. *** Every other section is taken
@@ -81,9 +81,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // *** THE "# Hardware:" / "# Board:" CAPTION IS THE SERVER'S, like the revision date (owner
         // report, 2026-09-28). *** Build keeps the caption of the board being replaced. Only a
-        // board with NO caption at all - a new system, or one published before this was fixed -
-        // gets the names it is listed under in the drop-down lists, which for a new system are the
-        // names its contributor typed in "Create system" and so what its draft already showed.
+        // board with NO caption at all - a new board, or one published before this was fixed -
+        // gets the names it is listed under in the drop-down lists, which for a new board are the
+        // names its contributor typed in "Create board" and so what its draft already showed.
         //
         // The rows never carried the caption, and Build used to leave it out, so every approval
         // wrote a workbook whose first two lines on every sheet were empty (seen against
@@ -104,7 +104,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // What `systems.current_revision` becomes.
+        // What `boards.current_revision` becomes.
         //
         // *** IT IS THE BOARD'S OWN REVISION DATE, and that is a CONTRACT WITH THE CLIENT rather
         // than a choice available here. *** DraftBaseRevision.EnsureBaseRevision stamps a draft's

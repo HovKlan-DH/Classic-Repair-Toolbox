@@ -26,12 +26,12 @@ namespace CRT.Server.Handlers.Submissions
     // and rejected etc." - to judge whether a contributor can be trusted. The submissions LISTED
     // are exactly the ones COUNTED (Counted), so the list and the counts above it always agree;
     // each in the word its contributor is told (ProductionPromotionRules.ContributorFacingState),
-    // the Systems screen's rule. Whether this submission came from an account is said too: an
+    // the Boards screen's rule. Whether this submission came from an account is said too: an
     // address typed without one is not verified, which is worth knowing before trusting it.
     // ###########################################################################################
     public static class ContributorHistory
     {
-        // The most submissions the Contributor view lists - the Systems screen's limit. Beyond it
+        // The most submissions the Contributor view lists - the Boards screen's limit. Beyond it
         // the counts still say how many there are.
         public const int ListedSubmissions = 50;
 
@@ -54,32 +54,32 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyList<ContributorSubmission> listed = ContributorHistory.Listed(submission, all);
 
-            // What each counted submission's system has reached production, and which a BETA
-            // rollback returned - the two facts its contributor-facing word needs. The systems of
+            // What each counted submission's board has reached production, and which a BETA
+            // rollback returned - the two facts its contributor-facing word needs. The boards of
             // EVERY counted submission, not only the listed ones: PublishedToStable counts all of
             // them, and a record longer than the list would otherwise count a stable one as BETA.
             //
-            // *** ONE QUERY, NOT ONE PER SYSTEM (code review, 2026-10-01). *** This asked
-            // FindSystemAsync for each distinct system in a loop, so opening any submission cost as
+            // *** ONE QUERY, NOT ONE PER BOARD (code review, 2026-10-01). *** This asked
+            // FindBoardAsync for each distinct board in a loop, so opening any submission cost as
             // many sequential round-trips as its contributor has boards - and a submission is opened
-            // on every click in the queue. The systems table is one small row per board, so the whole
+            // on every click in the queue. The boards table is one small row per board, so the whole
             // list is read once and looked up here; GetBetaReturnsAsync below is one query for the
             // same reason.
             var productionPublished = new Dictionary<string, DateTimeOffset?>(StringComparer.Ordinal);
 
             if (listed.Count > 0)
             {
-                Dictionary<string, SystemRecord> systems = (await store.ListSystemsAsync(cancellationToken))
-                    .GroupBy(system => system.SystemId, StringComparer.Ordinal)
+                Dictionary<string, BoardRecord> boards = (await store.ListBoardsAsync(cancellationToken))
+                    .GroupBy(board => board.BoardId, StringComparer.Ordinal)
                     .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
-                IEnumerable<string> countedSystems = all
+                IEnumerable<string> countedBoards = all
                     .Where(other => other.Id != submission.Id && ContributorHistory.Counted(other))
-                    .Select(other => other.SystemId)
+                    .Select(other => other.BoardId)
                     .Distinct(StringComparer.Ordinal);
 
-                foreach (string systemId in countedSystems)
-                    productionPublished[systemId] = systems.TryGetValue(systemId, out SystemRecord? system) ? system.ProductionPublishedUtc : null;
+                foreach (string boardId in countedBoards)
+                    productionPublished[boardId] = boards.TryGetValue(boardId, out BoardRecord? board) ? board.ProductionPublishedUtc : null;
             }
 
             IReadOnlyDictionary<long, DateTimeOffset> returns = listed.Count == 0
@@ -99,10 +99,10 @@ namespace CRT.Server.Handlers.Submissions
         // How many of the contributor's other PUBLISHED ('merged') submissions have reached the
         // stable source (owner request, 2026-10-01: "[1] published to stable"). Published counts
         // the BETA data and the stable source together, since the database keeps 'merged' for
-        // both; this is the part of it whose system was promoted after the decision - the same
+        // both; this is the part of it whose board was promoted after the decision - the same
         // rule as each listed submission's word (ProductionPromotionRules.ContributorFacingState),
         // so the count and the list below it cannot disagree. `productionPublished` names when
-        // each system last reached production; a system missing from it has not.
+        // each board last reached production; a board missing from it has not.
         // ###########################################################################################
         public static int PublishedToStable(
             SubmissionRecord submission,
@@ -119,7 +119,7 @@ namespace CRT.Server.Handlers.Submissions
                 ProductionPromotionRules.ContributorFacingState(
                     other.State,
                     other.DecidedUtc,
-                    productionPublished.GetValueOrDefault(other.SystemId)) == ProductionPromotionRules.PublishedState);
+                    productionPublished.GetValueOrDefault(other.BoardId)) == ProductionPromotionRules.PublishedState);
         }
 
         // ###########################################################################################
@@ -184,7 +184,7 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // The listed submissions as the Maintainer tab reads them, each in the word its contributor
-        // is told - "published" once its system reached production after it was merged, "returned"
+        // is told - "published" once its board reached production after it was merged, "returned"
         // while a BETA rollback's return stands (ProductionPromotionRules.ContributorFacingState).
         // ###########################################################################################
         public static IReadOnlyList<ContributorSubmissionEntry> Entries(
@@ -199,12 +199,12 @@ namespace CRT.Server.Handlers.Submissions
             return listed
                 .Select(other => new ContributorSubmissionEntry(
                     other.Id,
-                    other.SystemId,
+                    other.BoardId,
                     other.Summary,
                     ProductionPromotionRules.ContributorFacingState(
                         other.State,
                         other.DecidedUtc,
-                        productionPublished.GetValueOrDefault(other.SystemId),
+                        productionPublished.GetValueOrDefault(other.BoardId),
                         returns.TryGetValue(other.Id, out DateTimeOffset returned) ? returned : null),
                     other.CreatedUtc,
                     other.DecidedUtc,

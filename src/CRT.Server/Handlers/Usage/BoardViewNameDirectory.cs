@@ -8,12 +8,12 @@ namespace CRT.Server.Handlers.Usage
 
     // ###########################################################################################
     // WHICH BOARDS A VIEW MAY NAME, AND WHAT THEY ARE CALLED: the rows of the PUBLISHED main Excel
-    // data file - production's first, then BETA's (a new system placed there is viewed by those
+    // data file - production's first, then BETA's (a new board placed there is viewed by those
     // downloading from BETA before production has it).
     //
     // *** A VIEW OF A BOARD NEITHER LISTS IS NOT COUNTED. *** That is what keeps made-up text out
     // of crt_board_views and off the public Fun facts page: the names stored are the listing's own,
-    // never the sender's, and an id no listing has names nothing. A contributor's draft-only system
+    // never the sender's, and an id no listing has names nothing. A contributor's draft-only board
     // is never sent by CRT in the first place.
     //
     // Reading a workbook is costly, so each listing is read once per file VERSION (its time and
@@ -62,10 +62,10 @@ namespace CRT.Server.Handlers.Usage
                 .ToList();
         }
 
-        // The names for a system id, or null when no published listing has it.
-        public BoardViewNames? Find(string? systemId)
+        // The names for a board id, or null when no published listing has it.
+        public BoardViewNames? Find(string? boardId)
         {
-            string id = systemId?.Trim() ?? string.Empty;
+            string id = boardId?.Trim() ?? string.Empty;
 
             if (id.Length == 0)
                 return null;
@@ -117,9 +117,9 @@ namespace CRT.Server.Handlers.Usage
             {
                 foreach (MasterListingRow row in rows)
                 {
-                    string id = row.SystemId;
+                    string id = row.BoardId;
 
-                    // The first row for a system wins - CRT shows the same one.
+                    // The first row for a board wins - CRT shows the same one.
                     if (id.Length > 0 && !names.ContainsKey(id))
                     {
                         names[id] = new BoardViewNames(

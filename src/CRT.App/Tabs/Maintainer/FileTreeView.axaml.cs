@@ -16,7 +16,7 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // Draws a system's file tree (owner request, 2026-09-28) - see the markup. What each file
+    // Draws a board's file tree (owner request, 2026-09-28) - see the markup. What each file
     // becomes and which rows show are Handlers/FileTree; this keeps the rows on screen in step with
     // the folders opened and closed, and hands a file to be read or opened to whoever hosts it
     // (BetaView, and the Maintainer tab's Files view) through Files.
@@ -65,16 +65,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // A LISTING, NOT A COMPARISON (owner request, 2026-10-03: the Systems screen's Files view
+        // A LISTING, NOT A COMPARISON (owner request, 2026-10-03: the Boards screen's Files view
         // "should not show changed files - just list all files"). Off, the tree has no "Show only
         // changed files" box, its line counts the files rather than the changes, and it opens on
-        // `openFolder` - the system's own folder - since there is no change to open on. On (the
+        // `openFolder` - the board's own folder - since there is no change to open on. On (the
         // default) for the two queues' trees, which are about what changes.
         // ###########################################################################################
         //
         // `openAll` (2026-10-04) opens every folder instead - the Unused files list, a few files
         // scattered over the whole tree, where each one is what there is to look at.
-        public void ShowListing(IReadOnlyList<SystemFileEntry>? files, string? openFolder, bool openAll = false)
+        public void ShowListing(IReadOnlyList<BoardFileEntry>? files, string? openFolder, bool openAll = false)
         {
             this.thisIsListing = true;
             this.thisOpenFolder = openFolder;
@@ -91,10 +91,10 @@ namespace CRT
         private bool thisOpenAll;
 
         // ###########################################################################################
-        // Shows one system's files. Folders on the way to a change start open
+        // Shows one board's files. Folders on the way to a change start open
         // (FileTree.DefaultExpanded) - or, for a listing, the folders down to its own.
         // ###########################################################################################
-        public void Show(IReadOnlyList<SystemFileEntry>? files)
+        public void Show(IReadOnlyList<BoardFileEntry>? files)
         {
             this.HideFilePreview();
 
@@ -116,7 +116,7 @@ namespace CRT
             this.Refresh(replaceAll: true);
         }
 
-        // Nothing on screen - a system deselected, or a sign-out.
+        // Nothing on screen - a board deselected, or a sign-out.
         public void Clear() => this.Show(null);
 
         public void ShowMessage(string? message, bool isError) =>
@@ -134,7 +134,7 @@ namespace CRT
 
         // ###########################################################################################
         // Ticking the box opens every folder with a change in it again, so the changes are what is
-        // on screen; unticking keeps the folders as they are, around the rest of the system.
+        // on screen; unticking keeps the folders as they are, around the rest of the board.
         // ###########################################################################################
         private void OnOnlyChangedChanged(object? sender, RoutedEventArgs e)
         {
@@ -250,14 +250,14 @@ namespace CRT
             }
         }
 
-        private async Task OpenAsync(SystemFileEntry file)
+        private async Task OpenAsync(BoardFileEntry file)
         {
             if (this.Files is null)
                 return;
 
             this.HideFilePreview();
 
-            if (file.OpenFrom == SystemFileSource.NotWrittenYet)
+            if (file.OpenFrom == BoardFileSource.NotWrittenYet)
             {
                 this.ShowMessage(FileTreeWording.Note(file), isError: false);
                 return;
@@ -315,7 +315,7 @@ namespace CRT
             this.Row = row;
 
             FileTreeNode node = row.Node;
-            SystemFileChange change = node.File?.Change ?? SystemFileChange.Unchanged;
+            BoardFileChange change = node.File?.Change ?? BoardFileChange.Unchanged;
 
             this.Indent = new Thickness(row.Depth * 18, 0, 0, 0);
 
@@ -323,11 +323,11 @@ namespace CRT
             this.Glyph = node.IsFolder ? (row.IsExpanded ? OpenFolderGlyph : ClosedFolderGlyph) : FileGlyph;
             this.Name = node.Name;
             this.Weight = node.IsFolder ? FontWeight.SemiBold : FontWeight.Normal;
-            this.Decorations = change == SystemFileChange.Removed ? TextDecorations.Strikethrough : null;
-            this.HasPill = !node.IsFolder && change != SystemFileChange.Unchanged;
-            this.IsAdded = !node.IsFolder && change == SystemFileChange.Added;
-            this.IsChanged = !node.IsFolder && change == SystemFileChange.Changed;
-            this.IsRemoved = !node.IsFolder && change == SystemFileChange.Removed;
+            this.Decorations = change == BoardFileChange.Removed ? TextDecorations.Strikethrough : null;
+            this.HasPill = !node.IsFolder && change != BoardFileChange.Unchanged;
+            this.IsAdded = !node.IsFolder && change == BoardFileChange.Added;
+            this.IsChanged = !node.IsFolder && change == BoardFileChange.Changed;
+            this.IsRemoved = !node.IsFolder && change == BoardFileChange.Removed;
             this.PillText = FileTreeWording.ChangeWord(change);
             this.Size = FileTreeWording.Size(node);
             this.Note = node.IsFolder ? FileTreeWording.FolderNote(node) : string.Empty;
@@ -336,7 +336,7 @@ namespace CRT
             // and the reason are all there is to say.
             this.ToolTip = node.IsFolder
                 ? node.Path
-                : node.File!.OpenFrom == SystemFileSource.NotWrittenYet ? $"{node.Path}\n{FileTreeWording.Note(node.File)}" : null;
+                : node.File!.OpenFrom == BoardFileSource.NotWrittenYet ? $"{node.Path}\n{FileTreeWording.Note(node.File)}" : null;
         }
 
         internal FileTreeRow Row { get; }

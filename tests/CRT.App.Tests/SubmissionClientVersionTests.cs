@@ -61,7 +61,7 @@ public sealed class SubmissionClientVersionTests
 
     // A refusal a newer server invents carries a sentence; it must not be swapped for a status code.
     [Theory]
-    [InlineData("""{"message":"This system is closed to contributions."}""", "This system is closed to contributions.")]
+    [InlineData("""{"message":"This board is closed to contributions."}""", "This board is closed to contributions.")]
     [InlineData("""{"error":"Something the server explains."}""", "Something the server explains.")]
     public void Any_refusal_with_a_sentence_is_shown_in_the_servers_words(string body, string expected)
     {

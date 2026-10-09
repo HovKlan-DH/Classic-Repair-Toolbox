@@ -28,7 +28,7 @@ public sealed class MainDraftBadgeTests : IDisposable
 
     private readonly TempWorkspace thisWorkspace = new();
 
-    private static string SystemKey => $"Test Manu/{DraftedHardware}/{DraftedBoard}/Data {DraftedHardware} {DraftedBoard}.xlsx";
+    private static string BoardKey => $"Test Manu/{DraftedHardware}/{DraftedBoard}/Data {DraftedHardware} {DraftedBoard}.xlsx";
 
     public MainDraftBadgeTests()
     {
@@ -55,7 +55,7 @@ public sealed class MainDraftBadgeTests : IDisposable
             {
                 HardwareName = DraftedHardware,
                 BoardName = DraftedBoard,
-                ExcelDataFile = SystemKey,
+                ExcelDataFile = BoardKey,
             },
         ];
 
@@ -64,10 +64,10 @@ public sealed class MainDraftBadgeTests : IDisposable
 
     private static void WriteDraftMarker() =>
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, SystemKey),
+            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, BoardKey),
             new DraftMarker
             {
-                SystemKey = SystemKey,
+                BoardKey = BoardKey,
                 BaseRevision = "2026-09-01",
                 CreatedUtc = "2026-09-24T00:00:00Z",
             });
@@ -170,7 +170,7 @@ public sealed class MainDraftBadgeTests : IDisposable
                 Dispatcher.UIThread.RunJobs();
                 Assert.True(HasChip(window.HardwareComboBox));
 
-                DraftManager.DiscardDraft(SystemKey);
+                DraftManager.DiscardDraft(BoardKey);
                 window.ApplyDraftsTabVisibility();
                 Dispatcher.UIThread.RunJobs();
 

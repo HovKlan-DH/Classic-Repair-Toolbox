@@ -263,7 +263,7 @@ public sealed class MainMaintainerTabTests : IDisposable
 
             await tab.ApplyBetaListAsync(new ProductionListResponse(true,
             [
-                new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", null, "hash", null, null, AwaitsYou: true)
+                new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", null, "hash", null, null, AwaitsYou: true)
             ]), background: true);
 
             Assert.Equal("3", window.MaintainerTabBadgeForTests);

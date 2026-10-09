@@ -10,7 +10,7 @@ namespace Handlers.DataHandling
     // list of refusals comes out. Nothing here opens a file.
     //
     // *** WHY A PLAN OBJECT RATHER THAN JUST DOING IT. *** Publishing is the one operation in this
-    // system that changes what every user downloads, and it is NOT reversible - the project owner
+    // board that changes what every user downloads, and it is NOT reversible - the project owner
     // decided against retained revisions (open question 5), so there is no previous version to go
     // back to. An irreversible operation deserves to be decidable and inspectable in full before
     // its first byte lands: every refusal is found up front rather than halfway through a write
@@ -34,11 +34,11 @@ namespace Handlers.DataHandling
         // Builds the plan, or returns the reasons it cannot be built.
         //
         // dataRoot         - the tree being published INTO (BETA). Every written path is contained.
-        // systemFolder     - the system's folder inside that tree, already resolved by the caller.
-        // existingFileNames- the file names ALREADY in the system's folder, used to resolve which
+        // boardFolder     - the board's folder inside that tree, already resolved by the caller.
+        // existingFileNames- the file names ALREADY in the board's folder, used to resolve which
         //                    generation the tree is on. Names only; this class reads no disk.
         // boardStem        - the board workbook's version-free stem ("Data C64 250407"). For a new
-        //                    system the caller derives it; for an existing one it comes off the
+        //                    board the caller derives it; for an existing one it comes off the
         //                    file already there, because board file names do not follow the folder
         //                    names mechanically ("Data C128DCR 250477" lives under C128/250477).
         // tree             - what is published NOW (security review, 2026-09-25). Lets a file
@@ -49,7 +49,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static PublishPlanResult Build(
             string dataRoot,
-            string systemFolder,
+            string boardFolder,
             IEnumerable<string> existingFileNames,
             string boardStem,
             SubmissionManifest manifest,
@@ -66,8 +66,8 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(dataRoot))
                 problems.Add(PublishPlan.Error("publish.no-data-root", string.Empty, "The data root to publish into is not set."));
 
-            if (string.IsNullOrWhiteSpace(systemFolder))
-                problems.Add(PublishPlan.Error("publish.no-system-folder", string.Empty, "The system folder to publish into is not set."));
+            if (string.IsNullOrWhiteSpace(boardFolder))
+                problems.Add(PublishPlan.Error("publish.no-board-folder", string.Empty, "The board folder to publish into is not set."));
 
             if (string.IsNullOrWhiteSpace(boardStem))
                 problems.Add(PublishPlan.Error("publish.no-workbook-name", string.Empty, "The board workbook name is not known, so there is nothing to write."));
@@ -75,28 +75,28 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(revision))
                 problems.Add(PublishPlan.Error("publish.no-revision", string.Empty, "A publish must carry a revision."));
 
-            // A wrong or missing system id means everything keyed off it - the database row, the
+            // A wrong or missing board id means everything keyed off it - the database row, the
             // folder, every future submission's base - disagrees with what is being written.
-            if (!SystemDescriptorRules.IsValidSystemId(manifest.SystemId))
+            if (!BoardDescriptorRules.IsValidBoardId(manifest.BoardId))
             {
                 problems.Add(PublishPlan.Error(
-                    "system.id-invalid",
-                    manifest.SystemId,
-                    $"The submission's system id [{manifest.SystemId}] is not a valid system id."));
+                    "board.id-invalid",
+                    manifest.BoardId,
+                    $"The submission's board id [{manifest.BoardId}] is not a valid board id."));
             }
             else
             {
-                string expected = SystemDescriptorRules.BuildSystemId(
+                string expected = BoardDescriptorRules.BuildBoardId(
                     manifest.Manufacturer,
                     manifest.Hardware,
                     manifest.Board);
 
-                if (!string.Equals(manifest.SystemId, expected, StringComparison.Ordinal))
+                if (!string.Equals(manifest.BoardId, expected, StringComparison.Ordinal))
                 {
                     problems.Add(PublishPlan.Error(
-                        "system.id-mismatch",
-                        manifest.SystemId,
-                        $"The submission's system id [{manifest.SystemId}] does not match the names it carries [{expected}]."));
+                        "board.id-mismatch",
+                        manifest.BoardId,
+                        $"The submission's board id [{manifest.BoardId}] does not match the names it carries [{expected}]."));
                 }
             }
 
@@ -117,20 +117,20 @@ namespace Handlers.DataHandling
             // *** "NO GENERATION" HAS TWO MEANINGS AND THEY ARE NOT THE SAME, which the first
             // version of this guard got wrong and an existing test caught. ***
             //
-            //   - The folder holds an UNVERSIONED board and nothing newer. That system is ON the
+            //   - The folder holds an UNVERSIONED board and nothing newer. That board is ON the
             //     original generation, legitimately, and must keep publishing into it. Refusing
             //     would make every such board unpublishable.
             //
-            //   - The folder is EMPTY. There is no generation to read because the system does not
+            //   - The folder is EMPTY. There is no generation to read because the board does not
             //     exist yet, and falling back to "no version suffix" would publish
             //     "Data C64 250407.xlsx" - the frozen file serving every pre-2.0.0 build, the one
             //     file the project owner's rule says is NEVER written.
             //
             // ResolveNewestGeneration answers null for both, so the folder's EMPTINESS is what
-            // distinguishes them. Only a genuinely new system falls through to the tree.
-            bool isNewSystem = existing.Length == 0;
+            // distinguishes them. Only a genuinely new board falls through to the tree.
+            bool isNewBoard = existing.Length == 0;
 
-            if (targetGeneration is null && isNewSystem)
+            if (targetGeneration is null && isNewBoard)
             {
                 targetGeneration = DataGenerationRules.ResolveNewestGenerationFromTree(dataRoot);
 
@@ -143,7 +143,7 @@ namespace Handlers.DataHandling
                         PublishPlan.Error(
                             "publish.no-generation",
                             boardStem,
-                            "This system has no published files and the data tree carries no versioned master workbook, " +
+                            "This board has no published files and the data tree carries no versioned master workbook, " +
                             "so there is no generation to publish into. Publishing would write the unversioned tree, which is frozen.")
                     ]);
                 }
@@ -158,7 +158,7 @@ namespace Handlers.DataHandling
             }
 
             if (!SubmissionPathRules.TryResolve(
-                    systemFolder,
+                    boardFolder,
                     workbookFileName,
                     out string workbookPath,
                     out string workbookFailure))
@@ -167,22 +167,22 @@ namespace Handlers.DataHandling
                     [PublishPlan.Error("publish.workbook-path", workbookFileName, $"The board workbook path is refused: {workbookFailure}")]);
             }
 
-            // ---- The system folder's own spelling ----------------------------------------------
+            // ---- The board folder's own spelling ----------------------------------------------
             //
-            // A "new system" whose folder differs from a published one only by capitalisation is
+            // A "new board" whose folder differs from a published one only by capitalisation is
             // two folders on this server and ONE on every Windows and macOS client, so its files
             // would replace the real board's on their disks. See PublishedTreeView's header.
-            string systemRelative = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
-            string? systemVariant = tree?.FindCaseVariant(systemRelative);
+            string boardRelative = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
+            string? boardVariant = tree?.FindCaseVariant(boardRelative);
 
-            if (systemVariant is not null)
+            if (boardVariant is not null)
             {
                 return PublishPlanResult.Refused(
                 [
                     PublishPlan.Error(
-                        "system.case-collision",
-                        systemRelative,
-                        $"[{systemRelative}] differs only in capitalisation from the published [{systemVariant}], " +
+                        "board.case-collision",
+                        boardRelative,
+                        $"[{boardRelative}] differs only in capitalisation from the published [{boardVariant}], " +
                         "which would be the same folder on Windows and macOS.")
                 ]);
             }
@@ -200,11 +200,11 @@ namespace Handlers.DataHandling
             foreach (SubmissionFile file in manifest.Files ?? [])
             {
                 // ###########################################################################################
-                // *** RESOLVED AGAINST THE DATA ROOT, NOT THE SYSTEM FOLDER (fixed 2026-09-23). ***
+                // *** RESOLVED AGAINST THE DATA ROOT, NOT THE BOARD FOLDER (fixed 2026-09-23). ***
                 //
                 // A submitted file path is ALREADY data-root-relative - "Commodore/C64/250407/Board
                 // Layout 250407 NTSC.png" - because that is how a board stores its references and
-                // how the desktop app resolves them. Resolving against the system folder therefore
+                // how the desktop app resolves them. Resolving against the board folder therefore
                 // wrote every file to
                 // "<root>/Commodore/C64/250407/Commodore/C64/250407/Board Layout...png": the entire
                 // board duplicated INSIDE ITSELF.
@@ -222,7 +222,7 @@ namespace Handlers.DataHandling
                 //
                 // CONTAINMENT IS UNCHANGED IN STRENGTH, only rebased: the resolve still refuses
                 // anything escaping the root it is given. What it no longer does is confine a
-                // publish to one system's folder - which was never the real guard anyway, since
+                // publish to one board's folder - which was never the real guard anyway, since
                 // SubmissionValidator already refuses a submission whose paths do not belong to it.
                 // ###########################################################################################
                 if (!SubmissionPathRules.TryResolve(
@@ -373,7 +373,7 @@ namespace Handlers.DataHandling
             //
             // The workbook's own hash is not known until it has been written (it is generated, not
             // uploaded), so the caller folds it in via PublishPlanDetail.DescriptorWithWorkbook.
-            SystemDescriptor descriptor = SystemDescriptorRules.Build(
+            BoardDescriptor descriptor = BoardDescriptorRules.Build(
                 manifest.Manufacturer,
                 manifest.Hardware,
                 manifest.Board,
@@ -381,12 +381,12 @@ namespace Handlers.DataHandling
                 publishedUtc,
                 maintainers,
                 origin,
-                [.. files.Concat(unchanged).Select(file => new SystemContentEntry(file.RelativePath, file.Sha256))]);
+                [.. files.Concat(unchanged).Select(file => new BoardContentEntry(file.RelativePath, file.Sha256))]);
 
             return PublishPlanResult.Planned(
                 new PublishPlanDetail(
-                    manifest.SystemId,
-                    systemFolder,
+                    manifest.BoardId,
+                    boardFolder,
                     targetGeneration,
                     workbookFileName,
                     workbookPath,
@@ -435,13 +435,13 @@ namespace Handlers.DataHandling
         long SizeBytes);
 
     public sealed record PublishPlanDetail(
-        string SystemId,
-        string SystemFolder,
+        string BoardId,
+        string BoardFolder,
         Version? TargetGeneration,
         string WorkbookFileName,
         string WorkbookPath,
         IReadOnlyList<PlannedFile> Files,
-        SystemDescriptor Descriptor,
+        BoardDescriptor Descriptor,
 
         // The tree being published into. Carried so the writer can check the path from here down
         // to each file for a symbolic link before writing through it.
@@ -450,7 +450,7 @@ namespace Handlers.DataHandling
         // Files the submission carries byte-identical to what is already published at the same
         // path: another board's file it cites (see SubmissionFileScope), or one of its own or a
         // shared file it did not change. Never written - they are already there - but part of the
-        // system's content, so they stay in its content hash.
+        // board's content, so they stay in its content hash.
         IReadOnlyList<PlannedFile> UnchangedFiles)
     {
         // The total bytes this publish will write, excluding the generated workbook. Reported
@@ -497,7 +497,7 @@ namespace Handlers.DataHandling
         // not move, and no client would ever re-download the board that just changed. That is the
         // same silent failure the workbook argument exists to prevent, one file over.
         // ###########################################################################################
-        public SystemDescriptor DescriptorWithWorkbook(string workbookSha256, string sidecarSha256)
+        public BoardDescriptor DescriptorWithWorkbook(string workbookSha256, string sidecarSha256)
         {
             if (!SubmissionPathRules.IsValidHash(workbookSha256))
             {
@@ -513,19 +513,19 @@ namespace Handlers.DataHandling
                     nameof(sidecarSha256));
             }
 
-            List<SystemContentEntry> entries =
+            List<BoardContentEntry> entries =
             [
-                .. this.Files.Concat(this.UnchangedFiles).Select(file => new SystemContentEntry(file.RelativePath, file.Sha256)),
-                new SystemContentEntry(this.WorkbookFileName, workbookSha256),
-                new SystemContentEntry(this.SidecarFileName, sidecarSha256)
+                .. this.Files.Concat(this.UnchangedFiles).Select(file => new BoardContentEntry(file.RelativePath, file.Sha256)),
+                new BoardContentEntry(this.WorkbookFileName, workbookSha256),
+                new BoardContentEntry(this.SidecarFileName, sidecarSha256)
             ];
 
-            // A NEW descriptor rather than a mutation of the planned one: SystemDescriptor is a
+            // A NEW descriptor rather than a mutation of the planned one: BoardDescriptor is a
             // mutable class, and a plan that quietly changed under a caller holding it would be
             // the sort of surprise this whole "decide it all up front" design exists to avoid.
-            return new SystemDescriptor
+            return new BoardDescriptor
             {
-                SystemId = this.Descriptor.SystemId,
+                BoardId = this.Descriptor.BoardId,
                 Manufacturer = this.Descriptor.Manufacturer,
                 Hardware = this.Descriptor.Hardware,
                 Board = this.Descriptor.Board,
@@ -533,7 +533,7 @@ namespace Handlers.DataHandling
                 PublishedUtc = this.Descriptor.PublishedUtc,
                 Maintainers = [.. this.Descriptor.Maintainers],
                 Origin = this.Descriptor.Origin,
-                ContentHash = SystemDescriptorRules.ComputeContentHash(this.Descriptor.Revision, entries)
+                ContentHash = BoardDescriptorRules.ComputeContentHash(this.Descriptor.Revision, entries)
             };
         }
     }

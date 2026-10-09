@@ -25,7 +25,7 @@ public sealed class ApiUsageDisplayTests
         [
             ApiUsageDisplayTests.Route("POST", "/api/usage/check-in", "Forever", 900, new ApiUsageVersion("2.5.0", 900, ApiUsageDisplayTests.Last)),
             ApiUsageDisplayTests.Route("GET", "/api/review/queue", "Maintainer", 1500, new ApiUsageVersion("3.0.0", 1500, ApiUsageDisplayTests.Last)),
-            ApiUsageDisplayTests.Route("POST", "/api/review/systems/edit", "Maintainer", 0),
+            ApiUsageDisplayTests.Route("POST", "/api/review/boards/edit", "Maintainer", 0),
             ApiUsageDisplayTests.Route("POST", "/api/submissions", "Submissions", 12, new ApiUsageVersion("3.0.0", 12, ApiUsageDisplayTests.Last)),
             ApiUsageDisplayTests.Route("GET", "/api/health", "Forever", 3, new ApiUsageVersion(ApiUsageVersion.NotCrt, 3, ApiUsageDisplayTests.Last)),
         ],
@@ -41,7 +41,7 @@ public sealed class ApiUsageDisplayTests
             [ApiUsageDisplay.SubmissionsHeading, ApiUsageDisplay.MaintainerHeading, ApiUsageDisplay.ForeverHeading],
             groups.Select(group => group.Heading));
 
-        Assert.Equal(["POST /api/review/systems/edit", "GET /api/review/queue"], groups[1].Routes.Select(route => route.Title));
+        Assert.Equal(["POST /api/review/boards/edit", "GET /api/review/queue"], groups[1].Routes.Select(route => route.Title));
         Assert.Equal(["GET /api/health", "POST /api/usage/check-in"], groups[2].Routes.Select(route => route.Title));
     }
 

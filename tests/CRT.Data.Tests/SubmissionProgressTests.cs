@@ -86,7 +86,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_hashing_phase_explains_the_wait()
         {
-            // Hashing a 76 MB system takes seconds during which nothing is sent. A bar sitting at
+            // Hashing a 76 MB board takes seconds during which nothing is sent. A bar sitting at
             // zero with no explanation looks broken.
             var progress = new SubmissionProgress(SubmissionPhase.Hashing, 3, 12, 0, 0, null);
 

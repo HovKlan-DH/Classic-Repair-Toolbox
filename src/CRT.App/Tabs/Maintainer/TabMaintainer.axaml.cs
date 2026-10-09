@@ -13,7 +13,7 @@ namespace CRT
 {
     // ###########################################################################################
     // The Maintainer tab: sign in, then four screens chosen by the tab strip across the top
-    // (owner request, 2026-09-27; a strip since 2026-10-01) - Systems, Contributor Submissions,
+    // (owner request, 2026-09-27; a strip since 2026-10-01) - Boards, Contributor Submissions,
     // Beta > Prod and Account (Admin until 2026-10-04) - each a list on the left and
     // what is chosen in it on the right. Review is the queue and the selected submission's TABLE
     // (NewContributeStrategy.md Phase 5, tasks 2 and 3); the other three replaced the
@@ -54,7 +54,7 @@ namespace CRT
     // needs no wait), TabMaintainer.Table.cs (the table, and asking
     // before unsaved changes in it are left), TabMaintainer.Modes.cs (which screen is shown,
     // the buttons' badges, handing the panels the session), TabMaintainer.Beta.cs (the BETA list),
-    // TabMaintainer.Systems.cs (the Systems list), TabMaintainer.Account.cs (the Account screen:
+    // TabMaintainer.Boards.cs (the Boards list), TabMaintainer.Account.cs (the Account screen:
     // "My account" and "Server version" for every maintainer and the administrator's padlocked
     // entries, the "Logged in as" line, and the remembered sign-in's name and address read again at
     // launch), TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen),
@@ -63,12 +63,12 @@ namespace CRT
     // file tree, and the count on its button) and TabMaintainer.Contributor.cs (the Contributor
     // view: who sent it and everything they sent before).
     // The right-hand panels of the other three screens are controls of their own: BetaView,
-    // SystemView (a system's five views - Board data, Files, Contributor, Maintainer, Statistics -
-    // with its own file map, and SystemPlacementView), and under Account MyAccountView (the name,
-    // address, password and Sign out) and the administrator's MaintainerPoolView, SystemOrderView,
-    // UnusedFilesView, RebuildManifestsView, SystemDeletionView (with DeleteSystemWindow, its
+    // BoardDetailView (a board's five views - Board data, Files, Contributor, Maintainer, Statistics -
+    // with its own file map, and BoardPlacementView), and under Account MyAccountView (the name,
+    // address, password and Sign out) and the administrator's MaintainerPoolView, BoardOrderView,
+    // UnusedFilesView, RebuildManifestsView, BoardDeletionView (with DeleteBoardWindow, its
     // confirmation), ApiUsageView and DataResetView. A
-    // system's table can hold a change not sent, so HasUnsavedTableEdits
+    // board's table can hold a change not sent, so HasUnsavedTableEdits
     // and sign-out ask about it too.
     //
     // *** THE LOGIC IS IN Handlers/, NOT HERE. *** How a queue row reads is ReviewQueueDisplay's;
@@ -116,7 +116,7 @@ namespace CRT
         {
             this.thisEverythingAskedUtc = DateTimeOffset.UtcNow;
 
-            // Signing in, or the tab first shown on a remembered session, opens it: on Systems when
+            // Signing in, or the tab first shown on a remembered session, opens it: on Boards when
             // nothing waits (TabMaintainer.OpenOnEntry.cs).
             this.BeginOpening();
 
@@ -129,7 +129,7 @@ namespace CRT
             if (!answered)
                 this.ShowQueueMessage(WaitWording.NoAnswer, isError: true);
 
-            // Signed in, or the tab first shown on a remembered session: Systems when nothing waits,
+            // Signed in, or the tab first shown on a remembered session: Boards when nothing waits,
             // else the queue on the submission looked at last, or its first (TabMaintainer
             // .OpenOnEntry.cs).
             this.SelectOnEntry();
@@ -642,8 +642,8 @@ namespace CRT
         internal async Task SignOutAsync()
         {
             // Unsaved table changes are asked about first - after signing out nothing can save them.
-            // Both tables: the submission's, and a system's on the Systems screen (2026-10-03).
-            if (!await this.CloseTableAsync() || !await this.SystemDetail.MayLeaveTableAsync())
+            // Both tables: the submission's, and a board's on the Boards screen (2026-10-03).
+            if (!await this.CloseTableAsync() || !await this.BoardDetail.MayLeaveTableAsync())
                 return;
 
             // Under the overlay, and signed out locally whatever the answer - even none at all.
@@ -713,7 +713,7 @@ namespace CRT
             {
                 this.UpdateQueueEntry(
                     kept,
-                    detail.Changes?.IsNewSystem ?? kept.IsNewSystem,
+                    detail.Changes?.IsNewBoard ?? kept.IsNewBoard,
                     ReviewQueueDisplay.AwaitsYou(detail.CanPublish, detail.Approval));
             }
 
@@ -776,7 +776,7 @@ namespace CRT
             // a wait rather than as a panel that never fills in.
             bool answered = await ServerWait.RunAsync(
                 this,
-                MaintainerWaitWording.OpeningSubmission(row.SystemId),
+                MaintainerWaitWording.OpeningSubmission(row.BoardId),
                 () => Task.WhenAll(this.LoadSubmissionAsync(row), this.OpenTableAsync(row)));
 
             if (!answered && this.SelectedQueueRow?.Id == row.Id)
@@ -900,7 +900,7 @@ namespace CRT
             // The list says what the submission itself says - see TabMaintainer.QueueItems.cs.
             this.UpdateQueueEntry(
                 detail.Submission,
-                detail.Changes?.IsNewSystem ?? detail.Submission.IsNewSystem,
+                detail.Changes?.IsNewBoard ?? detail.Submission.IsNewBoard,
                 ReviewQueueDisplay.AwaitsYou(detail.CanPublish, detail.Approval));
 
             if (this.FindControl<TextBlock>("AmendmentText") is TextBlock amended)
@@ -929,10 +929,10 @@ namespace CRT
             // ###########################################################################################
             List<ReviewNoteLine> beforeApproving = [];
 
-            // Approve is OFF, with the reason, for a new system with no place in the drop-down lists
-            // yet, or a system with an earlier submission still in BETA (2026-09-27) - said before
+            // Approve is OFF, with the reason, for a new board with no place in the drop-down lists
+            // yet, or a board with an earlier submission still in BETA (2026-09-27) - said before
             // the maintainer reads the submission, not after pressing Approve.
-            string? blocked = ApprovalGate.Blocked(detail.Submission.SystemId, this.thisListing, this.thisBeta);
+            string? blocked = ApprovalGate.Blocked(detail.Submission.BoardId, this.thisListing, this.thisBeta);
             this.thisAppliedGate = blocked;
 
             if (blocked is not null)
@@ -959,7 +959,7 @@ namespace CRT
         // the drop-down listing and the "Beta > Prod" list, which are replaced on the minute check
         // and after every decision - but it was applied only when a detail was SHOWN, and a detail
         // is read again only when its queue row changed. So Approve stayed off, with a stale reason,
-        // after another maintainer promoted the system; and at sign-in a detail that arrived before
+        // after another maintainer promoted the board; and at sign-in a detail that arrived before
         // the lists was never gated at all. Called whenever either list is replaced; the detail is
         // shown again only when the gate's answer changed. Never while a decision is being sent, or
         // for a submission decided elsewhere, whose decisions stay off whatever the lists say.
@@ -974,7 +974,7 @@ namespace CRT
                 return;
             }
 
-            string? blocked = ApprovalGate.Blocked(detail.Submission.SystemId, this.thisListing, this.thisBeta);
+            string? blocked = ApprovalGate.Blocked(detail.Submission.BoardId, this.thisListing, this.thisBeta);
 
             if (!string.Equals(blocked, this.thisAppliedGate, StringComparison.Ordinal))
                 this.ShowDetail(detail);
@@ -1043,7 +1043,7 @@ namespace CRT
         private static void ShowLine(TextBlock block, ReviewNoteLine line) =>
             TabMaintainer.ShowRuns(block, line.Runs.Select(run => (run.Text, run.IsCount)).ToList());
 
-        // A status line with its to-do pieces in bold - see StatusPart (SystemsDisplay.cs).
+        // A status line with its to-do pieces in bold - see StatusPart (BoardsDisplay.cs).
         internal static void ShowParts(TextBlock block, IReadOnlyList<StatusPart> parts) =>
             TabMaintainer.ShowRuns(block, parts.Select(part => (part.Text, part.IsToDo)).ToList());
 
@@ -1142,7 +1142,7 @@ namespace CRT
             string? stateBefore = this.thisShownDetail?.Submission.State;
 
             string waiting = ReviewDecisionWording.Waiting(
-                kind, this.thisShownDetail?.Approval, this.thisShownDetail?.Submission.SystemId);
+                kind, this.thisShownDetail?.Approval, this.thisShownDetail?.Submission.BoardId);
 
             // ###########################################################################################
             // *** THE WHOLE WINDOW WAITS, not a line under the table (owner report, 2026-09-28). ***

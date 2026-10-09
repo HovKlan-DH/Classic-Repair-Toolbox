@@ -48,7 +48,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public async Task NotifyDecisionAsync(
             string? contactEmail,
-            string? systemName,
+            string? boardDisplayName,
             string state,
             string? maintainerComment,
             bool amendedByMaintainer = false,
@@ -71,7 +71,7 @@ namespace CRT.Server.Handlers.Submissions
                 // no fault here whose right answer is an exception reaching the endpoint.
                 EmailMessage? message = SubmissionNotifier.BuildMessage(
                     contactEmail.Trim(),
-                    systemName,
+                    boardDisplayName,
                     state,
                     maintainerComment,
                     amendedByMaintainer,
@@ -86,12 +86,12 @@ namespace CRT.Server.Handlers.Submissions
             }
             catch (Exception ex)
             {
-                // Logged with the submission's system so a contributor asking "I never heard
+                // Logged with the submission's board so a contributor asking "I never heard
                 // anything" can be answered from the log rather than guessed at.
                 this.thisLogger.LogWarning(
                     ex,
-                    "Could not send the review-outcome mail for [{System}] (state [{State}]).",
-                    systemName,
+                    "Could not send the review-outcome mail for [{Board}] (state [{State}]).",
+                    boardDisplayName,
                     state);
             }
         }
@@ -142,7 +142,7 @@ namespace CRT.Server.Handlers.Submissions
 
             await this.NotifyDecisionAsync(
                 recipient.Email,
-                submission.SystemId,
+                submission.BoardId,
                 state,
                 maintainerComment,
                 amendedByMaintainer,
@@ -168,18 +168,18 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public Task NotifyTakenOutOfBetaAsync(
             string? contactEmail,
-            string? systemName,
+            string? boardDisplayName,
             string maintainerComment,
             bool rejected,
             CancellationToken cancellationToken = default,
             string? contributorName = null) =>
             rejected
-                ? this.NotifyDecisionAsync(contactEmail, systemName, SubmissionState.Rejected, maintainerComment, cancellationToken: cancellationToken, contributorName: contributorName)
-                : this.NotifyReturnedToQueueAsync(contactEmail, systemName, maintainerComment, cancellationToken, contributorName);
+                ? this.NotifyDecisionAsync(contactEmail, boardDisplayName, SubmissionState.Rejected, maintainerComment, cancellationToken: cancellationToken, contributorName: contributorName)
+                : this.NotifyReturnedToQueueAsync(contactEmail, boardDisplayName, maintainerComment, cancellationToken, contributorName);
 
         public async Task NotifyReturnedToQueueAsync(
             string? contactEmail,
-            string? systemName,
+            string? boardDisplayName,
             string maintainerComment,
             CancellationToken cancellationToken = default,
             string? contributorName = null)
@@ -193,7 +193,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 EmailMessage message = EmailTemplates.SubmissionReturnedToQueue(
                     contactEmail.Trim(),
-                    systemName ?? string.Empty,
+                    boardDisplayName ?? string.Empty,
                     maintainerComment,
                     contributorName);
 
@@ -203,14 +203,14 @@ namespace CRT.Server.Handlers.Submissions
             {
                 this.thisLogger.LogWarning(
                     ex,
-                    "Could not send the returned-to-queue mail for [{System}].",
-                    systemName);
+                    "Could not send the returned-to-queue mail for [{Board}].",
+                    boardDisplayName);
             }
         }
 
         // ###########################################################################################
         // Tells the people who can decide a submission that one is waiting (Phase 6 task 11) -
-        // saying whether it is a completely NEW system or an update to an existing one, and greeting
+        // saying whether it is a completely NEW board or an update to an existing one, and greeting
         // each by the name on their account (owner request, 2026-10-03).
         //
         // One mail per address, each failure logged and swallowed - the submission is already
@@ -220,10 +220,10 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public async Task NotifyMaintainersAsync(
             IEnumerable<MailRecipient> recipients,
-            string? systemName,
+            string? boardDisplayName,
             long submissionId,
             string? contributorSummary,
-            bool isNewSystem = false,
+            bool isNewBoard = false,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(recipients);
@@ -235,7 +235,7 @@ namespace CRT.Server.Handlers.Submissions
                     await this.thisMailer
                         .SendAsync(
                             EmailTemplates.SubmissionWaiting(
-                                recipient.Email, systemName ?? string.Empty, submissionId, contributorSummary, isNewSystem, recipient.Name),
+                                recipient.Email, boardDisplayName ?? string.Empty, submissionId, contributorSummary, isNewBoard, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -243,8 +243,8 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     this.thisLogger.LogWarning(
                         ex,
-                        "Could not tell {Address} that submission {SubmissionId} for [{System}] is waiting.",
-                        recipient.Email, submissionId, systemName);
+                        "Could not tell {Address} that submission {SubmissionId} for [{Board}] is waiting.",
+                        recipient.Email, submissionId, boardDisplayName);
                 }
             }
         }
@@ -255,7 +255,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public async Task NotifyApprovalNeededAsync(
             IEnumerable<MailRecipient> recipients,
-            string? systemName,
+            string? boardDisplayName,
             string what,
             string approvedBy,
             CancellationToken cancellationToken = default)
@@ -268,24 +268,24 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     await this.thisMailer
                         .SendAsync(
-                            EmailTemplates.ApprovalNeeded(recipient.Email, systemName ?? string.Empty, what, approvedBy, recipient.Name),
+                            EmailTemplates.ApprovalNeeded(recipient.Email, boardDisplayName ?? string.Empty, what, approvedBy, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
-                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{System}] needs their approval.", recipient.Email, systemName);
+                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{Board}] needs their approval.", recipient.Email, boardDisplayName);
                 }
             }
         }
 
         // ###########################################################################################
-        // Tells the administrators that a maintainer published a system to production. Same
+        // Tells the administrators that a maintainer published a board to production. Same
         // contract as the rest of this class: nothing escapes.
         // ###########################################################################################
         public async Task NotifyProductionPublishAsync(
             IEnumerable<MailRecipient> administrators,
-            string? systemName,
+            string? boardDisplayName,
             string actor,
             string? revision,
             int filesCopied,
@@ -299,26 +299,26 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     await this.thisMailer
                         .SendAsync(
-                            EmailTemplates.PublishedToProduction(recipient.Email, systemName ?? string.Empty, actor, revision, filesCopied, recipient.Name),
+                            EmailTemplates.PublishedToProduction(recipient.Email, boardDisplayName ?? string.Empty, actor, revision, filesCopied, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     this.thisLogger.LogWarning(
-                        ex, "Could not tell {Address} that [{System}] was published to production.", recipient.Email, systemName);
+                        ex, "Could not tell {Address} that [{Board}] was published to production.", recipient.Email, boardDisplayName);
                 }
             }
         }
 
         // ###########################################################################################
-        // Tells the contributors of a deleted system's open submissions that the system - and their
+        // Tells the contributors of a deleted board's open submissions that the board - and their
         // submission - is gone (owner decision, 2026-10-03). The deletion is already done, so
         // nothing escapes. Answers how many mails the mailer took, for the administrator's answer.
         // ###########################################################################################
-        public async Task<int> NotifySystemDeletedAsync(
+        public async Task<int> NotifyBoardDeletedAsync(
             IEnumerable<MailRecipient> contributors,
-            string? systemName,
+            string? boardDisplayName,
             string reason,
             CancellationToken cancellationToken = default)
         {
@@ -332,7 +332,7 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     bool went = await this.thisMailer
                         .SendAsync(
-                            EmailTemplates.SystemDeleted(recipient.Email, systemName ?? string.Empty, reason, recipient.Name),
+                            EmailTemplates.BoardDeleted(recipient.Email, boardDisplayName ?? string.Empty, reason, recipient.Name),
                             cancellationToken)
                         .ConfigureAwait(false);
 
@@ -341,7 +341,7 @@ namespace CRT.Server.Handlers.Submissions
                 }
                 catch (Exception ex)
                 {
-                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{System}] was deleted.", recipient.Email, systemName);
+                    this.thisLogger.LogWarning(ex, "Could not tell {Address} that [{Board}] was deleted.", recipient.Email, boardDisplayName);
                 }
             }
 
@@ -369,7 +369,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         internal static EmailMessage? BuildMessage(
             string toAddress,
-            string? systemName,
+            string? boardDisplayName,
             string? state,
             string? maintainerComment,
             bool amendedByMaintainer = false,
@@ -382,16 +382,16 @@ namespace CRT.Server.Handlers.Submissions
                 // ProductionPromotionFlow's contributors, and the word ProductionPromotionRules
                 // reports to a contributor once it has happened.
                 "merged" => EmailTemplates.SubmissionPublishedToBeta(
-                    toAddress, systemName ?? string.Empty, maintainerComment, amendedByMaintainer, contributorName),
+                    toAddress, boardDisplayName ?? string.Empty, maintainerComment, amendedByMaintainer, contributorName),
 
                 "published" => EmailTemplates.SubmissionPublishedToSource(
-                    toAddress, systemName ?? string.Empty, contributorName),
+                    toAddress, boardDisplayName ?? string.Empty, contributorName),
 
                 "changes_requested" => EmailTemplates.SubmissionChangesRequested(
-                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
+                    toAddress, boardDisplayName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
 
                 "rejected" => EmailTemplates.SubmissionRejected(
-                    toAddress, systemName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
+                    toAddress, boardDisplayName ?? string.Empty, maintainerComment ?? string.Empty, contributorName),
 
                 _ => null
             };

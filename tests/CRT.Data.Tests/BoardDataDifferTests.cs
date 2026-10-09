@@ -220,7 +220,7 @@ public sealed class BoardDataDifferTests
     // ------------------------------------------------------------------ Edges
 
     // ###########################################################################################
-    // A system that exists ONLY as a draft has no published counterpart, and every row in it is an
+    // A board that exists ONLY as a draft has no published counterpart, and every row in it is an
     // addition. That is the literal truth rather than a convenience: officially, none of it exists.
     // ###########################################################################################
     [Fact]

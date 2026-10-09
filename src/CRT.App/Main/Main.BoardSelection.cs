@@ -382,7 +382,7 @@ namespace CRT
 
             // The VIEWED draft folder: empty under "view boards as officially published", so the
             // schematic images follow the workbook the toggle chose rather than the draft's.
-            string draftSystemFolder = DraftManager.GetViewedSystemFolder(entry.ExcelDataFile);
+            string draftBoardFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
 
             _ = Task.Run(async () =>
             {
@@ -425,7 +425,7 @@ namespace CRT
                             // other BoardData File value now uses - see DraftFileResolver.
                             var fullPath = DraftFileResolver.Resolve(
                                 DataManager.DataRoot,
-                                draftSystemFolder,
+                                draftBoardFolder,
                                 schematic.SchematicImageFile) ??
                                 Path.Combine(
                                     DataManager.DataRoot,
@@ -792,7 +792,7 @@ namespace CRT
         //
         // TWO roots are searched, official first, the same rule DraftFileResolver applies to every
         // other board file: the board's own folder under "Data/", then the board's draft folder
-        // under "Drafts/" (session 2c, task 9). A system that exists only as a draft has no folder
+        // under "Drafts/" (session 2c, task 9). A board that exists only as a draft has no folder
         // under "Data/" at all, so without the second root its imported KiCad data would never be
         // read and no trace would ever appear - the very failure the import's own report warns
         // about. An officially published board can also gain drafted KiCad files this way.
@@ -814,7 +814,7 @@ namespace CRT
             // BOTH ROOTS ARE STILL SEARCHED, but the drafted one has moved (Phase 6, 2026-09-23).
             //
             // A draft folder is now a board folder, so its KiCad data sits at
-            // "<draft system folder>/KiCad data" - the same shape the published tree uses, with no
+            // "<draft board folder>/KiCad data" - the same shape the published tree uses, with no
             // Files/ level in between.
             //
             // Both are still searched rather than just the resolved one: a contributor can import
@@ -827,7 +827,7 @@ namespace CRT
 
             // The VIEWED draft folder, so "view boards as officially published" shows only the
             // published KiCad data - a drafted import is not something everyone else sees yet.
-            string draftFolder = DraftManager.GetViewedSystemFolder(entry.ExcelDataFile);
+            string draftFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
 
             if (!string.IsNullOrWhiteSpace(draftFolder))
             {
@@ -867,7 +867,7 @@ namespace CRT
         // *** IT ALSO RE-EVALUATES THE DRAFTS TAB, because every LOCAL EDIT arrives here
         // (owner report, 2026-09-23). *** Both paths that write a draft call this - the
         // Contribute window's component save and the label editor's - and a save is very often the
-        // moment a system gains its FIRST draft. Without this the tab simply did not appear:
+        // moment a board gains its FIRST draft. Without this the tab simply did not appear:
         // "I need to restart the app for it to show".
         //
         // The Drafts tab is not a user preference, it is a fact about the Drafts folder's contents,

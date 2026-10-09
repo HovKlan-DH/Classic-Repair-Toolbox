@@ -38,7 +38,7 @@ namespace Handlers.DataHandling
     // reordered in Excel the placement is approximate, which is fine for what it is: a visual cue
     // about where the row came from, not a claim about order (row order is not a change at all).
     //
-    // With NO published board (a system created with "Add a new system") nothing is coloured
+    // With NO published board (a board created with "Add a new board") nothing is coloured
     // green, orange or red: every row would be green, which says nothing. Duplicates and incomplete
     // rows are still WARNED about - since 2026-10-03 by the checks' corner mark, until then "!" and
     // violet - since those are about the data rather than about publishing.
@@ -124,13 +124,13 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // *** WHAT A CHANGED CELL'S TOOLTIP CALLS THE VALUE IT REPLACED (owner request, 2026-09-26).
-        // *** It always said "Published value: ...", which on a NEW SYSTEM names something that does
+        // *** It always said "Published value: ...", which on a NEW BOARD names something that does
         // not exist, so every such tooltip read "Published value: (empty)" and told the maintainer
         // nothing: "yes, it will always be empty, but it should state [the contributor's value] if
         // it was changed from empty to something".
         //
         // The answer is the whole table's, and it belongs to whoever BUILT it - HasBaseline cannot
-        // give it, because the maintainer's new-system table compares the submission with itself
+        // give it, because the maintainer's new-board table compares the submission with itself
         // and so has a baseline that is not published. See BoardTableDocument.Create.
         // ###########################################################################################
         public string ReplacedValueLabel => this.thisDocument.BaselineLabel;

@@ -24,7 +24,7 @@ namespace Handlers.MaintainerHandling
     //
     // The facts are the server's (ContributorHistory, CRT.Data's ReviewContributorFacts); the state
     // words are CRT's own (SubmissionReceiptPresenter), so a submission reads the same here, on the
-    // Systems screen and in the contributor's own Drafts tab. Pure, so the view is tested.
+    // Boards screen and in the contributor's own Drafts tab. Pure, so the view is tested.
     //
     // *** THE ACCOUNT LINE IS THE ONE FACT NO COUNT GIVES. *** A submission sent without an account
     // carries an address somebody TYPED - anybody could have typed it - so its record belongs to
@@ -115,8 +115,8 @@ namespace Handlers.MaintainerHandling
 
             var parts = new List<string> { $"#{submission.Id.ToString(CultureInfo.InvariantCulture)}" };
 
-            if (!string.IsNullOrWhiteSpace(submission.SystemId))
-                parts.Add(submission.SystemId.Trim().Replace("/", " / ", StringComparison.Ordinal));
+            if (!string.IsNullOrWhiteSpace(submission.BoardId))
+                parts.Add(submission.BoardId.Trim().Replace("/", " / ", StringComparison.Ordinal));
 
             parts.Add(SubmissionReceiptPresenter.DescribeState(submission.State));
 
@@ -126,7 +126,7 @@ namespace Handlers.MaintainerHandling
             return string.Join(" - ", parts);
         }
 
-        // What the contributor was told - the Systems screen's words - or null for nothing.
+        // What the contributor was told - the Boards screen's words - or null for nothing.
         public static string? Comment(ContributorSubmissionEntry submission)
         {
             ArgumentNullException.ThrowIfNull(submission);

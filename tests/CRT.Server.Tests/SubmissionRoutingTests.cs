@@ -23,7 +23,7 @@ namespace CRT.Server.Tests
 
         private static SubmissionRecord Submission(bool touchesShared = false) =>
             new(
-                Id: 1, SystemId: SubmissionRoutingTests.C64, AccountId: null, ContactEmail: "c@example.com",
+                Id: 1, BoardId: SubmissionRoutingTests.C64, AccountId: null, ContactEmail: "c@example.com",
                 UploadTokenHash: "h", BaseRevision: "r1", State: SubmissionState.Pending, Summary: "x",
                 FormatVersion: 1, CreatedUtc: SubmissionRoutingTests.Now, ExpiresUtc: null, DecidedUtc: null,
                 DecisionComment: null, TouchesSharedFiles: touchesShared);
@@ -32,8 +32,8 @@ namespace CRT.Server.Tests
         private static async Task<IReadOnlyList<string>> EmailsForAsync(SubmissionRecord submission, FakeAccountStore accounts) =>
             (await SubmissionRouting.RecipientsForAsync(submission, accounts)).Select(recipient => recipient.Email).ToList();
 
-        private static async Task<IReadOnlyList<string>> EmailsForRolesAsync(IEnumerable<ApproverRole> roles, string systemId, FakeAccountStore accounts) =>
-            (await SubmissionRouting.RecipientsForRolesAsync(roles, systemId, accounts)).Select(recipient => recipient.Email).ToList();
+        private static async Task<IReadOnlyList<string>> EmailsForRolesAsync(IEnumerable<ApproverRole> roles, string boardId, FakeAccountStore accounts) =>
+            (await SubmissionRouting.RecipientsForRolesAsync(roles, boardId, accounts)).Select(recipient => recipient.Email).ToList();
 
         private static async Task<long> AccountAsync(FakeAccountStore store, string email, bool admin = false, bool verified = true, bool locked = false)
         {
@@ -43,7 +43,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_submission_goes_to_EVERY_maintainer_of_its_system()
+        public async Task A_submission_goes_to_EVERY_maintainer_of_its_board()
         {
             // Phase 6 task 2: route to every maintainer of the pool; any one may act.
             var accounts = new FakeAccountStore();
@@ -60,9 +60,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_system_with_NO_maintainers_goes_to_the_administrators()
+        public async Task A_board_with_NO_maintainers_goes_to_the_administrators()
         {
-            // Phase 6 task 3: "a new system routes to the administrator, always" - and so does a
+            // Phase 6 task 3: "a new board routes to the administrator, always" - and so does a
             // shipped board nobody has been assigned to yet.
             var accounts = new FakeAccountStore();
             await SubmissionRoutingTests.AccountAsync(accounts, "admin@example.com", admin: true);
@@ -151,7 +151,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** AN ADMINISTRATOR NAMED A SYSTEM'S MAINTAINER (owner request, 2026-10-05) is told about
+        // *** AN ADMINISTRATOR NAMED A BOARD'S MAINTAINER (owner request, 2026-10-05) is told about
         // its submissions like its other maintainers - and ONCE: "It should of course not send double
         // mails to me in this case (as both admin and maintainer)". Alone in the pool, or beside
         // another maintainer; an ordinary submission, or one replacing a shared file, where the

@@ -193,17 +193,17 @@ namespace Handlers.DataHandling
                     findings.Add(SubmissionFileRules.CaseVariant(file.Path, variant));
             }
 
-            // The system's own folder too, which a submission carrying no files at all would
+            // The board's own folder too, which a submission carrying no files at all would
             // otherwise never check - "commodore/C64/250407" beside a published "Commodore/...".
-            string systemFolder = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
-            string? folderVariant = tree?.FindCaseVariant(systemFolder);
+            string boardFolder = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
+            string? folderVariant = tree?.FindCaseVariant(boardFolder);
 
             if (folderVariant is not null)
             {
                 findings.Add(SubmissionFileRules.Error(
                     "identity.case_collision",
-                    systemFolder,
-                    $"The board [{systemFolder}] differs only by capitalisation from the published " +
+                    boardFolder,
+                    $"The board [{boardFolder}] differs only by capitalisation from the published " +
                     $"[{folderVariant}]. On Windows and macOS the two would be the same folder, so it " +
                     "cannot be submitted as a separate board. Use the published spelling."));
             }

@@ -12,7 +12,7 @@ namespace CRT
     // THE QUEUE LIST, GROUPED BY BOARD (owner request, 2026-09-26: "let's try with your
     // 'recommendation is to group the queue by board'"):
     //
-    //     Commodore / C64 / 250407             [New system]
+    //     Commodore / C64 / 250407             [New board]
     //        Corrected the pinout pictures for U8 and added U10.
     //        Waiting 10 hours - replaces a shared file
     //        Added the missing CIA pictures.
@@ -21,7 +21,7 @@ namespace CRT
     // Each submission was six lines until then - labelled Manufacturer / Hardware / Board and two
     // badges on every row - which the project owner found "quite hard to overview". The board is
     // said once, in a HEADING, and each submission is its comment and one grey line. Only what is
-    // unusual is marked: "New system" on a heading, and a submission that does not wait for this
+    // unusual is marked: "New board" on a heading, and a submission that does not wait for this
     // account is dimmed and says it is with the other approver. The words are ReviewQueueDisplay's.
     //
     // *** A HEADING IS A DISABLED ListBoxItem. *** Disabled, it can be neither clicked nor reached
@@ -37,7 +37,7 @@ namespace CRT
     // ###########################################################################################
     public partial class TabMaintainer
     {
-        // The list's parts by submission id and by system - rebuilt with the list.
+        // The list's parts by submission id and by board - rebuilt with the list.
         private readonly Dictionary<long, QueueEntry> thisQueueEntries = [];
         private readonly Dictionary<string, QueueHeading> thisQueueHeadings = new(StringComparer.Ordinal);
 
@@ -52,7 +52,7 @@ namespace CRT
             foreach (ReviewQueueGroup group in ReviewQueueDisplay.Group(rows))
             {
                 var heading = new QueueHeading(group, isFirst: items.Count == 0);
-                this.thisQueueHeadings[group.SystemId] = heading;
+                this.thisQueueHeadings[group.BoardId] = heading;
                 items.Add(heading.Item);
 
                 foreach (ReviewQueueRow row in group.Rows)
@@ -82,10 +82,10 @@ namespace CRT
         }
 
         // Puts the opened submission's own answers on the list - see the header.
-        private void UpdateQueueEntry(ReviewQueueRow row, bool? isNewSystem, bool? awaitsYou)
+        private void UpdateQueueEntry(ReviewQueueRow row, bool? isNewBoard, bool? awaitsYou)
         {
-            if (this.thisQueueHeadings.TryGetValue(row.SystemId ?? string.Empty, out QueueHeading? heading))
-                heading.ShowBadge(isNewSystem);
+            if (this.thisQueueHeadings.TryGetValue(row.BoardId ?? string.Empty, out QueueHeading? heading))
+                heading.ShowBadge(isNewBoard);
 
             if (this.thisQueueEntries.TryGetValue(row.Id, out QueueEntry? entry))
                 entry.Show(entry.Row with { AwaitsYou = awaitsYou }, DateTimeOffset.UtcNow);
@@ -132,7 +132,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // One board's heading: its name and, for a system with nothing published, "New system".
+        // One board's heading: its name and, for a board with nothing published, "New board".
         // A thin line above it, except above the first, keeps the boards apart.
         // ###########################################################################################
         private sealed class QueueHeading
@@ -145,7 +145,7 @@ namespace CRT
 
                 line.Children.Add(new TextBlock
                 {
-                    Text = ReviewQueueDisplay.SystemHeading(group.SystemId),
+                    Text = ReviewQueueDisplay.BoardHeading(group.BoardId),
                     FontSize = 13,
                     FontWeight = FontWeight.SemiBold,
                     VerticalAlignment = VerticalAlignment.Center
@@ -154,7 +154,7 @@ namespace CRT
                 this.thisBadge = new Border
                 {
                     Classes = { "Badge" },
-                    Child = new TextBlock { Text = ReviewQueueDisplay.NewSystemBadge }
+                    Child = new TextBlock { Text = ReviewQueueDisplay.NewBoardBadge }
                 };
                 line.Children.Add(this.thisBadge);
 
@@ -170,13 +170,13 @@ namespace CRT
                     Content = frame
                 };
 
-                this.ShowBadge(group.IsNewSystem);
+                this.ShowBadge(group.IsNewBoard);
             }
 
             public ListBoxItem Item { get; }
 
-            public void ShowBadge(bool? isNewSystem) =>
-                this.thisBadge.IsVisible = ReviewQueueDisplay.SystemBadge(isNewSystem) is not null;
+            public void ShowBadge(bool? isNewBoard) =>
+                this.thisBadge.IsVisible = ReviewQueueDisplay.BoardBadge(isNewBoard) is not null;
         }
 
         // ###########################################################################################

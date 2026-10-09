@@ -159,7 +159,7 @@ namespace CRT.Data.Tests
             Assert.Equal(2, usage.MasterCount);
         }
 
-        // A new system the server publishes is not added to any master (done by hand later). A
+        // A new board the server publishes is not added to any master (done by hand later). A
         // rule that trusted the masters alone would delete the whole new board.
         [Fact]
         public void A_board_in_the_tree_that_NO_master_lists_still_counts()
@@ -515,7 +515,7 @@ namespace CRT.Data.Tests
         [InlineData("a /b.png", "a/b.png")]
         [InlineData("../b.png", null)]
         [InlineData("a/../../b.png", null)]
-        public void A_path_resolves_as_the_operating_system_finds_it(string path, string? expected)
+        public void A_path_resolves_as_the_operating_board_finds_it(string path, string? expected)
         {
             Assert.Equal(expected, DataTreeUsage.Resolved(path));
         }

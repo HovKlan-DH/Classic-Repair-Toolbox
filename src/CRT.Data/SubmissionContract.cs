@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // The wire contract between CRT and the server for submitting a system. ONE definition,
+    // The wire contract between CRT and the server for submitting a board. ONE definition,
     // referenced by both sides - which is the whole reason CRT.Data was extracted in Phase 1.
     //
     // The old ComponentContributionPayload had the app and the old server each carrying their own
@@ -12,13 +12,13 @@ namespace Handlers.DataHandling
     // one to remember the other. That is the defect this replaces: here, a field added on one side does
     // not compile on the other until it is handled.
     //
-    // WHAT IS SUBMITTED, SEMANTICALLY: the complete system as it should be after the change.
+    // WHAT IS SUBMITTED, SEMANTICALLY: the complete board as it should be after the change.
     // WHAT IS UPLOADED, PHYSICALLY: only the blobs the server does not already hold.
     //
     // The three-step transport (NewContributeStrategy.md, "The transport"):
     //
     //   1. Client POSTs a SubmissionManifest - every file path with its SHA-256, plus the board
-    //      rows. Kilobytes of JSON even for a 76 MB system.
+    //      rows. Kilobytes of JSON even for a 76 MB board.
     //   2. Server answers with a HashNegotiationResponse naming the hashes it lacks.
     //   3. Client uploads only those blobs, then finalises.
     //
@@ -37,9 +37,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Bumped whenever this contract changes in a way an older client would get wrong.
         //
-        // Version 1 is the first whole-system submission format. It is deliberately NOT a
+        // Version 1 is the first whole-board submission format. It is deliberately NOT a
         // continuation of ComponentContributionPayload's numbering: that contract described one
-        // component, this describes an entire system, and pretending they are the same sequence
+        // component, this describes an entire board, and pretending they are the same sequence
         // would let an old client's "PayloadFormat 2" be mistaken for something this understands.
         //
         // The server rejects a submission whose version it does not know, with an update-required
@@ -76,7 +76,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The longest a few free-text fields may be. Each equals the database column it lands in
         // (submissions.summary VARCHAR(500), submissions.base_revision and
-        // systems.current_revision VARCHAR(64)).
+        // boards.current_revision VARCHAR(64)).
         //
         // *** REFUSED, NOT TRUNCATED, AND REFUSED EARLY. *** An over-long value used to reach the
         // INSERT and fail there under strict mode, answering a 500 - and the revision date only
@@ -98,7 +98,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // Step 1: what the client says the system should look like after the change.
+    // Step 1: what the client says the board should look like after the change.
     //
     // BaseRevision is the published revision the contributor started from. It is what makes this
     // a DELTA without the client having to compute one: the server knows that revision's state and
@@ -106,8 +106,8 @@ namespace Handlers.DataHandling
     // needs re-basing rather than blind merging, and recording it here is what makes that
     // detectable rather than silent.
     //
-    // It is EMPTY for a brand-new system - there is no published revision to have started from.
-    // The server decides new-versus-update by whether SystemId already exists - one lookup -
+    // It is EMPTY for a brand-new board - there is no published revision to have started from.
+    // The server decides new-versus-update by whether BoardId already exists - one lookup -
     // rather than by trusting a flag in the payload, which is the "server figures it out"
     // behaviour the project owner asked for.
     // ###########################################################################################
@@ -116,25 +116,25 @@ namespace Handlers.DataHandling
         public int FormatVersion { get; set; } = SubmissionFormat.CurrentVersion;
 
         // ###########################################################################################
-        // "Manufacturer/Hardware/Board" - the `systems` table's primary key, and the same key the
+        // "Manufacturer/Hardware/Board" - the `boards` table's primary key, and the same key the
         // data tree, the sync manifest and every draft folder already use.
         //
-        // ALWAYS SET, including for a system the contributor invented five minutes ago. That is
+        // ALWAYS SET, including for a board the contributor invented five minutes ago. That is
         // the point of a path-shaped id: the client can compute it from what was typed, so there
-        // is no chicken-and-egg where a new system has no identity until the server grants one.
-        // What makes a submission NEW is that no `systems` row carries this id yet, which is a
+        // is no chicken-and-egg where a new board has no identity until the server grants one.
+        // What makes a submission NEW is that no `boards` row carries this id yet, which is a
         // lookup the server does - never a flag the client sets.
         //
-        // See SystemDescriptorRules.BuildSystemId for why this is the data tree's own key rather
+        // See BoardDescriptorRules.BuildBoardId for why this is the data tree's own key rather
         // than a random surrogate.
         // ###########################################################################################
-        public string SystemId { get; set; } = string.Empty;
+        public string BoardId { get; set; } = string.Empty;
 
         public string Manufacturer { get; set; } = string.Empty;
         public string Hardware { get; set; } = string.Empty;
         public string Board { get; set; } = string.Empty;
 
-        // The published revision this was drafted from. Empty for a new system.
+        // The published revision this was drafted from. Empty for a new board.
         public string BaseRevision { get; set; } = string.Empty;
 
         // Free text from the contributor saying what they changed and why. This is what a maintainer
@@ -142,13 +142,13 @@ namespace Handlers.DataHandling
         public string Summary { get; set; } = string.Empty;
 
         // ###########################################################################################
-        // *** A NEW SYSTEM'S NOTES (owner request, 2026-10-05: "that note needs to be sent also to the
+        // *** A NEW BOARD'S NOTES (owner request, 2026-10-05: "that note needs to be sent also to the
         // server, as this notes needs to go into the main Excel in the 'Hardware & Board' sheet and
         // in the column 'Hardware notes in "Overview" tab'"). *** What the contributor typed under
-        // "Notes (optional)" in "Create system". They were kept on the contributor's computer only.
+        // "Notes (optional)" in "Create board". They were kept on the contributor's computer only.
         //
-        // The server keeps them with the submission, and the maintainer's placement of the system
-        // (CRT.Server's SystemListingFlow) starts with them in its Notes box; the placement the
+        // The server keeps them with the submission, and the maintainer's placement of the board
+        // (CRT.Server's BoardListingFlow) starts with them in its Notes box; the placement the
         // maintainer saves is what goes into the main Excel data file's notes column. Empty for a
         // draft of a published board - its notes are already in the list.
         //
@@ -169,7 +169,7 @@ namespace Handlers.DataHandling
         // dropped - never improved. "Your highlight coordinates look wrong, did you mean X?" is
         // the message this exists to make possible.
         //
-        // A signed-in maintainer submitting to their own system may leave it empty; their account
+        // A signed-in maintainer submitting to their own board may leave it empty; their account
         // already carries an address.
         // ###########################################################################################
         public string ContactEmail { get; set; } = string.Empty;
@@ -180,12 +180,12 @@ namespace Handlers.DataHandling
 
         public DateTimeOffset CreatedUtc { get; set; }
 
-        // Every file the system should contain afterwards, each with its hash. A file present in
+        // Every file the board should contain afterwards, each with its hash. A file present in
         // the base revision but ABSENT here is a deletion - the manifest is the complete intended
         // state, not a list of changes.
         public List<SubmissionFile> Files { get; set; } = new();
 
-        // The board rows, as the system should read afterwards. Same "complete state" rule.
+        // The board rows, as the board should read afterwards. Same "complete state" rule.
         public SubmissionRows Rows { get; set; } = new();
 
         // Explicit rename intent, because natural-key pairing cannot see a rename - U8 becoming U9
@@ -196,9 +196,9 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // One file in the submitted system.
+    // One file in the submitted board.
     //
-    // Path is RELATIVE to the system's own folder and is UNTRUSTED INPUT - it arrives over the
+    // Path is RELATIVE to the board's own folder and is UNTRUSTED INPUT - it arrives over the
     // network and names a location the server will write to. SubmissionPathRules is the one place
     // that is checked; see its header for what it rejects and why a plain "does it start with .."
     // test is not enough.
@@ -214,7 +214,7 @@ namespace Handlers.DataHandling
     {
         public string Path { get; set; } = string.Empty;
 
-        // Lowercase hex SHA-256 of the file's bytes. This is the blob's identity: two systems
+        // Lowercase hex SHA-256 of the file's bytes. This is the blob's identity: two boards
         // carrying the same image reference the same hash and it is stored once.
         public string Sha256 { get; set; } = string.Empty;
 
@@ -222,7 +222,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // The board rows as the system should read after the change, one list per BoardData section.
+    // The board rows as the board should read after the change, one list per BoardData section.
     //
     // These are the SAME row types the app and the reader already use, not parallel DTOs. A
     // separate set would be a second definition of the schema to keep in step - exactly what this
@@ -234,7 +234,7 @@ namespace Handlers.DataHandling
         // The board's own revision date - the human-authored text in the workbook's
         // "# Revision date:" marker, not a machine version.
         //
-        // *** IT IS ALSO WHAT `systems.current_revision` BECOMES, and that is a contract with the
+        // *** IT IS ALSO WHAT `boards.current_revision` BECOMES, and that is a contract with the
         // CLIENT. *** DraftBaseRevision stamps a draft's BaseRevision from the official board's
         // revision date, and the submission sends that value back to be diffed against. So the
         // published revision has to be the same thing, or every contributor would be re-basing
@@ -292,7 +292,7 @@ namespace Handlers.DataHandling
     // issued by the server rather than chosen by the client, so a client cannot address another
     // contributor's in-flight submission by guessing.
     //
-    // MissingHashes is usually EMPTY: most submissions are edits to systems whose files the server
+    // MissingHashes is usually EMPTY: most submissions are edits to boards whose files the server
     // already has, which is what makes a typo fix cost a single round trip.
     // ###########################################################################################
     public sealed class HashNegotiationResponse
@@ -374,7 +374,7 @@ namespace Handlers.DataHandling
     {
         public long Id { get; set; }
 
-        public string SystemId { get; set; } = string.Empty;
+        public string BoardId { get; set; } = string.Empty;
 
         // The server's own vocabulary ("uploading", "pending", "rejected", "abandoned"). NOT shown
         // to the user as-is - SubmissionReceiptPresenter.DescribeState turns it into words that
@@ -428,31 +428,31 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // system.json, written per system in the published tree (Phase 4 task 7).
+    // system.json, written per board in the published tree (Phase 4 task 7).
     //
-    // SYSTEMID IS DERIVED ONCE AT CREATION AND NEVER CHANGES. That is the whole point: the folder
+    // BOARDID IS DERIVED ONCE AT CREATION AND NEVER CHANGES. That is the whole point: the folder
     // path carries Manufacturer/Hardware/Board, so renaming a board would otherwise lose its
     // history and its maintainer list. With a stable id, a rename is a metadata change and
-    // everything keyed to the system survives it.
+    // everything keyed to the board survives it.
     //
     // ContentHash covers the published state, so a client can tell whether it holds the current
     // revision without comparing every file.
     // ###########################################################################################
-    public sealed class SystemDescriptor
+    public sealed class BoardDescriptor
     {
-        public string SystemId { get; set; } = string.Empty;
+        public string BoardId { get; set; } = string.Empty;
         public string Manufacturer { get; set; } = string.Empty;
         public string Hardware { get; set; } = string.Empty;
         public string Board { get; set; } = string.Empty;
         public string Revision { get; set; } = string.Empty;
         public DateTimeOffset PublishedUtc { get; set; }
 
-        // Display names of the system's maintainers, for showing in the app. Authority itself is
+        // Display names of the board's maintainers, for showing in the app. Authority itself is
         // decided by the maintainers table on the server, never by this file - a published file is
         // something a contributor could edit locally, so it must not be able to grant anything.
         public List<string> Maintainers { get; set; } = new();
 
-        // "shipped" for a system that came with CRT, "contributed" for one that arrived through
+        // "shipped" for a board that came with CRT, "contributed" for one that arrived through
         // this pipeline and was vetted.
         public string Origin { get; set; } = string.Empty;
 

@@ -386,7 +386,7 @@ public sealed class BoardDataReaderTests : IDisposable
     // still correctly after a sync-style clear and rewrite. All of that was real and worth
     // pinning while a drafted board was a COMPUTATION.
     //
-    // A draft is now a board folder with its own workbook, so loading a drafted system means
+    // A draft is now a board folder with its own workbook, so loading a drafted board means
     // reading that file (DraftBoardSource decides which). There is no draft argument, no merge,
     // and nothing for these tests to assert. They are deleted rather than rewritten because the
     // behaviour they described no longer exists - this note is here so their absence reads as a
@@ -396,7 +396,7 @@ public sealed class BoardDataReaderTests : IDisposable
     // DraftBoardSourceTests (the rule itself) and BoardDataDifferTests (what changed).
     //
     // The cache tests above are untouched and matter MORE than they did - the cache is now keyed
-    // by the file that was read, precisely because a drafted system has two of them.
+    // by the file that was read, precisely because a drafted board has two of them.
     // ###########################################################################################
 
     // ------------------------------------------------- CollectReferencedLocalFiles
@@ -491,9 +491,9 @@ public sealed class BoardDataReaderTests : IDisposable
         Assert.Equal("2026-August-21", BoardDataReader.TryGetCachedRevisionDate(cacheKey));
     }
 
-    // ------------------------------------- A system that exists only as a draft (task 9)
+    // ------------------------------------- A board that exists only as a draft (task 9)
 
-    // The existing behaviour, pinned deliberately: for a system the main workbook DOES list, a
+    // The existing behaviour, pinned deliberately: for a board the main workbook DOES list, a
     // missing board file is a genuine sync failure. It must keep returning null rather than quietly
     // rendering as an empty board, which would hide the failure from the user entirely.
     [Fact]
@@ -507,20 +507,20 @@ public sealed class BoardDataReaderTests : IDisposable
     }
 
     // ###########################################################################################
-    // A system created through "Add a new system" has no published .xlsx by construction, and an
+    // A board created through "Add a new board" has no published .xlsx by construction, and an
     // EMPTY board is the truthful answer for it: officially, none of it exists yet.
     //
     // *** WHAT THIS TEST ASSERTED CHANGED WITH THE MECHANISM. *** It used to prove the DRAFT's
     // own rows came back, because the draft was merged onto an empty board here. The draft
     // workbook is now read directly by the caller (DraftBoardSource), so what this path is still
     // responsible for is narrower and is all that is left to pin: answering an empty board rather
-    // than null, so a brand-new system can be opened at all.
+    // than null, so a brand-new board can be opened at all.
     // ###########################################################################################
     // *** A MISSING-FILE BOARD IS NEVER CACHED. ***
     //
     // The cache holds boards parsed from a FILE. Caching this one would pin an empty board
-    // against a path that may later hold a real workbook - a published system arriving by sync,
-    // or a draft-only system being seeded - and every later load on that key would answer empty.
+    // against a path that may later hold a real workbook - a published board arriving by sync,
+    // or a draft-only board being seeded - and every later load on that key would answer empty.
     //
     // Proved by creating the file between two loads on the same key: a cached first result would
     // make the second one stale.

@@ -12,7 +12,7 @@ namespace CRT.Server.Tests
     // cache keyed by whatever string the caller supplies, and the first version of this class
     // passed the workbook's own PATH - which reads as obviously correct and is exactly wrong on a
     // server. The file at that path is REWRITTEN by every publish, so a cached read would serve
-    // the PRE-PUBLISH board to the next maintainer opening a submission for that system, and show
+    // the PRE-PUBLISH board to the next maintainer opening a submission for that board, and show
     // them a diff against data that no longer exists.
     //
     // It surfaced as PublishExecutorTests.Re_running_the_same_publish_is_safe failing
@@ -52,7 +52,7 @@ namespace CRT.Server.Tests
 
         private static SubmissionManifest Manifest() => new()
         {
-            SystemId = "Commodore/C64/250407",
+            BoardId = "Commodore/C64/250407",
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407"
@@ -121,9 +121,9 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_system_that_was_never_published_reads_as_NULL()
+        public async Task A_board_that_was_never_published_reads_as_NULL()
         {
-            // The new-system case, and a first-class answer rather than a failure: a new system is
+            // The new-board case, and a first-class answer rather than a failure: a new board is
             // the highest-risk submission there is and must reach a maintainer.
             BoardData? board = await PublishedBoardReaderTests.Reader()
                 .TryReadAsync(this.thisRoot, PublishedBoardReaderTests.Manifest());
@@ -132,11 +132,11 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_null_published_board_produces_a_NEW_SYSTEM_summary()
+        public async Task A_null_published_board_produces_a_NEW_BOARD_summary()
         {
             // The whole point of returning null rather than an empty board: an empty board would
             // report every row as an addition, which is the same information with the one fact
-            // that matters stripped out - that nobody has ever vetted this system.
+            // that matters stripped out - that nobody has ever vetted this board.
             BoardData? published = await PublishedBoardReaderTests.Reader()
                 .TryReadAsync(this.thisRoot, PublishedBoardReaderTests.Manifest());
 
@@ -147,8 +147,8 @@ namespace CRT.Server.Tests
                     Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "A", TechnicalNameOrValue = "B" }]
                 });
 
-            Assert.True(summary.IsNewSystem);
-            Assert.Contains("New system", summary.Describe());
+            Assert.True(summary.IsNewBoard);
+            Assert.Contains("New board", summary.Describe());
         }
 
         [Fact]

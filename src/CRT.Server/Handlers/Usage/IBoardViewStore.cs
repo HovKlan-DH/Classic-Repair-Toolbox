@@ -22,24 +22,24 @@ namespace CRT.Server.Handlers.Usage
             DateTimeOffset receivedUtc,
             CancellationToken cancellationToken = default);
 
-        // Views per system since `sinceUtc`, BETA-source views left out - the Systems list's count.
-        Task<IReadOnlyDictionary<string, int>> CountSinceBySystemAsync(
+        // Views per board since `sinceUtc`, BETA-source views left out - the Boards list's count.
+        Task<IReadOnlyDictionary<string, int>> CountSinceByBoardAsync(
             DateTimeOffset sinceUtc,
             CancellationToken cancellationToken = default);
 
-        // One system's views since `sinceUtc`, counted per UTC day, source and country - what
-        // BoardViewStatisticsRules turns into the Systems screen's numbers.
-        Task<IReadOnlyList<BoardViewFact>> FactsForSystemAsync(
-            string systemId,
+        // One board's views since `sinceUtc`, counted per UTC day, source and country - what
+        // BoardViewStatisticsRules turns into the Boards screen's numbers.
+        Task<IReadOnlyList<BoardViewFact>> FactsForBoardAsync(
+            string boardId,
             DateTimeOffset sinceUtc,
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Deletes every view of one system - a system the administrator deleted (owner decision,
+        // Deletes every view of one board - a board the administrator deleted (owner decision,
         // 2026-10-03: its statistics go with it, so the Fun facts page stops counting a board that
         // no longer exists). The number of rows deleted.
         // ###########################################################################################
-        Task<int> DeleteForSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<int> DeleteForBoardAsync(string boardId, CancellationToken cancellationToken = default);
     }
 
     // One row of crt_board_views, as the flow decided it (names from the published listing, country
@@ -47,7 +47,7 @@ namespace CRT.Server.Handlers.Usage
     // a view from the server's own network (ServerOptions.CountLocalNetworkBoardViews).
     public sealed record BoardViewRow(
         DateTimeOffset ViewedUtc,
-        string SystemId,
+        string BoardId,
         string HardwareName,
         string BoardName,
         string Version,
@@ -59,6 +59,6 @@ namespace CRT.Server.Handlers.Usage
         bool FromBeta,
         bool FromLocalNetwork);
 
-    // How many views one system had on one UTC day, from one source, in one country (null: unknown).
+    // How many views one board had on one UTC day, from one source, in one country (null: unknown).
     public sealed record BoardViewFact(DateOnly Day, bool FromBeta, string? CountryCode, string? CountryName, int Views);
 }

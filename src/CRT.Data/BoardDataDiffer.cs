@@ -91,7 +91,7 @@ namespace Handlers.DataHandling
     public static class BoardDataDiffer
     {
         // ###########################################################################################
-        // The report. `published` may be null for a system that exists only as a draft, in which
+        // The report. `published` may be null for a board that exists only as a draft, in which
         // case every drafted row is an addition - which is the literal truth: officially, none of
         // it exists yet.
         //

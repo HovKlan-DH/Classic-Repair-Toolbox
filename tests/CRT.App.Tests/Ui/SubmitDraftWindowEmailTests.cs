@@ -61,7 +61,7 @@ public sealed class SubmitDraftWindowEmailTests : IDisposable
 
     private static SubmissionIdentity Identity() => new()
     {
-        SystemId = "Commodore/C64/250407/Data.xlsx",
+        BoardId = "Commodore/C64/250407/Data.xlsx",
         Manufacturer = "Commodore",
         Hardware = "C64",
         Board = "250407"
@@ -310,7 +310,7 @@ public sealed class SubmitDraftWindowEmailTests : IDisposable
 
             Assert.Equal("v1:ABC", receipt.DraftFingerprint);
             Assert.Equal(42, receipt.SubmissionId);
-            Assert.Equal("Commodore/C64/250407/Data.xlsx", receipt.SystemId);
+            Assert.Equal("Commodore/C64/250407/Data.xlsx", receipt.BoardId);
         });
     }
 }

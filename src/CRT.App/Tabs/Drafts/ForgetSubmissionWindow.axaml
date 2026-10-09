@@ -17,7 +17,7 @@
 
 		<TextBlock TextWrapping="Wrap" Text="This removes the record of your contribution to:" />
 
-		<TextBlock x:Name="SystemNameText"
+		<TextBlock x:Name="BoardNameText"
 				   TextWrapping="Wrap"
 				   FontWeight="Bold"
 				   Margin="0,8,0,8" />

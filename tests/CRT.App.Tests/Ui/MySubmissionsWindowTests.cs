@@ -47,12 +47,12 @@ public sealed class MySubmissionsWindowTests : IDisposable
     private static SubmissionReceipt Receipt(
         long id,
         string state = "",
-        string systemId = "Commodore/C64/250407/Data C64 250407.xlsx")
+        string boardId = "Commodore/C64/250407/Data C64 250407.xlsx")
         => new()
         {
             SubmissionId = id,
             UploadToken = "tok" + id,
-            SystemId = systemId,
+            BoardId = boardId,
             Summary = "Fixed U8 pinout",
             SentUtc = new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero),
             LastKnownState = state
@@ -245,8 +245,8 @@ public sealed class MySubmissionsWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // The row names the BOARD, not the file. A system's identity is an ExcelDataFile key, and the
-    // ".xlsx" on the end names a file the contributor never typed and, for a draft-only system,
+    // The row names the BOARD, not the file. A board's identity is an ExcelDataFile key, and the
+    // ".xlsx" on the end names a file the contributor never typed and, for a draft-only board,
     // one that does not even exist.
     // ###########################################################################################
     [Fact]
@@ -261,29 +261,29 @@ public sealed class MySubmissionsWindowTests : IDisposable
 
             SubmissionListItem row = Assert.Single(window.Submissions);
 
-            Assert.Equal("Commodore C64 250407", row.SystemName);
-            Assert.DoesNotContain(".xlsx", row.SystemName);
+            Assert.Equal("Commodore C64 250407", row.BoardDisplayName);
+            Assert.DoesNotContain(".xlsx", row.BoardDisplayName);
         });
     }
 
     // ###########################################################################################
-    // *** A REAL RECEIPT CARRIES THE SYSTEM ID, NOT A WORKBOOK PATH (2026-09-27). *** SubmitDraftWindow
-    // records identity.SystemId - "Commodore/C128/310378 Open128" - and the name used to drop the
+    // *** A REAL RECEIPT CARRIES THE BOARD ID, NOT A WORKBOOK PATH (2026-09-27). *** SubmitDraftWindow
+    // records identity.BoardId - "Commodore/C128/310378 Open128" - and the name used to drop the
     // last segment as though it were a file name, so the row read "Commodore C128" with the board
     // missing. The fixture above uses the old workbook-path shape no real receipt has, which is how
     // this went unseen; both shapes are named in full now.
     // ###########################################################################################
     [Fact]
-    public void A_row_names_the_WHOLE_system_from_a_real_receipts_system_id()
+    public void A_row_names_the_WHOLE_board_from_a_real_receipts_board_id()
     {
         UiTest.Run(() =>
         {
-            SubmissionReceiptStore.Record(Receipt(43, systemId: "Commodore/C128/310378 Open128"));
+            SubmissionReceiptStore.Record(Receipt(43, boardId: "Commodore/C128/310378 Open128"));
 
             var window = new MySubmissionsWindow();
             window.Initialize();
 
-            Assert.Equal("Commodore C128 310378 Open128", Assert.Single(window.Submissions).SystemName);
+            Assert.Equal("Commodore C128 310378 Open128", Assert.Single(window.Submissions).BoardDisplayName);
         });
     }
 
@@ -337,7 +337,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
             {
                 SubmissionId = old.SubmissionId,
                 UploadToken = old.UploadToken,
-                SystemId = old.SystemId,
+                BoardId = old.BoardId,
                 Summary = old.Summary,
                 SentUtc = DateTimeOffset.UtcNow.AddYears(-1),
                 DecidedUtc = DateTimeOffset.UtcNow.AddYears(-1),
@@ -425,7 +425,7 @@ public sealed class MySubmissionsWindowTests : IDisposable
 
     // ###########################################################################################
     // *** "NOT FOUND" IS AN ANSWER, NOT AN UNREACHABLE SERVER (code review, 2026-10-04). *** After a
-    // reset of the contribution data, or a system deleted, every open receipt is answered 404. Those
+    // reset of the contribution data, or a board deleted, every open receipt is answered 404. Those
     // were counted as "could not be reached", so the line said the server could not be reached
     // while the rows said "No longer on the server" - and the contributor went looking for a
     // network problem that was not there.

@@ -20,7 +20,7 @@
 									   VerticalAlignment="Center"
 									   Foreground="{DynamicResource Table_Fg}" />
 
-							<!-- This system's latest submission (owner request, 2026-09-27),
+							<!-- This board's latest submission (owner request, 2026-09-27),
 							     in the words and colour "My submissions" gives the same state
 							     (DraftListItem). Outlined like the app's other informational
 							     pills: a 1px edge and text in the state's own colour. -->
@@ -103,22 +103,22 @@
 
 					<!-- One button per kind of file (owner request, 2026-09-24) - they
 					     used to share one "Schematic images and KiCad data" button. Both
-					     open SystemFilesWindow, each on its own section. -->
+					     open BoardFilesWindow, each on its own section. -->
 					<Button Grid.Column="3"
 							Content="Schematic images"
 							VerticalAlignment="Center"
 							Margin="0,0,8,0"
-							ToolTip.Tip="Add or remove the schematic images of this system"
+							ToolTip.Tip="Add or remove the schematic images of this board"
 							Command="{Binding ManageSchematicImagesCommand}" />
 
 					<Button Grid.Column="4"
 							Content="KiCad data"
 							VerticalAlignment="Center"
 							Margin="0,0,8,0"
-							ToolTip.Tip="Import or remove this system's KiCad data, and see what it lines up with"
+							ToolTip.Tip="Import or remove this board's KiCad data, and see what it lines up with"
 							Command="{Binding ManageKiCadDataCommand}" />
 
-					<!-- Sends this system for review. Disabled rather than hidden when the
+					<!-- Sends this board for review. Disabled rather than hidden when the
 					     draft has nothing in it, so the action stays where the user
 					     learned it is and the tooltip can say why it is unavailable - a
 					     button that appears only sometimes reads as the app having lost
@@ -168,7 +168,7 @@
 						   FontSize="16"
 						   FontWeight="Bold" />
 				<TextBlock TextWrapping="Wrap"
-						   Text="Local, unpublished edits to hardware and board data. A draft is not visible to anyone else until it is submitted; see the Contribute tab. A system you never submit keeps working here as your own." />
+						   Text="Local, unpublished edits to hardware and board data. A draft is not visible to anyone else until it is submitted; see the Contribute tab. A board you never submit keeps working here as your own." />
 
 				<!-- Shown only when a Discard could not delete the whole draft folder - most
 				     often because its workbook is open in Excel, which locks it on Windows.
@@ -239,10 +239,10 @@
 
 				<!-- The same action as the Contribute tab's button, offered again here because this
 				     is where someone returning to their drafts looks for it. -->
-				<Button x:Name="AddNewSystemButton"
-						Content="Add a new system"
+				<Button x:Name="AddNewBoardButton"
+						Content="Add a new board"
 						ToolTip.Tip="Create a whole new hardware and board of your own, as a local draft"
-						Click="OnAddNewSystemClick" />
+						Click="OnAddNewBoardClick" />
 			</StackPanel>
 		</Grid>
 
@@ -265,7 +265,7 @@
 		-->
 		<Grid Grid.Row="1" x:Name="DraftsBodyGrid" RowDefinitions="*,Auto">
 
-		<!-- Shown when there is at least one drafted system - see EmptyStateText below for the
+		<!-- Shown when there is at least one drafted board - see EmptyStateText below for the
 		     alternative. Toggled from code (RefreshDrafts), not markup, since which one is visible
 		     depends on data that is not known until the tab loads. -->
 		<ScrollViewer Grid.Row="0"

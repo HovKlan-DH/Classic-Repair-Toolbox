@@ -46,9 +46,9 @@ namespace CRT
         // ###########################################################################################
         // The sheet last looked at IN EACH SUBMISSION, so coming back to one opens it where it was
         // left (owner requests, 2026-09-26: "navigating between different systems in the left-side
-        // menu should remember the tab last visited" - then "per system, so if I am in 'Important
-        // signals' in one system, then I can navigate to another system, and then it will show the
-        // last sheet/tab for that system"). Each queue entry is its own, as the project owner sees
+        // menu should remember the tab last visited" - then "per board, so if I am in 'Important
+        // signals' in one board, then I can navigate to another board, and then it will show the
+        // last sheet/tab for that board"). Each queue entry is its own, as the project owner sees
         // them; one not opened yet starts on its first sheet with a change. Unless the picked
         // colour-key pills hide the remembered sheet's tab - see BoardTableDocument.SheetToShow. For as long
         // as the application runs.
@@ -88,7 +88,7 @@ namespace CRT
         {
             ArgumentNullException.ThrowIfNull(remember);
 
-            // A system's table on the Systems screen (2026-10-03) opens on the same pick, and its own
+            // A board's table on the Boards screen (2026-10-03) opens on the same pick, and its own
             // picks are remembered the same way - one table, as the maintainer sees it, in two places.
             // So a pick in either is handed to the other too (code review, 2026-10-04): each wrote
             // the one setting without telling the other, and the next launch opened both on
@@ -114,10 +114,10 @@ namespace CRT
             }
         }
 
-        // The tab's tables - a submission's, a system's, and a system's stable source's - which share
+        // The tab's tables - a submission's, a board's, and a board's stable source's - which share
         // the picked pills (UseRememberedChoices).
         internal IReadOnlyList<BoardTableEditor> TableEditorsForSharedChoices =>
-            [this.TableEditor, this.SystemDetail.TableEditorForRememberedChoices, this.SystemDetail.StableTableEditorForSharedChoices];
+            [this.TableEditor, this.BoardDetail.TableEditorForRememberedChoices, this.BoardDetail.StableTableEditorForSharedChoices];
 
         // ###########################################################################################
         // Opens the selected submission's table - straight away, as the panel's only view. Nothing
@@ -189,7 +189,7 @@ namespace CRT
             this.ShowTableLoadMessage(null);
 
             // ###########################################################################################
-            // *** A NEW SYSTEM IS COMPARED WITH THE SUBMISSION ITSELF, AS IT WAS OPENED (owner decision,
+            // *** A NEW BOARD IS COMPARED WITH THE SUBMISSION ITSELF, AS IT WAS OPENED (owner decision,
             // 2026-09-26). *** Its rows start white, and only what the MAINTAINER inserts, changes or
             // deletes is coloured - "Only if the maintainer inserts something, it should show as
             // added (or removed or changed)" - and picking Added, Modified or Deleted shows nothing until they do.
@@ -200,27 +200,30 @@ namespace CRT
             //
             // A save makes the edits the submission's content, so the table reopened after it is
             // white again. (The Drafts tab keeps its own "every row is your own" view of a
-            // contributor's new system.)
+            // contributor's new board.)
             // ###########################################################################################
             BoardData published = SubmissionRowsBoard.ToBoard(table.Published ?? table.Submitted);
             BoardData submitted = SubmissionRowsBoard.ToBoard(table.Submitted);
 
             // ###########################################################################################
-            // What a changed cell's tooltip calls the value it replaced. For a NEW SYSTEM the
+            // What a changed cell's tooltip calls the value it replaced. For a NEW BOARD the
             // baseline above is the SUBMISSION itself, not a published board, so the default
             // "Published value: (empty)" named something that does not exist (owner report,
             // 2026-09-26). It then says "As submitted", the file card's own word for that same side
             // (ReviewTableFiles.SideLabels), so one thing has one name whether the pointer is on a
             // text cell or a file cell.
             //
-            // A PUBLISHED board keeps the default: the file card says "Before (published)" there
-            // because it is showing two pictures side by side and has to say which is which, while
-            // a tooltip names one value and has always read "Published value". Same side, two
-            // sentences - which is why this picks a word rather than reusing that pair wholesale.
+            // A PUBLISHED board is the server's BETA tree (ReviewEndpoints.GetTableAsync reads
+            // DataTreeRoot), so the tooltip says "BETA source value" (owner request, 2026-10-05:
+            // "Published value" read as stable, and a value only BETA held yet looked like an
+            // error). The file card says "Before (BETA source)" there because it is showing two
+            // pictures side by side and has to say which is which, while a tooltip names one value.
+            // Same side, two sentences - which is why this picks a word rather than reusing that pair
+            // wholesale.
             // ###########################################################################################
             string baselineLabel = table.Published is null
                 ? ReviewTableFiles.SideLabels(nothingPublished: true).Published
-                : BoardTableDocument.DefaultBaselineLabel;
+                : BoardTableDocument.BetaSourceBaselineLabel;
 
             this.TableEditor.Open(
                 BoardTableDocument.Create(published, submitted, baselineLabel),
@@ -438,23 +441,23 @@ namespace CRT
         // - the same pair TabDrafts hands it - and brings this tab forward first, so the prompt is
         // about a table the maintainer can see. `owner` is Main itself.
         //
-        // *** BOTH TABLES (2026-10-03). *** A system's table on the Systems screen can hold a change
+        // *** BOTH TABLES (2026-10-03). *** A board's table on the Boards screen can hold a change
         // not sent too. It is asked about after the submission's, on its own screen, for the same
         // reason.
         // ###########################################################################################
         internal bool HasUnsavedTableEdits =>
-            (this.IsTableOpen && this.TableEditor.HasUnsavedChanges) || this.SystemDetail.HasUnsavedTableEdits;
+            (this.IsTableOpen && this.TableEditor.HasUnsavedChanges) || this.BoardDetail.HasUnsavedTableEdits;
 
         internal async Task<bool> ConfirmLeavingTableAsync(Window? owner = null)
         {
             if (!await this.MayLeaveTableAsync(owner))
                 return false;
 
-            if (!this.SystemDetail.HasUnsavedTableEdits)
+            if (!this.BoardDetail.HasUnsavedTableEdits)
                 return true;
 
-            await this.ShowModeAsync(MaintainerMode.Systems);
-            return await this.SystemDetail.MayLeaveTableAsync(owner);
+            await this.ShowModeAsync(MaintainerMode.Boards);
+            return await this.BoardDetail.MayLeaveTableAsync(owner);
         }
 
         // Answers the unsaved-changes prompt in a headless test, where a dialog cannot be answered.

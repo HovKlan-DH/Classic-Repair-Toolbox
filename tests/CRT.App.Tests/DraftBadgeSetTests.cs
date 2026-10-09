@@ -82,7 +82,7 @@ public sealed class DraftBadgeSetTests
         Assert.False(badges.HardwareHasDraft(null));
         Assert.False(badges.BoardHasDraft("C64", string.Empty));
 
-        // The entry with a blank board still marks its hardware - it IS a drafted system of it.
+        // The entry with a blank board still marks its hardware - it IS a drafted board of it.
         Assert.True(badges.HardwareHasDraft("C64"));
     }
 }

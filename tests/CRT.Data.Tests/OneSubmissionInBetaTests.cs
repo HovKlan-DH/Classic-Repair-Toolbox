@@ -3,8 +3,8 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Tests for OneSubmissionInBeta - the two sentences said when a system already waits in BETA for
-// the stable source: refusing a second approval (BusyMessage) and refusing a change on the Systems
+// Tests for OneSubmissionInBeta - the two sentences said when a board already waits in BETA for
+// the stable source: refusing a second approval (BusyMessage) and refusing a change on the Boards
 // screen (NoChangeMessage). The server sends them and the Maintainer tab shows them as they are.
 // ###########################################################################################
 public sealed class OneSubmissionInBetaTests
@@ -21,7 +21,7 @@ public sealed class OneSubmissionInBetaTests
     public void Neither_refusal_tells_a_maintainer_to_publish_to_stable_themselves()
     {
         Assert.Equal(
-            $"{C64} already has a submission in BETA that has not gone to the stable source. A system takes one " +
+            $"{C64} already has a submission in BETA that has not gone to the stable source. A board takes one " +
             "submission into BETA at a time: that one has to be published to stable or pushed back to the queue " +
             $"(under {MaintainerScreenWording.BetaQueueQuoted}) first.",
             OneSubmissionInBeta.BusyMessage(C64));
@@ -32,19 +32,19 @@ public sealed class OneSubmissionInBetaTests
             OneSubmissionInBeta.NoChangeMessage(C64));
     }
 
-    // A blank system id still makes a sentence, and the id is trimmed when there is one.
+    // A blank board id still makes a sentence, and the id is trimmed when there is one.
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void A_missing_system_id_reads_as_this_system(string? systemId)
+    public void A_missing_board_id_reads_as_this_board(string? boardId)
     {
-        Assert.StartsWith("This system already has", OneSubmissionInBeta.BusyMessage(systemId), StringComparison.Ordinal);
-        Assert.StartsWith("This system is waiting", OneSubmissionInBeta.NoChangeMessage(systemId), StringComparison.Ordinal);
+        Assert.StartsWith("This board already has", OneSubmissionInBeta.BusyMessage(boardId), StringComparison.Ordinal);
+        Assert.StartsWith("This board is waiting", OneSubmissionInBeta.NoChangeMessage(boardId), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void The_system_id_is_trimmed()
+    public void The_board_id_is_trimmed()
     {
         Assert.StartsWith($"{C64} already has", OneSubmissionInBeta.BusyMessage($"  {C64} "), StringComparison.Ordinal);
     }

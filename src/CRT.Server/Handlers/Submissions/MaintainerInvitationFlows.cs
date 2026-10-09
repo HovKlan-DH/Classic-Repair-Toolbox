@@ -11,12 +11,12 @@ namespace CRT.Server.Handlers.Submissions
     // Nobody can make an account for themselves in either application - accounts were registered by
     // hand - so an invitation is also how a new maintainer's account comes to exist:
     //
-    //   1. The ADMINISTRATOR names a system and an address with no account (InviteAsync). The
+    //   1. The ADMINISTRATOR names a board and an address with no account (InviteAsync). The
     //      server mails the address a one-time code and keeps only its hash (migration 0012).
     //   2. The person opens the Maintainer tab, chooses "I have an invitation", pastes the code and
     //      picks a name and a password (AcceptAsync). That creates the account VERIFIED - the code
     //      reaching the mailbox proves what the verification link would - and puts it in the pool
-    //      of EVERY system that address has an open invitation to.
+    //      of EVERY board that address has an open invitation to.
     //
     // *** AN ADDRESS THAT HAS AN ACCOUNT IS NOT INVITED. *** It is chosen from the list of accounts
     // instead (MaintainerAssignmentFlows.AddAsync), which also says why an account cannot be granted
@@ -39,15 +39,15 @@ namespace CRT.Server.Handlers.Submissions
         public const string AcceptedAction = "maintainer.invitation_accepted";
 
         // ###########################################################################################
-        // Invites an address to maintain a system. Inviting the same address to the same system
+        // Invites an address to maintain a board. Inviting the same address to the same board
         // again replaces the open invitation - the old code stops working and a new one is mailed -
         // which is what "send it again" should do when the first mail was lost.
         // ###########################################################################################
         public static async Task<MaintainerInvitationOutcome> InviteAsync(
             ReviewAccess? actor,
-            string? systemId,
+            string? boardId,
             string? email,
-            IReadOnlyList<PublishedSystemLister.KnownSystem> inTree,
+            IReadOnlyList<PublishedBoardLister.KnownBoard> inTree,
             IAccountStore accounts,
             ISubmissionStore submissions,
             IEmailSender mailer,
@@ -63,10 +63,10 @@ namespace CRT.Server.Handlers.Submissions
                 return MaintainerInvitationOutcome.Forbidden();
 
             (string Manufacturer, string Hardware, string Board)? identity =
-                await MaintainerAssignmentFlows.FindSystemAsync(systemId, inTree, submissions, cancellationToken);
+                await MaintainerAssignmentFlows.FindBoardAsync(boardId, inTree, submissions, cancellationToken);
 
             if (identity is null)
-                return MaintainerInvitationOutcome.NotFound("No such system.");
+                return MaintainerInvitationOutcome.NotFound("No such board.");
 
             string address = email?.Trim() ?? string.Empty;
 
@@ -78,15 +78,15 @@ namespace CRT.Server.Handlers.Submissions
             if (await accounts.FindByNormalisedEmailAsync(normalised, cancellationToken) is not null)
                 return MaintainerInvitationOutcome.Refused(MaintainerInvitationRules.HasAccountMessage(address));
 
-            // The invitation's foreign key needs the system's row; a shipped board nobody has
+            // The invitation's foreign key needs the board's row; a shipped board nobody has
             // submitted to has none yet.
-            await submissions.EnsureSystemAsync(
-                systemId!, identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board,
-                SystemDescriptorRules.SystemOrigin.Shipped, now, cancellationToken);
+            await submissions.EnsureBoardAsync(
+                boardId!, identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board,
+                BoardDescriptorRules.BoardOrigin.Shipped, now, cancellationToken);
 
             // Asked again: the earlier code stops working, so only the newest mail is good.
             foreach (MaintainerInvitationRecord earlier in (await accounts.ListOpenInvitationsAsync(now, cancellationToken))
-                .Where(open => string.Equals(open.SystemId, systemId, StringComparison.Ordinal) && open.NormalisedEmail == normalised))
+                .Where(open => string.Equals(open.BoardId, boardId, StringComparison.Ordinal) && open.NormalisedEmail == normalised))
             {
                 await accounts.WithdrawInvitationAsync(earlier.Id, now, cancellationToken);
             }
@@ -95,21 +95,21 @@ namespace CRT.Server.Handlers.Submissions
 
             await accounts.CreateInvitationAsync(
                 new NewMaintainerInvitation(
-                    systemId!, address, normalised, SecureToken.Hash(code), actor!.Account.Id,
+                    boardId!, address, normalised, SecureToken.Hash(code), actor!.Account.Id,
                     now, now + MaintainerInvitationFlows.InvitationLifetime),
                 cancellationToken);
 
             await mailer.SendAsync(
                 EmailTemplates.MaintainerInvitation(
                     address,
-                    MaintainerInvitationRules.SystemName(identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board),
+                    MaintainerInvitationRules.BoardDisplayName(identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board),
                     actor.Account.DisplayName,
                     code,
                     (int)MaintainerInvitationFlows.InvitationLifetime.TotalDays),
                 cancellationToken);
 
             await accounts.WriteAuditAsync(
-                new AuditEntry(actor.Account.Id, actor.Account.Email, MaintainerInvitationFlows.InvitedAction, systemId, address, now),
+                new AuditEntry(actor.Account.Id, actor.Account.Email, MaintainerInvitationFlows.InvitedAction, boardId, address, now),
                 cancellationToken);
 
             return MaintainerInvitationOutcome.Done(
@@ -143,7 +143,7 @@ namespace CRT.Server.Handlers.Submissions
 
             await accounts.WriteAuditAsync(
                 new AuditEntry(actor!.Account.Id, actor.Account.Email, MaintainerInvitationFlows.WithdrawnAction,
-                    invitation.SystemId, invitation.Email, now),
+                    invitation.BoardId, invitation.Email, now),
                 cancellationToken);
 
             return MaintainerInvitationOutcome.Done($"The invitation to {invitation.Email} is withdrawn - its code no longer works.");
@@ -193,11 +193,11 @@ namespace CRT.Server.Handlers.Submissions
             if (await accounts.FindByNormalisedEmailAsync(invitation.NormalisedEmail, cancellationToken) is not null)
                 return InvitationAcceptOutcome.Invalid(MaintainerInvitationRules.AlreadyHasAccountMessage);
 
-            // Every system this address is invited to - accepted together, since one account
+            // Every board this address is invited to - accepted together, since one account
             // answers them all.
-            List<string> systems = (await accounts.ListOpenInvitationsAsync(now, cancellationToken))
+            List<string> boards = (await accounts.ListOpenInvitationsAsync(now, cancellationToken))
                 .Where(open => open.NormalisedEmail == invitation.NormalisedEmail)
-                .Select(open => open.SystemId)
+                .Select(open => open.BoardId)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
@@ -210,19 +210,19 @@ namespace CRT.Server.Handlers.Submissions
             if (accountId is null)
                 return InvitationAcceptOutcome.Invalid(MaintainerInvitationRules.AlreadyHasAccountMessage);
 
-            // One row per system, under the system - its history says who became its maintainer.
-            foreach (string system in systems)
+            // One row per board, under the board - its history says who became its maintainer.
+            foreach (string board in boards)
             {
                 await accounts.WriteAuditAsync(
                     new AuditEntry(accountId, invitation.Email, MaintainerInvitationFlows.AcceptedAction,
-                        system, $"account {accountId} ({invitation.Email})", now),
+                        board, $"account {accountId} ({invitation.Email})", now),
                     cancellationToken);
             }
 
             return InvitationAcceptOutcome.Accepted(new AcceptInvitationAnswer(
                 invitation.Email,
-                systems,
-                MaintainerInvitationRules.AcceptedMessage(systems)));
+                boards,
+                MaintainerInvitationRules.AcceptedMessage(boards)));
         }
     }
 
@@ -233,24 +233,24 @@ namespace CRT.Server.Handlers.Submissions
     public static class MaintainerInvitationRules
     {
         public const string AlreadyHasAccountMessage =
-            "An account with this address already exists. Sign in with it, and ask the administrator to add you to the system.";
+            "An account with this address already exists. Sign in with it, and ask the administrator to add you to the board.";
 
         public static string HasAccountMessage(string email) =>
             $"{email} already has an account - choose it from the list of accounts instead of inviting it.";
 
-        // "Commodore / C64 / 250407", as the Systems screen names it.
-        public static string SystemName(string manufacturer, string hardware, string board) =>
+        // "Commodore / C64 / 250407", as the Boards screen names it.
+        public static string BoardDisplayName(string manufacturer, string hardware, string board) =>
             string.Join(" / ", new[] { manufacturer, hardware, board }.Where(part => !string.IsNullOrWhiteSpace(part)));
 
-        public static string AcceptedMessage(IReadOnlyList<string> systemIds)
+        public static string AcceptedMessage(IReadOnlyList<string> boardIds)
         {
-            ArgumentNullException.ThrowIfNull(systemIds);
+            ArgumentNullException.ThrowIfNull(boardIds);
 
-            string what = systemIds.Count switch
+            string what = boardIds.Count switch
             {
                 0 => "Your account is ready.",
-                1 => $"Your account is ready, and you now maintain {systemIds[0]}.",
-                _ => $"Your account is ready, and you now maintain {string.Join(", ", systemIds.Take(systemIds.Count - 1))} and {systemIds[^1]}."
+                1 => $"Your account is ready, and you now maintain {boardIds[0]}.",
+                _ => $"Your account is ready, and you now maintain {string.Join(", ", boardIds.Take(boardIds.Count - 1))} and {boardIds[^1]}."
             };
 
             return $"{what} Sign in with your email address and the password you chose.";

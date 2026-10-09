@@ -29,7 +29,7 @@ namespace CRT.Server.Handlers.Submissions
         Task<IReadOnlyList<SubmissionFileRecord>> GetFilesAsync(long submissionId, CancellationToken cancellationToken = default);
 
         // Marks every file carrying this hash as uploaded. By hash rather than by path, because one
-        // blob can legitimately appear at several paths in the same system - a shared image
+        // blob can legitimately appear at several paths in the same board - a shared image
         // referenced from two boards - and uploading it once must satisfy all of them.
         Task MarkUploadedAsync(long submissionId, string sha256, CancellationToken cancellationToken = default);
 
@@ -78,20 +78,20 @@ namespace CRT.Server.Handlers.Submissions
         Task<IReadOnlyList<SubmissionRecord>> GetQueueAsync(int limit, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // One system's submissions still 'pending', oldest first - the ones a newly queued
-        // submission from the same contributor may replace (SubmissionReplacementRules). By system
+        // One board's submissions still 'pending', oldest first - the ones a newly queued
+        // submission from the same contributor may replace (SubmissionReplacementRules). By board
         // rather than through GetQueueAsync, whose limit could leave an older one out.
         // ###########################################################################################
-        Task<IReadOnlyList<SubmissionRecord>> GetPendingForSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SubmissionRecord>> GetPendingForBoardAsync(string boardId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // One system's submissions for the "Systems" screen (owner request, 2026-09-27), NEWEST
+        // One board's submissions for the "Boards" screen (owner request, 2026-09-27), NEWEST
         // first, at most `limit`, each with whether a maintainer decided it (decided_by is set).
         // Leaves out the two that never arrived - 'uploading' and 'abandoned' - which were never
         // anybody's to review.
         // ###########################################################################################
-        Task<IReadOnlyList<SystemSubmissionRecord>> GetSubmissionsForSystemAsync(
-            string systemId,
+        Task<IReadOnlyList<BoardSubmissionRecord>> GetSubmissionsForBoardAsync(
+            string boardId,
             int limit,
             CancellationToken cancellationToken = default);
 
@@ -99,7 +99,7 @@ namespace CRT.Server.Handlers.Submissions
         // Every submission from one contributor - `accountId` when they were signed in, otherwise
         // `contactEmail` (trimmed, any case) among the submissions sent WITHOUT an account - with
         // its state and whether a maintainer decided it. For ContributorHistory (2026-09-26); since
-        // 2026-09-30 with its system, description, dates and decision comment too, which the
+        // 2026-09-30 with its board, description, dates and decision comment too, which the
         // Maintainer tab's Contributor view lists.
         // ###########################################################################################
         Task<IReadOnlyList<ContributorSubmission>> GetContributorSubmissionsAsync(
@@ -124,21 +124,21 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Records that a system has been published: its new revision and the content hash of the
+        // Records that a board has been published: its new revision and the content hash of the
         // published tree (Phase 5, task 6).
         //
-        // THIS IS WHAT `systems.current_revision` AND `content_hash` WERE ADDED FOR in migration
+        // THIS IS WHAT `boards.current_revision` AND `content_hash` WERE ADDED FOR in migration
         // 0004, and until now nothing wrote them. current_revision is the base a contributor's
         // next submission is diffed against, so a publish that fails to record it leaves every
         // subsequent submission re-basing against a revision that no longer describes the tree.
         //
         // It is a SEPARATE call from SetStateAsync, deliberately. The submission's state and the
-        // system's published revision are two different facts about two different rows, and a
-        // publish updates both - but a system can also be published WITHOUT a submission behind it
+        // board's published revision are two different facts about two different rows, and a
+        // publish updates both - but a board can also be published WITHOUT a submission behind it
         // (the project owner correcting their own data), which a combined call could not express.
         // ###########################################################################################
-        Task SetSystemPublishedAsync(
-            string systemId,
+        Task SetBoardPublishedAsync(
+            string boardId,
             string revision,
             string contentHash,
             DateTimeOffset publishedUtc,
@@ -176,13 +176,13 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Whether a system is open to contributions: true or false from its `systems` row, or null
-        // when it has no row yet (a new system, or a shipped one nobody has submitted to).
+        // Whether a board is open to contributions: true or false from its `boards` row, or null
+        // when it has no row yet (a new board, or a shipped one nobody has submitted to).
         //
         // `is_accepting` existed from the first migration and nothing read it, so there was no way
         // to close a board that was being flooded. Setting it to 0 by hand now does.
         // ###########################################################################################
-        Task<bool?> IsSystemAcceptingAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<bool?> IsBoardAcceptingAsync(string boardId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
         // Every blob hash a submission that still NEEDS its bytes refers to: uploading, pending,
@@ -206,23 +206,35 @@ namespace CRT.Server.Handlers.Submissions
         Task<int> DeleteRetiredPayloadsAsync(DateTimeOffset decidedBefore, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Every `systems` row, for the administrator's maintainer overview (Phase 6 roles).
+        // Every `boards` row, for the administrator's maintainer overview (Phase 6 roles).
         //
-        // Only systems that have received a submission or been published have a row; a shipped
+        // Only boards that have received a submission or been published have a row; a shipped
         // board nobody has touched has none. MaintainerAssignmentFlows unions this with the boards
         // found in the data tree, so a maintainer can be assigned to a board BEFORE its first
         // submission arrives - which is the ordinary order of events.
         // ###########################################################################################
-        Task<IReadOnlyList<SystemRecord>> ListSystemsAsync(CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<BoardRecord>> ListBoardsAsync(CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Makes sure a `systems` row exists, leaving an existing one completely alone - the same
+        // How every board's submissions stand, COUNTED, for the Boards screen's list (owner request,
+        // 2026-10-09: "19 submissions in total; 2 rejected, 1 in BETA, 17 in stable"): one count per
+        // board, state, whether a maintainer decided it, and whether the board was published to
+        // stable at or after its decision - ProductionPromotionRules.ContributorFacingState's own
+        // test for "published", worked out by the database so the list reads a handful of rows per
+        // board, never the whole table (code review, 2026-10-09). Never an upload still under way,
+        // an abandoned one, or one its contributor's newer submission replaced - none of them is a
+        // submission anybody reviewed. BoardOverviewFlow.SubmissionCounts adds them up.
+        // ###########################################################################################
+        Task<IReadOnlyList<SubmissionStateCount>> GetSubmissionStateCountsAsync(CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // Makes sure a `boards` row exists, leaving an existing one completely alone - the same
         // INSERT IGNORE CreateAsync performs for a submission. Needed before a maintainer can be
         // assigned to a shipped board that has never been submitted to: the pool table's foreign
         // key requires the row.
         // ###########################################################################################
-        Task EnsureSystemAsync(
-            string systemId,
+        Task EnsureBoardAsync(
+            string boardId,
             string manufacturer,
             string hardware,
             string board,
@@ -230,11 +242,11 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset createdUtc,
             CancellationToken cancellationToken = default);
 
-        // One `systems` row, or null.
-        Task<SystemRecord?> FindSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        // One `boards` row, or null.
+        Task<BoardRecord?> FindBoardAsync(string boardId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Deletes a system's `systems` row (owner request, 2026-10-03 - SystemDeletionFlow), and
+        // Deletes a board's `boards` row (owner request, 2026-10-03 - BoardDeletionFlow), and
         // through the schema's ON DELETE CASCADE everything hanging off it: its submissions with
         // their files, payloads, findings, approvals, amendments, draft-discard and BETA-return rows,
         // its maintainer pool, its invitations and its production approvals. The `audit` table has
@@ -246,37 +258,37 @@ namespace CRT.Server.Handlers.Submissions
         // abandoned-upload sweeper finds only through these rows - once they are gone, nothing else
         // knows the ids.
         // ###########################################################################################
-        Task<IReadOnlyList<long>> DeleteSystemAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<long>> DeleteBoardAsync(string boardId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Where a NEW system goes in the drop-down lists (2026-09-27, migration 0011): what a
-        // maintainer placed it as in the Systems screen, or null while nobody has. SetPlacementAsync
-        // answers false when the system has no row at all.
+        // Where a NEW board goes in the drop-down lists (2026-09-27, migration 0011): what a
+        // maintainer placed it as in the Boards screen, or null while nobody has. SetPlacementAsync
+        // answers false when the board has no row at all.
         // ###########################################################################################
-        Task<SystemPlacement?> GetPlacementAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<BoardPlacement?> GetPlacementAsync(string boardId, CancellationToken cancellationToken = default);
 
         Task<bool> SetPlacementAsync(
-            string systemId,
-            SystemPlacement placement,
+            string boardId,
+            BoardPlacement placement,
             long setByAccountId,
             DateTimeOffset setUtc,
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // The notes a new system's submissions carried (owner request, 2026-10-05, migration 0019),
-        // newest first, whatever their state - SystemListingRules.SuggestedNotes decides which one
+        // The notes a new board's submissions carried (owner request, 2026-10-05, migration 0019),
+        // newest first, whatever their state - BoardListingRules.SuggestedNotes decides which one
         // the placement starts with. Written by CreateAsync from NewSubmission.HardwareNotes.
         // ###########################################################################################
-        Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string systemId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SubmissionNotes>> GetHardwareNotesAsync(string boardId, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Records that a system's BETA state has been copied to Production (2026-09-25): the BETA
-        // revision and content hash it had, and when. A separate call from SetSystemPublishedAsync
+        // Records that a board's BETA state has been copied to Production (2026-09-25): the BETA
+        // revision and content hash it had, and when. A separate call from SetBoardPublishedAsync
         // because it is a separate fact about a separate tree - and the comparison between the two
         // is exactly what "waiting for production" means.
         // ###########################################################################################
-        Task SetSystemInProductionAsync(
-            string systemId,
+        Task SetBoardInProductionAsync(
+            string boardId,
             string? revision,
             string? contentHash,
             DateTimeOffset publishedUtc,
@@ -292,19 +304,19 @@ namespace CRT.Server.Handlers.Submissions
         //     next review: a shared-file submission approved by both roles would be republished by
         //     ONE approval, and an administrator who approved an ordinary one was answered "you have
         //     already approved" and could never approve it again (code review, 2026-09-27);
-        //   - the system's BETA revision and content hash follow the tree - production's for a
-        //     restore, none for a system removed from BETA. Every other writer of those columns is a
-        //     publish, moving them FORWARDS through SetSystemPublishedAsync.
+        //   - the board's BETA revision and content hash follow the tree - production's for a
+        //     restore, none for a board removed from BETA. Every other writer of those columns is a
+        //     publish, moving them FORWARDS through SetBoardPublishedAsync.
         //
         // *** ONE TRANSACTION, because the tree has already been rewritten when this runs. *** As
         // separate calls a failure halfway left some submissions pending and some merged, the ones
         // flipped never mailed, and content_hash naming data BETA no longer holds (code review,
-        // 2026-09-27). Now it is all or nothing, and "nothing" repairs itself: the system still
+        // 2026-09-27). Now it is all or nothing, and "nothing" repairs itself: the board still
         // reads as ahead of production, so pushing back again finds a tree already level, changes
         // no file, and records it.
         // ###########################################################################################
         Task RecordRollbackAsync(
-            string systemId,
+            string boardId,
             IReadOnlyList<long> returningSubmissionIds,
             long decidedByAccountId,
             string comment,
@@ -315,12 +327,12 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // The MERGED submissions to a system decided in (after, upTo] - the ones a production
+        // The MERGED submissions to a board decided in (after, upTo] - the ones a production
         // promotion has just carried out to everyone, whose contributors are told so. `after` null
-        // means "since the beginning": the first promotion of a system carries everything merged.
+        // means "since the beginning": the first promotion of a board carries everything merged.
         // ###########################################################################################
         Task<IReadOnlyList<SubmissionRecord>> GetMergedSubmissionsAsync(
-            string systemId,
+            string boardId,
             DateTimeOffset? decidedAfter,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default);
@@ -343,23 +355,23 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // THE "BETA > PROD" LIST'S TWO FACTS, FOR EVERY WAITING SYSTEM AT ONCE (code review,
+        // THE "BETA > PROD" LIST'S TWO FACTS, FOR EVERY WAITING BOARD AT ONCE (code review,
         // 2026-09-29). The list is read every minute by every open Maintainer tab, and asked three
-        // queries PER waiting system (approvals, merged submissions, their discards) only to set
+        // queries PER waiting board (approvals, merged submissions, their discards) only to set
         // two booleans. These answer for the whole list in one query each.
         //
-        // The production approvals given for each system's BETA state, keyed by system id (a system
+        // The production approvals given for each board's BETA state, keyed by board id (a board
         // with none is absent).
         // ###########################################################################################
         Task<IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>>> GetProductionApprovalsForAsync(
-            IReadOnlyCollection<(string SystemId, string BetaContentHash)> states,
+            IReadOnlyCollection<(string BoardId, string BetaContentHash)> states,
             CancellationToken cancellationToken = default);
 
-        // The systems among `windows` with a submission a promotion would carry - merged in
+        // The boards among `windows` with a submission a promotion would carry - merged in
         // (DecidedAfter, decidedUpTo], GetMergedSubmissionsAsync's bounds - whose contributor has
         // discarded their own draft (migration 0014).
-        Task<IReadOnlySet<string>> GetSystemsCarryingDiscardedDraftsAsync(
-            IReadOnlyCollection<(string SystemId, DateTimeOffset? DecidedAfter)> windows,
+        Task<IReadOnlySet<string>> GetBoardsCarryingDiscardedDraftsAsync(
+            IReadOnlyCollection<(string BoardId, DateTimeOffset? DecidedAfter)> windows,
             DateTimeOffset decidedUpTo,
             CancellationToken cancellationToken = default);
 
@@ -382,7 +394,7 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default);
 
         // The recorded changes of each of `submissionIds` - only those with a record appear. One
-        // query for a system's whole history.
+        // query for a board's whole history.
         Task<IReadOnlyDictionary<long, SubmissionChanges>> GetChangesAsync(
             IReadOnlyCollection<long> submissionIds,
             CancellationToken cancellationToken = default);
@@ -402,15 +414,15 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset approvedUtc,
             CancellationToken cancellationToken = default);
 
-        // The same for publishing a system to production, per BETA content hash: an approval of
+        // The same for publishing a board to production, per BETA content hash: an approval of
         // one BETA state never carries over to the next.
         Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             CancellationToken cancellationToken = default);
 
         Task AddProductionApprovalAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             ApproverRole role,
             long accountId,
@@ -454,15 +466,15 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     // ###########################################################################################
-    // A `systems` row.
+    // A `boards` row.
     //
     // CurrentRevision and ContentHash describe what is in BETA - every publish writes them. The
     // three Production* fields (migration 0007) describe what was last copied to Production, so
     // "BETA is ahead" is a comparison of two columns rather than of two trees on disk. See
     // ProductionPromotionRules.
     // ###########################################################################################
-    public sealed record SystemRecord(
-        string SystemId,
+    public sealed record BoardRecord(
+        string BoardId,
         string Manufacturer,
         string Hardware,
         string Board,
@@ -568,15 +580,15 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     // ###########################################################################################
-    // Manufacturer/Hardware/Board travel WITH the submission, not just inside SystemId.
+    // Manufacturer/Hardware/Board travel WITH the submission, not just inside BoardId.
     //
-    // They are needed to create the `systems` row a first submission for a new system implies -
+    // They are needed to create the `boards` row a first submission for a new board implies -
     // that table stores the three parts separately "so the maintainer app can list by manufacturer
-    // without parsing" (0001_initial.sql). Splitting SystemId back apart in the store would be
+    // without parsing" (0001_initial.sql). Splitting BoardId back apart in the store would be
     // that parsing, in the one place the schema says to avoid it.
     // ###########################################################################################
     public sealed record NewSubmission(
-        string SystemId,
+        string BoardId,
         string Manufacturer,
         string Hardware,
         string Board,
@@ -597,20 +609,20 @@ namespace CRT.Server.Handlers.Submissions
 
         // Whether it adds or changes a file under "Shared files" / "Generic shared files" -
         // decided at creation by SubmissionSharedFiles, and what routes it to the administrator
-        // rather than to the system's maintainers. See ReviewAuthority.
+        // rather than to the board's maintainers. See ReviewAuthority.
         bool TouchesSharedFiles = false,
 
-        // A new system's notes from "Create system" (2026-10-05) - null when it carried none.
+        // A new board's notes from "Create board" (2026-10-05) - null when it carried none.
         // Stored in submission_notes (migration 0019), apart from the submission's own row.
         string? HardwareNotes = null);
 
-    // One submission's notes for a new system, with what decides whether they count: its state and
-    // when it was sent. See SystemListingRules.SuggestedNotes.
+    // One submission's notes for a new board, with what decides whether they count: its state and
+    // when it was sent. See BoardListingRules.SuggestedNotes.
     public sealed record SubmissionNotes(long SubmissionId, string State, DateTimeOffset CreatedUtc, string HardwareNotes);
 
     public sealed record SubmissionRecord(
         long Id,
-        string SystemId,
+        string BoardId,
         long? AccountId,
         string? ContactEmail,
         string? UploadTokenHash,
@@ -635,7 +647,7 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         string? DecisionComment = null,
 
-        // Shared files belong to no system, so a submission changing one is the administrator's
+        // Shared files belong to no board, so a submission changing one is the administrator's
         // to decide whichever board it names - see ReviewAuthority. Stored on the row so the
         // queue filters without loading the payload.
         bool TouchesSharedFiles = false);
@@ -648,16 +660,21 @@ namespace CRT.Server.Handlers.Submissions
         long Id,
         string State,
         bool DecidedByMaintainer,
-        string SystemId = "",
+        string BoardId = "",
         string? Summary = null,
         DateTimeOffset CreatedUtc = default,
         DateTimeOffset? DecidedUtc = null,
         string? DecisionComment = null);
 
-    // One submission to a system, with whether a maintainer decided it - GetSubmissionsForSystemAsync.
-    // DecidedByAccountId: the maintainer who decided it (2026-09-27, for the system's history) -
+    // One submission to a board, with whether a maintainer decided it - GetSubmissionsForBoardAsync.
+    // DecidedByAccountId: the maintainer who decided it (2026-09-27, for the board's history) -
     // null when none did, or from a store that does not say.
-    public sealed record SystemSubmissionRecord(SubmissionRecord Submission, bool DecidedByMaintainer, long? DecidedByAccountId = null);
+    public sealed record BoardSubmissionRecord(SubmissionRecord Submission, bool DecidedByMaintainer, long? DecidedByAccountId = null);
+
+    // How many submissions of one board stand alike - see GetSubmissionStateCountsAsync.
+    // InStable: decided no later than the board's last publish to stable, which turns "merged" into
+    // what its contributor is told, "published".
+    public sealed record SubmissionStateCount(string BoardId, string State, bool DecidedByMaintainer, bool InStable, int Count);
 
     // One maintainer's amendment: its version (1, 2, ...), who made it, and when.
     public sealed record SubmissionAmendment(int Version, string By, DateTimeOffset AtUtc);

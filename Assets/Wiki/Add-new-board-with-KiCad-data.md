@@ -20,7 +20,7 @@ registration for you, and nothing you do here can be overwritten by the online d
 
 ```
 <drafts root>/
-└── Commodore/C64/250407/            <- created for you when you add the system
+└── Commodore/C64/250407/            <- created for you when you add the board
     ├── Data C64 250407.xlsx         <- your board data, in the ordinary board format
     ├── Data C64 250407.json         <- component highlights and KiCad calibration
     ├── Board Layout 250407 NTSC.png
@@ -61,7 +61,7 @@ reference implementation - when in doubt, look at what it does.
 > [!NOTE]
 > **Your board is a real, working board on your own machine from the moment you create it.** You can
 > use it exactly like any other board - browse it, label components, attach files, record worklogs -
-> without ever submitting it. A system you never submit stays yours and keeps working.
+> without ever submitting it. A board you never submit stays yours and keeps working.
 
 ---
 
@@ -105,9 +105,9 @@ indicator in the bottom-right corner is telling you.
 
 ---
 
-## Step 1 - Add the system
+## Step 1 - Add the board
 
-On the **Contribute** tab, click **Add a new system**. (The same button is on the **Drafts** tab once
+On the **Contribute** tab, click **Add a new board**. (The same button is on the **Drafts** tab once
 you have at least one draft.)
 
 Fill in three names:
@@ -119,17 +119,17 @@ Fill in three names:
 | **Board** | The board revision. | `250407` |
 
 There is a **Notes** box as well, which is optional - a short note about the hardware, at most 2,000
-characters. It is sent with your submission: the maintainer who adds the system to CRT's hardware
+characters. It is sent with your submission: the maintainer who adds the board to CRT's hardware
 and board lists starts from it and may adjust it, and it is then shown on the
 [Overview tab](Overview-tab).
 
-The Hardware and Board names are also what your system is called in the hardware and board lists.
+The Hardware and Board names are also what your board is called in the hardware and board lists.
 When it is published, the maintainer who accepts it may choose other names for those lists.
 
-The box at the bottom previews exactly what will be created. Click **Create system** and you are asked
-to accept the role of **maintainer**: if you later submit this system for the community to use, you will
+The box at the bottom previews exactly what will be created. Click **Create board** and you are asked
+to accept the role of **maintainer**: if you later submit this board for the community to use, you will
 be registered as its maintainer, and you will review the changes others submit for it and publish the
-ones that are right. A new system can only be created if you accept. **Decline** takes you back to the form with nothing created.
+ones that are right. A new board can only be created if you accept. **Decline** takes you back to the form with nothing created.
 
 Click **Accept and create** and the board is created, appears in the hardware and board lists straight
 away, and is selected for you.
@@ -142,7 +142,7 @@ away, and is selected for you.
 
 ## Step 2 - Add your board images
 
-On the **Drafts** tab, find your system and click **Schematic images**.
+On the **Drafts** tab, find your board and click **Schematic images**.
 
 Drag your image files onto the box, or use **Choose image files**. PNG, JPG, GIF, BMP and WEBP all
 work. Each image becomes one board view, named after the file, and a **copy** is taken into your
@@ -160,7 +160,7 @@ and is not changed by this.
 
 ## Step 3 - Import the KiCad data (optional)
 
-On the **Drafts** tab, click **KiCad data** for your system. Drag your KiCad project folder onto the
+On the **Drafts** tab, click **KiCad data** for your board. Drag your KiCad project folder onto the
 box, or use **Choose KiCad folder**.
 
 * **Pick the whole KiCad project folder.** Only the `.kicad_pcb`, `.kicad_pro` and `.kicad_sch` files
@@ -195,7 +195,7 @@ no copper.
 There is a walkthrough video: [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
 
 You can also use the **Contribute** tab to add components one at a time, with their friendly name, part
-number, category, files and links. Or click **Edit in table format** on your system's row in the
+number, category, files and links. Or click **Edit in table format** on your board's row in the
 [Drafts tab](Drafts-tab) to work on every sheet of the board as a table - credits included. The
 columns are explained in [Board Excel](Board-Excel).
 
@@ -221,7 +221,7 @@ You no longer have to read any of this out of the logfile.
 Each board image that should be backed by KiCad data needs a **CAD name** naming which KiCad view it
 shows. The names are listed for you in the window above - copy one across verbatim.
 
-Nothing fills it in for you. Click **Edit in table format** on your system's row in the Drafts tab,
+Nothing fills it in for you. Click **Edit in table format** on your board's row in the Drafts tab,
 open the `Board schematics` sheet, and type the name into the image's `CAD name` cell - or do the same
 in the board's Excel file.
 
@@ -301,8 +301,8 @@ Two extra checks worth doing:
 * Click **Edit in table format** on the Drafts tab and fix every red corner - a draft with errors cannot
   be submitted. Amber corners are warnings worth a look.
 * Tick **"View boards as officially coming from online source (hide my local draft changes)"** on the
-  Configuration tab, then untick it again. For a brand-new system, ticking it shows an empty board -
-  that is correct, because officially your system does not exist yet.
+  Configuration tab, then untick it again. For a brand-new board, ticking it shows an empty board -
+  that is correct, because officially your board does not exist yet.
 
 The logfile is still worth a glance for anything unexpected; the application is deliberately forgiving
 at runtime, so some mistakes are a warning there rather than a visible failure.
@@ -322,14 +322,14 @@ at runtime, so some mistakes are a warning there rather than a visible failure.
 | Signal missing from the Important signals panel | Net name does not resolve - turn on contributor mode and read the log |
 | "Mark first pin on component" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
 | "KiCad data initializing..." for a long time | Normal on a large `.kicad_pcb`; it loads in the background |
-| Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only system has nothing published yet, so that view is correctly blank |
+| Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only board has nothing published yet, so that view is correctly blank |
 
 ---
 
 ## Already have a board folder from earlier work?
 
 Copy its board folder into your drafts folder. The next time CRT starts, it appears on the **Drafts**
-tab as a new system, ready to work on and send - see
+tab as a new board, ready to work on and send - see
 [Bringing in a board you already have work on](Contribute-data-via-CRT#bringing-in-a-board-you-already-have-work-on).
 
 ---
@@ -339,7 +339,7 @@ tab as a new system, ready to work on and send - see
 When your board is ready, click **Submit** on its row in the [Drafts tab](Drafts-tab). A draft with
 errors is not sent: its table opens on the rows to fix instead. Warnings never stop a submission.
 
-A maintainer then reviews it. A new system has to be placed in the hardware and board lists before it
+A maintainer then reviews it. A new board has to be placed in the hardware and board lists before it
 can be accepted: the maintainer chooses the names it is shown under and where in the lists it goes.
 Once accepted, it is published to the **BETA source** first, and then to the **stable source** that
 everyone downloads from. You are told by email at each step - see
