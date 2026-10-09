@@ -54,7 +54,7 @@ namespace CRT
             this.thisProductionDataUrl = productionDataUrl;
         }
 
-        public async Task<byte[]?> ReadAsync(SystemFileEntry file)
+        public async Task<byte[]?> ReadAsync(BoardFileEntry file)
         {
             try
             {
@@ -68,11 +68,11 @@ namespace CRT
             }
         }
 
-        public async Task<string?> OpenAsync(SystemFileEntry file)
+        public async Task<string?> OpenAsync(BoardFileEntry file)
         {
             ArgumentNullException.ThrowIfNull(file);
 
-            if (file.OpenFrom == SystemFileSource.NotWrittenYet)
+            if (file.OpenFrom == BoardFileSource.NotWrittenYet)
                 return FileTreeWording.Note(file);
 
             if (!OpenedFiles.TryGetOpenName(file.Path, out string fileName))
@@ -87,7 +87,7 @@ namespace CRT
             return await OpenedFiles.SaveAndLaunchAsync(bytes.Value!, fileName, this.LaunchAsync);
         }
 
-        private async Task<ReviewApiResult<byte[]>> FetchAsync(SystemFileEntry file, CancellationToken token)
+        private async Task<ReviewApiResult<byte[]>> FetchAsync(BoardFileEntry file, CancellationToken token)
         {
             string key = $"{file.OpenFrom}|{file.Sha256}|{file.Path}";
 
@@ -96,10 +96,10 @@ namespace CRT
 
             ReviewApiResult<byte[]> result = await (file.OpenFrom switch
             {
-                SystemFileSource.Submission when this.thisSession is not null && this.thisSubmissionId is long id && file.Sha256 is string hash =>
+                BoardFileSource.Submission when this.thisSession is not null && this.thisSubmissionId is long id && file.Sha256 is string hash =>
                     this.thisClient.GetSubmittedAssetAsync(this.thisSession, id, hash, token),
-                SystemFileSource.Production => this.thisClient.GetPublishedDataFileAsync(this.thisProductionDataUrl, file.Path, token),
-                SystemFileSource.Beta => this.thisClient.GetPublishedDataFileAsync(this.thisBetaDataUrl, file.Path, token),
+                BoardFileSource.Production => this.thisClient.GetPublishedDataFileAsync(this.thisProductionDataUrl, file.Path, token),
+                BoardFileSource.Beta => this.thisClient.GetPublishedDataFileAsync(this.thisBetaDataUrl, file.Path, token),
                 _ => Task.FromResult(ReviewApiResult<byte[]>.Failed(ReviewApiFailure.NotFound, "There is nothing to open yet."))
             });
 

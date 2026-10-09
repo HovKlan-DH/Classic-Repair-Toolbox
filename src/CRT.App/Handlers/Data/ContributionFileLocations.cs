@@ -9,10 +9,10 @@ namespace Handlers.DataHandling
     // The folders the component editor offers in its "File location" drop-down: every END folder
     // (one with no sub-folders) of the data tree AND of the drafts tree, as "/"-separated paths
     // relative to their own root ("Commodore/C64/250407/Scope baseline"), narrowed by WritableBy to
-    // the folders a submission for the system being edited may write.
+    // the folders a submission for the board being edited may write.
     //
     // *** THE DRAFTS TREE IS INCLUDED, AND THAT IS THE FIX (owner report, 2026-09-24). ***
-    // The list used to be built from the data root alone. A system created with "Add a new system"
+    // The list used to be built from the data root alone. A board created with "Add a new board"
     // exists ONLY under the drafts root, so its folders - the "Scope baseline" folder DraftSeeder
     // creates for it in particular - were never offered, and a file could not be filed there.
     //
@@ -52,7 +52,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // *** ONLY THE FOLDERS A SUBMISSION FOR THIS SYSTEM MAY WRITE (owner request, 2026-09-25). ***
+        // *** ONLY THE FOLDERS A SUBMISSION FOR THIS BOARD MAY WRITE (owner request, 2026-09-25). ***
         // The drop-down offered every end folder of every board of every manufacturer - dozens of
         // entries, nearly all of them folders the server refuses a new file in ("[x] belongs to
         // another board"). It now offers the board's own folder and its sub-folders, this
@@ -62,28 +62,28 @@ namespace Handlers.DataHandling
         // and other files sit directly in it, and a board with no sub-folders at all would
         // otherwise offer none of its own.
         //
-        // An unrecognisable system id filters nothing. The save refuses such a window anyway, and an
+        // An unrecognisable board id filters nothing. The save refuses such a window anyway, and an
         // empty drop-down would only hide why.
         // ###########################################################################################
-        public static List<string> WritableBy(string? systemId, IEnumerable<string> folders)
+        public static List<string> WritableBy(string? boardId, IEnumerable<string> folders)
         {
             ArgumentNullException.ThrowIfNull(folders);
 
-            if (!SystemDescriptorRules.IsValidSystemId(systemId))
+            if (!BoardDescriptorRules.IsValidBoardId(boardId))
             {
                 return folders.ToList();
             }
 
             return folders
-                .Append(systemId!)
-                .Where(folder => ContributionFileLocations.IsWritableFolder(systemId, folder))
+                .Append(boardId!)
+                .Where(folder => ContributionFileLocations.IsWritableFolder(boardId, folder))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
         // ###########################################################################################
-        // Whether a new file may be filed in this folder by a submission for this system.
+        // Whether a new file may be filed in this folder by a submission for this board.
         //
         // *** THE SERVER'S OWN RULE DECIDES "WHOSE FOLDER" - SubmissionFileScopes.Classify, which
         // SubmissionFileRules refuses a submission by. *** A second opinion here would drift from it,
@@ -94,24 +94,24 @@ namespace Handlers.DataHandling
         // Two more are left out, although the server would take a file in either:
         //   - a folder CRT reads by NAME (DataTreeUsage.FoldersReadByName - the MiniPro IC tests),
         //     which no row cites;
-        //   - a draft's COPY of a shared folder ("<system>/Commodore/Shared files/..."). A new file
+        //   - a draft's COPY of a shared folder ("<board>/Commodore/Shared files/..."). A new file
         //     filed in a shared folder is kept inside the draft under its whole path
         //     (DraftFileResolver.BuildDraftFileDestination), so the drafts-tree scan reports that
         //     copy as a folder of the board itself. It exists nowhere else.
         // ###########################################################################################
-        public static bool IsWritableFolder(string? systemId, string? folder)
+        public static bool IsWritableFolder(string? boardId, string? folder)
         {
             string trimmed = folder?.Trim().Replace('\\', '/').Trim('/') ?? string.Empty;
 
-            if (trimmed.Length == 0 || !SystemDescriptorRules.IsValidSystemId(systemId))
+            if (trimmed.Length == 0 || !BoardDescriptorRules.IsValidBoardId(boardId))
             {
                 return false;
             }
 
-            string[] system = systemId!.Split('/');
+            string[] board = boardId!.Split('/');
 
             SubmissionFileScope scope = SubmissionFileScopes.Classify(
-                system[0], system[1], system[2], trimmed + "/file");
+                board[0], board[1], board[2], trimmed + "/file");
 
             if (scope == SubmissionFileScope.Foreign)
             {
@@ -129,9 +129,9 @@ namespace Handlers.DataHandling
 
             if (scope == SubmissionFileScope.Own)
             {
-                string[] within = trimmed.Length == systemId.Length
+                string[] within = trimmed.Length == boardId.Length
                     ? []
-                    : trimmed[(systemId.Length + 1)..].Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    : trimmed[(boardId.Length + 1)..].Split('/', StringSplitOptions.RemoveEmptyEntries);
 
                 bool isDraftCopyOfSharedFolder =
                     (within.Length > 0 && SubmissionFileScopes.IsSharedFolderName(within[0])) ||
@@ -166,14 +166,14 @@ namespace Handlers.DataHandling
         // published copy, and citing another board's file unchanged is how real data is shaped (the
         // C128DCR cites the C128's scope baselines), which the server allows too.
         // ###########################################################################################
-        public static NewFileProblem CheckNewFile(string? systemId, string? fileLocation, bool usedInPlace)
+        public static NewFileProblem CheckNewFile(string? boardId, string? fileLocation, bool usedInPlace)
         {
             if (string.IsNullOrWhiteSpace(fileLocation))
             {
                 return NewFileProblem.NoFolder;
             }
 
-            if (usedInPlace || ContributionFileLocations.IsWritableFolder(systemId, fileLocation))
+            if (usedInPlace || ContributionFileLocations.IsWritableFolder(boardId, fileLocation))
             {
                 return NewFileProblem.None;
             }

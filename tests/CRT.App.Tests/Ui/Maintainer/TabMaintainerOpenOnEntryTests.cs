@@ -19,11 +19,11 @@ public sealed class TabMaintainerOpenOnEntryTests
 {
     private static readonly BindingFlags Any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
-    private static ReviewQueueRow Row(long id, string system) =>
-        new(id, system, "pending", $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, true);
+    private static ReviewQueueRow Row(long id, string board) =>
+        new(id, board, "pending", $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, true);
 
-    private static ProductionSystemRow Beta(string system) =>
-        new(system, "Commodore", system.Split('/')[1], system.Split('/')[2], "2026-September-25", "hash", null, null, true);
+    private static ProductionBoardRow Beta(string board) =>
+        new(board, "Commodore", board.Split('/')[1], board.Split('/')[2], "2026-September-25", "hash", null, null, true);
 
     // Two boards, so "the first" is the first under the first heading, not merely the lowest id.
     private static TabMaintainer WithQueue()
@@ -119,7 +119,7 @@ public sealed class TabMaintainerOpenOnEntryTests
     }
 
     [Fact]
-    public void Choosing_Beta_to_Prod_opens_the_system_looked_at_last_or_the_first()
+    public void Choosing_Beta_to_Prod_opens_the_board_looked_at_last_or_the_first()
     {
         UiTest.Run(() =>
         {
@@ -135,7 +135,7 @@ public sealed class TabMaintainerOpenOnEntryTests
 
             main.ShowModeAsync(MaintainerMode.Beta).GetAwaiter().GetResult();
 
-            Assert.Equal("Commodore/C128/310378", main.SelectedBetaRowForTests?.SystemId);
+            Assert.Equal("Commodore/C128/310378", main.SelectedBetaRowForTests?.BoardId);
             Assert.Equal("Commodore/C128/310378", remembered);
 
             var fresh = new TabMaintainer();
@@ -148,48 +148,48 @@ public sealed class TabMaintainerOpenOnEntryTests
 
             fresh.ShowModeAsync(MaintainerMode.Beta).GetAwaiter().GetResult();
 
-            Assert.Equal("Commodore/C64/250407", fresh.SelectedBetaRowForTests?.SystemId);
+            Assert.Equal("Commodore/C64/250407", fresh.SelectedBetaRowForTests?.BoardId);
         });
     }
 
-    // The other two screens are not asked for this: choosing Systems opens nothing by itself.
+    // The other two screens are not asked for this: choosing Boards opens nothing by itself.
     [Fact]
-    public void Choosing_Systems_opens_nothing_by_itself()
+    public void Choosing_Boards_opens_nothing_by_itself()
     {
         UiTest.Run(() =>
         {
             TabMaintainer main = WithQueue();
 
-            main.ShowModeAsync(MaintainerMode.Systems).GetAwaiter().GetResult();
+            main.ShowModeAsync(MaintainerMode.Boards).GetAwaiter().GetResult();
 
             Assert.Null(main.SelectedQueueRowForTests);
-            Assert.Null(main.SelectedSystemForTests);
+            Assert.Null(main.SelectedBoardForTests);
         });
     }
 
     // ###########################################################################################
-    // *** WITH NOTHING WAITING, THE TAB OPENS ON SYSTEMS (owner request, 2026-10-04: "if there is no
+    // *** WITH NOTHING WAITING, THE TAB OPENS ON BOARDS (owner request, 2026-10-04: "if there is no
     // queue awaiting, when opening the "Maintainer" tab, then go to "Systems" and show the last
     // selected system"). *** Opening is OpenForTests - what showing the tab or signing in on it
     // does. Signed in without a server (UseSessionForTests, no client), the three lists filled
     // through the same Apply methods an answer goes through.
     // ###########################################################################################
 
-    private static SystemOverviewEntry System(string system) =>
-        new(system, "Commodore", system.Split('/')[1], system.Split('/')[2], true, true, false, true, null, null, null, 1);
+    private static BoardOverviewEntry Board(string board) =>
+        new(board, "Commodore", board.Split('/')[1], board.Split('/')[2], true, true, false, true, null, null, null, 1);
 
-    private static ReviewQueueRow Waiting(long id, string system, bool awaitsYou) =>
-        Row(id, system, "pending", awaitsYou);
+    private static ReviewQueueRow Waiting(long id, string board, bool awaitsYou) =>
+        Row(id, board, "pending", awaitsYou);
 
-    private static ReviewQueueRow Row(long id, string system, string state, bool awaitsYou) =>
-        new(id, system, state, $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, awaitsYou);
+    private static ReviewQueueRow Row(long id, string board, string state, bool awaitsYou) =>
+        new(id, board, state, $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, awaitsYou);
 
     // Signed in, with the queue and the BETA list read - what makes the badge's number a real answer.
-    private static TabMaintainer SignedIn(ReviewQueueRow[] queue, ProductionSystemRow[]? beta = null, string? rememberedSystem = null, Action<string?>? rememberSystem = null)
+    private static TabMaintainer SignedIn(ReviewQueueRow[] queue, ProductionBoardRow[]? beta = null, string? rememberedBoard = null, Action<string?>? rememberBoard = null)
     {
         var main = new TabMaintainer();
         main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis"));
-        main.UseRememberedSelections(null, null, _ => { }, _ => { }, rememberedSystem, rememberSystem ?? (_ => { }));
+        main.UseRememberedSelections(null, null, _ => { }, _ => { }, rememberedBoard, rememberBoard ?? (_ => { }));
 
         main.ApplyQueueResponse(new ReviewQueueResponse(true, queue, true));
         main.ApplyBetaListAsync(new ProductionListResponse(true, beta ?? []), background: false).GetAwaiter().GetResult();
@@ -197,57 +197,57 @@ public sealed class TabMaintainerOpenOnEntryTests
         return main;
     }
 
-    private static void WithSystems(TabMaintainer main) =>
-        main.ApplySystemsListAsync(
-            new SystemOverviewAnswer([System("Commodore/C64/250407"), System("Commodore/C128/310378")]),
+    private static void WithBoards(TabMaintainer main) =>
+        main.ApplyBoardsListAsync(
+            new BoardOverviewAnswer([Board("Commodore/C64/250407"), Board("Commodore/C128/310378")]),
             background: true).GetAwaiter().GetResult();
 
     [Fact]
-    public void Opening_with_nothing_waiting_goes_to_Systems_on_the_system_looked_at_last()
+    public void Opening_with_nothing_waiting_goes_to_Boards_on_the_board_looked_at_last()
     {
         UiTest.Run(() =>
         {
             string? remembered = null;
-            TabMaintainer main = SignedIn([], rememberedSystem: "Commodore/C128/310378", rememberSystem: id => remembered = id);
-            WithSystems(main);
+            TabMaintainer main = SignedIn([], rememberedBoard: "Commodore/C128/310378", rememberBoard: id => remembered = id);
+            WithBoards(main);
 
             main.OpenForTests();
 
-            Assert.Equal(MaintainerMode.Systems, main.ShownMode);
-            Assert.Equal("Commodore/C128/310378", main.SelectedSystemForTests?.SystemId);
+            Assert.Equal(MaintainerMode.Boards, main.ShownMode);
+            Assert.Equal("Commodore/C128/310378", main.SelectedBoardForTests?.BoardId);
             Assert.Equal("Commodore/C128/310378", remembered);
         });
     }
 
-    // Nothing remembered - or remembered and gone: the first system, as the queues open on their first.
+    // Nothing remembered - or remembered and gone: the first board, as the queues open on their first.
     [Fact]
-    public void Opening_on_Systems_with_no_system_remembered_shows_the_first()
+    public void Opening_on_Boards_with_no_board_remembered_shows_the_first()
     {
         UiTest.Run(() =>
         {
-            TabMaintainer main = SignedIn([], rememberedSystem: "Commodore/VIC-20/250403");
-            WithSystems(main);
+            TabMaintainer main = SignedIn([], rememberedBoard: "Commodore/VIC-20/250403");
+            WithBoards(main);
 
             main.OpenForTests();
 
-            Assert.Equal(MaintainerMode.Systems, main.ShownMode);
-            Assert.Equal("Commodore/C64/250407", main.SelectedSystemForTests?.SystemId);
+            Assert.Equal(MaintainerMode.Boards, main.ShownMode);
+            Assert.Equal("Commodore/C64/250407", main.SelectedBoardForTests?.BoardId);
         });
     }
 
-    // Choosing a system is what remembers it - for the next opening, after a restart too.
+    // Choosing a board is what remembers it - for the next opening, after a restart too.
     [Fact]
-    public void Choosing_a_system_remembers_it()
+    public void Choosing_a_board_remembers_it()
     {
         UiTest.Run(() =>
         {
             string? remembered = null;
-            TabMaintainer main = SignedIn([], rememberSystem: id => remembered = id);
-            main.ShowModeAsync(MaintainerMode.Systems).GetAwaiter().GetResult();
-            WithSystems(main);
+            TabMaintainer main = SignedIn([], rememberBoard: id => remembered = id);
+            main.ShowModeAsync(MaintainerMode.Boards).GetAwaiter().GetResult();
+            WithBoards(main);
 
-            ListBox systems = main.FindControl<ListBox>("SystemsList")!;
-            systems.SelectedItem = ((IEnumerable<ListBoxItem>)systems.ItemsSource!).Last();
+            ListBox boards = main.FindControl<ListBox>("BoardsList")!;
+            boards.SelectedItem = ((IEnumerable<ListBoxItem>)boards.ItemsSource!).Last();
 
             Assert.Equal("Commodore/C128/310378", remembered);
         });
@@ -259,29 +259,29 @@ public sealed class TabMaintainerOpenOnEntryTests
         UiTest.Run(() =>
         {
             TabMaintainer main = SignedIn([Waiting(7, "Commodore/C64/250407", awaitsYou: true)]);
-            WithSystems(main);
+            WithBoards(main);
 
             main.OpenForTests();
 
             Assert.Equal(MaintainerMode.Review, main.ShownMode);
             Assert.Equal(7, main.SelectedQueueRowForTests?.Id);
-            Assert.Null(main.SelectedSystemForTests);
+            Assert.Null(main.SelectedBoardForTests);
         });
     }
 
-    // A system in BETA waiting for this account is waiting too - the tab's badge counts both queues.
+    // A board in BETA waiting for this account is waiting too - the tab's badge counts both queues.
     [Fact]
-    public void Opening_with_a_BETA_system_waiting_for_you_does_not_go_to_Systems()
+    public void Opening_with_a_BETA_board_waiting_for_you_does_not_go_to_Boards()
     {
         UiTest.Run(() =>
         {
             TabMaintainer main = SignedIn([], [Beta("Commodore/C64/250407")]);
-            WithSystems(main);
+            WithBoards(main);
 
             main.OpenForTests();
 
             Assert.Equal(MaintainerMode.Review, main.ShownMode);
-            Assert.Null(main.SelectedSystemForTests);
+            Assert.Null(main.SelectedBoardForTests);
         });
     }
 
@@ -292,13 +292,13 @@ public sealed class TabMaintainerOpenOnEntryTests
         UiTest.Run(() =>
         {
             TabMaintainer main = SignedIn([Waiting(7, "Commodore/C64/250407", awaitsYou: false)]);
-            WithSystems(main);
+            WithBoards(main);
 
             main.OpenForTests();
 
-            Assert.Equal(MaintainerMode.Systems, main.ShownMode);
+            Assert.Equal(MaintainerMode.Boards, main.ShownMode);
             Assert.Null(main.SelectedQueueRowForTests);
-            Assert.NotNull(main.SelectedSystemForTests);
+            Assert.NotNull(main.SelectedBoardForTests);
         });
     }
 
@@ -312,7 +312,7 @@ public sealed class TabMaintainerOpenOnEntryTests
         UiTest.Run(() =>
         {
             TabMaintainer main = SignedIn([Waiting(7, "Commodore/C64/250407", awaitsYou: false)]);
-            WithSystems(main);
+            WithBoards(main);
             main.ShowModeAsync(MaintainerMode.Review).GetAwaiter().GetResult();
 
             Assert.Equal(7, main.SelectedQueueRowForTests?.Id);
@@ -327,17 +327,17 @@ public sealed class TabMaintainerOpenOnEntryTests
     // ###########################################################################################
     // *** NOTHING OPENS UNTIL IT IS KNOWN WHETHER ANYTHING WAITS. *** With the BETA list not read yet,
     // the queue's first submission is NOT opened (it would then hold the tab on the queue); once the
-    // list is there, the opening goes to Systems.
+    // list is there, the opening goes to Boards.
     // ###########################################################################################
     [Fact]
-    public void Nothing_opens_before_both_lists_are_known_and_then_the_tab_goes_to_Systems()
+    public void Nothing_opens_before_both_lists_are_known_and_then_the_tab_goes_to_Boards()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
             main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis"));
             main.ApplyQueueResponse(new ReviewQueueResponse(true, [Waiting(7, "Commodore/C64/250407", awaitsYou: false)], true));
-            WithSystems(main);
+            WithBoards(main);
 
             main.OpenForTests();
 
@@ -347,8 +347,8 @@ public sealed class TabMaintainerOpenOnEntryTests
             main.ApplyBetaListAsync(new ProductionListResponse(true, []), background: false).GetAwaiter().GetResult();
             main.SelectOnEntryForTests();
 
-            Assert.Equal(MaintainerMode.Systems, main.ShownMode);
-            Assert.Equal("Commodore/C64/250407", main.SelectedSystemForTests?.SystemId);
+            Assert.Equal(MaintainerMode.Boards, main.ShownMode);
+            Assert.Equal("Commodore/C64/250407", main.SelectedBoardForTests?.BoardId);
         });
     }
 
@@ -370,24 +370,24 @@ public sealed class TabMaintainerOpenOnEntryTests
         });
     }
 
-    // The first look after a launch reads the Systems list only once the screen is Systems: the
-    // system is chosen when it arrives.
+    // The first look after a launch reads the Boards list only once the screen is Boards: the
+    // board is chosen when it arrives.
     [Fact]
-    public void The_system_is_chosen_once_the_Systems_list_arrives()
+    public void The_board_is_chosen_once_the_Boards_list_arrives()
     {
         UiTest.Run(() =>
         {
-            TabMaintainer main = SignedIn([], rememberedSystem: "Commodore/C128/310378");
+            TabMaintainer main = SignedIn([], rememberedBoard: "Commodore/C128/310378");
 
             main.OpenForTests();
 
-            Assert.Equal(MaintainerMode.Systems, main.ShownMode);
-            Assert.Null(main.SelectedSystemForTests);
+            Assert.Equal(MaintainerMode.Boards, main.ShownMode);
+            Assert.Null(main.SelectedBoardForTests);
 
-            WithSystems(main);
+            WithBoards(main);
             main.SelectOnEntryForTests();
 
-            Assert.Equal("Commodore/C128/310378", main.SelectedSystemForTests?.SystemId);
+            Assert.Equal("Commodore/C128/310378", main.SelectedBoardForTests?.BoardId);
         });
     }
 

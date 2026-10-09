@@ -264,7 +264,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(BoardTableRowKinds.Errors, UserSettings.MaintainerTableFilter);
     }
 
-    // The submission and the BETA system the Maintainer tab's two queues were last on (2026-09-30),
+    // The submission and the BETA board the Maintainer tab's two queues were last on (2026-09-30),
     // which they open on after a restart - and nothing at all until one has been looked at.
     [Fact]
     public void The_maintainer_queues_last_entries_persist_and_survive_a_reload()
@@ -272,36 +272,40 @@ public sealed class UserSettingsTests : IDisposable
         string path = this.LoadSettings("{}");
 
         Assert.Null(UserSettings.MaintainerLastSubmissionId);
-        Assert.Null(UserSettings.MaintainerLastBetaSystemId);
+        Assert.Null(UserSettings.MaintainerLastBetaBoardId);
         Assert.Null(ReadJson(path)["maintainerLastSubmissionId"]);
 
         UserSettings.MaintainerLastSubmissionId = 41;
-        UserSettings.MaintainerLastBetaSystemId = "Commodore/C128/310378";
+        UserSettings.MaintainerLastBetaBoardId = "Commodore/C128/310378";
 
         Assert.Equal(41, ReadJson(path)["maintainerLastSubmissionId"]!.GetValue<long>());
         Assert.Equal("Commodore/C128/310378", ReadJson(path)["maintainerLastBetaSystemId"]!.GetValue<string>());
 
         UserSettings.LoadFrom(path);
         Assert.Equal(41, UserSettings.MaintainerLastSubmissionId);
-        Assert.Equal("Commodore/C128/310378", UserSettings.MaintainerLastBetaSystemId);
+        Assert.Equal("Commodore/C128/310378", UserSettings.MaintainerLastBetaBoardId);
     }
 
-    // The system the Systems screen was last on (2026-10-04), which the tab opens on when nothing
+    // The board the Boards screen was last on (2026-10-04), which the tab opens on when nothing
     // waits in either queue - after a restart too.
+    //
+    // Saved under the name it had before "system" became "board" (owner decision, 2026-10-09), and
+    // so is the BETA queue's in the test above: a settings file already on a maintainer's machine keeps
+    // its place without a migration.
     [Fact]
-    public void The_maintainer_tabs_last_system_persists_and_survives_a_reload()
+    public void The_maintainer_tabs_last_board_persists_and_survives_a_reload()
     {
         string path = this.LoadSettings("{}");
 
-        Assert.Null(UserSettings.MaintainerLastSystemId);
+        Assert.Null(UserSettings.MaintainerLastBoardId);
         Assert.Null(ReadJson(path)["maintainerLastSystemId"]);
 
-        UserSettings.MaintainerLastSystemId = "Commodore/C64/250407";
+        UserSettings.MaintainerLastBoardId = "Commodore/C64/250407";
 
         Assert.Equal("Commodore/C64/250407", ReadJson(path)["maintainerLastSystemId"]!.GetValue<string>());
 
         UserSettings.LoadFrom(path);
-        Assert.Equal("Commodore/C64/250407", UserSettings.MaintainerLastSystemId);
+        Assert.Equal("Commodore/C64/250407", UserSettings.MaintainerLastBoardId);
     }
 
     [Fact]

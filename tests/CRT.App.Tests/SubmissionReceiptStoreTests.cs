@@ -36,12 +36,12 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         this.thisWorkspace.Dispose();
     }
 
-    private static SubmissionReceipt Receipt(long id, string token = "tok", string systemId = "Commodore/C64/250407/Data.xlsx")
+    private static SubmissionReceipt Receipt(long id, string token = "tok", string boardId = "Commodore/C64/250407/Data.xlsx")
         => new()
         {
             SubmissionId = id,
             UploadToken = token,
-            SystemId = systemId,
+            BoardId = boardId,
             Summary = "Fixed U8 pinout",
             SentUtc = new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero)
         };
@@ -89,6 +89,27 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         SubmissionReceipt stored = Assert.Single(SubmissionReceiptStore.All);
         Assert.Equal("Wrong pin on U8", stored.MaintainerComment);
         Assert.True(stored.AmendedByMaintainer);
+        Assert.Equal("Commodore/C64/250407/Data.xlsx", stored.BoardId);
+    }
+
+    // ###########################################################################################
+    // *** THE BOARD A RECEIPT IS FOR STAYS "SystemId" IN THE FILE (owner decision, 2026-10-09). ***
+    // "System" became "board" everywhere, but every receipts file already on a contributor's
+    // machine names its board SystemId. Written under any other name, a receipt from before the
+    // rename would lose its board - and with it the badge on its draft and the retiring of that
+    // draft once the work is published.
+    // ###########################################################################################
+    [Fact]
+    public void The_board_a_receipt_is_for_is_written_and_read_as_SystemId()
+    {
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        string written = File.ReadAllText(this.thisPath);
+        Assert.Contains("\"SystemId\": \"Commodore/C64/250407/Data.xlsx\"", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"BoardId\"", written, StringComparison.Ordinal);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal("Commodore/C64/250407/Data.xlsx", Assert.Single(SubmissionReceiptStore.All).BoardId);
     }
 
     // ...and the next save writes only the new names, so the old ones leave the file for good.
@@ -171,7 +192,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         // token here would silently make the row unusable from the next refresh onwards.
         Assert.Equal("tok", stored.UploadToken);
         Assert.Equal("Fixed U8 pinout", stored.Summary);
-        Assert.Equal("Commodore/C64/250407/Data.xlsx", stored.SystemId);
+        Assert.Equal("Commodore/C64/250407/Data.xlsx", stored.BoardId);
     }
 
     // A reply arriving for a receipt the user removed meanwhile must not put it back. The refresh
@@ -584,7 +605,7 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         {
             SubmissionId = 7,
             UploadToken = "token",
-            SystemId = "Commodore/C128/310378",
+            BoardId = "Commodore/C128/310378",
             Summary = "summary",
             SentUtc = at,
             LastKnownState = "merged",

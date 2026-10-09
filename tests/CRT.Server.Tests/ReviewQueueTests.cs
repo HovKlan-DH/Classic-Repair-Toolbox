@@ -20,13 +20,13 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
 
         private static async Task<long> AddAsync(
-            FakeSubmissionStore store, string state, string summary = "A change.", string systemId = "Commodore/C64/250407")
+            FakeSubmissionStore store, string state, string summary = "A change.", string boardId = "Commodore/C64/250407")
         {
-            string[] parts = systemId.Split('/');
+            string[] parts = boardId.Split('/');
 
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    systemId, parts[0], parts[1], parts[2],
+                    boardId, parts[0], parts[1], parts[2],
                     null, "someone@example.com", "192.0.2.1", "hash", "r1", summary,
                     1, [], ReviewQueueTests.Now, ReviewQueueTests.Now.AddHours(24)),
                 CancellationToken.None);
@@ -68,7 +68,7 @@ namespace CRT.Server.Tests
         // two halves are tested against the same records.
         // ###########################################################################################
         [Fact]
-        public async Task A_maintainer_sees_only_their_own_systems_INCLUDING_a_shared_files_one()
+        public async Task A_maintainer_sees_only_their_own_boards_INCLUDING_a_shared_files_one()
         {
             var store = new FakeSubmissionStore();
 
@@ -183,7 +183,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal("someone@example.com", row.ContactEmail);
             Assert.Equal("Corrected R12.", row.Summary);
-            Assert.Equal("Commodore/C64/250407", row.SystemId);
+            Assert.Equal("Commodore/C64/250407", row.BoardId);
         }
     }
 }

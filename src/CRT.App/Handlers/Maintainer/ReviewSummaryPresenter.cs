@@ -165,19 +165,19 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         // The headline shown above the breakdown.
         //
-        // A NEW SYSTEM IS CALLED OUT EXPLICITLY, because it is the highest-risk submission there
+        // A NEW BOARD IS CALLED OUT EXPLICITLY, because it is the highest-risk submission there
         // is (Phase 6 task 3): unreviewed content, from someone with no track record, establishing
-        // a system nobody else knows. A maintainer must never learn that from the row counts alone.
+        // a board nobody else knows. A maintainer must never learn that from the row counts alone.
         // ###########################################################################################
         public static string BuildHeadline(ReviewChangeSummaryView summary)
         {
             ArgumentNullException.ThrowIfNull(summary);
 
-            if (summary.IsNewSystem)
+            if (summary.IsNewBoard)
             {
                 int rows = summary.Sections.Sum(section => section.Added.Count);
 
-                return $"New system, {rows} {(rows == 1 ? "row" : "rows")}";
+                return $"New board, {rows} {(rows == 1 ? "row" : "rows")}";
             }
 
             if (!summary.HasChanges)

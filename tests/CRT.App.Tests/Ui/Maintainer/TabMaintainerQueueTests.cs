@@ -27,18 +27,18 @@ public sealed class TabMaintainerQueueTests
 
     private static ReviewQueueRow Row(
         long id = 42,
-        bool? isNewSystem = false,
+        bool? isNewBoard = false,
         bool? awaitsYou = true,
         string summary = "  Corrected U8.  ",
         bool touchesSharedFiles = false,
-        string systemId = "Commodore/C64/250407",
+        string boardId = "Commodore/C64/250407",
         string state = "pending") =>
-        new(id, systemId, state, summary, "c@example.com",
-            DateTimeOffset.UtcNow.AddDays(-2).AddMinutes(-5), touchesSharedFiles, isNewSystem, awaitsYou);
+        new(id, boardId, state, summary, "c@example.com",
+            DateTimeOffset.UtcNow.AddDays(-2).AddMinutes(-5), touchesSharedFiles, isNewBoard, awaitsYou);
 
     private static ReviewSubmissionDetail Detail(
         ReviewQueueRow row,
-        bool isNewSystem = false,
+        bool isNewBoard = false,
         bool canPublish = true,
         ApprovalStatus? approval = null,
         IReadOnlyList<ReviewSectionView>? sections = null,
@@ -47,7 +47,7 @@ public sealed class TabMaintainerQueueTests
         new(
             row,
             canPublish,
-            new ReviewChangeSummaryView(isNewSystem, sections ?? []),
+            new ReviewChangeSummaryView(isNewBoard, sections ?? []),
             findings ?? [],
             new ReviewSubmissionAssets([]),
             [],
@@ -77,7 +77,7 @@ public sealed class TabMaintainerQueueTests
 
     // ###########################################################################################
     // *** THE QUEUE GROUPED BY BOARD (owner request, 2026-09-26). *** Each board once, as a
-    // heading; its submissions under it as their comment and one grey line. "New system" is on the
+    // heading; its submissions under it as their comment and one grey line. "New board" is on the
     // heading of a board with nothing published; a published board carries no badge. The queue's
     // oldest-first order holds: the board with the longest-waiting submission leads.
     // ###########################################################################################
@@ -91,7 +91,7 @@ public sealed class TabMaintainerQueueTests
             Queue(
                 main,
                 Row(id: 41, touchesSharedFiles: true),
-                Row(id: 50, systemId: "Commodore/C65/Prototype", isNewSystem: true, summary: "First data for the C65."),
+                Row(id: 50, boardId: "Commodore/C65/Prototype", isNewBoard: true, summary: "First data for the C65."),
                 Row(id: 42, summary: "Added the CIA pictures."));
 
             Assert.Equal(
@@ -99,7 +99,7 @@ public sealed class TabMaintainerQueueTests
                     "Commodore / C64 / 250407",
                     "Corrected U8.", "Waiting 2 days - replaces a shared file",
                     "Added the CIA pictures.", "Waiting 2 days",
-                    "Commodore / C65 / Prototype", "New system",
+                    "Commodore / C65 / Prototype", "New board",
                     "First data for the C65.", "Waiting 2 days"
                 ],
                 main.QueueTextsForTests());
@@ -136,16 +136,16 @@ public sealed class TabMaintainerQueueTests
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
-            ReviewQueueRow row = Row(isNewSystem: false, awaitsYou: true);
+            ReviewQueueRow row = Row(isNewBoard: false, awaitsYou: true);
 
             Queue(main, row);
             Select(main, row);
 
-            Assert.DoesNotContain(ReviewQueueDisplay.NewSystemBadge, main.QueueTextsForTests());
+            Assert.DoesNotContain(ReviewQueueDisplay.NewBoardBadge, main.QueueTextsForTests());
 
-            main.ShowDetail(Detail(row, isNewSystem: true, approval: ApprovedByYou()));
+            main.ShowDetail(Detail(row, isNewBoard: true, approval: ApprovedByYou()));
 
-            Assert.Contains(ReviewQueueDisplay.NewSystemBadge, main.QueueTextsForTests());
+            Assert.Contains(ReviewQueueDisplay.NewBoardBadge, main.QueueTextsForTests());
             Assert.True(main.QueueEntryIsDimmedForTests(42));
             Assert.Contains("Waiting 2 days - with the other approver", main.QueueTextsForTests());
         });
@@ -164,7 +164,7 @@ public sealed class TabMaintainerQueueTests
             typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(main, null);
 
             // Two boards, so the second board's submission sits two headings down.
-            Queue(main, Row(id: 41), Row(id: 50, systemId: "Commodore/C65/Prototype", summary: "C65."));
+            Queue(main, Row(id: 41), Row(id: 50, boardId: "Commodore/C65/Prototype", summary: "C65."));
 
 
             var window = new Window { Content = main, Width = 1100, Height = 720 };
@@ -541,13 +541,13 @@ public sealed class TabMaintainerQueueTests
     }
 
     // ###########################################################################################
-    // *** ONE SUBMISSION IN BETA PER SYSTEM, ON SCREEN (owner decision, 2026-09-27). *** With an
-    // earlier submission of the system waiting in "Beta > Prod", Approve is off - a line above the
+    // *** ONE SUBMISSION IN BETA PER BOARD, ON SCREEN (owner decision, 2026-09-27). *** With an
+    // earlier submission of the board waiting in "Beta > Prod", Approve is off - a line above the
     // submission's three views says why, in the server's own words - while Reject and Request changes
-    // stay on. Another system in BETA is no reason.
+    // stay on. Another board in BETA is no reason.
     // ###########################################################################################
     [Fact]
-    public void Approve_is_off_while_an_earlier_submission_of_the_system_waits_in_BETA()
+    public void Approve_is_off_while_an_earlier_submission_of_the_board_waits_in_BETA()
     {
         UiTest.Run(() =>
         {
@@ -556,7 +556,7 @@ public sealed class TabMaintainerQueueTests
 
             main.ApplyBetaListAsync(new ProductionListResponse(true,
             [
-                new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true)
+                new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true)
             ]), background: true).GetAwaiter().GetResult();
 
             Queue(main, open);
@@ -584,8 +584,8 @@ public sealed class TabMaintainerQueueTests
                     Assert.NotSame(panel, parent);
             }
 
-            // Another system's submission is not held back.
-            ReviewQueueRow other = Row(id: 43, systemId: "Commodore/C128/310378");
+            // Another board's submission is not held back.
+            ReviewQueueRow other = Row(id: 43, boardId: "Commodore/C128/310378");
             Queue(main, open, other);
             Select(main, other);
             main.ShowDetail(Detail(other));
@@ -596,7 +596,7 @@ public sealed class TabMaintainerQueueTests
 
     // ###########################################################################################
     // *** THE BLOCK FOLLOWS THE BETA LIST WITHOUT REOPENING THE SUBMISSION (code review,
-    // 2026-09-27). *** It was worked out only when the detail was shown, so a system promoted by
+    // 2026-09-27). *** It was worked out only when the detail was shown, so a board promoted by
     // another maintainer kept Approve off with a stale reason until the submission was chosen
     // again - and at sign-in a detail shown before the lists arrived was never blocked at all.
     // ###########################################################################################
@@ -607,7 +607,7 @@ public sealed class TabMaintainerQueueTests
         {
             var main = new TabMaintainer();
             ReviewQueueRow open = Row(id: 42);
-            var inBeta = new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true);
+            var inBeta = new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true);
 
             // The detail first, the lists after - the order a sign-in can deliver them in.
             Queue(main, open);
@@ -642,7 +642,7 @@ public sealed class TabMaintainerQueueTests
         {
             var main = new TabMaintainer();
             ReviewQueueRow open = Row(id: 42);
-            var inBeta = new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true);
+            var inBeta = new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-27", "h", null, null, true);
 
             main.ApplyBetaListAsync(new ProductionListResponse(true, [inBeta]), background: true).GetAwaiter().GetResult();
             Queue(main, open);
@@ -662,7 +662,7 @@ public sealed class TabMaintainerQueueTests
     // *** THE WHOLE WINDOW WAITS WHILE A DECISION IS SENT (owner report, 2026-09-28). *** A small
     // green "Working..." under the table was all an approval showed while it published to BETA,
     // and the screen read as hung. Now the overlay a push-back uses is up - faded screen, every
-    // click taken, the sentence naming the system - for as long as the request is in flight, read
+    // click taken, the sentence naming the board - for as long as the request is in flight, read
     // from INSIDE the fake server's answer. And it is lifted again on a refusal, with the reason
     // where it always was.
     // ###########################################################################################
@@ -672,7 +672,7 @@ public sealed class TabMaintainerQueueTests
         await UiTest.RunAsync(async () =>
         {
             var main = new TabMaintainer();
-            ReviewQueueRow row = Row(systemId: "Commodore/C128/310378");
+            ReviewQueueRow row = Row(boardId: "Commodore/C128/310378");
             Select(main, row);
             main.ShowDetail(Detail(row));
 
@@ -735,7 +735,7 @@ public sealed class TabMaintainerQueueTests
         await UiTest.RunAsync(async () =>
         {
             var main = new TabMaintainer();
-            ReviewQueueRow row = Row(systemId: "Commodore/C128/310378");
+            ReviewQueueRow row = Row(boardId: "Commodore/C128/310378");
             Select(main, row);
             main.ShowDetail(Detail(row));
 
@@ -755,7 +755,7 @@ public sealed class TabMaintainerQueueTests
                 if (request.Method == HttpMethod.Get && path.EndsWith("/submissions/42", StringComparison.Ordinal))
                 {
                     return Task.FromResult(AnsweringHttpHandler.Json(
-                        """{"canPublish":true,"submission":{"id":42,"systemId":"Commodore/C128/310378","state":"merged"},"findings":[]}"""));
+                        """{"canPublish":true,"submission":{"id":42,"boardId":"Commodore/C128/310378","state":"merged"},"findings":[]}"""));
                 }
 
                 return Task.FromResult(AnsweringHttpHandler.Refused());

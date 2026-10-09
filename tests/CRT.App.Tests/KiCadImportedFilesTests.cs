@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // KiCadImportedFiles - removing one imported KiCad file from a draft's "KiCad data" folder, the
-// per-file "Remove" in SystemFilesWindow (owner request, 2026-09-24).
+// per-file "Remove" in BoardFilesWindow (owner request, 2026-09-24).
 //
 // This DELETES FILES, so half of these are about what it must refuse: anything not strictly inside
 // the KiCad folder - the draft's own workbook beside it, a sibling folder whose name merely starts
@@ -16,9 +16,9 @@ public sealed class KiCadImportedFilesTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    private string SystemFolder => Path.Combine(this.thisWorkspace.Root, "Drafts", "Test Manu4", "HW4", "Board4");
+    private string BoardFolder => Path.Combine(this.thisWorkspace.Root, "Drafts", "Test Manu4", "HW4", "Board4");
 
-    private string KiCadFolder => Path.Combine(this.SystemFolder, "KiCad data");
+    private string KiCadFolder => Path.Combine(this.BoardFolder, "KiCad data");
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -69,20 +69,20 @@ public sealed class KiCadImportedFilesTests : IDisposable
     }
 
     // Removing everything returns the draft to how it was before the import - no "KiCad data"
-    // folder at all - but the tidy-up stops THERE: the system folder holds the workbook.
+    // folder at all - but the tidy-up stops THERE: the board folder holds the workbook.
     [Fact]
-    public void Removing_the_last_file_removes_KiCad_data_but_never_the_system_folder()
+    public void Removing_the_last_file_removes_KiCad_data_but_never_the_board_folder()
     {
-        this.Write(this.SystemFolder, "Data HW4 Board4.xlsx");
+        this.Write(this.BoardFolder, "Data HW4 Board4.xlsx");
         string page = this.Write(this.KiCadFolder, "Pages/vic.kicad_sch");
 
         Assert.True(KiCadImportedFiles.TryRemove(this.KiCadFolder, page));
 
         Assert.False(Directory.Exists(this.KiCadFolder));
-        Assert.True(File.Exists(Path.Combine(this.SystemFolder, "Data HW4 Board4.xlsx")));
+        Assert.True(File.Exists(Path.Combine(this.BoardFolder, "Data HW4 Board4.xlsx")));
     }
 
-    // Even with an EMPTY system folder above it, the walk must stop at "KiCad data".
+    // Even with an EMPTY board folder above it, the walk must stop at "KiCad data".
     [Fact]
     public void The_tidy_up_never_climbs_past_KiCad_data_even_into_an_empty_parent()
     {
@@ -90,7 +90,7 @@ public sealed class KiCadImportedFilesTests : IDisposable
 
         Assert.True(KiCadImportedFiles.TryRemove(this.KiCadFolder, pcb));
 
-        Assert.True(Directory.Exists(this.SystemFolder));
+        Assert.True(Directory.Exists(this.BoardFolder));
     }
 
     // ------------------------------------------------------------------ What it must refuse
@@ -99,7 +99,7 @@ public sealed class KiCadImportedFilesTests : IDisposable
     public void A_file_BESIDE_the_KiCad_folder_is_refused_and_left_alone()
     {
         this.Write(this.KiCadFolder, "board.kicad_pcb");
-        string workbook = this.Write(this.SystemFolder, "Data HW4 Board4.xlsx");
+        string workbook = this.Write(this.BoardFolder, "Data HW4 Board4.xlsx");
 
         Assert.False(KiCadImportedFiles.TryRemove(this.KiCadFolder, workbook));
         Assert.True(File.Exists(workbook));
@@ -109,7 +109,7 @@ public sealed class KiCadImportedFilesTests : IDisposable
     [Fact]
     public void A_SIBLING_folder_sharing_the_name_prefix_is_refused()
     {
-        string sibling = this.Write(Path.Combine(this.SystemFolder, "KiCad data2"), "board.kicad_pcb");
+        string sibling = this.Write(Path.Combine(this.BoardFolder, "KiCad data2"), "board.kicad_pcb");
 
         Assert.False(KiCadImportedFiles.TryRemove(this.KiCadFolder, sibling));
         Assert.True(File.Exists(sibling));
@@ -118,7 +118,7 @@ public sealed class KiCadImportedFilesTests : IDisposable
     [Fact]
     public void A_path_that_TRAVERSES_out_of_the_folder_is_refused()
     {
-        string workbook = this.Write(this.SystemFolder, "Data HW4 Board4.xlsx");
+        string workbook = this.Write(this.BoardFolder, "Data HW4 Board4.xlsx");
         Directory.CreateDirectory(this.KiCadFolder);
 
         string traversing = Path.Combine(this.KiCadFolder, "..", "Data HW4 Board4.xlsx");

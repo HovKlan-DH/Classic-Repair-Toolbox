@@ -17,11 +17,11 @@ public sealed class ReviewSubmissionDetailTests
 {
     private const string DetailJson = """
         {"canPublish":true,
-         "submission":{"id":42,"systemId":"Commodore/C64/250407","state":"pending",
+         "submission":{"id":42,"boardId":"Commodore/C64/250407","state":"pending",
                        "summary":"Corrected R12.","contactEmail":"someone@example.com",
                        "createdUtc":"2026-09-21T12:00:00+00:00"},
          "findings":[],
-         "changes":{"isNewSystem":false,"revisionDate":null,"sections":[
+         "changes":{"isNewBoard":false,"revisionDate":null,"sections":[
             {"section":"Board schematics","added":[],"removed":[],"changed":[],"renamed":[],
              "hasChanges":false,"totalChanges":0},
             {"section":"Components","added":["U9"],"removed":[],"changed":["U8"],"renamed":[],
@@ -39,7 +39,7 @@ public sealed class ReviewSubmissionDetailTests
         Assert.Equal("Corrected R12.", detail.Submission.Summary);
 
         Assert.NotNull(detail.Changes);
-        Assert.False(detail.Changes!.IsNewSystem);
+        Assert.False(detail.Changes!.IsNewBoard);
         Assert.Equal(2, detail.Changes.TotalChanges);
     }
 
@@ -65,7 +65,7 @@ public sealed class ReviewSubmissionDetailTests
         // a submission's payload could not be loaded. Rendering that as "no changes" would invite
         // somebody to approve a submission nobody has been able to look at.
         ReviewSubmissionDetail? unloadable = ReviewApiParser.ParseSubmission("""
-            {"canPublish":false,"submission":{"id":1,"systemId":"A/B/C","state":"pending"},
+            {"canPublish":false,"submission":{"id":1,"boardId":"A/B/C","state":"pending"},
              "changes":null,"findings":[]}
             """);
 
@@ -73,8 +73,8 @@ public sealed class ReviewSubmissionDetailTests
         Assert.Null(unloadable!.Changes);
 
         ReviewSubmissionDetail? unchanged = ReviewApiParser.ParseSubmission("""
-            {"canPublish":false,"submission":{"id":1,"systemId":"A/B/C","state":"pending"},
-             "changes":{"isNewSystem":false,"sections":[]},"findings":[]}
+            {"canPublish":false,"submission":{"id":1,"boardId":"A/B/C","state":"pending"},
+             "changes":{"isNewBoard":false,"sections":[]},"findings":[]}
             """);
 
         Assert.NotNull(unchanged!.Changes);
@@ -87,7 +87,7 @@ public sealed class ReviewSubmissionDetailTests
         // The reason a submission has no comparable payload is in its findings. Refusing the
         // whole response would hide the very explanation the maintainer came for.
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"canPublish":false,"submission":{"id":1,"systemId":"A/B/C","state":"rejected"},
+            {"canPublish":false,"submission":{"id":1,"boardId":"A/B/C","state":"rejected"},
              "changes":null,
              "findings":[{"severity":1,"code":"file.missing","subject":"Images/u8.png",
                           "message":"The file is referenced but was not uploaded."}]}
@@ -161,7 +161,7 @@ public sealed class ReviewSubmissionDetailTests
         ];
 
         string json = System.Text.Json.JsonSerializer.Serialize(
-            new { submission = new { id = 1, systemId = "Commodore/C64/250407", state = "pending" }, submittedFiles = sent },
+            new { submission = new { id = 1, boardId = "Commodore/C64/250407", state = "pending" }, submittedFiles = sent },
             serverOptions);
 
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(json);
@@ -197,7 +197,7 @@ public sealed class ReviewSubmissionDetailTests
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"submission":{"id":1},"findings":[],
-             "changes":{"isNewSystem":false,"sections":[
+             "changes":{"isNewBoard":false,"sections":[
                 {"section":"Components","added":[],"removed":[],"changed":[],
                  "renamed":[{"from":"U8","to":"U9","alsoChanged":true}],
                  "hasChanges":true,"totalChanges":1}]}}
@@ -215,7 +215,7 @@ public sealed class ReviewSubmissionDetailTests
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"submission":{"id":1},"findings":[],
-             "changes":{"isNewSystem":false,"sections":[
+             "changes":{"isNewBoard":false,"sections":[
                 {"section":"Components","added":[],"removed":[],"changed":[],
                  "renamed":[{"from":"U8"},{"to":"U9"},{"from":"A","to":"B"}],
                  "hasChanges":true,"totalChanges":3}]}}
@@ -227,17 +227,17 @@ public sealed class ReviewSubmissionDetailTests
     }
 
     [Fact]
-    public void A_new_system_survives_the_wire()
+    public void A_new_board_survives_the_wire()
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"submission":{"id":1},"findings":[],
-             "changes":{"isNewSystem":true,"sections":[
+             "changes":{"isNewBoard":true,"sections":[
                 {"section":"Components","added":["U1","U2"],"removed":[],"changed":[],"renamed":[],
                  "hasChanges":true,"totalChanges":2}]}}
             """);
 
-        Assert.True(detail!.Changes!.IsNewSystem);
-        Assert.Contains("New system", ReviewSummaryPresenter.BuildHeadline(detail.Changes));
+        Assert.True(detail!.Changes!.IsNewBoard);
+        Assert.Contains("New board", ReviewSummaryPresenter.BuildHeadline(detail.Changes));
     }
 
     [Theory]
@@ -255,7 +255,7 @@ public sealed class ReviewSubmissionDetailTests
     public void A_submission_with_no_id_is_refused()
     {
         // Without an id nothing further can be requested about it, so it is not a usable answer.
-        Assert.Null(ReviewApiParser.ParseSubmission("""{"submission":{"systemId":"A/B/C"}}"""));
+        Assert.Null(ReviewApiParser.ParseSubmission("""{"submission":{"boardId":"A/B/C"}}"""));
     }
 
     // -----------------------------------------------------------------------------------------
@@ -272,7 +272,7 @@ public sealed class ReviewSubmissionDetailTests
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"submission":{"id":1},"findings":[],
-             "manifest":{"systemId":"Commodore/C64/250407","files":[
+             "manifest":{"boardId":"Commodore/C64/250407","files":[
                 {"path":"Images/U8.png","sha256":"aaaa","sizeBytes":2048},
                 {"path":"Files/datasheet.pdf","sha256":"bbbb","sizeBytes":9}]}}
             """);
@@ -333,7 +333,7 @@ public sealed class ReviewSubmissionDetailTests
     [Fact]
     public void A_response_with_no_published_file_list_yields_an_EMPTY_one()
     {
-        // A new system has no published side at all, which correctly makes every image an
+        // A new board has no published side at all, which correctly makes every image an
         // addition rather than throwing.
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"submission":{"id":1},"findings":[]}

@@ -193,7 +193,7 @@ namespace Handlers.DataHandling
         //
         // *** ONE REBUILD AT A TIME, EACH WITH ITS OWN TEMPORARY FILE (code review, 2026-09-27). ***
         // Several server paths rebuild the BETA manifest - a publish, a rollback, the unused files
-        // screen, and saving a new system's place in the lists, which runs OUTSIDE the publish lock.
+        // screen, and saving a new board's place in the lists, which runs OUTSIDE the publish lock.
         // The temporary file used to be named by the Unix second, so two rebuilds in the same second
         // wrote the SAME file: the writes interleaved, or one File.Move found its file already moved.
         // Now each carries a random name, and WriteGate makes a whole scan-and-write wait for the

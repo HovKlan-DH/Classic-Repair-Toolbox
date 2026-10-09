@@ -37,7 +37,7 @@ namespace CRT.Server.Tests
         private static SubmissionRecord Record(string? comment) =>
             new(
                 Id: 42,
-                SystemId: "Commodore/C64/250407",
+                BoardId: "Commodore/C64/250407",
                 AccountId: null,
                 ContactEmail: "someone@example.com",
                 UploadTokenHash: "hash",
@@ -68,7 +68,7 @@ namespace CRT.Server.Tests
                 [finding]));
 
             Assert.Equal(42, read.Id);
-            Assert.Equal("Commodore/C64/250407", read.SystemId);
+            Assert.Equal("Commodore/C64/250407", read.BoardId);
             Assert.Equal(SubmissionState.Rejected, read.State);
             Assert.Equal("Corrected U8.", read.Summary);
             Assert.Equal(SubmissionStatusWireTests.Created, read.CreatedUtc);

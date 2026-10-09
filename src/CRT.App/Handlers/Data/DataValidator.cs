@@ -33,7 +33,7 @@ namespace Handlers.DataHandling
             {
                 if (entry.IsDraftOnly)
                 {
-                    // A system that exists only as a local draft (session 2c, task 9) has no files
+                    // A board that exists only as a local draft (session 2c, task 9) has no files
                     // under the data root at all - its ExcelDataFile is an identity key naming a
                     // file that is never created, and its schematics and attachments live under
                     // "Drafts/". Validating it here would report every one of them as missing on
@@ -52,13 +52,13 @@ namespace Handlers.DataHandling
                 var boardData = await DataManager.LoadBoardDataAsync(entry);
                 if (boardData == null) continue;
 
-                // The board as loaded - a draft's, when the system has one - so its files are looked
+                // The board as loaded - a draft's, when the board has one - so its files are looked
                 // for as a submit looks for them: the draft's own folder first, then the downloaded data.
                 IReadOnlyList<BoardDataProblem> problems = BoardDataChecks.Check(
                     BoardCheckRows.From(boardData),
                     new DiskFileLookup(
                         DataManager.DataRoot,
-                        DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                        DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
                     BoardCheckScope.Everything);
 
                 foreach (BoardDataProblem problem in problems)

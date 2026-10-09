@@ -20,62 +20,62 @@ namespace Handlers.MaintainerHandling
     {
         // "Commodore / C64 / 250407  -  BETA 2026-September-25, production 2026-May-14" - the
         // heading over the plan, where it has the width to wrap.
-        public static string SystemLine(ProductionSystemRow system) =>
-            $"{ProductionDisplay.SystemName(system)}  -  {ProductionDisplay.SystemStatus(system)}";
+        public static string BoardLine(ProductionBoardRow board) =>
+            $"{ProductionDisplay.BoardDisplayName(board)}  -  {ProductionDisplay.BoardStatus(board)}";
 
         // ###########################################################################################
         // The same, on TWO lines, for the list on the left. One line was cut off at the list's
         // width in the first render - "...never p" - which hid the one fact the row is there to
         // give: how far production is behind.
         // ###########################################################################################
-        public static string ListEntry(ProductionSystemRow system) =>
-            $"{ProductionDisplay.SystemName(system)}\n{ProductionDisplay.SystemStatus(system)}";
+        public static string ListEntry(ProductionBoardRow board) =>
+            $"{ProductionDisplay.BoardDisplayName(board)}\n{ProductionDisplay.BoardStatus(board)}";
 
         // ###########################################################################################
-        // The grey line under a system in the BETA screen's list (2026-09-27): where BETA and
+        // The grey line under a board in the BETA screen's list (2026-09-27): where BETA and
         // production stand - and, when this account has already approved and it waits for the OTHER
         // approver, that too, since the row is dimmed for it (the queue's own wording).
         //
         // While only the administrator publishes to stable (2026-10-05), a maintainer's row is dimmed
         // too, but they never approved it: it is "with the administrator" (code review, 2026-10-05).
         // ###########################################################################################
-        public static string ListFooter(ProductionSystemRow system)
+        public static string ListFooter(ProductionBoardRow board)
         {
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
 
-            string status = ProductionDisplay.SystemStatus(system);
+            string status = ProductionDisplay.BoardStatus(board);
             status = char.ToUpperInvariant(status[0]) + status[1..];
 
-            if (system.WaitsForAdministrator == true)
+            if (board.WaitsForAdministrator == true)
                 return $"{status} - with the administrator";
 
-            return system.AwaitsYou == false ? $"{status} - with the other approver" : status;
+            return board.AwaitsYou == false ? $"{status} - with the other approver" : status;
         }
 
-        public static string SystemName(ProductionSystemRow system)
+        public static string BoardDisplayName(ProductionBoardRow board)
         {
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
 
             string name = string.Join(
                 " / ",
-                new[] { system.Manufacturer, system.Hardware, system.Board }
+                new[] { board.Manufacturer, board.Hardware, board.Board }
                     .Where(part => !string.IsNullOrWhiteSpace(part)));
 
             return name.Length > 0
                 ? name
-                : string.IsNullOrWhiteSpace(system.SystemId) ? "(unknown system)" : system.SystemId;
+                : string.IsNullOrWhiteSpace(board.BoardId) ? "(unknown board)" : board.BoardId;
         }
 
         // "BETA 2026-September-25, production 2026-May-14"
-        public static string SystemStatus(ProductionSystemRow system)
+        public static string BoardStatus(ProductionBoardRow board)
         {
-            ArgumentNullException.ThrowIfNull(system);
+            ArgumentNullException.ThrowIfNull(board);
 
-            string beta = string.IsNullOrWhiteSpace(system.BetaRevision) ? "BETA ahead" : $"BETA {system.BetaRevision}";
+            string beta = string.IsNullOrWhiteSpace(board.BetaRevision) ? "BETA ahead" : $"BETA {board.BetaRevision}";
 
-            string production = string.IsNullOrWhiteSpace(system.ProductionRevision)
+            string production = string.IsNullOrWhiteSpace(board.ProductionRevision)
                 ? "never published to the stable source"
-                : $"stable {system.ProductionRevision}";
+                : $"stable {board.ProductionRevision}";
 
             return $"{beta}, {production}";
         }
@@ -137,13 +137,30 @@ namespace Handlers.MaintainerHandling
         // BETA. The comment is the contributor's own - the same text the review queue lists it by,
         // so a maintainer recognises the submission they approved.
         // ###########################################################################################
+        //
+        // The contributor in bold (owner request, 2026-10-09).
+        public static IReadOnlyList<ReviewNoteRun> CarryingRuns(CarriedSubmission submission, DateTimeOffset now)
+        {
+            ArgumentNullException.ThrowIfNull(submission);
+
+            string line = ProductionDisplay.CarryingLine(submission, now);
+            string who = ProductionDisplay.CarryingWho(submission);
+
+            return string.IsNullOrWhiteSpace(submission.ContactEmail)
+                ? [PersonRuns.Plain(line)]
+                : [PersonRuns.Person(who), PersonRuns.Plain(line[who.Length..])];
+        }
+
+        private static string CarryingWho(CarriedSubmission submission) =>
+            string.IsNullOrWhiteSpace(submission.ContactEmail)
+                ? "(no contact address)"
+                : submission.ContactEmail.Trim();
+
         public static string CarryingLine(CarriedSubmission submission, DateTimeOffset now)
         {
             ArgumentNullException.ThrowIfNull(submission);
 
-            string who = string.IsNullOrWhiteSpace(submission.ContactEmail)
-                ? "(no contact address)"
-                : submission.ContactEmail.Trim();
+            string who = ProductionDisplay.CarryingWho(submission);
 
             string comment = string.IsNullOrWhiteSpace(submission.Comment)
                 ? "(no description)"
@@ -192,12 +209,12 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         // *** PUSHING A BOARD BACK TO THE QUEUE (owner decision, 2026-09-27). *** The words have to
         // carry the one thing that makes this different from a per-submission action: a rollback is
-        // PER SYSTEM, so it takes back EVERY submission merged since the last promotion. Saying
+        // PER BOARD, so it takes back EVERY submission merged since the last promotion. Saying
         // only "this is rolled back" would let a maintainer discard two other contributors' accepted
         // work believing they were returning one.
         //
         // The two kinds say different things because they ARE different operations: a restore puts
-        // production's board back, while a system never promoted has nothing to go back to and
+        // production's board back, while a board never promoted has nothing to go back to and
         // leaves BETA entirely.
         // ###########################################################################################
         public static string RollBackHeadline(BetaRollbackPlanView? plan) =>
@@ -230,7 +247,7 @@ namespace Handlers.MaintainerHandling
             plan.Kind == BetaRollbackKind.RemoveFromBeta
 
                 // Nothing of it has ever been published, so there is no earlier state to return to.
-                ? "Nothing of this system is in the stable source, so its data is removed from BETA entirely."
+                ? "Nothing of this board is in the stable source, so its data is removed from BETA entirely."
                 : $"BETA goes back to the data the stable source already has: " +
                     $"{ProductionDisplay.Count(plan.Restored.Count, "file", "restored")}, " +
                     $"{ProductionDisplay.Count(plan.Removed.Count, "file", "removed")}.";
@@ -244,7 +261,7 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         public static string RejectHeadline(BetaRollbackPlanView? plan) =>
             plan?.Kind == BetaRollbackKind.RemoveFromBeta
-                ? "Reject this system and remove it from BETA?"
+                ? "Reject this board and remove it from BETA?"
                 : "Reject this, and roll the board back to what the stable source has?";
 
         public static string RejectExplanation(BetaRollbackPlanView? plan)
@@ -269,8 +286,8 @@ namespace Handlers.MaintainerHandling
                 ? $"Reject all {plan.Returning.Count.ToString(CultureInfo.InvariantCulture)}"
                 : "Reject";
 
-        public static string RejectingWait(string systemId) =>
-            $"Rejecting {systemId}. BETA's data is being put back as the stable source has it - please wait until it is done.";
+        public static string RejectingWait(string boardId) =>
+            $"Rejecting {boardId}. BETA's data is being put back as the stable source has it - please wait until it is done.";
 
         // What a finished rejection says, as RolledBack does for a push-back.
         public static string Rejected(BetaRollbackResult result)
@@ -291,7 +308,7 @@ namespace Handlers.MaintainerHandling
         {
             ArgumentNullException.ThrowIfNull(result);
 
-            return $"The server is older than this CRT and PUSHED {result.SystemId} BACK instead of rejecting it: " +
+            return $"The server is older than this CRT and PUSHED {result.BoardId} BACK instead of rejecting it: " +
                 $"{ProductionDisplay.FilesMoved(result)}, " +
                 $"{ProductionDisplay.Count(result.SubmissionsReturned, "submission", "back in the queue")}. " +
                 "Reject it from " + MaintainerScreenWording.ContributorQueueQuoted + ".";
@@ -329,15 +346,15 @@ namespace Handlers.MaintainerHandling
                 : "Roll back";
 
         // ###########################################################################################
-        // The "please wait" over the whole window while a system is pushed back or published
+        // The "please wait" over the whole window while a board is pushed back or published
         // (owner request, 2026-09-27). Says what is happening, and that it takes a moment - a copy
         // of a whole board, then the lists read again.
         // ###########################################################################################
-        public static string PushingBackWait(string systemId) =>
-            $"Pushing {systemId} back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.";
+        public static string PushingBackWait(string boardId) =>
+            $"Pushing {boardId} back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.";
 
-        public static string PublishingWait(string systemId) =>
-            $"Publishing {systemId} to the stable source. Its files are being copied from BETA - please wait until it is done.";
+        public static string PublishingWait(string boardId) =>
+            $"Publishing {boardId} to the stable source. Its files are being copied from BETA - please wait until it is done.";
 
         // ###########################################################################################
         // What a finished rollback says. Named counts rather than "done", because the maintainer

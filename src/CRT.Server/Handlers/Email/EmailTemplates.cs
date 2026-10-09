@@ -15,10 +15,10 @@ namespace CRT.Server.Handlers.Email
     // published to production) go to maintainers and administrators.
     //
     // *** THE CONTRIBUTION WORDING IS THE PROJECT OWNER'S (2026-10-03). *** He wrote the five main
-    // mails - waiting for review (an existing system, and a new one), a change requested, accepted
+    // mails - waiting for review (an existing board, and a new one), a change requested, accepted
     // into BETA and published to the stable source - and asked for them to be polished but kept
     // informal. The rejected and taken-out-of-BETA mails follow the same shape. Each greets by name
-    // when there is one ("Hi Dennis,") and with "Hi there," otherwise, names the system in bold
+    // when there is one ("Hi Dennis,") and with "Hi there," otherwise, names the board in bold
     // inside brackets, quotes the other person's words in italics, and ends with who to write to.
     //
     // *** THE ANTI-ENUMERATION DESIGN LIVES HERE, NOT IN THE ENDPOINTS. *** Registration and
@@ -166,7 +166,7 @@ namespace CRT.Server.Handlers.Email
         public const string CrtDownloadUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases";
 
         // ###########################################################################################
-        // AN INVITATION TO MAINTAIN A SYSTEM (owner request, 2026-09-27). The person has no account
+        // AN INVITATION TO MAINTAIN A BOARD (owner request, 2026-09-27). The person has no account
         // and may not run CRT at all, so it says what a maintainer does, where CRT is, how to show
         // its Maintainer tab, and exactly which button to press - and, like the reset mail, carries a
         // CODE rather than a link: accepting needs a password, so it cannot be a click, and a
@@ -174,7 +174,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage MaintainerInvitation(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string invitedBy,
             string invitationCode,
             int validDays)
@@ -187,8 +187,8 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(null)
                 .Paragraph(
                     $"{inviter} has invited you to be a maintainer of ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
-                    $" in {EmailTemplates.ProductName}. A maintainer looks through the changes people send in for that system, " +
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
+                    $" in {EmailTemplates.ProductName}. A maintainer looks through the changes people send in for that board, " +
                     "and publishes the good ones for everybody who uses the data.")
                 .Paragraph("Your invitation code:")
                 .Code(invitationCode)
@@ -203,7 +203,7 @@ namespace CRT.Server.Handlers.Email
                 .WithContactLine()
                 // The subject in the owner's words (2026-10-04) - it read "You are invited to maintain
                 // Amstrad / CPC 664 / MC0005A".
-                .ToMessage(toAddress, $"For CRT you are invited to maintain the [{systemName}] system");
+                .ToMessage(toAddress, $"For CRT you are invited to maintain the [{boardDisplayName}] board");
         }
 
         // ###########################################################################################
@@ -296,7 +296,7 @@ namespace CRT.Server.Handlers.Email
         // 2026-10-03).
         //
         // *** THE AUDIENCE IS USUALLY NOT AN ACCOUNT HOLDER. *** A contributor typed an address into
-        // a dialog once and may have forgotten they did - so each mail names the system it is about,
+        // a dialog once and may have forgotten they did - so each mail names the board it is about,
         // because a bare "your submission was accepted" means nothing three weeks later. A
         // contributor who sent with an account (a signed-in maintainer) is greeted by name; anybody
         // else as "Hi there,".
@@ -322,7 +322,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage SubmissionPublishedToBeta(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string? maintainerComment,
             bool amendedByMaintainer = false,
             string? contributorName = null)
@@ -331,8 +331,8 @@ namespace CRT.Server.Handlers.Email
 
             MailBody body = EmailTemplates.Greeted(contributorName)
                 .Paragraph(
-                    "A system maintainer has reviewed your contribution to ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    "A board maintainer has reviewed your contribution to ",
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     ". It has been accepted and is now in the BETA online source, ready for you to test. To try it, go to the " +
                     "\"Configuration\" tab in CRT and tick \"",
                     MailText.Bold(EmailTemplates.BetaCheckBoxLabel),
@@ -371,7 +371,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage SubmissionPublishedToSource(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string? contributorName = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
@@ -379,12 +379,12 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(contributorName)
                 .Paragraph(
                     "Your contribution to ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     " has been fully accepted and is now published to the stable source, for everyone.")
                 .Paragraph(
                     "Restart CRT to get the newest data from the stable source - if you ticked \"",
                     MailText.Bold(EmailTemplates.BetaCheckBoxLabel),
-                    "\" to test it, untick it in the \"Configuration\" tab first. Once your data matches the published system, " +
+                    "\" to test it, untick it in the \"Configuration\" tab first. Once your data matches the published board, " +
                     "CRT removes your draft of it by itself.")
                 .Paragraph(
                     "Everyone who uses ",
@@ -403,7 +403,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage SubmissionChangesRequested(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string maintainerComment,
             string? contributorName = null)
         {
@@ -411,8 +411,8 @@ namespace CRT.Server.Handlers.Email
 
             return EmailTemplates.Greeted(contributorName)
                 .Paragraph(
-                    "A system maintainer has reviewed your contribution to ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    "A board maintainer has reviewed your contribution to ",
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     " and would like a change before it can go into the online sources:")
                 .Quote(maintainerComment, "(no reason was given)")
                 .Paragraph(
@@ -436,7 +436,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage SubmissionReturnedToQueue(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string maintainerComment,
             string? contributorName = null)
         {
@@ -445,8 +445,8 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(contributorName)
                 .Paragraph(
                     "Your contribution to ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
-                    " had been accepted into the BETA source, but a system maintainer has taken it back out and returned it " +
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
+                    " had been accepted into the BETA source, but a board maintainer has taken it back out and returned it " +
                     "to the review queue:")
                 .Quote(maintainerComment, "(no reason was given)")
                 .Paragraph(
@@ -469,7 +469,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage SubmissionRejected(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string maintainerComment,
             string? contributorName = null)
         {
@@ -477,8 +477,8 @@ namespace CRT.Server.Handlers.Email
 
             return EmailTemplates.Greeted(contributorName)
                 .Paragraph(
-                    "A system maintainer has reviewed your contribution to ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    "A board maintainer has reviewed your contribution to ",
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     ", and it will not be going in. The reason given was:")
                 .Quote(maintainerComment, "(no reason was given)")
                 .Paragraph(
@@ -489,17 +489,17 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
-        // The administrator deleted a system while this contributor's submission to it was still in
+        // The administrator deleted a board while this contributor's submission to it was still in
         // play - waiting for review, approved once, or in BETA (owner decision, 2026-10-03: "Delete
-        // them and mail the contributors"). See SystemDeletionFlow.
+        // them and mail the contributors"). See BoardDeletionFlow.
         //
         // *** IT SAYS THE SUBMISSION IS GONE, AND THE DRAFT IS NOT. *** CRT's "My submissions" keeps
         // showing the submission's last state (the server now answers "not found", which CRT treats
         // as "no news"), so this mail is the only place the contributor learns what happened to it.
         // ###########################################################################################
-        public static EmailMessage SystemDeleted(
+        public static EmailMessage BoardDeleted(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string reason,
             string? contributorName = null)
         {
@@ -508,43 +508,43 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(contributorName)
                 .Paragraph(
                     "The administrator has removed ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     " from CRT completely, and your contribution to it was removed along with it. The reason given was:")
                 .Quote(reason, "(no reason was given)")
                 .Paragraph(
                     "Your draft is still on your own computer (unless you have discarded it). You can keep it, or discard it " +
                     "from the \"Drafts\" tab in CRT.")
                 .WithContactLine()
-                .ToMessage(toAddress, "A system you contributed to was removed from CRT");
+                .ToMessage(toAddress, "A board you contributed to was removed from CRT");
         }
 
         // ###########################################################################################
-        // Sent to each MAINTAINER of a system when a submission to it is queued (Phase 6 task 11,
-        // 2026-09-25) - or to the administrators, when the system has no maintainers or the
+        // Sent to each MAINTAINER of a board when a submission to it is queued (Phase 6 task 11,
+        // 2026-09-25) - or to the administrators, when the board has no maintainers or the
         // submission changes shared files.
         //
-        // *** AN UPDATE AND A NEW SYSTEM ARE TOLD APART (owner request, 2026-10-03). *** A new
-        // system is an evening's review, an update is often a typo - the first line says which, and
+        // *** AN UPDATE AND A NEW BOARD ARE TOLD APART (owner request, 2026-10-03). *** A new
+        // board is an evening's review, an update is often a typo - the first line says which, and
         // the contributor's own description is quoted, which is what tells a maintainer how big it
         // is. Greets the maintainer by the name on their account.
         // ###########################################################################################
         public static EmailMessage SubmissionWaiting(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             long submissionId,
             string? contributorSummary,
-            bool isNewSystem = false,
+            bool isNewBoard = false,
             string? recipientName = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
 
-            string what = isNewSystem ? "a completely new system, " : "an update for an existing system, ";
-            string described = isNewSystem ? "the new system" : "the changes";
+            string what = isNewBoard ? "a completely new board, " : "an update for an existing board, ";
+            string described = isNewBoard ? "the new board" : "the changes";
 
             return EmailTemplates.Greeted(recipientName)
                 .Paragraph(
                     $"A contributor has sent in {what}",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     $", and it is waiting for review (submission #{submissionId}). The contributor describes {described} like this:")
                 .Quote(contributorSummary, "(no description given)")
                 .Paragraph(
@@ -562,7 +562,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage ApprovalNeeded(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string what,
             string approvedBy,
             string? recipientName = null)
@@ -572,15 +572,15 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(recipientName)
                 .Paragraph(
                     $"{approvedBy} has approved {what} for ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     ". It replaces a shared file that other boards may use, so it needs your approval too before it is published.")
                 .Paragraph("Open CRT and go to the \"Maintainer\" tab to look at it.")
                 .WithContactLine()
-                .ToMessage(toAddress, $"CRT: your approval is needed for {systemName}");
+                .ToMessage(toAddress, $"CRT: your approval is needed for {boardDisplayName}");
         }
 
         // ###########################################################################################
-        // Sent to the ADMINISTRATORS when a maintainer publishes a system to production (2026-09-25).
+        // Sent to the ADMINISTRATORS when a maintainer publishes a board to production (2026-09-25).
         //
         // The stand-in for Phase 6's administrator feed until that exists: publishing to production
         // is what every user downloads, and with no second factor on a maintainer's account, an
@@ -589,7 +589,7 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         public static EmailMessage PublishedToProduction(
             string toAddress,
-            string systemName,
+            string boardDisplayName,
             string actor,
             string? revision,
             int filesCopied,
@@ -602,12 +602,12 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(recipientName)
                 .Paragraph(
                     $"{actor} has published ",
-                    MailText.Named(EmailTemplates.DescribeSystem(systemName)),
+                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     $" to the stable source, at {revisionText}. {filesCopied} file(s) were copied from BETA.")
                 .Paragraph(
                     "If you did not expect this, look at the board in the stable data and, if it is wrong, publish a correction. " +
                     "The audit trail on the server records the details.")
-                .ToMessage(toAddress, $"CRT: {systemName} was published to the stable source");
+                .ToMessage(toAddress, $"CRT: {boardDisplayName} was published to the stable source");
         }
 
         // ###########################################################################################
@@ -682,12 +682,12 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         // "Commodore/C128/250477", or a neutral phrase when the name is unusable.
         //
-        // The caller decides what the system is called - the id itself in every submission mail
+        // The caller decides what the board is called - the id itself in every submission mail
         // (owner wording, 2026-10-03) - so this only tidies what it is given.
         // ###########################################################################################
-        private static string DescribeSystem(string? systemName)
+        private static string DescribeBoard(string? boardDisplayName)
         {
-            string trimmed = systemName?.Trim() ?? string.Empty;
+            string trimmed = boardDisplayName?.Trim() ?? string.Empty;
 
             return trimmed.Length == 0 ? "the board data" : trimmed;
         }

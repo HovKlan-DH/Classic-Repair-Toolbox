@@ -12,9 +12,9 @@ namespace ClassicRepairToolbox.Tests;
 // the owner's case needs TOGETHER, because each one alone still leaves the board unsubmittable:
 //
 //   - the import, or the folder is not a draft and the Drafts tab never lists it;
-//   - the one-entry-per-folder rule in DataManager.MergeDraftOnlySystems, or a board made the old
+//   - the one-entry-per-folder rule in DataManager.MergeDraftOnlyBoards, or a board made the old
 //     way is listed twice - under its _UserContribution names and under its folder names;
-//   - the empty baseline for a new system, or its rows are compared against the contributor's
+//   - the empty baseline for a new board, or its rows are compared against the contributor's
 //     own legacy copy in Data/, count as nothing, and Submit stays disabled.
 //
 // "DataManager" collection: DataManager's lists and DraftManager's root are both statics.
@@ -73,24 +73,24 @@ public sealed class DataManagerDraftImportTests : IDisposable
         // Once, and where the contributor already knows it - under its _UserContribution names.
         HardwareBoardEntry entry = Assert.Single(
             DataManager.HardwareBoards,
-            board => SystemDescriptorRules.SystemIdFromExcelDataFile(board.ExcelDataFile) == "Commodore/C128/310378 Open128");
+            board => BoardDescriptorRules.BoardIdFromExcelDataFile(board.ExcelDataFile) == "Commodore/C128/310378 Open128");
         Assert.Equal("Commodore 128", entry.HardwareName);
 
         // On the Drafts tab - once.
-        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedSystems(DataManager.HardwareBoards)));
+        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
 
-        // A new system with all three rows to send, so Submit is enabled.
+        // A new board with all three rows to send, so Submit is enabled.
         DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile)!;
-        Assert.True(status.IsNewSystem);
+        Assert.True(status.IsNewBoard);
         Assert.Equal(3, DraftStatusReader.CountChanges(status));
 
         // Registered under its FOLDER names - the ones a submission must send.
-        Assert.Equal("C128", status.NewSystem!.HardwareName);
-        Assert.Equal("310378 Open128", status.NewSystem.BoardName);
+        Assert.Equal("C128", status.NewBoard!.HardwareName);
+        Assert.Equal("310378 Open128", status.NewBoard.BoardName);
     }
 
     [Fact]
-    public void A_hand_placed_board_nothing_lists_appears_as_a_new_system_of_its_own()
+    public void A_hand_placed_board_nothing_lists_appears_as_a_new_board_of_its_own()
     {
         const string key = "Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx";
 
@@ -103,7 +103,7 @@ public sealed class DataManagerDraftImportTests : IDisposable
         Assert.True(entry.IsDraftOnly);
         Assert.Equal("CPC 6128", entry.HardwareName);
         Assert.Equal("MC0020", entry.BoardName);
-        Assert.Contains(entry, DraftManager.EnumerateDraftedSystems(DataManager.HardwareBoards));
+        Assert.Contains(entry, DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards));
     }
 
     [Fact]
@@ -116,10 +116,10 @@ public sealed class DataManagerDraftImportTests : IDisposable
         DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
 
         HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards);
-        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedSystems(DataManager.HardwareBoards)));
+        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
 
         DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, PublishedKey)!;
-        Assert.False(status.IsNewSystem);
+        Assert.False(status.IsNewBoard);
         Assert.Equal(1, DraftStatusReader.CountChanges(status));
     }
 
@@ -186,7 +186,7 @@ public sealed class DataManagerDraftImportTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM'S DRAFT STAYS REACHABLE ONCE BETA LISTS IT (code review, 2026-09-27). *** The
+    // *** A NEW BOARD'S DRAFT STAYS REACHABLE ONCE BETA LISTS IT (code review, 2026-09-27). *** The
     // publish names the workbook with the tree's generation ("... v2.0.0.xlsx"), so the listed
     // entry cannot read the draft, which keeps its own name. Skipping the draft's entry because its
     // FOLDER was listed left the draft unreachable until production retired it - no edit, no
@@ -194,7 +194,7 @@ public sealed class DataManagerDraftImportTests : IDisposable
     // workbook, and is ONE row on the Drafts tab.
     // ###########################################################################################
     [Fact]
-    public void A_new_systems_draft_stays_reachable_after_BETA_lists_the_system_under_another_workbook_name()
+    public void A_new_boards_draft_stays_reachable_after_BETA_lists_the_board_under_another_workbook_name()
     {
         const string draftKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128.xlsx";
         const string listedKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
@@ -204,12 +204,12 @@ public sealed class DataManagerDraftImportTests : IDisposable
             new[] { "Commodore 128", "310378 Open128", listedKey, "" });
         this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, listedKey), components: 3);
 
-        // The contributor's new-system draft, as "Add a new system" made it.
+        // The contributor's new-board draft, as "Add a new board" made it.
         this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, draftKey), components: 4);
         DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(this.DraftsRoot, draftKey), new DraftMarker
         {
-            SystemKey = draftKey,
-            NewSystem = new NewSystemRegistration { HardwareName = "C128", BoardName = "310378 Open128", ExcelDataFile = draftKey },
+            BoardKey = draftKey,
+            NewBoard = new NewBoardRegistration { HardwareName = "C128", BoardName = "310378 Open128", ExcelDataFile = draftKey },
         });
 
         DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
@@ -219,15 +219,15 @@ public sealed class DataManagerDraftImportTests : IDisposable
         Assert.Contains(DataManager.HardwareBoards, board => board.ExcelDataFile == listedKey);
 
         // One row on the Drafts tab - the entry that reads the draft.
-        Assert.Same(draft, Assert.Single(DraftManager.EnumerateDraftedSystems(DataManager.HardwareBoards)));
+        Assert.Same(draft, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
         Assert.True(DraftBoardSource.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, draft.ExcelDataFile).IsDraft);
     }
 
     // "published" - in the production data, the only state retirement acts on.
-    private static SubmissionReceipt Published(string systemId) => new()
+    private static SubmissionReceipt Published(string boardId) => new()
     {
         SubmissionId = 8,
-        SystemId = systemId,
+        BoardId = boardId,
         LastKnownState = "published",
         SentUtc = DateTimeOffset.UtcNow.AddMinutes(-3),
     };

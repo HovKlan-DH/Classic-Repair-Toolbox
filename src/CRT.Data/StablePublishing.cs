@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
     // While CRT.Server's ProductionPublishingAdministratorsOnly is on, the server refuses a
     // maintainer's publish from BETA to the stable source with this sentence, and sends it as the
     // plan's refusal - which the Maintainer tab shows under a greyed-out publish button. Pushing a
-    // system back and rejecting it stay open to the maintainer, so the sentence says so.
+    // board back and rejecting it stay open to the maintainer, so the sentence says so.
     //
     // In CRT.Data so the server's refusal and the Maintainer tab's tests are the same words.
     // ###########################################################################################

@@ -19,7 +19,7 @@ public sealed class SubmissionClientCreateRequestTests
 {
     private static SubmissionManifest Manifest() => new()
     {
-        SystemId = "Commodore/C64/250407",
+        BoardId = "Commodore/C64/250407",
         Manufacturer = "Commodore",
         Hardware = "C64",
         Board = "250407",
@@ -61,17 +61,17 @@ public sealed class SubmissionClientCreateRequestTests
 
         using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
 
-        Assert.Equal("Commodore/C64/250407", body.RootElement.GetProperty("systemId").GetString());
+        Assert.Equal("Commodore/C64/250407", body.RootElement.GetProperty("boardId").GetString());
         Assert.Equal("dh@example.com", body.RootElement.GetProperty("contactEmail").GetString());
     }
 
     // ###########################################################################################
-    // A new system's notes (owner request, 2026-10-05) go as "hardwareNotes", and come back out of
+    // A new board's notes (owner request, 2026-10-05) go as "hardwareNotes", and come back out of
     // the body as the server binds it - ASP.NET Core's web defaults - so the maintainer's placement
     // can start with them.
     // ###########################################################################################
     [Fact]
-    public async Task A_new_systems_notes_go_in_the_body_and_read_back_as_the_server_reads_them()
+    public async Task A_new_boards_notes_go_in_the_body_and_read_back_as_the_server_reads_them()
     {
         SubmissionManifest manifest = SubmissionClientCreateRequestTests.Manifest();
         manifest.HardwareNotes = "Open-source replica.";

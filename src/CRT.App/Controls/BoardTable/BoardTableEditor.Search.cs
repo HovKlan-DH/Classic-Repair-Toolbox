@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.DataGridSearching;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -29,11 +28,11 @@ namespace CRT
     // is worked out afresh on them - a row edited so it no longer matches, which stayed on screen
     // (agreed case C), is then hidden.
     //
-    // THE MARKS are the grid's own: each cell's text is drawn by ProDataGrid's search-aware text
-    // block, which marks the runs named in the grid's search model. The editor works the runs out
-    // with BoardTableSearch and hands them over through BoardTableSearchAdapter, in the Workbooks
-    // tab's search colours (UseSearchColours). The cell themes keep each cell's own colour
-    // under a match (BuildCellTheme) - the grid's look would fill a matching cell with its accent.
+    // THE MARKS are drawn by the table's own cell text, BoardTableCellText: the editor hands the
+    // search, in the Workbooks tab's search colours (UseSearchColours), to the grid once, and every
+    // cell's text inherits it and marks what it finds in its own row's text. ProDataGrid's own
+    // search marks are not used - they showed another row's text in a recycled cell (owner report,
+    // 2026-10-09; see BoardTableCellText). The cell keeps its own colour under a match.
     // ###########################################################################################
     public partial class BoardTableEditor
     {
@@ -44,6 +43,10 @@ namespace CRT
         private string thisSearchText = string.Empty;
 
         private DispatcherTimer? thisSearchTimer;
+
+        // The Workbooks tab's search colours, read again on a theme change (UseSearchColours).
+        private IBrush thisSearchHitBackground = Brushes.Khaki;
+        private IBrush thisSearchHitForeground = Brushes.Black;
 
         // Whether the table shows only some rows - a pill picked or a search typed. Rows cannot be
         // moved then: a position among rows that cannot be seen means nothing.
@@ -72,8 +75,6 @@ namespace CRT
 
         private void WireSearch()
         {
-            this.TableGrid.SearchAdapterFactory = new BoardTableSearchAdapterFactory(this.SearchResultsOnScreen);
-
             this.SearchBox.TextChanged += this.OnSearchBoxTextChanged;
             this.ClearSearchButton.Click += this.OnClearSearchClick;
 
@@ -83,25 +84,14 @@ namespace CRT
 
         // ###########################################################################################
         // *** THE MARKS ARE IN THE WORKBOOKS TAB'S OWN SEARCH COLOURS *** (Workbooks_SearchHit_Bg and
-        // _Fg), under the keys the grid's cell text looks for. Copied into this control's resources
-        // in code, and again on a theme change: the grid looks its brushes up with a control's own
-        // lookup, which does not reach a theme-variant key (see ThemeResources) - written into the
-        // theme dictionaries, the marks came out in the grid's default blue.
-        //
-        // *** AND A MATCHING ROW IS NOT SHADED. *** The grid also lays a tint of the mark's colour
-        // over every row with a match (seen in a render, 2026-10-02) - which turned every white
-        // cell on screen pale yellow, since a search shows only rows with a match, and read as one
-        // more row colour beside green, orange and red. Its two opacities are set to 0.
+        // _Fg), read through ThemeResources - a control's own lookup does not reach a theme-variant
+        // key - and again on a theme change, which hands the cells the search afresh.
         // ###########################################################################################
         private void UseSearchColours()
         {
-            IBrush background = ThemeResources.Resolve<IBrush>("Workbooks_SearchHit_Bg", Brushes.Khaki);
-
-            this.Resources["DataGridSearchMatchBrush"] = background;
-            this.Resources["DataGridSearchCurrentBrush"] = background;
-            this.Resources["DataGridSearchMatchForegroundBrush"] = ThemeResources.Resolve<IBrush>("Workbooks_SearchHit_Fg", Brushes.Black);
-            this.Resources["DataGridRowSearchMatchOpacity"] = 0d;
-            this.Resources["DataGridRowSearchCurrentOpacity"] = 0d;
+            this.thisSearchHitBackground = ThemeResources.Resolve<IBrush>("Workbooks_SearchHit_Bg", Brushes.Khaki);
+            this.thisSearchHitForeground = ThemeResources.Resolve<IBrush>("Workbooks_SearchHit_Fg", Brushes.Black);
+            this.UpdateSearchMarks();
         }
 
         private void OnSearchBoxTextChanged(object? sender, TextChangedEventArgs e)
@@ -159,101 +149,17 @@ namespace CRT
             this.thisSearch = BoardTableSearch.For(document, this.thisSearchText);
 
         // ###########################################################################################
-        // The runs to mark, handed to the grid's search model. The model names the search with a
-        // descriptor (its text - a new text is what makes the adapter ask again) and is given the
-        // results directly as well, since an edit changes the runs without changing the text.
+        // The search handed to every cell's text (BoardTableCellText.Marks, inherited from the grid),
+        // which marks what it finds in its own row - a new one each time, so every cell looks again.
+        // None while nothing is searched for.
         // ###########################################################################################
         private void UpdateSearchMarks()
         {
-            if (this.TableGrid.SearchModel is not { } model)
-            {
-                return;
-            }
-
-            // The found TEXT is marked, not only its cell - the grid's default marks the cell alone,
-            // whose fill the cell theme takes back. And a match is never "current": no cell is
-            // singled out, and the grid never moves the cursor or the selection to one.
-            model.HighlightMode = SearchHighlightMode.TextAndCell;
-            model.HighlightCurrent = false;
-            model.UpdateSelectionOnNavigate = false;
-
-            if (!this.thisSearch.IsActive)
-            {
-                if (model.Descriptors.Count > 0)
-                {
-                    model.Clear();
-                }
-
-                if (model.Results.Count > 0)
-                {
-                    model.UpdateResults([]);
-                }
-
-                return;
-            }
-
-            model.SetOrUpdate(new SearchDescriptor(
-                this.thisSearchText,
-                SearchMatchMode.Contains,
-                SearchTermCombineMode.All,
-                SearchScope.AllColumns,
-                null,
-                StringComparison.OrdinalIgnoreCase,
-                CultureInfo.InvariantCulture,
-                false,
-                false,
-                false,
-                false));
-
-            model.UpdateResults(this.SearchResultsOnScreen());
-        }
-
-        // Every run the search found in the cells of the rows on screen - the marker column and
-        // hidden rows have none.
-        private List<SearchResult> SearchResultsOnScreen()
-        {
-            var results = new List<SearchResult>();
-
-            if (!this.thisSearch.IsActive || this.thisView is null)
-            {
-                return results;
-            }
-
-            List<DataGridColumn> columns = this.TableGrid.Columns.Where(column => column.Tag is int index && index >= 0).ToList();
-            int rowIndex = 0;
-
-            foreach (object item in this.thisView)
-            {
-                if (item is BoardTableRow row)
-                {
-                    foreach (DataGridColumn column in columns)
-                    {
-                        int index = (int)column.Tag!;
-                        if (index >= row.Cells.Count)
-                        {
-                            continue;
-                        }
-
-                        string text = row.Cells[index].Text;
-                        IReadOnlyList<WorklogSearchHit> hits = this.thisSearch.HitsIn(text);
-
-                        if (hits.Count > 0)
-                        {
-                            results.Add(new SearchResult(
-                                row,
-                                rowIndex,
-                                column,
-                                column.DisplayIndex,
-                                text,
-                                hits.Select(hit => new SearchMatch(hit.Start, hit.Length)).ToList()));
-                        }
-                    }
-                }
-
-                rowIndex++;
-            }
-
-            return results;
+            BoardTableCellText.SetMarks(
+                this.TableGrid,
+                this.thisSearch.IsActive
+                    ? new BoardTableSearchMarks(this.thisSearch, this.thisSearchHitBackground, this.thisSearchHitForeground)
+                    : null);
         }
     }
 }

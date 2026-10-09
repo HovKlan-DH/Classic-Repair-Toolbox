@@ -74,7 +74,7 @@ namespace Handlers.MaintainerHandling
         public static string ForgotPassword(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/forgot-password";
 
-        // Accepting an invitation to maintain a system (2026-09-27): the code from the mail, a name
+        // Accepting an invitation to maintain a board (2026-09-27): the code from the mail, a name
         // and a password. Before anybody is signed in - it is how the account is made.
         public static string AcceptInvitation(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/accept-invitation";
@@ -135,7 +135,7 @@ namespace Handlers.MaintainerHandling
             $"{ReviewApiRoutes.Submission(baseAddress, submissionId)}/submitted/{Uri.EscapeDataString(hash ?? string.Empty)}";
 
         // ###########################################################################################
-        // The bytes CURRENTLY PUBLISHED for this submission's system, addressed by path (task 4).
+        // The bytes CURRENTLY PUBLISHED for this submission's board, addressed by path (task 4).
         //
         // *** EACH SEGMENT IS ESCAPED, AND THE SLASHES BETWEEN THEM ARE NOT. *** Board data paths
         // routinely carry spaces ("Shared files/74LS08.png") and occasionally a "#", both of which
@@ -159,11 +159,11 @@ namespace Handlers.MaintainerHandling
         // "/api/admin" rather than "/api/review", matching AdminEndpoints' own group - see its
         // header for why the two are kept apart.
         //
-        // Add and remove are both POSTs with a body: a system id carries slashes and cannot sit
+        // Add and remove are both POSTs with a body: a board id carries slashes and cannot sit
         // in a route in front of the account id.
         // ###########################################################################################
-        public static string AdminSystems(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems";
+        public static string AdminBoards(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/boards";
 
         public static string AdminAccounts(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/accounts";
@@ -194,18 +194,18 @@ namespace Handlers.MaintainerHandling
         public static string AdminRebuildManifests(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/manifest/rebuild";
 
-        // Deleting a system completely (2026-10-03): what it would remove, then the delete. Both
-        // POST a body - a system id carries slashes.
-        public static string AdminSystemDeletePlan(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/delete/plan";
+        // Deleting a board completely (2026-10-03): what it would remove, then the delete. Both
+        // POST a body - a board id carries slashes.
+        public static string AdminBoardDeletePlan(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/boards/delete/plan";
 
-        public static string AdminSystemDelete(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/delete";
+        public static string AdminBoardDelete(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/boards/delete";
 
         // The order of CRT's drop-down lists, written into BETA's and the stable source's main Excel
-        // data files (2026-10-04) - every system BETA lists, in order, POSTed.
-        public static string AdminSystemOrder(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/systems/order";
+        // data files (2026-10-04) - every board BETA lists, in order, POSTed.
+        public static string AdminBoardOrder(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/boards/order";
 
         // Resetting the contribution data for going live (2026-10-04): GET the counts, POST the reset
         // with their fingerprint - one path for both.
@@ -218,7 +218,7 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // BETA to production (2026-09-25) - ProductionEndpoints.MapProductionEndpoints. The plan and
-        // the publish are POSTs with a body, because a system id carries slashes.
+        // the publish are POSTs with a body, because a board id carries slashes.
         // ###########################################################################################
         public static string ProductionList(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/production";
@@ -265,36 +265,36 @@ namespace Handlers.MaintainerHandling
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/production/rollback";
 
         // ###########################################################################################
-        // The "Systems" screen (2026-09-27) - SystemEndpoints.MapSystemEndpoints. Every system, and
-        // one system's facts; the detail is a POST because a system id carries slashes. Under
+        // The "Boards" screen (2026-09-27) - BoardEndpoints.MapBoardEndpoints. Every board, and
+        // one board's facts; the detail is a POST because a board id carries slashes. Under
         // "/api/review" rather than "/api/admin": every maintainer may read it.
         // ###########################################################################################
-        public static string Systems(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems";
+        public static string Boards(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards";
 
-        public static string SystemDetail(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/detail";
+        public static string BoardDetail(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/detail";
 
-        // Where a new system goes in the drop-down lists (2026-09-27): GET the list, POST a placement.
-        public static string SystemListing(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/listing";
+        // Where a new board goes in the drop-down lists (2026-09-27): GET the list, POST a placement.
+        public static string BoardListing(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/listing";
 
         // ###########################################################################################
-        // A system's Board data and Files views (2026-10-03) - SystemEndpoints' four POSTs: BETA's
+        // A board's Board data and Files views (2026-10-03) - BoardEndpoints' four POSTs: BETA's
         // board, what a table edit would remove from BETA, the edit itself (published straight to
-        // BETA), and every file the system uses.
+        // BETA), and every file the board uses.
         // ###########################################################################################
-        public static string SystemTable(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/table";
+        public static string BoardDataTable(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/table";
 
-        public static string SystemEditCheck(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/edit/check";
+        public static string BoardEditCheck(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/edit/check";
 
-        public static string SystemEdit(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/edit";
+        public static string BoardEdit(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/edit";
 
-        public static string SystemFiles(string baseAddress) =>
-            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/systems/files";
+        public static string BoardFiles(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/boards/files";
 
         // ###########################################################################################
         // The base address with any trailing slashes removed.

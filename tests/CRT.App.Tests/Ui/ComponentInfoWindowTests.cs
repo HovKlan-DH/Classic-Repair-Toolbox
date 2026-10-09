@@ -358,7 +358,7 @@ public class ComponentInfoWindowTests : IDisposable
     // the draft folder.
     //
     // *** THE DRAFT FOLDER MUST BE A REALISTIC Manufacturer/Hardware/Board PATH (Phase 6). ***
-    // DraftFileResolver strips the system's own prefix off a stored path, and it works out what
+    // DraftFileResolver strips the board's own prefix off a stored path, and it works out what
     // that prefix is from the folder's last three segments. A flat "draft" folder - which this
     // test used before - has no such segments, so nothing strips and the file is looked for in
     // the wrong place.
@@ -381,7 +381,7 @@ public class ComponentInfoWindowTests : IDisposable
                 window,
                 new[] { Component() },
                 localFiles: new[] { LocalFile(BoardLabel, "Datasheet", "Commodore/C64/250407/docs/pla.pdf") },
-                draftSystemFolder: draftFolder);
+                draftBoardFolder: draftFolder);
 
             var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
 
@@ -400,7 +400,7 @@ public class ComponentInfoWindowTests : IDisposable
     // contributor has already replaced.
     //
     // *** THIS TEST ALSO USED A FLAT "draft" FOLDER, WHICH MADE IT PASS FOR THE WRONG
-    // REASON. *** DraftFileResolver works out the system prefix to strip from the folder's
+    // REASON. *** DraftFileResolver works out the board prefix to strip from the folder's
     // last three segments, so a one-segment folder strips nothing and the drafted file is
     // never found at all - the test went green because the lookup failed, not because
     // precedence worked. The folder is now a realistic Manufacturer/Hardware/Board path.
@@ -478,7 +478,7 @@ public class ComponentInfoWindowTests : IDisposable
                 window,
                 new[] { Component() },
                 localFiles: new[] { LocalFile(BoardLabel, "Datasheet", "docs/pla.pdf") },
-                draftSystemFolder: this.thisWorkspace.Path_("nonexistent-draft"));
+                draftBoardFolder: this.thisWorkspace.Path_("nonexistent-draft"));
 
             var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
 
@@ -565,7 +565,7 @@ public class ComponentInfoWindowTests : IDisposable
         IEnumerable<ComponentLinkEntry>? links = null,
         string region = "PAL",
         bool hasExplicitRegionComponents = false,
-        string draftSystemFolder = "")
+        string draftBoardFolder = "")
     {
         window.SetComponent(
             BoardLabel,
@@ -577,7 +577,7 @@ public class ComponentInfoWindowTests : IDisposable
             region,
             DataRoot,
             hasExplicitRegionComponents,
-            draftSystemFolder);
+            draftBoardFolder);
     }
 
     private static ComponentEntry Component(

@@ -108,7 +108,11 @@ namespace Handlers.OnlineHandling
                 if (read is null)
                     return new BoardViewOutbox();
 
-                read.Waiting = read.Waiting?.Where(view => view is not null && !string.IsNullOrWhiteSpace(view.SystemId)).ToList() ?? [];
+                // A view an older CRT wrote names its board as SystemId (BoardView) - carried across.
+                read.Waiting = read.Waiting?
+                    .Where(view => !string.IsNullOrWhiteSpace(BoardView.IdOf(view)))
+                    .Select(view => view with { BoardId = BoardView.IdOf(view), SystemId = null })
+                    .ToList() ?? [];
                 return read;
             }
             catch (JsonException)

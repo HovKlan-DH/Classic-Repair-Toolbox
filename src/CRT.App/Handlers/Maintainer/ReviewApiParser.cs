@@ -26,8 +26,8 @@ namespace Handlers.MaintainerHandling
     // server fails a test here rather than silently reading as absent.
     //
     // FILE MAP (split 2026-09-27, past ~1,500 lines): this file - sign-in, the queue, one
-    // submission, decisions, messages and the shared readers; ReviewApiParser.Systems.cs - the
-    // Systems screen; ReviewApiParser.Production.cs - "Beta > Prod" and unused files;
+    // submission, decisions, messages and the shared readers; ReviewApiParser.Boards.cs - the
+    // Boards screen; ReviewApiParser.Production.cs - "Beta > Prod" and unused files;
     // ReviewApiParser.Account.cs - the signed-in maintainer's own account. The records
     // they read into are ReviewApiViews.cs.
     // ###########################################################################################
@@ -110,31 +110,31 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // The administrator's two lists (Phase 6 roles): every system with its maintainers, and
+        // The administrator's two lists (Phase 6 roles): every board with its maintainers, and
         // every account. Each is a plain array under one property; a row that cannot be read is
         // skipped rather than failing the list, for the same reason a bad queue row is.
         // ###########################################################################################
-        public static ReviewSystemsResponse? ParseSystems(string? json)
+        public static ReviewBoardsResponse? ParseBoards(string? json)
         {
             JsonElement root = ReviewApiParser.Root(json);
 
             if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("systems", out JsonElement systems) ||
-                systems.ValueKind != JsonValueKind.Array)
+                !root.TryGetProperty("boards", out JsonElement boards) ||
+                boards.ValueKind != JsonValueKind.Array)
             {
                 return null;
             }
 
-            var rows = new List<ReviewSystemRow>();
+            var rows = new List<ReviewBoardRow>();
 
-            foreach (JsonElement element in systems.EnumerateArray())
+            foreach (JsonElement element in boards.EnumerateArray())
             {
                 if (element.ValueKind != JsonValueKind.Object)
                     continue;
 
-                string? systemId = ReviewApiParser.String(element, "systemId");
+                string? boardId = ReviewApiParser.String(element, "boardId");
 
-                if (string.IsNullOrWhiteSpace(systemId))
+                if (string.IsNullOrWhiteSpace(boardId))
                     continue;
 
                 var maintainers = new List<MaintainerRow>();
@@ -157,8 +157,8 @@ namespace Handlers.MaintainerHandling
                     }
                 }
 
-                rows.Add(new ReviewSystemRow(
-                    systemId,
+                rows.Add(new ReviewBoardRow(
+                    boardId,
                     ReviewApiParser.String(element, "manufacturer") ?? string.Empty,
                     ReviewApiParser.String(element, "hardware") ?? string.Empty,
                     ReviewApiParser.String(element, "board") ?? string.Empty,
@@ -167,7 +167,7 @@ namespace Handlers.MaintainerHandling
                     maintainers));
             }
 
-            return new ReviewSystemsResponse(rows);
+            return new ReviewBoardsResponse(rows);
         }
 
         // ###########################################################################################
@@ -182,26 +182,26 @@ namespace Handlers.MaintainerHandling
             JsonElement root = ReviewApiParser.Root(json);
 
             if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("systems", out JsonElement systems) ||
-                systems.ValueKind != JsonValueKind.Array)
+                !root.TryGetProperty("boards", out JsonElement boards) ||
+                boards.ValueKind != JsonValueKind.Array)
             {
                 return null;
             }
 
-            var rows = new List<ProductionSystemRow>();
+            var rows = new List<ProductionBoardRow>();
 
-            foreach (JsonElement element in systems.EnumerateArray())
+            foreach (JsonElement element in boards.EnumerateArray())
             {
                 if (element.ValueKind != JsonValueKind.Object)
                     continue;
 
-                string? systemId = ReviewApiParser.String(element, "systemId");
+                string? boardId = ReviewApiParser.String(element, "boardId");
 
-                if (string.IsNullOrWhiteSpace(systemId))
+                if (string.IsNullOrWhiteSpace(boardId))
                     continue;
 
-                rows.Add(new ProductionSystemRow(
-                    systemId,
+                rows.Add(new ProductionBoardRow(
+                    boardId,
                     ReviewApiParser.String(element, "manufacturer") ?? string.Empty,
                     ReviewApiParser.String(element, "hardware") ?? string.Empty,
                     ReviewApiParser.String(element, "board") ?? string.Empty,
@@ -777,7 +777,7 @@ namespace Handlers.MaintainerHandling
             }
 
             return new ReviewChangeSummaryView(
-                ReviewApiParser.Bool(element, "isNewSystem") ?? false,
+                ReviewApiParser.Bool(element, "isNewBoard") ?? false,
                 sections);
         }
 
@@ -965,7 +965,7 @@ namespace Handlers.MaintainerHandling
 
             return new ReviewQueueRow(
                 id.Value,
-                ReviewApiParser.String(element, "systemId") ?? string.Empty,
+                ReviewApiParser.String(element, "boardId") ?? string.Empty,
                 ReviewApiParser.String(element, "state") ?? string.Empty,
                 ReviewApiParser.String(element, "summary") ?? string.Empty,
                 ReviewApiParser.String(element, "contactEmail") ?? string.Empty,
@@ -974,7 +974,7 @@ namespace Handlers.MaintainerHandling
 
                 // The queue list's two badges (2026-09-26). Absent from an older server - null, so
                 // no badge is shown rather than a wrong one.
-                ReviewApiParser.Bool(element, "isNewSystem"),
+                ReviewApiParser.Bool(element, "isNewBoard"),
                 ReviewApiParser.Bool(element, "awaitsYou"),
 
                 // The contributor discarded their own draft after sending it (2026-09-28).

@@ -4,7 +4,7 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // The administrator's side of Phase 6 roles (2026-09-25): who reviews which system.
+    // The administrator's side of Phase 6 roles (2026-09-25): who reviews which board.
     //
     // Every rule is here, pure, taking its stores as arguments - the same shape SubmissionFlows
     // and AccountFlows have, for the same reason: AdminEndpoints is a rim, and a rule that lives in
@@ -13,7 +13,7 @@ namespace CRT.Server.Handlers.Submissions
     // *** ADMINISTRATOR ONLY, AND THERE IS NO WAY TO BECOME ONE HERE. *** Granting administrator
     // stays a by-hand SQL step (INSTALLING.md), deliberately: an endpoint that grants it is an
     // endpoint that can be abused to grant it. These flows hand out MAINTAINER rights, which are
-    // bounded to a system.
+    // bounded to a board.
     //
     // *** REMOVAL TAKES EFFECT ON THE NEXT REQUEST. *** Nothing here has to do anything for that:
     // ReviewEndpoints.AuthoriseAsync reads the pool on every call. A test proves it by removing a
@@ -24,12 +24,12 @@ namespace CRT.Server.Handlers.Submissions
         public const int AccountListLimit = 500;
 
         // ###########################################################################################
-        // Every system the administrator can assign maintainers to: the `systems` rows, unioned with
+        // Every board the administrator can assign maintainers to: the `boards` rows, unioned with
         // the boards in the data tree. The tree is what makes a shipped board that nobody has ever
         // submitted to assignable at all.
         // ###########################################################################################
-        public static async Task<IReadOnlyList<SystemWithMaintainers>> ListSystemsAsync(
-            IReadOnlyList<PublishedSystemLister.KnownSystem> inTree,
+        public static async Task<IReadOnlyList<BoardWithMaintainers>> ListBoardsAsync(
+            IReadOnlyList<PublishedBoardLister.KnownBoard> inTree,
             ISubmissionStore submissions,
             IAccountStore accounts,
             CancellationToken cancellationToken = default)
@@ -38,38 +38,38 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(submissions);
             ArgumentNullException.ThrowIfNull(accounts);
 
-            IReadOnlyList<SystemRecord> rows = await submissions.ListSystemsAsync(cancellationToken);
+            IReadOnlyList<BoardRecord> rows = await submissions.ListBoardsAsync(cancellationToken);
             IReadOnlyList<MaintainerRecord> maintainers = await accounts.ListMaintainersAsync(cancellationToken);
 
-            ILookup<string, MaintainerRecord> bySystem =
-                maintainers.ToLookup(maintainer => maintainer.SystemId, StringComparer.Ordinal);
+            ILookup<string, MaintainerRecord> byBoard =
+                maintainers.ToLookup(maintainer => maintainer.BoardId, StringComparer.Ordinal);
 
-            var merged = new Dictionary<string, SystemWithMaintainers>(StringComparer.Ordinal);
+            var merged = new Dictionary<string, BoardWithMaintainers>(StringComparer.Ordinal);
 
             // The database row is the truth where it exists: it carries the revision and whether
             // the board is accepting.
-            foreach (SystemRecord row in rows)
+            foreach (BoardRecord row in rows)
             {
-                merged[row.SystemId] = new SystemWithMaintainers(
-                    row.SystemId, row.Manufacturer, row.Hardware, row.Board,
-                    row.CurrentRevision, row.IsAccepting, bySystem[row.SystemId].ToList());
+                merged[row.BoardId] = new BoardWithMaintainers(
+                    row.BoardId, row.Manufacturer, row.Hardware, row.Board,
+                    row.CurrentRevision, row.IsAccepting, byBoard[row.BoardId].ToList());
             }
 
-            foreach (PublishedSystemLister.KnownSystem system in inTree)
+            foreach (PublishedBoardLister.KnownBoard board in inTree)
             {
-                if (merged.ContainsKey(system.SystemId))
+                if (merged.ContainsKey(board.BoardId))
                     continue;
 
-                merged[system.SystemId] = new SystemWithMaintainers(
-                    system.SystemId, system.Manufacturer, system.Hardware, system.Board,
-                    CurrentRevision: null, IsAccepting: true, bySystem[system.SystemId].ToList());
+                merged[board.BoardId] = new BoardWithMaintainers(
+                    board.BoardId, board.Manufacturer, board.Hardware, board.Board,
+                    CurrentRevision: null, IsAccepting: true, byBoard[board.BoardId].ToList());
             }
 
-            return merged.Values.OrderBy(system => system.SystemId, StringComparer.Ordinal).ToList();
+            return merged.Values.OrderBy(board => board.BoardId, StringComparer.Ordinal).ToList();
         }
 
         // ###########################################################################################
-        // Puts an account into a system's pool.
+        // Puts an account into a board's pool.
         //
         // The account must be VERIFIED and not LOCKED - ReviewAuthority refuses either whatever the
         // pool says, so granting to one would produce a maintainer who cannot review and a puzzled
@@ -78,22 +78,22 @@ namespace CRT.Server.Handlers.Submissions
         // *** AN ADMINISTRATOR MAY BE PUT IN A POOL (owner request, 2026-10-05: "I would like to be
         // able to set myself (admin) as a maintainer, so others can see that this is me maintaining
         // these systems"). *** It was refused until then as "a second source of the same truth". The
-        // row grants nothing more - an administrator reviews and publishes every system anyway, and
+        // row grants nothing more - an administrator reviews and publishes every board anyway, and
         // approves as the administrator (ReviewAuthority.RoleIn) - so what it adds is being NAMED as
-        // the system's maintainer, and that system's "submission waiting" mail (SubmissionRouting,
+        // the board's maintainer, and that board's "submission waiting" mail (SubmissionRouting,
         // one mail however many roles). It never counts as the maintainer half of a two-person
-        // approval (ReviewAuthority.CanGiveMaintainerApproval), or a shared-file change on a system
+        // approval (ReviewAuthority.CanGiveMaintainerApproval), or a shared-file change on a board
         // they alone maintain would wait for a second approval nobody can give.
         //
-        // The system must be one that EXISTS - a `systems` row or a board in the tree. A pool row
-        // for a system that is neither would grant authority over something that could only come
+        // The board must be one that EXISTS - a `boards` row or a board in the tree. A pool row
+        // for a board that is neither would grant authority over something that could only come
         // into being through a submission nobody has reviewed.
         // ###########################################################################################
         public static async Task<MaintainerAssignmentOutcome> AddAsync(
             ReviewAccess? actor,
-            string? systemId,
+            string? boardId,
             long accountId,
-            IReadOnlyList<PublishedSystemLister.KnownSystem> inTree,
+            IReadOnlyList<PublishedBoardLister.KnownBoard> inTree,
             IAccountStore accounts,
             ISubmissionStore submissions,
             DateTimeOffset now,
@@ -107,10 +107,10 @@ namespace CRT.Server.Handlers.Submissions
                 return MaintainerAssignmentOutcome.Forbidden();
 
             (string Manufacturer, string Hardware, string Board)? identity =
-                await MaintainerAssignmentFlows.FindSystemAsync(systemId, inTree, submissions, cancellationToken);
+                await MaintainerAssignmentFlows.FindBoardAsync(boardId, inTree, submissions, cancellationToken);
 
             if (identity is null)
-                return MaintainerAssignmentOutcome.NotFound("No such system.");
+                return MaintainerAssignmentOutcome.NotFound("No such board.");
 
             AccountRecord? target = await accounts.FindByIdAsync(accountId, cancellationToken);
 
@@ -121,18 +121,18 @@ namespace CRT.Server.Handlers.Submissions
 
             // The pool table's foreign key needs the row; a shipped board nobody has submitted to
             // has none yet. 'shipped' because it was in the tree before any submission.
-            await submissions.EnsureSystemAsync(
-                systemId!, identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board,
-                SystemDescriptorRules.SystemOrigin.Shipped, now, cancellationToken);
+            await submissions.EnsureBoardAsync(
+                boardId!, identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board,
+                BoardDescriptorRules.BoardOrigin.Shipped, now, cancellationToken);
 
-            await accounts.AddMaintainerAsync(systemId!, accountId, actor!.Account.Id, now, cancellationToken);
+            await accounts.AddMaintainerAsync(boardId!, accountId, actor!.Account.Id, now, cancellationToken);
 
             await accounts.WriteAuditAsync(
                 new AuditEntry(
                     actor.Account.Id,
                     actor.Account.Email,
                     MaintainerAssignmentFlows.GrantedAction,
-                    systemId,
+                    boardId,
                     $"account {accountId} ({target!.Email})",
                     now),
                 cancellationToken);
@@ -141,12 +141,12 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Takes an account out of a system's pool. Removing somebody who is not in it is not an
+        // Takes an account out of a board's pool. Removing somebody who is not in it is not an
         // error - the state asked for is the state that exists.
         // ###########################################################################################
         public static async Task<MaintainerAssignmentOutcome> RemoveAsync(
             ReviewAccess? actor,
-            string? systemId,
+            string? boardId,
             long accountId,
             IAccountStore accounts,
             DateTimeOffset now,
@@ -157,20 +157,20 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanAdminister(actor))
                 return MaintainerAssignmentOutcome.Forbidden();
 
-            if (string.IsNullOrWhiteSpace(systemId))
-                return MaintainerAssignmentOutcome.NotFound("No such system.");
+            if (string.IsNullOrWhiteSpace(boardId))
+                return MaintainerAssignmentOutcome.NotFound("No such board.");
 
-            // The address, like a grant's, so the system's history can say who was removed.
+            // The address, like a grant's, so the board's history can say who was removed.
             AccountRecord? removed = await accounts.FindByIdAsync(accountId, cancellationToken);
 
-            await accounts.RemoveMaintainerAsync(systemId, accountId, cancellationToken);
+            await accounts.RemoveMaintainerAsync(boardId, accountId, cancellationToken);
 
             await accounts.WriteAuditAsync(
                 new AuditEntry(
                     actor!.Account.Id,
                     actor.Account.Email,
                     MaintainerAssignmentFlows.RevokedAction,
-                    systemId,
+                    boardId,
                     removed is null ? $"account {accountId}" : $"account {accountId} ({removed.Email})",
                     now),
                 cancellationToken);
@@ -181,24 +181,24 @@ namespace CRT.Server.Handlers.Submissions
         public const string GrantedAction = "maintainer.granted";
         public const string RevokedAction = "maintainer.revoked";
 
-        // A system's three name parts, from its row or from the tree; null when it is neither.
-        internal static async Task<(string Manufacturer, string Hardware, string Board)?> FindSystemAsync(
-            string? systemId,
-            IReadOnlyList<PublishedSystemLister.KnownSystem> inTree,
+        // A board's three name parts, from its row or from the tree; null when it is neither.
+        internal static async Task<(string Manufacturer, string Hardware, string Board)?> FindBoardAsync(
+            string? boardId,
+            IReadOnlyList<PublishedBoardLister.KnownBoard> inTree,
             ISubmissionStore submissions,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return null;
 
-            SystemRecord? row = (await submissions.ListSystemsAsync(cancellationToken))
-                .FirstOrDefault(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
+            BoardRecord? row = (await submissions.ListBoardsAsync(cancellationToken))
+                .FirstOrDefault(board => string.Equals(board.BoardId, boardId, StringComparison.Ordinal));
 
             if (row is not null)
                 return (row.Manufacturer, row.Hardware, row.Board);
 
-            PublishedSystemLister.KnownSystem? known = inTree
-                .FirstOrDefault(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
+            PublishedBoardLister.KnownBoard? known = inTree
+                .FirstOrDefault(board => string.Equals(board.BoardId, boardId, StringComparison.Ordinal));
 
             return known is null ? null : (known.Manufacturer, known.Hardware, known.Board);
         }
@@ -226,8 +226,8 @@ namespace CRT.Server.Handlers.Submissions
         }
     }
 
-    public sealed record SystemWithMaintainers(
-        string SystemId,
+    public sealed record BoardWithMaintainers(
+        string BoardId,
         string Manufacturer,
         string Hardware,
         string Board,
@@ -244,7 +244,7 @@ namespace CRT.Server.Handlers.Submissions
         public static MaintainerAssignmentOutcome Done() => new(true, string.Empty);
 
         public static MaintainerAssignmentOutcome Forbidden() =>
-            new(false, "Only an administrator can change who reviews a system.", IsForbidden: true);
+            new(false, "Only an administrator can change who reviews a board.", IsForbidden: true);
 
         public static MaintainerAssignmentOutcome NotFound(string error) => new(false, error, IsNotFound: true);
 

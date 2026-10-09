@@ -14,23 +14,23 @@ namespace Handlers.DataHandling
     // *** RECORDED AT THE PUBLISH, BECAUSE THAT IS THE ONLY MOMENT IT CAN BE KNOWN. *** No history of
     // the boards is kept - a publish overwrites BETA in place - so "the board before" exists only
     // while the publish runs. ApprovePublishFlow compares the two there (ReviewSummary, the review's
-    // own row comparison) and stores these facts with the submission; the Systems screen's History
+    // own row comparison) and stores these facts with the submission; the Boards screen's History
     // view reads them back. A submission published before this existed has none, and nothing can
     // make one for it now.
     //
-    // FACTS, NOT WORDS - the split every answer on the Systems screen keeps: the server says which
-    // rows and fields moved, and the Maintainer tab puts that into sentences (SystemHistoryDisplay).
+    // FACTS, NOT WORDS - the split every answer on the Boards screen keeps: the server says which
+    // rows and fields moved, and the Maintainer tab puts that into sentences (BoardHistoryDisplay).
     //
     // *** BOUNDED. *** Each list keeps at most ListedPerKind entries, and the counts beside it say how
-    // many there really were - a new system adds hundreds of rows, and the history is read every
-    // time a system is opened. "Not necessarily the full details" is the owner's own brief.
+    // many there really were - a new board adds hundreds of rows, and the history is read every
+    // time a board is opened. "Not necessarily the full details" is the owner's own brief.
     //
     // Rows are named the way the Drafts tab and the review name them (BoardDraftNaturalKeys.Describe,
     // "U8 / PAL"), sections by their sheet names, and fields by the workbook's column headers, so the
     // history, the table and the workbook all speak of the same things in the same words.
     // ###########################################################################################
     public sealed record SubmissionChanges(
-        bool IsNewSystem,
+        bool IsNewBoard,
         IReadOnlyList<SectionChanges> Sections,
         FileChanges Files);
 
@@ -114,7 +114,7 @@ namespace Handlers.DataHandling
                 .ToList();
 
             return new SubmissionChanges(
-                rows.IsNewSystem,
+                rows.IsNewBoard,
                 sections,
                 SubmissionChangeFacts.Files(filesAdded, filesReplaced, filesRemoved));
         }
@@ -170,7 +170,7 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(changes);
 
-            return changes.IsNewSystem ||
+            return changes.IsNewBoard ||
                    (changes.Sections ?? []).Count > 0 ||
                    (changes.Files ?? FileChanges.None).HasChanges;
         }

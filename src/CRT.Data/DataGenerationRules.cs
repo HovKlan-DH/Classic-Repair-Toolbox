@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     //
     // A "generation" is a version stamped into a workbook's FILE NAME - the unversioned original,
     // then v2.0.0, then whatever comes next. It is NOT a published revision: a revision is one
-    // merge's worth of change to a system (systems.current_revision), while a generation is a
+    // merge's worth of change to a board (boards.current_revision), while a generation is a
     // compatibility target serving a range of application builds. Keep the two apart; the strategy
     // document records that conflating them sent an earlier reading of open question 5 astray.
     //
@@ -77,17 +77,17 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The generation THE TREE is on, read from the MASTER workbooks at its root.
         //
-        // *** THIS EXISTS BECAUSE A NEW SYSTEM HAS NO FILES TO READ A GENERATION FROM. ***
-        // ResolveNewestGeneration answers from the files already in a system's folder, which is
+        // *** THIS EXISTS BECAUSE A NEW BOARD HAS NO FILES TO READ A GENERATION FROM. ***
+        // ResolveNewestGeneration answers from the files already in a board's folder, which is
         // right for an existing board and useless for one being created: an empty folder yields
-        // null, and null means UNVERSIONED - so a brand-new system would publish as
+        // null, and null means UNVERSIONED - so a brand-new board would publish as
         // "Data C64 250407.xlsx", landing in the frozen generation that serves every pre-2.0.0
         // build. That is precisely the file the project owner said must never be written.
         //
         // The master workbooks are the right source because they ARE the generations: the tree
         // root carries "Classic-Repair-Toolbox.xlsx" for the original and
         // "Classic-Repair-Toolbox.v2.0.0.xlsx" for the 2.0.0 generation, and each references its
-        // own board files. A new system must join the newest of those.
+        // own board files. A new board must join the newest of those.
         //
         // Returns null only when the root holds no versioned master at all, which is a tree that
         // has no 2.0.0 generation yet - and the caller must refuse rather than fall back to

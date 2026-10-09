@@ -9,7 +9,7 @@ namespace CRT.Server.Handlers.Submissions
     // APPROVING a submission: the whole chain, from a maintainer's decision to a published board
     // (NewContributeStrategy.md Phase 5, tasks 5 and 6).
     //
-    // *** THIS IS THE ONLY IRREVERSIBLE OPERATION IN THE SYSTEM. *** Task 7 was struck by the
+    // *** THIS IS THE ONLY IRREVERSIBLE OPERATION IN THE BOARD. *** Task 7 was struck by the
     // project owner, so no publish history is retained: this overwrites the published board in place
     // and the only way back is to publish a correction. Every decision below is made on that
     // basis.
@@ -18,9 +18,9 @@ namespace CRT.Server.Handlers.Submissions
     // dangerous work only ever runs after everything that could refuse has:
     //
     //   1. AUTHORITY   - may this account publish anything at all? (an administrator, or a
-    //                    maintainer of at least one system)
+    //                    maintainer of at least one board)
     //   2. EXISTENCE   - is there such a submission?
-    //   3. AUTHORITY   - over THIS submission's system (ReviewDecisionRules, through
+    //   3. AUTHORITY   - over THIS submission's board (ReviewDecisionRules, through
     //      AND STATE     ReviewAuthority), and is it still undecided? (the double-publish
     //                    interlock)
     //   4. PAYLOAD     - can its rows actually be read?
@@ -35,7 +35,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // *** A MISSING PAYLOAD IS REFUSED, and that check is load-bearing rather than defensive. ***
     // Without the payload there are no rows, and a board built from no rows is EMPTY. Publishing
-    // it would delete the system's entire contents - every component, every highlight - over a
+    // it would delete the board's entire contents - every component, every highlight - over a
     // board that was working, irreversibly. It is the single most damaging thing this class could
     // be made to do, and it would look like an ordinary successful publish.
     //
@@ -58,7 +58,7 @@ namespace CRT.Server.Handlers.Submissions
         // exercises the publish alone need not build one.
         private readonly bool thisOneSubmissionInBeta;
 
-        // Asked when step 3b finds the system "waiting in BETA": production may already hold it,
+        // Asked when step 3b finds the board "waiting in BETA": production may already hold it,
         // copied there by hand - see ProductionPromotionFlow.RecordIfProductionAlreadyHoldsAsync.
         // Optional so a test of the publish alone need not build one.
         private readonly ProductionPromotionFlow? thisProduction;
@@ -76,9 +76,9 @@ namespace CRT.Server.Handlers.Submissions
         {
             this.thisProduction = production;
             this.thisOptions = options;
-            // One submission in BETA per system (step 3b) - only where there IS a production to
+            // One submission in BETA per board (step 3b) - only where there IS a production to
             // publish to. Without one nothing ever leaves BETA, and the rule would close every
-            // system to further approvals after its first.
+            // board to further approvals after its first.
             this.thisOneSubmissionInBeta = options?.IsProductionPublishingConfigured == true;
             this.thisExecutor = executor;
             this.thisPublishedBoards = publishedBoards;
@@ -116,7 +116,7 @@ namespace CRT.Server.Handlers.Submissions
             // ---- 1. Authority, the cheap half ---------------------------------------------------
             //
             // An account that may publish NOTHING is refused before anything is loaded. Which
-            // system it may publish is asked at step 3, once the submission says which it is.
+            // board it may publish is asked at step 3, once the submission says which it is.
             if (!ReviewAuthority.CanReviewAnything(access))
             {
                 return ApproveOutcome.Refused(
@@ -136,7 +136,7 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             // Everything from here to the database row happens under the one publish lock - see
-            // PublishLock. A production promotion reading this system's BETA folder waits.
+            // PublishLock. A production promotion reading this board's BETA folder waits.
             using IDisposable gate = await this.thisLock.EnterAsync(cancellationToken).ConfigureAwait(false);
 
             // ---- 2. Existence ------------------------------------------------------------------
@@ -147,9 +147,9 @@ namespace CRT.Server.Handlers.Submissions
             if (record is null)
                 return ApproveOutcome.NotFound();
 
-            // ---- 3. Authority over THIS system, then state -------------------------------------
+            // ---- 3. Authority over THIS board, then state -------------------------------------
             //
-            // The system half first, and as a FORBIDDEN: a maintainer of another board is refused
+            // The board half first, and as a FORBIDDEN: a maintainer of another board is refused
             // whatever the state.
             if (!ReviewAuthority.CanPublish(access, record))
                 return ApproveOutcome.Refused(ReviewAuthority.DescribeRefusal(access, record), isForbidden: true);
@@ -160,28 +160,28 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewDecisionRules.CanApprove(access, record, out string why))
                 return ApproveOutcome.Refused(why, isConflict: true);
 
-            // ---- 3b. One submission in BETA per system (owner decision, 2026-09-27) --------------
+            // ---- 3b. One submission in BETA per board (owner decision, 2026-09-27) --------------
             //
-            // "It should be possible only to submit ONE contributor submission to Beta per system":
+            // "It should be possible only to submit ONE contributor submission to Beta per board":
             // a push-back returns everything merged since the last promotion, and a publish replaces
             // the board's rows wholesale, so work from two contributors in BETA at once could only be
-            // pushed back together. So while the system waits in BETA for production, no other
+            // pushed back together. So while the board waits in BETA for production, no other
             // submission of it is approved - not even the first of two approvals, which would only
             // promise a publish this rule will refuse. Reviewing, changing, requesting changes and
             // rejecting all go on as normal. See OneSubmissionInBeta.
             if (this.thisOneSubmissionInBeta)
             {
-                SystemRecord? system = await this.thisStore.FindSystemAsync(record.SystemId, cancellationToken).ConfigureAwait(false);
+                BoardRecord? boardRecord = await this.thisStore.FindBoardAsync(record.BoardId, cancellationToken).ConfigureAwait(false);
 
                 // Unless production already holds that BETA state - a board copied there by hand
-                // was never promoted, and would otherwise block the system for ever (code review,
+                // was never promoted, and would otherwise block the board for ever (code review,
                 // 2026-09-29). Then it is recorded as in production and the approval goes on.
-                if (ProductionPromotionRules.IsAwaitingProduction(system) &&
+                if (ProductionPromotionRules.IsAwaitingProduction(boardRecord) &&
                     !(this.thisProduction is not null && this.thisOptions is not null &&
                       await this.thisProduction.RecordIfProductionAlreadyHoldsAsync(
-                          access, system!, this.thisOptions, nowUtc, useCache: false, cancellationToken).ConfigureAwait(false)))
+                          access, boardRecord!, this.thisOptions, nowUtc, useCache: false, cancellationToken).ConfigureAwait(false)))
                 {
-                    return ApproveOutcome.Refused(OneSubmissionInBeta.BusyMessage(record.SystemId), isConflict: true);
+                    return ApproveOutcome.Refused(OneSubmissionInBeta.BusyMessage(record.BoardId), isConflict: true);
                 }
             }
 
@@ -228,7 +228,7 @@ namespace CRT.Server.Handlers.Submissions
                 return ApproveOutcome.Refused($"This submission cannot be published: {reasons}");
             }
 
-            // ---- 5b. A NEW system must have its place in the drop-down lists (owner request,
+            // ---- 5b. A NEW board must have its place in the drop-down lists (owner request,
             //          2026-09-27): "This must be done before it can be pushed to BETA." -----------
             //
             // Before any approval is recorded, so nobody approves what cannot be listed. See
@@ -240,7 +240,7 @@ namespace CRT.Server.Handlers.Submissions
             if (!listing.IsReady)
                 return ApproveOutcome.Refused(listing.Problem, isConflict: true);
 
-            // A board with no "# Hardware:" / "# Board:" caption of its own - a new system, or one
+            // A board with no "# Hardware:" / "# Board:" caption of its own - a new board, or one
             // published before the caption was kept - takes the names it is listed under.
             board = PublishMerge.CaptionedAs(board, listing.ListedAs?.HardwareName, listing.ListedAs?.BoardName);
 
@@ -360,7 +360,7 @@ namespace CRT.Server.Handlers.Submissions
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            // What it changed, for the system's History view - with the files step 8 removed. A
+            // What it changed, for the board's History view - with the files step 8 removed. A
             // record that cannot be written costs the history one summary, never the publish.
             if (changes is not null)
             {
@@ -377,8 +377,8 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             this.thisLogger.LogInformation(
-                "Submission {SubmissionId} was published to {SystemId} at revision {Revision} by {Account}.",
-                submissionId, manifest.SystemId, outcome.Descriptor!.Revision, access.Account.Email);
+                "Submission {SubmissionId} was published to {BoardId} at revision {Revision} by {Account}.",
+                submissionId, manifest.BoardId, outcome.Descriptor!.Revision, access.Account.Email);
 
             return ApproveOutcome.Published(outcome.Descriptor) with { RemovedFiles = removal.Removed };
         }
@@ -435,7 +435,7 @@ namespace CRT.Server.Handlers.Submissions
         // data file, so a board it does not list is published to nobody.
         //
         //   - listed already: nothing to add - every existing board, the ordinary case;
-        //   - not listed: a maintainer must have PLACED it (the Systems screen) - refused until then,
+        //   - not listed: a maintainer must have PLACED it (the Boards screen) - refused until then,
         //     and the publish adds its row where they placed it;
         //   - no readable file: a board that is NEW to the tree is refused, since it could never be
         //     listed; a board already in the tree is let through exactly as before this existed -
@@ -456,35 +456,35 @@ namespace CRT.Server.Handlers.Submissions
             {
                 return isNewToTree
                     ? ListingForPublish.Refused(master is null
-                        ? SystemListingRules.NoMasterMessage
-                        : "BETA's main Excel data file could not be read, so the new system could not be added to the drop-down lists.")
+                        ? BoardListingRules.NoMasterMessage
+                        : "BETA's main Excel data file could not be read, so the new board could not be added to the drop-down lists.")
                     : ListingForPublish.NothingToAdd;
             }
 
-            int listed = MasterListing.IndexOfSystem(rows, manifest.SystemId);
+            int listed = MasterListing.IndexOfBoard(rows, manifest.BoardId);
 
             if (listed >= 0)
                 return ListingForPublish.Listed(rows[listed]);
 
-            SystemPlacement? placement = await store.GetPlacementAsync(manifest.SystemId, cancellationToken).ConfigureAwait(false);
+            BoardPlacement? placement = await store.GetPlacementAsync(manifest.BoardId, cancellationToken).ConfigureAwait(false);
 
             if (placement is null)
-                return ListingForPublish.Refused(SystemListingRules.NotPlacedMessage);
+                return ListingForPublish.Refused(BoardListingRules.NotPlacedMessage);
 
-            // Another system listed under the same names since this one was placed.
-            if (MasterListing.NamesTakenBy(rows, manifest.SystemId, placement.HardwareName, placement.BoardName) is MasterListingRow taken)
+            // Another board listed under the same names since this one was placed.
+            if (MasterListing.NamesTakenBy(rows, manifest.BoardId, placement.HardwareName, placement.BoardName) is MasterListingRow taken)
                 return ListingForPublish.Refused(MasterListing.NamesTakenMessage(taken));
 
-            if (!SystemListingRules.AfterIsListed(rows, placement.AfterExcelDataFile))
+            if (!BoardListingRules.AfterIsListed(rows, placement.AfterExcelDataFile))
             {
                 return ListingForPublish.Refused(
                     $"It was placed after [{placement.AfterExcelDataFile}], which is no longer in the drop-down lists. " +
-                    "Place it again in the Systems screen.");
+                    "Place it again in the Boards screen.");
             }
 
             return ListingForPublish.Add(new MasterRowInsert(
                 master,
-                SystemListingRules.RowFor(placement, dataTreeRoot, plan.WorkbookPath),
+                BoardListingRules.RowFor(placement, dataTreeRoot, plan.WorkbookPath),
                 placement.AfterExcelDataFile));
         }
 
@@ -521,11 +521,11 @@ namespace CRT.Server.Handlers.Submissions
                 .GetRelativePath(Path.GetFullPath(dataTreeRoot), plan.Plan!.WorkbookPath)
                 .Replace(Path.DirectorySeparatorChar, '/');
 
-            // Only inside the system's own folder (owner decision, 2026-09-27) - a shared file or
+            // Only inside the board's own folder (owner decision, 2026-09-27) - a shared file or
             // another board's the board stops citing stays, for Account > Unused files.
             IReadOnlyList<string> after = SubmissionManifestBuilder.CollectReferencedFiles(board);
             IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
-                SystemDescriptorRules.SystemIdFromExcelDataFile(workbook),
+                BoardDescriptorRules.BoardIdFromExcelDataFile(workbook),
                 DataTreeUsage.NoLongerCited(SubmissionManifestBuilder.CollectReferencedFiles(published), after));
 
             if (candidates.Count == 0)
@@ -596,7 +596,7 @@ namespace CRT.Server.Handlers.Submissions
             // A maintainer who can actually give the maintainer half - see
             // ReviewAuthority.CanGiveMaintainerApproval for the rows that cannot.
             bool hasMaintainers = touchesSharedFiles &&
-                (await accounts.GetMaintainersOfSystemAsync(record.SystemId, cancellationToken).ConfigureAwait(false))
+                (await accounts.GetMaintainersOfBoardAsync(record.BoardId, cancellationToken).ConfigureAwait(false))
                     .Any(ReviewAuthority.CanGiveMaintainerApproval);
 
             IReadOnlyList<GivenApproval> given = await store
@@ -606,7 +606,7 @@ namespace CRT.Server.Handlers.Submissions
             return ApprovalRules.Status(
                 ApprovalRules.Required(touchesSharedFiles, hasMaintainers),
                 given,
-                ReviewAuthority.RoleIn(access, record.SystemId),
+                ReviewAuthority.RoleIn(access, record.BoardId),
                 access?.Account.Id);
         }
 
@@ -695,10 +695,10 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // The publish plan for this submission.
         //
-        // *** ORIGIN IS SET ONCE AND NEVER RECOMPUTED. *** A system that arrived through this
+        // *** ORIGIN IS SET ONCE AND NEVER RECOMPUTED. *** A board that arrived through this
         // pipeline stays "contributed" however many times it is later revised, including by the
-        // project owner - SystemDescriptorRules says so outright. So an EXISTING descriptor's origin
-        // wins, and only a system with none at all is classified here.
+        // project owner - BoardDescriptorRules says so outright. So an EXISTING descriptor's origin
+        // wins, and only a board with none at all is classified here.
         //
         // *** THE REVISION IS THE PUBLISH DATE, STAMPED HERE (owner confirmation, 2026-09-26: "when
         // the maintainer publish it to BETA, the revision date gets updated from server. Same
@@ -707,17 +707,17 @@ namespace CRT.Server.Handlers.Submissions
         //
         // PublishExecutor has stamped the WORKBOOK with this since 2026-09-23, but the plan was
         // still built from the SUBMITTED date, so the two disagreed: the board read
-        // "2026-September-21" while `systems.current_revision` kept whatever the contributor's
+        // "2026-September-21" while `boards.current_revision` kept whatever the contributor's
         // draft happened to carry. That row is what the next draft re-bases against
         // (DraftBaseRevision), so the drift check was comparing against a revision no board ever
         // held. One value, computed once, used by both - which is why it is passed IN to the
         // executor rather than each working it out.
         //
-        // It also unblocks a NEW SYSTEM. Its seeded workbook carries no revision date at all
-        // (DraftSeeder.CreateNewSystem - there is nothing to inherit one from, and CRT never asks),
+        // It also unblocks a NEW BOARD. Its seeded workbook carries no revision date at all
+        // (DraftSeeder.CreateNewBoard - there is nothing to inherit one from, and CRT never asks),
         // PublishMerge's fallback to the published board finds none either, and PublishPlan then
         // refused `publish.no-revision` at the one irreversible step - reported by the project
-        // owner, 2026-09-26. With the server stamping it, a new system has a revision by
+        // owner, 2026-09-26. With the server stamping it, a new board has a revision by
         // construction and that refusal becomes unreachable through this path. It stays in
         // PublishPlan as a guard for any other caller.
         // ###########################################################################################
@@ -729,8 +729,8 @@ namespace CRT.Server.Handlers.Submissions
         {
             PublishedBoardLocation location = PublishedBoardLocator.Locate(dataTreeRoot, manifest);
 
-            string systemFolder = location.Exists
-                ? location.SystemFolder
+            string boardFolder = location.Exists
+                ? location.BoardFolder
                 : Path.Combine(
                     dataTreeRoot,
                     manifest.Manufacturer.Trim(),
@@ -739,8 +739,8 @@ namespace CRT.Server.Handlers.Submissions
 
             // What is already on disk, so the plan can spot a case-only collision against a file
             // it is not itself writing.
-            IEnumerable<string> existing = Directory.Exists(systemFolder)
-                ? Directory.EnumerateFiles(systemFolder)
+            IEnumerable<string> existing = Directory.Exists(boardFolder)
+                ? Directory.EnumerateFiles(boardFolder)
                     .Select(Path.GetFileName)
                     .Where(name => !string.IsNullOrEmpty(name))
                     .Select(name => name!)
@@ -748,7 +748,7 @@ namespace CRT.Server.Handlers.Submissions
 
             return PublishPlan.Build(
                 dataTreeRoot,
-                systemFolder,
+                boardFolder,
                 existing,
                 ApprovePublishFlow.BoardStem(manifest, location),
                 manifest,
@@ -757,9 +757,9 @@ namespace CRT.Server.Handlers.Submissions
 
                 // No maintainers and a fixed origin: the descriptor these would fill is no longer
                 // written anywhere (system.json was retired, 2026-09-25). The maintainers are the
-                // `maintainers` table and the origin is `systems.origin`, both in the database.
+                // `maintainers` table and the origin is `boards.origin`, both in the database.
                 maintainers: null,
-                SystemDescriptorRules.SystemOrigin.Contributed,
+                BoardDescriptorRules.BoardOrigin.Contributed,
 
                 // What is published NOW, read at the moment of publishing rather than trusted from
                 // when the submission arrived: another board's file it cites must still be
@@ -773,7 +773,7 @@ namespace CRT.Server.Handlers.Submissions
         // *** READ OFF THE EXISTING FILE WHERE THERE IS ONE, because it does NOT follow the folder
         // names mechanically. *** "Data C128DCR 250477" lives under C128/250477, so rebuilding it
         // from the identity would write a second, differently-named board beside the real one and
-        // the system would then carry two. Only a genuinely new system falls back to the
+        // the board would then carry two. Only a genuinely new board falls back to the
         // convention.
         // ###########################################################################################
         private static string BoardStem(SubmissionManifest manifest, PublishedBoardLocation location)
@@ -803,7 +803,7 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     // What ListingForPublishAsync decided: go ahead (adding Insert when it is not null), or not.
-    // ListedAs is the row the system is, or will be, listed under - the caption for a board that
+    // ListedAs is the row the board is, or will be, listed under - the caption for a board that
     // has none (PublishMerge.CaptionedAs); null when the file could not be read.
     public sealed record ListingForPublish(bool IsReady, string Problem, MasterRowInsert? Insert, MasterListingRow? ListedAs = null)
     {
@@ -826,12 +826,12 @@ namespace CRT.Server.Handlers.Submissions
     public sealed record ApproveOutcome(
         bool IsPublished,
         string Error,
-        SystemDescriptor? Descriptor,
+        BoardDescriptor? Descriptor,
         bool IsNotFound = false,
         bool IsForbidden = false,
         bool IsConflict = false)
     {
-        public static ApproveOutcome Published(SystemDescriptor descriptor) =>
+        public static ApproveOutcome Published(BoardDescriptor descriptor) =>
             new(true, string.Empty, descriptor);
 
         public static ApproveOutcome Refused(

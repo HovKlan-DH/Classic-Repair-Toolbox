@@ -10,7 +10,7 @@ using System.Linq;
 namespace CRT
 {
     // ###########################################################################################
-    // "What changed officially" - shows how one system's drafted rows line up against the official
+    // "What changed officially" - shows how one board's drafted rows line up against the official
     // data as it stands now, and lets the contributor dismiss the warning once they have looked
     // (NewContributeStrategy.md Phase 2, session 2d).
     //
@@ -125,7 +125,7 @@ namespace CRT
                     this.thisExcelDataFile,
                     this.thisOfficialRevision))
             {
-                this.ShowStatus("Could not read this system's draft.", isError: true);
+                this.ShowStatus("Could not read this board's draft.", isError: true);
                 return;
             }
 

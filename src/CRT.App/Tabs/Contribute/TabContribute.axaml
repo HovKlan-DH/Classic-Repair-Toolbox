@@ -51,11 +51,15 @@
 				<TextBlock TextWrapping="Wrap" >
 					To improve the data for this board, select a component and correct or add to what it says. Every edit is saved into your own local draft and shows up on the board straight away - nothing is shared with anyone until you submit it.
 				</TextBlock>
-				<TextBlock Text="The list below holds the components the board data already has - use the buttons to the right for one that is missing from it, or for a board that is not in the list at all."
+				<TextBlock Text="The list below holds the components the board data already has. Use the buttons to the right for a component that is missing from it, to edit the whole board in table form, or for a board that is not in the lists at all."
 						   TextWrapping="Wrap" />
+				<TextBlock x:Name="EditAsDraftProblemText"
+						   TextWrapping="Wrap"
+						   Foreground="{DynamicResource Text_Fail_Fg}"
+						   IsVisible="False" />
 			</StackPanel>
 
-			<!-- "Add a new system" is NOT gated on a loaded board, unlike "Add new component" -
+			<!-- "Add a new board" is NOT gated on a loaded board, unlike "Add new component" -
 			     creating a board is exactly what someone does when the board they want is not
 			     there. It lives here rather than only on the Drafts tab because that tab is hidden
 			     until a draft exists, so on a fresh install it would be unreachable. -->
@@ -69,12 +73,23 @@
 						ToolTip.Tip="Add a component that is missing from this board entirely"
 						Click="OnAddNewComponentClick" />
 
-				<Button x:Name="AddNewSystemButton"
-						Content="Add a new system"
+				<!-- "Edit board as draft" (owner request, 2026-10-09): the contributor's own copy of
+				     the board shown - a draft - opened in the Drafts tab's table. A board has one draft
+				     at most; with one already, it is offered instead (Main.EditBoardAsDraft.cs). -->
+				<Button x:Name="EditBoardAsDraftButton"
+						Content="Edit board as draft"
+						IsEnabled="False"
+						HorizontalAlignment="Stretch"
+						HorizontalContentAlignment="Center"
+						ToolTip.Tip="Make your own copy of this board - a draft - and change it in table form on the Drafts tab"
+						Click="OnEditBoardAsDraftClick" />
+
+				<Button x:Name="AddNewBoardButton"
+						Content="Add a new board"
 						HorizontalAlignment="Stretch"
 						HorizontalContentAlignment="Center"
 						ToolTip.Tip="Create a whole new hardware and board of your own, as a local draft"
-						Click="OnAddNewSystemClick" />
+						Click="OnAddNewBoardClick" />
 			</StackPanel>
 		</Grid>
 

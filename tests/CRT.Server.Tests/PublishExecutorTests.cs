@@ -21,7 +21,7 @@ namespace CRT.Server.Tests
     //   1. A published board actually loads afterwards. If it does not, nothing else matters.
     //   2. A failure leaves the tree recoverable, never half-rewritten and broken.
     //   3. The content hash accounts for the generated workbook, or no client re-downloads.
-    //   4. The revision reaches the systems row, or every later submission re-bases wrongly.
+    //   4. The revision reaches the boards row, or every later submission re-bases wrongly.
     //
     // *** SHARED COLLECTION: these classes must NOT run in parallel with each other. ***
     //
@@ -57,25 +57,25 @@ namespace CRT.Server.Tests
 
         private readonly string thisRoot;
         private readonly string thisBlobRoot;
-        private readonly string thisSystemFolder;
+        private readonly string thisBoardFolder;
 
         public PublishExecutorTests()
         {
             this.thisRoot = Path.Combine(Path.GetTempPath(), "crt-publish-tests", Guid.NewGuid().ToString("N"));
             this.thisBlobRoot = Path.Combine(this.thisRoot, "blobs");
-            this.thisSystemFolder = Path.Combine(this.thisRoot, "beta", "Commodore", "C64", "250407");
+            this.thisBoardFolder = Path.Combine(this.thisRoot, "beta", "Commodore", "C64", "250407");
 
             Directory.CreateDirectory(this.thisBlobRoot);
 
             // *** THE TREE'S MASTER WORKBOOKS, because they ARE the generations. *** A real tree
             // carries both - the unversioned original serving every pre-2.0.0 build, and the
-            // v2.0.0 one serving 2.0.0 and newer. A system with no files of its OWN takes its
+            // v2.0.0 one serving 2.0.0 and newer. A board with no files of its OWN takes its
             // generation from these; without them PublishPlan refuses rather than writing the
             // frozen unversioned file, which is the rule added 2026-09-22.
             Directory.CreateDirectory(Path.Combine(this.thisRoot, "beta"));
             File.WriteAllText(Path.Combine(this.thisRoot, "beta", "Classic-Repair-Toolbox.xlsx"), "master");
             File.WriteAllText(Path.Combine(this.thisRoot, "beta", "Classic-Repair-Toolbox.v2.0.0.xlsx"), "master v2");
-            Directory.CreateDirectory(this.thisSystemFolder);
+            Directory.CreateDirectory(this.thisBoardFolder);
         }
 
         public void Dispose()
@@ -145,7 +145,7 @@ namespace CRT.Server.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -171,7 +171,7 @@ namespace CRT.Server.Tests
         {
             PublishPlanResult result = PublishPlan.Build(
                 Path.Combine(this.thisRoot, "beta"),
-                this.thisSystemFolder,
+                this.thisBoardFolder,
                 existing ?? [],
                 "Data C64 250407",
                 manifest,
@@ -180,26 +180,26 @@ namespace CRT.Server.Tests
                 // *** THE PLAN'S REVISION IS NOW THE ONE THE WORKBOOK GETS (2026-09-26). *** It used
                 // to be a placeholder ("r2") because the executor stamped the workbook itself and
                 // nothing compared the two - which was the defect: the board and
-                // `systems.current_revision` disagreed. ApprovePublishFlow stamps it once now, so
+                // `boards.current_revision` disagreed. ApprovePublishFlow stamps it once now, so
                 // the fixture passes what that would produce for `Now`.
                 // ###########################################################################################
                 BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now),
                 PublishExecutorTests.Now,
                 ["Someone"],
-                SystemDescriptorRules.SystemOrigin.Contributed);
+                BoardDescriptorRules.BoardOrigin.Contributed);
 
             Assert.True(result.IsPlanned, "the fixture's own plan must be valid");
             return result.Plan!;
         }
 
-        private static FakeSubmissionStore StoreWithSystem()
+        private static FakeSubmissionStore StoreWithBoard()
         {
             var store = new FakeSubmissionStore();
 
             // The real store's UPDATE targets a row CreateAsync inserted, so a publish for an
-            // unregistered system updates nothing. The fake refuses it outright; these tests
-            // therefore have to register the system first, exactly as a real submission does.
-            store.Systems["Commodore/C64/250407"] = new NewSubmission(
+            // unregistered board updates nothing. The fake refuses it outright; these tests
+            // therefore have to register the board first, exactly as a real submission does.
+            store.Boards["Commodore/C64/250407"] = new NewSubmission(
                 "Commodore/C64/250407",
                 "Commodore",
                 "C64",
@@ -231,7 +231,7 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
 
@@ -264,16 +264,16 @@ namespace CRT.Server.Tests
             Assert.Equal("0.35", Assert.Single(published.Schematics).SchematicHighlightOpacity);
 
             // ###########################################################################################
-            // *** AND THE `systems` ROW SAYS THE SAME (owner confirmation, 2026-09-26: "the revision
+            // *** AND THE `boards` ROW SAYS THE SAME (owner confirmation, 2026-09-26: "the revision
             // date gets updated from server ... so server always wins"). ***
             //
             // The workbook is stamped with the publish date above, but the row was written from the
             // PLAN's revision, which is the SUBMITTED value - so the board said "2026-September-21"
-            // while `systems.current_revision` said "2026-August-21". That row is what a
+            // while `boards.current_revision` said "2026-August-21". That row is what a
             // contributor's next draft re-bases against (DraftBaseRevision), so the two disagreeing
             // is the drift check comparing against a revision no board ever carried.
             // ###########################################################################################
-            Assert.Equal(published.RevisionDate, store.PublishedSystems["Commodore/C64/250407"].Revision);
+            Assert.Equal(published.RevisionDate, store.PublishedBoards["Commodore/C64/250407"].Revision);
         }
 
         // -----------------------------------------------------------------------------------
@@ -290,7 +290,7 @@ namespace CRT.Server.Tests
             //
             // Read back through the SHIPPED reader rather than by parsing the JSON here, so a
             // writer that agreed with a test-only parser could not pass.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             BoardData board = PublishExecutorTests.Board();
@@ -324,7 +324,7 @@ namespace CRT.Server.Tests
         {
             // Calibrations are not part of BoardData at all - they live only in the sidecar - so
             // they are passed separately and would be the easiest thing to drop.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             await this.Executor(store).ExecuteAsync(
@@ -363,7 +363,7 @@ namespace CRT.Server.Tests
             // the sidecar folded into the descriptor the content hash would be identical to the
             // previous publish's. No client would re-download, and the moved highlight would never
             // reach anybody.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             BoardData first = PublishExecutorTests.Board();
             first.ComponentHighlights.Add(new ComponentHighlightEntry
@@ -374,7 +374,7 @@ namespace CRT.Server.Tests
             await this.Executor(store).ExecuteAsync(
                 this.Plan(PublishExecutorTests.Manifest()), first, [], submissionId: 1, PublishExecutorTests.Now);
 
-            string before = store.PublishedSystems["Commodore/C64/250407"].ContentHash;
+            string before = store.PublishedBoards["Commodore/C64/250407"].ContentHash;
 
             // The same board with the highlight MOVED, and nothing else changed at all.
             BoardData second = PublishExecutorTests.Board();
@@ -386,7 +386,7 @@ namespace CRT.Server.Tests
             await this.Executor(store).ExecuteAsync(
                 this.Plan(PublishExecutorTests.Manifest()), second, [], submissionId: 2, PublishExecutorTests.Now);
 
-            Assert.NotEqual(before, store.PublishedSystems["Commodore/C64/250407"].ContentHash);
+            Assert.NotEqual(before, store.PublishedBoards["Commodore/C64/250407"].ContentHash);
         }
 
         [Fact]
@@ -395,7 +395,7 @@ namespace CRT.Server.Tests
             // A caller passing null has almost certainly failed to read the submission's
             // calibrations rather than genuinely meaning "this board has none", and treating the
             // two alike publishes a board with a contributor's calibration work silently removed.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             await Assert.ThrowsAsync<ArgumentNullException>(() =>
@@ -406,7 +406,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_sidecar_sits_BESIDE_the_workbook_where_the_reader_looks_for_it()
         {
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             await this.Executor(store).ExecuteAsync(
@@ -422,10 +422,10 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             // *** A REAL SUBMITTED PATH IS DATA-ROOT-RELATIVE (corrected 2026-09-23). *** This test
-            // used to pass "Images/sheet1.png" and expect it under the SYSTEM folder. That shape
+            // used to pass "Images/sheet1.png" and expect it under the BOARD folder. That shape
             // does not occur: a board stores "Commodore/C64/250407/Images/sheet1.png", and the
             // unrealistic input is what let the publish resolve every file one level too deep -
             // writing the whole board into a copy of itself on the first real publish.
@@ -440,7 +440,7 @@ namespace CRT.Server.Tests
             await this.Executor(store)
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
-            string landed = Path.Combine(this.thisSystemFolder, "Images", "sheet1.png");
+            string landed = Path.Combine(this.thisBoardFolder, "Images", "sheet1.png");
 
             Assert.True(File.Exists(landed));
             Assert.Equal(image, await File.ReadAllBytesAsync(landed));
@@ -453,13 +453,13 @@ namespace CRT.Server.Tests
         // and content hash - still reaches the database, and the outcome still reports it.
         // ###########################################################################################
         [Fact]
-        public async Task No_system_json_is_written_and_one_left_by_an_earlier_build_is_removed()
+        public async Task No_board_json_is_written_and_one_left_by_an_earlier_build_is_removed()
         {
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
-            string leftover = Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName);
-            Directory.CreateDirectory(this.thisSystemFolder);
+            string leftover = Path.Combine(this.thisBoardFolder, BoardDescriptorStore.FileName);
+            Directory.CreateDirectory(this.thisBoardFolder);
             await File.WriteAllTextAsync(leftover, "{}");
 
             PublishOutcome outcome = await this.Executor(store)
@@ -483,9 +483,9 @@ namespace CRT.Server.Tests
         {
             // *** THE SILENT FAILURE. *** A typo fix uploads NO files, so the uploaded-file list
             // is identical between two publishes. Without the generated workbook folded into the
-            // hash, system.json would advertise an unchanged system and no client would ever
+            // hash, system.json would advertise an unchanged board and no client would ever
             // re-download the board that just changed.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             PublishOutcome first = await this.Executor(store)
@@ -524,7 +524,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_reported_workbook_hash_matches_the_file_on_disk()
         {
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             PublishOutcome outcome = await this.Executor(store)
@@ -540,18 +540,18 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task The_revision_and_content_hash_reach_the_systems_row()
+        public async Task The_revision_and_content_hash_reach_the_boards_row()
         {
             // current_revision is the base a contributor's NEXT submission is diffed against. A
             // publish that fails to record it leaves every later submission re-basing against a
             // revision that no longer describes the tree.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             PublishOutcome outcome = await this.Executor(store)
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
-            PublishedSystemRow row = store.PublishedSystems["Commodore/C64/250407"];
+            PublishedBoardRow row = store.PublishedBoards["Commodore/C64/250407"];
 
             Assert.Equal(BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now), row.Revision);
             Assert.Equal(outcome.Descriptor!.ContentHash, row.ContentHash);
@@ -560,7 +560,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_submission_is_marked_merged()
         {
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             long id = await store.CreateAsync(
                 new NewSubmission(
@@ -581,8 +581,8 @@ namespace CRT.Server.Tests
         public async Task A_publish_with_no_submission_behind_it_is_allowed()
         {
             // The project owner correcting their own data publishes without a submission. The
-            // system's revision still has to be recorded.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            // board's revision still has to be recorded.
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             PublishOutcome outcome = await this.Executor(store)
@@ -591,7 +591,7 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished);
             Assert.Equal(
                 BoardWorkbookStyle.FormatRevisionDate(PublishExecutorTests.Now),
-                store.PublishedSystems["Commodore/C64/250407"].Revision);
+                store.PublishedBoards["Commodore/C64/250407"].Revision);
         }
 
         // -----------------------------------------------------------------------------------
@@ -605,7 +605,7 @@ namespace CRT.Server.Tests
             // the workbook references them. Writing the workbook first and failing on a file
             // would leave a board referencing images that never arrived - a board that fails to
             // load, replacing one that worked.
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile
@@ -622,8 +622,8 @@ namespace CRT.Server.Tests
             Assert.Contains("Commodore/C64/250407/Images/sheet1.png", outcome.Failure);
 
             Assert.False(File.Exists(plan.WorkbookPath));
-            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName)));
-            Assert.Empty(store.PublishedSystems);
+            Assert.False(File.Exists(Path.Combine(this.thisBoardFolder, BoardDescriptorStore.FileName)));
+            Assert.Empty(store.PublishedBoards);
         }
 
         // ###########################################################################################
@@ -650,7 +650,7 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile
@@ -673,8 +673,8 @@ namespace CRT.Server.Tests
 
             // And it stopped BEFORE touching the board, so nothing downstream is half-written.
             Assert.False(File.Exists(plan.WorkbookPath));
-            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, SystemDescriptorStore.FileName)));
-            Assert.Empty(store.PublishedSystems);
+            Assert.False(File.Exists(Path.Combine(this.thisBoardFolder, BoardDescriptorStore.FileName)));
+            Assert.Empty(store.PublishedBoards);
         }
 
         // ###########################################################################################
@@ -691,7 +691,7 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile
@@ -703,7 +703,7 @@ namespace CRT.Server.Tests
 
             var executor = new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance)
             {
-                CanWriteFolderForTests = folder => folder != this.thisSystemFolder
+                CanWriteFolderForTests = folder => folder != this.thisBoardFolder
             };
 
             PublishOutcome outcome = await executor
@@ -718,7 +718,7 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(plan.Files[0].AbsolutePath));
             Assert.False(File.Exists(plan.WorkbookPath));
             Assert.False(File.Exists(plan.SidecarPath));
-            Assert.Empty(store.PublishedSystems);
+            Assert.Empty(store.PublishedBoards);
         }
 
         // ###########################################################################################
@@ -731,7 +731,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_highlight_file_that_cannot_be_written_is_a_REPORTED_part_publish_not_an_exception()
         {
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             Directory.CreateDirectory(plan.SidecarPath);
@@ -742,7 +742,7 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsPublished);
             Assert.Contains("highlight file could not be written", outcome.Failure);
             Assert.Contains("part-published", outcome.Failure);
-            Assert.Empty(store.PublishedSystems);
+            Assert.Empty(store.PublishedBoards);
         }
 
         // ###########################################################################################
@@ -765,7 +765,7 @@ namespace CRT.Server.Tests
             }
             Assert.SkipWhen(Environment.UserName == "root", "root may write anything.");
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
 
             File.WriteAllText(plan.WorkbookPath, "copied in by hand");
@@ -801,7 +801,7 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string good = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail first = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = good, SizeBytes = image.LongLength }));
@@ -851,7 +851,7 @@ namespace CRT.Server.Tests
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
 
@@ -887,7 +887,7 @@ namespace CRT.Server.Tests
             string goodHash = await this.PutBlobAsync(good);
             string badHash = await this.PutBlobAsync(notAnImage);
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile { Path = "Commodore/C64/250407/Images/a.png", Sha256 = goodHash, SizeBytes = good.LongLength },
@@ -899,9 +899,9 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsPublished);
             Assert.Contains("Images/z.png", outcome.Failure);
 
-            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, "Images", "a.png")));
+            Assert.False(File.Exists(Path.Combine(this.thisBoardFolder, "Images", "a.png")));
             Assert.False(File.Exists(plan.WorkbookPath));
-            Assert.Empty(store.PublishedSystems);
+            Assert.Empty(store.PublishedBoards);
         }
 
         // A blob that no longer matches its hash - changed on disk after it was accepted - is found
@@ -915,7 +915,7 @@ namespace CRT.Server.Tests
             string stored = Path.Combine(this.thisBlobRoot, BlobStorePaths.BlobFolderName, hash[..2], hash[2..4], hash);
             await File.WriteAllBytesAsync(stored, PublishExecutorTests.Png("TAMPERED"));
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
 
             PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
                 new SubmissionFile { Path = "Commodore/C64/250407/Images/sheet1.png", Sha256 = hash, SizeBytes = image.LongLength }));
@@ -924,11 +924,11 @@ namespace CRT.Server.Tests
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
             Assert.False(outcome.IsPublished);
-            Assert.False(File.Exists(Path.Combine(this.thisSystemFolder, "Images", "sheet1.png")));
+            Assert.False(File.Exists(Path.Combine(this.thisBoardFolder, "Images", "sheet1.png")));
             Assert.False(File.Exists(plan.WorkbookPath));
         }
 
-        // Another board's file cited UNCHANGED is part of the system's content but is never
+        // Another board's file cited UNCHANGED is part of the board's content but is never
         // written - it is already there, and writing it would only be a chance to get it wrong.
         [Fact]
         public async Task Another_boards_file_cited_unchanged_is_never_written()
@@ -943,21 +943,21 @@ namespace CRT.Server.Tests
 
             PublishPlanResult result = PublishPlan.Build(
                 beta,
-                this.thisSystemFolder,
+                this.thisBoardFolder,
                 [],
                 "Data C64 250407",
                 PublishExecutorTests.Manifest(new SubmissionFile { Path = "Commodore/C128/310378/notes.txt", Sha256 = hash, SizeBytes = 15 }),
                 "r2",
                 PublishExecutorTests.Now,
                 ["Someone"],
-                SystemDescriptorRules.SystemOrigin.Contributed,
+                BoardDescriptorRules.BoardOrigin.Contributed,
                 PublishedTreeProbe.For(beta));
 
             Assert.True(result.IsPlanned, string.Join(" ", result.Problems.Select(problem => problem.Message)));
 
             // The blob is deliberately NOT in the store: were the executor to try to write this
             // file, it would stop on the missing blob.
-            PublishOutcome outcome = await this.Executor(PublishExecutorTests.StoreWithSystem())
+            PublishOutcome outcome = await this.Executor(PublishExecutorTests.StoreWithBoard())
                 .ExecuteAsync(result.Plan!, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
             Assert.True(outcome.IsPublished, outcome.Failure);
@@ -976,14 +976,14 @@ namespace CRT.Server.Tests
             // compatibility target still serving older application builds. Writing it is silent
             // damage, so this asserts the older file is byte-identical afterwards rather than
             // merely that the newer one was written.
-            string legacy = Path.Combine(this.thisSystemFolder, "Data C64 250407.xlsx");
+            string legacy = Path.Combine(this.thisBoardFolder, "Data C64 250407.xlsx");
             await File.WriteAllTextAsync(legacy, "the frozen generation");
             byte[] before = await File.ReadAllBytesAsync(legacy);
 
-            string current = Path.Combine(this.thisSystemFolder, "Data C64 250407 v2.0.0.xlsx");
+            string current = Path.Combine(this.thisBoardFolder, "Data C64 250407 v2.0.0.xlsx");
             await File.WriteAllTextAsync(current, "placeholder");
 
-            FakeSubmissionStore store = PublishExecutorTests.StoreWithSystem();
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
             PublishPlanDetail plan = this.Plan(
                 PublishExecutorTests.Manifest(),
                 existing: ["Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx"]);

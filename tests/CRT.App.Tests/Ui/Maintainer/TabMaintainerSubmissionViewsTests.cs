@@ -176,7 +176,7 @@ public sealed class TabMaintainerSubmissionViewsTests
         JsonSerializer.Serialize(
             new SubmissionFilesAnswer(
                 "Commodore/C64/250407",
-                [new SystemFileEntry("Commodore/C64/250407/a.png", SystemFileChange.Added, SystemFileSource.Submission, "aa")]),
+                [new BoardFileEntry("Commodore/C64/250407/a.png", BoardFileChange.Added, BoardFileSource.Submission, "aa")]),
             ReviewApiContract.WireSettings);
 
     private static void UseServer(TabMaintainer main, AnsweringHttpHandler server)
@@ -198,11 +198,11 @@ public sealed class TabMaintainerSubmissionViewsTests
         Assert.True(done());
     }
 
-    // *** THE WAIT NAMES THE SYSTEM FROM THE SUBMISSION'S OWN RECORD. *** It read the queue's selected
+    // *** THE WAIT NAMES THE BOARD FROM THE SUBMISSION'S OWN RECORD. *** It read the queue's selected
     // row, and a submission decided elsewhere stays open with no row in the list - so the overlay
     // said "Working out 's files...". Here, as in that case, the tab has no queue row at all.
     [Fact]
-    public async Task The_files_wait_names_the_system_even_when_the_submission_has_no_queue_row()
+    public async Task The_files_wait_names_the_board_even_when_the_submission_has_no_queue_row()
     {
         await UiTest.RunAsync(async () =>
         {

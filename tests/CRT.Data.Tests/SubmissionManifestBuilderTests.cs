@@ -7,7 +7,7 @@ using Xunit;
 namespace CRT.Data.Tests
 {
     // ###########################################################################################
-    // Covers turning a drafted system into the manifest the server receives.
+    // Covers turning a drafted board into the manifest the server receives.
     //
     // TWO PROPERTIES CARRY THE MOST WEIGHT HERE:
     //
@@ -27,8 +27,8 @@ namespace CRT.Data.Tests
         {
             return new SubmissionIdentity
             {
-                // "Manufacturer/Hardware/Board" - the `systems` table's own primary key.
-                SystemId = "Commodore/C64/250407",
+                // "Manufacturer/Hardware/Board" - the `boards` table's own primary key.
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -89,7 +89,7 @@ namespace CRT.Data.Tests
 
         // ###########################################################################################
         // *** THE BOARD'S KiCad DATA TRAVELS TOO (owner decision, 2026-09-26). *** No row cites the
-        // "KiCad data" folder, so the rows-only list left it behind: a new system was published
+        // "KiCad data" folder, so the rows-only list left it behind: a new board was published
         // without its traces. The caller collects the paths (SubmissionKiCadFiles.Collect) and each
         // is hashed and listed like any referenced file - and one that is missing on disk is a named
         // problem, not a silent omission.
@@ -214,7 +214,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void The_file_list_is_in_a_stable_order()
         {
-            // The same system must produce the same manifest twice - it makes two submissions
+            // The same board must produce the same manifest twice - it makes two submissions
             // comparable and the negotiation step reproducible when something has to be diagnosed.
             IReadOnlyList<string> first =
                 SubmissionManifestBuilder.CollectReferencedFiles(SubmissionManifestBuilderTests.Board());
@@ -271,7 +271,7 @@ namespace CRT.Data.Tests
                 SubmissionManifestBuilderTests.Identity(),
                 SubmissionManifestBuilderTests.Hashes("main.png", "Images/U8-pin3.png")).Manifest;
 
-            Assert.Equal("Commodore/C64/250407", manifest.SystemId);
+            Assert.Equal("Commodore/C64/250407", manifest.BoardId);
             Assert.Equal("Commodore", manifest.Manufacturer);
             Assert.Equal("C64", manifest.Hardware);
             Assert.Equal("250407", manifest.Board);
@@ -282,9 +282,9 @@ namespace CRT.Data.Tests
             Assert.Equal(string.Empty, manifest.HardwareNotes);
         }
 
-        // A new system's notes from "Create system" travel with it, trimmed (owner request, 2026-10-05).
+        // A new board's notes from "Create board" travel with it, trimmed (owner request, 2026-10-05).
         [Fact]
-        public void A_new_systems_notes_reach_the_manifest_trimmed()
+        public void A_new_boards_notes_reach_the_manifest_trimmed()
         {
             SubmissionIdentity identity = SubmissionManifestBuilderTests.Identity();
 
@@ -292,7 +292,7 @@ namespace CRT.Data.Tests
                 SubmissionManifestBuilderTests.Board(),
                 new SubmissionIdentity
                 {
-                    SystemId = identity.SystemId,
+                    BoardId = identity.BoardId,
                     Manufacturer = identity.Manufacturer,
                     Hardware = identity.Hardware,
                     Board = identity.Board,

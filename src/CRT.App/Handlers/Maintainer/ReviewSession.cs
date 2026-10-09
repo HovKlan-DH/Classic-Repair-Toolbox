@@ -15,7 +15,7 @@ namespace Handlers.MaintainerHandling
     //
     // *** IT IS A CREDENTIAL, AND IT IS NOW PERSISTED - UNDER CONDITIONS. *** It authorises
     // reading every queued contribution, and - for an administrator - publishing to every user of
-    // a system. This header used to say it was never written to disk, and to forbid adding
+    // a board. This header used to say it was never written to disk, and to forbid adding
     // "remember me" without first deciding where that file lives and who can read it. Those
     // questions have since been answered (owner request, 2026-09-22), so the rule has
     // changed rather than been broken:

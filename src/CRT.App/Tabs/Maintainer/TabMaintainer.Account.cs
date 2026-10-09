@@ -51,10 +51,10 @@ namespace CRT
     //
     //   "Maintainers" (MaintainerPoolView) - here since 2026-10-04 (owner request: "'Send
     //   invitation' and 'Add as maintainer' gets moved to the 'Admin' tab ... as this is something
-    //   only the admin should be able to do"), on the Systems screen from 2026-09-27. Its systems
+    //   only the admin should be able to do"), on the Boards screen from 2026-09-27. Its boards
     //   and accounts are read on choosing it.
     //
-    //   "Order of systems" (SystemOrderView, 2026-10-04) reads BETA's drop-down list on choosing it -
+    //   "Order of boards" (BoardOrderView, 2026-10-04) reads BETA's drop-down list on choosing it -
     //   unless moves are waiting to be saved there.
     //
     //   "Unused files", whose list reads every workbook in the tree and takes seconds, is read on
@@ -64,8 +64,8 @@ namespace CRT
     //   "Rebuild checksum manifests" (2026-10-01) reads NOTHING on choosing it: a rebuild writes, so
     //   it waits for its own button to be pressed.
     //
-    //   "Delete a system" (2026-10-03) reads every system when chosen - the list its Delete buttons
-    //   sit in - and nothing is deleted before its confirmation (SystemDeletionView).
+    //   "Delete a board" (2026-10-03) reads every board when chosen - the list its Delete buttons
+    //   sit in - and nothing is deleted before its confirmation (BoardDeletionView).
     //
     //   "API usage" (2026-10-04: "how about tracking the API end-points, to see if it is possible to
     //   retire any") reads which CRT versions called each route when chosen, and on its own Refresh
@@ -109,12 +109,12 @@ namespace CRT
                 await this.ReadServerVersionAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("MaintainersItem")))
                 await this.MaintainerPoolAdmin.LoadAsync();
-            else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("SystemOrderItem")))
-                await this.SystemOrderAdmin.LoadAsync();
+            else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("BoardOrderItem")))
+                await this.BoardOrderAdmin.LoadAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("UnusedFilesItem")))
                 await this.UnusedFilesAdmin.LoadAsync();
-            else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("DeleteSystemItem")))
-                await this.SystemDeletionAdmin.LoadAsync();
+            else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("DeleteBoardItem")))
+                await this.BoardDeletionAdmin.LoadAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("ApiUsageItem")))
                 await this.ApiUsageAdmin.LoadAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("ResetDataItem")))
@@ -276,26 +276,26 @@ namespace CRT
 
         // ###########################################################################################
         // After a pool changed (Account > Maintainers): the queue (assigning somebody may have been
-        // prompted by a submission on screen, and the queue is filtered by pools) and the systems
-        // (they count maintainers, and the open system's Maintainer view lists them).
+        // prompted by a submission on screen, and the queue is filtered by pools) and the boards
+        // (they count maintainers, and the open board's Maintainer view lists them).
         // ###########################################################################################
         private async Task AfterPoolChangeAsync()
         {
             await this.RefreshQueueAsync(background: true);
-            await this.RefreshSystemsAsync(background: true);
+            await this.RefreshBoardsAsync(background: true);
         }
 
         // ###########################################################################################
-        // After a system was deleted: its submissions are gone from the queue, it may have been on
-        // the BETA list, and it is gone from the systems - all three read again, quietly. The same
+        // After a board was deleted: its submissions are gone from the queue, it may have been on
+        // the BETA list, and it is gone from the boards - all three read again, quietly. The same
         // after the contribution data was reset (2026-10-04): every submission gone from the queue
-        // and the BETA list, every system without its maintainers and history.
+        // and the BETA list, every board without its maintainers and history.
         // ###########################################################################################
-        private async Task AfterSystemDeletedAsync()
+        private async Task AfterBoardDeletedAsync()
         {
             await this.RefreshQueueAsync(background: true);
             await this.RefreshBetaAsync(background: true);
-            await this.RefreshSystemsAsync(background: true);
+            await this.RefreshBoardsAsync(background: true);
         }
 
         private void ClearAccountScreen()
@@ -305,10 +305,10 @@ namespace CRT
 
             this.ShowServerVersionLines(null);
             this.MaintainerPoolAdmin.Clear();
-            this.SystemOrderAdmin.Clear();
+            this.BoardOrderAdmin.Clear();
             this.UnusedFilesAdmin.Clear();
             this.RebuildManifestsAdmin.Clear();
-            this.SystemDeletionAdmin.Clear();
+            this.BoardDeletionAdmin.Clear();
             this.ApiUsageAdmin.Clear();
             this.DataResetAdmin.Clear();
         }

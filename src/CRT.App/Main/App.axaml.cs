@@ -70,7 +70,7 @@ namespace CRT
         public const string WorklogFolderName = "Workbooks";
 
         // Name of the local folder holding drafted, unpublished board edits, mirroring "Data/"'s
-        // own Manufacturer/Hardware/Board structure one system at a time. Stored alongside the log
+        // own Manufacturer/Hardware/Board structure one board at a time. Stored alongside the log
         // file, next to "Workbooks" - purely local, never synced, never written to by anything
         // touching "Data/". Overridden entirely by "--drafts-root=", the same idea as
         // "--data-root="/"--workbooks-root=" for their own folders.
@@ -82,10 +82,10 @@ namespace CRT
         // nothing to register, so this string IS the contract with contributors - see
         // Assets/Wiki/Add-new-board-with-KiCad-data.md, which names it too.
         //
-        // A drafted system keeps the same folder name under its own draft Files/ folder, so
+        // A drafted board keeps the same folder name under its own draft Files/ folder, so
         // importing KiCad data and later publishing it need no path rewriting.
         // Used by: DataManager (sync protection, orphan cleanup), Main.GetCurrentBoardKiCadRawPaths,
-        // SystemFilesWindow's KiCad import.
+        // BoardFilesWindow's KiCad import.
         public const string KiCadDataFolderName = "KiCad data";
 
         // Name of the JSON file holding one record, used at all three levels of the Workbooks

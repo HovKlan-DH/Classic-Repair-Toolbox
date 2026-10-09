@@ -25,7 +25,7 @@ namespace CRT
     // name leaves the cell's text unchanged, so the cell is not orange - and it is exactly the change
     // worth seeing. Both sides are read, and only when the bytes are identical does the preview show
     // one picture, as "Unchanged" (unless the host's SaysUnchanged is false - the Maintainer
-    // tab's new system). Not done for a file that cannot be drawn: reading a PDF only to
+    // tab's new board). Not done for a file that cannot be drawn: reading a PDF only to
     // compare it would fetch megabytes on every hover, and its link opens it anyway.
     //
     // *** A DECODE FAILURE MUST NOT CRASH ANYTHING. *** The bytes are contributor-supplied - a

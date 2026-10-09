@@ -323,7 +323,7 @@ namespace CRT
             }
 
             // 3. Zip the files into a TEMPORARY FILE, not into memory (2026-10-03): the attachments
-            //    may be 250 MB packed ("one could potentially zip the entire system"), and memory
+            //    may be 250 MB packed ("one could potentially zip the entire board"), and memory
             //    held up to three copies of them before. DeleteOnClose removes it however this ends.
             string zipPath = Path.Combine(Path.GetTempPath(), $"CRT-feedback-{Guid.NewGuid():N}.zip");
             await using var zipFile = new FileStream(zipPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose);

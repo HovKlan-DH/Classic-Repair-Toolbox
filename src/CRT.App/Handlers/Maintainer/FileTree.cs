@@ -7,11 +7,11 @@ using Handlers.DataHandling;
 namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
-    // A SYSTEM'S FILES AS A FOLDER TREE (owner request, 2026-09-28: "a file-structure for all
+    // A BOARD'S FILES AS A FOLDER TREE (owner request, 2026-09-28: "a file-structure for all
     // existing files in BETA or PROD, and then a highlighting of files changed (added, removed,
     // changed) ... a possibility to 'show only changed files' ... including their parent folder").
     //
-    // The entries are CRT.Data's SystemFileEntry - one per file, saying what the step does to it -
+    // The entries are CRT.Data's BoardFileEntry - one per file, saying what the step does to it -
     // and this turns them into folders, counts the changes under each, and works out which ROWS
     // are on screen. The control (FileTreeView) only draws the rows, as a flat virtualised list:
     // a board is ~2,000 files, and a list that builds only what is visible stays quick where a
@@ -21,7 +21,7 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public sealed class FileTreeNode
     {
-        internal FileTreeNode(string name, string path, SystemFileEntry? file)
+        internal FileTreeNode(string name, string path, BoardFileEntry? file)
         {
             this.Name = name;
             this.Path = path;
@@ -34,7 +34,7 @@ namespace Handlers.MaintainerHandling
         public string Path { get; }
 
         // The file, or null for a folder.
-        public SystemFileEntry? File { get; }
+        public BoardFileEntry? File { get; }
 
         public bool IsFolder => this.File is null;
 
@@ -64,12 +64,12 @@ namespace Handlers.MaintainerHandling
         // order - "C2" before "C10", as Explorer sorts them - so a folder reads the way it does on
         // disk.
         // ###########################################################################################
-        public static FileTreeNode Build(IEnumerable<SystemFileEntry>? entries)
+        public static FileTreeNode Build(IEnumerable<BoardFileEntry>? entries)
         {
             var root = new FileTreeNode(string.Empty, string.Empty, null);
             var folders = new Dictionary<string, FileTreeNode>(StringComparer.Ordinal) { [string.Empty] = root };
 
-            foreach (SystemFileEntry entry in entries ?? [])
+            foreach (BoardFileEntry entry in entries ?? [])
             {
                 string[] segments = (entry.Path ?? string.Empty).Replace('\\', '/')
                     .Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -108,9 +108,9 @@ namespace Handlers.MaintainerHandling
             {
                 switch (node.File!.Change)
                 {
-                    case SystemFileChange.Added: node.Added = 1; break;
-                    case SystemFileChange.Changed: node.Changed = 1; break;
-                    case SystemFileChange.Removed: node.Removed = 1; break;
+                    case BoardFileChange.Added: node.Added = 1; break;
+                    case BoardFileChange.Changed: node.Changed = 1; break;
+                    case BoardFileChange.Removed: node.Removed = 1; break;
                     default: node.Unchanged = 1; break;
                 }
 
@@ -135,7 +135,7 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // The folders open when the tree is first shown: every one on the way to a change, so the
-        // changes are in view and a folder of 1,500 untouched images is not. For a new system that
+        // changes are in view and a folder of 1,500 untouched images is not. For a new board that
         // is everything - which is right: the whole of it is new.
         // ###########################################################################################
         public static IReadOnlySet<string> DefaultExpanded(FileTreeNode root)
@@ -156,8 +156,8 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // The folders open when a LISTING is first shown (the Systems screen's Files view, 2026-10-03):
-        // every folder on the way to `folder`, and `folder` itself - the system's own, where nearly
+        // The folders open when a LISTING is first shown (the Boards screen's Files view, 2026-10-03):
+        // every folder on the way to `folder`, and `folder` itself - the board's own, where nearly
         // all of its files are - and nothing else, so the shared folders around it start closed.
         // Only folders the tree holds; none for a blank or unknown folder.
         // ###########################################################################################
@@ -260,7 +260,7 @@ namespace Handlers.MaintainerHandling
         {
             ArgumentNullException.ThrowIfNull(root);
 
-            var written = new List<SystemFileEntry>();
+            var written = new List<BoardFileEntry>();
             int added = 0, changed = 0, removed = 0;
 
             void Walk(FileTreeNode node)
@@ -273,9 +273,9 @@ namespace Handlers.MaintainerHandling
                         continue;
                     }
 
-                    SystemFileEntry file = child.File!;
+                    BoardFileEntry file = child.File!;
 
-                    if (file.Change == SystemFileChange.Unchanged)
+                    if (file.Change == BoardFileChange.Unchanged)
                         continue;
 
                     // *** ONLY A FILE THE APPROVAL WRITES - added or changed - IS "WRITTEN" (code review,
@@ -283,11 +283,11 @@ namespace Handlers.MaintainerHandling
                     // "written" it was reported as "Approving writes the workbook" for a tree that
                     // deletes it. ForApproval never builds that today; this keeps the sentence honest
                     // if a source ever does.
-                    if (file.WrittenOnApproval && file.Change != SystemFileChange.Removed)
+                    if (file.WrittenOnApproval && file.Change != BoardFileChange.Removed)
                         written.Add(file);
-                    else if (file.Change == SystemFileChange.Added)
+                    else if (file.Change == BoardFileChange.Added)
                         added++;
-                    else if (file.Change == SystemFileChange.Changed)
+                    else if (file.Change == BoardFileChange.Changed)
                         changed++;
                     else
                         removed++;
@@ -328,10 +328,10 @@ namespace Handlers.MaintainerHandling
 
         // "the workbook", "the highlight file" or both - named by what they are, not by path. Null
         // for neither.
-        private static string? WrittenFiles(IReadOnlyList<SystemFileEntry> written)
+        private static string? WrittenFiles(IReadOnlyList<BoardFileEntry> written)
         {
-            bool workbook = written.Any(file => !SystemFileEntries.IsHighlightFile(file.Path));
-            bool sidecar = written.Any(file => SystemFileEntries.IsHighlightFile(file.Path));
+            bool workbook = written.Any(file => !BoardFileEntries.IsHighlightFile(file.Path));
+            bool sidecar = written.Any(file => BoardFileEntries.IsHighlightFile(file.Path));
 
             return (workbook, sidecar) switch
             {
@@ -352,11 +352,11 @@ namespace Handlers.MaintainerHandling
         }
 
         // The word on a file's row - none for a file that stays as it is.
-        public static string ChangeWord(SystemFileChange change) => change switch
+        public static string ChangeWord(BoardFileChange change) => change switch
         {
-            SystemFileChange.Added => "new",
-            SystemFileChange.Changed => "changed",
-            SystemFileChange.Removed => "removed",
+            BoardFileChange.Added => "new",
+            BoardFileChange.Changed => "changed",
+            BoardFileChange.Removed => "removed",
             _ => string.Empty
         };
 
@@ -374,17 +374,17 @@ namespace Handlers.MaintainerHandling
         // 2026-09-28: "It should not show any text, if it has changed or whatever"); the row does.
         // But the workbook and the highlight file are written FROM THE TABLE when a submission is
         // approved, so before then its tree can only open BETA's current copy - or nothing, for a
-        // new system - and checking that copy for the new one would be checking the wrong file.
+        // new board - and checking that copy for the new one would be checking the wrong file.
         // Null for every other file.
         // ###########################################################################################
-        public static string? Note(SystemFileEntry file)
+        public static string? Note(BoardFileEntry file)
         {
             ArgumentNullException.ThrowIfNull(file);
 
-            if (file.OpenFrom == SystemFileSource.NotWrittenYet)
+            if (file.OpenFrom == BoardFileSource.NotWrittenYet)
                 return "Written from the table when you approve - there is nothing to open yet.";
 
-            if (file.WrittenOnApproval && file.Change != SystemFileChange.Unchanged && file.OpenFrom == SystemFileSource.Beta)
+            if (file.WrittenOnApproval && file.Change != BoardFileChange.Unchanged && file.OpenFrom == BoardFileSource.Beta)
                 return "This opens BETA's copy as it is now - approving writes a new one from the table.";
 
             return null;

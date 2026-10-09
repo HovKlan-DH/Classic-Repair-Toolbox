@@ -82,6 +82,26 @@ public sealed class ColumnAutoFitGeometryTests
         Assert.Equal(60, ColumnAutoFitGeometry.FitWidth(headerWidth: 20, [], cellChrome: 24, minWidth: 60, maxWidth: double.PositiveInfinity));
     }
 
+    // ###########################################################################################
+    // A HEADING'S NAME HAS AS MUCH ROOM AFTER IT AS BEFORE IT (owner report, 2026-10-09: a column
+    // fitted to its heading had a wide empty band after the name) - plus the rounding slack.
+    // ###########################################################################################
+    [Fact]
+    public void A_headings_width_is_its_name_with_the_space_before_it_repeated_after_it()
+    {
+        Assert.Equal(12 + 150 + 12 + ColumnAutoFitGeometry.RoundingSlack, ColumnAutoFitGeometry.HeadingWidth(spaceBefore: 12, nameWidth: 150));
+    }
+
+    // A heading with no name needs nothing, and a nonsense space counts as none.
+    [Fact]
+    public void A_heading_with_no_name_needs_no_width_and_a_negative_or_unknown_space_counts_as_none()
+    {
+        Assert.Equal(0, ColumnAutoFitGeometry.HeadingWidth(spaceBefore: 12, nameWidth: 0));
+        Assert.Equal(0, ColumnAutoFitGeometry.HeadingWidth(spaceBefore: 12, nameWidth: double.NaN));
+        Assert.Equal(150 + ColumnAutoFitGeometry.RoundingSlack, ColumnAutoFitGeometry.HeadingWidth(spaceBefore: -4, nameWidth: 150));
+        Assert.Equal(150 + ColumnAutoFitGeometry.RoundingSlack, ColumnAutoFitGeometry.HeadingWidth(spaceBefore: double.NaN, nameWidth: 150));
+    }
+
     // A table squeezed narrower than a column's minimum still gives the minimum - the column's own
     // floor wins over the table's room.
     [Fact]

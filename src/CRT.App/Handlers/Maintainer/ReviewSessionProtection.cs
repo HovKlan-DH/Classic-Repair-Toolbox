@@ -10,7 +10,7 @@ namespace Handlers.MaintainerHandling
     // (owner request, 2026-09-22 - "no risk in case of a malicious user").
     //
     // *** WHY THIS EXISTS AT ALL. *** The token it protects authorises reading every queued
-    // contribution and, for an administrator, PUBLISHING to every user of a system. ReviewSession's
+    // contribution and, for an administrator, PUBLISHING to every user of a board. ReviewSession's
     // header originally forbade writing it to disk outright, and relaxed to "do not add remember-me
     // without deciding where that file lives and who can read it". This class is that decision.
     //

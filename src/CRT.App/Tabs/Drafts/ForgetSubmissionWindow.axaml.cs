@@ -31,12 +31,12 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Names the system, on its own bold line - someone with several contributions in the list
+        // Names the board, on its own bold line - someone with several contributions in the list
         // must not have to work out which row they pressed.
         // ###########################################################################################
-        public void Initialize(string systemDisplayName)
+        public void Initialize(string boardDisplayName)
         {
-            this.SystemNameText.Text = systemDisplayName;
+            this.BoardNameText.Text = boardDisplayName;
         }
 
         // ###########################################################################################

@@ -53,15 +53,15 @@ namespace CRT.Server.Tests
 
         private BlobStore Blobs() => new(this.thisRoot, NullLogger<BlobStore>.Instance);
 
-        private string SystemFolder() => Path.Combine(this.thisRoot, "system");
+        private string BoardFolder() => Path.Combine(this.thisRoot, "board");
 
-        // The published tree under SystemFolder(), read the way the running service reads it.
-        private PublishedTreeView? Tree() => PublishedTreeProbe.For(this.SystemFolder());
+        // The published tree under BoardFolder(), read the way the running service reads it.
+        private PublishedTreeView? Tree() => PublishedTreeProbe.For(this.BoardFolder());
 
         // Puts a file into the published tree at a data-root-relative path.
         private void Publish(string relativePath, string content)
         {
-            string path = Path.Combine(this.SystemFolder(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            string path = Path.Combine(this.BoardFolder(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, SubmissionFlowTests.Bytes(content));
@@ -96,10 +96,10 @@ namespace CRT.Server.Tests
         {
             return new SubmissionManifest
             {
-                // "Manufacturer/Hardware/Board" - the `systems` table's own primary key, and what
+                // "Manufacturer/Hardware/Board" - the `boards` table's own primary key, and what
                 // a real client sends. It has to agree with the Hardware/Board below, which the
                 // validator now checks.
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -126,7 +126,7 @@ namespace CRT.Server.Tests
         // *** THE BOARD'S KiCad DATA GOES THROUGH THE WHOLE TRANSPORT (owner decision, 2026-09-26).
         // *** A .kicad_pcb in the board's own "KiCad data" folder - cited by no row - is accepted at
         // create, uploaded, content-checked at finalise and queued. Before this, the rules refused
-        // the type outright and a new system was published to BETA without its traces.
+        // the type outright and a new board was published to BETA without its traces.
         // ###########################################################################################
         [Fact]
         public async Task A_boards_KiCad_data_is_accepted_uploaded_and_queued()
@@ -146,7 +146,7 @@ namespace CRT.Server.Tests
             });
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
@@ -170,8 +170,8 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A NEW SYSTEM'S NOTES ARE KEPT WITH ITS SUBMISSION (owner request, 2026-10-05). *** What
-        // the contributor typed in "Create system" is stored, trimmed, for the maintainer's placement
+        // *** A NEW BOARD'S NOTES ARE KEPT WITH ITS SUBMISSION (owner request, 2026-10-05). *** What
+        // the contributor typed in "Create board" is stored, trimmed, for the maintainer's placement
         // to start with - and from that placement it reaches the main Excel data file. Blank notes
         // are none at all.
         // ###########################################################################################
@@ -179,7 +179,7 @@ namespace CRT.Server.Tests
         [InlineData("  Open-source replica.  ", "Open-source replica.")]
         [InlineData("   ", null)]
         [InlineData("", null)]
-        public async Task A_new_systems_notes_are_kept_with_its_submission(string sent, string? kept)
+        public async Task A_new_boards_notes_are_kept_with_its_submission(string sent, string? kept)
         {
             var store = new FakeSubmissionStore();
 
@@ -187,7 +187,7 @@ namespace CRT.Server.Tests
             manifest.HardwareNotes = sent;
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
@@ -205,7 +205,7 @@ namespace CRT.Server.Tests
             manifest.HardwareNotes = new string('x', MasterListing.MaximumNotesLength + 1);
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.False(created.IsAccepted);
@@ -232,7 +232,7 @@ namespace CRT.Server.Tests
             });
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.True(created.IsAccepted);
@@ -264,7 +264,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.True(outcome.IsAccepted);
@@ -283,13 +283,13 @@ namespace CRT.Server.Tests
             SubmissionManifest first = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome initial = await SubmissionFlows.CreateAsync(
-                first, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                first, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             await this.UploadAsync(initial.Negotiation!, first.Files[0], "PNGDATA", store, blobs);
 
             // A second submission of the same content.
             SubmissionCreationOutcome second = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             Assert.Empty(second.Negotiation!.MissingHashes);
@@ -306,7 +306,7 @@ namespace CRT.Server.Tests
         // shipped board sent 1,212 files and 121 MB (reported). The server holds those bytes on
         // its own disk, and now takes them from there.
         //
-        // SystemFolder() is the data-tree root here, exactly as in production, where the endpoint
+        // BoardFolder() is the data-tree root here, exactly as in production, where the endpoint
         // passes DataTreeRoot as both the containment root and the tree the probe reads.
         // ###########################################################################################
         [Fact]
@@ -320,7 +320,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.True(created.IsAccepted);
@@ -357,7 +357,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest("THE NEW SCAN");
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.Equal(manifest.Files[0].Sha256, Assert.Single(created.Negotiation!.MissingHashes));
@@ -387,7 +387,7 @@ namespace CRT.Server.Tests
                 _ => null);
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, staleTree);
 
             Assert.True(created.IsAccepted);
@@ -407,7 +407,7 @@ namespace CRT.Server.Tests
             this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest("PNGDATA"), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest("PNGDATA"), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.Single(created.Negotiation!.MissingHashes);
@@ -433,7 +433,7 @@ namespace CRT.Server.Tests
             manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = "Commodore/Shared files/74LS08.png" });
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Message)));
@@ -448,59 +448,59 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
             Assert.False((await store.FindAsync(created.Negotiation!.SubmissionId))!.TouchesSharedFiles);
         }
 
         // ###########################################################################################
-        // A SUBMISSION CREATES THE `systems` ROW IT NEEDS.
+        // A SUBMISSION CREATES THE `boards` ROW IT NEEDS.
         //
-        // submissions.system_id is NOT NULL with a foreign key to systems(system_id). Nothing ever
-        // wrote to `systems`, so against the real database EVERY submission would have failed on
+        // submissions.board_id is NOT NULL with a foreign key to boards(board_id). Nothing ever
+        // wrote to `boards`, so against the real database EVERY submission would have failed on
         // that foreign key - and no test noticed, because the fake store accepted a submission for
-        // a system that did not exist. See migration 0004's header.
+        // a board that did not exist. See migration 0004's header.
         //
-        // This is also the FIRST submission for a system the contributor invented locally, which is
-        // the case the whole "new system" path exists for.
+        // This is also the FIRST submission for a board the contributor invented locally, which is
+        // the case the whole "new board" path exists for.
         // ###########################################################################################
         [Fact]
-        public async Task A_first_submission_creates_the_system_row_it_refers_to()
+        public async Task A_first_submission_creates_the_board_row_it_refers_to()
         {
             var store = new FakeSubmissionStore();
 
             await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
-            NewSubmission system = Assert.Single(store.Systems).Value;
+            NewSubmission board = Assert.Single(store.Boards).Value;
 
-            Assert.Equal("Commodore/C64/250407", system.SystemId);
+            Assert.Equal("Commodore/C64/250407", board.BoardId);
 
             // The three parts are stored separately so the maintainer app can list by manufacturer
             // without parsing the id - 0001_initial.sql says so explicitly.
-            Assert.Equal("Commodore", system.Manufacturer);
-            Assert.Equal("C64", system.Hardware);
-            Assert.Equal("250407", system.Board);
+            Assert.Equal("Commodore", board.Manufacturer);
+            Assert.Equal("C64", board.Hardware);
+            Assert.Equal("250407", board.Board);
         }
 
-        // A system that already exists is left alone. An ON DUPLICATE KEY UPDATE would rewrite its
-        // origin on every submission, turning a system that SHIPPED with CRT into a "contributed"
+        // A board that already exists is left alone. An ON DUPLICATE KEY UPDATE would rewrite its
+        // origin on every submission, turning a board that SHIPPED with CRT into a "contributed"
         // one the first time anybody corrected a typo in it.
         [Fact]
-        public async Task A_second_submission_for_the_same_system_does_not_create_it_again()
+        public async Task A_second_submission_for_the_same_board_does_not_create_it_again()
         {
             var store = new FakeSubmissionStore();
 
             for (int i = 0; i < 2; i++)
             {
                 await SubmissionFlows.CreateAsync(
-                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, this.Blobs(), SubmissionFlowTests.Now);
             }
 
-            Assert.Single(store.Systems);
+            Assert.Single(store.Boards);
             Assert.Equal(2, store.Submissions.Count);
         }
 
@@ -527,7 +527,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             Assert.True(created.IsAccepted);
@@ -556,7 +556,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             SubmissionManifest? reloaded = await store.LoadPayloadAsync(created.Negotiation!.SubmissionId);
@@ -565,7 +565,7 @@ namespace CRT.Server.Tests
             Assert.Equal("Commodore", reloaded!.Manufacturer);
             Assert.Equal("C64", reloaded.Hardware);
             Assert.Equal("250407", reloaded.Board);
-            Assert.Equal("Commodore/C64/250407", reloaded.SystemId);
+            Assert.Equal("Commodore/C64/250407", reloaded.BoardId);
         }
 
         [Fact]
@@ -579,7 +579,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.Anonymous("someone@example.com", "192.0.2.1"),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.True(outcome.IsAccepted);
             Assert.Single(store.Submissions);
@@ -598,7 +598,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.Anonymous(email, "192.0.2.1"),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
             Assert.Contains(outcome.Findings, finding => finding.Code == "contact.missing");
@@ -614,7 +614,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.Anonymous(null, null),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             string message = Assert.Single(outcome.Findings).Message;
 
@@ -629,7 +629,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.Anonymous("not-an-address", "192.0.2.1"),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
             Assert.Contains(outcome.Findings, finding => finding.Code == "contact.malformed");
@@ -643,7 +643,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.SignedIn(accountId: 7, "192.0.2.1"),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.True(outcome.IsAccepted);
             Assert.Equal(7, store.Submissions[1].AccountId);
@@ -658,7 +658,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(),
-                this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(string.IsNullOrWhiteSpace(outcome.Negotiation!.UploadToken));
 
@@ -683,7 +683,7 @@ namespace CRT.Server.Tests
             };
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
@@ -700,7 +700,7 @@ namespace CRT.Server.Tests
             manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "R12" });
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
@@ -727,7 +727,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             using var content = new MemoryStream(SubmissionFlowTests.Bytes("PNGDATA"));
@@ -750,7 +750,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             using var first = new MemoryStream(SubmissionFlowTests.Bytes("PNGDATA"));
@@ -779,7 +779,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             // Right length, wrong content.
@@ -805,7 +805,7 @@ namespace CRT.Server.Tests
             BlobStore blobs = this.Blobs();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             using var content = new MemoryStream(SubmissionFlowTests.Bytes("SOMETHING ELSE"));
@@ -830,7 +830,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest(whole);
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             long id = created.Negotiation!.SubmissionId;
@@ -873,7 +873,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest(whole);
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             long id = created.Negotiation!.SubmissionId;
@@ -904,7 +904,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             using var content = new MemoryStream(SubmissionFlowTests.Bytes("PNGDATA"));
@@ -933,7 +933,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
@@ -952,7 +952,7 @@ namespace CRT.Server.Tests
             BlobStore blobs = this.Blobs();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             SubmissionResult result = await SubmissionFlows.FinaliseAsync(
@@ -974,7 +974,7 @@ namespace CRT.Server.Tests
             BlobStore blobs = this.Blobs();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             SubmissionResult result = await SubmissionFlows.FinaliseAsync(
@@ -996,7 +996,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             long id = created.Negotiation!.SubmissionId;
@@ -1026,7 +1026,7 @@ namespace CRT.Server.Tests
             BlobStore blobs = this.Blobs();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             int collected = await SubmissionFlows.CollectAbandonedAsync(
@@ -1045,7 +1045,7 @@ namespace CRT.Server.Tests
             BlobStore blobs = this.Blobs();
 
             await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             Assert.Equal(0, await SubmissionFlows.CollectAbandonedAsync(
@@ -1071,14 +1071,14 @@ namespace CRT.Server.Tests
             for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
             {
                 SubmissionCreationOutcome allowed = await SubmissionFlows.CreateAsync(
-                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, blobs, SubmissionFlowTests.Now);
 
                 Assert.True(allowed.IsAccepted);
             }
 
             SubmissionCreationOutcome refused = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             Assert.True(refused.IsRateLimited);
@@ -1098,13 +1098,13 @@ namespace CRT.Server.Tests
             for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
             {
                 await SubmissionFlows.CreateAsync(
-                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, blobs, SubmissionFlowTests.Now);
             }
 
             SubmissionCreationOutcome other = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.Anonymous("other@example.com", "198.51.100.7"),
-                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             Assert.True(other.IsAccepted);
         }
@@ -1120,17 +1120,17 @@ namespace CRT.Server.Tests
             for (int i = 0; i < SubmissionRateLimitPolicy.MaxSubmissionsPerAddress; i++)
             {
                 await SubmissionFlows.CreateAsync(
-                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, blobs, SubmissionFlowTests.Now);
             }
 
             SubmissionCreationOutcome maintainer = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.SignedIn(7, "192.0.2.1", isTrusted: true),
-                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             SubmissionCreationOutcome ordinary = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest(), Submitter.SignedIn(8, "192.0.2.1"),
-                this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             Assert.True(maintainer.IsAccepted);
             Assert.True(ordinary.IsRateLimited);
@@ -1144,7 +1144,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.Equal(
@@ -1167,7 +1167,7 @@ namespace CRT.Server.Tests
             var blobs = new BlobStore(this.thisRoot, NullLogger<BlobStore>.Instance, () => 100, minimumFreeBytes: 1000);
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             Assert.True(outcome.IsNoRoom);
@@ -1185,7 +1185,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             room[0] = 10;
 
@@ -1207,17 +1207,17 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
-            store.ClosedSystems.Add("Commodore/C64/250407");
+            store.ClosedBoards.Add("Commodore/C64/250407");
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
-            Assert.Contains(outcome.Findings, finding => finding.Code == "system.closed");
+            Assert.Contains(outcome.Findings, finding => finding.Code == "board.closed");
             Assert.Single(store.Submissions);
         }
 
@@ -1237,7 +1237,7 @@ namespace CRT.Server.Tests
             };
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, PublishedTreeView.Empty);
 
             Assert.False(outcome.IsAccepted);
@@ -1260,7 +1260,7 @@ namespace CRT.Server.Tests
             });
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, this.Blobs(), SubmissionFlowTests.Now);
 
             Assert.False(outcome.IsAccepted);
             Assert.Contains(outcome.Findings, finding => finding.Code == "file.not_used");
@@ -1281,7 +1281,7 @@ namespace CRT.Server.Tests
             manifest.Files[0].SizeBytes = notAnImage.Length;
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             using (var content = new MemoryStream(notAnImage))
             {
@@ -1315,12 +1315,12 @@ namespace CRT.Server.Tests
             // Somebody else's completed file sits in the shared store.
             SubmissionManifest theirs = SubmissionFlowTests.Manifest("THEIRS");
             SubmissionCreationOutcome theirCreate = await SubmissionFlows.CreateAsync(
-                theirs, Submitter.Anonymous("them@example.com", "198.51.100.1"), this.SystemFolder(),
+                theirs, Submitter.Anonymous("them@example.com", "198.51.100.1"), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
             await this.UploadAsync(theirCreate.Negotiation!, theirs.Files[0], "THEIRS", store, blobs);
 
             SubmissionCreationOutcome mine = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now);
 
             UploadState? probe = await SubmissionFlows.GetUploadStateAsync(
@@ -1342,7 +1342,7 @@ namespace CRT.Server.Tests
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
 
             Assert.Null(await SubmissionFlows.GetUploadStateAsync(
                 created.Negotiation!.SubmissionId, manifest.Files[0].Sha256, "wrong-token", store, blobs));
@@ -1362,13 +1362,13 @@ namespace CRT.Server.Tests
 
             SubmissionManifest rejected = SubmissionFlowTests.Manifest("REJECTED");
             SubmissionCreationOutcome rejectedCreate = await SubmissionFlows.CreateAsync(
-                rejected, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                rejected, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
             await this.UploadAsync(rejectedCreate.Negotiation!, rejected.Files[0], "REJECTED", store, blobs);
             await store.SetStateAsync(rejectedCreate.Negotiation!.SubmissionId, SubmissionState.Rejected, SubmissionFlowTests.Now);
 
             SubmissionManifest pending = SubmissionFlowTests.Manifest("PENDING");
             SubmissionCreationOutcome pendingCreate = await SubmissionFlows.CreateAsync(
-                pending, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                pending, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
             await this.UploadAsync(pendingCreate.Negotiation!, pending.Files[0], "PENDING", store, blobs);
             await store.SetStateAsync(pendingCreate.Negotiation!.SubmissionId, SubmissionState.Pending, SubmissionFlowTests.Now);
 
@@ -1389,7 +1389,7 @@ namespace CRT.Server.Tests
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(), store, blobs, SubmissionFlowTests.Now);
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
             await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
             await store.SetStateAsync(created.Negotiation!.SubmissionId, SubmissionState.Merged, SubmissionFlowTests.Now);
 
@@ -1411,7 +1411,7 @@ namespace CRT.Server.Tests
             using (await blobs.EnterReferenceGateAsync())
             {
                 create = SubmissionFlows.CreateAsync(
-                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, blobs, SubmissionFlowTests.Now);
 
                 await Task.Delay(200);
@@ -1447,7 +1447,7 @@ namespace CRT.Server.Tests
             using (await blobs.EnterReferenceGateAsync())
             {
                 create = SubmissionFlows.CreateAsync(
-                    manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                    manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                     store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
 
                 for (int i = 0; i < 200 && !blobs.Contains(hash); i++)
@@ -1507,7 +1507,7 @@ namespace CRT.Server.Tests
                 _ => null);
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
-                manifest, SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, blobs, SubmissionFlowTests.Now, CancellationToken.None, tree);
 
             Assert.True(outcome.IsRateLimited);
@@ -1523,7 +1523,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             long id = created.Negotiation!.SubmissionId;
@@ -1545,7 +1545,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.SystemFolder(),
+                SubmissionFlowTests.Manifest(), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
             await store.SetStateAsync(created.Negotiation!.SubmissionId, SubmissionState.Pending, SubmissionFlowTests.Now);

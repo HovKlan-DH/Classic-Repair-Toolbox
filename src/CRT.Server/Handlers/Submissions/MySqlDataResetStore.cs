@@ -17,8 +17,8 @@ namespace CRT.Server.Handlers.Submissions
     //
     // THE ORDER follows the foreign keys, though ON DELETE CASCADE / SET NULL would cope with any:
     // submissions first (their files, payloads, findings, approvals, amendments, discards, BETA
-    // returns and change summaries go with them - CASCADE), then what hangs off systems, then the
-    // systems, then the accounts (their sessions and tokens go with them - CASCADE), then the
+    // returns and change summaries go with them - CASCADE), then what hangs off boards, then the
+    // boards, then the accounts (their sessions and tokens go with them - CASCADE), then the
     // history and the usage tables. The administrators' accounts and sessions stay.
     //
     // NOT TOUCHED: crt_board_view_batches (the batch ids already stored - kept, so a CRT sending a
@@ -74,7 +74,7 @@ namespace CRT.Server.Handlers.Submissions
                 "SELECT 1 FROM maintainers FOR UPDATE;",
                 "SELECT 1 FROM maintainer_invitations FOR UPDATE;",
                 "SELECT 1 FROM production_approvals FOR UPDATE;",
-                "SELECT 1 FROM systems FOR UPDATE;"
+                "SELECT 1 FROM boards FOR UPDATE;"
             ];
 
             foreach (string sql in locks)
@@ -115,7 +115,7 @@ namespace CRT.Server.Handlers.Submissions
                 "DELETE FROM production_approvals;",
                 "DELETE FROM maintainer_invitations;",
                 "DELETE FROM maintainers;",
-                "DELETE FROM systems;",
+                "DELETE FROM boards;",
                 "DELETE FROM accounts WHERE is_administrator = 0;",
                 "DELETE FROM audit;",
                 "DELETE FROM crt_board_views;",
@@ -173,7 +173,7 @@ namespace CRT.Server.Handlers.Submissions
                     (SELECT COUNT(*) FROM maintainers),
                     (SELECT COUNT(*) FROM maintainer_invitations),
                     (SELECT COUNT(*) FROM production_approvals),
-                    (SELECT COUNT(*) FROM systems),
+                    (SELECT COUNT(*) FROM boards),
                     (SELECT COUNT(*) FROM audit),
                     (SELECT COUNT(*) FROM crt_board_views),
                     (SELECT COUNT(*) FROM crt_api_calls);
@@ -196,7 +196,7 @@ namespace CRT.Server.Handlers.Submissions
                 Maintainers: Count(5),
                 Invitations: Count(6),
                 ProductionApprovals: Count(7),
-                Systems: Count(8),
+                Boards: Count(8),
                 HistoryEntries: Count(9),
                 BoardViews: Count(10),
                 ApiUsageRows: Count(11));

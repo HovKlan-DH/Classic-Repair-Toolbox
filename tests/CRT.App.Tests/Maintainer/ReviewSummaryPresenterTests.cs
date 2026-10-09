@@ -201,7 +201,7 @@ public sealed class ReviewSummaryPresenterTests
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void A_new_system_is_called_out_in_the_headline()
+    public void A_new_board_is_called_out_in_the_headline()
     {
         // The highest-risk submission there is (Phase 6 task 3). A maintainer must never have to
         // infer it from row counts.
@@ -209,7 +209,7 @@ public sealed class ReviewSummaryPresenterTests
 
         string headline = ReviewSummaryPresenter.BuildHeadline(ReviewSummaryPresenterTests.Wire(ReviewSummary.Compare(published: null, submitted)));
 
-        Assert.Contains("New system", headline);
+        Assert.Contains("New board", headline);
     }
 
     [Fact]

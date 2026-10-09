@@ -21,7 +21,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 //
 // Session 2c note: this window used to zip its edited rows and POST them to the contribution
 // server (email required, a mandatory change comment, a locked "already sent" button). It now
-// saves into the current system's local draft instead - see ComponentDraftWriter's own header.
+// saves into the current board's local draft instead - see ComponentDraftWriter's own header.
 // The email field and the mandatory-comment requirement are gone with it (a draft is not
 // submitted to anyone, so neither has anything to validate yet); what a real SAVE actually writes
 // is not exercised here, for the same reason TabSchematics.LabelEditor.cs's own
@@ -283,7 +283,7 @@ public class ComponentContributionValidationTests
             ShowStatus(
                 window,
                 "Saved to your local draft. The new component [Dennis-5] now appears on this board, " +
-                "and every other edit you have made to this system stays saved alongside it, " +
+                "and every other edit you have made to this board stays saved alongside it, " +
                 "visible only to you until you submit your draft and it is reviewed and accepted.",
                 false);
             PumpLayout(window);

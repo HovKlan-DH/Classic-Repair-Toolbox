@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     // withdraws what they sent. But a maintainer about to publish that work to every CRT user should
     // know that the person who made it threw their own copy away; it may mean they changed their
     // mind. So CRT tells the server, once per live submission of that board, and the server shows it
-    // beside the submission in the review queue, on "Beta > Prod" and on the Systems screen.
+    // beside the submission in the review queue, on "Beta > Prod" and on the Boards screen.
     //
     // THE ROUTE: POST {api}/submissions/{id}/draft-discarded with the submission's capability token
     // in X-Submission-Token, exactly as the contributor's status check proves ownership. No body -
@@ -44,29 +44,29 @@ namespace Handlers.DataHandling
             SubmissionReceiptPresenter.IsStillOpen(lastKnownState);
 
         // ###########################################################################################
-        // The receipts a discard of this system's draft is reported for: sent FROM THIS DRAFT (at or
+        // The receipts a discard of this board's draft is reported for: sent FROM THIS DRAFT (at or
         // after draftCreatedUtc, the marker's - an older submission belongs to an earlier draft that
         // was retired, and its board has moved on), still worth reporting, still known to the server
         // (2026-10-04), and not reported already.
-        // Matched on the system id exactly as LatestForSystem matches the Drafts tab's badge, so the
+        // Matched on the board id exactly as LatestForBoard matches the Drafts tab's badge, so the
         // dialog warns about precisely the submissions the row shows.
         // ###########################################################################################
         public static IReadOnlyList<SubmissionReceipt> WhichToReport(
             IEnumerable<SubmissionReceipt>? receipts,
-            string? systemId,
+            string? boardId,
             DateTimeOffset? draftCreatedUtc = null)
         {
-            string id = systemId?.Trim() ?? string.Empty;
+            string id = boardId?.Trim() ?? string.Empty;
 
             if (id.Length == 0)
                 return [];
 
             return (receipts ?? [])
-                .Where(receipt => string.Equals(receipt.SystemId?.Trim(), id, StringComparison.OrdinalIgnoreCase))
+                .Where(receipt => string.Equals(receipt.BoardId?.Trim(), id, StringComparison.OrdinalIgnoreCase))
                 .Where(receipt => draftCreatedUtc is null || receipt.SentUtc >= draftCreatedUtc.Value)
                 .Where(receipt => DraftDiscardContract.IsWorthReporting(receipt.LastKnownState))
                 .Where(receipt => receipt.DraftDiscardedUtc is null)
-                // A submission the server no longer knows (2026-10-04: deleted with its system, or
+                // A submission the server no longer knows (2026-10-04: deleted with its board, or
                 // by the reset at go-live) has nobody to tell, and is not "still open".
                 .Where(receipt => receipt.NotFoundUtc is null)
                 .OrderBy(receipt => receipt.SubmissionId)

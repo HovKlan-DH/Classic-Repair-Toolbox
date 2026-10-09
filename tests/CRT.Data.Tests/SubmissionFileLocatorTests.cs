@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests;
 // Tests for SubmissionFileLocator - which of the TWO roots a submitted file's bytes come from.
 //
 // THE BUG THIS EXISTS TO STOP. The submission path originally resolved every referenced file
-// against a single root, the system's draft folder. That is correct only for a system created
+// against a single root, the board's draft folder. That is correct only for a board created
 // from nothing: for the ordinary case - a draft over a published board - the officially
 // published files live under Data/ and are not in the draft folder at all. Submitting a
 // one-line typo fix to a board with 240 images would have reported all 240 as "not on disk"
@@ -123,10 +123,10 @@ public sealed class SubmissionFileLocatorTests : IDisposable
         Assert.Contains("not on disk", reason);
     }
 
-    // A draft-only system has no published half at all, so the data root is simply empty. That is
-    // the normal state for a brand-new system rather than a failure.
+    // A draft-only board has no published half at all, so the data root is simply empty. That is
+    // the normal state for a brand-new board rather than a failure.
     [Fact]
-    public void A_system_with_no_data_root_still_resolves_its_drafted_files()
+    public void A_board_with_no_data_root_still_resolves_its_drafted_files()
     {
         this.thisWorkspace.WriteFile(
             System.IO.Path.Combine("Drafts", "Commodore", "C64", "250407", "new-photo.png"),
@@ -154,7 +154,7 @@ public sealed class SubmissionFileLocatorTests : IDisposable
     // *** THE WRITE SIDE AND THE READ SIDE MUST AGREE, which is the whole point of this test. ***
     //
     // The drafted half used to live under a "Files" subfolder; since Phase 6 it sits at the
-    // draft folder's own root with the system's prefix stripped, because a draft folder IS a
+    // draft folder's own root with the board's prefix stripped, because a draft folder IS a
     // board folder. The layout moved, the requirement did not: a file written by
     // DraftFileResolver has to be findable by this locator, or a contributor's newly attached
     // photo is silently absent from their submission.

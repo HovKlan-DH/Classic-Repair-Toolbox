@@ -12,7 +12,7 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // Covers ApprovePublishFlow - approving a submission, end to end (Phase 5, tasks 5 and 6).
     //
-    // *** THIS IS THE ONE IRREVERSIBLE OPERATION IN THE WHOLE SYSTEM. *** Task 7 was struck, so no
+    // *** THIS IS THE ONE IRREVERSIBLE OPERATION IN THE WHOLE BOARD. *** Task 7 was struck, so no
     // publish history is kept: approving overwrites the published board in place and the only way
     // back is to publish a correction. Everything here is written on that basis - the flow refuses
     // early and often, and each refusal leaves the tree exactly as it was.
@@ -43,22 +43,22 @@ namespace CRT.Server.Tests
 
             // *** THE TREE'S MASTER WORKBOOKS, because they ARE the generations. *** A real tree
             // carries both: the unversioned original serving every pre-2.0.0 build, and the v2.0.0
-            // one serving 2.0.0 and newer. A NEW system has no files of its own to read a
+            // one serving 2.0.0 and newer. A NEW board has no files of its own to read a
             // generation from, so it takes the newest of these - without them a publish is refused
             // rather than writing the frozen unversioned tree.
             //
-            // The v2.0.0 one is a REAL workbook listing one other board (2026-09-27): a NEW system's
+            // The v2.0.0 one is a REAL workbook listing one other board (2026-09-27): a NEW board's
             // publish adds its row to it (MasterListing), and a placeholder text file cannot take one.
             File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.xlsx"), "master");
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard);
         }
 
-        // The board the fixture master lists - somewhere for a new system to be placed after.
+        // The board the fixture master lists - somewhere for a new board to be placed after.
         internal static readonly MasterListingRow OtherListedBoard =
             new("Amstrad CPC 664", "MC0005A", "Amstrad/CPC 664/MC0005A/Data CPC 664 MC0005A v2.0.0.xlsx", string.Empty);
 
-        // Where the fixture places its new system - after the one other board.
-        internal static SystemPlacement Placement(string hardware = "Commodore 64", string board = "250407") =>
+        // Where the fixture places its new board - after the one other board.
+        internal static BoardPlacement Placement(string hardware = "Commodore 64", string board = "250407") =>
             new(hardware, board, "Has 6581 SID.", ApprovePublishFlowTests.OtherListedBoard.ExcelDataFile);
 
         public void Dispose()
@@ -92,19 +92,19 @@ namespace CRT.Server.Tests
             // the real join does.
             var accounts = new FakeAccountStore();
             accounts.Accounts[7] = ApprovePublishFlowTests.AccountRecord(administrator: false);
-            accounts.Maintainers.Add((ApprovePublishFlowTests.SystemId, 7));
+            accounts.Maintainers.Add((ApprovePublishFlowTests.BoardId, 7));
             return accounts;
         }
 
-        private const string SystemId = "Commodore/C64/250407";
+        private const string BoardId = "Commodore/C64/250407";
 
         // The administrator, in every pool by definition.
         private static ReviewAccess Account() =>
             ReviewAccess.For(ApprovePublishFlowTests.AccountRecord(administrator: true));
 
-        // A maintainer of exactly the systems named - and of nothing else.
-        private static ReviewAccess MaintainerOf(params string[] systems) =>
-            ReviewAccess.For(ApprovePublishFlowTests.AccountRecord(administrator: false), systems);
+        // A maintainer of exactly the boards named - and of nothing else.
+        private static ReviewAccess MaintainerOf(params string[] boards) =>
+            ReviewAccess.For(ApprovePublishFlowTests.AccountRecord(administrator: false), boards);
 
         private static Handlers.Accounts.AccountRecord AccountRecord(bool administrator) =>
             new(
@@ -123,7 +123,7 @@ namespace CRT.Server.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -172,7 +172,7 @@ namespace CRT.Server.Tests
             // then wonder why nothing was copied.
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    manifest.SystemId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
+                    manifest.BoardId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
                     null, "someone@example.com", "192.0.2.1", "hash", "2026-August-21",
                     "Corrected U8.", 1, [.. manifest.Files], ApprovePublishFlowTests.Now,
                     ApprovePublishFlowTests.Now.AddHours(24)),
@@ -181,10 +181,10 @@ namespace CRT.Server.Tests
             await store.SavePayloadAsync(id, manifest, CancellationToken.None);
             await store.SetStateAsync(id, SubmissionState.Pending, ApprovePublishFlowTests.Now, CancellationToken.None);
 
-            // The fixture's system is NEW to the empty tree, and a new system must be placed in the
+            // The fixture's board is NEW to the empty tree, and a new board must be placed in the
             // drop-down lists before it can be published (owner request, 2026-09-27).
             if (placed)
-                await store.SetPlacementAsync(manifest.SystemId, ApprovePublishFlowTests.Placement(), 1, ApprovePublishFlowTests.Now, CancellationToken.None);
+                await store.SetPlacementAsync(manifest.BoardId, ApprovePublishFlowTests.Placement(), 1, ApprovePublishFlowTests.Now, CancellationToken.None);
 
             return (store, id);
         }
@@ -281,7 +281,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 "2026-September-22",
-                store.PublishedSystems["Commodore/C64/250407"].Revision);
+                store.PublishedBoards["Commodore/C64/250407"].Revision);
         }
 
         [Fact]
@@ -311,17 +311,17 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // What it changed, for the system's History view (owner request, 2026-10-04: "summarize
+        // What it changed, for the board's History view (owner request, 2026-10-04: "summarize
         // each submission change in a textual form ... to get an idea, besides the sometimes vague
         // description from the contributor").
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
         // *** RECORDED AT THE PUBLISH - THE ONE MOMENT THE BOARD BEFORE STILL EXISTS. *** A new
-        // system's first publish is the new system: its rows counted, its file new at its path.
+        // board's first publish is the new board: its rows counted, its file new at its path.
         // ###########################################################################################
         [Fact]
-        public async Task A_publish_records_what_it_changed_and_a_new_system_says_so()
+        public async Task A_publish_records_what_it_changed_and_a_new_board_says_so()
         {
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
@@ -342,7 +342,7 @@ namespace CRT.Server.Tests
 
             SubmissionChanges changes = store.Changes[id];
 
-            Assert.True(changes.IsNewSystem);
+            Assert.True(changes.IsNewBoard);
             Assert.Equal(1, changes.Sections.Single(section => section.Section == BoardWorkbookSchema.SheetComponents).AddedCount);
             Assert.Equal(["Commodore/C64/250407/Images/sheet1.png"], changes.Files.Added);
             Assert.Empty(changes.Files.Replaced);
@@ -379,7 +379,7 @@ namespace CRT.Server.Tests
 
             SubmissionChanges changes = store.Changes[second];
 
-            Assert.False(changes.IsNewSystem);
+            Assert.False(changes.IsNewBoard);
 
             SectionChanges components = Assert.Single(changes.Sections);
             ChangedRowFact row = Assert.Single(components.Changed);
@@ -406,10 +406,10 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public async Task A_maintainer_of_ANOTHER_system_cannot_approve_and_NOTHING_is_written()
+        public async Task A_maintainer_of_ANOTHER_board_cannot_approve_and_NOTHING_is_written()
         {
             // *** THE STRUCTURAL GUARANTEE, asserted on the DISK rather than on a bool. *** A
-            // maintainer's authority stops at their own systems; the only honest way to test that
+            // maintainer's authority stops at their own boards; the only honest way to test that
             // is to check nothing changed.
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -422,7 +422,7 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsPublished);
             Assert.True(outcome.IsForbidden);
-            Assert.Contains(ApprovePublishFlowTests.SystemId, outcome.Error, StringComparison.Ordinal);
+            Assert.Contains(ApprovePublishFlowTests.BoardId, outcome.Error, StringComparison.Ordinal);
 
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
 
@@ -432,7 +432,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_maintainer_of_THIS_system_publishes_it()
+        public async Task A_maintainer_of_THIS_board_publishes_it()
         {
             // The project owner's model: a maintainer assigned to a board publishes to it, with no
             // administrator in the loop.
@@ -440,7 +440,7 @@ namespace CRT.Server.Tests
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id,
-                ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId),
+                ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId),
                 this.thisDataTree,
                 ApprovePublishFlowTests.Now,
                 CancellationToken.None);
@@ -489,7 +489,7 @@ namespace CRT.Server.Tests
             (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -509,7 +509,7 @@ namespace CRT.Server.Tests
             FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
@@ -536,7 +536,7 @@ namespace CRT.Server.Tests
             Assert.Equal([ApproverRole.Maintainer], first.WaitingFor);
 
             ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now.AddMinutes(5), CancellationToken.None);
 
             Assert.True(second.IsPublished, second.Error);
@@ -549,11 +549,11 @@ namespace CRT.Server.Tests
             FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ApproveOutcome again = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
 
             Assert.True(again.IsConflict);
@@ -573,12 +573,12 @@ namespace CRT.Server.Tests
             FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
 
             await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             ReviewAccess colleague = ReviewAccess.For(
                 ApprovePublishFlowTests.AccountRecord(administrator: false) with { Id = 8, Email = "bo@example.com", DisplayName = "Bo" },
-                [ApprovePublishFlowTests.SystemId]);
+                [ApprovePublishFlowTests.BoardId]);
 
             ApproveOutcome refused = await this.Flow(store, accounts).ApproveAsync(
                 id, colleague, this.thisDataTree, ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
@@ -616,7 +616,7 @@ namespace CRT.Server.Tests
 
             var accounts = new FakeAccountStore();
             accounts.Accounts[9] = member;
-            accounts.Maintainers.Add((ApprovePublishFlowTests.SystemId, 9));
+            accounts.Maintainers.Add((ApprovePublishFlowTests.BoardId, 9));
 
             ApproveOutcome outcome = await this.Flow(store, accounts).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
@@ -651,7 +651,7 @@ namespace CRT.Server.Tests
             File.WriteAllText(onDisk, "the notes as another publish left them");
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -684,7 +684,7 @@ namespace CRT.Server.Tests
             store.Submissions[id] = store.Submissions[id] with { TouchesSharedFiles = true };
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.False(outcome.IsPublished);
@@ -772,7 +772,7 @@ namespace CRT.Server.Tests
         {
             // *** NOTHING IS PUBLISHED FROM A SUBMISSION NOBODY CAN READ. *** Without the payload
             // there are no rows, and publishing would write an EMPTY board over a real one -
-            // deleting the system's entire contents, irreversibly.
+            // deleting the board's entire contents, irreversibly.
             var store = new FakeSubmissionStore();
 
             long id = await store.CreateAsync(
@@ -829,10 +829,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_NEW_SYSTEM_publishes_into_the_NEWEST_generation_and_never_the_frozen_one()
+        public async Task A_NEW_BOARD_publishes_into_the_NEWEST_generation_and_never_the_frozen_one()
         {
             // *** THE PROJECT OWNER'S RULE, and the bug that writing these tests caught. *** A new
-            // system's folder is EMPTY, so the generation cannot be read from it - and the first
+            // board's folder is EMPTY, so the generation cannot be read from it - and the first
             // version of this flow fell back to "no version", publishing
             // "Data C64 250407.xlsx". That is the frozen file serving every pre-2.0.0 build, the
             // one file the project owner said must never be written.
@@ -873,10 +873,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task An_EXISTING_system_keeps_publishing_into_its_own_generation()
+        public async Task An_EXISTING_board_keeps_publishing_into_its_own_generation()
         {
-            // The anti-vacuity half: the tree-level fallback must only apply when the system's own
-            // folder says nothing. A system already on v2.0.0 reads its generation from its own
+            // The anti-vacuity half: the tree-level fallback must only apply when the board's own
+            // folder says nothing. A board already on v2.0.0 reads its generation from its own
             // files, as it always did.
             string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
             Directory.CreateDirectory(folder);
@@ -973,7 +973,7 @@ namespace CRT.Server.Tests
 
             var second = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"
@@ -1152,13 +1152,13 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A PUBLISH REMOVES ONLY INSIDE THE SYSTEM'S OWN FOLDER (owner decision, 2026-09-27). ***
+        // *** A PUBLISH REMOVES ONLY INSIDE THE BOARD'S OWN FOLDER (owner decision, 2026-09-27). ***
         // The board stops citing its own old manual, a shared manual and a file of another board's;
         // nothing else uses any of them. Only its own file goes - the other two stay, unused, for
         // Account > Unused files - and only its own file is on the list the maintainer is shown.
         // ###########################################################################################
         [Fact]
-        public async Task A_publish_removes_only_files_inside_the_systems_own_folder()
+        public async Task A_publish_removes_only_files_inside_the_boards_own_folder()
         {
             const string shared = "Commodore/Shared files/Board local files/manual.pdf";
             const string otherBoards = "Commodore/C128/310378/borrowed.pdf";
@@ -1199,7 +1199,7 @@ namespace CRT.Server.Tests
                 ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = hash, SizeBytes = bytes.Length }));
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
@@ -1221,7 +1221,7 @@ namespace CRT.Server.Tests
             store.Submissions[id] = store.Submissions[id] with { TouchesSharedFiles = true };
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.SystemId), this.thisDataTree,
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
@@ -1257,10 +1257,10 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** A NEW SYSTEM CAN BE PUBLISHED AT ALL (reported by the project owner, 2026-09-26:
+        // *** A NEW BOARD CAN BE PUBLISHED AT ALL (reported by the project owner, 2026-09-26:
         // "This submission cannot be published: A publish must carry a revision"). ***
         //
-        // A new system's workbook is seeded with no revision date (DraftSeeder.CreateNewSystem - it
+        // A new board's workbook is seeded with no revision date (DraftSeeder.CreateNewBoard - it
         // has no published board to inherit one from, and CRT never asks for one), PublishMerge's
         // fallback to the published board finds none either, and PublishPlan then refused
         // `publish.no-revision` - at the approval, the one irreversible step. It failed closed, so
@@ -1270,11 +1270,11 @@ namespace CRT.Server.Tests
         // construction. This test would fail against the version that read the board's own date.
         // ###########################################################################################
         [Fact]
-        public void A_NEW_system_that_carries_no_revision_date_can_still_be_planned()
+        public void A_NEW_board_that_carries_no_revision_date_can_still_be_planned()
         {
             SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
 
-            // Exactly what a seeded new system sends: no revision date at all.
+            // Exactly what a seeded new board sends: no revision date at all.
             manifest.Rows.RevisionDate = string.Empty;
 
             PublishPlanResult result = ApprovePublishFlow.BuildPlan(
@@ -1297,7 +1297,7 @@ namespace CRT.Server.Tests
         // 2026-09-26: "server always wins, and what is typed by user is not important"). ***
         //
         // The workbook was already stamped with the publish date, but the PLAN was built from the
-        // submitted one - and the plan's descriptor is what reaches `systems.current_revision`. So
+        // submitted one - and the plan's descriptor is what reaches `boards.current_revision`. So
         // the board and the database row disagreed, and that row is the base a contributor's next
         // draft is diffed against.
         // ###########################################################################################
@@ -1322,7 +1322,7 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // A NEW system's place in the drop-down lists (owner request, 2026-09-27): "The maintainer
+        // A NEW board's place in the drop-down lists (owner request, 2026-09-27): "The maintainer
         // should order the new system, so it becomes visible in the right location for the
         // drop-down lists. This must be done before it can be pushed to BETA."
         // -----------------------------------------------------------------------------------
@@ -1330,7 +1330,7 @@ namespace CRT.Server.Tests
         private const string PublishedWorkbook = "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx";
 
         [Fact]
-        public async Task A_NEW_system_nobody_has_PLACED_is_refused_and_nothing_is_written()
+        public async Task A_NEW_board_nobody_has_PLACED_is_refused_and_nothing_is_written()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(placed: false);
             byte[] masterBefore = File.ReadAllBytes(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
@@ -1340,7 +1340,7 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsPublished);
             Assert.True(outcome.IsConflict);
-            Assert.Equal(SystemListingRules.NotPlacedMessage, outcome.Error);
+            Assert.Equal(BoardListingRules.NotPlacedMessage, outcome.Error);
 
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
             Assert.Equal(masterBefore, File.ReadAllBytes(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx")));
@@ -1351,7 +1351,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_PLACED_new_system_is_added_to_the_drop_down_lists_where_it_was_placed()
+        public async Task A_PLACED_new_board_is_added_to_the_drop_down_lists_where_it_was_placed()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -1374,7 +1374,7 @@ namespace CRT.Server.Tests
         // Every board the list already carries publishes exactly as before - no placement asked,
         // and the file left as it was.
         [Fact]
-        public async Task A_system_the_list_already_carries_needs_no_placement_and_the_list_is_untouched()
+        public async Task A_board_the_list_already_carries_needs_no_placement_and_the_list_is_untouched()
         {
             MasterListingRow listed = new("Commodore 64", "250407 (long board)", ApprovePublishFlowTests.PublishedWorkbook, string.Empty);
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard, listed);
@@ -1418,10 +1418,10 @@ namespace CRT.Server.Tests
             Assert.Equal(("Commodore 64 and 64C", "250407"), (published!.HardwareName, published.BoardName));
         }
 
-        // A new system has no board to take it from: it is captioned with the names it was placed
+        // A new board has no board to take it from: it is captioned with the names it was placed
         // under - the ones its contributor typed, so what the draft already showed.
         [Fact]
-        public async Task A_new_system_is_captioned_with_the_names_it_was_placed_under()
+        public async Task A_new_board_is_captioned_with_the_names_it_was_placed_under()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -1482,7 +1482,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task With_no_readable_list_a_NEW_system_is_refused()
+        public async Task With_no_readable_list_a_NEW_board_is_refused()
         {
             File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"), "not a workbook");
 
@@ -1496,10 +1496,10 @@ namespace CRT.Server.Tests
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
         }
 
-        // Another system listed under the same names since this one was placed (the lists can change
+        // Another board listed under the same names since this one was placed (the lists can change
         // between the placement and the approval): refused before a byte is written.
         [Fact]
-        public async Task A_system_whose_names_were_taken_since_it_was_placed_is_refused_before_anything_is_written()
+        public async Task A_board_whose_names_were_taken_since_it_was_placed_is_refused_before_anything_is_written()
         {
             MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/Data C64 326298 v2.0.0.xlsx", string.Empty);
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard, sameNames);
@@ -1518,12 +1518,12 @@ namespace CRT.Server.Tests
         // Placed after a row that has since left the list: refused before a byte is written, rather
         // than put somewhere nobody chose.
         [Fact]
-        public async Task A_system_placed_after_a_row_that_has_LEFT_the_list_is_refused_before_anything_is_written()
+        public async Task A_board_placed_after_a_row_that_has_LEFT_the_list_is_refused_before_anything_is_written()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(placed: false);
 
             await store.SetPlacementAsync(
-                ApprovePublishFlowTests.SystemId,
+                ApprovePublishFlowTests.BoardId,
                 ApprovePublishFlowTests.Placement() with { AfterExcelDataFile = "Commodore/VIC-20/999999/Data VIC20 999999 v2.0.0.xlsx" },
                 1,
                 ApprovePublishFlowTests.Now,
@@ -1538,7 +1538,7 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // One submission in BETA per system (owner decision, 2026-09-27)
+        // One submission in BETA per board (owner decision, 2026-09-27)
         // -----------------------------------------------------------------------------------
 
         private static readonly ServerOptions WithProduction = new()
@@ -1558,14 +1558,14 @@ namespace CRT.Server.Tests
                 publishLock: null,
                 options: ApprovePublishFlowTests.WithProduction);
 
-        // A second pending submission of the fixture's system, in the same store.
+        // A second pending submission of the fixture's board, in the same store.
         private static async Task<long> AnotherPendingAsync(FakeSubmissionStore store)
         {
             SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
 
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    manifest.SystemId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
+                    manifest.BoardId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
                     null, "other@example.com", "192.0.2.2", "hash2", "2026-August-21",
                     "Another fix.", 1, [.. manifest.Files], ApprovePublishFlowTests.Now,
                     ApprovePublishFlowTests.Now.AddHours(24)),
@@ -1578,7 +1578,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** WHILE A SYSTEM WAITS IN BETA, NO OTHER SUBMISSION OF IT IS APPROVED. *** A push-back
+        // *** WHILE A BOARD WAITS IN BETA, NO OTHER SUBMISSION OF IT IS APPROVED. *** A push-back
         // returns everything merged since the last promotion - it cannot pick one contributor's work
         // out - so two in BETA at once could only be pushed back together. Refused with the shared
         // sentence, nothing written; once production has caught up, the same approval goes through.
@@ -1600,12 +1600,12 @@ namespace CRT.Server.Tests
 
             Assert.False(refused.IsPublished);
             Assert.True(refused.IsConflict);
-            Assert.Equal(OneSubmissionInBeta.BusyMessage(ApprovePublishFlowTests.SystemId), refused.Error);
+            Assert.Equal(OneSubmissionInBeta.BusyMessage(ApprovePublishFlowTests.BoardId), refused.Error);
             Assert.Equal(SubmissionState.Pending, (await store.FindAsync(second, CancellationToken.None))!.State);
             Assert.Empty(await store.GetApprovalsAsync(second, CancellationToken.None));
 
-            // Production catches up (Beta > Prod): the system no longer waits, and the approval goes through.
-            store.ProductionSystems[ApprovePublishFlowTests.SystemId] = store.PublishedSystems[ApprovePublishFlowTests.SystemId];
+            // Production catches up (Beta > Prod): the board no longer waits, and the approval goes through.
+            store.ProductionBoards[ApprovePublishFlowTests.BoardId] = store.PublishedBoards[ApprovePublishFlowTests.BoardId];
 
             ApproveOutcome afterPromotion = await flow.ApproveAsync(
                 second, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddMinutes(2), CancellationToken.None);
@@ -1614,7 +1614,7 @@ namespace CRT.Server.Tests
         }
 
         // With no production to publish to, nothing ever leaves BETA - the rule would close every
-        // system after its first approval, so it is off.
+        // board after its first approval, so it is off.
         [Fact]
         public async Task Without_production_publishing_a_second_submission_is_approved_as_before()
         {

@@ -4,9 +4,9 @@ The data file for one board: its schematics, components, images, files and links
 
 ---
 
-A board Excel file is placed in the folder for the individual board (system), for example `Data C64 250407 v2.0.0.xlsx`. The version number in its name matches the [Main Excel](Main-Excel) file that lists the board. A new system made with **Add a new system** starts out as `Data <Hardware> <Board>.xlsx`, and gets the version in its name when it is published.
+A board Excel file is placed in the folder for the individual board, for example `Data C64 250407 v2.0.0.xlsx`. The version number in its name matches the [Main Excel](Main-Excel) file that lists the board. A new board made with **Add a new board** starts out as `Data <Hardware> <Board>.xlsx`, and gets the version in its name when it is published.
 
-The board Excel file is by far the most time consuming part, when building a new system from ground, as the data gathering part is hard/slow, if you want a good data quality (and yes, please... we want that).
+The board Excel file is by far the most time consuming part, when building a new board from ground, as the data gathering part is hard/slow, if you want a good data quality (and yes, please... we want that).
 
 You can fill it in from inside CRT - the Contribute tab, the label editor on the Schematics tab, or "Edit in table format" on the [Drafts tab](Drafts-tab) - or open your draft's file in Excel. Below is the documentation for each worksheet and the columns inside it.
 

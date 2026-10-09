@@ -53,7 +53,7 @@ namespace CRT
 
         private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
-        // After a reset went through: the tab reads its queue, BETA list and systems again.
+        // After a reset went through: the tab reads its queue, BETA list and boards again.
         public Func<Task>? AfterReset { get; set; }
 
         public void Initialize(ReviewApiClient? client, ReviewSession? session)

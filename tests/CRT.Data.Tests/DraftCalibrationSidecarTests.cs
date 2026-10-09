@@ -29,7 +29,7 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -43,20 +43,20 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
 
     private void WritePublishedBoard(BoardData board)
     {
-        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.SystemKey);
+        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         BoardWorkbookWriter.Write(path, board);
     }
 
     private void WriteDraftBoard(BoardData board)
     {
-        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         BoardWorkbookWriter.Write(path, board);
 
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey),
-            new DraftMarker { SystemKey = DraftCalibrationSidecarTests.SystemKey });
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey),
+            new DraftMarker { BoardKey = DraftCalibrationSidecarTests.BoardKey });
     }
 
     private static void SaveCalibration(string workbookPath, string schematicName, double scaleX)
@@ -81,8 +81,8 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         this.WritePublishedBoard(DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1"));
 
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.SystemKey),
-            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey));
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.BoardKey),
+            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey));
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         this.WriteDraftBoard(DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1"));
 
         Assert.Equal(
-            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey),
-            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey));
+            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey),
+            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey));
     }
 
     // ###########################################################################################
@@ -106,13 +106,13 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
     {
         this.WritePublishedBoard(DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1"));
 
-        string stray = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string stray = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(stray)!);
         File.WriteAllText(stray, "not a draft");
 
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.SystemKey),
-            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey));
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.BoardKey),
+            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey));
     }
 
     // ------------------------------------------------------------------ Round trip
@@ -131,8 +131,8 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         this.WritePublishedBoard(board);
         this.WriteDraftBoard(board);
 
-        string publishedPath = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.SystemKey);
-        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string publishedPath = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftCalibrationSidecarTests.BoardKey);
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
 
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 1", scaleX: 3.5);
 
@@ -154,7 +154,7 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         BoardData board = DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1", "Sheet 2");
         this.WriteDraftBoard(board);
 
-        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
 
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 1", scaleX: 3.5);
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 2", scaleX: 7.0);
@@ -179,7 +179,7 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         BoardData board = DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1", "Sheet 2");
         this.WriteDraftBoard(board);
 
-        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
 
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 1", scaleX: 3.5);
 
@@ -199,7 +199,7 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         BoardData withBoth = DraftCalibrationSidecarTests.BoardWithSchematics("Sheet 1", "Sheet 2");
         this.WriteDraftBoard(withBoth);
 
-        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
 
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 1", scaleX: 3.5);
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet 2", scaleX: 7.0);
@@ -219,7 +219,7 @@ public sealed class DraftCalibrationSidecarTests : IDisposable
         BoardData board = DraftCalibrationSidecarTests.BoardWithSchematics("Sheet Z", "Sheet A");
         this.WriteDraftBoard(board);
 
-        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.SystemKey);
+        string draftPath = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftCalibrationSidecarTests.BoardKey);
 
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet Z", scaleX: 1.0);
         DraftCalibrationSidecarTests.SaveCalibration(draftPath, "Sheet A", scaleX: 2.0);

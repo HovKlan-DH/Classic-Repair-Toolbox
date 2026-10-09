@@ -68,14 +68,14 @@ namespace CRT.Server.Tests
             { "PUT", "/api/submissions/{submissionId:long}/blobs/{hash}", RequestBodyLimits.BlobChunkBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/amend", RequestBodyLimits.ManifestBytes },
 
-            // A system's table edit (2026-10-03): a whole board's rows, as an amendment carries - and
+            // A board's table edit (2026-10-03): a whole board's rows, as an amendment carries - and
             // its check, which carries the same rows before the reason is asked for.
-            { "POST", "/api/review/systems/edit", RequestBodyLimits.ManifestBytes },
-            { "POST", "/api/review/systems/edit/check", RequestBodyLimits.ManifestBytes },
+            { "POST", "/api/review/boards/edit", RequestBodyLimits.ManifestBytes },
+            { "POST", "/api/review/boards/edit/check", RequestBodyLimits.ManifestBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/approve", RequestBodyLimits.PathListBytes },
             { "POST", "/api/review/production/publish", RequestBodyLimits.PathListBytes },
             { "POST", "/api/admin/unused-files/remove", RequestBodyLimits.PathListBytes },
-            { "POST", "/api/admin/systems/order", RequestBodyLimits.PathListBytes },
+            { "POST", "/api/admin/boards/order", RequestBodyLimits.PathListBytes },
 
             // Small bodies, deliberately at the default: a sign-in, a token, an address and a
             // password, a maintainer change, a plan request, a review comment of at most 4,000
@@ -100,26 +100,26 @@ namespace CRT.Server.Tests
             { "POST", "/api/admin/maintainers/invitations/withdraw", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/production/plan", RequestBodyLimits.DefaultBytes },
 
-            // A rollback: a system id, and the reason the contributor is told. Both small - the
+            // A rollback: a board id, and the reason the contributor is told. Both small - the
             // comment is the same shape as a rejection's, which is at the default too.
             { "POST", "/api/review/production/rollback/plan", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/production/rollback", RequestBodyLimits.DefaultBytes },
 
-            // Deleting a system (2026-10-03): a system id, a fingerprint and the reason the
+            // Deleting a board (2026-10-03): a board id, a fingerprint and the reason the
             // contributors of its open submissions are told - a rollback's shape.
-            { "POST", "/api/admin/systems/delete/plan", RequestBodyLimits.DefaultBytes },
-            { "POST", "/api/admin/systems/delete", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/boards/delete/plan", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/boards/delete", RequestBodyLimits.DefaultBytes },
 
             // Resetting the contribution data (2026-10-04): the fingerprint of the counts shown.
             { "POST", "/api/admin/reset", RequestBodyLimits.DefaultBytes },
 
-            // One system's facts for the "Systems" screen: a system id and nothing else.
-            { "POST", "/api/review/systems/detail", RequestBodyLimits.DefaultBytes },
-            { "POST", "/api/review/systems/listing", RequestBodyLimits.DefaultBytes },
+            // One board's facts for the "Boards" screen: a board id and nothing else.
+            { "POST", "/api/review/boards/detail", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/review/boards/listing", RequestBodyLimits.DefaultBytes },
 
-            // A system's Board data and Files views (2026-10-03): a system id and nothing else.
-            { "POST", "/api/review/systems/table", RequestBodyLimits.DefaultBytes },
-            { "POST", "/api/review/systems/files", RequestBodyLimits.DefaultBytes },
+            // A board's Board data and Files views (2026-10-03): a board id and nothing else.
+            { "POST", "/api/review/boards/table", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/review/boards/files", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/reject", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/submissions/{submissionId:long}/request-changes", RequestBodyLimits.DefaultBytes },
 

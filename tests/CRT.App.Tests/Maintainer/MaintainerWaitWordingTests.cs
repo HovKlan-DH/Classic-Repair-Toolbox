@@ -72,12 +72,12 @@ public sealed class MaintainerWaitWordingTests
         Assert.Contains(expected, MaintainerWaitWording.SaveAfterTimeout(before, now), StringComparison.Ordinal);
     }
 
-    // A publish and a push-back both take the system off the BETA list when they land.
+    // A publish and a push-back both take the board off the BETA list when they land.
     [Theory]
     [InlineData(false, "but it did finish")]
     [InlineData(true, "is still waiting in BETA")]
     [InlineData(null, "could not be checked")]
-    public void A_publish_to_production_is_judged_by_whether_the_system_left_BETA(bool? stillInBeta, string expected)
+    public void A_publish_to_production_is_judged_by_whether_the_board_left_BETA(bool? stillInBeta, string expected)
     {
         Assert.Contains(expected, MaintainerWaitWording.PublishAfterTimeout("Commodore/C64/250407", stillInBeta), StringComparison.Ordinal);
     }
@@ -85,16 +85,16 @@ public sealed class MaintainerWaitWordingTests
     [Theory]
     [InlineData(false, "is pushed back to the queue")]
     [InlineData(true, "is still in BETA")]
-    public void A_push_back_is_judged_by_whether_the_system_left_BETA(bool stillInBeta, string expected)
+    public void A_push_back_is_judged_by_whether_the_board_left_BETA(bool stillInBeta, string expected)
     {
         Assert.Contains(expected, MaintainerWaitWording.PushBackAfterTimeout("Commodore/C64/250407", stillInBeta), StringComparison.Ordinal);
     }
 
-    // A delete is judged by whether the system is still in the systems list (2026-10-03).
+    // A delete is judged by whether the board is still in the boards list (2026-10-03).
     [Theory]
     [InlineData(false, "but it did finish: Commodore/C64/999999 is deleted.")]
     [InlineData(true, "and Commodore/C64/999999 is still there.")]
-    public void A_delete_is_judged_by_whether_the_system_is_still_listed(bool stillListed, string expected)
+    public void A_delete_is_judged_by_whether_the_board_is_still_listed(bool stillListed, string expected)
     {
         Assert.Contains(expected, MaintainerWaitWording.DeleteAfterTimeout("Commodore/C64/999999", stillListed), StringComparison.Ordinal);
     }
@@ -179,20 +179,20 @@ public sealed class MaintainerWaitWordingTests
     }
 
     // ###########################################################################################
-    // A change published from a system's table, after no answer: in BETA, made but waiting in the
-    // queue, not there at all - or the system could not be read to look, which never guesses.
+    // A change published from a board's table, after no answer: in BETA, made but waiting in the
+    // queue, not there at all - or the board could not be read to look, which never guesses.
     // ###########################################################################################
     [Fact]
-    public void A_timed_out_system_change_is_judged_by_the_submission_it_became()
+    public void A_timed_out_board_change_is_judged_by_the_submission_it_became()
     {
-        static SystemSubmissionEntry Entry(string state) => new(57, null, "Corrected U8.", state, DateTimeOffset.UnixEpoch, null, null);
+        static BoardSubmissionEntry Entry(string state) => new(57, null, "Corrected U8.", state, DateTimeOffset.UnixEpoch, null, null);
 
         Assert.EndsWith("but it did finish: your change was published to BETA as submission #57.",
-            MaintainerWaitWording.SystemEditAfterTimeout(true, Entry("merged")), StringComparison.Ordinal);
+            MaintainerWaitWording.BoardEditAfterTimeout(true, Entry("merged")), StringComparison.Ordinal);
         Assert.Contains("saved as submission #57, but not published to BETA - it waits under \"Queue: Contributor submissions\"",
-            MaintainerWaitWording.SystemEditAfterTimeout(true, Entry("pending")), StringComparison.Ordinal);
-        Assert.Contains("not among the system's submissions, so it was not published",
-            MaintainerWaitWording.SystemEditAfterTimeout(true, null), StringComparison.Ordinal);
-        Assert.Contains("could not be checked", MaintainerWaitWording.SystemEditAfterTimeout(false, null), StringComparison.Ordinal);
+            MaintainerWaitWording.BoardEditAfterTimeout(true, Entry("pending")), StringComparison.Ordinal);
+        Assert.Contains("not among the board's submissions, so it was not published",
+            MaintainerWaitWording.BoardEditAfterTimeout(true, null), StringComparison.Ordinal);
+        Assert.Contains("could not be checked", MaintainerWaitWording.BoardEditAfterTimeout(false, null), StringComparison.Ordinal);
     }
 }

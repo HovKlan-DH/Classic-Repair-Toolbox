@@ -19,7 +19,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class MaintainerScreenWording
     {
-        public const string Systems = "Systems";
+        public const string Boards = "Boards";
 
         public const string ContributorQueue = "Queue: Contributor submissions";
 

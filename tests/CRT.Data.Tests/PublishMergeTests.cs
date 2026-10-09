@@ -20,7 +20,7 @@ public sealed class PublishMergeTests
     {
         var manifest = new SubmissionManifest
         {
-            SystemId = "Commodore/C64/250407",
+            BoardId = "Commodore/C64/250407",
             Manufacturer = "Commodore",
             Hardware = "C64",
             Board = "250407"
@@ -68,7 +68,7 @@ public sealed class PublishMergeTests
     }
 
     [Fact]
-    public void A_NEW_SYSTEM_needs_no_published_board_at_all()
+    public void A_NEW_BOARD_needs_no_published_board_at_all()
     {
         // The highest-risk submission there is, and the one where a null published board is the
         // normal case rather than an error.
@@ -135,7 +135,7 @@ public sealed class PublishMergeTests
     }
 
     [Fact]
-    public void A_NEW_SYSTEM_with_no_date_anywhere_gets_an_EMPTY_one_rather_than_a_fabricated_date()
+    public void A_NEW_BOARD_with_no_date_anywhere_gets_an_EMPTY_one_rather_than_a_fabricated_date()
     {
         // Inventing today's date would state, in a published file, that the board data was revised
         // on a day nobody revised it. Empty is honest and the reader already tolerates it.
@@ -145,7 +145,7 @@ public sealed class PublishMergeTests
     }
 
     // -----------------------------------------------------------------------------------------
-    // The PUBLISHED REVISION - what `systems.current_revision` becomes.
+    // The PUBLISHED REVISION - what `boards.current_revision` becomes.
     // -----------------------------------------------------------------------------------------
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class PublishMergeTests
     {
         // *** THIS IS A CONTRACT WITH THE CLIENT, not a free choice. *** DraftBaseRevision stamps
         // a draft's BaseRevision from the official board's REVISION DATE, and the submission sends
-        // that value back. So `systems.current_revision` must be the same thing, or every
+        // that value back. So `boards.current_revision` must be the same thing, or every
         // contributor would be diffing against a value their drafts never carry and the drift
         // warning would fire on every board forever.
         BoardData merged = PublishMerge.Build(
@@ -243,7 +243,7 @@ public sealed class PublishMergeTests
         Assert.Equal(("Commodore 128 and 128D", "310378"), (merged.HardwareName, merged.BoardName));
     }
 
-    // A new system has no board to take it from: the names it is listed under fill it.
+    // A new board has no board to take it from: the names it is listed under fill it.
     [Fact]
     public void A_board_without_a_caption_takes_the_names_it_is_listed_under()
     {

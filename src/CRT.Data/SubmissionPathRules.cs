@@ -13,7 +13,7 @@ namespace Handlers.DataHandling
     // account and names a location the server will create a file at. This is the single most
     // security-sensitive function in Phase 4, and the trap list in NewContributeStrategy.md names
     // it explicitly: reject absolute paths, traversal, and anything resolving outside the target
-    // system folder.
+    // board folder.
     //
     // THE CENTRAL RULE, AND WHY THE OBVIOUS IMPLEMENTATION IS WRONG: this RESOLVES the path and
     // then checks containment, rather than scanning for ".." or "/" patterns. Pattern-matching a
@@ -54,9 +54,9 @@ namespace Handlers.DataHandling
         };
 
         // ###########################################################################################
-        // Is this path safe to write inside the system folder?
+        // Is this path safe to write inside the board folder?
         //
-        // systemFolder is the absolute path of the folder this submission may write into.
+        // boardFolder is the absolute path of the folder this submission may write into.
         // relativePath is the untrusted value from the manifest.
         //
         // On success, resolvedPath is the absolute path to write - ALREADY RESOLVED, so the caller
@@ -64,7 +64,7 @@ namespace Handlers.DataHandling
         // the original strings reintroduces exactly the hole this closes.
         // ###########################################################################################
         public static bool TryResolve(
-            string systemFolder,
+            string boardFolder,
             string relativePath,
             out string resolvedPath,
             out string failureReason)
@@ -72,9 +72,9 @@ namespace Handlers.DataHandling
             resolvedPath = string.Empty;
             failureReason = string.Empty;
 
-            if (string.IsNullOrWhiteSpace(systemFolder))
+            if (string.IsNullOrWhiteSpace(boardFolder))
             {
-                failureReason = "The target system folder is not set.";
+                failureReason = "The target board folder is not set.";
                 return false;
             }
 
@@ -86,7 +86,7 @@ namespace Handlers.DataHandling
             // inside the folder.
             try
             {
-                string root = Path.GetFullPath(systemFolder);
+                string root = Path.GetFullPath(boardFolder);
                 string candidate = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
                 string rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
@@ -96,7 +96,7 @@ namespace Handlers.DataHandling
                 // Resolving to the folder itself is not a file path.
                 if (string.Equals(candidate, root, StringComparison.Ordinal))
                 {
-                    failureReason = $"The path resolves to the system folder itself: [{Trim(relativePath)}]";
+                    failureReason = $"The path resolves to the board folder itself: [{Trim(relativePath)}]";
                     return false;
                 }
 
@@ -104,7 +104,7 @@ namespace Handlers.DataHandling
                 // one that matters, and it is case-sensitive.
                 if (!candidate.StartsWith(rootWithSeparator, StringComparison.Ordinal))
                 {
-                    failureReason = $"The path escapes the system folder: [{Trim(relativePath)}]";
+                    failureReason = $"The path escapes the board folder: [{Trim(relativePath)}]";
                     return false;
                 }
 
@@ -260,11 +260,11 @@ namespace Handlers.DataHandling
         // contributor's Windows machine, so the tree would be un-syncable for half the audience.
         //
         // ###########################################################################################
-        // *** `containmentRoot` IS THE DATA ROOT, NOT THE SYSTEM'S OWN FOLDER (renamed 2026-09-23).
+        // *** `containmentRoot` IS THE DATA ROOT, NOT THE BOARD'S OWN FOLDER (renamed 2026-09-23).
         // ***
         //
         // A submitted path is data-root-relative ("Commodore/C64/250407/Sheet1.png"), so containing
-        // it to the system folder was doubly wrong: it resolved every path one level too deep, and
+        // it to the board folder was doubly wrong: it resolved every path one level too deep, and
         // it would have refused any SHARED file - "Commodore/Shared files/Component images/6526.png"
         // legitimately sits beside the manufacturer rather than inside one board.
         //

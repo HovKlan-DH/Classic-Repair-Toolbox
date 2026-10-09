@@ -23,11 +23,11 @@ public sealed class DraftTableSessionTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
-    private string WorkbookPath => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftTableSessionTests.SystemKey);
+    private string WorkbookPath => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftTableSessionTests.BoardKey);
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
@@ -41,7 +41,7 @@ public sealed class DraftTableSessionTests : IDisposable
     }
 
     private BoardData ReadDraft() =>
-        DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftTableSessionTests.SystemKey)!;
+        DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftTableSessionTests.BoardKey)!;
 
     private static BoardTableCell FriendlyNameOf(DraftTableSession session, string label)
     {
@@ -74,20 +74,20 @@ public sealed class DraftTableSessionTests : IDisposable
         this.thisWorkspace.WriteFile("Data/Commodore/C64/250407/published.png", "x");
         string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
 
-        DraftTableSession checkedSession = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null, dataRoot)!;
+        DraftTableSession checkedSession = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null, dataRoot)!;
         BoardTableSheet schematics = checkedSession.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
 
         Assert.Equal([false, false, true], schematics.Rows.Select(row => row.HasErrors));
         Assert.Equal("file.missing", checkedSession.Document.Problems.Single(problem => problem.Level == BoardProblemLevel.Error).Code);
 
-        DraftTableSession unchecked_ = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession unchecked_ = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
         Assert.Equal(0, unchecked_.Document.ErrorCount);
     }
 
     [Fact]
     public void Without_a_draft_nothing_opens()
     {
-        Assert.Null(DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, published: null));
+        Assert.Null(DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, published: null));
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class DraftTableSessionTests : IDisposable
 
         DraftTableSession session = DraftTableSession.Open(
             this.DraftsRoot,
-            DraftTableSessionTests.SystemKey,
+            DraftTableSessionTests.BoardKey,
             published: new BoardData { Components = [Component("U1", "CPU")] })!;
 
         Assert.Equal(BoardTableCellState.Modified, FriendlyNameOf(session, "U1").State);
@@ -105,11 +105,27 @@ public sealed class DraftTableSessionTests : IDisposable
         Assert.False(session.HasChangedOnDisk());
     }
 
+    // The Drafts tab names the source the published board was downloaded from (owner request,
+    // 2026-10-05) - the label has to reach the changed cell's tooltip through the session.
+    [Fact]
+    public void A_changed_cell_names_the_source_the_session_was_opened_with()
+    {
+        this.WriteDraft(new BoardData { Components = [Component("U1", "CPU 6510")] });
+
+        DraftTableSession session = DraftTableSession.Open(
+            this.DraftsRoot,
+            DraftTableSessionTests.BoardKey,
+            published: new BoardData { Components = [Component("U1", "CPU")] },
+            baselineLabel: BoardTableDocument.SourceBaselineLabel(betaSource: true))!;
+
+        Assert.Equal("BETA source value: CPU", FriendlyNameOf(session, "U1").ToolTip);
+    }
+
     [Fact]
     public void A_saved_edit_is_in_the_workbook_and_the_table_is_no_longer_unsaved()
     {
         this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
 
@@ -130,7 +146,7 @@ public sealed class DraftTableSessionTests : IDisposable
     public async Task A_prepared_save_writes_the_rows_it_was_prepared_with_from_another_thread()
     {
         this.WriteDraft(new BoardData { Components = [Component("U1", "CPU"), Component("U2", "SID")] });
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
 
@@ -162,13 +178,13 @@ public sealed class DraftTableSessionTests : IDisposable
     public async Task A_completed_save_takes_the_fingerprint_it_is_handed_rather_than_hashing_again()
     {
         this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
         Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
 
         DraftWorkbookEditOutcome outcome = await Task.Run(write);
-        DraftTableSession reread = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession reread = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         session.CompleteSave(outcome, reread.Fingerprint);
 
@@ -182,7 +198,7 @@ public sealed class DraftTableSessionTests : IDisposable
     public void A_prepared_save_is_still_refused_when_the_workbook_changed_since_the_table_was_read()
     {
         this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
         Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
@@ -206,7 +222,7 @@ public sealed class DraftTableSessionTests : IDisposable
             Credits = [new CreditEntry { Category = "Data", NameOrHandle = "Dennis" }],
         });
 
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
         FriendlyNameOf(session, "U1").Text = "Edited in the table";
 
         // Meanwhile, in Excel: a different sheet is edited and saved.
@@ -234,7 +250,7 @@ public sealed class DraftTableSessionTests : IDisposable
         // Without re-fingerprinting after a save, the table's OWN write would read as a change
         // made behind its back, and every later save would be refused.
         this.WriteDraft(new BoardData { Components = [Component("U1", "CPU")] });
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
 
         FriendlyNameOf(session, "U1").Text = "First";
         Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
@@ -256,7 +272,7 @@ public sealed class DraftTableSessionTests : IDisposable
             [new ComponentHighlightEntry { SchematicName = "Main", BoardLabel = "U1", X = "10", Y = "20", Width = "30", Height = "40" }],
             []);
 
-        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, null)!;
+        DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
 
         Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
@@ -273,7 +289,7 @@ public sealed class DraftTableSessionTests : IDisposable
 
         DraftTableSession session = DraftTableSession.Open(
             this.DraftsRoot,
-            DraftTableSessionTests.SystemKey,
+            DraftTableSessionTests.BoardKey,
             published: new BoardData { Components = [Component("U1"), Component("U2"), Component("U3")] })!;
 
         BoardTableSheet sheet = session.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
@@ -289,7 +305,7 @@ public sealed class DraftTableSessionTests : IDisposable
     private DraftTableSession OpenSession(BoardData board)
     {
         this.WriteDraft(board);
-        return DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.SystemKey, published: null)!;
+        return DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, published: null)!;
     }
 
     [Fact]

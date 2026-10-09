@@ -69,7 +69,7 @@
 									Padding="10">
 							<Grid ColumnDefinitions="*,Auto">
 								<StackPanel Grid.Column="0" Spacing="3">
-									<TextBlock Text="{Binding SystemName}"
+									<TextBlock Text="{Binding BoardDisplayName}"
 											   FontWeight="SemiBold"
 											   TextWrapping="Wrap" />
 

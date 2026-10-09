@@ -941,23 +941,23 @@ public sealed class SubmissionReceiptPresenterTests
     // ------------------------------------------------------------------ the Drafts tab's badge
 
     // ###########################################################################################
-    // LatestForSystem - which submission a Drafts row's badge describes (owner request,
-    // 2026-09-27: "When I have submitted ... I need to see that somehow"). Matched on the system id
+    // LatestForBoard - which submission a Drafts row's badge describes (owner request,
+    // 2026-09-27: "When I have submitted ... I need to see that somehow"). Matched on the board id
     // a submission is sent under, and the newest one wins - a newer submission replaces an older
     // one on the server too.
     // ###########################################################################################
-    private static SubmissionReceipt Receipt(long id, string systemId, string sentUtc, string state = "pending") => new()
+    private static SubmissionReceipt Receipt(long id, string boardId, string sentUtc, string state = "pending") => new()
     {
         SubmissionId = id,
-        SystemId = systemId,
+        BoardId = boardId,
         SentUtc = DateTimeOffset.Parse(sentUtc, CultureInfo.InvariantCulture),
         LastKnownState = state,
     };
 
     [Fact]
-    public void The_badge_describes_the_systems_NEWEST_submission()
+    public void The_badge_describes_the_boards_NEWEST_submission()
     {
-        SubmissionReceipt latest = SubmissionReceiptPresenter.LatestForSystem(
+        SubmissionReceipt latest = SubmissionReceiptPresenter.LatestForBoard(
             [
                 Receipt(3, "Commodore/C128/310378 Open128", "2026-09-20T10:00:00Z", "withdrawn"),
                 Receipt(8, "Commodore/C128/310378 Open128", "2026-09-27T10:46:11Z", "merged"),
@@ -969,18 +969,18 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     [Fact]
-    public void Another_systems_submissions_are_not_this_ones()
+    public void Another_boards_submissions_are_not_this_ones()
     {
-        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(
+        Assert.Null(SubmissionReceiptPresenter.LatestForBoard(
             [Receipt(1, "Commodore/C128/310378", "2026-09-27T10:00:00Z")],
             "Commodore/C128/310378 Open128"));
     }
 
     // The id is folder names, which compare like folder names everywhere else in the app.
     [Fact]
-    public void The_system_id_matches_ignoring_case_and_outer_spaces()
+    public void The_board_id_matches_ignoring_case_and_outer_spaces()
     {
-        Assert.NotNull(SubmissionReceiptPresenter.LatestForSystem(
+        Assert.NotNull(SubmissionReceiptPresenter.LatestForBoard(
             [Receipt(1, " commodore/c128/310378 OPEN128 ", "2026-09-27T10:00:00Z")],
             "Commodore/C128/310378 Open128"));
     }
@@ -997,28 +997,28 @@ public sealed class SubmissionReceiptPresenterTests
         SubmissionReceipt[] receipts = [Receipt(8, "Commodore/C64/250407", "2026-09-20T10:00:00Z", "published")];
         DateTimeOffset draftCreated = DateTimeOffset.Parse("2026-09-25T08:00:00Z", CultureInfo.InvariantCulture);
 
-        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(receipts, "Commodore/C64/250407", draftCreated));
+        Assert.Null(SubmissionReceiptPresenter.LatestForBoard(receipts, "Commodore/C64/250407", draftCreated));
 
         SubmissionReceipt[] sentSince = [.. receipts, Receipt(9, "Commodore/C64/250407", "2026-09-26T12:00:00Z")];
-        Assert.Equal(9, SubmissionReceiptPresenter.LatestForSystem(sentSince, "Commodore/C64/250407", draftCreated)!.SubmissionId);
+        Assert.Equal(9, SubmissionReceiptPresenter.LatestForBoard(sentSince, "Commodore/C64/250407", draftCreated)!.SubmissionId);
 
         // A marker that does not say when it was made leaves nothing out.
-        Assert.Equal(8, SubmissionReceiptPresenter.LatestForSystem(receipts, "Commodore/C64/250407", draftCreatedUtc: null)!.SubmissionId);
+        Assert.Equal(8, SubmissionReceiptPresenter.LatestForBoard(receipts, "Commodore/C64/250407", draftCreatedUtc: null)!.SubmissionId);
     }
 
     [Fact]
-    public void A_system_never_submitted_has_no_badge()
+    public void A_board_never_submitted_has_no_badge()
     {
-        Assert.Null(SubmissionReceiptPresenter.LatestForSystem([], "Commodore/C64/250407"));
-        Assert.Null(SubmissionReceiptPresenter.LatestForSystem(null, "Commodore/C64/250407"));
-        Assert.Null(SubmissionReceiptPresenter.LatestForSystem([Receipt(1, "Commodore/C64/250407", "2026-09-27T10:00:00Z")], "  "));
+        Assert.Null(SubmissionReceiptPresenter.LatestForBoard([], "Commodore/C64/250407"));
+        Assert.Null(SubmissionReceiptPresenter.LatestForBoard(null, "Commodore/C64/250407"));
+        Assert.Null(SubmissionReceiptPresenter.LatestForBoard([Receipt(1, "Commodore/C64/250407", "2026-09-27T10:00:00Z")], "  "));
     }
 
     // Two sent in the same instant (a clock that did not move): the higher id is the later one.
     [Fact]
     public void Two_sent_at_once_are_told_apart_by_their_id()
     {
-        Assert.Equal(7, SubmissionReceiptPresenter.LatestForSystem(
+        Assert.Equal(7, SubmissionReceiptPresenter.LatestForBoard(
             [Receipt(7, "A/B/C", "2026-09-27T10:00:00Z"), Receipt(6, "A/B/C", "2026-09-27T10:00:00Z")],
             "A/B/C")!.SubmissionId);
     }
@@ -1036,20 +1036,20 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.Contains("My submissions", tooltip, StringComparison.Ordinal);
     }
 
-    // ------------------------------------------------------------------ system names
+    // ------------------------------------------------------------------ board names
 
     // ###########################################################################################
-    // A real receipt carries the SYSTEM ID ("Commodore/C128/310378 Open128"), and "My submissions"
+    // A real receipt carries the BOARD ID ("Commodore/C128/310378 Open128"), and "My submissions"
     // used to drop its last segment as a file name - reading "Commodore C128", board missing
     // (2026-09-27). A workbook path loses only its file.
     // ###########################################################################################
     [Theory]
     [InlineData("Commodore/C128/310378 Open128", "Commodore C128 310378 Open128")]
     [InlineData("Commodore/C64/250407/Data C64 250407.xlsx", "Commodore C64 250407")]
-    [InlineData("  ", "(unknown system)")]
-    public void A_system_is_named_in_full_whether_given_as_an_id_or_a_workbook_path(string systemId, string expected)
+    [InlineData("  ", "(unknown board)")]
+    public void A_board_is_named_in_full_whether_given_as_an_id_or_a_workbook_path(string boardId, string expected)
     {
-        Assert.Equal(expected, SubmissionReceiptPresenter.DescribeSystem(systemId));
+        Assert.Equal(expected, SubmissionReceiptPresenter.DescribeBoard(boardId));
     }
 
     // ------------------------------------------------------------------ the switch-back-from-BETA notice
@@ -1063,7 +1063,7 @@ public sealed class SubmissionReceiptPresenterTests
     private static SubmissionReceipt Sent(long id, string state, bool dismissed = false) => new()
     {
         SubmissionId = id,
-        SystemId = "Commodore/C128/310378 Open128",
+        BoardId = "Commodore/C128/310378 Open128",
         LastKnownState = state,
         SentUtc = new DateTimeOffset(2026, 9, 27, 10, 0, 0, TimeSpan.Zero).AddMinutes(id),
         SourceNoticeDismissed = dismissed,
@@ -1103,7 +1103,7 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     [Fact]
-    public void The_notice_names_the_whole_system_and_says_where_to_switch()
+    public void The_notice_names_the_whole_board_and_says_where_to_switch()
     {
         string text = SubmissionReceiptPresenter.DescribeSourceSwitchNotice([Sent(8, "published")]);
 
@@ -1112,14 +1112,14 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.Contains("Configuration tab", text, StringComparison.Ordinal);
     }
 
-    // Two submissions of one system are one system; two systems are both named.
+    // Two submissions of one board are one board; two boards are both named.
     [Fact]
-    public void Several_submissions_name_each_system_once()
+    public void Several_submissions_name_each_board_once()
     {
         SubmissionReceipt other = new()
         {
             SubmissionId = 9,
-            SystemId = "Commodore/C64/250407",
+            BoardId = "Commodore/C64/250407",
             LastKnownState = "published",
         };
 
@@ -1141,10 +1141,10 @@ public sealed class SubmissionReceiptPresenterTests
     // BETA source, while this machine downloads from the STABLE source and the notice was not closed
     // for it - the twin of the switch-back notice above, for the step before it.
     // ###########################################################################################
-    private static SubmissionReceipt InBeta(long id, string state = "merged", bool dismissed = false, string system = "Commodore/C128/310378 Open128") => new()
+    private static SubmissionReceipt InBeta(long id, string state = "merged", bool dismissed = false, string board = "Commodore/C128/310378 Open128") => new()
     {
         SubmissionId = id,
-        SystemId = system,
+        BoardId = board,
         LastKnownState = state,
         SentUtc = new DateTimeOffset(2026, 10, 3, 10, 0, 0, TimeSpan.Zero).AddMinutes(id),
         BetaNoticeDismissed = dismissed,
@@ -1173,7 +1173,7 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     [Fact]
-    public void The_BETA_notice_names_the_system_and_the_check_box_as_CRT_writes_it()
+    public void The_BETA_notice_names_the_board_and_the_check_box_as_CRT_writes_it()
     {
         Assert.Equal(
             "Your submission for Commodore C128 310378 Open128 is now in the BETA source. To try it before everyone else, " +
@@ -1182,7 +1182,7 @@ public sealed class SubmissionReceiptPresenterTests
 
         Assert.StartsWith(
             "Your submissions for Commodore C128 310378 Open128 and Commodore C64 250407 are now in the BETA source.",
-            SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8), InBeta(9, system: "Commodore/C64/250407")], checkDataOnLaunch: true),
+            SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8), InBeta(9, board: "Commodore/C64/250407")], checkDataOnLaunch: true),
             StringComparison.Ordinal);
     }
 
@@ -1220,7 +1220,7 @@ public sealed class SubmissionReceiptPresenterTests
     private static SubmissionReceipt SentAs(string fingerprint, string state, string sentUtc = "2026-10-03T10:00:00Z", long id = 1) => new()
     {
         SubmissionId = id,
-        SystemId = C64,
+        BoardId = C64,
         LastKnownState = state,
         DraftFingerprint = fingerprint,
         SentUtc = DateTimeOffset.Parse(sentUtc, CultureInfo.InvariantCulture),
@@ -1279,7 +1279,7 @@ public sealed class SubmissionReceiptPresenterTests
             SentAs("v1:B", "pending", "2026-10-03T11:00:00Z", id: 2),
         ];
 
-        SubmissionReceipt? latest = SubmissionReceiptPresenter.LatestForSystem(receipts, C64);
+        SubmissionReceipt? latest = SubmissionReceiptPresenter.LatestForBoard(receipts, C64);
 
         Assert.False(SubmissionReceiptPresenter.IsAlreadySent(latest, "v1:A"));
         Assert.True(SubmissionReceiptPresenter.IsAlreadySent(latest, "v1:B"));
@@ -1294,10 +1294,10 @@ public sealed class SubmissionReceiptPresenterTests
         var draftCreated = DateTimeOffset.Parse("2026-10-01T10:00:00Z", CultureInfo.InvariantCulture);
 
         Assert.False(SubmissionReceiptPresenter.IsAlreadySent(
-            SubmissionReceiptPresenter.LatestForSystem(receipts, C64, draftCreated), "v1:sent"));
+            SubmissionReceiptPresenter.LatestForBoard(receipts, C64, draftCreated), "v1:sent"));
 
         Assert.True(SubmissionReceiptPresenter.IsAlreadySent(
-            SubmissionReceiptPresenter.LatestForSystem(receipts, C64), "v1:sent"));
+            SubmissionReceiptPresenter.LatestForBoard(receipts, C64), "v1:sent"));
     }
 
     // Not a case of its own: a draft whose fingerprint could not be worked out (unreadable) is
@@ -1311,7 +1311,7 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     // ###########################################################################################
-    // *** A SUBMISSION THE SERVER NO LONGER KNOWS (2026-10-04). *** Deleted with its system, or by
+    // *** A SUBMISSION THE SERVER NO LONGER KNOWS (2026-10-04). *** Deleted with its board, or by
     // the reset of the contribution data at go-live. The receipt keeps its last state, which used to
     // be shown for ever ("Submitted - awaiting feedback ..." about a submission nobody will see) and
     // kept the same draft from being sent again. Each test shows the known side too, so a rule that

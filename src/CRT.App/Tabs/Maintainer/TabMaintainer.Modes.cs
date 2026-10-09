@@ -8,13 +8,13 @@ namespace CRT
 {
     // ###########################################################################################
     // THE FOUR SCREENS BEHIND THE BUTTONS AT THE TOP LEFT (owner request, 2026-09-27): Review,
-    // BETA, Systems and Account (Admin until 2026-10-04, the administrator's alone). Each changes
+    // BETA, Boards and Account (Admin until 2026-10-04, the administrator's alone). Each changes
     // the list on the left AND the panel on the right; the "Production", "Maintainers" and "Unused
     // files" windows they replace opened over the queue.
     //
     // WHAT THIS PART OWNS: which screen is shown, the buttons' badges, handing the panels the
     // session, and reading the other screens' lists alongside the queue. The screens themselves are
-    // TabMaintainer.Beta.cs, .Systems.cs and .Account.cs; what a badge counts is MaintainerModes.
+    // TabMaintainer.Beta.cs, .Boards.cs and .Account.cs; what a badge counts is MaintainerModes.
     //
     // *** SWITCHING SCREEN HIDES, IT NEVER CLOSES. *** Each screen keeps its list, its selection and
     // its right-hand panel while another is shown - so an open submission's table, unsaved changes
@@ -22,7 +22,7 @@ namespace CRT
     // Signing out and closing the window still ask, as they did.
     //
     // *** THE BADGES ARE KEPT CURRENT BY THE QUEUE'S OWN CHECK. *** Every minute while the window is
-    // in front (TabMaintainer.QueueRefresh.cs) the BETA list and the systems are read with the
+    // in front (TabMaintainer.QueueRefresh.cs) the BETA list and the boards are read with the
     // queue, so the counts are right on whichever screen is shown. Choosing a screen reads its list
     // once more, so what it shows is current the moment it is chosen. The Review and BETA counts
     // added up are the tab's own badge in CRT's row of tabs (2026-09-30), kept current off screen too.
@@ -44,7 +44,7 @@ namespace CRT
         [
             (MaintainerMode.Review, "ReviewModeButton", "ReviewList", "ReviewPanel"),
             (MaintainerMode.Beta, "BetaModeButton", "BetaListPanel", "BetaDetailView"),
-            (MaintainerMode.Systems, "SystemsModeButton", "SystemsListPanel", "SystemDetailView"),
+            (MaintainerMode.Boards, "BoardsModeButton", "BoardsListPanel", "BoardDetailPane"),
             (MaintainerMode.Account, "AccountModeButton", "AccountList", null)
         ];
 
@@ -91,8 +91,8 @@ namespace CRT
                     this.SelectOnEntry();
                     break;
 
-                case MaintainerMode.Systems:
-                    await this.RefreshSystemsAsync(background: true);
+                case MaintainerMode.Boards:
+                    await this.RefreshBoardsAsync(background: true);
                     break;
 
                 case MaintainerMode.Account:
@@ -130,10 +130,10 @@ namespace CRT
             ("MyAccountPanel", "MyAccountItem"),
             ("ServerVersionView", "ServerVersionItem"),
             ("MaintainerPoolAdminView", "MaintainersItem"),
-            ("SystemOrderAdminView", "SystemOrderItem"),
+            ("BoardOrderAdminView", "BoardOrderItem"),
             ("UnusedFilesAdminView", "UnusedFilesItem"),
             ("RebuildManifestsAdminView", "RebuildManifestsItem"),
-            ("SystemDeletionAdminView", "DeleteSystemItem"),
+            ("BoardDeletionAdminView", "DeleteBoardItem"),
             ("ApiUsageAdminView", "ApiUsageItem"),
             ("DataResetAdminView", "ResetDataItem")
         ];
@@ -166,23 +166,23 @@ namespace CRT
         {
             int review = MaintainerModes.ReviewAttention(this.thisQueueEntries.Values.Select(entry => entry.Row));
             int? beta = this.thisBetaKnown ? MaintainerModes.BetaAttention(this.thisBeta) : null;
-            int? systems = this.thisSystemsKnown ? this.thisSystems.Count : null;
-            int needingPlace = SystemPlacementDisplay.NeedingPlace(this.thisListing);
+            int? boards = this.thisBoardsKnown ? this.thisBoards.Count : null;
+            int needingPlace = BoardPlacementDisplay.NeedingPlace(this.thisListing);
 
             this.SetBadge("ReviewBadge", "ReviewBadgeText", MaintainerModes.AttentionBadge(review));
             this.SetBadge("BetaBadge", "BetaBadgeText", beta is int waiting ? MaintainerModes.AttentionBadge(waiting) : null);
 
-            // Discreet (a count of all systems) - until one waits for a place this account can give
+            // Discreet (a count of all boards) - until one waits for a place this account can give
             // it, when it becomes an attention badge counting those (2026-09-27).
             this.SetBadge(
-                "SystemsBadge",
-                "SystemsBadgeText",
-                needingPlace > 0 ? MaintainerModes.AttentionBadge(needingPlace) : MaintainerModes.CountBadge(systems));
+                "BoardsBadge",
+                "BoardsBadgeText",
+                needingPlace > 0 ? MaintainerModes.AttentionBadge(needingPlace) : MaintainerModes.CountBadge(boards));
 
-            if (this.FindControl<Border>("SystemsBadge") is Border systemsBadge)
+            if (this.FindControl<Border>("BoardsBadge") is Border boardsBadge)
             {
-                systemsBadge.Classes.Set("Attention", needingPlace > 0);
-                systemsBadge.Classes.Set("Count", needingPlace <= 0);
+                boardsBadge.Classes.Set("Attention", needingPlace > 0);
+                boardsBadge.Classes.Set("Count", needingPlace <= 0);
             }
 
             // *** NO TOOLTIPS ON THE FOUR BUTTONS (owner request, 2026-09-30: "please remove the
@@ -248,7 +248,7 @@ namespace CRT
             {
                 MaintainerMode.Review => "ReviewBadge",
                 MaintainerMode.Beta => "BetaBadge",
-                MaintainerMode.Systems => "SystemsBadge",
+                MaintainerMode.Boards => "BoardsBadge",
                 _ => string.Empty
             };
 
@@ -266,23 +266,25 @@ namespace CRT
             this.BetaDetail.Initialize(this.thisClient, this.thisSession);
             this.BetaDetail.AfterChange = this.AfterBetaChangeAsync;
 
-            this.SystemDetail.Initialize(this.thisClient, this.thisSession);
-            this.SystemDetail.AfterPlacementSaved = this.AfterPlacementSavedAsync;
-            this.SystemDetail.AfterSent = this.OpenSentSubmissionAsync;
-            this.SystemDetail.AfterPublished = this.AfterSystemChangePublishedAsync;
+            this.BoardDetail.Initialize(this.thisClient, this.thisSession);
+            this.BoardDetail.AfterPlacementSaved = this.AfterPlacementSavedAsync;
+            this.BoardDetail.AfterSent = this.OpenSentSubmissionAsync;
+            this.BoardDetail.AfterPublished = this.AfterBoardChangePublishedAsync;
 
             this.MyAccountDetail.Initialize(this.thisClient, this.thisSession);
 
             this.MaintainerPoolAdmin.Initialize(this.thisClient, this.thisSession);
             this.MaintainerPoolAdmin.AfterPoolChange = this.AfterPoolChangeAsync;
-            this.SystemOrderAdmin.Initialize(this.thisClient, this.thisSession);
+            this.MaintainerPoolAdmin.BoardsListOrder = this.BoardsListOrder;
+            this.BoardOrderAdmin.Initialize(this.thisClient, this.thisSession);
             this.UnusedFilesAdmin.Initialize(this.thisClient, this.thisSession);
             this.RebuildManifestsAdmin.Initialize(this.thisClient, this.thisSession);
-            this.SystemDeletionAdmin.Initialize(this.thisClient, this.thisSession);
-            this.SystemDeletionAdmin.AfterDelete = this.AfterSystemDeletedAsync;
+            this.BoardDeletionAdmin.Initialize(this.thisClient, this.thisSession);
+            this.BoardDeletionAdmin.AfterDelete = this.AfterBoardDeletedAsync;
+            this.BoardDeletionAdmin.BoardsListOrder = this.BoardsListOrder;
             this.ApiUsageAdmin.Initialize(this.thisClient, this.thisSession);
             this.DataResetAdmin.Initialize(this.thisClient, this.thisSession);
-            this.DataResetAdmin.AfterReset = this.AfterSystemDeletedAsync;
+            this.DataResetAdmin.AfterReset = this.AfterBoardDeletedAsync;
         }
 
         // ###########################################################################################
@@ -295,17 +297,17 @@ namespace CRT
         {
             this.ResetSubmissionViews();
             this.ClearBeta();
-            this.ClearSystems();
+            this.ClearBoards();
             this.ClearAccountScreen();
 
             this.BetaDetail.Initialize(null, null);
-            this.SystemDetail.Initialize(null, null);
+            this.BoardDetail.Initialize(null, null);
             this.MyAccountDetail.Initialize(null, null);
             this.MaintainerPoolAdmin.Initialize(null, null);
-            this.SystemOrderAdmin.Initialize(null, null);
+            this.BoardOrderAdmin.Initialize(null, null);
             this.UnusedFilesAdmin.Initialize(null, null);
             this.RebuildManifestsAdmin.Initialize(null, null);
-            this.SystemDeletionAdmin.Initialize(null, null);
+            this.BoardDeletionAdmin.Initialize(null, null);
             this.ApiUsageAdmin.Initialize(null, null);
             this.DataResetAdmin.Initialize(null, null);
 
@@ -315,15 +317,15 @@ namespace CRT
             this.UpdateModeBadges();
         }
 
-        // The BETA list and the systems, read alongside the queue. Background: nothing on screen is
-        // reloaded that has not changed. The minute check reads the Systems overview only while its
-        // screen is shown - QueueRefreshRules.ReadsSystemsOverview.
+        // The BETA list and the boards, read alongside the queue. Background: nothing on screen is
+        // reloaded that has not changed. The minute check reads the Boards overview only while its
+        // screen is shown - QueueRefreshRules.ReadsBoardsOverview.
         private async Task RefreshOtherListsAsync(bool minuteCheck = false)
         {
             await this.RefreshBetaAsync(background: true);
 
-            if (QueueRefreshRules.ReadsSystemsOverview(minuteCheck, this.thisMode, this.thisSystemsKnown))
-                await this.RefreshSystemsAsync(background: true);
+            if (QueueRefreshRules.ReadsBoardsOverview(minuteCheck, this.thisMode, this.thisBoardsKnown))
+                await this.RefreshBoardsAsync(background: true);
             else
                 await this.RefreshListingAsync();
         }
@@ -337,18 +339,18 @@ namespace CRT
 
         private BetaView BetaDetail => this.FindControl<BetaView>("BetaDetailView")!;
 
-        private SystemView SystemDetail => this.FindControl<SystemView>("SystemDetailView")!;
+        private BoardDetailView BoardDetail => this.FindControl<BoardDetailView>("BoardDetailPane")!;
 
 
         private MaintainerPoolView MaintainerPoolAdmin => this.FindControl<MaintainerPoolView>("MaintainerPoolAdminView")!;
 
-        private SystemOrderView SystemOrderAdmin => this.FindControl<SystemOrderView>("SystemOrderAdminView")!;
+        private BoardOrderView BoardOrderAdmin => this.FindControl<BoardOrderView>("BoardOrderAdminView")!;
 
         private UnusedFilesView UnusedFilesAdmin => this.FindControl<UnusedFilesView>("UnusedFilesAdminView")!;
 
         private RebuildManifestsView RebuildManifestsAdmin => this.FindControl<RebuildManifestsView>("RebuildManifestsAdminView")!;
 
-        private SystemDeletionView SystemDeletionAdmin => this.FindControl<SystemDeletionView>("SystemDeletionAdminView")!;
+        private BoardDeletionView BoardDeletionAdmin => this.FindControl<BoardDeletionView>("BoardDeletionAdminView")!;
 
         private ApiUsageView ApiUsageAdmin => this.FindControl<ApiUsageView>("ApiUsageAdminView")!;
 

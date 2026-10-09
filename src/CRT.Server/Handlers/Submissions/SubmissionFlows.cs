@@ -35,7 +35,7 @@ namespace CRT.Server.Handlers.Submissions
     public static class SubmissionFlows
     {
         // How long a client has to finish uploading before the submission is abandoned and its
-        // partial blobs collected. Generous, because a large system over a domestic connection is
+        // partial blobs collected. Generous, because a large board over a domestic connection is
         // genuinely slow, and the cost of being wrong is a contributor losing their work.
         public static readonly TimeSpan UploadWindow = TimeSpan.FromHours(24);
 
@@ -132,18 +132,18 @@ namespace CRT.Server.Handlers.Submissions
             if (!SubmissionValidator.CanBeQueued(findings))
                 return SubmissionCreationOutcome.Refused(findings);
 
-            // A system the administrator has closed to contributions (systems.is_accepting = 0).
-            // A board with no row yet is open: that is every new system and every shipped board
+            // A board the administrator has closed to contributions (boards.is_accepting = 0).
+            // A board with no row yet is open: that is every new board and every shipped board
             // nobody has submitted to.
-            if (await store.IsSystemAcceptingAsync(manifest.SystemId, cancellationToken) == false)
+            if (await store.IsBoardAcceptingAsync(manifest.BoardId, cancellationToken) == false)
             {
                 return SubmissionCreationOutcome.Refused(
                 [
                     new ValidationFinding
                     {
                         Severity = ValidationSeverity.Error,
-                        Code = "system.closed",
-                        Subject = manifest.SystemId,
+                        Code = "board.closed",
+                        Subject = manifest.BoardId,
                         Message = "This board is not accepting contributions at the moment."
                     }
                 ]);
@@ -294,10 +294,10 @@ namespace CRT.Server.Handlers.Submissions
 
                 submissionId = await store.CreateAsync(
                     new NewSubmission(
-                        manifest.SystemId,
+                        manifest.BoardId,
 
                         // The three parts travel alongside the id so the store can create the
-                        // `systems` row a first submission implies, without splitting the id back
+                        // `boards` row a first submission implies, without splitting the id back
                         // apart - see NewSubmission's own header.
                         manifest.Manufacturer,
                         manifest.Hardware,
@@ -317,7 +317,7 @@ namespace CRT.Server.Handlers.Submissions
                         // Decided before the gate (it may hash files) - see touchesSharedFiles.
                         touchesSharedFiles,
 
-                        // A new system's notes (2026-10-05), for the placement to start with.
+                        // A new board's notes (2026-10-05), for the placement to start with.
                         // Their length was held to the notes column's by SubmissionValidator.
                         HardwareNotes: string.IsNullOrWhiteSpace(manifest.HardwareNotes) ? null : manifest.HardwareNotes.Trim()),
                     cancellationToken);
@@ -581,7 +581,7 @@ namespace CRT.Server.Handlers.Submissions
             await store.SetStateAsync(submissionId, state, now, cancellationToken);
 
             // Queued: it replaces the same contributor's older, untouched submissions of this
-            // system (owner decision, 2026-09-26) - see SubmissionReplacementRules. Only once it is
+            // board (owner decision, 2026-09-26) - see SubmissionReplacementRules. Only once it is
             // queued: an upload that never finishes must not have taken the older one's place.
             if (accepted)
                 await SubmissionFlows.WithdrawReplacedAsync(submission with { State = SubmissionState.Pending }, store, now, cancellationToken);
@@ -613,7 +613,7 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(arrived);
             ArgumentNullException.ThrowIfNull(store);
 
-            IReadOnlyList<SubmissionRecord> waiting = await store.GetPendingForSystemAsync(arrived.SystemId, cancellationToken);
+            IReadOnlyList<SubmissionRecord> waiting = await store.GetPendingForBoardAsync(arrived.BoardId, cancellationToken);
             var withdrawn = new List<long>();
 
             foreach (SubmissionRecord older in SubmissionReplacementRules.ReplacedBy(arrived, waiting))
@@ -901,7 +901,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // CONTRIBUTING REQUIRES NO ACCOUNT. AccountId is null for the ordinary case - somebody who
     // opened CRT, fixed a typo and pressed Submit - and set only when a signed-in maintainer
-    // submits to a system they maintain.
+    // submits to a board they maintain.
     //
     // ContactEmail is what a maintainer replies to. It is NOT a credential and NOT an identity:
     // nothing signs in with it, and two submissions from the same address are two unrelated

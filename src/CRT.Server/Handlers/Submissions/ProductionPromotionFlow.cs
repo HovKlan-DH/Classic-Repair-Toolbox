@@ -6,7 +6,7 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // PUBLISHING A SYSTEM FROM BETA TO PRODUCTION (owner request, 2026-09-25): "first
+    // PUBLISHING A BOARD FROM BETA TO PRODUCTION (owner request, 2026-09-25): "first
     // published to BETA and then it is published to the real production. The maintainer is still
     // allowed to do this, but only after he has checked that the data looks correct in BETA."
     //
@@ -16,7 +16,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     //   1. CONFIGURED    - is publishing to production switched on at all?
     //   2. AUTHORITY     - may this account publish anything?
-    //   3. EXISTENCE     - is there such a system, and is its BETA state ahead of production?
+    //   3. EXISTENCE     - is there such a board, and is its BETA state ahead of production?
     //   4. WHAT WAS SEEN - is BETA still exactly what the maintainer checked? (the content hash)
     //   5. PLAN          - what would be copied, and is anything refused?
     //   6. APPROVAL      - does this account's approval publish it? A plan that changes a shared
@@ -37,7 +37,7 @@ namespace CRT.Server.Handlers.Submissions
     // *** FOR NOW, ONLY THE ADMINISTRATOR PUBLISHES (owner request, 2026-10-05). *** While
     // ServerOptions.ProductionPublishingAdministratorsOnly is on (its default), step 3 refuses a
     // maintainer with CRT.Data's StablePublishing sentence, the plan carries it as its refusal, and
-    // the list never says a system awaits a maintainer - it says it waits for the administrator
+    // the list never says a board awaits a maintainer - it says it waits for the administrator
     // (WaitsForAdministrator), and always awaits an administrator. A shared-file replacement needs
     // the administrator alone, and is still said to replace a shared file. Pushing back and
     // rejecting (BetaRollbackFlow) are untouched.
@@ -50,7 +50,7 @@ namespace CRT.Server.Handlers.Submissions
         private readonly PublishLock thisLock;
         private readonly ILogger<ProductionPromotionFlow> thisLogger;
 
-        // When a system was last found NOT to be in production already, per BETA and production
+        // When a board was last found NOT to be in production already, per BETA and production
         // state (see RecordIfProductionAlreadyHoldsAsync) - so the list, read every minute by
         // every open Maintainer tab, does not rebuild the same plan each time.
         private readonly ConcurrentDictionary<string, DateTimeOffset> thisFoundDifferentUtc = new(StringComparer.Ordinal);
@@ -77,16 +77,16 @@ namespace CRT.Server.Handlers.Submissions
             "Publishing to the stable source is not switched on for this server. Until it is, BETA is copied to the stable source by hand.";
 
         // ###########################################################################################
-        // The systems whose BETA state is ahead of production, that this account may promote -
+        // The boards whose BETA state is ahead of production, that this account may promote -
         // leaving out only what the plan alone can reveal (a shared-file change), which the plan
-        // step reports when the system is opened.
+        // step reports when the board is opened.
         // ###########################################################################################
         //
-        // With `options` (the endpoint always passes them), a system whose record says it waits but
+        // With `options` (the endpoint always passes them), a board whose record says it waits but
         // whose production copy already matches BETA - copied there by hand - is recorded as in
         // production and left out; see RecordIfProductionAlreadyHoldsAsync.
         // ###########################################################################################
-        public async Task<IReadOnlyList<SystemRecord>> ListAwaitingAsync(
+        public async Task<IReadOnlyList<BoardRecord>> ListAwaitingAsync(
             ReviewAccess? access,
             ServerOptions? options = null,
             DateTimeOffset? nowUtc = null,
@@ -95,36 +95,36 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanReviewAnything(access))
                 return [];
 
-            IReadOnlyList<SystemRecord> systems = await this.thisStore.ListSystemsAsync(cancellationToken);
+            IReadOnlyList<BoardRecord> boards = await this.thisStore.ListBoardsAsync(cancellationToken);
 
-            var awaiting = new List<SystemRecord>();
+            var awaiting = new List<BoardRecord>();
 
-            foreach (SystemRecord system in systems
+            foreach (BoardRecord board in boards
                          .Where(ProductionPromotionRules.IsAwaitingProduction)
-                         .Where(system => ReviewAuthority.CanPublish(access, system.SystemId)))
+                         .Where(board => ReviewAuthority.CanPublish(access, board.BoardId)))
             {
                 if (options is not null &&
                     await this.RecordIfProductionAlreadyHoldsAsync(
-                        access, system, options, nowUtc ?? DateTimeOffset.UtcNow, useCache: true, cancellationToken))
+                        access, board, options, nowUtc ?? DateTimeOffset.UtcNow, useCache: true, cancellationToken))
                 {
                     continue;
                 }
 
-                awaiting.Add(system);
+                awaiting.Add(board);
             }
 
             return awaiting;
         }
 
         // ###########################################################################################
-        // THE "BETA > PROD" LIST AS THE MAINTAINER TAB READS IT: each waiting system with whether it
+        // THE "BETA > PROD" LIST AS THE MAINTAINER TAB READS IT: each waiting board with whether it
         // waits for THIS account and whether it carries a draft its contributor discarded.
         //
-        // *** A FIXED NUMBER OF QUERIES, HOWEVER MANY SYSTEMS WAIT (code review, 2026-09-29). *** Every
+        // *** A FIXED NUMBER OF QUERIES, HOWEVER MANY BOARDS WAIT (code review, 2026-09-29). *** Every
         // open Maintainer tab reads this every minute, and it used to ask three queries per waiting
-        // system - approvals, merged submissions and their discards - only to set two booleans. The
+        // board - approvals, merged submissions and their discards - only to set two booleans. The
         // two facts are now asked for the whole list at once (GetProductionApprovalsForAsync,
-        // GetSystemsCarryingDiscardedDraftsAsync), with the same bounds the panel and the mails use.
+        // GetBoardsCarryingDiscardedDraftsAsync), with the same bounds the panel and the mails use.
         //
         // The discard mark NEVER fails the list, as it never failed the plan: it is context.
         // ###########################################################################################
@@ -134,16 +134,16 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset nowUtc,
             CancellationToken cancellationToken = default)
         {
-            IReadOnlyList<SystemRecord> systems = await this.ListAwaitingAsync(access, options, nowUtc, cancellationToken);
+            IReadOnlyList<BoardRecord> boards = await this.ListAwaitingAsync(access, options, nowUtc, cancellationToken);
 
-            if (systems.Count == 0 || access is null)
+            if (boards.Count == 0 || access is null)
                 return [];
 
             IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>> approvals =
                 await this.thisStore.GetProductionApprovalsForAsync(
-                    systems
-                        .Where(system => !string.IsNullOrWhiteSpace(system.ContentHash))
-                        .Select(system => (system.SystemId, system.ContentHash!))
+                    boards
+                        .Where(board => !string.IsNullOrWhiteSpace(board.ContentHash))
+                        .Select(board => (board.BoardId, board.ContentHash!))
                         .ToList(),
                     cancellationToken);
 
@@ -151,48 +151,48 @@ namespace CRT.Server.Handlers.Submissions
 
             try
             {
-                discarded = await this.thisStore.GetSystemsCarryingDiscardedDraftsAsync(
-                    systems.Select(system => (system.SystemId, system.ProductionPublishedUtc)).ToList(),
+                discarded = await this.thisStore.GetBoardsCarryingDiscardedDraftsAsync(
+                    boards.Select(board => (board.BoardId, board.ProductionPublishedUtc)).ToList(),
                     nowUtc,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                this.thisLogger.LogWarning(ex, "The Beta > Prod list could not read which systems carry a discarded draft.");
+                this.thisLogger.LogWarning(ex, "The Beta > Prod list could not read which boards carry a discarded draft.");
                 discarded = new HashSet<string>(StringComparer.Ordinal);
             }
 
             bool administratorsOnly = options.ProductionPublishingAdministratorsOnly;
 
-            return systems
-                .Select(system =>
+            return boards
+                .Select(board =>
                 {
-                    // Every system listed is one this account may publish to BETA (ListAwaitingAsync);
+                    // Every board listed is one this account may publish to BETA (ListAwaitingAsync);
                     // to stable, while only administrators publish there, only if it is one.
-                    bool mayPublishToStable = ReviewAuthority.CanPublishToProduction(access, system.SystemId, administratorsOnly);
+                    bool mayPublishToStable = ReviewAuthority.CanPublishToProduction(access, board.BoardId, administratorsOnly);
 
                     return new ProductionListEntry(
-                        system.SystemId,
-                        system.Manufacturer,
-                        system.Hardware,
-                        system.Board,
-                        BetaRevision: system.CurrentRevision,
-                        BetaContentHash: system.ContentHash,
-                        system.ProductionRevision,
-                        system.ProductionPublishedUtc,
+                        board.BoardId,
+                        board.Manufacturer,
+                        board.Hardware,
+                        board.Board,
+                        BetaRevision: board.CurrentRevision,
+                        BetaContentHash: board.ContentHash,
+                        board.ProductionRevision,
+                        board.ProductionPublishedUtc,
 
                         // Whether it waits for THIS account or for the other approver - the BETA badge
                         // (2026-09-27). Never for a maintainer while only administrators publish to
                         // stable (2026-10-05): the badge would count work they cannot do.
                         AwaitsYou: mayPublishToStable &&
                             ProductionPromotionRules.AwaitsAccount(
-                                approvals.TryGetValue(system.SystemId, out IReadOnlyList<GivenApproval>? given) ? given : [],
+                                approvals.TryGetValue(board.BoardId, out IReadOnlyList<GivenApproval>? given) ? given : [],
                                 access.Account.Id,
                                 administratorsOnly),
 
                         // A contributor whose work this carries discarded their own draft (2026-09-28) -
-                        // marked on the list itself, so it is seen before the system is even opened.
-                        CarriesDiscardedDraft: discarded.Contains(system.SystemId),
+                        // marked on the list itself, so it is seen before the board is even opened.
+                        CarriesDiscardedDraft: discarded.Contains(board.BoardId),
 
                         // ...and, for a maintainer shut out of the stable publish, WHY it is not
                         // theirs: it waits for the administrator, not for "the other approver".
@@ -203,38 +203,38 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // *** A BOARD COPIED TO PRODUCTION BY HAND IS NOT WAITING FOR PRODUCTION (code review,
-        // 2026-09-29). *** The record says a system waits while its BETA content hash differs from
+        // 2026-09-29). *** The record says a board waits while its BETA content hash differs from
         // the one its last PROMOTION recorded - and a board the project owner copied into production
         // by hand as root (as INSTALLING.md describes) was never promoted, so it stayed "waiting"
         // for ever: listed in Beta > Prod, and - through the one-in-BETA rule - blocking every new
-        // approval of that system, with nothing telling the maintainer that a no-op "Publish to
+        // approval of that board, with nothing telling the maintainer that a no-op "Publish to
         // production" would clear it.
         //
         // So the TREES are asked when the record says "waiting": production already holds this
         // BETA state when publishing it would copy nothing (every file the plan looks at is
         // unchanged, and there is at least one), remove nothing, and add no row to production's
         // drop-down lists. Then it is recorded as in production - the same record a promotion
-        // writes, at `nowUtc` - and audited, so the system's history says how it got there.
+        // writes, at `nowUtc` - and audited, so the board's history says how it got there.
         //
         // Never a false "yes" from a half-written BETA: a publish lands new files in BETA before its
         // record moves, and a file production lacks is a copy. A publish landing after the check
-        // moves BETA's content hash past the one recorded here, so the system waits again.
+        // moves BETA's content hash past the one recorded here, so the board waits again.
         //
         // `useCache`: the list's minute check trusts a "differs" answer for DifferentRecheck, keyed
-        // by both hashes, so it does not rebuild plans for systems genuinely waiting.
+        // by both hashes, so it does not rebuild plans for boards genuinely waiting.
         // ###########################################################################################
         internal async Task<bool> RecordIfProductionAlreadyHoldsAsync(
             ReviewAccess? access,
-            SystemRecord system,
+            BoardRecord board,
             ServerOptions options,
             DateTimeOffset nowUtc,
             bool useCache,
             CancellationToken cancellationToken = default)
         {
-            if (!options.IsProductionPublishingConfigured || !ProductionPromotionRules.IsAwaitingProduction(system))
+            if (!options.IsProductionPublishingConfigured || !ProductionPromotionRules.IsAwaitingProduction(board))
                 return false;
 
-            string key = $"{system.SystemId}|{system.ContentHash}|{system.ProductionContentHash}";
+            string key = $"{board.BoardId}|{board.ContentHash}|{board.ProductionContentHash}";
 
             if (useCache &&
                 this.thisFoundDifferentUtc.TryGetValue(key, out DateTimeOffset checkedUtc) &&
@@ -243,13 +243,13 @@ namespace CRT.Server.Handlers.Submissions
                 return false;
             }
 
-            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+            ProductionPromotionResult plan = await this.BuildPlanAsync(board, options, cancellationToken);
 
             bool holds = plan.CanPromote &&
                 plan.Files.Count == 0 &&
                 plan.UnchangedCount > 0 &&
-                ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system).Files.Count == 0 &&
-                ProductionPromotionFlow.ListingForProduction(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId) is { IsReady: true, Insert: null };
+                ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, board).Files.Count == 0 &&
+                ProductionPromotionFlow.ListingForProduction(options.DataTreeRoot!, options.ProductionDataTreeRoot!, board.BoardId) is { IsReady: true, Insert: null };
 
             if (!holds)
             {
@@ -259,33 +259,33 @@ namespace CRT.Server.Handlers.Submissions
 
             this.thisFoundDifferentUtc.TryRemove(key, out _);
 
-            await this.thisStore.SetSystemInProductionAsync(
-                system.SystemId, system.CurrentRevision, system.ContentHash, nowUtc, cancellationToken);
+            await this.thisStore.SetBoardInProductionAsync(
+                board.BoardId, board.CurrentRevision, board.ContentHash, nowUtc, cancellationToken);
 
             await this.thisAccounts.WriteAuditAsync(
                 new AuditEntry(
                     access?.Account.Id,
                     access?.Account.Email ?? string.Empty,
-                    SystemHistoryEvents.FoundInProduction,
-                    system.SystemId,
-                    $"revision {system.CurrentRevision}; production already held every file ({plan.UnchangedCount})",
+                    BoardHistoryEvents.FoundInProduction,
+                    board.BoardId,
+                    $"revision {board.CurrentRevision}; production already held every file ({plan.UnchangedCount})",
                     nowUtc),
                 cancellationToken);
 
             this.thisLogger.LogInformation(
-                "{SystemId} revision {Revision} was already in production (copied there outside CRT) - recorded as published to production.",
-                system.SystemId, system.CurrentRevision);
+                "{BoardId} revision {Revision} was already in production (copied there outside CRT) - recorded as published to production.",
+                board.BoardId, board.CurrentRevision);
 
             return true;
         }
 
         // ###########################################################################################
-        // What promoting this system would copy - shown to the maintainer before they press the
+        // What promoting this board would copy - shown to the maintainer before they press the
         // button, from the same code that performs it.
         // ###########################################################################################
         public async Task<PromotionPlanOutcome> PlanAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             ServerOptions options,
             CancellationToken cancellationToken = default)
         {
@@ -297,44 +297,44 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanReviewAnything(access))
                 return PromotionPlanOutcome.Forbidden(ReviewAuthority.DescribeRefusal(access, null));
 
-            SystemRecord? system = string.IsNullOrWhiteSpace(systemId)
+            BoardRecord? board = string.IsNullOrWhiteSpace(boardId)
                 ? null
-                : await this.thisStore.FindSystemAsync(systemId, cancellationToken);
+                : await this.thisStore.FindBoardAsync(boardId, cancellationToken);
 
-            if (system is null)
-                return PromotionPlanOutcome.NotFound("No such system.");
+            if (board is null)
+                return PromotionPlanOutcome.NotFound("No such board.");
 
-            if (!ReviewAuthority.CanPublish(access, system.SystemId))
-                return PromotionPlanOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
+            if (!ReviewAuthority.CanPublish(access, board.BoardId))
+                return PromotionPlanOutcome.Forbidden($"This account is not a maintainer of {board.BoardId}.");
 
-            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+            ProductionPromotionResult plan = await this.BuildPlanAsync(board, options, cancellationToken);
             ApprovalStatus approval = await this.ApprovalStatusAsync(
-                access, system, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
+                access, board, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
 
             // What the promotion would REMOVE from production, shown before anyone approves it.
             FileRemovalPreview removals = plan.CanPromote
-                ? ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, system)
+                ? ProductionPromotionFlow.PreviewRemovals(options.DataTreeRoot!, options.ProductionDataTreeRoot!, board)
                 : FileRemovalPreview.Nothing;
 
-            // A system production does not list, and BETA does not list either, is refused here -
+            // A board production does not list, and BETA does not list either, is refused here -
             // before anyone presses the button - rather than published to nobody.
             ListingForPublish listing = ProductionPromotionFlow.ListingForProduction(
-                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId);
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, board.BoardId);
 
             string? refusal = ProductionPromotionFlow.RefusalFor(plan) ?? (listing.IsReady ? null : listing.Problem);
 
             // Only the administrator publishes to stable, for now (2026-10-05). The plan is still
-            // shown in full - a maintainer may push the system back or reject it - but it carries
+            // shown in full - a maintainer may push the board back or reject it - but it carries
             // the reason, so the publish button is off. Said after the plan's own refusal, which a
-            // maintainer can act on (placing the system, say).
-            if (!ReviewAuthority.CanPublishToProduction(access, system.SystemId, options.ProductionPublishingAdministratorsOnly))
+            // maintainer can act on (placing the board, say).
+            if (!ReviewAuthority.CanPublishToProduction(access, board.BoardId, options.ProductionPublishingAdministratorsOnly))
             {
                 refusal = refusal is null
                     ? StablePublishing.AdministratorsOnlyMessage
                     : $"{refusal} {StablePublishing.AdministratorsOnlyMessage}";
             }
 
-            return PromotionPlanOutcome.Planned(system, plan, refusal, approval) with { Removals = removals };
+            return PromotionPlanOutcome.Planned(board, plan, refusal, approval) with { Removals = removals };
         }
 
         // ###########################################################################################
@@ -342,19 +342,19 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public Task<PromotionOutcome> PromoteAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             string? expectedBetaContentHash,
             ServerOptions options,
             DateTimeOffset nowUtc,
             CancellationToken cancellationToken = default) =>
-            this.PromoteAsync(access, systemId, expectedBetaContentHash, options, nowUtc, shownRemovals: null, cancellationToken);
+            this.PromoteAsync(access, boardId, expectedBetaContentHash, options, nowUtc, shownRemovals: null, cancellationToken);
 
         // `shownRemovals`: the files the maintainer was shown this would remove from production. The
         // publishing approval is refused when the list differs now - the same rule as a BETA
         // publish (ApprovePublishFlow step 5b).
         public async Task<PromotionOutcome> PromoteAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             string? expectedBetaContentHash,
             ServerOptions options,
             DateTimeOffset nowUtc,
@@ -370,38 +370,38 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewAuthority.CanReviewAnything(access))
                 return PromotionOutcome.Forbidden(ReviewAuthority.DescribeRefusal(access, null));
 
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return PromotionOutcome.NotFound();
 
             using IDisposable gate = await this.thisLock.EnterAsync(cancellationToken);
 
-            // ---- 3. The system, re-read under the lock ---------------------------------------
-            SystemRecord? system = await this.thisStore.FindSystemAsync(systemId, cancellationToken);
+            // ---- 3. The board, re-read under the lock ---------------------------------------
+            BoardRecord? board = await this.thisStore.FindBoardAsync(boardId, cancellationToken);
 
-            if (system is null)
+            if (board is null)
                 return PromotionOutcome.NotFound();
 
-            if (!ReviewAuthority.CanPublish(access, system.SystemId))
-                return PromotionOutcome.Forbidden($"This account is not a maintainer of {system.SystemId}.");
+            if (!ReviewAuthority.CanPublish(access, board.BoardId))
+                return PromotionOutcome.Forbidden($"This account is not a maintainer of {board.BoardId}.");
 
             // Only the administrator publishes to stable, for now (owner request, 2026-10-05) -
             // refused before anything is planned, and before an approval could be recorded.
-            if (!ReviewAuthority.CanPublishToProduction(access, system.SystemId, options.ProductionPublishingAdministratorsOnly))
+            if (!ReviewAuthority.CanPublishToProduction(access, board.BoardId, options.ProductionPublishingAdministratorsOnly))
                 return PromotionOutcome.Forbidden(StablePublishing.AdministratorsOnlyMessage);
 
-            if (!ProductionPromotionRules.IsAwaitingProduction(system))
-                return PromotionOutcome.Conflict("The stable source already has this system as it is in BETA. There is nothing to publish.");
+            if (!ProductionPromotionRules.IsAwaitingProduction(board))
+                return PromotionOutcome.Conflict("The stable source already has this board as it is in BETA. There is nothing to publish.");
 
             // ---- 4. What the maintainer checked ------------------------------------------------
-            if (!string.Equals(system.ContentHash, expectedBetaContentHash?.Trim(), StringComparison.Ordinal))
+            if (!string.Equals(board.ContentHash, expectedBetaContentHash?.Trim(), StringComparison.Ordinal))
             {
                 return PromotionOutcome.Conflict(
-                    "This system has changed in BETA since you opened it - another contribution has been published " +
+                    "This board has changed in BETA since you opened it - another contribution has been published " +
                     "there. Check it again in CRT with the BETA data, then publish it to the stable source.");
             }
 
             // ---- 5. The plan -----------------------------------------------------------------
-            ProductionPromotionResult plan = await this.BuildPlanAsync(system, options, cancellationToken);
+            ProductionPromotionResult plan = await this.BuildPlanAsync(board, options, cancellationToken);
 
             string? refusal = ProductionPromotionFlow.RefusalFor(plan);
 
@@ -412,14 +412,14 @@ namespace CRT.Server.Handlers.Submissions
             //
             // Decided before a file is copied, like every other refusal here.
             ListingForPublish listing = ProductionPromotionFlow.ListingForProduction(
-                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system.SystemId);
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, board.BoardId);
 
             if (!listing.IsReady)
                 return PromotionOutcome.Refused(listing.Problem);
 
             // ---- 6. Is this the approval that publishes? --------------------------------------
             ApprovalStatus approval = await this.ApprovalStatusAsync(
-                access, system, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
+                access, board, plan, options.ProductionPublishingAdministratorsOnly, cancellationToken);
 
             if (!approval.CanApprove)
                 return PromotionOutcome.Conflict(ApprovePublishFlow.WhyNot(approval, "publishing this to the stable source"));
@@ -427,7 +427,7 @@ namespace CRT.Server.Handlers.Submissions
             if (!approval.ApprovalPublishes)
             {
                 await this.thisStore.AddProductionApprovalAsync(
-                    system.SystemId, system.ContentHash!, approval.YourRole!.Value,
+                    board.BoardId, board.ContentHash!, approval.YourRole!.Value,
                     access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken);
 
                 IReadOnlyList<ApproverRole> stillWaiting = approval.WaitingFor
@@ -435,16 +435,16 @@ namespace CRT.Server.Handlers.Submissions
                     .ToList();
 
                 this.thisLogger.LogInformation(
-                    "{Account} approved publishing {SystemId} to production as {Role}; waiting for {Waiting}.",
-                    access.Account.Email, system.SystemId, approval.YourRole, string.Join(", ", stillWaiting));
+                    "{Account} approved publishing {BoardId} to production as {Role}; waiting for {Waiting}.",
+                    access.Account.Email, board.BoardId, approval.YourRole, string.Join(", ", stillWaiting));
 
-                return PromotionOutcome.AwaitingApproval(system, stillWaiting);
+                return PromotionOutcome.AwaitingApproval(board, stillWaiting);
             }
 
             // ---- 7. Copy, then record ---------------------------------------------------------
             // What this removes from production, and is it what the maintainer was shown?
             FileRemovalPreview removals = ProductionPromotionFlow.PreviewRemovals(
-                options.DataTreeRoot!, options.ProductionDataTreeRoot!, system);
+                options.DataTreeRoot!, options.ProductionDataTreeRoot!, board);
 
             // No list at all is an older maintainer application, not a changed list - see
             // ApprovePublishFlow.RemovalsNotSentMessage.
@@ -464,8 +464,8 @@ namespace CRT.Server.Handlers.Submissions
             if (!copy.IsDone)
             {
                 this.thisLogger.LogError(
-                    "Publishing {SystemId} to production stopped after {Copied} file(s): {Error}",
-                    system.SystemId, copy.FilesCopied, copy.Error);
+                    "Publishing {BoardId} to production stopped after {Copied} file(s): {Error}",
+                    board.BoardId, copy.FilesCopied, copy.Error);
 
                 // Folders copied into production by hand: the administrator needs the command.
                 if (copy.FoldersRefusing.Count > 0)
@@ -490,24 +490,24 @@ namespace CRT.Server.Handlers.Submissions
                 if (!edit.IsDone)
                 {
                     this.thisLogger.LogError(
-                        "Publishing {SystemId} to production: the files were copied but the row could not be added to [{Master}]: {Failure}",
-                        system.SystemId, insert.MasterPath, edit.Failure);
+                        "Publishing {BoardId} to production: the files were copied but the row could not be added to [{Master}]: {Failure}",
+                        board.BoardId, insert.MasterPath, edit.Failure);
 
                     return PromotionOutcome.Refused(
-                        $"The files were copied, but the system could not be added to the stable source's drop-down lists: {edit.Failure} " +
+                        $"The files were copied, but the board could not be added to the stable source's drop-down lists: {edit.Failure} " +
                         "Publish it again once that is fixed.");
                 }
             }
 
             // A system.json in production's copy of this board - retired, and possibly carried
-            // across by hand from BETA before promotions existed. See RetiredSystemDescriptor.
+            // across by hand from BETA before promotions existed. See RetiredBoardDescriptor.
             if (SubmissionPathRules.TryResolve(
                     options.ProductionDataTreeRoot!,
-                    $"{system.Manufacturer}/{system.Hardware}/{system.Board}",
-                    out string productionSystemFolder,
+                    $"{board.Manufacturer}/{board.Hardware}/{board.Board}",
+                    out string productionBoardFolder,
                     out _))
             {
-                RetiredSystemDescriptor.TryRemove(options.ProductionDataTreeRoot!, productionSystemFolder, this.thisLogger);
+                RetiredBoardDescriptor.TryRemove(options.ProductionDataTreeRoot!, productionBoardFolder, this.thisLogger);
             }
 
             // What the board no longer uses in production - only the files shown, and only those
@@ -515,28 +515,28 @@ namespace CRT.Server.Handlers.Submissions
             UnusedFileRemoval removal = UnusedFileRemover.Remove(options.ProductionDataTreeRoot!, removals.Files, this.thisLogger);
 
             await this.thisStore.AddProductionApprovalAsync(
-                system.SystemId, system.ContentHash!, approval.YourRole!.Value,
+                board.BoardId, board.ContentHash!, approval.YourRole!.Value,
                 access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken);
 
-            await this.thisStore.SetSystemInProductionAsync(
-                system.SystemId, system.CurrentRevision, system.ContentHash, nowUtc, cancellationToken);
+            await this.thisStore.SetBoardInProductionAsync(
+                board.BoardId, board.CurrentRevision, board.ContentHash, nowUtc, cancellationToken);
 
             await this.thisAccounts.WriteAuditAsync(
                 new AuditEntry(
                     access!.Account.Id,
                     access.Account.Email,
                     ProductionPromotionFlow.PublishedAction,
-                    system.SystemId,
-                    $"revision {system.CurrentRevision}; {copy.FilesCopied} file(s) copied; {plan.UnchangedCount} unchanged; " +
+                    board.BoardId,
+                    $"revision {board.CurrentRevision}; {copy.FilesCopied} file(s) copied; {plan.UnchangedCount} unchanged; " +
                     $"{removal.Removed.Count} unused file(s) removed",
                     nowUtc),
                 cancellationToken);
 
             this.thisLogger.LogInformation(
-                "{Account} published {SystemId} revision {Revision} to production ({Copied} file(s) copied).",
-                access.Account.Email, system.SystemId, system.CurrentRevision, copy.FilesCopied);
+                "{Account} published {BoardId} revision {Revision} to production ({Copied} file(s) copied).",
+                access.Account.Email, board.BoardId, board.CurrentRevision, copy.FilesCopied);
 
-            return PromotionOutcome.Published(system, copy.FilesCopied, system.ProductionPublishedUtc) with { RemovedFiles = removal.Removed };
+            return PromotionOutcome.Published(board, copy.FilesCopied, board.ProductionPublishedUtc) with { RemovedFiles = removal.Removed };
         }
 
         public const string RemovalsChangedMessage =
@@ -546,15 +546,15 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // THE FILES A PROMOTION WOULD REMOVE FROM PRODUCTION.
         //
-        // After the promotion the system's workbooks in production are BETA's, so the candidates
+        // After the promotion the board's workbooks in production are BETA's, so the candidates
         // are what production's workbooks cite that BETA's do not, and production is then read
         // with BETA's citations standing in for its own. A file another production board still
         // cites is kept; so is anything an older generation cites. A workbook that cannot be read
         // in either tree blocks the removal rather than guessing.
         // ###########################################################################################
-        internal static FileRemovalPreview PreviewRemovals(string betaRoot, string productionRoot, SystemRecord system)
+        internal static FileRemovalPreview PreviewRemovals(string betaRoot, string productionRoot, BoardRecord board)
         {
-            string folder = $"{system.Manufacturer}/{system.Hardware}/{system.Board}";
+            string folder = $"{board.Manufacturer}/{board.Hardware}/{board.Board}";
 
             if (!ProductionPromotionFlow.TryReadCitations(productionRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> before, out string? why) ||
                 !ProductionPromotionFlow.TryReadCitations(betaRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> after, out why))
@@ -562,7 +562,7 @@ namespace CRT.Server.Handlers.Submissions
                 return new FileRemovalPreview([], "Nothing is removed, because " + why);
             }
 
-            // Only inside the system's own folder (owner decision, 2026-09-27) - see
+            // Only inside the board's own folder (owner decision, 2026-09-27) - see
             // AutomaticRemovalScope.
             IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
                 folder,
@@ -573,7 +573,7 @@ namespace CRT.Server.Handlers.Submissions
             return FileRemovalPreview.Compute(productionRoot, candidates, after, ApprovePublishFlow.PreviewReads);
         }
 
-        // Each board workbook at the top of the system's folder -> what it cites.
+        // Each board workbook at the top of the board's folder -> what it cites.
         private static bool TryReadCitations(
             string root,
             string folder,
@@ -619,14 +619,14 @@ namespace CRT.Server.Handlers.Submissions
 
         // ###########################################################################################
         // WHAT PRODUCTION'S DROP-DOWN LISTS NEED FROM THIS PROMOTION (owner decision, 2026-09-27:
-        // "insert at the same place"): nothing when production lists the system already; its BETA
+        // "insert at the same place"): nothing when production lists the board already; its BETA
         // row, after the same neighbours, when only BETA does (MasterListing.TryResolvePlacement);
         // and a refusal when neither does - it has not been placed yet.
         //
         // Either file missing or unreadable changes nothing and refuses nothing: promotions worked
         // without these files before, and must not start failing on them.
         // ###########################################################################################
-        internal static ListingForPublish ListingForProduction(string betaRoot, string productionRoot, string systemId)
+        internal static ListingForPublish ListingForProduction(string betaRoot, string productionRoot, string boardId)
         {
             string? betaMaster = MasterListing.NewestMasterPath(betaRoot);
             string? productionMaster = MasterListing.NewestMasterPath(productionRoot);
@@ -638,23 +638,23 @@ namespace CRT.Server.Handlers.Submissions
                 return ListingForPublish.NothingToAdd;
             }
 
-            if (MasterListing.IndexOfSystem(productionRows, systemId) >= 0)
+            if (MasterListing.IndexOfBoard(productionRows, boardId) >= 0)
                 return ListingForPublish.NothingToAdd;
 
-            int inBeta = MasterListing.IndexOfSystem(betaRows, systemId);
+            int inBeta = MasterListing.IndexOfBoard(betaRows, boardId);
 
             if (inBeta < 0)
             {
                 return ListingForPublish.Refused(
-                    "This system is not in the drop-down lists in BETA or in the stable source, so nobody would see it. " +
-                    "Place it in the Systems screen first.");
+                    "This board is not in the drop-down lists in BETA or in the stable source, so nobody would see it. " +
+                    "Place it in the Boards screen first.");
             }
 
-            // Production can list another system under these names that BETA does not.
-            if (MasterListing.NamesTakenBy(productionRows, systemId, betaRows[inBeta].HardwareName, betaRows[inBeta].BoardName) is MasterListingRow taken)
+            // Production can list another board under these names that BETA does not.
+            if (MasterListing.NamesTakenBy(productionRows, boardId, betaRows[inBeta].HardwareName, betaRows[inBeta].BoardName) is MasterListingRow taken)
                 return ListingForPublish.Refused(MasterListing.NamesTakenMessage(taken));
 
-            MasterListing.TryResolvePlacement(betaRows, systemId, productionRows, out string? after);
+            MasterListing.TryResolvePlacement(betaRows, boardId, productionRows, out string? after);
 
             return ListingForPublish.Add(new MasterRowInsert(productionMaster, betaRows[inBeta], after));
         }
@@ -666,7 +666,7 @@ namespace CRT.Server.Handlers.Submissions
             plan.CanPromote ? null : string.Join(" ", plan.Problems.Select(problem => problem.Message));
 
         // ###########################################################################################
-        // Where publishing this system to production stands for this account: the same rule as a
+        // Where publishing this board to production stands for this account: the same rule as a
         // submission (ApprovalRules), with "changes a shared file" read off the PLAN and the
         // approvals given against the BETA content hash the plan was made from.
         //
@@ -680,23 +680,23 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         private async Task<ApprovalStatus> ApprovalStatusAsync(
             ReviewAccess? access,
-            SystemRecord system,
+            BoardRecord board,
             ProductionPromotionResult plan,
             bool administratorsOnly,
             CancellationToken cancellationToken)
         {
             bool hasMaintainers = plan.TouchesSharedFiles && !administratorsOnly &&
-                (await this.thisAccounts.GetMaintainersOfSystemAsync(system.SystemId, cancellationToken))
+                (await this.thisAccounts.GetMaintainersOfBoardAsync(board.BoardId, cancellationToken))
                     .Any(ReviewAuthority.CanGiveMaintainerApproval);
 
-            IReadOnlyList<GivenApproval> given = string.IsNullOrWhiteSpace(system.ContentHash)
+            IReadOnlyList<GivenApproval> given = string.IsNullOrWhiteSpace(board.ContentHash)
                 ? []
-                : await this.thisStore.GetProductionApprovalsAsync(system.SystemId, system.ContentHash, cancellationToken);
+                : await this.thisStore.GetProductionApprovalsAsync(board.BoardId, board.ContentHash, cancellationToken);
 
             return ApprovalRules.Status(
                 ApprovalRules.Required(plan.TouchesSharedFiles, hasMaintainers),
                 given,
-                ReviewAuthority.RoleIn(access, system.SystemId),
+                ReviewAuthority.RoleIn(access, board.BoardId),
                 access?.Account.Id);
         }
 
@@ -705,7 +705,7 @@ namespace CRT.Server.Handlers.Submissions
         // which is how its shared files are found; the walk of its folder is what it OWNS.
         // ###########################################################################################
         private async Task<ProductionPromotionResult> BuildPlanAsync(
-            SystemRecord system,
+            BoardRecord board,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
@@ -724,7 +724,7 @@ namespace CRT.Server.Handlers.Submissions
                     {
                         Severity = ValidationSeverity.Error,
                         Code = "promote.tree_unavailable",
-                        Subject = system.SystemId,
+                        Subject = board.BoardId,
                         Message = "The BETA or stable data tree could not be read on the server."
                     }],
                     TouchesSharedFiles: false);
@@ -732,33 +732,33 @@ namespace CRT.Server.Handlers.Submissions
 
             var identity = new SubmissionManifest
             {
-                SystemId = system.SystemId,
-                Manufacturer = system.Manufacturer,
-                Hardware = system.Hardware,
-                Board = system.Board
+                BoardId = board.BoardId,
+                Manufacturer = board.Manufacturer,
+                Hardware = board.Hardware,
+                Board = board.Board
             };
 
-            BoardData? board = await this.thisBoards.TryReadAsync(betaRoot, identity, cancellationToken);
+            BoardData? boardData = await this.thisBoards.TryReadAsync(betaRoot, identity, cancellationToken);
 
-            IReadOnlyList<string> cited = board is null
+            IReadOnlyList<string> cited = boardData is null
                 ? []
-                : SubmissionManifestBuilder.CollectReferencedFiles(board);
+                : SubmissionManifestBuilder.CollectReferencedFiles(boardData);
 
             return ProductionPromotionPlan.Build(
-                system.Manufacturer,
-                system.Hardware,
-                system.Board,
-                ProductionPromotionFlow.WalkSystemFolder(betaRoot, system),
+                board.Manufacturer,
+                board.Hardware,
+                board.Board,
+                ProductionPromotionFlow.WalkBoardFolder(betaRoot, board),
                 cited,
                 beta,
                 production);
         }
 
-        // Every file under the system's BETA folder, data-root-relative with forward slashes.
+        // Every file under the board's BETA folder, data-root-relative with forward slashes.
         // Empty when the folder does not resolve or is not there - which the plan refuses.
-        internal static IReadOnlyList<string> WalkSystemFolder(string betaRoot, SystemRecord system)
+        internal static IReadOnlyList<string> WalkBoardFolder(string betaRoot, BoardRecord board)
         {
-            string relative = $"{system.Manufacturer}/{system.Hardware}/{system.Board}";
+            string relative = $"{board.Manufacturer}/{board.Hardware}/{board.Board}";
 
             if (!SubmissionPathRules.TryResolve(betaRoot, relative, out string folder, out _) || !Directory.Exists(folder))
                 return [];
@@ -780,7 +780,7 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     public sealed record PromotionPlanOutcome(
-        SystemRecord? System,
+        BoardRecord? Board,
         ProductionPromotionResult? Plan,
         string? Refusal,
         bool IsNotConfigured = false,
@@ -788,8 +788,8 @@ namespace CRT.Server.Handlers.Submissions
         bool IsNotFound = false,
         ApprovalStatus? Approval = null)
     {
-        public static PromotionPlanOutcome Planned(SystemRecord system, ProductionPromotionResult plan, string? refusal, ApprovalStatus approval) =>
-            new(system, plan, refusal, Approval: approval);
+        public static PromotionPlanOutcome Planned(BoardRecord board, ProductionPromotionResult plan, string? refusal, ApprovalStatus approval) =>
+            new(board, plan, refusal, Approval: approval);
 
         public static PromotionPlanOutcome NotConfigured() =>
             new(null, null, ProductionPromotionFlow.NotConfiguredMessage, IsNotConfigured: true);
@@ -805,7 +805,7 @@ namespace CRT.Server.Handlers.Submissions
     public sealed record PromotionOutcome(
         bool IsPublished,
         string Error,
-        SystemRecord? System = null,
+        BoardRecord? Board = null,
         int FilesCopied = 0,
         DateTimeOffset? PreviousProductionPublishedUtc = null,
         bool IsNotConfigured = false,
@@ -813,23 +813,23 @@ namespace CRT.Server.Handlers.Submissions
         bool IsNotFound = false,
         bool IsConflict = false)
     {
-        public static PromotionOutcome Published(SystemRecord system, int filesCopied, DateTimeOffset? previous) =>
-            new(true, string.Empty, system, filesCopied, previous);
+        public static PromotionOutcome Published(BoardRecord board, int filesCopied, DateTimeOffset? previous) =>
+            new(true, string.Empty, board, filesCopied, previous);
 
         public static PromotionOutcome NotConfigured() =>
             new(false, ProductionPromotionFlow.NotConfiguredMessage, IsNotConfigured: true);
 
         public static PromotionOutcome Forbidden(string why) => new(false, why, IsForbidden: true);
 
-        public static PromotionOutcome NotFound() => new(false, "No such system.", IsNotFound: true);
+        public static PromotionOutcome NotFound() => new(false, "No such board.", IsNotFound: true);
 
         public static PromotionOutcome Conflict(string why) => new(false, why, IsConflict: true);
 
         public static PromotionOutcome Refused(string why) => new(false, why);
 
         // The first of two approvals: recorded against this BETA state, nothing copied.
-        public static PromotionOutcome AwaitingApproval(SystemRecord system, IReadOnlyList<ApproverRole> waitingFor) =>
-            new(false, string.Empty, system) { WaitingFor = waitingFor };
+        public static PromotionOutcome AwaitingApproval(BoardRecord board, IReadOnlyList<ApproverRole> waitingFor) =>
+            new(false, string.Empty, board) { WaitingFor = waitingFor };
 
         public IReadOnlyList<ApproverRole> WaitingFor { get; init; } = [];
 

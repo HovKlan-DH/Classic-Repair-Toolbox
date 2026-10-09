@@ -140,7 +140,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
         Assert.Equal(1, afterSaved);
 
         // The board was already re-read - which is also what shows the Drafts tab when this save
-        // created the system's first draft - so the switch has a tab to land on.
+        // created the board's first draft - so the switch has a tab to land on.
         Assert.Equal(1, refreshedBeforeIt);
     }
 

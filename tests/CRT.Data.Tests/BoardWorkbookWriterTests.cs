@@ -380,7 +380,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     [Fact]
     public async Task An_empty_board_writes_and_reads_back_empty_without_error()
     {
-        // A brand-new system registered with no rows yet is a real state - "Add a new system"
+        // A brand-new board registered with no rows yet is a real state - "Add a new board"
         // creates exactly this. It must produce a valid workbook, not a malformed one.
         string path = Path.Combine(this.thisWorkspace.Root, "empty.xlsx");
 
@@ -413,7 +413,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     [Fact]
     public void The_target_folder_is_created_when_it_does_not_exist()
     {
-        // Publishing a brand-new system writes into a folder that has never existed.
+        // Publishing a brand-new board writes into a folder that has never existed.
         string path = Path.Combine(this.thisWorkspace.Root, "Commodore", "C64", "250407", "board.xlsx");
 
         BoardWorkbookWriter.Write(path, new BoardData());
@@ -681,9 +681,9 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         // produced different bytes - and therefore different SHA-256 hashes - with nothing in the
         // CONTENT different at all.
         //
-        // That is not cosmetic. The workbook's hash is folded into the system's ContentHash
+        // That is not cosmetic. The workbook's hash is folded into the board's ContentHash
         // (PublishPlan.DescriptorWithWorkbook), which is what every CRT client uses to decide
-        // whether to re-download a board. So re-publishing an unchanged system made every user on
+        // whether to re-download a board. So re-publishing an unchanged board made every user on
         // every machine re-download it.
         //
         // *** THE SLEEP IS LOAD-BEARING and is why this test is worth its second. *** Two writes
@@ -1050,16 +1050,16 @@ public sealed class BoardWorkbookWriterTests : IDisposable
     }
 
     // ###########################################################################################
-    // A BRAND-NEW SYSTEM CARRIES ITS OWN NAME (owner report, 2026-09-24).
+    // A BRAND-NEW BOARD CARRIES ITS OWN NAME (owner report, 2026-09-24).
     //
-    // DraftSeeder.CreateNewSystem wrote `new BoardData()`, so the identity lines came out blank and
+    // DraftSeeder.CreateNewBoard wrote `new BoardData()`, so the identity lines came out blank and
     // a new board opened in Excel with no caption at all - visible in the project owner's screenshot
     // as an empty row 1 and 2 where every published board names its hardware.
     // ###########################################################################################
     [Fact]
-    public void A_new_system_workbook_names_its_hardware_and_board()
+    public void A_new_board_workbook_names_its_hardware_and_board()
     {
-        string path = this.thisWorkspace.Path_("newsystem.xlsx");
+        string path = this.thisWorkspace.Path_("newboard.xlsx");
 
         BoardWorkbookWriter.Write(path, new BoardData
         {

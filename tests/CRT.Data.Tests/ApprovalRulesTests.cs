@@ -23,8 +23,8 @@ namespace CRT.Data.Tests
         [Fact]
         public void Nothing_shared_needs_ANY_one_approval()
         {
-            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasMaintainers: true));
-            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, systemHasMaintainers: false));
+            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, boardHasMaintainers: true));
+            Assert.Empty(ApprovalRules.Required(touchesSharedFiles: false, boardHasMaintainers: false));
         }
 
         [Fact]
@@ -32,14 +32,14 @@ namespace CRT.Data.Tests
         {
             Assert.Equal(
                 [ApproverRole.Maintainer, ApproverRole.Administrator],
-                ApprovalRules.Required(touchesSharedFiles: true, systemHasMaintainers: true));
+                ApprovalRules.Required(touchesSharedFiles: true, boardHasMaintainers: true));
         }
 
         [Fact]
         public void A_shared_change_on_a_board_with_NO_maintainers_needs_the_administrator_alone()
         {
             // There is nobody to ask for the other half.
-            Assert.Equal([ApproverRole.Administrator], ApprovalRules.Required(touchesSharedFiles: true, systemHasMaintainers: false));
+            Assert.Equal([ApproverRole.Administrator], ApprovalRules.Required(touchesSharedFiles: true, boardHasMaintainers: false));
         }
 
         // -----------------------------------------------------------------------------------

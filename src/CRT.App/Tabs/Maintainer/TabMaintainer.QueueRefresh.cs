@@ -26,9 +26,9 @@ namespace CRT
     //   - SIGNED OUT with unsaved table changes: the sign-in screen would throw them away, so the
     //     queue says so and waits; without unsaved changes it goes to the sign-in screen as always.
     //
-    // THE OTHER SCREENS' LISTS COME WITH IT (2026-09-27): the BETA list and the systems are read on
+    // THE OTHER SCREENS' LISTS COME WITH IT (2026-09-27): the BETA list and the boards are read on
     // the same check, whichever screen is shown, so the buttons' badges stay right - each keeping
-    // its own "never disturb what is open" rule (TabMaintainer.Beta.cs, .Systems.cs).
+    // its own "never disturb what is open" rule (TabMaintainer.Beta.cs, .Boards.cs).
     //
     // OFF SCREEN, THE BADGE'S TWO LISTS ONLY (owner request, 2026-09-30): the tab's badge in CRT's
     // row of tabs counts the queue and the BETA list, so while it can be seen those two are read
@@ -47,7 +47,7 @@ namespace CRT
         private bool thisEverythingPending;
 
         // When EVERYTHING was last read - not just the badge's two lists. Coming back to the tab
-        // checks against this, so the first look after a launch spent off screen reads the Systems
+        // checks against this, so the first look after a launch spent off screen reads the Boards
         // overview and the drop-down listing, however recently the badge was brought up to date.
         private DateTimeOffset? thisEverythingAskedUtc;
 
@@ -110,7 +110,7 @@ namespace CRT
 
             this.thisQueueCheckWindow = TopLevel.GetTopLevel(this) as Window;
 
-            // Shown: the screen it opens on is decided anew - Systems when nothing waits
+            // Shown: the screen it opens on is decided anew - Boards when nothing waits
             // (TabMaintainer.OpenOnEntry.cs).
             if (this.thisQueueCheckWindow is not null)
                 this.BeginOpening();
@@ -123,7 +123,7 @@ namespace CRT
             // reads a Files view marked stale while the tab was away (TabMaintainer.Files.cs).
             //
             // *** A QUEUE ALREADY READ OPENS ITS ENTRY FIRST, THE CHECK AFTER (owner request,
-            // 2026-10-02). *** The check reads the Systems overview too, which the server walks
+            // 2026-10-02). *** The check reads the Boards overview too, which the server walks
             // both data trees for, and the entry waited for all of it. With the queue the badge
             // read - and the entry itself read ahead (TabMaintainer.Prefetch.cs) - it opens at
             // once; the check then runs under the rules every check keeps for what is open.
@@ -169,7 +169,7 @@ namespace CRT
         //
         // *** A FULL CHECK THAT ARRIVES DURING A BADGES-ONLY ONE IS DEFERRED, NOT DROPPED (code
         // review, 2026-10-01). *** The two share the one guard. A maintainer who switched to the tab
-        // while the off-screen badge check was mid-flight asked for everything (the Systems
+        // while the off-screen badge check was mid-flight asked for everything (the Boards
         // overview, the drop-down listing) - and the guard returned at once with nothing read and
         // nothing remembered, so the screen they had just opened rendered from the last full check
         // until the next minute tick. It is now remembered, and runs the moment the badge check ends.

@@ -4,7 +4,7 @@ using OfficeOpenXml;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// How DataManager.LoadBoardDataAsync resolves a system that has a local draft.
+// How DataManager.LoadBoardDataAsync resolves a board that has a local draft.
 //
 // *** THE MECHANISM CHANGED IN PHASE 6; THE BEHAVIOURS DID NOT. *** This file used to set up
 // draft.json row deltas and prove the load OVERLAID them onto the published board. A draft is
@@ -13,9 +13,9 @@ namespace ClassicRepairToolbox.Tests;
 // asserting the same thing it always did:
 //
 //   - a draft changes what the board reads as;
-//   - another system's draft never bleeds in;
+//   - another board's draft never bleeds in;
 //   - "view boards as officially published" shows the published rows but still REPORTS the draft;
-//   - a system that exists only as a draft loads even with no published file.
+//   - a board that exists only as a draft loads even with no published file.
 //
 // The class name is kept even though "overlay" is now the wrong word, because it is the file
 // anyone looking for this wiring will search for. The header says what actually happens.
@@ -78,14 +78,14 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     }
 
     // ###########################################################################################
-    // Writes a DRAFT of this system: a real board workbook in the drafts tree, plus the marker
+    // Writes a DRAFT of this board: a real board workbook in the drafts tree, plus the marker
     // that makes the folder a draft.
     //
     // This is what replaced DraftDataStore.Save in every test below. Note it writes a COMPLETE
     // board rather than just the changed rows - that is the seeding model, and it is what makes an
     // absent row mean "deleted" rather than "not copied yet".
     // ###########################################################################################
-    private void WriteDraft(BoardData board, NewSystemRegistration? registration = null)
+    private void WriteDraft(BoardData board, NewBoardRegistration? registration = null)
     {
         string workbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, this.thisExcelDataFile);
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
@@ -96,9 +96,9 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
             DraftFolderLayout.GetMarkerPath(this.DraftsRoot, this.thisExcelDataFile),
             new DraftMarker
             {
-                SystemKey = this.thisExcelDataFile,
+                BoardKey = this.thisExcelDataFile,
                 BaseRevision = registration is null ? "2026-09-01" : string.Empty,
-                NewSystem = registration,
+                NewBoard = registration,
             });
     }
 
@@ -175,10 +175,10 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadBoardDataAsync_still_returns_the_official_data_for_a_system_with_a_different_draft()
+    public async Task LoadBoardDataAsync_still_returns_the_official_data_for_a_board_with_a_different_draft()
     {
-        // A draft for a DIFFERENT system must never bleed into this one's load - proves the source
-        // is resolved per-system (by ExcelDataFile), not applied blindly.
+        // A draft for a DIFFERENT board must never bleed into this one's load - proves the source
+        // is resolved per-board (by ExcelDataFile), not applied blindly.
         this.WriteBoardExcel();
 
         string otherWorkbook = DraftFolderLayout.GetWorkbookPath(
@@ -191,7 +191,7 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(this.DraftsRoot, "Commodore/C64/250425/Data C64 250425 v1.0.0.xlsx"),
-            new DraftMarker { SystemKey = "Commodore/C64/250425/Data C64 250425 v1.0.0.xlsx" });
+            new DraftMarker { BoardKey = "Commodore/C64/250425/Data C64 250425 v1.0.0.xlsx" });
 
         BoardData? result = await DataManager.LoadBoardDataAsync(this.BoardEntry);
 
@@ -265,7 +265,7 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     //
     // A drafted load also reads the published copy, to work out which rows are drafted. That
     // read used its own "published:" cache key - a leftover from when the drafted load was cached
-    // under the system identity - so toggling "view boards as officially published" parsed and
+    // under the board identity - so toggling "view boards as officially published" parsed and
     // held the same workbook a second time under its bare path.
     //
     // Proved by what the second load can still see: after the drafted load, the published file
@@ -293,14 +293,14 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
         Assert.Equal("PLA", result!.Components.Single(c => c.BoardLabel == "U1").FriendlyName);
     }
 
-    // ---------------------------------- A system that exists only as a draft
+    // ---------------------------------- A board that exists only as a draft
 
-    private void SaveNewSystemDraft(params ComponentEntry[] components)
+    private void SaveNewBoardDraft(params ComponentEntry[] components)
     {
         var board = new BoardData();
         board.Components.AddRange(components);
 
-        this.WriteDraft(board, new NewSystemRegistration
+        this.WriteDraft(board, new NewBoardRegistration
         {
             HardwareName = "Commodore 64",
             BoardName = "MyBoard",
@@ -309,11 +309,11 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     }
 
     // Deliberately NO WriteBoardExcel call in any of these - the absence of the published file is
-    // the whole point. A system created through "Add a new system" has none and never will.
+    // the whole point. A board created through "Add a new board" has none and never will.
     [Fact]
-    public async Task A_draft_only_system_loads_even_though_it_has_no_official_board_file()
+    public async Task A_draft_only_board_loads_even_though_it_has_no_official_board_file()
     {
-        this.SaveNewSystemDraft();
+        this.SaveNewBoardDraft();
 
         BoardData? result = await DataManager.LoadBoardDataAsync(this.BoardEntry);
 
@@ -322,9 +322,9 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     }
 
     [Fact]
-    public async Task A_draft_only_systems_own_rows_are_what_it_renders()
+    public async Task A_draft_only_boards_own_rows_are_what_it_renders()
     {
-        this.SaveNewSystemDraft(
+        this.SaveNewBoardDraft(
             new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC" });
 
         BoardData? result = await DataManager.LoadBoardDataAsync(this.BoardEntry);
@@ -334,26 +334,26 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     }
 
     [Fact]
-    public async Task A_draft_only_system_is_reported_as_a_new_system()
+    public async Task A_draft_only_board_is_reported_as_a_new_board()
     {
-        this.SaveNewSystemDraft();
+        this.SaveNewBoardDraft();
 
         await DataManager.LoadBoardDataAsync(this.BoardEntry);
 
-        Assert.True(DataManager.LastLoadedDraftIsNewSystem);
+        Assert.True(DataManager.LastLoadedDraftIsNewBoard);
     }
 
     // ###########################################################################################
-    // With the toggle on, a draft-only system renders BLANK rather than failing to open.
+    // With the toggle on, a draft-only board renders BLANK rather than failing to open.
     //
     // Officially it does not exist, so "nothing here" is the truthful answer - and the alternative
     // (refusing to load) would leave the contributor unable to turn the toggle back off from a
     // board they cannot open.
     // ###########################################################################################
     [Fact]
-    public async Task A_draft_only_system_shows_as_a_blank_board_when_viewing_officially_published_only()
+    public async Task A_draft_only_board_shows_as_a_blank_board_when_viewing_officially_published_only()
     {
-        this.SaveNewSystemDraft(
+        this.SaveNewBoardDraft(
             new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC" });
 
         UserSettings.ViewOfficialPublishedOnly = true;

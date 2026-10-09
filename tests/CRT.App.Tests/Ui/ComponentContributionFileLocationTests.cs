@@ -10,14 +10,14 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The component editor's "File location" drop-down on a system that exists ONLY as a draft.
+// The component editor's "File location" drop-down on a board that exists ONLY as a draft.
 //
-// *** REPORTED 2026-09-24. *** A system created with "Add a new system" gets its own empty
-// "Scope baseline" folder (DraftSeeder.CreateNewSystem), but the editor's drop-down was built from
+// *** REPORTED 2026-09-24. *** A board created with "Add a new board" gets its own empty
+// "Scope baseline" folder (DraftSeeder.CreateNewBoard), but the editor's drop-down was built from
 // the data root alone - so that folder was never offered, and a baseline image could not be filed
 // where published boards keep theirs.
 //
-// End to end on purpose: the system is created by the real seeder, and the list is read off a real
+// End to end on purpose: the board is created by the real seeder, and the list is read off a real
 // file row the window built, which is exactly what the drop-down's ItemsSource binds to. If the
 // seeder and the window ever disagree about where that folder is, this fails.
 // ###########################################################################################
@@ -49,7 +49,7 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
     }
 
     [Fact]
-    public void A_NEW_systems_Scope_baseline_folder_is_offered_in_a_file_rows_drop_down()
+    public void A_NEW_boards_Scope_baseline_folder_is_offered_in_a_file_rows_drop_down()
     {
         // A published board and a shared folder, so the data tree is not empty and the test proves
         // the draft folder is ADDED to it rather than replacing it. The shared folder is the data
@@ -58,12 +58,12 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
         Directory.CreateDirectory(Path.Combine(this.DataRoot, "Commodore", "C64", "250407", "Scope baseline"));
         Directory.CreateDirectory(Path.Combine(this.DataRoot, "Generic shared files", "Component images"));
 
-        string excelDataFile = NewSystemIdentity.BuildExcelDataFile(
+        string excelDataFile = NewBoardIdentity.BuildExcelDataFile(
             ComponentContributionFileLocationTests.Manufacturer,
             ComponentContributionFileLocationTests.Hardware,
             ComponentContributionFileLocationTests.Board);
 
-        DraftSeedResult created = DraftSeeder.CreateNewSystem(this.DraftsRoot, new NewSystemRegistration
+        DraftSeedResult created = DraftSeeder.CreateNewBoard(this.DraftsRoot, new NewBoardRegistration
         {
             HardwareName = ComponentContributionFileLocationTests.Hardware,
             BoardName = ComponentContributionFileLocationTests.Board,

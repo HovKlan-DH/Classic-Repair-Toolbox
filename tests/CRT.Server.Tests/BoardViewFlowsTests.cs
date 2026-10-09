@@ -25,8 +25,8 @@ namespace CRT.Server.Tests
 
         private static readonly CountryAnswer Denmark = new("DK", "Denmark");
 
-        private static BoardViewNames? Listed(string systemId) =>
-            systemId switch
+        private static BoardViewNames? Listed(string boardId) =>
+            boardId switch
             {
                 BoardViewFlowsTests.C64 => new BoardViewNames("Commodore 64", "250407"),
                 BoardViewFlowsTests.Vic => new BoardViewNames("Commodore VIC-20", "250403"),
@@ -36,8 +36,8 @@ namespace CRT.Server.Tests
         private static BoardViewReport Report(params BoardView[] views) =>
             new(Guid.NewGuid().ToString("N"), "CRT 2026.10.0", "Windows", "Microsoft Windows 10.0.19045", "64-bit", views);
 
-        private static BoardView View(string systemId, double minutesAgo = 5, bool fromBeta = false) =>
-            new(systemId, BoardViewFlowsTests.Now.AddMinutes(-minutesAgo), fromBeta);
+        private static BoardView View(string boardId, double minutesAgo = 5, bool fromBeta = false) =>
+            new(boardId, BoardViewFlowsTests.Now.AddMinutes(-minutesAgo), fromBeta);
 
         private static Task<BoardViewOutcome> RecordAsync(BoardViewReport? report, FakeBoardViewStore store, FakeCountryLookup? countries = null) =>
             BoardViewFlowsTests.RecordFromAsync(BoardViewFlowsTests.Sender, report, store, countries);
@@ -78,7 +78,7 @@ namespace CRT.Server.Tests
             Assert.Equal(3, store.Rows.Count);
 
             BoardViewRow first = store.Rows[0];
-            Assert.Equal(BoardViewFlowsTests.C64, first.SystemId);
+            Assert.Equal(BoardViewFlowsTests.C64, first.BoardId);
             Assert.Equal(("Commodore 64", "250407"), (first.HardwareName, first.BoardName));
             Assert.Equal("CRT 2026.10.0", first.Version);
             Assert.Equal(("Windows", "Microsoft Windows 10.0.19045", "64-bit"), (first.OsHighlevel, first.OsVersion, first.Cpu));
@@ -180,7 +180,7 @@ namespace CRT.Server.Tests
                 store);
 
             Assert.Equal((1, 5), (outcome.StoredViews, outcome.IgnoredViews));
-            Assert.Equal(BoardViewFlowsTests.Vic, Assert.Single(store.Rows).SystemId);
+            Assert.Equal(BoardViewFlowsTests.Vic, Assert.Single(store.Rows).BoardId);
         }
 
         // A fast clock's view is kept, at the server's time - a view is never stored in the future.

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Handlers.DataHandling
 {
@@ -96,9 +97,22 @@ namespace Handlers.DataHandling
         string? Cpu,
         IReadOnlyList<BoardView>? Views);
 
-    // One view: the board ("Commodore/C64/250407", SystemDescriptorRules' id), when it had been on
+    // One view: the board ("Commodore/C64/250407", BoardDescriptorRules' id), when it had been on
     // screen long enough to count (UTC), and whether CRT was downloading from the BETA source.
-    public sealed record BoardView(string? SystemId, DateTimeOffset ViewedUtc, bool FromBeta);
+    //
+    // SystemId is what BoardId was called before "system" became "board" everywhere (owner
+    // decision, 2026-10-09). Nothing writes it any more, but a CRT built before that still sends
+    // it, and an outbox file one of them wrote still holds it - so both ends read IdOf, never
+    // BoardId alone.
+    public sealed record BoardView(
+        string? BoardId,
+        DateTimeOffset ViewedUtc,
+        bool FromBeta,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SystemId = null)
+    {
+        public static string? IdOf(BoardView? view) =>
+            string.IsNullOrWhiteSpace(view?.BoardId) ? view?.SystemId : view.BoardId;
+    }
 
     // ###########################################################################################
     // The rules both ends apply.
@@ -128,7 +142,7 @@ namespace Handlers.DataHandling
         public const int MaxReportsPerAddressPerHour = 60;
 
         // Column widths in crt_board_views; longer values are cut to fit.
-        public const int SystemIdLength = 200;
+        public const int BoardIdLength = 200;
         public const int NameLength = 100;
         public const int VersionLength = 100;
         public const int OsHighlevelLength = 20;
@@ -207,19 +221,27 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // One system's views, for the Maintainer tab's Systems screen (SystemDetailAnswer.Views). Views
+    // One board's views, for the Maintainer tab's Boards screen (BoardDetailAnswer.Views). Views
     // from the BETA download source - mostly maintainers checking their own work - are left out of
     // every count but FromBetaLast30Days, so they cannot make a board look used.
     //
     // The windows are whole UTC days including today: "the last 7 days" is today and the six before.
     // TopCountries: the last 365 days, most views first, at most five.
+    //
+    // Daily (owner request, 2026-10-09: "a graph for showing usage of board per day"): the views of
+    // each UTC day of the last 365 that had any, oldest first - a day with none is not listed, and
+    // the Statistics view draws it at 0. Null from a server older than that.
     // ###########################################################################################
     public sealed record BoardViewStatistics(
         int Last7Days,
         int Last30Days,
         int Last365Days,
         int FromBetaLast30Days,
-        IReadOnlyList<BoardViewCountry> TopCountries);
+        IReadOnlyList<BoardViewCountry> TopCountries,
+        IReadOnlyList<BoardViewDay>? Daily = null);
+
+    // One day's views - a UTC day, as every window here is.
+    public sealed record BoardViewDay(DateOnly Day, int Views);
 
     public sealed record BoardViewCountry(string CountryCode, string CountryName, int Views);
 }

@@ -37,7 +37,7 @@ public sealed class ApiUsageViewTests
                 [
                     new ApiUsageRoute("POST", "/api/usage/check-in", "Forever", true, 900, ApiUsageViewTests.Last,
                         [new ApiUsageVersion("2.5.0", 900, ApiUsageViewTests.Last)]),
-                    new ApiUsageRoute("POST", "/api/review/systems/edit", "Maintainer", false, 0, null, []),
+                    new ApiUsageRoute("POST", "/api/review/boards/edit", "Maintainer", false, 0, null, []),
                 ],
                 [new ApiUsageInstallations("3.0.0", 42, 305)]);
 
@@ -68,7 +68,7 @@ public sealed class ApiUsageViewTests
                     ApiUsageDisplay.InstallationsHeading,
                     "3.0.0: [42] installations, [305] launches",
                     ApiUsageDisplay.MaintainerHeading,
-                    "POST /api/review/systems/edit",
+                    "POST /api/review/boards/edit",
                     "No calls in the last [90] days",
                     ApiUsageDisplay.ForeverHeading,
                     "POST /api/usage/check-in",

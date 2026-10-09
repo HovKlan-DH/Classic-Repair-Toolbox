@@ -112,7 +112,7 @@ namespace CRT.Server.Tests
         {
             ApiUsageAnswer answer = ApiUsageRules.Build(
                 90,
-                [("GET", "/api/review/queue"), ("POST", "/api/review/systems/edit")],
+                [("GET", "/api/review/queue"), ("POST", "/api/review/boards/edit")],
                 [
                     new ApiUsageRow("GET", "/api/review/queue", "3.0.0", 40, ApiUsageRulesTests.Now.AddDays(-3)),
                     new ApiUsageRow("GET", "/api/review/queue", ApiUsageVersion.NotCrt, 2, ApiUsageRulesTests.Now.AddDays(-9)),
@@ -124,7 +124,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(90, answer.Days);
             Assert.Equal(
-                ["POST /api/review/old-route", "GET /api/review/queue", "POST /api/review/systems/edit"],
+                ["POST /api/review/boards/edit", "POST /api/review/old-route", "GET /api/review/queue"],
                 answer.Routes.Select(route => $"{route.Method} {route.Route}"));
 
             ApiUsageRoute queue = answer.Routes.Single(route => route.Route == "/api/review/queue");
@@ -132,7 +132,7 @@ namespace CRT.Server.Tests
             Assert.Equal(54, queue.Calls);
             Assert.Equal(ApiUsageRulesTests.Now, queue.LastUtc);
 
-            ApiUsageRoute unused = answer.Routes.Single(route => route.Route == "/api/review/systems/edit");
+            ApiUsageRoute unused = answer.Routes.Single(route => route.Route == "/api/review/boards/edit");
             Assert.Equal(0, unused.Calls);
             Assert.Null(unused.LastUtc);
             Assert.Empty(unused.Versions);

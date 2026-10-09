@@ -306,7 +306,7 @@ namespace CRT.Server
             //
             // ApprovePublishFlow is one of the two irreversible operations the service exposes - it
             // overwrites a published board with no retained revision behind it - so its own header
-            // is worth reading before changing anything it touches. The other is SystemDeletionFlow.
+            // is worth reading before changing anything it touches. The other is BoardDeletionFlow.
             services.AddSingleton<PublishExecutor>();
 
             // The one lock every write to a published tree takes - the BETA publish and the
@@ -322,13 +322,13 @@ namespace CRT.Server
             // queue (owner decision, 2026-09-27) - the production promotion's mirror image.
             services.AddSingleton<BetaRollbackFlow>();
 
-            // Deleting a system from both trees and the database (owner request, 2026-10-03) - the
+            // Deleting a board from both trees and the database (owner request, 2026-10-03) - the
             // administrator's. Takes the publish lock: it writes both trees and their manifests.
-            services.AddSingleton<SystemDeletionFlow>();
+            services.AddSingleton<BoardDeletionFlow>();
 
-            // Placing a new system in the drop-down lists (owner request, 2026-09-27). Takes the
-            // publish lock too: placing a system already in BETA writes BETA's main Excel data file.
-            services.AddSingleton<SystemListingFlow>();
+            // Placing a new board in the drop-down lists (owner request, 2026-09-27). Takes the
+            // publish lock too: placing a board already in BETA writes BETA's main Excel data file.
+            services.AddSingleton<BoardListingFlow>();
 
             // Tells the contributor what a maintainer decided. A singleton for the same reason as
             // the two above - it holds only the mailer seam and a logger, and takes everything
@@ -405,7 +405,7 @@ namespace CRT.Server
             app.MapReviewEndpoints();
             app.MapAdminEndpoints();
             app.MapProductionEndpoints();
-            app.MapSystemEndpoints();
+            app.MapBoardEndpoints();
 
             // Board views from CRT - anonymous, rate limited per address in memory.
             app.MapBoardViewEndpoints();

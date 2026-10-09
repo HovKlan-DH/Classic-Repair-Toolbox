@@ -129,7 +129,7 @@ namespace Handlers.DataHandling
         // "250407") - added 2026-09-23 so a written workbook can reproduce that header block.
         //
         // *** READ FOR PRESENTATION ONLY. NOTHING IN THE APPLICATION KEYS OFF THEM. *** Which
-        // system a board belongs to is decided by its ExcelDataFile path everywhere it matters, so
+        // board a board belongs to is decided by its ExcelDataFile path everywhere it matters, so
         // these are the human-facing caption at the top of each sheet and nothing more. They are
         // carried on BoardData rather than passed to the writer separately because the writer
         // already receives the board and every caller would otherwise have to find the names
@@ -182,12 +182,12 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The same board with a different Schematics list - importing, removing or reordering
-        // board images (SystemFilesWindow). Lists shared, as WithRevisionDate's are.
+        // board images (BoardFilesWindow). Lists shared, as WithRevisionDate's are.
         //
         // *** IT EXISTS BECAUSE THAT WINDOW'S OWN COPY DROPPED THE CAPTION (2026-09-27). *** It
         // listed the sections by hand and left out HardwareName and BoardName, so every image
         // import or removal wrote the draft back without its "# Hardware:" / "# Board:" lines - the
-        // caption a brand-new system was already reported once for missing (see DraftSeeder).
+        // caption a brand-new board was already reported once for missing (see DraftSeeder).
         // A copy here sits beside the other two, where a new property is seen by whoever adds it.
         // ###########################################################################################
         public BoardData WithSchematics(List<BoardSchematicEntry> schematics) => new()

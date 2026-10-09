@@ -36,12 +36,27 @@ namespace Handlers.DataHandling
 
         public IReadOnlyList<BoardTableSheet> Sheets { get; private set; } = [];
 
-        // False for a system with no published copy ("Add a new system"). Nothing is coloured
+        // False for a board with no published copy ("Add a new board"). Nothing is coloured
         // then - see BoardTableSheet's header.
         public bool HasBaseline { get; }
 
         // What a changed cell's tooltip calls the value it replaced - see Create.
         public const string DefaultBaselineLabel = "Published value";
+
+        // ###########################################################################################
+        // *** A TABLE COMPARED WITH A DATA SOURCE NAMES THAT SOURCE (owner request, 2026-10-05). ***
+        // "Published value" read as the data everybody has, so a value that BETA already held - newer
+        // than the stable source - looked like a mistake until it was worked out where it came from.
+        // The Maintainer tab's queue is always compared with BETA (the server reads its BETA tree);
+        // the Drafts tab with the data downloaded, from whichever source the Configuration tab
+        // picks. The two names are the sources' own (AppConfig.GetOnlineSourceLabel).
+        // ###########################################################################################
+        public const string BetaSourceBaselineLabel = "BETA source value";
+
+        public const string StableSourceBaselineLabel = "Stable source value";
+
+        public static string SourceBaselineLabel(bool betaSource) =>
+            betaSource ? BoardTableDocument.BetaSourceBaselineLabel : BoardTableDocument.StableSourceBaselineLabel;
 
         public string BaselineLabel { get; private init; } = DefaultBaselineLabel;
 
@@ -67,8 +82,9 @@ namespace Handlers.DataHandling
         //
         // `baselineLabel` is what a changed cell's tooltip CALLS the value it replaced, and it is
         // the caller's to say because only the caller knows what it handed over as `published`. The
-        // default names the published board, which is what every draft compares against. The
-        // Maintainer tab passes its own for a NEW SYSTEM: there it compares the submission
+        // default names the published board; the Drafts tab and the Maintainer tab's queue name the
+        // data source instead (SourceBaselineLabel). The
+        // Maintainer tab passes its own for a NEW BOARD: there it compares the submission
         // with ITSELF as it arrived (see TabMaintainer.Table.cs), so `published` is not published
         // at all and "Published value: (empty)" named a board that does not exist - reported by the
         // project owner, 2026-09-26. HasBaseline cannot answer this: it is true in both cases.

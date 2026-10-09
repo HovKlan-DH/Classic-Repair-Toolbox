@@ -37,7 +37,7 @@
 			<TextBlock TextWrapping="Wrap"
 					   Text="Your changes will be sent for review. Nothing is published until a maintainer approves it, and your local draft stays exactly as it is." />
 
-			<TextBlock x:Name="SystemNameText"
+			<TextBlock x:Name="BoardNameText"
 					   TextWrapping="Wrap"
 					   FontWeight="Bold"
 					   Margin="0,10,0,10" />

@@ -69,9 +69,9 @@ public sealed class SubmissionViewsTests
             Removing("old.png")));
     }
 
-    // A new system: nothing is published, so every file it carries is new.
+    // A new board: nothing is published, so every file it carries is new.
     [Fact]
-    public void A_new_systems_files_are_all_counted_as_new()
+    public void A_new_boards_files_are_all_counted_as_new()
     {
         Assert.Equal(3, SubmissionViews.ChangingFiles(
             [File("Sheet1.png"), File("manual.pdf", "bb"), KiCad("board.kicad_pcb", "cc")],
@@ -111,7 +111,7 @@ public sealed class SubmissionViewsTests
 
         FileRemovalPreview removals = Removing("gone.png");
 
-        IReadOnlyList<SystemFileEntry> entries = SystemFileEntries.ForApproval(
+        IReadOnlyList<BoardFileEntry> entries = BoardFileEntries.ForApproval(
             submitted,
             removals.Files,
             ownInBeta: [$"{Board}/Sheet1.png", $"{Board}/manual.pdf", $"{Board}/gone.png", $"{Board}/Untouched.png"],

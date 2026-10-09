@@ -260,7 +260,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Validates and saves the current editor session into the current system's draft (session 2c -
+    // Validates and saves the current editor session into the current board's draft (session 2c -
     // NOT into the board Excel file any more; see LabelEditorDraftWriter's own header comment for
     // why), then reloads the board so the runtime state reflects the merged draft+official view.
     // Clears undo and redo because the editor session is ending.
@@ -333,7 +333,7 @@ public partial class TabSchematics
         // what makes this safe against the contributor having edited the workbook in Excel while
         // the application was open.
         //
-        // *** A SYSTEM WITH NO DRAFT IS SEEDED FIRST, and that is a real behaviour change. ***
+        // *** A BOARD WITH NO DRAFT IS SEEDED FIRST, and that is a real behaviour change. ***
         // Before, the first label editor save CREATED the draft implicitly. It cannot now: a draft
         // is a complete copy of the published board, and starting an empty one here would produce
         // a draft that reads as "every published row deleted".
@@ -386,7 +386,7 @@ public partial class TabSchematics
             return;
         }
 
-        Logger.Info($"Label editor draft save succeeded for system: [{cacheKey}]");
+        Logger.Info($"Label editor draft save succeeded for board: [{cacheKey}]");
 
         DataManager.ClearBoardCache(cacheKey);
 

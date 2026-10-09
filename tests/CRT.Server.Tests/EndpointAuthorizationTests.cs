@@ -131,7 +131,7 @@ namespace CRT.Server.Tests
                 token, store, EndpointAuthorizationTests.Now + TimeSpan.FromMinutes(1));
 
             Assert.False(account!.IsAdministrator);
-            Assert.Empty(await store.GetReviewedSystemIdsAsync(account.Id));
+            Assert.Empty(await store.GetReviewedBoardIdsAsync(account.Id));
         }
 
         // -----------------------------------------------------------------------------------

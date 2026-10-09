@@ -13,10 +13,10 @@ namespace Handlers.MaintainerHandling
     {
         // The file's bytes for the hover card, or null when there are none. Never throws: a file
         // that cannot be read is shown as missing, never as a crash under the pointer.
-        Task<byte[]?> ReadAsync(SystemFileEntry file);
+        Task<byte[]?> ReadAsync(BoardFileEntry file);
 
         // Fetches the file and opens it. Null when it opened, otherwise the sentence to show.
-        Task<string?> OpenAsync(SystemFileEntry file);
+        Task<string?> OpenAsync(BoardFileEntry file);
     }
 
     // ###########################################################################################
@@ -31,9 +31,9 @@ namespace Handlers.MaintainerHandling
     public sealed class FileTreePreviewSource : CRT.IBoardTableFileSource
     {
         private readonly IFileTreeFiles thisFiles;
-        private readonly SystemFileEntry thisFile;
+        private readonly BoardFileEntry thisFile;
 
-        public FileTreePreviewSource(IFileTreeFiles files, SystemFileEntry file)
+        public FileTreePreviewSource(IFileTreeFiles files, BoardFileEntry file)
         {
             this.thisFiles = files ?? throw new ArgumentNullException(nameof(files));
             this.thisFile = file ?? throw new ArgumentNullException(nameof(file));

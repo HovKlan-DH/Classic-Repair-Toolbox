@@ -25,6 +25,18 @@ Drafts and Maintainer tabs share), the contribution service (`src/CRT.Server/`),
 they both reference (`src/CRT.Data/`), and the board DATA itself (`Assets/Data/`, and the published
 trees the server writes).
 
+**"Board", never "system"** (owner decision, 2026-10-09: "rename everything, code too"). One entry
+of the drop-down lists - "Commodore / C64 / 250407" - is a BOARD, in every word a person reads, in
+code, routes (`/api/review/boards/...`), JSON fields (`boardId`), the database (`boards`, `board_id` -
+migration 0020) and the Wiki. "System" is left only where it means something else (the operating
+system, a file system, systemd, a video system, SCPI's "system error") and where renaming would lose
+data: names ALREADY STORED keep their old spelling on purpose - a draft marker's `SystemKey` and
+`NewSystem`, a receipt's `SystemId`, the settings' `maintainerLast...SystemId`, `BoardView.SystemId`
+(older CRTs still send it), the retired `system.json`, and every applied migration. Never "fix" those.
+A name the DATABASE stores inside JSON is the exception that moved: 0020 rewrites
+`submission_changes.changes_json`'s `IsNewSystem` to `IsNewBoard` - renaming a member of a type the
+server keeps as JSON needs such a rewrite in the same migration (`BoardNamesMigrationTests`).
+
 **The compiler covers less of this than it looks.** Both applications reference `CRT.Data`, so a
 changed signature fails the build everywhere at once. The dangerous surfaces are the ones it CANNOT see:
 
@@ -420,10 +432,16 @@ off by default). Hiding a selected tab moves the selection to the first visible 
 
 #### Drafts (`Tabs/Drafts/`) - local-first contributing
 
-A contributor edits a board locally (the Contribute tab's component editor, the label editor, or
-"Create system" for a new system), sees how the draft differs from the published copy, and submits.
-The folder also holds that flow's dialogs (`NewSystemWindow`, `NewSystemMaintainerWindow`,
-`SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `SystemFilesWindow`,
+A contributor edits a board locally (the Contribute tab's component editor, the label editor, its
+"Edit board as draft" for the whole board in table form, or "Create board" for a new board), sees how
+the draft differs from the published copy, and submits.
+
+- **"Edit board as draft"** (Contribute tab, between "Add new component" and "Add a new board"; owner
+  request 2026-10-09; `Main.EditBoardAsDraft.cs`): no draft yet - seeded from the published FILE
+  (`DraftSeeder.SeedFromPublishedFile`) and opened in the Drafts tab's table; a draft already - nothing
+  written, `DraftExistsWindow` says a board has ONE draft and offers it.
+The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
+`SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `BoardFilesWindow`,
 `DiscardDraftWindow`, `ForgetSubmissionWindow`).
 
 - **The badge** (`Main.SubmissionChecks.cs`): `SubmissionReceiptStore.UnreadCommentCount`, the same
@@ -435,7 +453,7 @@ The folder also holds that flow's dialogs (`NewSystemWindow`, `NewSystemMaintain
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
   finished sending. An empty fingerprint never blocks. `TabDrafts.SubmitAsync` checks again after
   settling the table's edits.
-- **A submission the server no longer knows reads "No longer on the server"** (404 after a system
+- **A submission the server no longer knows reads "No longer on the server"** (404 after a board
   deletion or the data reset; `SubmissionReceipt.NotFoundUtc`): neutral colour, never blocks Submit,
   no BETA try, not reported on a discard.
 - **"Save to draft" in the component editor lands on the Drafts tab**, only after a successful save.
@@ -449,8 +467,8 @@ The folder also holds that flow's dialogs (`NewSystemWindow`, `NewSystemMaintain
 - **Retiring a published draft** (`PublishedDraftRetirer`, CRT.Data's `DraftRetirement`): a draft whose
   work reached the STABLE source is deleted (BETA alone is not enough - a push-back can undo it), after
   every launch status check and when "My submissions" closes; never one with unsaved table edits.
-  **A receipt names its system by ID; the drafts flow is keyed by WORKBOOK path** -
-  `DraftStatusReader.ResolveForSystem` maps one to the other. A new system's draft is retired once its
+  **A receipt names its board by ID; the drafts flow is keyed by WORKBOOK path** -
+  `DraftStatusReader.ResolveForBoard` maps one to the other. A new board's draft is retired once its
   published board is on the machine. A user on the BETA source is told once, when their work reaches
   stable, to switch back (`Main.SourceSwitchNotice.cs`).
 
@@ -481,7 +499,7 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
   open (`DraftTableSession.IsHeldOpen`), since a crashed Excel leaves its lock file behind.
 - **The unsaved-edits prompt has wordings** (`UnsavedTableEditsPrompt`): Leaving (Save/Discard/Cancel),
   Reloading, DraftChangedOnDisk and DraftOpenElsewhere (no Save - it would be refused), SavingElsewhere,
-  LeavingSystem (the Maintainer tab's Systems screen).
+  LeavingBoard (the Maintainer tab's Boards screen).
 - **The grid is ProDataGrid** (MIT fork of Avalonia's DataGrid; theme included as
   `avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml`). Traps, each found the hard way:
   - Cell colours come from a per-column `CellTheme` whose `Background` BINDS to the cell's state -
@@ -493,7 +511,12 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
     re-attach. The user's PICK (`FilterWanted`) is kept apart from the filter applied.
   - A value the TEMPLATE sets outranks a plain style: style it through a class trigger
     (`HeaderStyled`, `RowsDraggable`, `SeveralSelected`, `CellsWrap`).
-  - Style selectors match exact types: cell text is `DataGridSearchTextBlock`, so use `:is(TextBlock)`.
+  - Style selectors match exact types: cell text is `BoardTableCellText` (a TextBlock subclass), so
+    use `:is(TextBlock)`.
+  - A heading's template keeps a 32px column for sort/filter icons the table never shows - the name's
+    presenter spans it (`Grid.ColumnSpan`, through the `HeaderStyled` trigger). Headings wrap, the
+    heading row sizes itself (no `ColumnHeaderHeight`), and a fit to a heading measures the NAME
+    (`ColumnAutoFitGeometry.HeadingWidth`: the space before it repeated after it).
   - The table must never sit inside a ScrollViewer (it would realise every row) - `DraftsBodyGrid`
     holds list and table as siblings; `ApplyTableMode` changes row `Height`s in place (assigning a new
     `RowDefinitions` drew the open row at zero height).
@@ -525,9 +548,11 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
   its table on them.
 - **The search box** (`BoardTableSearch`, the Workbooks tab's `WorklogSearchQuery` grammar, every
   cell): decided ONCE when typed; a search finding nothing anywhere keeps only the current sheet with
-  `NothingFoundLine`. The marks are ProDataGrid's own, fed through `BoardTableSearchAdapter` (the stock
-  adapter wiped them); `HighlightMode` must be `TextAndCell`; the mark colours are written into the
-  editor's own `Resources` in code; the row tint is set to 0.
+  `NothingFoundLine`. **The marks are the table's own, NOT ProDataGrid's**: every data column is a
+  `BoardTableTextColumn`, whose cells show `BoardTableCellText` - the row's text bound to `CellText`,
+  the search handed down once from the grid (`Marks`, inherited). ProDataGrid's search text block built
+  its runs from the previous row's result in a recycled cell, so a narrowed search showed rows with
+  ANOTHER row's text (2026-10-09). Do not go back to the grid's search model.
 - **Several rows deleted in one go** (`BoardTableEditor.Selection.cs`, `SelectionMode="Extended"`):
   "Delete row" calls `BoardTableSheet.DeleteRows` - one undo step, and a component's rows on other
   sheets go with it (`BoardTableDocument.DeleteRowsOfComponent`; highlights at save). A RENAME keeps
@@ -638,7 +663,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 
 #### Maintainer (`Tabs/Maintainer/`, logic in `Handlers/Maintainer/`)
 
-**"Maintainer" is ONLY the role** - a person in a system's pool; the person who owns this project is
+**"Maintainer" is ONLY the role** - a person in a board's pool; the person who owns this project is
 "the project owner" in every document and comment. The ACTIVITY is "review" (`ReviewEndpoints`,
 `/api/review/...`, `ReviewSummary` keep their names). The tab was a separate application until
 2026-09-29.
@@ -662,42 +687,58 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 - **The minute check** (`QueueRefreshRules.MinuteCheck`): everything while on screen with CRT in
   front; otherwise only the queue and the BETA list while the badge can be seen. Every request slides
   the 30-day session (accepted with the request). Nothing open is reloaded unless its row changed.
-- **Four screens as a tab strip** - Systems, "Queue: Contributor submissions", "Queue: Awaiting push
+- **Four screens as a tab strip** - Boards, "Queue: Contributor submissions", "Queue: Awaiting push
   from BETA to stable", Account. **Their labels are CRT.Data's `MaintainerScreenWording`** - never write
   a screen's name as a literal. Switching screen HIDES, never closes. With nothing waiting, the tab
-  opens on Systems (`MaintainerModes.ScreenOnOpening`); the queues open on the last-looked-at entry
+  opens on Boards (`MaintainerModes.ScreenOnOpening`); the queues open on the last-looked-at entry
   (`MaintainerModes.EntryToOpen`).
 - **Account**: every maintainer has "My account" (name, address, password, Sign out -
   `MyAccountView`; the session alone is enough, no current password - an accepted risk) and "Server
-  version". The administrator's own entries (Maintainers, Order of systems, Unused files, Rebuild
-  checksum manifests, Delete a system, API usage, Reset contribution data) carry the padlock and are
+  version". The administrator's own entries (Maintainers, Order of boards, Unused files, Rebuild
+  checksum manifests, Delete a board, API usage, Reset contribution data) carry the padlock and are
   taken OUT of the list for anybody else (`ShowAdministratorEntries` - not `IsVisible = false`, which a
   `VirtualizingStackPanel` undoes).
 - **The submission view IS the table** (`BoardTableEditor.Open(BoardTableDocument)`, document mode;
   Save raises `SaveRequested` and the host saves it as an AMENDMENT, decided by the server's
   `AmendSubmissionFlow`). A submission has three views (Board data, Files, Contributor); switching hides.
-  A NEW system's table is compared with the submission itself, so it starts white. What the table
+  A NEW board's table is compared with the submission itself, so it starts white. What the table
   cannot show (highlight and calibration changes, check findings) is listed above it (`ReviewNotInTable`).
   **A file replaced under its own path colours nothing - the Files button's COUNT says it**
   (`SubmissionViews.ChangingFiles`). The queue is grouped by board with DISABLED heading items, so it is
   read by ITEM, never by index. Approve is green, the others red; Approve stays last.
-- **A system has six views** (Board data, Files, Contributor, Maintainer, History, Statistics) and a
+- **A board has six views** (Board data, Files, Contributor, Maintainer, History, Statistics) and a
   stage line (Submitted / BETA / Stable). Board data and Files have a **Data: BETA | Stable** switch;
   stable is read-only. **A Board data edit goes STRAIGHT TO BETA** (save -> `edit/check` -> a reason in
-  `PublishSystemChangeWindow` -> `systems/edit`), read-only for a system the account does not maintain
+  `PublishBoardChangeWindow` -> `boards/edit`), read-only for a board the account does not maintain
   or one waiting under BETA > Stable. The table and files are read again when BETA moves
   (`BetaContentHash`), never under unsaved edits.
-- **A system's email addresses go only to its own maintainers and the administrator** (owner request,
-  2026-10-05; `SystemDetailAnswer.AddressesHidden`): anybody else sees names, and the Contributor and
-  Maintainer views say so (`SystemsDisplay.AddressesHiddenLine`).
-- **A new system is PLACED in the drop-down lists before it can be approved** (`SystemPlacementView`,
-  the same drag as `ListRowDrag`). Two systems may never share a hardware name + board name
+- **A board's email addresses go only to its own maintainers and the administrator** (owner request,
+  2026-10-05; `BoardDetailAnswer.AddressesHidden`): anybody else sees names, and the Contributor and
+  Maintainer views say so (`BoardsDisplay.AddressesHiddenLine`).
+- **A new board is PLACED in the drop-down lists before it can be approved** (`BoardPlacementView`,
+  the same drag as `ListRowDrag`). Two boards may never share a hardware name + board name
   (`MasterListing.NamesTakenBy`).
 - **File trees** (`FileTreeView`, model in `Handlers/FileTree`): changed files in the table's colours,
   sizes on every row, hover card, double-click to open (BETA/stable files from their PUBLIC addresses -
   the token is never sent there). Never inside a ScrollViewer.
 - **The Contributor view is the contributor's record**; no text a user reads calls a contributor
   "their", "them" or "they" (owner request) - the wording classes' tests assert it.
+- **Every person the tab names is BOLD, by the name on the account** (owner request, 2026-10-09):
+  maintainers and contributors go through `PersonRuns` (drawn by `TabMaintainer.ShowCounts`); the
+  server's history (`BoardHistoryRules`) names whoever did a thing and whoever a pool change names by
+  account name, the address only without one. A pool change reads "Maintainer added: **Anna**" /
+  "by **Dennis**". A line with bold runs has `Text == null` - tests read it through `TabMaintainer.TextOf`.
+- **The stage line is three numbered cards** (Submitted, BETA, Stable), each saying what the place is,
+  the one where the newest work sits outlined, and a "Now:" sentence under them (`BoardStagesDisplay.Now`
+  - BETA ahead of stable outranks a waiting submission, which cannot be approved until BETA moves).
+  **Why BETA's table cannot be changed is an amber panel of its own** (`ReadOnlyNotice`), not the line.
+- **The Boards list says how each board's submissions went** ("19 submissions in total; 2 rejected, 1 in
+  BETA, 17 in stable" - `BoardSubmissionCounts`, `BoardOverviewFlow.SubmissionCounts`). Account's
+  Maintainers and "Delete a board" list boards in the Boards list's order (`BoardsDisplay.InBoardsListOrder`).
+- **Statistics has a graph of views per day** (`BoardViewsChart`, every number `ViewsChartGeometry`;
+  owner's choice: drawn, no charting library): 30 / 90 / 365 days, a day with none drawn at 0, the day
+  pointed at written above the plot (a drawn readout, not a tooltip - see the tooltip rule). Colours
+  `Chart_*` in both themes, validated against CRT's grounds.
 - **Quitting CRT asks about unsaved table edits** of both tables (`HasUnsavedTableEdits`), after the
   Drafts tab's, in one continuation. The tab has no `BusyOverlay` of its own. The component filter
   never takes focus over it. The server address is `AppConfig.CrtServerRootUrl` (no "/api");
@@ -780,22 +821,22 @@ Load-bearing, and easy to undo by accident:
 - **`SubmissionPathRules` is the single path-containment rule** (resolve, then check containment).
   Every write path and the maintainer's file read go through it.
 - **Two operations are irreversible**: a publish (`ApprovePublishFlow` - no revision history is
-  kept; the order of its checks is the design) and deleting a system (`SystemDeletionFlow` - held to a
-  fingerprint; refused for a system an older master lists or with a file another board uses; the
+  kept; the order of its checks is the design) and deleting a board (`BoardDeletionFlow` - held to a
+  fingerprint; refused for a board an older master lists or with a file another board uses; the
   record is deleted LAST so pressing Delete again finishes).
-- **Two roles, authority PER SYSTEM** (owner decision 2026-09-25): an ADMINISTRATOR
+- **Two roles, authority PER BOARD** (owner decision 2026-09-25): an ADMINISTRATOR
   (`accounts.is_administrator`, granted only by hand in SQL) reviews and publishes everything and
-  assigns maintainers; a MAINTAINER is an account in a system's pool. The question is always
-  "administrator, or in THIS system's pool" - `ReviewAuthority`, given a `ReviewAccess` loaded per
+  assigns maintainers; a MAINTAINER is an account in a board's pool. The question is always
+  "administrator, or in THIS board's pool" - `ReviewAuthority`, given a `ReviewAccess` loaded per
   request, so removal and locking bite on the next request. **An administrator may also be in a pool**
-  (owner request 2026-10-05) - to be named as a system's maintainer; the row never counts as the
-  maintainer half of a two-person approval (`CanGiveMaintainerApproval`) and gets that system's mail
+  (owner request 2026-10-05) - to be named as a board's maintainer; the row never counts as the
+  maintainer half of a two-person approval (`CanGiveMaintainerApproval`) and gets that board's mail
   once (`SubmissionRouting`, deduplicated by address).
 - **A submission REPLACING a shared file needs two approvals** - a maintainer of the board AND the
   administrator, for BETA and again for stable; adding a new shared file needs one. `ApprovalRules`
   (CRT.Data) is the rule and its `ApprovalStatus` travels to the Maintainer tab, so the button cannot
   promise a publish the server would not do. It is decided from the tree as it is NOW, not the stored flag.
-- **Publishing is TWO stages**: Approve writes BETA; "Publish to stable" copies a SYSTEM from BETA
+- **Publishing is TWO stages**: Approve writes BETA; "Publish to stable" copies a BOARD from BETA
   (`ProductionPromotionPlan`/`ProductionPromoter`/`ProductionPromotionFlow`), only bytes already in
   BETA, refused if BETA moved since the maintainer looked. Both stages take the one `PublishLock`. Off
   until the three `Production*` settings are set. **For now ONLY ADMINISTRATORS publish to stable**
@@ -804,18 +845,18 @@ Load-bearing, and easy to undo by accident:
   `StablePublishing` sentence, their plan carries it (so CRT greys the button out), their rows never
   `AwaitsYou`, and a shared-file replacement needs the administrator alone. Push back and Reject stay
   theirs. **Do not remove the setting or flip its default without being asked.**
-- **One submission in BETA per system** (owner decision): an approval is refused while the system
+- **One submission in BETA per board** (owner decision): an approval is refused while the board
   waits for stable (`OneSubmissionInBeta`), on only when stable publishing is configured. A board
   copied to stable BY HAND is recognised and recorded (`RecordIfProductionAlreadyHoldsAsync`).
-- **"Push back to queue" rolls BETA back to stable's state** (`BetaRollbackFlow`), per system - it
+- **"Push back to queue" rolls BETA back to stable's state** (`BetaRollbackFlow`), per board - it
   returns EVERY submission merged since the last promotion to the queue, so its confirmation names
   them all; "Reject" on that screen is the same rollback. It works because merged submissions keep
-  their blobs. "Never promoted" is the system's RECORD, never an empty folder. Recorded as `returned`
+  their blobs. "Never promoted" is the board's RECORD, never an empty folder. Recorded as `returned`
   (`submission_beta_returns`). Paths are ORDINAL.
-- **A maintainer's edit of a SYSTEM goes straight to BETA through the ordinary approval**
-  (`SystemEditFlow`: a submission from the account, then `ApprovePublishFlow.ApproveAsync`). **Do not
+- **A maintainer's edit of a BOARD goes straight to BETA through the ordinary approval**
+  (`BoardEditFlow`: a submission from the account, then `ApprovePublishFlow.ApproveAsync`). **Do not
   give it a path that writes BETA by itself** - the approval keeps every rule.
-- **Automatic removal stays inside the system's own folder** (`AutomaticRemovalScope`); a removal is
+- **Automatic removal stays inside the board's own folder** (`AutomaticRemovalScope`); a removal is
   always from a list the approver was shown (`FileRemovalPreview`, 409 if it differs). `DataTreeUsage`
   is the one rule for what a tree uses - a change may only make it keep MORE; a folder CRT reads by
   name must be in `FoldersReadByName`; a board workbook is read at its spelling ON DISK.
@@ -832,12 +873,12 @@ Load-bearing, and easy to undo by accident:
   at the same path (imported at create).
 - **A newer submission from the same contributor replaces the older one** (`withdrawn`, only if still
   pending and never amended).
-- **The Systems screen is for every maintainer, every system** (`CanReviewAnything`) - do not narrow
-  WHICH systems without asking. **The ADDRESSES in it are narrowed** (`CanSeeAddressesOf`): a new field
+- **The Boards screen is for every maintainer, every board** (`CanReviewAnything`) - do not narrow
+  WHICH boards without asking. **The ADDRESSES in it are narrowed** (`CanSeeAddressesOf`): a new field
   carrying a person must follow `AddressesHidden`; the flow's test serialises the whole answer and fails
   on any "@".
-- **A system's history** comes from its submissions and the audit rows naming it - a new kind of
-  event needs its audit subject to be the system id and a place in `SystemHistoryRules.ShownActions`.
+- **A board's history** comes from its submissions and the audit rows naming it - a new kind of
+  event needs its audit subject to be the board id and a place in `BoardHistoryRules.ShownActions`.
   What a submission changed in BETA is recorded AT the publish (`submission_changes`).
 - **Usage data**: board views (`crt_board_views`, one row per view, names from the published master,
   no address or identifier; local-network views counted while `CountLocalNetworkBoardViews`), API
@@ -856,8 +897,8 @@ Load-bearing, and easy to undo by accident:
 Settled by the project owner; do not reverse or "fix" without asking.
 
 - **No two-factor sign-in** (TOTP deferred 2026-09-25). A stolen maintainer account can publish to
-  that maintainer's systems (BETA, and stable if they may) with a password as the only factor.
-  Mitigations: per-system authority, only bytes already in BETA reach stable, a shared-file
+  that maintainer's boards (BETA, and stable if they may) with a password as the only factor.
+  Mitigations: per-board authority, only bytes already in BETA reach stable, a shared-file
   replacement needs the administrator too, a mail to the administrator on a maintainer's stable
   publish, the audit trail.
 - **A stolen session token can change the account's address and password** (2026-10-03: no current
@@ -869,7 +910,7 @@ Settled by the project owner; do not reverse or "fix" without asking.
 - **Blobs of merged submissions are kept for ever**, so the next edit uploads only what changed.
 - **No administrator feed or anomaly alerts** - the audit rows exist; nothing renders them yet.
 - **EPPlus licensing**: "Use EPPlus for now, and I WILL take this later" - do not swap the library.
-- **Open, not decided**: a fact affecting several systems is several submissions (no cross-system
+- **Open, not decided**: a fact affecting several boards is several submissions (no cross-board
   submission); two contributors editing the same component - the later approval wins, with nothing
   more until it demonstrably hurts.
 - **Backups**: the design assumes both data trees and the database are backed up and restorable.
@@ -947,8 +988,8 @@ anything no caller can observe. **A change only to `CRT.Data` still bumps the se
 server's behaviour moves with it. **The numbering RESTARTED at `1.0.0` on 2026-10-05** (owner request,
 at go-live): the development numbering before it (up to `5.1.0`) is archived at the bottom of
 VERSION.md without backticks, so `ServerVersionTests` reads only the live table. A server version
-named in an older comment ("server 4.3.0") is that series; every 1.x holds all of it. The next
-breaking change is `2.0.0`.
+named in an older comment ("server 4.3.0") is that series; every 1.x holds all of it. `2.0.0`
+(2026-10-09) was the system-to-board rename; the next breaking change is `3.0.0`.
 
 Two edits per bump: `InformationalVersion` in [CRT.Server.csproj](../src/CRT.Server/CRT.Server.csproj),
 and a row in VERSION.md's history saying what a caller would notice. `GET /api/health` reports it,
@@ -956,6 +997,15 @@ without the `+<commit>` metadata (the endpoint is public). **Machine-checked:** 
 [hooks/server-version-bump.sh](hooks/server-version-bump.sh) warns when a file the service is built
 from changed while the version stood still - "nothing a caller can observe changed" is sometimes the
 right answer.
+
+**Say the API version whenever the API changed** (owner request, 2026-10-09: "whenever you change
+anything for the API, then do comment what is the API version on SERVER and APPLICATION, so I always
+can track this"). End that turn's summary with one line, `API version: server N, application N`, and
+say whether it moved. Both are `ClientVersionContract.ApiRevision` - what Account > "Server version"
+shows as "API server version" and "API application version". VERSION.md's history carries it per
+server version (its **API** column). **Machine-checked:** the `Stop` hook
+[hooks/api-version-report.sh](hooks/api-version-report.sh) prints the line when a contract, an endpoint,
+CRT's routes or parser, or the recorded API surface changed against the last commit.
 
 ## Release process
 

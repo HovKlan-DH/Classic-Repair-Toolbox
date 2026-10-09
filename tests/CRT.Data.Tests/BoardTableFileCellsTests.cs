@@ -152,7 +152,7 @@ namespace CRT.Data.Tests
             Assert.Null(BoardTableFileCells.Of(null));
         }
 
-        // With nothing published at all (a new system), every file is new - no published side.
+        // With nothing published at all (a new board), every file is new - no published side.
         [Fact]
         public void With_nothing_published_a_file_has_no_published_side()
         {

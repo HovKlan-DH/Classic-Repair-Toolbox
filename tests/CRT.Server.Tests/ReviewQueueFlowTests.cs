@@ -50,20 +50,20 @@ namespace CRT.Server.Tests
 
         private static ReviewAccess MaintainerOfC64() => ReviewAccess.For(ReviewQueueFlowTests.MaintainerAccount, ["Commodore/C64/250407"]);
 
-        private void Publish(string systemId)
+        private void Publish(string boardId)
         {
-            string folder = Path.Combine([this.thisTree, .. systemId.Split('/')]);
+            string folder = Path.Combine([this.thisTree, .. boardId.Split('/')]);
             Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, $"Data {systemId.Split('/')[1]} {systemId.Split('/')[2]}.xlsx"), "a workbook");
+            File.WriteAllText(Path.Combine(folder, $"Data {boardId.Split('/')[1]} {boardId.Split('/')[2]}.xlsx"), "a workbook");
         }
 
-        private static async Task<long> AddAsync(FakeSubmissionStore store, string systemId = "Commodore/C64/250407", bool touchesSharedFiles = false)
+        private static async Task<long> AddAsync(FakeSubmissionStore store, string boardId = "Commodore/C64/250407", bool touchesSharedFiles = false)
         {
-            string[] parts = systemId.Split('/');
+            string[] parts = boardId.Split('/');
 
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    systemId, parts[0], parts[1], parts[2],
+                    boardId, parts[0], parts[1], parts[2],
                     null, "someone@example.com", "192.0.2.1", "hash", "r1", "A change.",
                     1, [], ReviewQueueFlowTests.Now, ReviewQueueFlowTests.Now.AddHours(24)),
                 CancellationToken.None);
@@ -86,7 +86,7 @@ namespace CRT.Server.Tests
                 CancellationToken.None);
 
         [Fact]
-        public async Task A_maintainer_is_given_only_their_own_systems_submissions()
+        public async Task A_maintainer_is_given_only_their_own_boards_submissions()
         {
             var store = new FakeSubmissionStore();
 
@@ -101,9 +101,9 @@ namespace CRT.Server.Tests
             Assert.True((await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store)).IsAdministrator);
         }
 
-        // "New system" is a system with no published board - the highest-risk submission there is.
+        // "New board" is a board with no published board - the highest-risk submission there is.
         [Fact]
-        public async Task A_system_with_no_published_board_is_new_and_one_with_a_board_is_not()
+        public async Task A_board_with_no_published_board_is_new_and_one_with_a_board_is_not()
         {
             var store = new FakeSubmissionStore();
             this.Publish("Commodore/C64/250407");
@@ -113,8 +113,8 @@ namespace CRT.Server.Tests
 
             ReviewQueueAnswer answer = await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store);
 
-            Assert.False(answer.Submissions.Single(entry => entry.Id == published).IsNewSystem);
-            Assert.True(answer.Submissions.Single(entry => entry.Id == brandNew).IsNewSystem);
+            Assert.False(answer.Submissions.Single(entry => entry.Id == published).IsNewBoard);
+            Assert.True(answer.Submissions.Single(entry => entry.Id == brandNew).IsNewBoard);
         }
 
         // ###########################################################################################

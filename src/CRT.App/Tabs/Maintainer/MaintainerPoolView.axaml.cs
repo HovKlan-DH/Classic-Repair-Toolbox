@@ -12,24 +12,24 @@ using Handlers.MaintainerHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // Account > Maintainers - see the markup for what it is. The pool controls the Systems screen's
+    // Account > Maintainers - see the markup for what it is. The pool controls the Boards screen's
     // Maintainer view carried from 2026-09-27 to 2026-10-04, moved here unchanged in what they send
     // (owner request, 2026-10-04: "this is something only the admin should be able to do").
     //
-    // *** WHAT IS READ, AND WHEN. *** Choosing "Maintainers" on the Account screen reads every system
+    // *** WHAT IS READ, AND WHEN. *** Choosing "Maintainers" on the Account screen reads every board
     // (with its maintainers, for the count beside each name) and every account (for the "choose
-    // somebody" list). Choosing a system reads its detail - its maintainers and the invitations
+    // somebody" list). Choosing a board reads its detail - its maintainers and the invitations
     // nobody has accepted, which only the detail carries. Nothing is read on the minute check.
     //
     // *** NO AUTHORITY LIVES HERE. *** The screen is offered to an administrator only; the server
     // refuses anybody else regardless, and its sentence lands in the message line.
     //
-    // *** AFTER EVERY CHANGE THE SYSTEM IS READ AGAIN FROM THE SERVER *** rather than patched
+    // *** AFTER EVERY CHANGE THE BOARD IS READ AGAIN FROM THE SERVER *** rather than patched
     // locally, so the screen is always what the server holds - and the tab is told
-    // (AfterPoolChange), since the queue is filtered by pools and the Systems list counts maintainers.
+    // (AfterPoolChange), since the queue is filtered by pools and the Boards list counts maintainers.
     //
     // *** UNDER THE OVERLAY, AND CHECKED AFTER A TIMEOUT (2026-09-28). *** No answer in two minutes
-    // does not mean nothing changed: the system is read again and the pool itself says whether the
+    // does not mean nothing changed: the board is read again and the pool itself says whether the
     // change landed (PoolAction.HasLanded).
     // ###########################################################################################
     public partial class MaintainerPoolView : UserControl
@@ -37,17 +37,17 @@ namespace CRT
         private ReviewApiClient? thisClient;
         private ReviewSession? thisSession;
 
-        // Every system, in the combo's order.
-        private readonly List<ReviewSystemRow> thisSystems = [];
+        // Every board, in the combo's order.
+        private readonly List<ReviewBoardRow> thisBoards = [];
 
         // Every account, for the "choose somebody" list.
         private readonly List<ReviewAccountRow> thisAccounts = [];
 
-        // The accounts the list offers - everybody not already maintaining the system - in its order.
+        // The accounts the list offers - everybody not already maintaining the board - in its order.
         private readonly List<ReviewAccountRow> thisAccountChoices = [];
 
-        // The chosen system's detail, as last read.
-        private SystemDetailAnswer? thisDetail;
+        // The chosen board's detail, as last read.
+        private BoardDetailAnswer? thisDetail;
 
         // Filling the combo from code is not a choice.
         private bool thisIsFilling;
@@ -68,29 +68,33 @@ namespace CRT
             this.thisSession = session;
         }
 
-        // Told after a pool changed: the tab reads its queue and its systems again.
+        // Told after a pool changed: the tab reads its queue and its boards again.
         public Func<Task>? AfterPoolChange { get; set; }
 
-        // The system on show, or null.
-        internal string? ShownSystemId => this.thisDetail?.System.SystemId;
+        // The Boards screen's board ids, top to bottom - the order the combo lists the boards in
+        // (BoardsDisplay.InBoardsListOrder). Unset or empty: by name.
+        public Func<IReadOnlyList<string>>? BoardsListOrder { get; set; }
 
-        // Signed out: nothing of the previous account's systems, people or messages left.
+        // The board on show, or null.
+        internal string? ShownBoardId => this.thisDetail?.Board.BoardId;
+
+        // Signed out: nothing of the previous account's boards, people or messages left.
         public void Clear()
         {
             this.thisRequest++;
-            this.thisSystems.Clear();
+            this.thisBoards.Clear();
             this.thisAccounts.Clear();
             this.thisAccountChoices.Clear();
             this.thisDetail = null;
 
-            this.FillSystems(keep: null);
+            this.FillBoards(keep: null);
             this.ShowPool(null);
             this.ShowMessage(null, isError: false);
             this.ShowPoolMessage(null, isError: false);
         }
 
         // ###########################################################################################
-        // Reads every system and every account, under CRT's overlay, keeping the system chosen when
+        // Reads every board and every account, under CRT's overlay, keeping the board chosen when
         // it is still there (and reading it again). A list that cannot be read leaves the previous
         // one, with the reason - "could not ask" must never read as "there are none".
         // ###########################################################################################
@@ -99,12 +103,12 @@ namespace CRT
             if (this.thisClient is not ReviewApiClient client || this.thisSession is not ReviewSession session)
                 return;
 
-            ReviewApiResult<ReviewSystemsResponse> systems = await ServerWait.CallAsync(
-                this, MaintainerWaitWording.ReadingSystems, token => client.GetSystemsAsync(session, token));
+            ReviewApiResult<ReviewBoardsResponse> boards = await ServerWait.CallAsync(
+                this, MaintainerWaitWording.ReadingBoards, token => client.GetBoardsAsync(session, token));
 
-            if (!systems.IsOk)
+            if (!boards.IsOk)
             {
-                this.ShowMessage(systems.Message, isError: true);
+                this.ShowMessage(boards.Message, isError: true);
                 return;
             }
 
@@ -119,43 +123,46 @@ namespace CRT
 
             this.ShowMessage(null, isError: false);
             this.UseAccounts(accounts.Value!.Accounts);
-            await this.UseSystemsAsync(systems.Value!.Systems);
+            await this.UseBoardsAsync(boards.Value!.Boards);
         }
 
         // ###########################################################################################
-        // The systems in the combo, by name, each with how many maintain it. The one chosen stays
-        // chosen when it is still there - and is read again, since its pool may have changed.
+        // The boards in the combo, in the Boards screen's order, each with how many maintain it. The
+        // one chosen stays chosen when it is still there - and is read again, since its pool may
+        // have changed.
         // ###########################################################################################
-        private async Task UseSystemsAsync(IReadOnlyList<ReviewSystemRow> systems)
+        private async Task UseBoardsAsync(IReadOnlyList<ReviewBoardRow> boards)
         {
-            string? chosen = this.ShownSystemId;
+            string? chosen = this.ShownBoardId;
 
-            this.thisSystems.Clear();
-            this.thisSystems.AddRange(systems
-                .Where(system => !string.IsNullOrWhiteSpace(system.SystemId))
-                .OrderBy(system => MaintainerAssignmentDisplay.SystemLine(system), StringComparer.OrdinalIgnoreCase));
+            this.thisBoards.Clear();
+            this.thisBoards.AddRange(BoardsDisplay.InBoardsListOrder(
+                boards.Where(board => !string.IsNullOrWhiteSpace(board.BoardId)),
+                board => board.BoardId,
+                MaintainerAssignmentDisplay.BoardLine,
+                this.BoardsListOrder?.Invoke()));
 
-            this.FillSystems(keep: chosen);
+            this.FillBoards(keep: chosen);
 
-            if (chosen is not null && this.thisSystems.Any(system => string.Equals(system.SystemId, chosen, StringComparison.Ordinal)))
-                await this.ShowSystemAsync(chosen);
+            if (chosen is not null && this.thisBoards.Any(board => string.Equals(board.BoardId, chosen, StringComparison.Ordinal)))
+                await this.ShowBoardAsync(chosen);
             else
                 this.ShowPool(null);
         }
 
-        private void FillSystems(string? keep)
+        private void FillBoards(string? keep)
         {
-            if (this.FindControl<ComboBox>("SystemCombo") is not ComboBox combo)
+            if (this.FindControl<ComboBox>("BoardCombo") is not ComboBox combo)
                 return;
 
             this.thisIsFilling = true;
 
             try
             {
-                combo.ItemsSource = this.thisSystems.Select(MaintainerAssignmentDisplay.SystemLine).ToList();
+                combo.ItemsSource = this.thisBoards.Select(MaintainerAssignmentDisplay.BoardLine).ToList();
                 combo.SelectedIndex = keep is null
                     ? -1
-                    : this.thisSystems.FindIndex(system => string.Equals(system.SystemId, keep, StringComparison.Ordinal));
+                    : this.thisBoards.FindIndex(board => string.Equals(board.BoardId, keep, StringComparison.Ordinal));
             }
             finally
             {
@@ -163,26 +170,26 @@ namespace CRT
             }
         }
 
-        private async void OnSystemChanged(object? sender, SelectionChangedEventArgs e)
+        private async void OnBoardChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (this.thisIsFilling || sender is not ComboBox combo)
                 return;
 
             int index = combo.SelectedIndex;
 
-            if (index < 0 || index >= this.thisSystems.Count)
+            if (index < 0 || index >= this.thisBoards.Count)
                 return;
 
             this.ShowPoolMessage(null, isError: false);
-            await this.ShowSystemAsync(this.thisSystems[index].SystemId);
+            await this.ShowBoardAsync(this.thisBoards[index].BoardId);
         }
 
-        // Reads one system's pool and shows it.
-        private async Task ShowSystemAsync(string systemId)
+        // Reads one board's pool and shows it.
+        private async Task ShowBoardAsync(string boardId)
         {
             int request = ++this.thisRequest;
 
-            SystemDetailAnswer? detail = await this.ReadDetailAsync(systemId, MaintainerWaitWording.ReadingSystem(systemId));
+            BoardDetailAnswer? detail = await this.ReadDetailAsync(boardId, MaintainerWaitWording.ReadingBoard(boardId));
 
             if (request != this.thisRequest)
                 return;
@@ -191,18 +198,18 @@ namespace CRT
                 this.ShowPool(detail);
         }
 
-        // The system's detail - from a test's answer, or the server's under the overlay. Null, with
+        // The board's detail - from a test's answer, or the server's under the overlay. Null, with
         // the reason shown, when it cannot be read.
-        private async Task<SystemDetailAnswer?> ReadDetailAsync(string systemId, string waiting)
+        private async Task<BoardDetailAnswer?> ReadDetailAsync(string boardId, string waiting)
         {
             if (this.PoolDetailOverrideForTests is not null)
-                return await this.PoolDetailOverrideForTests(systemId);
+                return await this.PoolDetailOverrideForTests(boardId);
 
             if (this.thisClient is not ReviewApiClient client || this.thisSession is not ReviewSession session)
                 return null;
 
-            ReviewApiResult<SystemDetailAnswer> detail = await ServerWait.CallAsync(
-                this, waiting, token => client.GetSystemDetailAsync(session, systemId, token));
+            ReviewApiResult<BoardDetailAnswer> detail = await ServerWait.CallAsync(
+                this, waiting, token => client.GetBoardDetailAsync(session, boardId, token));
 
             if (!detail.IsOk)
             {
@@ -214,11 +221,11 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The chosen system's pool: the heading, a line and a Remove button per maintainer, a line
+        // The chosen board's pool: the heading, a line and a Remove button per maintainer, a line
         // and a Withdraw button per open invitation, and the accounts the list can offer. Null hides
         // it all.
         // ###########################################################################################
-        private void ShowPool(SystemDetailAnswer? detail)
+        private void ShowPool(BoardDetailAnswer? detail)
         {
             this.thisDetail = detail;
 
@@ -240,7 +247,7 @@ namespace CRT
 
             section.Children.Add(new TextBlock
             {
-                Text = SystemsDisplay.MaintainersHeading(count),
+                Text = BoardsDisplay.MaintainersHeading(count),
                 FontSize = 14,
                 FontWeight = count == 0 ? Avalonia.Media.FontWeight.Normal : Avalonia.Media.FontWeight.SemiBold,
                 Opacity = count == 0 ? 0.7 : 1,
@@ -248,20 +255,24 @@ namespace CRT
                 Margin = new Avalonia.Thickness(0, 0, 0, 2)
             });
 
-            string systemId = detail.System.SystemId;
+            string boardId = detail.Board.BoardId;
 
             foreach (PoolMaintainerEntry maintainer in detail.Maintainers)
             {
                 long accountId = maintainer.AccountId;
                 string name = maintainer.DisplayName;
 
+                // The person in bold (owner request, 2026-10-09).
+                var line = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+                TabMaintainer.ShowCounts(line, BoardsDisplay.MaintainerRuns(maintainer));
+
                 section.Children.Add(MaintainerPoolView.WithButton(
-                    new TextBlock { Text = SystemsDisplay.MaintainerLine(maintainer), TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                    line,
                     "Remove",
                     "RemoveMaintainer",
                     async () => await this.ChangePoolAsync(
-                        new PoolAction(PoolActionKind.Remove, systemId, AccountId: accountId, Who: name),
-                        $"{name} no longer maintains {systemId}. It takes effect on their next request.")));
+                        new PoolAction(PoolActionKind.Remove, boardId, AccountId: accountId, Who: name),
+                        $"{name} no longer maintains {boardId}. It takes effect on their next request.")));
             }
 
             foreach (MaintainerInvitationEntry invitation in detail.Invitations ?? [])
@@ -270,20 +281,22 @@ namespace CRT
                 string invited = invitation.Email;
 
                 var lines = new StackPanel { Spacing = 1 };
-                lines.Children.Add(new TextBlock { Text = SystemsDisplay.InvitationLine(invitation), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-                lines.Children.Add(new TextBlock { Text = SystemsDisplay.InvitationFooter(invitation), FontSize = 11, Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+                var invitedLine = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+                TabMaintainer.ShowCounts(invitedLine, BoardsDisplay.InvitationRuns(invitation));
+                lines.Children.Add(invitedLine);
+                lines.Children.Add(new TextBlock { Text = BoardsDisplay.InvitationFooter(invitation), FontSize = 11, Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
 
                 section.Children.Add(MaintainerPoolView.WithButton(
                     lines,
                     "Withdraw",
                     "WithdrawInvitation",
-                    async () => await this.ChangePoolAsync(new PoolAction(PoolActionKind.Withdraw, systemId, InvitationId: invitationId, Who: invited), null)));
+                    async () => await this.ChangePoolAsync(new PoolAction(PoolActionKind.Withdraw, boardId, InvitationId: invitationId, Who: invited), null)));
             }
 
             this.ShowAccountChoices();
         }
 
-        // The accounts that can be offered: everybody not already maintaining the chosen system. The
+        // The accounts that can be offered: everybody not already maintaining the chosen board. The
         // line says why one cannot be granted (MaintainerAssignmentDisplay).
         private void ShowAccountChoices()
         {
@@ -334,8 +347,8 @@ namespace CRT
             }
 
             await this.ChangePoolAsync(
-                new PoolAction(PoolActionKind.Add, this.thisDetail.System.SystemId, AccountId: account.Id, Who: account.DisplayName),
-                $"{account.DisplayName} now maintains {this.thisDetail.System.SystemId}.");
+                new PoolAction(PoolActionKind.Add, this.thisDetail.Board.BoardId, AccountId: account.Id, Who: account.DisplayName),
+                $"{account.DisplayName} now maintains {this.thisDetail.Board.BoardId}.");
         }
 
         private async void OnInviteClick(object? sender, RoutedEventArgs e) => await this.InviteTypedAddressAsync();
@@ -361,12 +374,12 @@ namespace CRT
                 return;
             }
 
-            if (await this.ChangePoolAsync(new PoolAction(PoolActionKind.Invite, this.thisDetail.System.SystemId, Email: email, Who: email), null))
+            if (await this.ChangePoolAsync(new PoolAction(PoolActionKind.Invite, this.thisDetail.Board.BoardId, Email: email, Who: email), null))
                 box.Text = string.Empty;
         }
 
         // ###########################################################################################
-        // Sends one change, says what happened, and reads the system and the list of systems again.
+        // Sends one change, says what happened, and reads the board and the list of boards again.
         // The success sentence is the server's when it sends one (an invitation's), else `done`.
         // ###########################################################################################
         private async Task<bool> ChangePoolAsync(PoolAction action, string? done)
@@ -379,7 +392,7 @@ namespace CRT
 
                 if (result.Failure == ReviewApiFailure.TimedOut)
                 {
-                    SystemDetailAnswer? now = await this.ReadDetailAsync(action.SystemId, WaitWording.Checking);
+                    BoardDetailAnswer? now = await this.ReadDetailAsync(action.BoardId, WaitWording.Checking);
                     bool? landed = now is null ? null : action.HasLanded(now);
 
                     this.ShowPoolMessage(
@@ -399,15 +412,15 @@ namespace CRT
                     changed = true;
                 }
 
-                await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingSystem(action.SystemId), async () =>
+                await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingBoard(action.BoardId), async () =>
                 {
                     if (this.PoolDetailOverrideForTests is null)
                     {
-                        await this.ReloadSystemsQuietlyAsync();
+                        await this.ReloadBoardsQuietlyAsync();
                     }
-                    else if (this.ShownSystemId is string shown)
+                    else if (this.ShownBoardId is string shown)
                     {
-                        await this.ShowSystemAsync(shown);
+                        await this.ShowBoardAsync(shown);
                     }
 
                     if (this.AfterPoolChange is not null)
@@ -418,18 +431,18 @@ namespace CRT
             return changed;
         }
 
-        // The systems again (their counts moved) and the chosen one with them - no message cleared.
-        private async Task ReloadSystemsQuietlyAsync()
+        // The boards again (their counts moved) and the chosen one with them - no message cleared.
+        private async Task ReloadBoardsQuietlyAsync()
         {
             if (this.thisClient is not ReviewApiClient client || this.thisSession is not ReviewSession session)
                 return;
 
-            ReviewApiResult<ReviewSystemsResponse> systems = await client.GetSystemsAsync(session);
+            ReviewApiResult<ReviewBoardsResponse> boards = await client.GetBoardsAsync(session);
 
-            if (systems.IsOk)
-                await this.UseSystemsAsync(systems.Value!.Systems);
-            else if (this.ShownSystemId is string shown)
-                await this.ShowSystemAsync(shown);
+            if (boards.IsOk)
+                await this.UseBoardsAsync(boards.Value!.Boards);
+            else if (this.ShownBoardId is string shown)
+                await this.ShowBoardAsync(shown);
         }
 
         private Task<ReviewApiResult<string>> SendAsync(PoolAction action, CancellationToken token)
@@ -442,9 +455,9 @@ namespace CRT
 
             return action.Kind switch
             {
-                PoolActionKind.Add => this.thisClient.AddMaintainerAsync(this.thisSession, action.SystemId, action.AccountId, token),
-                PoolActionKind.Remove => this.thisClient.RemoveMaintainerAsync(this.thisSession, action.SystemId, action.AccountId, token),
-                PoolActionKind.Invite => this.thisClient.InviteMaintainerAsync(this.thisSession, action.SystemId, action.Email, token),
+                PoolActionKind.Add => this.thisClient.AddMaintainerAsync(this.thisSession, action.BoardId, action.AccountId, token),
+                PoolActionKind.Remove => this.thisClient.RemoveMaintainerAsync(this.thisSession, action.BoardId, action.AccountId, token),
+                PoolActionKind.Invite => this.thisClient.InviteMaintainerAsync(this.thisSession, action.BoardId, action.Email, token),
                 _ => this.thisClient.WithdrawInvitationAsync(this.thisSession, action.InvitationId, token)
             };
         }
@@ -484,28 +497,28 @@ namespace CRT
         // Answers every change instead of the server, and sees what was sent.
         internal Func<PoolAction, Task<ReviewApiResult<string>>>? PoolActionOverrideForTests { get; set; }
 
-        // Answers every read of a system instead of the server.
-        internal Func<string, Task<SystemDetailAnswer>>? PoolDetailOverrideForTests { get; set; }
+        // Answers every read of a board instead of the server.
+        internal Func<string, Task<BoardDetailAnswer>>? PoolDetailOverrideForTests { get; set; }
 
-        // The lists as LoadAsync would have read them, and a system as choosing it would show it.
-        internal Task UseListsForTests(IReadOnlyList<ReviewSystemRow> systems, IReadOnlyList<ReviewAccountRow> accounts)
+        // The lists as LoadAsync would have read them, and a board as choosing it would show it.
+        internal Task UseListsForTests(IReadOnlyList<ReviewBoardRow> boards, IReadOnlyList<ReviewAccountRow> accounts)
         {
             this.UseAccounts(accounts);
-            return this.UseSystemsAsync(systems);
+            return this.UseBoardsAsync(boards);
         }
 
-        internal Task ChooseSystemForTests(string systemId)
+        internal Task ChooseBoardForTests(string boardId)
         {
-            int index = this.thisSystems.FindIndex(system => string.Equals(system.SystemId, systemId, StringComparison.Ordinal));
+            int index = this.thisBoards.FindIndex(board => string.Equals(board.BoardId, boardId, StringComparison.Ordinal));
 
-            if (this.FindControl<ComboBox>("SystemCombo") is ComboBox combo)
+            if (this.FindControl<ComboBox>("BoardCombo") is ComboBox combo)
             {
                 this.thisIsFilling = true;
                 combo.SelectedIndex = index;
                 this.thisIsFilling = false;
             }
 
-            return index < 0 ? Task.CompletedTask : this.ShowSystemAsync(systemId);
+            return index < 0 ? Task.CompletedTask : this.ShowBoardAsync(boardId);
         }
 
         // The texts of the pool, top to bottom.
@@ -516,7 +529,7 @@ namespace CRT
 
         private static IEnumerable<string> TextsOf(Control control) => control switch
         {
-            TextBlock block => [block.Text ?? string.Empty],
+            TextBlock block => [TabMaintainer.TextOf(block)],
             Panel panel => panel.Children.Where(child => child is not Button).SelectMany(MaintainerPoolView.TextsOf),
             _ => []
         };

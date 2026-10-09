@@ -229,7 +229,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public async Task<IReadOnlyList<GivenApproval>> GetProductionApprovalsAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             CancellationToken cancellationToken = default)
         {
@@ -238,17 +238,17 @@ namespace CRT.Server.Handlers.Submissions
 
             command.CommandText = """
                 SELECT role, account_label, approved_utc, account_id FROM production_approvals
-                WHERE system_id = @systemId AND beta_content_hash = @hash ORDER BY approved_utc;
+                WHERE board_id = @boardId AND beta_content_hash = @hash ORDER BY approved_utc;
                 """;
-            command.Parameters.AddWithValue("@systemId", systemId);
+            command.Parameters.AddWithValue("@boardId", boardId);
             command.Parameters.AddWithValue("@hash", betaContentHash);
 
             return await MySqlSubmissionStore.ReadApprovalsAsync(command, cancellationToken);
         }
 
-        // See ISubmissionStore.GetProductionApprovalsForAsync - one query for every system on the list.
+        // See ISubmissionStore.GetProductionApprovalsForAsync - one query for every board on the list.
         public async Task<IReadOnlyDictionary<string, IReadOnlyList<GivenApproval>>> GetProductionApprovalsForAsync(
-            IReadOnlyCollection<(string SystemId, string BetaContentHash)> states,
+            IReadOnlyCollection<(string BoardId, string BetaContentHash)> states,
             CancellationToken cancellationToken = default)
         {
             var found = new Dictionary<string, List<GivenApproval>>(StringComparer.Ordinal);
@@ -259,22 +259,22 @@ namespace CRT.Server.Handlers.Submissions
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            // One pair of parameters per system - never the values written into the text.
+            // One pair of parameters per board - never the values written into the text.
             List<string> pairs = [];
             int index = 0;
 
-            foreach ((string systemId, string hash) in states.Distinct())
+            foreach ((string boardId, string hash) in states.Distinct())
             {
-                string system = FormattableString.Invariant($"@s{index}");
+                string board = FormattableString.Invariant($"@s{index}");
                 string beta = FormattableString.Invariant($"@h{index++}");
-                pairs.Add($"({system}, {beta})");
-                command.Parameters.AddWithValue(system, systemId);
+                pairs.Add($"({board}, {beta})");
+                command.Parameters.AddWithValue(board, boardId);
                 command.Parameters.AddWithValue(beta, hash);
             }
 
             command.CommandText =
-                "SELECT system_id, role, account_label, approved_utc, account_id FROM production_approvals " +
-                $"WHERE (system_id, beta_content_hash) IN ({string.Join(", ", pairs)}) ORDER BY approved_utc;";
+                "SELECT board_id, role, account_label, approved_utc, account_id FROM production_approvals " +
+                $"WHERE (board_id, beta_content_hash) IN ({string.Join(", ", pairs)}) ORDER BY approved_utc;";
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -291,10 +291,10 @@ namespace CRT.Server.Handlers.Submissions
                     continue;
 
                 long? accountId = reader.IsDBNull(4) ? null : reader.GetInt64(4);
-                string systemId = reader.GetString(0);
+                string boardId = reader.GetString(0);
 
-                if (!found.TryGetValue(systemId, out List<GivenApproval>? list))
-                    found[systemId] = list = [];
+                if (!found.TryGetValue(boardId, out List<GivenApproval>? list))
+                    found[boardId] = list = [];
 
                 list.Add(new GivenApproval(role.Value, reader.GetString(2), MySqlSubmissionStore.ReadUtc(reader, 3)!.Value, accountId));
             }
@@ -303,7 +303,7 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         public Task AddProductionApprovalAsync(
-            string systemId,
+            string boardId,
             string betaContentHash,
             ApproverRole role,
             long accountId,
@@ -314,12 +314,12 @@ namespace CRT.Server.Handlers.Submissions
             return this.ExecuteAsync(
                 """
                 INSERT IGNORE INTO production_approvals
-                    (system_id, beta_content_hash, role, account_id, account_label, approved_utc)
-                VALUES (@systemId, @hash, @role, @accountId, @label, @when);
+                    (board_id, beta_content_hash, role, account_id, account_label, approved_utc)
+                VALUES (@boardId, @hash, @role, @accountId, @label, @when);
                 """,
                 command =>
                 {
-                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@boardId", boardId);
                     command.Parameters.AddWithValue("@hash", betaContentHash);
                     command.Parameters.AddWithValue("@role", MySqlSubmissionStore.RoleText(role));
                     command.Parameters.AddWithValue("@accountId", accountId);

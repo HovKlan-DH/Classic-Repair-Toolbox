@@ -146,7 +146,7 @@ public sealed class ApprovalWordingTests
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"canPublish":true,
-             "submission":{"id":42,"systemId":"Commodore/C64/250407","state":"approved","summary":"x","touchesSharedFiles":true},
+             "submission":{"id":42,"boardId":"Commodore/C64/250407","state":"approved","summary":"x","touchesSharedFiles":true},
              "findings":[],
              "approval":{"required":["Maintainer","Administrator"],
                          "given":[{"role":"Maintainer","by":"Anna (anna@example.com)","atUtc":"2026-09-25T12:00:00+00:00"}],
@@ -175,7 +175,7 @@ public sealed class ApprovalWordingTests
     public void A_production_approval_that_published_nothing_says_so()
     {
         ProductionPublishResult? result = ReviewApiParser.ParseProductionPublish(
-            """{"systemId":"Commodore/C64/250407","state":"awaiting","waitingFor":["Maintainer"]}""");
+            """{"boardId":"Commodore/C64/250407","state":"awaiting","waitingFor":["Maintainer"]}""");
 
         Assert.True(result!.IsAwaitingApproval);
         Assert.Equal([ApproverRole.Maintainer], result.WaitingFor);

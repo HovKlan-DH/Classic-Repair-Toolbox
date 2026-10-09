@@ -23,10 +23,10 @@ public sealed class DraftTableFileSourceTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private string DraftSystemFolder =>
-        DraftFolderLayout.GetSystemFolder(Path.Combine(this.thisWorkspace.Root, "Drafts"), DraftTableFileSourceTests.ExcelDataFile);
+    private string DraftBoardFolder =>
+        DraftFolderLayout.GetBoardFolder(Path.Combine(this.thisWorkspace.Root, "Drafts"), DraftTableFileSourceTests.ExcelDataFile);
 
-    private DraftTableFileSource Source() => new(this.DataRoot, this.DraftSystemFolder);
+    private DraftTableFileSource Source() => new(this.DataRoot, this.DraftBoardFolder);
 
     private string WritePublished(string relative, string content)
     {
@@ -38,7 +38,7 @@ public sealed class DraftTableFileSourceTests : IDisposable
 
     private string WriteDrafted(string relative, string content)
     {
-        string full = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, relative);
+        string full = DraftFileResolver.BuildDraftFileDestination(this.DraftBoardFolder, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         File.WriteAllText(full, content);
         return full;
@@ -58,6 +58,16 @@ public sealed class DraftTableFileSourceTests : IDisposable
 
         Assert.Equal("published"u8.ToArray(), await source.ReadAsync(DraftTableFileSourceTests.Picture, BoardTableFileSide.Published));
         Assert.Equal("drafted"u8.ToArray(), await source.ReadAsync(DraftTableFileSourceTests.Picture, BoardTableFileSide.Current));
+    }
+
+    // The card names the published side after the source the data was downloaded from, as the
+    // text cells' tooltips do (owner request, 2026-10-05).
+    [Fact]
+    public void The_published_side_is_named_after_the_data_source()
+    {
+        Assert.Equal("BETA source", new DraftTableFileSource(this.DataRoot, this.DraftBoardFolder, betaSource: true).PublishedLabel);
+        Assert.Equal("Stable source", new DraftTableFileSource(this.DataRoot, this.DraftBoardFolder, betaSource: false).PublishedLabel);
+        Assert.Equal("Your draft", this.Source().CurrentLabel);
     }
 
     // A file the draft has not replaced: the draft side IS the published file, as on the board.

@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.DraftExistsWindow"
+        Title="One draft per board"
+        Width="440"
+        MinWidth="400"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock Text="One draft per board" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock TextWrapping="Wrap" Text="You already have a draft of:" />
+
+		<TextBlock x:Name="BoardNameText"
+				   TextWrapping="Wrap"
+				   FontWeight="Bold"
+				   Margin="0,8,0,8" />
+
+		<TextBlock TextWrapping="Wrap"
+				   Text="A board can have only one draft, so no new one is made. Every change you make to this board goes into the draft you already have." />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button x:Name="CloseButton" Content="Close" Click="OnCloseClick" />
+			<!-- The default button: Enter opens the draft - unless another button has the focus,
+			     which then answers Enter itself (code review, 2026-10-09). -->
+			<Button x:Name="OpenDraftButton"
+					IsDefault="True"
+					Content="Open the draft"
+					Foreground="{DynamicResource Button_Ok_Fg}"
+					Background="{DynamicResource Button_Ok_Bg}"
+					BorderBrush="{DynamicResource Button_Ok_Border}"
+					Click="OnOpenDraftClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

@@ -69,7 +69,7 @@ public sealed class BoardViewReporterTests : IDisposable
         BoardViewOutbox onDisk = BoardViewOutbox.FromJson(File.ReadAllText(this.thisFile));
 
         BoardView view = Assert.Single(onDisk.Waiting);
-        Assert.Equal(("Commodore/C64/250407", true), (view.SystemId, view.FromBeta));
+        Assert.Equal(("Commodore/C64/250407", true), (view.BoardId, view.FromBeta));
     }
 
     [Fact]

@@ -26,7 +26,7 @@ namespace CRT.Server.Tests
     public sealed class SubmissionNotifierTests
     {
         private const string Contributor = "someone@example.com";
-        private const string SystemName = "Commodore/C64/250407";
+        private const string BoardDisplayName = "Commodore/C64/250407";
 
         // Addresses with no names - what most of these tests are about.
         private static IReadOnlyList<MailRecipient> Recipients(params string?[] addresses) =>
@@ -53,7 +53,7 @@ namespace CRT.Server.Tests
                 null,
                 // amendedByMaintainer (2026-09-25) - false, a submission nobody changed; then the
                 // contributor's name (2026-10-03) - none, a contributor without an account.
-                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, state, comment, false, null]);
+                [SubmissionNotifierTests.Contributor, SubmissionNotifierTests.BoardDisplayName, state, comment, false, null]);
         }
 
         // ---------------------------------------------------------------- which mail, if any
@@ -71,7 +71,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "merged",
                 maintainerComment: null);
 
@@ -83,7 +83,7 @@ namespace CRT.Server.Tests
 
             // The board has to be named: a contributor who sent something three weeks ago cannot
             // act on "your contribution was accepted".
-            Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.BoardDisplayName, message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -93,7 +93,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "published",
                 maintainerComment: null);
 
@@ -101,7 +101,7 @@ namespace CRT.Server.Tests
 
             Assert.Contains("published to the stable source", message.Subject, StringComparison.Ordinal);
             Assert.DoesNotContain("BETA", message.Subject, StringComparison.Ordinal);
-            Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.BoardDisplayName, message.Body, StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -121,7 +121,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyReturnedToQueueAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "The U8 pinout is wrong.");
 
             EmailMessage message = Assert.Single(mailer.Sent);
@@ -131,7 +131,7 @@ namespace CRT.Server.Tests
 
             // The board is named - a contributor who sent something weeks ago cannot act on "your
             // contribution was taken back".
-            Assert.Contains(SubmissionNotifierTests.SystemName, message.Body, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.BoardDisplayName, message.Body, StringComparison.Ordinal);
             Assert.Contains("had been accepted into the BETA source", message.Body, StringComparison.Ordinal);
             Assert.Contains("no longer holds it", message.Body, StringComparison.Ordinal);
             Assert.Contains("The U8 pinout is wrong.", message.Body, StringComparison.Ordinal);
@@ -152,10 +152,10 @@ namespace CRT.Server.Tests
             var returnedMailer = new FakeEmailSender();
 
             await SubmissionNotifierTests.Notifier(rejectedMailer).NotifyTakenOutOfBetaAsync(
-                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, "Not for this board.", rejected: true);
+                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.BoardDisplayName, "Not for this board.", rejected: true);
 
             await SubmissionNotifierTests.Notifier(returnedMailer).NotifyTakenOutOfBetaAsync(
-                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.SystemName, "Not ready.", rejected: false);
+                SubmissionNotifierTests.Contributor, SubmissionNotifierTests.BoardDisplayName, "Not ready.", rejected: false);
 
             EmailMessage rejection = Assert.Single(rejectedMailer.Sent);
             Assert.Contains("will not be going", rejection.Body, StringComparison.Ordinal);
@@ -166,7 +166,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** IT PROMISES NOTHING THE SYSTEM DOES NOT GUARANTEE (code review, 2026-09-27). *** The
+        // *** IT PROMISES NOTHING THE BOARD DOES NOT GUARANTEE (code review, 2026-09-27). *** The
         // first version told the contributor their draft was "still on your own computer, exactly
         // as you left it" - but CRT deletes a draft once the published board matches it, which can
         // happen while the work sits in BETA - and that a new submission "takes this one's place",
@@ -179,7 +179,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyReturnedToQueueAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "Needs a revision date.");
 
             string body = Assert.Single(mailer.Sent).Body;
@@ -203,7 +203,7 @@ namespace CRT.Server.Tests
         {
             Assert.Null(SubmissionNotifier.BuildMessage(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "pending",
                 maintainerComment: "Anything."));
         }
@@ -217,7 +217,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyProductionPublishAsync(
                 SubmissionNotifierTests.Recipients("admin@example.com", "Admin@example.com", null),
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "Anna (anna@example.com)",
                 "2026-September-25",
                 3);
@@ -236,7 +236,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "rejected",
                 "The pin numbering does not match the datasheet.");
 
@@ -261,7 +261,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "changes_requested",
                 "Please add the PAL region to U8.");
 
@@ -284,7 +284,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
                 SubmissionNotifierTests.Recipients("anna@example.com", " ", null, "Anna@Example.com", "bob@example.com"),
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 42,
                 "Corrected R12.");
 
@@ -293,7 +293,7 @@ namespace CRT.Server.Tests
             EmailMessage first = mailer.Sent[0];
             Assert.Contains("#42", first.Body, StringComparison.Ordinal);
             Assert.Contains("Corrected R12.", first.Body, StringComparison.Ordinal);
-            Assert.Contains(SubmissionNotifierTests.SystemName, first.Body, StringComparison.Ordinal);
+            Assert.Contains(SubmissionNotifierTests.BoardDisplayName, first.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -305,7 +305,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
                 SubmissionNotifierTests.Recipients("first@example.com", "second@example.com"),
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 7,
                 null);
 
@@ -353,7 +353,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 state,
                 maintainerComment: "ignored");
 
@@ -374,7 +374,7 @@ namespace CRT.Server.Tests
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyDecisionAsync(
                 address,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "published",
                 maintainerComment: null);
 
@@ -387,7 +387,7 @@ namespace CRT.Server.Tests
         // *** THE MOST IMPORTANT TEST HERE. ***
         //
         // By the time this runs the decision is recorded, and for a publish the board has already
-        // been overwritten - the one irreversible operation in the system. An exception escaping
+        // been overwritten - the one irreversible operation in the board. An exception escaping
         // would be shown to the maintainer as a failure, and they would quite reasonably repeat a
         // decision that has in fact already been made.
         //
@@ -401,7 +401,7 @@ namespace CRT.Server.Tests
             // No assertion beyond "this returns" - the absence of an exception IS the behaviour.
             await notifier.NotifyDecisionAsync(
                 SubmissionNotifierTests.Contributor,
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 "published",
                 maintainerComment: null);
         }
@@ -409,7 +409,7 @@ namespace CRT.Server.Tests
         // ---------------------------------------------------------------- whom a submission's mail goes to
 
         private static SubmissionRecord Submission(long? account, string? contactEmail) =>
-            new(1, SubmissionNotifierTests.SystemName, account, contactEmail, "hash", "", "merged", null, 1,
+            new(1, SubmissionNotifierTests.BoardDisplayName, account, contactEmail, "hash", "", "merged", null, 1,
                 new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), null, null);
 
         // ###########################################################################################
@@ -477,22 +477,22 @@ namespace CRT.Server.Tests
         }
 
         // Each maintainer by the name on their account, and the mail says whether it is a new
-        // system (owner request, 2026-10-03).
+        // board (owner request, 2026-10-03).
         [Fact]
-        public async Task Each_maintainer_is_greeted_by_name_and_told_whether_it_is_a_new_system()
+        public async Task Each_maintainer_is_greeted_by_name_and_told_whether_it_is_a_new_board()
         {
             var mailer = new FakeEmailSender();
 
             await SubmissionNotifierTests.Notifier(mailer).NotifyMaintainersAsync(
                 [new MailRecipient("anna@example.com", "Anna"), new MailRecipient("bob@example.com", "Bob")],
-                SubmissionNotifierTests.SystemName,
+                SubmissionNotifierTests.BoardDisplayName,
                 18,
                 "A whole new board.",
-                isNewSystem: true);
+                isNewBoard: true);
 
             Assert.StartsWith("Hi Anna,", mailer.Sent[0].Body, StringComparison.Ordinal);
             Assert.StartsWith("Hi Bob,", mailer.Sent[1].Body, StringComparison.Ordinal);
-            Assert.All(mailer.Sent, message => Assert.Contains("a completely new system", message.Body, StringComparison.Ordinal));
+            Assert.All(mailer.Sent, message => Assert.Contains("a completely new board", message.Body, StringComparison.Ordinal));
         }
 
         // ---------------------------------------------------------------- the mapping itself

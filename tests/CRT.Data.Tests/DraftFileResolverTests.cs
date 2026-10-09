@@ -11,7 +11,7 @@ namespace ClassicRepairToolbox.Tests;
 // draft folder held only newly attached extras.
 //
 // A draft is now a complete board folder, so:
-//   - the file sits where a published board keeps it, which means the system's own
+//   - the file sits where a published board keeps it, which means the board's own
 //     "Manufacturer/Hardware/Board/" prefix is STRIPPED (the draft folder already is those
 //     segments);
 //   - the DRAFT is tried first, because when one exists its files ARE the board's files.
@@ -26,16 +26,16 @@ public sealed class DraftFileResolverTests : IDisposable
     public void Dispose() => this.thisWorkspace.Dispose();
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
-    private string DraftSystemFolder => Path.Combine(this.thisWorkspace.Root, "Drafts", "Commodore", "C64", "250407");
+    private string DraftBoardFolder => Path.Combine(this.thisWorkspace.Root, "Drafts", "Commodore", "C64", "250407");
 
     // ------------------------------------------------------------------------ Resolve
 
     [Fact]
     public void A_blank_relative_file_resolves_to_null()
     {
-        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, string.Empty));
-        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "   "));
-        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, null));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, string.Empty));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "   "));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, null));
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class DraftFileResolverTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(officialPath)!);
         File.WriteAllText(officialPath, "official");
 
-        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
         Assert.Equal(officialPath, resolved);
     }
@@ -53,11 +53,11 @@ public sealed class DraftFileResolverTests : IDisposable
     [Fact]
     public void A_drafted_only_file_is_found_at_the_draft_folders_own_root()
     {
-        string draftedPath = Path.Combine(this.DraftSystemFolder, "Datasheets", "U8.pdf");
+        string draftedPath = Path.Combine(this.DraftBoardFolder, "Datasheets", "U8.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(draftedPath)!);
         File.WriteAllText(draftedPath, "drafted");
 
-        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
         Assert.Equal(draftedPath, resolved);
     }
@@ -77,11 +77,11 @@ public sealed class DraftFileResolverTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(officialPath)!);
         File.WriteAllText(officialPath, "official");
 
-        string draftedPath = Path.Combine(this.DraftSystemFolder, "Datasheets", "U8.pdf");
+        string draftedPath = Path.Combine(this.DraftBoardFolder, "Datasheets", "U8.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(draftedPath)!);
         File.WriteAllText(draftedPath, "drafted");
 
-        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
         Assert.Equal(draftedPath, resolved);
     }
@@ -89,18 +89,18 @@ public sealed class DraftFileResolverTests : IDisposable
     [Fact]
     public void Neither_copy_existing_resolves_to_null()
     {
-        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/Missing.pdf"));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/Missing.pdf"));
     }
 
     [Fact]
     public void A_blank_data_root_still_finds_the_drafted_copy()
     {
-        string draftedPath = Path.Combine(this.DraftSystemFolder, "U8.pdf");
+        string draftedPath = Path.Combine(this.DraftBoardFolder, "U8.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(draftedPath)!);
         File.WriteAllText(draftedPath, "drafted");
 
         var resolved = DraftFileResolver.Resolve(
-            string.Empty, this.DraftSystemFolder, "Commodore/C64/250407/U8.pdf");
+            string.Empty, this.DraftBoardFolder, "Commodore/C64/250407/U8.pdf");
 
         Assert.Equal(draftedPath, resolved);
     }
@@ -118,7 +118,7 @@ public sealed class DraftFileResolverTests : IDisposable
         File.WriteAllText(sharedPath, "shared");
 
         var resolved = DraftFileResolver.Resolve(
-            this.DataRoot, this.DraftSystemFolder, "Commodore/Shared files/7805.jpg");
+            this.DataRoot, this.DraftBoardFolder, "Commodore/Shared files/7805.jpg");
 
         Assert.Equal(sharedPath, resolved);
     }
@@ -142,7 +142,7 @@ public sealed class DraftFileResolverTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(officialPath)!);
         File.WriteAllText(officialPath, "official");
 
-        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, "Sub/Folder/U8.pdf");
+        var resolved = DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Sub/Folder/U8.pdf");
 
         Assert.Equal(officialPath, resolved);
     }
@@ -165,16 +165,16 @@ public sealed class DraftFileResolverTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(officialPath)!);
         File.WriteAllText(officialPath, "official");
 
-        string draftedPath = Path.Combine(this.DraftSystemFolder, "Datasheets", "U8.pdf");
+        string draftedPath = Path.Combine(this.DraftBoardFolder, "Datasheets", "U8.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(draftedPath)!);
         File.WriteAllText(draftedPath, "drafted");
 
         DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(
-            this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+            this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
         Assert.NotNull(resolved);
         Assert.Equal(draftedPath, resolved!.FullPath);
-        Assert.Equal(this.DraftSystemFolder, resolved.Root);
+        Assert.Equal(this.DraftBoardFolder, resolved.Root);
         Assert.True(resolved.IsDrafted);
     }
 
@@ -186,7 +186,7 @@ public sealed class DraftFileResolverTests : IDisposable
         File.WriteAllText(officialPath, "official");
 
         DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(
-            this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+            this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
         Assert.NotNull(resolved);
         Assert.Equal(officialPath, resolved!.FullPath);
@@ -199,31 +199,31 @@ public sealed class DraftFileResolverTests : IDisposable
     {
         // Resolve is now a projection of ResolveWithSource. Pinned so a later edit cannot give
         // the two their own copies of the precedence rule again.
-        string draftedPath = Path.Combine(this.DraftSystemFolder, "U8.pdf");
+        string draftedPath = Path.Combine(this.DraftBoardFolder, "U8.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(draftedPath)!);
         File.WriteAllText(draftedPath, "drafted");
 
         const string stored = "Commodore/C64/250407/U8.pdf";
 
         Assert.Equal(
-            DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored),
-            DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftSystemFolder, stored)!.FullPath);
+            DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, stored),
+            DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftBoardFolder, stored)!.FullPath);
 
-        Assert.Null(DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftSystemFolder, "Commodore/C64/250407/None.pdf"));
+        Assert.Null(DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftBoardFolder, "Commodore/C64/250407/None.pdf"));
     }
 
     // ------------------------------------------------------------------------ BuildDraftFileDestination
 
     [Fact]
-    public void BuildDraftFileDestination_strips_the_systems_own_prefix()
+    public void BuildDraftFileDestination_strips_the_boards_own_prefix()
     {
         // The draft folder already IS "Commodore/C64/250407", so an unstripped combine would
         // write to "<draft>/Commodore/C64/250407/Commodore/C64/250407/..." - somewhere Resolve
         // never looks, so the file would be written and then never found again.
         string destination = DraftFileResolver.BuildDraftFileDestination(
-            this.DraftSystemFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
+            this.DraftBoardFolder, "Commodore/C64/250407/Datasheets/U8.pdf");
 
-        Assert.Equal(Path.Combine(this.DraftSystemFolder, "Datasheets", "U8.pdf"), destination);
+        Assert.Equal(Path.Combine(this.DraftBoardFolder, "Datasheets", "U8.pdf"), destination);
     }
 
     // The write and read sides must agree, which is the only thing that actually matters here.
@@ -232,11 +232,11 @@ public sealed class DraftFileResolverTests : IDisposable
     {
         const string stored = "Commodore/C64/250407/Datasheets/U8.pdf";
 
-        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, stored);
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftBoardFolder, stored);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         File.WriteAllText(destination, "drafted");
 
-        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
+        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, stored));
     }
 
     // ###########################################################################################
@@ -252,11 +252,11 @@ public sealed class DraftFileResolverTests : IDisposable
     {
         const string stored = "Commodore/Shared files/Component images/HotCPU.png";
 
-        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, stored);
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftBoardFolder, stored);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         File.WriteAllText(destination, "drafted");
 
-        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
+        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, stored));
     }
 
     // Attaching a file under the name of a published shared file REPLACES it - the contributor's
@@ -269,17 +269,17 @@ public sealed class DraftFileResolverTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(published)!);
         File.WriteAllText(published, "published");
 
-        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, stored);
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftBoardFolder, stored);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         File.WriteAllText(destination, "drafted");
 
-        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftSystemFolder, stored));
+        Assert.Equal(destination, DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, stored));
     }
 
     [Fact]
     public void BuildDraftFileDestination_does_not_create_anything_on_disk()
     {
-        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftSystemFolder, "U8.pdf");
+        string destination = DraftFileResolver.BuildDraftFileDestination(this.DraftBoardFolder, "U8.pdf");
 
         Assert.False(File.Exists(destination));
         Assert.False(Directory.Exists(Path.GetDirectoryName(destination)));
@@ -289,8 +289,8 @@ public sealed class DraftFileResolverTests : IDisposable
     public void BuildDraftFileDestination_trims_and_normalizes_slashes()
     {
         string destination = DraftFileResolver.BuildDraftFileDestination(
-            this.DraftSystemFolder, "  Commodore/C64/250407/Sub/Folder/U8.pdf  ");
+            this.DraftBoardFolder, "  Commodore/C64/250407/Sub/Folder/U8.pdf  ");
 
-        Assert.Equal(Path.Combine(this.DraftSystemFolder, "Sub", "Folder", "U8.pdf"), destination);
+        Assert.Equal(Path.Combine(this.DraftBoardFolder, "Sub", "Folder", "U8.pdf"), destination);
     }
 }

@@ -93,9 +93,9 @@ namespace CRT.Server.Handlers.Accounts
             ArgumentNullException.ThrowIfNull(account);
             ArgumentNullException.ThrowIfNull(store);
 
-            // The systems whose pools this account is in. For an administrator, who reviews every
-            // system anyway, only those they were named a maintainer of (2026-10-05) - often none.
-            IReadOnlySet<string> maintainerOf = await store.GetReviewedSystemIdsAsync(account.Id, cancellationToken);
+            // The boards whose pools this account is in. For an administrator, who reviews every
+            // board anyway, only those they were named a maintainer of (2026-10-05) - often none.
+            IReadOnlySet<string> maintainerOf = await store.GetReviewedBoardIdsAsync(account.Id, cancellationToken);
 
             return new AccountAnswer(
                 account.Id,

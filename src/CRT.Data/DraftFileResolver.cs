@@ -28,22 +28,22 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class DraftFileResolver
     {
-        // The subfolder under a system's draft folder that holds copied attachment bytes, mirroring
+        // The subfolder under a board's draft folder that holds copied attachment bytes, mirroring
         // how the file lived relative to its OWN root (Data/ or the draft) - so a file drafted as
-        // "Datasheets/U8.pdf" is found at "<draftsRoot>/<system>/Files/Datasheets/U8.pdf".
+        // "Datasheets/U8.pdf" is found at "<draftsRoot>/<board>/Files/Datasheets/U8.pdf".
         public const string DraftFilesFolderName = "Files";
 
         // ###########################################################################################
         // Resolves relativeFile (as stored in a BoardData entry's File property, "/"-separated) to
         // an absolute path, preferring the officially published copy under dataRoot and falling
-        // back to a drafted copy under draftSystemFolder/Files/ when the official one is missing -
+        // back to a drafted copy under draftBoardFolder/Files/ when the official one is missing -
         // the ordinary case for a file that exists only because it was just attached in a draft and
         // has never been synced. Returns null when relativeFile is blank or neither copy exists, so
         // callers keep their existing "missing file" handling (skip the thumbnail, log a warning)
         // unchanged; this only adds a second place to look, not new required-file behaviour.
         // ###########################################################################################
-        public static string? Resolve(string dataRoot, string draftSystemFolder, string? relativeFile) =>
-            DraftFileResolver.ResolveWithSource(dataRoot, draftSystemFolder, relativeFile)?.FullPath;
+        public static string? Resolve(string dataRoot, string draftBoardFolder, string? relativeFile) =>
+            DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, relativeFile)?.FullPath;
 
         // ###########################################################################################
         // The same resolution as Resolve, plus WHICH ROOT the file was found under.
@@ -58,7 +58,7 @@ namespace Handlers.DataHandling
         // silently did nothing on every board with a draft. Answering both halves here, from the
         // one place the order is decided, means the two can never disagree again.
         // ###########################################################################################
-        public static DraftFileResolution? ResolveWithSource(string dataRoot, string draftSystemFolder, string? relativeFile)
+        public static DraftFileResolution? ResolveWithSource(string dataRoot, string draftBoardFolder, string? relativeFile)
         {
             string trimmed = relativeFile?.Trim() ?? string.Empty;
             if (trimmed.Length == 0)
@@ -86,19 +86,19 @@ namespace Handlers.DataHandling
             //
             // *** THE DRAFTED COPY IS LOOKED FOR EXACTLY WHERE BuildDraftFileDestination WRITES
             // IT (owner report, 2026-09-25). *** For the board's own files that is the draft
-            // folder with the system's prefix stripped. For a NEW file the contributor filed in a
+            // folder with the board's prefix stripped. For a NEW file the contributor filed in a
             // shared folder it is the draft folder plus the WHOLE path - and this used to look only
             // for the first kind, so "Commodore/Shared files/Component images/HotCPU.png" was on
             // disk in the draft and nothing could find it. Asking the writer's own function means
             // the two cannot disagree again.
             // ###########################################################################################
-            if (!string.IsNullOrWhiteSpace(draftSystemFolder))
+            if (!string.IsNullOrWhiteSpace(draftBoardFolder))
             {
-                string draftedPath = DraftFileResolver.BuildDraftFileDestination(draftSystemFolder, trimmed);
+                string draftedPath = DraftFileResolver.BuildDraftFileDestination(draftBoardFolder, trimmed);
 
                 if (File.Exists(draftedPath))
                 {
-                    return new DraftFileResolution(draftedPath, draftSystemFolder, IsDrafted: true);
+                    return new DraftFileResolution(draftedPath, draftBoardFolder, IsDrafted: true);
                 }
             }
 
@@ -120,39 +120,39 @@ namespace Handlers.DataHandling
         // not create the file or its directory - the caller copies the bytes and is the one place
         // that should decide when directory creation happens (see ComponentDraftWriter).
         //
-        // A file of the board's OWN folder goes to the draft folder with the system's prefix
+        // A file of the board's OWN folder goes to the draft folder with the board's prefix
         // stripped; a file filed in a SHARED folder (or anywhere else outside the board) goes to
         // the draft folder plus its whole path. Resolve and SubmissionFileLocator both read the
         // drafted copy from exactly here.
         // ###########################################################################################
-        public static string BuildDraftFileDestination(string draftSystemFolder, string relativeFile)
+        public static string BuildDraftFileDestination(string draftBoardFolder, string relativeFile)
         {
             string trimmed = relativeFile?.Trim() ?? string.Empty;
 
             // Same prefix-stripping as Resolve above, and for the same reason - a file written to
             // the unstripped path would be written somewhere Resolve never looks.
-            string? withinSystem = DraftFolderLayout.RelativeToSystemFolder(
-                DraftFileResolver.SystemKeyFromFolder(draftSystemFolder),
+            string? withinBoard = DraftFolderLayout.RelativeToBoardFolder(
+                DraftFileResolver.BoardKeyFromFolder(draftBoardFolder),
                 trimmed);
 
-            string relative = (withinSystem ?? trimmed).Replace('/', Path.DirectorySeparatorChar);
+            string relative = (withinBoard ?? trimmed).Replace('/', Path.DirectorySeparatorChar);
 
-            return Path.Combine(draftSystemFolder, relative);
+            return Path.Combine(draftBoardFolder, relative);
         }
 
         // ###########################################################################################
-        // The system identity a draft folder represents, rebuilt from the folder's own last three
+        // The board identity a draft folder represents, rebuilt from the folder's own last three
         // segments plus a placeholder file name.
         //
-        // RelativeToSystemFolder takes an ExcelDataFile and ignores everything after the last "/",
+        // RelativeToBoardFolder takes an ExcelDataFile and ignores everything after the last "/",
         // so only the folder segments matter - and those are exactly what this folder path already
         // carries. This exists so the two methods above do not each have to be handed the identity
         // separately; every existing caller passes a folder, and changing that signature would
         // touch call sites this change has no other reason to visit.
         // ###########################################################################################
-        private static string SystemKeyFromFolder(string draftSystemFolder)
+        private static string BoardKeyFromFolder(string draftBoardFolder)
         {
-            string[] segments = (draftSystemFolder ?? string.Empty)
+            string[] segments = (draftBoardFolder ?? string.Empty)
                 .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
                     StringSplitOptions.RemoveEmptyEntries);
 
@@ -167,7 +167,7 @@ namespace Handlers.DataHandling
 
     // ###########################################################################################
     // Where one stored File value was found: the absolute path, and the ROOT it sits under (the
-    // draft system folder or the data root) - the containment root ExternalTargetLauncher must be
+    // draft board folder or the data root) - the containment root ExternalTargetLauncher must be
     // given to open it. IsDrafted says which of the two it was.
     // ###########################################################################################
     public sealed record DraftFileResolution(string FullPath, string Root, bool IsDrafted);

@@ -15,7 +15,7 @@ namespace Handlers.DataHandling
     // *** THIS IS NOT A RESTORATION OF BoardDataWriter. *** That class existed to let the APP
     // edit a board in place and was retired in Phase 2 session 2c, deliberately: authoring now
     // produces draft ROWS, and a second mechanism that mutated workbooks would have been a shadow
-    // draft system beside draft.json. Nothing here changes that - this writer exists for the
+    // draft board beside draft.json. Nothing here changes that - this writer exists for the
     // SERVER, at publish time, writing a board that has already been reviewed and accepted. If a
     // future change makes the app want to write a workbook, that is a decision to re-open with the
     // project owner, not a call site to add.
@@ -101,7 +101,7 @@ namespace Handlers.DataHandling
 
             var file = new FileInfo(excelPath);
 
-            // A publish target's folder may not exist yet - a brand-new system is the ordinary
+            // A publish target's folder may not exist yet - a brand-new board is the ordinary
             // case, not an exception.
             file.Directory?.Create();
 
@@ -124,13 +124,13 @@ namespace Handlers.DataHandling
         // therefore different SHA-256 hashes. Nothing in the file's CONTENT differed - only the
         // timestamps in the archive directory.
         //
-        // That is not cosmetic, because the workbook's hash is folded into the system's
+        // That is not cosmetic, because the workbook's hash is folded into the board's
         // ContentHash (PublishPlan.DescriptorWithWorkbook), which is what every CRT client uses to
         // decide whether to re-download a board. The consequences, in order of how much they cost:
         //
-        //   - RE-PUBLISHING AN UNCHANGED SYSTEM MOVED ITS CONTENT HASH, so every user on every
-        //     machine re-downloaded a board that had not changed. SystemDescriptorRules already
-        //     states the intended guarantee in its own comments ("republishing an unchanged system
+        //   - RE-PUBLISHING AN UNCHANGED BOARD MOVED ITS CONTENT HASH, so every user on every
+        //     machine re-downloaded a board that had not changed. BoardDescriptorRules already
+        //     states the intended guarantee in its own comments ("republishing an unchanged board
         //     does not produce a file that differs"); the ZIP timestamp silently broke it.
         //   - Re-running an interrupted publish - the documented recovery - produced a different
         //     result from the one it was recovering, which is the opposite of idempotent.
@@ -292,7 +292,7 @@ namespace Handlers.DataHandling
             // three-line headers above them.
             //
             // A sheet with no data keeps a sensible default width rather than collapsing to the
-            // minimum - there is nothing to measure, and a brand-new system is exactly that case.
+            // minimum - there is nothing to measure, and a brand-new board is exactly that case.
             // ###########################################################################################
             // ###########################################################################################
             // *** THE REFERENCE'S OWN WIDTHS, column by column (owner request, 2026-09-24). ***

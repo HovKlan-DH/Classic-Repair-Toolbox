@@ -7,7 +7,7 @@ namespace CRT.Server.Handlers.Submissions
     // Where a blob lives on disk, and how a partial upload is addressed. PURE string work - it
     // builds paths and never touches the filesystem, so every rule here is a unit test.
     //
-    // CONTENT-ADDRESSED: a blob's name IS its SHA-256. Two systems carrying the same schematic
+    // CONTENT-ADDRESSED: a blob's name IS its SHA-256. Two boards carrying the same schematic
     // image store one file, which is what makes "shared images already present under another board
     // are never re-sent" true rather than aspirational. It also means a blob never needs updating:
     // the same hash is always the same bytes, so a write either creates a file or is redundant.

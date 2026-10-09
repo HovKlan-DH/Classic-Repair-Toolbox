@@ -45,8 +45,8 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/accounts/login", ReviewApiRoutes.Login("https://x"));
 
         // AdminEndpoints.MapAdminEndpoints - its own group, and two POSTs with a body because a
-        // system id carries slashes.
-        Assert.Equal("https://x/api/admin/systems", ReviewApiRoutes.AdminSystems("https://x"));
+        // board id carries slashes.
+        Assert.Equal("https://x/api/admin/boards", ReviewApiRoutes.AdminBoards("https://x"));
         Assert.Equal("https://x/api/admin/accounts", ReviewApiRoutes.AdminAccounts("https://x"));
         Assert.Equal("https://x/api/admin/maintainers", ReviewApiRoutes.AdminAddMaintainer("https://x"));
         Assert.Equal("https://x/api/admin/maintainers/remove", ReviewApiRoutes.AdminRemoveMaintainer("https://x"));
@@ -56,10 +56,10 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/review/production/plan", ReviewApiRoutes.ProductionPlan("https://x"));
         Assert.Equal("https://x/api/review/production/publish", ReviewApiRoutes.ProductionPublish("https://x"));
 
-        // SystemEndpoints.MapSystemEndpoints (2026-09-27) - under /api/review, not /api/admin:
-        // every maintainer reads it. The detail is a POST because a system id carries slashes.
-        Assert.Equal("https://x/api/review/systems", ReviewApiRoutes.Systems("https://x"));
-        Assert.Equal("https://x/api/review/systems/detail", ReviewApiRoutes.SystemDetail("https://x"));
+        // BoardEndpoints.MapBoardEndpoints (2026-09-27) - under /api/review, not /api/admin:
+        // every maintainer reads it. The detail is a POST because a board id carries slashes.
+        Assert.Equal("https://x/api/review/boards", ReviewApiRoutes.Boards("https://x"));
+        Assert.Equal("https://x/api/review/boards/detail", ReviewApiRoutes.BoardDetail("https://x"));
 
         // Inviting a new maintainer by email, withdrawing it, and accepting it (2026-09-27).
         Assert.Equal("https://x/api/admin/maintainers/invite", ReviewApiRoutes.AdminInviteMaintainer("https://x"));
@@ -74,24 +74,24 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/accounts/me/email/confirm", ReviewApiRoutes.ConfirmEmailChange("https://x"));
         Assert.Equal("https://x/api/accounts/me/password", ReviewApiRoutes.ChangePassword("https://x"));
 
-        // A new system's place in the drop-down lists (2026-09-27): GET the lists, POST a placement.
-        Assert.Equal("https://x/api/review/systems/listing", ReviewApiRoutes.SystemListing("https://x"));
+        // A new board's place in the drop-down lists (2026-09-27): GET the lists, POST a placement.
+        Assert.Equal("https://x/api/review/boards/listing", ReviewApiRoutes.BoardListing("https://x"));
 
-        // A system's Board data and Files views (2026-10-03) - the four POSTs SystemEndpoints maps,
+        // A board's Board data and Files views (2026-10-03) - the four POSTs BoardEndpoints maps,
         // pinned on the server's side by RequestBodyLimitsTests.
-        Assert.Equal("https://x/api/review/systems/table", ReviewApiRoutes.SystemTable("https://x/"));
-        Assert.Equal("https://x/api/review/systems/edit/check", ReviewApiRoutes.SystemEditCheck("https://x"));
-        Assert.Equal("https://x/api/review/systems/edit", ReviewApiRoutes.SystemEdit("https://x"));
-        Assert.Equal("https://x/api/review/systems/files", ReviewApiRoutes.SystemFiles("https://x"));
+        Assert.Equal("https://x/api/review/boards/table", ReviewApiRoutes.BoardDataTable("https://x/"));
+        Assert.Equal("https://x/api/review/boards/edit/check", ReviewApiRoutes.BoardEditCheck("https://x"));
+        Assert.Equal("https://x/api/review/boards/edit", ReviewApiRoutes.BoardEdit("https://x"));
+        Assert.Equal("https://x/api/review/boards/files", ReviewApiRoutes.BoardFiles("https://x"));
 
         // Rebuilding both checksum manifests by hand (2026-10-01) - AdminEndpoints' "/manifest/rebuild"
         // under the "/api/admin" group. Unpinned until the code review of the same day.
         Assert.Equal("https://x/api/admin/manifest/rebuild", ReviewApiRoutes.AdminRebuildManifests("https://x"));
 
-        // Deleting a system (2026-10-03) - AdminEndpoints' "/systems/delete/plan" and "/systems/delete".
+        // Deleting a board (2026-10-03) - AdminEndpoints' "/boards/delete/plan" and "/boards/delete".
         // The server's side is pinned by RequestBodyLimitsTests, which finds both in its real route table.
-        Assert.Equal("https://x/api/admin/systems/delete/plan", ReviewApiRoutes.AdminSystemDeletePlan("https://x"));
-        Assert.Equal("https://x/api/admin/systems/delete", ReviewApiRoutes.AdminSystemDelete("https://x"));
+        Assert.Equal("https://x/api/admin/boards/delete/plan", ReviewApiRoutes.AdminBoardDeletePlan("https://x"));
+        Assert.Equal("https://x/api/admin/boards/delete", ReviewApiRoutes.AdminBoardDelete("https://x"));
 
         // Resetting the contribution data and the API usage (2026-10-04) - AdminEndpoints' "/reset"
         // (GET the counts, POST the reset) and "/api-usage". The server's side is pinned by
@@ -113,8 +113,8 @@ public sealed class ReviewApiRoutesTests
     [Fact]
     public void An_asset_route_hangs_off_its_own_submission()
     {
-        // Both asset routes are scoped to the submission rather than taking a system id, so the
-        // server can derive the system from what is being reviewed instead of trusting a caller
+        // Both asset routes are scoped to the submission rather than taking a board id, so the
+        // server can derive the board from what is being reviewed instead of trusting a caller
         // to name one.
         Assert.Equal(
             "https://x/api/review/submissions/7/submitted/" + new string('a', 64),

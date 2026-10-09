@@ -322,7 +322,7 @@ namespace Handlers.DataHandling
         }
 
         // What a column is worth on a sheet with no rows yet and no reference width. A brand-new
-        // system has nothing to measure, and autofitting the wrapped headers instead would widen
+        // board has nothing to measure, and autofitting the wrapped headers instead would widen
         // every column to hold a whole header phrase on one line - the opposite of what the wrap
         // is for.
         public const double EmptySheetColumnWidth = 22;

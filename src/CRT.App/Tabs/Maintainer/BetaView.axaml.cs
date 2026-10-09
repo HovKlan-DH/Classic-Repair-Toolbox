@@ -11,7 +11,7 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // The right-hand side of the "BETA" screen (owner request, 2026-09-27) - one system's BETA
+    // The right-hand side of the "BETA" screen (owner request, 2026-09-27) - one board's BETA
     // state, copied to what every user downloads, or pushed back to the queue. It was the "Publish
     // to production" window (2026-09-25) until the four screens replaced the windows; the list it
     // sat beside is now TabMaintainer.Beta.cs.
@@ -30,12 +30,12 @@ namespace CRT
         private ReviewApiClient? thisClient;
         private ReviewSession? thisSession;
 
-        // The plan on screen. Null while none is, and replaced whenever the system shown changes, so
-        // the button can never send a hash for a system other than the one described.
+        // The plan on screen. Null while none is, and replaced whenever the board shown changes, so
+        // the button can never send a hash for a board other than the one described.
         private ProductionPlanView? thisPlan;
 
-        // The system on screen, and a counter that drops a plan answer the selection has moved past.
-        private ProductionSystemRow? thisRow;
+        // The board on screen, and a counter that drops a plan answer the selection has moved past.
+        private ProductionBoardRow? thisRow;
         private int thisRequest;
 
         public BetaView()
@@ -54,8 +54,8 @@ namespace CRT
 
         // ###########################################################################################
         // What the main window does after a publish or a push-back changed things: read the lists
-        // again (the system leaves BETA's, a rollback's submissions return to the queue). Awaited
-        // BEFORE the outcome is said, so re-showing the system cannot clear the sentence saying
+        // again (the board leaves BETA's, a rollback's submissions return to the queue). Awaited
+        // BEFORE the outcome is said, so re-showing the board cannot clear the sentence saying
         // what just happened.
         // ###########################################################################################
         public Func<Task>? AfterChange { get; set; }
@@ -67,15 +67,15 @@ namespace CRT
         // two-minute limit; see ServerWait.
         // ###########################################################################################
 
-        // The system on screen, or null.
-        public ProductionSystemRow? ShownRow => this.thisRow;
+        // The board on screen, or null.
+        public ProductionBoardRow? ShownRow => this.thisRow;
 
         // ###########################################################################################
-        // Shows one system: its name at once, then the plan when the server has worked it out. Null
-        // empties the panel. An answer arriving after another system was chosen is dropped rather
+        // Shows one board: its name at once, then the plan when the server has worked it out. Null
+        // empties the panel. An answer arriving after another board was chosen is dropped rather
         // than drawn under that one's name.
         // ###########################################################################################
-        public async Task ShowSystemAsync(ProductionSystemRow? row)
+        public async Task ShowBoardAsync(ProductionBoardRow? row)
         {
             int request = ++this.thisRequest;
 
@@ -87,7 +87,7 @@ namespace CRT
 
             this.SetText("PlanSummaryText", "Working out what would be copied...");
 
-            ReviewApiResult<ProductionPlanView> plan = await this.thisClient.GetProductionPlanAsync(this.thisSession, row.SystemId);
+            ReviewApiResult<ProductionPlanView> plan = await this.thisClient.GetProductionPlanAsync(this.thisSession, row.BoardId);
 
             if (request != this.thisRequest)
                 return;
@@ -103,7 +103,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The system on screen has left the list because somebody else published it or pushed it
+        // The board on screen has left the list because somebody else published it or pushed it
         // back - found by the queue's own check. The panel empties and says why, rather than keep
         // offering buttons for a BETA state that no longer waits.
         // ###########################################################################################
@@ -111,7 +111,7 @@ namespace CRT
         {
             this.thisRequest++;
             this.ShowPlan(null, null);
-            this.ShowMessage("This system is no longer waiting to go to stable - it was published or pushed back meanwhile.", isError: true);
+            this.ShowMessage("This board is no longer waiting to go to stable - it was published or pushed back meanwhile.", isError: true);
         }
 
         // Signed out: empty, with nothing of the previous account's on screen.
@@ -150,11 +150,9 @@ namespace CRT
 
             foreach (CarriedSubmission submission in carrying)
             {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = ProductionDisplay.CarryingLine(submission, now),
-                    TextWrapping = TextWrapping.Wrap
-                });
+                var carried = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                TabMaintainer.ShowCounts(carried, ProductionDisplay.CarryingRuns(submission, now));
+                panel.Children.Add(carried);
 
                 // Its contributor discarded their own draft since (owner request, 2026-09-28): said
                 // under their line, with what to do - push it back and ask them.
@@ -176,10 +174,10 @@ namespace CRT
         // Draws a plan into the panel without a server - the panel is otherwise only drawn from a
         // live plan request, and would be pinned by nothing at all.
         // ###########################################################################################
-        internal void ShowPlanForTests(ProductionPlanView? plan, ProductionSystemRow? row) =>
+        internal void ShowPlanForTests(ProductionPlanView? plan, ProductionBoardRow? row) =>
             this.ShowPlan(plan, row);
 
-        private void ShowPlan(ProductionPlanView? plan, ProductionSystemRow? row)
+        private void ShowPlan(ProductionPlanView? plan, ProductionBoardRow? row)
         {
             this.thisPlan = plan;
             this.thisRow = row;
@@ -208,9 +206,9 @@ namespace CRT
             check.IsEnabled = plan is not null && plan.CanPublish;
 
             // The name, or - with nothing chosen - what to do, in the Review screen's placeholder look.
-            if (this.FindControl<TextBlock>("SelectedSystemText") is TextBlock title)
+            if (this.FindControl<TextBlock>("SelectedBoardText") is TextBlock title)
             {
-                title.Text = row is null ? "Select a system" : ProductionDisplay.SystemLine(row);
+                title.Text = row is null ? "Select a board" : ProductionDisplay.BoardLine(row);
                 title.FontWeight = row is null ? FontWeight.Normal : FontWeight.SemiBold;
                 title.Opacity = row is null ? 0.7 : 1;
             }
@@ -290,7 +288,7 @@ namespace CRT
         // them twice. A file is read from where the entry says - BETA's copy, or production's for
         // one the publish removes - and opened under this window's "please wait" (FileTreeFiles).
         // ###########################################################################################
-        private void ShowFiles(ProductionPlanView? plan, ProductionSystemRow? row)
+        private void ShowFiles(ProductionPlanView? plan, ProductionBoardRow? row)
         {
             if (this.FindControl<FileTreeView>("FileTree") is not FileTreeView tree)
                 return;
@@ -311,8 +309,8 @@ namespace CRT
             // With each file's size, from the plan (2026-10-04).
             IReadOnlyDictionary<string, long>? sizes = plan.FileSizes;
 
-            tree.Show(SystemFileEntries.WithSizes(
-                SystemFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles),
+            tree.Show(BoardFileEntries.WithSizes(
+                BoardFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles),
                 entry => sizes is not null && sizes.TryGetValue(entry.Path, out long size) ? size : null));
             tree.IsVisible = true;
         }
@@ -332,7 +330,7 @@ namespace CRT
                 button.IsEnabled = ProductionDisplay.CanPress(this.thisPlan, check?.IsChecked == true);
 
             // ###########################################################################################
-            // Pushing back needs only a system on screen - NOT the tick, and not the server's
+            // Pushing back needs only a board on screen - NOT the tick, and not the server's
             // canPublish. The tick says "I checked this and it is right", which is the opposite of
             // what this button does, and a board whose publish is blocked (a shared file awaiting
             // the administrator, say) is exactly one a maintainer may want to push back.
@@ -363,7 +361,7 @@ namespace CRT
 
             ReviewApiClient client = this.thisClient;
             ReviewSession session = this.thisSession;
-            string waiting = ProductionDisplay.PublishingWait(plan.SystemId);
+            string waiting = ProductionDisplay.PublishingWait(plan.BoardId);
 
             string? outcome = null;
             bool failed = true;
@@ -377,15 +375,15 @@ namespace CRT
                 ReviewApiResult<ProductionPublishResult> result = await ServerWait.CallAsync(
                     this,
                     waiting,
-                    token => client.PublishToProductionAsync(session, plan.SystemId, plan.BetaContentHash, plan.Removals?.Files ?? [], token));
+                    token => client.PublishToProductionAsync(session, plan.BoardId, plan.BetaContentHash, plan.Removals?.Files ?? [], token));
 
                 // No answer in two minutes: a publish carries on regardless, so the BETA list says
-                // whether it landed - a system published to production leaves it.
+                // whether it landed - a board published to production leaves it.
                 if (result.Failure == ReviewApiFailure.TimedOut)
                 {
-                    bool? stillInBeta = await this.IsStillInBetaAsync(client, session, plan.SystemId);
+                    bool? stillInBeta = await this.IsStillInBetaAsync(client, session, plan.BoardId);
 
-                    outcome = MaintainerWaitWording.PublishAfterTimeout(plan.SystemId, stillInBeta);
+                    outcome = MaintainerWaitWording.PublishAfterTimeout(plan.BoardId, stillInBeta);
                     failed = stillInBeta != false;
                     await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingQueue, this.AfterChangeAsync);
                     return;
@@ -402,7 +400,7 @@ namespace CRT
                 // The first of two approvals: recorded, nothing copied.
                 outcome = result.Value!.IsAwaitingApproval
                     ? ApprovalWording.Recorded(result.Value.WaitingFor, "the stable source")
-                    : $"{plan.SystemId} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
+                    : $"{plan.BoardId} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
                       FileRemovalWording.Done(result.Value.RemovedFiles) +
                       " Everyone gets it the next time their data updates.";
                 failed = false;
@@ -415,16 +413,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // After a timeout: is the system still waiting in BETA? A publish to production and a
+        // After a timeout: is the board still waiting in BETA? A publish to production and a
         // push-back both take it off the list when they land. Null when the list could not be read.
         // ###########################################################################################
-        private async Task<bool?> IsStillInBetaAsync(ReviewApiClient client, ReviewSession session, string systemId)
+        private async Task<bool?> IsStillInBetaAsync(ReviewApiClient client, ReviewSession session, string boardId)
         {
             ReviewApiResult<ProductionListResponse> list = await ServerWait.CallAsync(
                 this, WaitWording.Checking, token => client.GetProductionListAsync(session, token));
 
             return list.IsOk
-                ? list.Value!.Systems.Any(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal))
+                ? list.Value!.Boards.Any(row => string.Equals(row.BoardId, boardId, StringComparison.Ordinal))
                 : null;
         }
 
@@ -470,8 +468,8 @@ namespace CRT
 
             ReviewApiResult<BetaRollbackPlanView> planned = await ServerWait.CallAsync(
                 this,
-                MaintainerWaitWording.ReadingRollbackPlan(shown.SystemId),
-                token => client.GetBetaRollbackPlanAsync(session, shown.SystemId, token));
+                MaintainerWaitWording.ReadingRollbackPlan(shown.BoardId),
+                token => client.GetBetaRollbackPlanAsync(session, shown.BoardId, token));
 
             if (!planned.IsOk)
             {
@@ -492,7 +490,7 @@ namespace CRT
                 return;
             }
 
-            string waiting = reject ? ProductionDisplay.RejectingWait(shown.SystemId) : ProductionDisplay.PushingBackWait(shown.SystemId);
+            string waiting = reject ? ProductionDisplay.RejectingWait(shown.BoardId) : ProductionDisplay.PushingBackWait(shown.BoardId);
             string? outcome = null;
             bool failed = true;
 
@@ -502,16 +500,16 @@ namespace CRT
                 ReviewApiResult<BetaRollbackResult> result = await ServerWait.CallAsync(
                     this,
                     waiting,
-                    token => client.RollBackBetaAsync(session, shown.SystemId, confirm.Comment, reject, token));
+                    token => client.RollBackBetaAsync(session, shown.BoardId, confirm.Comment, reject, token));
 
-                // No answer in two minutes: whether the system left the BETA list says whether it landed.
+                // No answer in two minutes: whether the board left the BETA list says whether it landed.
                 if (result.Failure == ReviewApiFailure.TimedOut)
                 {
-                    bool? stillInBeta = await this.IsStillInBetaAsync(client, session, shown.SystemId);
+                    bool? stillInBeta = await this.IsStillInBetaAsync(client, session, shown.BoardId);
 
                     outcome = reject
-                        ? MaintainerWaitWording.RejectAfterTimeout(shown.SystemId, stillInBeta)
-                        : MaintainerWaitWording.PushBackAfterTimeout(shown.SystemId, stillInBeta);
+                        ? MaintainerWaitWording.RejectAfterTimeout(shown.BoardId, stillInBeta)
+                        : MaintainerWaitWording.PushBackAfterTimeout(shown.BoardId, stillInBeta);
                     failed = stillInBeta != false;
                     await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingQueue, this.AfterChangeAsync);
                     return;
@@ -523,7 +521,7 @@ namespace CRT
                     return;
                 }
 
-                // The system leaves the list (its BETA state is level with production, or gone) and
+                // The board leaves the list (its BETA state is level with production, or gone) and
                 // its submissions are back in the queue, so the lists are read again rather than patched.
                 await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingQueue, this.AfterChangeAsync);
 

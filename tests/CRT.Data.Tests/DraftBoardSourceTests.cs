@@ -5,11 +5,11 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Which workbook a system is read from (NewContributeStrategy.md Phase 6).
+// Which workbook a board is read from (NewContributeStrategy.md Phase 6).
 //
 // *** THIS IS WHERE THE OVERLAY BECOMES A CHOICE. *** The published workbook used to be read and
 // a draft's row deltas merged on top of it, so a drafted board was a computation rather than a
-// file. Now a draft IS a board folder, and loading a drafted system means reading that folder's
+// file. Now a draft IS a board folder, and loading a drafted board means reading that folder's
 // workbook instead. These tests pin which one wins, and - just as importantly - the cases where
 // a draft must NOT win.
 // ###########################################################################################
@@ -21,33 +21,33 @@ public sealed class DraftBoardSourceTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
     // Writes a published workbook (contents irrelevant - this class resolves paths, it never parses).
     private void WritePublishedWorkbook()
     {
-        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey);
+        string path = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "published workbook");
     }
 
     // Writes a draft folder: the marker, and optionally the workbook beside it.
-    private void WriteDraft(bool withWorkbook = true, NewSystemRegistration? registration = null)
+    private void WriteDraft(bool withWorkbook = true, NewBoardRegistration? registration = null)
     {
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey),
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey),
             new DraftMarker
             {
-                SystemKey = DraftBoardSourceTests.SystemKey,
+                BoardKey = DraftBoardSourceTests.BoardKey,
                 BaseRevision = registration is null ? "2026-09-01" : string.Empty,
-                NewSystem = registration,
+                NewBoard = registration,
             });
 
         if (withWorkbook)
         {
-            string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey);
+            string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, "draft workbook");
         }
@@ -55,7 +55,7 @@ public sealed class DraftBoardSourceTests : IDisposable
 
     private BoardSourceSelection Resolve(bool preferPublished = false) =>
         DraftBoardSource.Resolve(
-            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished);
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished);
 
     // ------------------------------------------------------------------ The basic choice
 
@@ -69,7 +69,7 @@ public sealed class DraftBoardSourceTests : IDisposable
         Assert.False(selection.IsDraft);
         Assert.Null(selection.Marker);
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             selection.WorkbookPath);
     }
 
@@ -84,7 +84,7 @@ public sealed class DraftBoardSourceTests : IDisposable
         Assert.True(selection.IsDraft);
         Assert.NotNull(selection.Marker);
         Assert.Equal(
-            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey),
+            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey),
             selection.WorkbookPath);
     }
 
@@ -100,7 +100,7 @@ public sealed class DraftBoardSourceTests : IDisposable
 
         Assert.True(selection.IsDraft);
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             selection.PublishedWorkbookPath);
     }
 
@@ -120,7 +120,7 @@ public sealed class DraftBoardSourceTests : IDisposable
         this.WritePublishedWorkbook();
 
         string strayWorkbook = DraftFolderLayout.GetWorkbookPath(
-            this.DraftsRoot, DraftBoardSourceTests.SystemKey);
+            this.DraftsRoot, DraftBoardSourceTests.BoardKey);
 
         Directory.CreateDirectory(Path.GetDirectoryName(strayWorkbook)!);
         File.WriteAllText(strayWorkbook, "a file somebody copied here");
@@ -129,7 +129,7 @@ public sealed class DraftBoardSourceTests : IDisposable
 
         Assert.False(selection.IsDraft);
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             selection.WorkbookPath);
     }
 
@@ -151,7 +151,7 @@ public sealed class DraftBoardSourceTests : IDisposable
 
         Assert.False(selection.IsDraft);
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             selection.WorkbookPath);
 
         // The marker is STILL reported, so the draft is still listed and can be discarded.
@@ -174,7 +174,7 @@ public sealed class DraftBoardSourceTests : IDisposable
 
         Assert.False(selection.IsDraft);
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             selection.WorkbookPath);
     }
 
@@ -189,51 +189,51 @@ public sealed class DraftBoardSourceTests : IDisposable
         Assert.NotNull(this.Resolve(preferPublished: true).Marker);
     }
 
-    // ------------------------------------------------------------------ A draft-only system
+    // ------------------------------------------------------------------ A draft-only board
 
     [Fact]
-    public void A_DRAFT_ONLY_system_is_read_from_its_draft_and_says_so()
+    public void A_DRAFT_ONLY_board_is_read_from_its_draft_and_says_so()
     {
-        // No published workbook written at all - this system exists nowhere else.
-        this.WriteDraft(registration: new NewSystemRegistration
+        // No published workbook written at all - this board exists nowhere else.
+        this.WriteDraft(registration: new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
-            ExcelDataFile = DraftBoardSourceTests.SystemKey,
+            ExcelDataFile = DraftBoardSourceTests.BoardKey,
         });
 
         BoardSourceSelection selection = this.Resolve();
 
         Assert.True(selection.IsDraft);
-        Assert.True(selection.IsNewSystem);
+        Assert.True(selection.IsNewBoard);
     }
 
     // ###########################################################################################
-    // *** IsNewSystem COMES OFF THE MARKER, NEVER FROM "the published file is missing". ***
+    // *** IsNewBoard COMES OFF THE MARKER, NEVER FROM "the published file is missing". ***
     //
-    // For a system the main workbook DOES list, a missing file is a real sync failure that must
+    // For a board the main workbook DOES list, a missing file is a real sync failure that must
     // keep failing loudly rather than quietly rendering an empty board. That distinction was
     // already load-bearing in DataManager before this change, and it survives it.
     // ###########################################################################################
     // ###########################################################################################
     // *** THE LISTING DECIDES THE BASELINE WHEN THE CALLER KNOWS IT (code review, 2026-09-27). ***
-    // HardwareBoardEntry.IsPublished is the rule; the marker only stands in for it. A new system's
-    // draft whose system has since been published is compared with the published board, and a
+    // HardwareBoardEntry.IsPublished is the rule; the marker only stands in for it. A new board's
+    // draft whose board has since been published is compared with the published board, and a
     // legacy board's draft with an ORDINARY marker ("Save to draft" seeds one) with nothing - not
     // with the contributor's own copy in Data/, against which nothing ever counted.
     // ###########################################################################################
     [Fact]
-    public void A_new_systems_draft_of_a_system_now_listed_as_published_is_compared_with_the_published_board()
+    public void A_new_boards_draft_of_a_board_now_listed_as_published_is_compared_with_the_published_board()
     {
-        this.WriteDraft(registration: new NewSystemRegistration { ExcelDataFile = DraftBoardSourceTests.SystemKey });
+        this.WriteDraft(registration: new NewBoardRegistration { ExcelDataFile = DraftBoardSourceTests.BoardKey });
 
         BoardSourceSelection selection = DraftBoardSource.Resolve(
-            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: true);
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, listedAsPublished: true);
 
-        Assert.Equal(DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey), selection.PublishedWorkbookPath);
+        Assert.Equal(DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey), selection.PublishedWorkbookPath);
         Assert.Equal(
             selection.PublishedWorkbookPath,
-            DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: true)!.PublishedWorkbookPath);
+            DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, listedAsPublished: true)!.PublishedWorkbookPath);
     }
 
     [Fact]
@@ -243,59 +243,59 @@ public sealed class DraftBoardSourceTests : IDisposable
         this.WriteDraft();
 
         Assert.Equal(string.Empty, DraftBoardSource.Resolve(
-            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: false).PublishedWorkbookPath);
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, listedAsPublished: false).PublishedWorkbookPath);
         Assert.Equal(string.Empty, DraftStatusReader.Resolve(
-            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, listedAsPublished: false)!.PublishedWorkbookPath);
+            this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, listedAsPublished: false)!.PublishedWorkbookPath);
 
         // With no listing to ask, the marker decides as before.
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
             this.Resolve().PublishedWorkbookPath);
     }
 
     [Fact]
-    public void A_PUBLISHED_system_whose_file_is_missing_is_NOT_mistaken_for_a_new_system()
+    public void A_PUBLISHED_board_whose_file_is_missing_is_NOT_mistaken_for_a_new_board()
     {
         // A draft with no registration, and no published file on disk - a broken sync, not a new
-        // system.
+        // board.
         this.WriteDraft();
 
-        Assert.False(this.Resolve().IsNewSystem);
+        Assert.False(this.Resolve().IsNewBoard);
     }
 
     [Fact]
-    public void VIEW_AS_PUBLISHED_on_a_draft_only_system_points_at_a_file_that_does_not_exist()
+    public void VIEW_AS_PUBLISHED_on_a_draft_only_board_points_at_a_file_that_does_not_exist()
     {
-        // Correct rather than a bug: officially this system does not exist, and the load path
+        // Correct rather than a bug: officially this board does not exist, and the load path
         // renders that as a blank board rather than as a failure.
-        this.WriteDraft(registration: new NewSystemRegistration
+        this.WriteDraft(registration: new NewBoardRegistration
         {
-            ExcelDataFile = DraftBoardSourceTests.SystemKey,
+            ExcelDataFile = DraftBoardSourceTests.BoardKey,
         });
 
         BoardSourceSelection selection = this.Resolve(preferPublished: true);
 
         Assert.False(selection.IsDraft);
         Assert.False(File.Exists(selection.WorkbookPath));
-        Assert.True(selection.IsNewSystem);
+        Assert.True(selection.IsNewBoard);
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM IS COMPARED AGAINST NOTHING, even with a file at its published path
+    // *** A NEW BOARD IS COMPARED AGAINST NOTHING, even with a file at its published path
     // (2026-09-27). *** That file can only be the contributor's own - a board made the old way,
     // listed by a _UserContribution workbook, lives in Data/ at exactly this path - and comparing a
     // copy of it against itself marked none of its rows as drafted. The ordinary draft beside it
     // (The_published_path_is_reported_EVEN_WHEN...) keeps its published baseline.
     // ###########################################################################################
     [Fact]
-    public void A_DRAFT_ONLY_system_has_NO_baseline_even_with_a_file_at_its_published_path()
+    public void A_DRAFT_ONLY_board_has_NO_baseline_even_with_a_file_at_its_published_path()
     {
         this.WritePublishedWorkbook();
-        this.WriteDraft(registration: new NewSystemRegistration
+        this.WriteDraft(registration: new NewBoardRegistration
         {
             HardwareName = "C64",
             BoardName = "250407",
-            ExcelDataFile = DraftBoardSourceTests.SystemKey,
+            ExcelDataFile = DraftBoardSourceTests.BoardKey,
         });
 
         BoardSourceSelection selection = this.Resolve();
@@ -309,11 +309,11 @@ public sealed class DraftBoardSourceTests : IDisposable
     [Fact]
     public void HasDraft_answers_from_the_MARKER_alone()
     {
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.BoardKey));
 
         this.WriteDraft();
 
-        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.SystemKey));
+        Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.BoardKey));
     }
 
     [Fact]
@@ -322,12 +322,12 @@ public sealed class DraftBoardSourceTests : IDisposable
         // Same rule as the load itself, and it has to be: a Drafts tab that listed stray folders
         // would offer to submit data the contributor never drafted.
         string strayWorkbook = DraftFolderLayout.GetWorkbookPath(
-            this.DraftsRoot, DraftBoardSourceTests.SystemKey);
+            this.DraftsRoot, DraftBoardSourceTests.BoardKey);
 
         Directory.CreateDirectory(Path.GetDirectoryName(strayWorkbook)!);
         File.WriteAllText(strayWorkbook, "stray");
 
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.SystemKey));
+        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, DraftBoardSourceTests.BoardKey));
     }
 
     // ------------------------------------------------------------------ ViewedDraftFolder / ResolveViewedPath
@@ -348,12 +348,12 @@ public sealed class DraftBoardSourceTests : IDisposable
         this.WriteDraft();
 
         Assert.Equal(
-            DraftFolderLayout.GetSystemFolder(this.DraftsRoot, DraftBoardSourceTests.SystemKey),
-            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished: false));
+            DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftBoardSourceTests.BoardKey),
+            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: false));
 
         Assert.Equal(
-            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey),
-            DraftBoardSource.ResolveViewedPath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished: false));
+            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey),
+            DraftBoardSource.ResolveViewedPath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: false));
     }
 
     [Fact]
@@ -364,17 +364,17 @@ public sealed class DraftBoardSourceTests : IDisposable
 
         Assert.Equal(
             string.Empty,
-            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished: true));
+            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: true));
 
         Assert.Equal(
-            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.SystemKey),
-            DraftBoardSource.ResolveViewedPath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished: true));
+            DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey),
+            DraftBoardSource.ResolveViewedPath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: true));
 
         // The WRITE path is unaffected: an edit made while viewing the published board still
         // belongs in the draft, which is the only place a contributor's change may land.
         Assert.Equal(
-            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey),
-            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey));
+            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey),
+            DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey));
     }
 
     [Fact]
@@ -384,17 +384,17 @@ public sealed class DraftBoardSourceTests : IDisposable
         // its files must not replace the published ones on screen either.
         this.WritePublishedWorkbook();
 
-        string strayWorkbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.SystemKey);
+        string strayWorkbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(strayWorkbook)!);
         File.WriteAllText(strayWorkbook, "stray");
 
         Assert.Equal(
             string.Empty,
-            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.SystemKey, preferPublished: false));
+            DraftBoardSource.ViewedDraftFolder(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: false));
     }
 
     [Fact]
-    public void An_unresolvable_system_answers_empty_rather_than_throwing()
+    public void An_unresolvable_board_answers_empty_rather_than_throwing()
     {
         BoardSourceSelection selection = DraftBoardSource.Resolve(
             this.DataRoot, this.DraftsRoot, excelDataFile: string.Empty);

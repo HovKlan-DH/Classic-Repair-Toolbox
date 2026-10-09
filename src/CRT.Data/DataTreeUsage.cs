@@ -37,7 +37,7 @@ namespace Handlers.DataHandling
     // "Board//U8.png" or "Board/x/../U8.png" in a hand-edited row is found by every client's
     // operating system as "Board/U8.png", so that file is used too (Resolved).
     //
-    // *** A BOARD FOUND IN THE TREE COUNTS EVEN WHEN NO MASTER LISTS IT. *** A new system the
+    // *** A BOARD FOUND IN THE TREE COUNTS EVEN WHEN NO MASTER LISTS IT. *** A new board the
     // server publishes is not added to the master workbook (a known gap, done by hand), so a rule
     // that trusted the masters alone would call the whole new board unused and delete it.
     //
@@ -61,7 +61,7 @@ namespace Handlers.DataHandling
     public static class DataTreeUsage
     {
         // The master's sheet and column - MasterWorkbookSchema's, the one definition CRT, this rule and
-        // the server's new-system row all read.
+        // the server's new-board row all read.
         public const string MasterSheetName = MasterWorkbookSchema.SheetName;
         public const string ExcelDataFileColumn = MasterWorkbookSchema.ColExcelDataFile;
 

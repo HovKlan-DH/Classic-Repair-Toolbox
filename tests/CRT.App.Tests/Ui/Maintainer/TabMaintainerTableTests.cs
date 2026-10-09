@@ -66,7 +66,7 @@ public sealed class TabMaintainerTableTests
     }
 
     // ###########################################################################################
-    // A submission's table and a system's are one table in two places, and share one remembered
+    // A submission's table and a board's are one table in two places, and share one remembered
     // pick - so a pick in either is handed to the other (code review, 2026-10-04: each wrote the one
     // setting without telling the other, so the next launch opened both on whichever was picked
     // last, and the other table went on showing its own).
@@ -81,14 +81,14 @@ public sealed class TabMaintainerTableTests
             main.UseRememberedChoices(BoardTableRowKinds.None, remembered.Add);
 
             BoardTableEditor submission = main.TableEditorsForSharedChoices[0];
-            BoardTableEditor system = main.TableEditorsForSharedChoices[1];
+            BoardTableEditor board = main.TableEditorsForSharedChoices[1];
 
             submission.Filter = BoardTableRowKinds.Errors;
 
-            Assert.Equal(BoardTableRowKinds.Errors, system.FilterWanted);
+            Assert.Equal(BoardTableRowKinds.Errors, board.FilterWanted);
             Assert.Equal([BoardTableRowKinds.Errors], remembered);
 
-            system.Filter = BoardTableRowKinds.Added | BoardTableRowKinds.Errors;
+            board.Filter = BoardTableRowKinds.Added | BoardTableRowKinds.Errors;
 
             Assert.Equal(BoardTableRowKinds.Added | BoardTableRowKinds.Errors, submission.FilterWanted);
             Assert.Equal(BoardTableRowKinds.Added | BoardTableRowKinds.Errors, remembered[^1]);
@@ -145,23 +145,23 @@ public sealed class TabMaintainerTableTests
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM'S TOOLTIP DOES NOT SAY "PUBLISHED" (owner report, 2026-09-26: "when there is
+    // *** A NEW BOARD'S TOOLTIP DOES NOT SAY "PUBLISHED" (owner report, 2026-09-26: "when there is
     // a NEW system and the maintainer changes some data, then it states 'Published value: (empty)'
     // - yes, it will always be empty"). ***
     //
-    // A new system is compared with the SUBMISSION as it arrived (ShowTable's `Published ??
+    // A new board is compared with the SUBMISSION as it arrived (ShowTable's `Published ??
     // Submitted`), so the table HAS a baseline and the default wording named a board that does not
     // exist. The window is what knows this, so this is asserted through the real ShowTable rather
     // than on BoardTableDocument alone - a document test cannot see the window forgetting to say it.
     // ###########################################################################################
     [Fact]
-    public void A_new_systems_changed_cell_names_the_submission_rather_than_a_published_value()
+    public void A_new_boards_changed_cell_names_the_submission_rather_than_a_published_value()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
 
-            // Nothing of this system is published.
+            // Nothing of this board is published.
             main.OpenTableForTests(Row(42), new ReviewTableData(
                 Version: 1,
                 Published: null,
@@ -178,18 +178,25 @@ public sealed class TabMaintainerTableTests
         });
     }
 
-    // A published board is unchanged: its tooltip has always named the published value.
+    // ###########################################################################################
+    // *** A PUBLISHED BOARD'S TOOLTIP NAMES THE BETA SOURCE (owner request, 2026-10-05). *** The
+    // server compares a submission with its BETA tree, which can already hold what the stable source
+    // does not - and "Published value" showing such a value read as an error.
+    // ###########################################################################################
     [Fact]
-    public void A_published_boards_changed_cell_still_names_the_published_value()
+    public void A_published_boards_changed_cell_names_the_BETA_source_value()
     {
         UiTest.Run(() =>
         {
             var main = new TabMaintainer();
             main.OpenTableForTests(Row(42), Table());
 
-            Assert.Equal(
-                BoardTableDocument.DefaultBaselineLabel,
-                main.TableEditorForTests.CommitAndGetDocument()!.BaselineLabel);
+            BoardTableDocument document = main.TableEditorForTests.CommitAndGetDocument()!;
+            BoardTableSheet images = document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!;
+            BoardTableCell changed = Assert.Single(images.Rows).Cells[images.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFile)];
+
+            Assert.Equal("BETA source value", document.BaselineLabel);
+            Assert.Equal("BETA source value: Commodore/C64/250407/old.png", changed.ToolTip);
         });
     }
 
@@ -213,8 +220,8 @@ public sealed class TabMaintainerTableTests
 
     // ###########################################################################################
     // *** EACH SUBMISSION REOPENS ON THE SHEET LAST LOOKED AT IN IT (owner requests, 2026-09-26:
-    // "per system, so if I am in 'Important signals' in one system, then I can navigate to another
-    // system, and then it will show the last sheet/tab for that system"). *** One not opened yet
+    // "per board, so if I am in 'Important signals' in one board, then I can navigate to another
+    // board, and then it will show the last sheet/tab for that board"). *** One not opened yet
     // starts on its first sheet with a change; a remembered sheet whose tab "Show changes only"
     // hides gives way to the first sheet that has one.
     // ###########################################################################################
@@ -263,14 +270,14 @@ public sealed class TabMaintainerTableTests
     }
 
     // ###########################################################################################
-    // *** A NEW SYSTEM: ONLY THE MAINTAINER'S OWN CHANGES ARE MARKED (owner decision, 2026-09-26). ***
+    // *** A NEW BOARD: ONLY THE MAINTAINER'S OWN CHANGES ARE MARKED (owner decision, 2026-09-26). ***
     // Compared with the submission itself, its rows start white - not all green ("everything is
     // new", so green said nothing), and not with a colour key of a lone "0 Flagged" ("where are the
     // others?"). The change pills picked show no row until the maintainer changes one; an edit is
     // then coloured, and shown.
     // ###########################################################################################
     [Fact]
-    public void A_new_systems_table_marks_only_the_maintainers_own_changes()
+    public void A_new_boards_table_marks_only_the_maintainers_own_changes()
     {
         UiTest.Run(() =>
         {

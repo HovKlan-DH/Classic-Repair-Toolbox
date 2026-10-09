@@ -19,7 +19,7 @@ namespace CRT.Server.Tests
     public sealed class AmendSubmissionFlowTests : IDisposable
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
-        private const string SystemId = "Commodore/C64/250407";
+        private const string BoardId = "Commodore/C64/250407";
         private const string Manual = "Commodore/C64/250407/manual.pdf";
         private const string SheetImage = "Commodore/C64/250407/sheet-1.png";
 
@@ -48,8 +48,8 @@ namespace CRT.Server.Tests
 
         private BlobStore Blobs() => new(this.thisBlobs, NullLogger<BlobStore>.Instance);
 
-        private static ReviewAccess MaintainerOf(params string[] systems) =>
-            ReviewAccess.For(AmendSubmissionFlowTests.Account(administrator: false), systems);
+        private static ReviewAccess MaintainerOf(params string[] boards) =>
+            ReviewAccess.For(AmendSubmissionFlowTests.Account(administrator: false), boards);
 
         private static ReviewAccess Administrator() =>
             ReviewAccess.For(AmendSubmissionFlowTests.Account(administrator: true));
@@ -64,7 +64,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
             var manifest = new SubmissionManifest
             {
-                SystemId = AmendSubmissionFlowTests.SystemId,
+                BoardId = AmendSubmissionFlowTests.BoardId,
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -85,7 +85,7 @@ namespace CRT.Server.Tests
 
             long id = await store.CreateAsync(
                 new NewSubmission(
-                    manifest.SystemId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
+                    manifest.BoardId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
                     null, "contributor@example.com", "192.0.2.1", "hash", "r0", "A change.", 1,
                     [.. manifest.Files], AmendSubmissionFlowTests.Now, AmendSubmissionFlowTests.Now.AddHours(24)),
                 CancellationToken.None);
@@ -110,7 +110,7 @@ namespace CRT.Server.Tests
             FakeSubmissionStore store, long id, SubmissionRows rows, ReviewAccess? access = null, int expectedVersion = 0,
             FakeAccountStore? accounts = null, PublishLock? publishLock = null) =>
             AmendSubmissionFlow.AmendAsync(
-                access ?? AmendSubmissionFlowTests.MaintainerOf(AmendSubmissionFlowTests.SystemId),
+                access ?? AmendSubmissionFlowTests.MaintainerOf(AmendSubmissionFlowTests.BoardId),
                 id, expectedVersion, rows, this.thisData, store, accounts ?? new FakeAccountStore(), this.Blobs(),
                 publishLock ?? new PublishLock(), AmendSubmissionFlowTests.Now, CancellationToken.None);
 
@@ -126,7 +126,7 @@ namespace CRT.Server.Tests
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
 
-            const string KiCadPath = AmendSubmissionFlowTests.SystemId + "/KiCad data/board.kicad_pcb";
+            const string KiCadPath = AmendSubmissionFlowTests.BoardId + "/KiCad data/board.kicad_pcb";
 
             // Into the submission's FILE RECORDS, where the store rebuilds a payload's files from -
             // the fake's LoadPayloadAsync models the real store's join, not the saved object.

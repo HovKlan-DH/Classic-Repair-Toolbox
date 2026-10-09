@@ -79,7 +79,7 @@ public sealed class MainWindowTests : IDisposable
     // the shared contract the fix relies on, and a test per editor would pass while the shared
     // step was missing from a third.
     // ###########################################################################################
-    private static readonly string DraftSystemKey =
+    private static readonly string DraftBoardKey =
         "Commodore/C64/250407/Data C64 250407.xlsx";
 
     private void GiveTheDraftsTabSomethingToShow(CRT.Main window)
@@ -89,16 +89,16 @@ public sealed class MainWindowTests : IDisposable
         DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts-" + Guid.NewGuid().ToString("N")));
 
         DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, MainWindowTests.DraftSystemKey),
+            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, MainWindowTests.DraftBoardKey),
             new DraftMarker
             {
-                SystemKey = MainWindowTests.DraftSystemKey,
+                BoardKey = MainWindowTests.DraftBoardKey,
                 BaseRevision = "2026-09-01",
-                NewSystem = null,
+                NewBoard = null,
                 CreatedUtc = "2026-09-23T00:00:00Z",
             });
 
-        // RefreshDrafts pairs drafts against the known systems, which normally come from
+        // RefreshDrafts pairs drafts against the known boards, which normally come from
         // DataManager - overridden so this test needs no data tree.
         window.TabDrafts.HardwareBoardsOverrideForTests =
         [
@@ -106,7 +106,7 @@ public sealed class MainWindowTests : IDisposable
             {
                 HardwareName = "Commodore 64",
                 BoardName = "250407",
-                ExcelDataFile = MainWindowTests.DraftSystemKey,
+                ExcelDataFile = MainWindowTests.DraftBoardKey,
             },
         ];
     }
@@ -180,7 +180,7 @@ public sealed class MainWindowTests : IDisposable
             this.GiveTheDraftsTabSomethingToShow(window);
 
             // The table opens the draft's WORKBOOK, which the marker alone does not provide.
-            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, MainWindowTests.DraftSystemKey);
+            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, MainWindowTests.DraftBoardKey);
             CachedWorkbooks.Write(workbook, new BoardData { Components = [new ComponentEntry { BoardLabel = "C1" }] });
 
             window.TabDrafts.PublishedBoardOverrideForTests = _ => null;
@@ -719,11 +719,11 @@ public sealed class MainWindowTests : IDisposable
     // ------------------------------------------------------------------ landing on the Drafts tab
 
     // ###########################################################################################
-    // *** CREATING A SYSTEM LANDS THE USER ON THE DRAFTS TAB (owner request, 2026-09-24). ***
+    // *** CREATING A BOARD LANDS THE USER ON THE DRAFTS TAB (owner request, 2026-09-24). ***
     //
-    // Creating a system is never the end of a task - schematic images, KiCad data and component
+    // Creating a board is never the end of a task - schematic images, KiCad data and component
     // rows all still have to be added, and every one of those actions lives on the Drafts tab.
-    // OpenNewSystemWindowAsync used to select the new board and stop there, leaving the user on
+    // OpenNewBoardWindowAsync used to select the new board and stop there, leaving the user on
     // whichever tab they started from (usually Contribute, which has nothing more to offer) with
     // no sign that a new tab had appeared to hold their work.
     //
@@ -758,7 +758,7 @@ public sealed class MainWindowTests : IDisposable
     // A HIDDEN tab cannot be selected, and trying would leave the tab control showing an empty
     // page. The caller has just created a draft so the tab will normally be up, but a silent
     // no-op is the right failure here - turning a cosmetic miss into a thrown exception would
-    // fail the system creation that already succeeded.
+    // fail the board creation that already succeeded.
     // ###########################################################################################
     [Fact]
     public void Switching_to_a_HIDDEN_drafts_tab_leaves_the_selection_alone()

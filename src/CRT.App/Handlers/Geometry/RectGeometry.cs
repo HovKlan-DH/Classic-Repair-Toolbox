@@ -193,7 +193,7 @@ namespace Handlers.Geometry
             return Math.Clamp(value, 0.0, 1.0);
         }
         // ###########################################################################################
-        // Converts a pixel-space point into the overlay's local coordinate system.
+        // Converts a pixel-space point into the overlay's local coordinate board.
         // ###########################################################################################
         public static Point PixelToLocalPoint(Point pixelPoint, Rect contentRect, PixelSize pixelSize)
         {

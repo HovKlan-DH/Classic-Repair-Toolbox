@@ -64,10 +64,10 @@ namespace Handlers.MaintainerHandling
                 DataResetWording.Line(plan.Submissions, "submission", "submissions", " - every one, whatever its state, with its uploaded files"),
                 DataResetWording.Line(plan.Accounts, "account", "accounts",
                     $" - every one but the administrators ({DataResetWording.Count(plan.Administrators, "administrator", "administrators")} kept)"),
-                DataResetWording.Line(plan.Maintainers, "maintainer of a system", "maintainers of a system", string.Empty),
+                DataResetWording.Line(plan.Maintainers, "maintainer of a board", "maintainers of a board", string.Empty),
                 DataResetWording.Line(plan.Invitations, "invitation to maintain", "invitations to maintain", string.Empty),
-                DataResetWording.Line(plan.Systems, "system record", "system records",
-                    " - made again as each system is next used; the systems themselves stay"),
+                DataResetWording.Line(plan.Boards, "board record", "board records",
+                    " - made again as each board is next used; the boards themselves stay"),
                 DataResetWording.Line(plan.HistoryEntries, "history entry", "history entries", " - the reset itself becomes the first"),
                 DataResetWording.Line(plan.BoardViews, "board view", "board views", string.Empty),
                 DataResetWording.Line(plan.ApiUsageRows, "API usage row", "API usage rows", string.Empty)
@@ -87,7 +87,7 @@ namespace Handlers.MaintainerHandling
                 (answer.AccountsDeleted, "account", "accounts"),
                 (answer.MaintainersDeleted, "maintainer", "maintainers"),
                 (answer.InvitationsDeleted, "invitation", "invitations"),
-                (answer.SystemsDeleted, "system record", "system records"),
+                (answer.BoardsDeleted, "board record", "board records"),
                 (answer.HistoryEntriesDeleted, "history entry", "history entries"),
                 (answer.BoardViewsDeleted, "board view", "board views"),
                 (answer.ApiUsageRowsDeleted, "API usage row", "API usage rows")

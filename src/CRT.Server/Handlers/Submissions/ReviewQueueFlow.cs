@@ -8,12 +8,12 @@ namespace CRT.Server.Handlers.Submissions
     // each row says about itself.
     //
     // *** FILTERED TO WHAT THIS ACCOUNT MAY DECIDE. *** An administrator sees everything; a
-    // maintainer sees their systems' submissions. The rule is ReviewAuthority's, applied row by row
+    // maintainer sees their boards' submissions. The rule is ReviewAuthority's, applied row by row
     // - the queue is small, and one rule in one place beats a second copy of it in SQL.
     //
     // *** THE TWO BADGES (owner request, 2026-09-26) ARE THE DETAIL'S OWN ANSWERS. *** The queue
-    // list in the Maintainer tab shows "New system" / "Published system" and "Awaiting
-    // your review". A new system is one with no published board - PublishedBoardLocator, which the
+    // list in the Maintainer tab shows "New board" / "Published board" and "Awaiting
+    // your review". A new board is one with no published board - PublishedBoardLocator, which the
     // detail's comparison reads through. Awaiting you is ApprovalStatus.CanApprove - the answer the
     // Approve button follows - judged with the stored shared-files flag: re-checking the tree needs
     // each submission's payload, which the queue deliberately never loads. The flag is only a
@@ -47,7 +47,7 @@ namespace CRT.Server.Handlers.Submissions
                 if (!ReviewAuthority.CanReview(access, record))
                     continue;
 
-                bool isNewSystem = !PublishedBoardLocator.LocateSystem(dataTreeRoot, record.SystemId).Exists;
+                bool isNewBoard = !PublishedBoardLocator.LocateBoard(dataTreeRoot, record.BoardId).Exists;
 
                 ApprovalStatus approval = await ApprovePublishFlow
                     .ApprovalStatusAsync(access, record, record.TouchesSharedFiles, store, accounts, cancellationToken)
@@ -55,7 +55,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 bool awaitsYou = ReviewAuthority.CanPublish(access, record) && approval.CanApprove;
 
-                entries.Add(ReviewQueueFlow.Entry(record, isNewSystem, awaitsYou, discarded.TryGetValue(record.Id, out DateTimeOffset at) ? at : null));
+                entries.Add(ReviewQueueFlow.Entry(record, isNewBoard, awaitsYou, discarded.TryGetValue(record.Id, out DateTimeOffset at) ? at : null));
             }
 
             // Everything in a filtered queue is publishable by the caller - CanPublish is kept for
@@ -73,13 +73,13 @@ namespace CRT.Server.Handlers.Submissions
         // One submission as a queue row - also the `submission` of the detail answer, with the
         // detail's own two answers.
         // ###########################################################################################
-        public static ReviewQueueEntry Entry(SubmissionRecord record, bool? isNewSystem, bool? awaitsYou, DateTimeOffset? draftDiscardedUtc = null)
+        public static ReviewQueueEntry Entry(SubmissionRecord record, bool? isNewBoard, bool? awaitsYou, DateTimeOffset? draftDiscardedUtc = null)
         {
             ArgumentNullException.ThrowIfNull(record);
 
             return new ReviewQueueEntry(
                 record.Id,
-                record.SystemId,
+                record.BoardId,
                 record.State,
                 record.Summary,
                 record.ContactEmail,
@@ -89,7 +89,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 // So the administrator can see WHY a submission is theirs as well as a maintainer's.
                 record.TouchesSharedFiles,
-                isNewSystem,
+                isNewBoard,
                 awaitsYou,
 
                 // The contributor discarded their own draft after sending it (2026-09-28).

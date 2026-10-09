@@ -179,7 +179,7 @@ namespace Handlers.MaintainerHandling
     // One group of routes under its heading.
     public sealed record ApiUsageGroup(string Heading, IReadOnlyList<ApiUsageRouteLines> Routes);
 
-    // One route: "POST /api/review/systems/edit", its summary line, and a line per version.
+    // One route: "POST /api/review/boards/edit", its summary line, and a line per version.
     public sealed record ApiUsageRouteLines(
         string Title,
         IReadOnlyList<ReviewNoteRun> Summary,

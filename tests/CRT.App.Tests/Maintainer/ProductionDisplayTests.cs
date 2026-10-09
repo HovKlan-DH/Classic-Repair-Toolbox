@@ -18,14 +18,14 @@ public sealed class ProductionDisplayTests
         new(path, new string('a', 64), change, PromotionStage.Content, shared);
 
     // ###########################################################################################
-    // THE BETA SCREEN'S LIST LINE (2026-09-27): where BETA and production stand - and, for a system
+    // THE BETA SCREEN'S LIST LINE (2026-09-27): where BETA and production stand - and, for a board
     // this account already approved, that it is with the other approver, since the row is dimmed
     // for it. Said in the queue's own words.
     // ###########################################################################################
     [Fact]
-    public void A_beta_list_line_says_when_the_system_waits_for_the_other_approver()
+    public void A_beta_list_line_says_when_the_board_waits_for_the_other_approver()
     {
-        ProductionSystemRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null);
+        ProductionBoardRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null);
 
         Assert.Equal("BETA 2026-September-25, stable 2026-May-14", ProductionDisplay.ListFooter(row));
         Assert.Equal("BETA 2026-September-25, stable 2026-May-14", ProductionDisplay.ListFooter(row with { AwaitsYou = true }));
@@ -40,9 +40,9 @@ public sealed class ProductionDisplayTests
     // review, 2026-10-05). The server says which; the line follows it.
     // ###########################################################################################
     [Fact]
-    public void A_beta_list_line_says_when_the_system_waits_for_the_administrator()
+    public void A_beta_list_line_says_when_the_board_waits_for_the_administrator()
     {
-        ProductionSystemRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null, AwaitsYou: false);
+        ProductionBoardRow row = new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null, AwaitsYou: false);
 
         Assert.Equal(
             "BETA 2026-September-25, stable 2026-May-14 - with the administrator",
@@ -194,7 +194,7 @@ public sealed class ProductionDisplayTests
 
     // ###########################################################################################
     // *** THE SENTENCE THAT STOPS SOMEONE ELSE'S WORK BEING DISCARDED UNKNOWINGLY. *** A rollback
-    // is per SYSTEM, so it takes back every submission merged since the last promotion. With more
+    // is per BOARD, so it takes back every submission merged since the last promotion. With more
     // than one, the explanation has to SAY so - a maintainer returning one contributor's work must
     // not silently take back two others'.
     // ###########################################################################################
@@ -213,10 +213,10 @@ public sealed class ProductionDisplayTests
         Assert.DoesNotContain("ALL", single, StringComparison.Ordinal);
     }
 
-    // A system never promoted has nothing to go back to, and the explanation says that rather than
+    // A board never promoted has nothing to go back to, and the explanation says that rather than
     // describing a restore that is not happening.
     [Fact]
-    public void A_system_never_promoted_is_explained_as_leaving_beta()
+    public void A_board_never_promoted_is_explained_as_leaving_beta()
     {
         Assert.Contains(
             "removed from BETA entirely",
@@ -394,13 +394,13 @@ public sealed class ProductionDisplayTests
     }
 
     [Fact]
-    public void A_system_never_in_production_says_so()
+    public void A_board_never_in_production_says_so()
     {
-        var row = new ProductionSystemRow("Amstrad/CPC/464", "Amstrad", "CPC", "464", "2026-September-25", "h", null, null);
+        var row = new ProductionBoardRow("Amstrad/CPC/464", "Amstrad", "CPC", "464", "2026-September-25", "h", null, null);
 
         Assert.Equal(
             "Amstrad / CPC / 464  -  BETA 2026-September-25, never published to the stable source",
-            ProductionDisplay.SystemLine(row));
+            ProductionDisplay.BoardLine(row));
     }
 
     [Fact]
@@ -408,7 +408,7 @@ public sealed class ProductionDisplayTests
     {
         // On one line the list cut the state off at its width ("...never p") in the first render,
         // hiding how far production is behind - the one fact the row is there for.
-        var row = new ProductionSystemRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "h", "2026-May-14", null);
+        var row = new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "h", "2026-May-14", null);
 
         Assert.Equal(
             "Commodore / C64 / 250407\nBETA 2026-September-25, stable 2026-May-14",
@@ -423,16 +423,16 @@ public sealed class ProductionDisplayTests
     public void The_list_says_whether_the_server_can_do_it_at_all()
     {
         // "Nothing waiting" and "this server cannot publish to production" must read differently.
-        ProductionListResponse? off = ReviewApiParser.ParseProductionList("""{"configured":false,"systems":[]}""");
+        ProductionListResponse? off = ReviewApiParser.ParseProductionList("""{"configured":false,"boards":[]}""");
         ProductionListResponse? on = ReviewApiParser.ParseProductionList("""
-            {"configured":true,"systems":[
-              {"systemId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407",
+            {"configured":true,"boards":[
+              {"boardId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407",
                "betaRevision":"2026-September-25","betaContentHash":"abc","productionRevision":null,"productionPublishedUtc":null}]}
             """);
 
         Assert.False(off!.Configured);
         Assert.True(on!.Configured);
-        Assert.Equal("abc", Assert.Single(on.Systems).BetaContentHash);
+        Assert.Equal("abc", Assert.Single(on.Boards).BetaContentHash);
     }
 
     [Fact]
@@ -441,7 +441,7 @@ public sealed class ProductionDisplayTests
         // The server serialises CRT.Data's PromotionFile; the enums travel as names so a member
         // added later cannot shift every value by one.
         ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan("""
-            {"systemId":"Commodore/C64/250407","betaRevision":"2026-September-25","betaContentHash":"abc",
+            {"boardId":"Commodore/C64/250407","betaRevision":"2026-September-25","betaContentHash":"abc",
              "touchesSharedFiles":true,"canPublish":false,"refusal":"Only an administrator.","unchangedCount":12,
              "files":[{"path":"Commodore/Shared files/x.png","sha256":"aa","change":"Replaced","stage":"Content","isShared":true}],
              "problems":[{"severity":1,"code":"promote.x","subject":"s","message":"Something is wrong."}]}
@@ -464,7 +464,7 @@ public sealed class ProductionDisplayTests
     [Fact]
     public void A_plan_with_no_canPublish_answer_is_NOT_publishable()
     {
-        ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan("""{"systemId":"A/B/C","files":[]}""");
+        ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan("""{"boardId":"A/B/C","files":[]}""");
 
         Assert.False(plan!.CanPublish);
     }

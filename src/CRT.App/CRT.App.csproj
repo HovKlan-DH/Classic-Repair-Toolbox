@@ -10,7 +10,7 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>3.0.0-beta.1</InformationalVersion>
+		<InformationalVersion>3.0.0-beta.2d</InformationalVersion>
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>

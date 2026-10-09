@@ -10,7 +10,7 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // Covers SubmissionReplacementRules and the step in SubmissionFlows.FinaliseAsync that applies
     // them (owner decision, 2026-09-26): a newer submission from the same contributor replaces the
-    // older, untouched one of the same system - "the newest one always wins" - while one a
+    // older, untouched one of the same board - "the newest one always wins" - while one a
     // maintainer has worked on stays.
     //
     // The flow tests go through the real create and finalise, with the blob store on a temp
@@ -21,7 +21,7 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
 
-        private const string SystemId = "Manu1/Hardware1/Board1";
+        private const string BoardId = "Manu1/Hardware1/Board1";
         private const string ImagePath = "Manu1/Hardware1/Board1/main.png";
 
         private readonly string thisRoot =
@@ -29,7 +29,7 @@ namespace CRT.Server.Tests
 
         public SubmissionReplacementTests()
         {
-            string image = Path.Combine(this.SystemFolder, ImagePath.Replace('/', Path.DirectorySeparatorChar));
+            string image = Path.Combine(this.BoardFolder, ImagePath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(image)!);
             File.WriteAllBytes(image, SubmissionReplacementTests.ImageBytes);
         }
@@ -47,7 +47,7 @@ namespace CRT.Server.Tests
             }
         }
 
-        private string SystemFolder => Path.Combine(this.thisRoot, "system");
+        private string BoardFolder => Path.Combine(this.thisRoot, "board");
 
         // A real PNG as far as its opening bytes go - finalise checks bytes against names.
         private static readonly byte[] ImageBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. Encoding.UTF8.GetBytes("BOARD")];
@@ -55,7 +55,7 @@ namespace CRT.Server.Tests
         private static SubmissionManifest Manifest(string summary) =>
             new()
             {
-                SystemId = SystemId,
+                BoardId = BoardId,
                 Manufacturer = "Manu1",
                 Hardware = "Hardware1",
                 Board = "Board1",
@@ -83,8 +83,8 @@ namespace CRT.Server.Tests
             BlobStore blobs = new(this.thisRoot, NullLogger<BlobStore>.Instance);
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
-                SubmissionReplacementTests.Manifest(summary), Submitter.Anonymous(email, "192.0.2.1"), this.SystemFolder,
-                store, blobs, Now, CancellationToken.None, PublishedTreeProbe.For(this.SystemFolder));
+                SubmissionReplacementTests.Manifest(summary), Submitter.Anonymous(email, "192.0.2.1"), this.BoardFolder,
+                store, blobs, Now, CancellationToken.None, PublishedTreeProbe.For(this.BoardFolder));
 
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
 
@@ -215,9 +215,9 @@ namespace CRT.Server.Tests
             long id,
             string? email = "dennis@example.com",
             long? account = null,
-            string systemId = SystemId,
+            string boardId = BoardId,
             string state = SubmissionState.Pending) =>
-            new(id, systemId, account, email, "hash", "", state, null, 1, Now, null, null);
+            new(id, boardId, account, email, "hash", "", state, null, 1, Now, null, null);
 
         [Theory]
         [InlineData("dennis@example.com", "dennis@example.com", true)]
@@ -240,7 +240,7 @@ namespace CRT.Server.Tests
             Assert.False(SubmissionReplacementRules.IsSameContributor(Record(1, null, account: 7), Record(2, "dennis@example.com")));
         }
 
-        // Only OLDER, WAITING submissions of the SAME SYSTEM from the SAME CONTRIBUTOR - each
+        // Only OLDER, WAITING submissions of the SAME BOARD from the SAME CONTRIBUTOR - each
         // condition is the only thing that differs about one of the candidates here.
         [Fact]
         public void Only_older_waiting_submissions_of_the_same_board_and_contributor_are_replaced()
@@ -251,7 +251,7 @@ namespace CRT.Server.Tests
             [
                 Record(3),
                 Record(4, email: "someone@example.com"),
-                Record(5, systemId: "Commodore/C64/250407"),
+                Record(5, boardId: "Commodore/C64/250407"),
                 Record(6, state: SubmissionState.Approved),
                 Record(11),
                 arrived

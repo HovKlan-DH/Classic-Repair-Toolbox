@@ -16,7 +16,7 @@ namespace Handlers.DataHandling
     //         Data C64 250407.json      the sidecar: highlights + KiCad calibrations
     //         Sheet1of5.png             images at their real relative paths
     //         KiCad data/
-    //         Scope baseline/           created up front for a new system - see ScopeBaselineFolderName
+    //         Scope baseline/           created up front for a new board - see ScopeBaselineFolderName
     //         .crt-draft.json           LOCAL ONLY - see DraftMarkerFileName
     //
     // *** THE POINT IS THAT EDITING IN THE APP AND EDITING IN EXCEL ARE INTERCHANGEABLE. *** The
@@ -40,7 +40,7 @@ namespace Handlers.DataHandling
         // The local-only marker that makes a folder a DRAFT rather than a copy of a board.
         //
         // *** IT MUST NEVER BE SUBMITTED OR PUBLISHED. *** It records which published revision the
-        // draft was taken from and, for a draft-only system, its registration - information that is
+        // draft was taken from and, for a draft-only board, its registration - information that is
         // meaningless to anyone else and that would be noise in the published tree.
         //
         // Two things keep it out, and the belt-and-braces is deliberate because a leak here is
@@ -67,7 +67,7 @@ namespace Handlers.DataHandling
         public const string ScopeBaselineFolderName = "Scope baseline";
 
         // ###########################################################################################
-        // The draft folder for one system, given the drafts root and the system's ExcelDataFile
+        // The draft folder for one board, given the drafts root and the board's ExcelDataFile
         // identity ("Commodore/C64/250407/Data C64 250407.xlsx").
         //
         // The manufacturer/hardware/board segments only, dropping the file name - so the draft tree
@@ -76,9 +76,9 @@ namespace Handlers.DataHandling
         // Path.DirectorySeparatorChar, which would not match on Windows.
         //
         // Returns empty rather than a bogus path when either input is unusable; callers must treat
-        // that as "no draft folder available" exactly as DraftManager.GetSystemFolder already does.
+        // that as "no draft folder available" exactly as DraftManager.GetBoardFolder already does.
         // ###########################################################################################
-        public static string GetSystemFolder(string draftsRoot, string excelDataFile)
+        public static string GetBoardFolder(string draftsRoot, string excelDataFile)
         {
             if (string.IsNullOrWhiteSpace(draftsRoot) || string.IsNullOrWhiteSpace(excelDataFile))
             {
@@ -100,14 +100,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The draft's own board workbook - the file a contributor opens in Excel.
         //
-        // *** THE SAME FILE NAME THE PUBLISHED SYSTEM USES, not a "draft" variant. *** The whole
+        // *** THE SAME FILE NAME THE PUBLISHED BOARD USES, not a "draft" variant. *** The whole
         // request was that the folder be indistinguishable from a real board, and a workbook called
         // "Data C64 250407 (draft).xlsx" would announce itself as something else - it would also
         // break BoardDataReader's cache key, which is the ExcelDataFile identity.
         // ###########################################################################################
         public static string GetWorkbookPath(string draftsRoot, string excelDataFile)
         {
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
             if (folder.Length == 0)
             {
                 return string.Empty;
@@ -142,11 +142,11 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The draft's "Scope baseline" folder, beside the workbook - see ScopeBaselineFolderName.
-        // Empty when the system folder cannot be resolved, like every other path here.
+        // Empty when the board folder cannot be resolved, like every other path here.
         // ###########################################################################################
         public static string GetScopeBaselineFolder(string draftsRoot, string excelDataFile)
         {
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
 
             return folder.Length == 0
                 ? string.Empty
@@ -158,7 +158,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static string GetMarkerPath(string draftsRoot, string excelDataFile)
         {
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
 
             return folder.Length == 0
                 ? string.Empty
@@ -168,14 +168,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Where one of the board's referenced files lives inside the draft folder.
         //
-        // *** THE PATH IS RELATIVE TO THE SYSTEM FOLDER, NOT TO THE DATA ROOT, and that is the one
+        // *** THE PATH IS RELATIVE TO THE BOARD FOLDER, NOT TO THE DATA ROOT, and that is the one
         // genuinely subtle thing in this class. *** A BoardData row stores a file as a path from
         // the data root ("Commodore/C64/250407/Sheet1.png"), because that is what the published
-        // tree needs. Inside a draft folder the system's own three segments are already the folder
+        // tree needs. Inside a draft folder the board's own three segments are already the folder
         // itself, so the stored path has to have them stripped or the bytes would land at
         // "<draft>/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
         //
-        // A file OUTSIDE this system's own folder - a manufacturer "Shared files" image, say, which
+        // A file OUTSIDE this board's own folder - a manufacturer "Shared files" image, say, which
         // is referenced as "Commodore/Shared files/7805.jpg" - is deliberately NOT given a draft
         // location, and this returns empty for it: SEEDING never copies a published shared file
         // into a draft. Such a file is shared with other boards and is not the draft's to own; it
@@ -193,28 +193,28 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
             if (folder.Length == 0)
             {
                 return string.Empty;
             }
 
-            string? withinSystem = DraftFolderLayout.RelativeToSystemFolder(excelDataFile, trimmed);
+            string? withinBoard = DraftFolderLayout.RelativeToBoardFolder(excelDataFile, trimmed);
 
-            return withinSystem is null
+            return withinBoard is null
                 ? string.Empty
-                : Path.Combine(folder, withinSystem.Replace('/', Path.DirectorySeparatorChar));
+                : Path.Combine(folder, withinBoard.Replace('/', Path.DirectorySeparatorChar));
         }
 
         // ###########################################################################################
-        // Strips the system's own "Manufacturer/Hardware/Board/" prefix off a data-root-relative
-        // path, or answers null when the path does not sit under this system at all.
+        // Strips the board's own "Manufacturer/Hardware/Board/" prefix off a data-root-relative
+        // path, or answers null when the path does not sit under this board at all.
         //
         // Case-INSENSITIVE, matching how the rest of the app compares these paths - a workbook
         // hand-edited to say "commodore/C64/..." names the same folder on Windows, and refusing to
         // recognise it would silently treat every one of that board's own files as shared.
         // ###########################################################################################
-        public static string? RelativeToSystemFolder(string excelDataFile, string? relativeFile)
+        public static string? RelativeToBoardFolder(string excelDataFile, string? relativeFile)
         {
             string trimmed = relativeFile?.Trim() ?? string.Empty;
             if (trimmed.Length == 0 || string.IsNullOrWhiteSpace(excelDataFile))
@@ -222,8 +222,8 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            string[] systemSegments = excelDataFile.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (systemSegments.Length < 2)
+            string[] boardSegments = excelDataFile.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (boardSegments.Length < 2)
             {
                 return null;
             }
@@ -232,8 +232,8 @@ namespace Handlers.DataHandling
                 .Replace('\\', '/')
                 .Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-            // The system's folder is every segment of its ExcelDataFile except the file name.
-            int prefixLength = systemSegments.Length - 1;
+            // The board's folder is every segment of its ExcelDataFile except the file name.
+            int prefixLength = boardSegments.Length - 1;
             if (fileSegments.Length <= prefixLength)
             {
                 return null;
@@ -241,7 +241,7 @@ namespace Handlers.DataHandling
 
             for (int i = 0; i < prefixLength; i++)
             {
-                if (!string.Equals(fileSegments[i], systemSegments[i], StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(fileSegments[i], boardSegments[i], StringComparison.OrdinalIgnoreCase))
                 {
                     return null;
                 }

@@ -109,7 +109,7 @@ namespace Handlers.DataHandling
     public sealed class DiskFileLookup : IBoardFileLookup
     {
         private readonly string thisDataRoot;
-        private readonly string thisDraftSystemFolder;
+        private readonly string thisDraftBoardFolder;
         private readonly HashSet<string> thisFound = new(StringComparer.Ordinal);
         private readonly HashSet<string> thisAskedAndMissed = new(StringComparer.Ordinal);
         private readonly Dictionary<string, (DateTime Written, DateTime ReadAt, string[] Names)> thisListings = new(StringComparer.Ordinal);
@@ -125,11 +125,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         internal static readonly TimeSpan WriteTimeResolution = TimeSpan.FromSeconds(2);
 
-        // `draftSystemFolder` is empty for the downloaded data alone (the launch log).
-        public DiskFileLookup(string dataRoot, string draftSystemFolder)
+        // `draftBoardFolder` is empty for the downloaded data alone (the launch log).
+        public DiskFileLookup(string dataRoot, string draftBoardFolder)
         {
             this.thisDataRoot = dataRoot ?? string.Empty;
-            this.thisDraftSystemFolder = draftSystemFolder ?? string.Empty;
+            this.thisDraftBoardFolder = draftBoardFolder ?? string.Empty;
         }
 
         public string Where => "on this computer";
@@ -158,7 +158,7 @@ namespace Handlers.DataHandling
         private BoardFileLookupResult Resolve(string path, bool again)
         {
             bool located = SubmissionFileLocator.TryLocate(
-                this.thisDataRoot, this.thisDraftSystemFolder, path, out string absolute, out _);
+                this.thisDataRoot, this.thisDraftBoardFolder, path, out string absolute, out _);
 
             if (located && !this.IsUnderDataRoot(absolute))
                 return BoardFileLookupResult.Found;

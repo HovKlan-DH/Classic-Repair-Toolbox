@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     //
     // CRT reads it to fill the hardware and board drop-downs (DataManager.LoadMainExcel), the
     // server's orphan rule reads it for the boards it lists (DataTreeUsage), and since 2026-09-27 the
-    // server WRITES one row into it for a new system (MasterListing). Three readers and a writer of
+    // server WRITES one row into it for a new board (MasterListing). Three readers and a writer of
     // one file format: a column renamed on one side only would be a board silently missing from
     // everyone's lists, so the names live here once.
     // ###########################################################################################
@@ -56,8 +56,8 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public sealed record MasterListingRow(string HardwareName, string BoardName, string ExcelDataFile, string Notes)
     {
-        // "Commodore/C128/310378 Open128" - which system the row is, whatever its file is called.
-        public string SystemId => SystemDescriptorRules.SystemIdFromExcelDataFile(this.ExcelDataFile);
+        // "Commodore/C128/310378 Open128" - which board the row is, whatever its file is called.
+        public string BoardId => BoardDescriptorRules.BoardIdFromExcelDataFile(this.ExcelDataFile);
     }
 
     // What an edit did. Changed is false for an edit that found the file already as asked - a re-run.
@@ -69,7 +69,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // ADDING A NEW SYSTEM TO THE DROP-DOWN LISTS (owner request, 2026-09-27): "When a system is added
+    // ADDING A NEW BOARD TO THE DROP-DOWN LISTS (owner request, 2026-09-27): "When a system is added
     // to BETA, and it is a NEW system, can you then make sure it gets added also to the main Excel
     // data file in the Data root? The maintainer should order the new system, so it becomes visible
     // in the right location for the drop-down lists."
@@ -83,8 +83,8 @@ namespace Handlers.DataHandling
     // frozen for good (NewContributeStrategy.md, open question 5) - NewestMasterPath answers null
     // rather than name one, so a tree with no versioned master is refused, not written.
     //
-    // *** A ROW IS A SYSTEM. *** Matched by its system id (its folders), never its display names, and
-    // an insert for a system already listed updates that row instead of adding a second - so re-running
+    // *** A ROW IS A BOARD. *** Matched by its board id (its folders), never its display names, and
+    // an insert for a board already listed updates that row instead of adding a second - so re-running
     // an interrupted publish is safe, as every other step of a publish is.
     //
     // ATOMIC: written to a temporary file beside it and moved into place, so a crash leaves the old
@@ -121,7 +121,7 @@ namespace Handlers.DataHandling
         // The rows, top to bottom, as CRT reads them: a row naming neither a board nor a workbook is
         // skipped, and a blank hardware cell takes the name above it. False, with a reason, when the
         // file or its sheet or header cannot be read - never an empty list, which would read as "this
-        // system is not listed" and invite a duplicate row.
+        // board is not listed" and invite a duplicate row.
         // ###########################################################################################
         public static bool TryRead(string masterPath, out IReadOnlyList<MasterListingRow> rows, out string why)
         {
@@ -144,9 +144,9 @@ namespace Handlers.DataHandling
             }
         }
 
-        public static int IndexOfSystem(IReadOnlyList<MasterListingRow> rows, string? systemId)
+        public static int IndexOfBoard(IReadOnlyList<MasterListingRow> rows, string? boardId)
         {
-            string id = systemId?.Trim() ?? string.Empty;
+            string id = boardId?.Trim() ?? string.Empty;
 
             if (id.Length == 0)
             {
@@ -155,7 +155,7 @@ namespace Handlers.DataHandling
 
             for (int i = 0; i < rows.Count; i++)
             {
-                if (string.Equals(rows[i].SystemId, id, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(rows[i].BoardId, id, StringComparison.OrdinalIgnoreCase))
                 {
                     return i;
                 }
@@ -165,23 +165,23 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The OTHER system already listed under these two names, or null. CRT keys a board by
+        // The OTHER board already listed under these two names, or null. CRT keys a board by
         // "hardware name|board name", case-insensitively (its settings, its workbooks and the
         // drop-downs all do), so two rows with the same pair would be one board twice in the lists
-        // with every setting shared between them. The system's own row is not a clash.
+        // with every setting shared between them. The board's own row is not a clash.
         // ###########################################################################################
         public static MasterListingRow? NamesTakenBy(
             IReadOnlyList<MasterListingRow> rows,
-            string? systemId,
+            string? boardId,
             string? hardwareName,
             string? boardName)
         {
             string hardware = hardwareName?.Trim() ?? string.Empty;
             string board = boardName?.Trim() ?? string.Empty;
-            string id = systemId?.Trim() ?? string.Empty;
+            string id = boardId?.Trim() ?? string.Empty;
 
             return rows.FirstOrDefault(row =>
-                !string.Equals(row.SystemId, id, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(row.BoardId, id, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(row.HardwareName.Trim(), hardware, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(row.BoardName.Trim(), board, StringComparison.OrdinalIgnoreCase));
         }
@@ -191,19 +191,19 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(taken);
 
-            return $"[{taken.HardwareName}] / [{taken.BoardName}] is already in the drop-down lists, for {taken.SystemId}. " +
-                "Give this system a board name of its own in the Systems screen.";
+            return $"[{taken.HardwareName}] / [{taken.BoardName}] is already in the drop-down lists, for {taken.BoardId}. " +
+                "Give this board its own board name in the Boards screen.";
         }
 
         // ###########################################################################################
         // Adds the row after the row whose workbook is afterExcelDataFile - or FIRST when that is
-        // blank - or, for a system already listed, updates its row where it is.
+        // blank - or, for a board already listed, updates its row where it is.
         //
-        // Names another system is listed under are REFUSED (NamesTakenBy) - at the placement, and
+        // Names another board is listed under are REFUSED (NamesTakenBy) - at the placement, and
         // again here, since a publish or a promotion writes later and the lists can have changed.
         //
         // A named "after" row that is no longer in the list is REFUSED rather than guessed at: the
-        // maintainer placed the system relative to it, and anywhere else is a place nobody chose.
+        // maintainer placed the board relative to it, and anywhere else is a place nobody chose.
         // ###########################################################################################
         //
         // `nowUtc` dates the file's two "# Revision date:" lines (see Finish); null is the moment of
@@ -231,14 +231,14 @@ namespace Handlers.DataHandling
 
                 List<ListedRow> listed = MasterListing.ReadRows(layout!);
 
-                if (MasterListing.NamesTakenBy(listed.Select(item => item.Row).ToList(), row.SystemId, row.HardwareName, row.BoardName)
+                if (MasterListing.NamesTakenBy(listed.Select(item => item.Row).ToList(), row.BoardId, row.HardwareName, row.BoardName)
                     is MasterListingRow taken)
                 {
                     return MasterListingEdit.Failed(MasterListing.NamesTakenMessage(taken));
                 }
 
                 ListedRow? existing = listed.FirstOrDefault(item =>
-                    string.Equals(item.Row.SystemId, row.SystemId, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(item.Row.BoardId, row.BoardId, StringComparison.OrdinalIgnoreCase));
 
                 if (existing is not null)
                 {
@@ -259,17 +259,17 @@ namespace Handlers.DataHandling
                 }
                 else
                 {
-                    string afterSystem = SystemDescriptorRules.SystemIdFromExcelDataFile(afterExcelDataFile.Trim());
+                    string afterBoard = BoardDescriptorRules.BoardIdFromExcelDataFile(afterExcelDataFile.Trim());
 
                     ListedRow? after = listed.FirstOrDefault(item =>
                         string.Equals(item.Row.ExcelDataFile, afterExcelDataFile.Trim(), StringComparison.OrdinalIgnoreCase) ||
-                        (afterSystem.Length > 0 && string.Equals(item.Row.SystemId, afterSystem, StringComparison.OrdinalIgnoreCase)));
+                        (afterBoard.Length > 0 && string.Equals(item.Row.BoardId, afterBoard, StringComparison.OrdinalIgnoreCase)));
 
                     if (after is null)
                     {
                         return MasterListingEdit.Failed(
                             $"It was placed after [{afterExcelDataFile.Trim()}], which is no longer in the list. " +
-                            "Place it again in the Systems screen.");
+                            "Place it again in the Boards screen.");
                     }
 
                     target = after.SheetRow + 1;
@@ -307,13 +307,13 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Takes a system's rows out - a new system pushed back out of BETA before it ever reached
-        // production, or a system deleted. EVERY row of it: two rows whose workbooks sit in the same
-        // system folder are one system, and deleting the folder while one row stayed would leave a
+        // Takes a board's rows out - a new board pushed back out of BETA before it ever reached
+        // production, or a board deleted. EVERY row of it: two rows whose workbooks sit in the same
+        // board folder are one board, and deleting the folder while one row stayed would leave a
         // board CRT offers but cannot load (code review, 2026-10-04). Nothing to remove is a success
         // that changed nothing.
         // ###########################################################################################
-        public static MasterListingEdit Remove(string masterPath, string systemId, DateTimeOffset? nowUtc = null)
+        public static MasterListingEdit Remove(string masterPath, string boardId, DateTimeOffset? nowUtc = null)
         {
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
             {
@@ -330,7 +330,7 @@ namespace Handlers.DataHandling
                 List<ListedRow> listed = MasterListing.ReadRows(layout!);
 
                 var ours = new HashSet<int>(listed
-                    .Where(item => string.Equals(item.Row.SystemId, systemId?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .Where(item => string.Equals(item.Row.BoardId, boardId?.Trim(), StringComparison.OrdinalIgnoreCase))
                     .Select(item => item.SheetRow));
 
                 if (ours.Count == 0)
@@ -362,22 +362,22 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // WHERE A SYSTEM GOES IN ANOTHER TREE'S LIST - production's, when it is promoted from BETA
+        // WHERE A BOARD GOES IN ANOTHER TREE'S LIST - production's, when it is promoted from BETA
         // (owner decision, 2026-09-27: "insert at the same place"). After the nearest row ABOVE it in
         // the source that the target also lists; failing that, before the nearest one BELOW it; and
         // when the target lists none of its neighbours at all, first.
         //
-        // False when the source does not list the system - nothing to place.
+        // False when the source does not list the board - nothing to place.
         // ###########################################################################################
         public static bool TryResolvePlacement(
             IReadOnlyList<MasterListingRow> source,
-            string systemId,
+            string boardId,
             IReadOnlyList<MasterListingRow> target,
             out string? afterExcelDataFile)
         {
             afterExcelDataFile = null;
 
-            int index = MasterListing.IndexOfSystem(source, systemId);
+            int index = MasterListing.IndexOfBoard(source, boardId);
             if (index < 0)
             {
                 return false;
@@ -385,7 +385,7 @@ namespace Handlers.DataHandling
 
             for (int i = index - 1; i >= 0; i--)
             {
-                int inTarget = MasterListing.IndexOfSystem(target, source[i].SystemId);
+                int inTarget = MasterListing.IndexOfBoard(target, source[i].BoardId);
 
                 if (inTarget >= 0)
                 {
@@ -396,7 +396,7 @@ namespace Handlers.DataHandling
 
             for (int i = index + 1; i < source.Count; i++)
             {
-                int inTarget = MasterListing.IndexOfSystem(target, source[i].SystemId);
+                int inTarget = MasterListing.IndexOfBoard(target, source[i].BoardId);
 
                 if (inTarget >= 0)
                 {
@@ -413,9 +413,9 @@ namespace Handlers.DataHandling
         // sort the list of systems, which then gets saved to both sources (BETA + stable)").
         //
         // For each place in the new list, which of `rows` goes there - rows given as the file holds
-        // them, top to bottom. A row whose system `order` names takes that system's place in it; a
+        // them, top to bottom. A row whose board `order` names takes that board's place in it; a
         // row `order` does not name (production listing a board BETA does not, say) stays straight
-        // after the row it followed, or first when nothing named came before it. Rows of one system
+        // after the row it followed, or first when nothing named came before it. Rows of one board
         // listed twice keep their order between them.
         //
         // Pure, so the rule is tested without a file; Reorder applies it.
@@ -440,7 +440,7 @@ namespace Handlers.DataHandling
 
             for (int i = 0; i < rows.Count; i++)
             {
-                if (wanted.TryGetValue(rows[i].SystemId, out int place))
+                if (wanted.TryGetValue(rows[i].BoardId, out int place))
                 {
                     anchor = place;
                     keys.Add((i, place, 0));
@@ -460,7 +460,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Puts the file's rows in the order `systemIdsInOrder` gives (ArrangeAs). The rows move, the
+        // Puts the file's rows in the order `boardIdsInOrder` gives (ArrangeAs). The rows move, the
         // places do not: the k-th listed row of the new order lands where the k-th listed row was,
         // so a blank line or a heading between rows stays where it is. A row moves WHOLE - its values,
         // its formatting and its height, through a scratch area below the list that is removed again.
@@ -471,9 +471,9 @@ namespace Handlers.DataHandling
         //
         // An order that changes nothing writes nothing (Changed false).
         // ###########################################################################################
-        public static MasterListingEdit Reorder(string masterPath, IReadOnlyList<string> systemIdsInOrder, DateTimeOffset? nowUtc = null)
+        public static MasterListingEdit Reorder(string masterPath, IReadOnlyList<string> boardIdsInOrder, DateTimeOffset? nowUtc = null)
         {
-            ArgumentNullException.ThrowIfNull(systemIdsInOrder);
+            ArgumentNullException.ThrowIfNull(boardIdsInOrder);
 
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
             {
@@ -488,7 +488,7 @@ namespace Handlers.DataHandling
                 }
 
                 List<ListedRow> listed = MasterListing.ReadRows(layout!);
-                IReadOnlyList<int> arranged = MasterListing.ArrangeAs(listed.Select(item => item.Row).ToList(), systemIdsInOrder);
+                IReadOnlyList<int> arranged = MasterListing.ArrangeAs(listed.Select(item => item.Row).ToList(), boardIdsInOrder);
 
                 if (arranged.Select((source, place) => source == place).All(same => same))
                 {
@@ -589,7 +589,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            if (row.SystemId.Length == 0)
+            if (row.BoardId.Length == 0)
             {
                 problem = $"[{row.ExcelDataFile}] does not name a board workbook.";
                 return false;

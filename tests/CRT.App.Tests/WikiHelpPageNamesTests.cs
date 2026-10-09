@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests;
 // Assets/Wiki/.
 //
 // This is the test that stops the wrong-help-page bug coming back. A Wiki page rename is a pure
-// content change - nothing in the build, the markup or the type system knows a URL string names a
+// content change - nothing in the build, the markup or the type board knows a URL string names a
 // page - so renaming Workbooks.md and leaving the button's literal behind compiled clean, passed
 // the whole suite, and simply landed users on the Wiki's front page. That is exactly what happened
 // (the Configuration tab's Workbooks help button), and what CLAUDE.md warns about: renaming one of

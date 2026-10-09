@@ -10,8 +10,8 @@ namespace Handlers.MaintainerHandling
     // THE FOUR SCREENS BEHIND THE BUTTONS AT THE TOP LEFT (owner request, 2026-09-27):
     //
     //   Review   - the queue of contributions, as it always was.
-    //   BETA     - systems in BETA waiting to be published to production (the "Production" window).
-    //   Systems  - every system: its maintainers, contributors and submissions.
+    //   BETA     - boards in BETA waiting to be published to production (the "Production" window).
+    //   Boards  - every board: its maintainers, contributors and submissions.
     //   Account  - "My account" and "Server version" for every maintainer, and the administrator's
     //              own entries below them (it was "Admin", the administrator's alone, until
     //              2026-10-04).
@@ -19,8 +19,8 @@ namespace Handlers.MaintainerHandling
     // Each shows its list on the left and what is chosen in it on the right, where three separate
     // windows used to open over the queue.
     //
-    // *** THE BADGES COUNT SYSTEMS, NOT SUBMISSIONS ***, because that is what was asked for ("how
-    // many systems need your attention") and what a maintainer works through: two submissions to one
+    // *** THE BADGES COUNT BOARDS, NOT SUBMISSIONS ***, because that is what was asked for ("how
+    // many boards need your attention") and what a maintainer works through: two submissions to one
     // board are reviewed together. "Needs your attention" is the SERVER's answer each time - the
     // queue's AwaitsYou, the production list's AwaitsYou - so a board waiting only for the other
     // approver is not counted. Pure, so the counting is tested.
@@ -29,7 +29,7 @@ namespace Handlers.MaintainerHandling
     {
         Review,
         Beta,
-        Systems,
+        Boards,
         Account
     }
 
@@ -40,7 +40,7 @@ namespace Handlers.MaintainerHandling
         public const int BadgeCeiling = TabBadge.Ceiling;
 
         // ###########################################################################################
-        // Review: the systems with at least one submission waiting for THIS account. A submission the
+        // Review: the boards with at least one submission waiting for THIS account. A submission the
         // server does not say about (an older server, null) counts as yours - the queue shows it as
         // yours too, undimmed.
         // ###########################################################################################
@@ -48,13 +48,13 @@ namespace Handlers.MaintainerHandling
             rows is null
                 ? 0
                 : rows.Where(row => row.AwaitsYou != false)
-                    .Select(row => row.SystemId ?? string.Empty)
+                    .Select(row => row.BoardId ?? string.Empty)
                     .Distinct(StringComparer.Ordinal)
                     .Count();
 
-        // BETA: the systems waiting for production that wait for THIS account - not the ones this
+        // BETA: the boards waiting for production that wait for THIS account - not the ones this
         // account has already approved, which wait for the other approver.
-        public static int BetaAttention(IEnumerable<ProductionSystemRow>? rows) =>
+        public static int BetaAttention(IEnumerable<ProductionBoardRow>? rows) =>
             rows?.Count(row => row.AwaitsYou != false) ?? 0;
 
         // ###########################################################################################
@@ -63,14 +63,14 @@ namespace Handlers.MaintainerHandling
         // then it should show as a badge in the "Maintainer" tab ... until it is fully processed,
         // including if it is awaiting in "BETA to PROD" queue").
         //
-        // *** THE SUM OF THE TWO BUTTONS' BADGES, NOT A COUNT OF ITS OWN. *** A system with a new
+        // *** THE SUM OF THE TWO BUTTONS' BADGES, NOT A COUNT OF ITS OWN. *** A board with a new
         // submission queued AND an earlier one in BETA waits for this account twice, and each button
         // counts it once - so the tab says what opening it will show: "3" over a "2" and a "1".
-        // Counting distinct systems would say 2 and leave the maintainer adding the buttons up to 3.
+        // Counting distinct boards would say 2 and leave the maintainer adding the buttons up to 3.
         // Nothing waiting for this account in either - including a submission waiting only for the
         // other approver - is no badge.
         // ###########################################################################################
-        public static int TabAttention(IEnumerable<ReviewQueueRow>? queue, IEnumerable<ProductionSystemRow>? beta) =>
+        public static int TabAttention(IEnumerable<ReviewQueueRow>? queue, IEnumerable<ProductionBoardRow>? beta) =>
             MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta);
 
         // ###########################################################################################
@@ -143,22 +143,22 @@ namespace Handlers.MaintainerHandling
         //
         // `shown` is the screen on show as the tab is opened (Review after signing in), `attention`
         // the tab's badge (TabAttention) and `somethingOpen` whether something is open on that screen
-        // - a submission or a BETA system. Systems when nothing waits for this account in EITHER
+        // - a submission or a BETA board. Boards when nothing waits for this account in EITHER
         // queue - "awaiting" is the badge's own sense, so a submission waiting only for the other
         // approver does not keep the tab on a queue - else the screen on show.
         //
         // *** ONLY A QUEUE SCREEN GIVES WAY, AND NEVER OVER SOMETHING OPEN. *** A submission the
         // maintainer opened, which waits for the other approver, is still where it was on coming
-        // back; and Systems and Account were chosen, so they stay. Switching would lose nothing - a
+        // back; and Boards and Account were chosen, so they stay. Switching would lose nothing - a
         // screen is hidden, never closed - but it would move the maintainer away from what they
         // were looking at.
         // ###########################################################################################
         public static MaintainerMode ScreenOnOpening(MaintainerMode shown, int attention, bool somethingOpen) =>
             attention <= 0 && !somethingOpen && shown is MaintainerMode.Review or MaintainerMode.Beta
-                ? MaintainerMode.Systems
+                ? MaintainerMode.Boards
                 : shown;
 
-        // The same for the BETA list, whose entries are systems - and for the Systems list.
+        // The same for the BETA list, whose entries are boards - and for the Boards list.
         public static string? EntryToOpen(IReadOnlyList<string> inListOrder, string? remembered)
         {
             ArgumentNullException.ThrowIfNull(inListOrder);
@@ -173,8 +173,8 @@ namespace Handlers.MaintainerHandling
         public static string? AttentionBadge(int count) => TabBadge.Text(count);
 
         // ###########################################################################################
-        // The Systems button's DISCREET badge: how many systems there are. Null - hidden - until the
-        // list has been read, so a failed request is never shown as "0 systems".
+        // The Boards button's DISCREET badge: how many boards there are. Null - hidden - until the
+        // list has been read, so a failed request is never shown as "0 boards".
         // ###########################################################################################
         public static string? CountBadge(int? count) =>
             count is int known && known >= 0 ? known.ToString(CultureInfo.InvariantCulture) : null;

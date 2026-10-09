@@ -20,9 +20,9 @@ namespace Handlers.MaintainerHandling
             if (root.ValueKind != JsonValueKind.Object)
                 return null;
 
-            string? systemId = ReviewApiParser.String(root, "systemId");
+            string? boardId = ReviewApiParser.String(root, "boardId");
 
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return null;
 
             var files = new List<PromotionFile>();
@@ -64,7 +64,7 @@ namespace Handlers.MaintainerHandling
             }
 
             return new ProductionPlanView(
-                systemId,
+                boardId,
                 ReviewApiParser.String(root, "betaRevision"),
                 ReviewApiParser.String(root, "betaContentHash") ?? string.Empty,
                 ReviewApiParser.Bool(root, "touchesSharedFiles") ?? false,
@@ -107,7 +107,7 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // A submission's file tree (2026-09-28): CRT.Data's SubmissionFilesAnswer, read as that very
-        // record. An entry with no path is dropped; an answer with no system is not an answer.
+        // record. An entry with no path is dropped; an answer with no board is not an answer.
         // ###########################################################################################
         public static SubmissionFilesAnswer? ParseSubmissionFiles(string? json)
         {
@@ -120,7 +120,7 @@ namespace Handlers.MaintainerHandling
             {
                 SubmissionFilesAnswer? answer = root.Deserialize<SubmissionFilesAnswer>(ReviewApiParser.FactOptions);
 
-                if (answer is null || string.IsNullOrWhiteSpace(answer.SystemId))
+                if (answer is null || string.IsNullOrWhiteSpace(answer.BoardId))
                     return null;
 
                 return answer with
@@ -180,13 +180,13 @@ namespace Handlers.MaintainerHandling
             if (root.ValueKind != JsonValueKind.Object)
                 return null;
 
-            string? systemId = ReviewApiParser.String(root, "systemId");
+            string? boardId = ReviewApiParser.String(root, "boardId");
 
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return null;
 
             return new BetaRollbackPlanView(
-                systemId,
+                boardId,
 
                 // Defaults to "restore": "remove" deletes a board from BETA, so a missing or
                 // unreadable answer must never be taken as that one.
@@ -206,13 +206,13 @@ namespace Handlers.MaintainerHandling
             if (root.ValueKind != JsonValueKind.Object)
                 return null;
 
-            string? systemId = ReviewApiParser.String(root, "systemId");
+            string? boardId = ReviewApiParser.String(root, "boardId");
 
-            if (string.IsNullOrWhiteSpace(systemId))
+            if (string.IsNullOrWhiteSpace(boardId))
                 return null;
 
             return new BetaRollbackResult(
-                systemId,
+                boardId,
                 string.Equals(ReviewApiParser.String(root, "kind"), "remove", StringComparison.OrdinalIgnoreCase)
                     ? BetaRollbackKind.RemoveFromBeta
                     : BetaRollbackKind.RestoreFromProduction,
@@ -229,12 +229,12 @@ namespace Handlers.MaintainerHandling
             if (root.ValueKind != JsonValueKind.Object)
                 return null;
 
-            string? systemId = ReviewApiParser.String(root, "systemId");
+            string? boardId = ReviewApiParser.String(root, "boardId");
 
-            return string.IsNullOrWhiteSpace(systemId)
+            return string.IsNullOrWhiteSpace(boardId)
                 ? null
                 : new ProductionPublishResult(
-                    systemId,
+                    boardId,
                     ReviewApiParser.String(root, "revision"),
                     (int)(ReviewApiParser.Long(root, "filesCopied") ?? 0),
                     ReviewApiParser.String(root, "state") ?? "published",

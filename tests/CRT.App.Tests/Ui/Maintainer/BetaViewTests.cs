@@ -26,7 +26,7 @@ public sealed class BetaViewTests
 {
     private static readonly DateTimeOffset Decided = new(2026, 9, 24, 8, 30, 0, TimeSpan.Zero);
 
-    private static ProductionSystemRow Row() =>
+    private static ProductionBoardRow Row() =>
         new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash", "2026-May-14", null);
 
     private static ProductionPlanView Plan(
@@ -81,7 +81,7 @@ public sealed class BetaViewTests
         new(path, new string('a', 64), PromotionChange.Added, PromotionStage.Content, IsShared: false);
 
     private static IEnumerable<string> TextOf(StackPanel panel) =>
-        panel.Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty);
+        panel.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf);
 
     [Fact]
     public void The_panel_builds()
@@ -141,7 +141,7 @@ public sealed class BetaViewTests
     // ###########################################################################################
     // *** THE FILES ARE A TREE OF PRODUCTION AFTER THE PUBLISH (owner request, 2026-09-28). ***
     // Only what changes shows at first, each file under all its folders; unticking the box shows
-    // everything the system has. It replaced the collapsed copy list, which named the copies and
+    // everything the board has. It replaced the collapsed copy list, which named the copies and
     // nothing around them.
     // ###########################################################################################
     [Fact]
@@ -366,9 +366,9 @@ public sealed class BetaViewTests
         });
     }
 
-    // With no system selected there is nothing to push back.
+    // With no board selected there is nothing to push back.
     [Fact]
-    public void Push_back_is_off_with_no_system_selected()
+    public void Push_back_is_off_with_no_board_selected()
     {
         UiTest.Run(() =>
         {
@@ -405,9 +405,9 @@ public sealed class BetaViewTests
     }
 
     // ###########################################################################################
-    // *** THE BUTTONS SHOW ONLY WITH A SYSTEM CHOSEN (2026-09-27). *** In a window of its own the
+    // *** THE BUTTONS SHOW ONLY WITH A BOARD CHOSEN (2026-09-27). *** In a window of its own the
     // bar sat there disabled; beside a list it is the Review screen's rule instead - nothing chosen,
-    // no decisions, and "Select a system" said where the name goes.
+    // no decisions, and "Select a board" said where the name goes.
     // ###########################################################################################
     [Fact]
     public void With_nothing_chosen_the_buttons_are_hidden_and_the_panel_says_what_to_do()
@@ -419,17 +419,17 @@ public sealed class BetaViewTests
             view.ShowPlanForTests(null, null);
 
             Assert.False(view.FindControl<StackPanel>("ActionPanel")!.IsVisible);
-            Assert.Equal("Select a system", view.FindControl<TextBlock>("SelectedSystemText")!.Text);
+            Assert.Equal("Select a board", view.FindControl<TextBlock>("SelectedBoardText")!.Text);
 
             view.ShowPlanForTests(BetaViewTests.Plan(carrying: []), BetaViewTests.Row());
 
             Assert.True(view.FindControl<StackPanel>("ActionPanel")!.IsVisible);
-            Assert.StartsWith("Commodore / C64 / 250407", view.FindControl<TextBlock>("SelectedSystemText")!.Text, StringComparison.Ordinal);
+            Assert.StartsWith("Commodore / C64 / 250407", view.FindControl<TextBlock>("SelectedBoardText")!.Text, StringComparison.Ordinal);
         });
     }
 
     // ###########################################################################################
-    // *** WHAT HAPPENED IS SAID OUTSIDE THE BUTTON BAR. *** A publish usually takes the system out
+    // *** WHAT HAPPENED IS SAID OUTSIDE THE BUTTON BAR. *** A publish usually takes the board out
     // of the list, which empties the panel and hides the bar - so a message inside the bar would be
     // hidden the moment it had something to say.
     // ###########################################################################################
@@ -453,7 +453,7 @@ public sealed class BetaViewTests
     // Somebody else published or pushed it back: the panel empties and says so, rather than keep
     // offering buttons for a BETA state that no longer waits.
     [Fact]
-    public void A_system_gone_from_the_list_empties_the_panel_and_says_why()
+    public void A_board_gone_from_the_list_empties_the_panel_and_says_why()
     {
         UiTest.Run(() =>
         {

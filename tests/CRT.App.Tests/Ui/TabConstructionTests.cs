@@ -97,20 +97,20 @@ public class TabConstructionTests
     }
 
     [Fact]
-    public void The_new_system_window_can_be_constructed()
+    public void The_new_board_window_can_be_constructed()
     {
-        // "Add a new system" (session 2c, task 9). Its constructor wires three TextChanged handlers
+        // "Add a new board" (session 2c, task 9). Its constructor wires three TextChanged handlers
         // and a tunnelled key handler to named controls, then runs its first validation pass - so
         // this proves both the .axaml parses and that the initial pass does not throw against
         // boxes that are still empty.
-        UiTest.Run(() => Assert.NotNull(new NewSystemWindow()));
+        UiTest.Run(() => Assert.NotNull(new NewBoardWindow()));
     }
 
     [Fact]
-    public void The_system_files_window_can_be_constructed()
+    public void The_board_files_window_can_be_constructed()
     {
         // The schematic and KiCad import window (session 2c, task 9).
-        UiTest.Run(() => Assert.NotNull(new SystemFilesWindow()));
+        UiTest.Run(() => Assert.NotNull(new BoardFilesWindow()));
     }
 
     [Fact]

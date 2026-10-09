@@ -10,9 +10,9 @@ namespace CRT
 {
     // ###########################################################################################
     // "I HAVE AN INVITATION" ON THE SIGN-IN SCREEN (2026-09-27). The administrator invites an
-    // address to maintain a system (the Systems screen); the mail carries a code, and this is where
+    // address to maintain a board (the Boards screen); the mail carries a code, and this is where
     // it is redeemed - the code, a name and a password - which makes the account and puts it in the
-    // pool of every system that address was invited to. See CRT.Server's MaintainerInvitationFlows.
+    // pool of every board that address was invited to. See CRT.Server's MaintainerInvitationFlows.
     //
     // *** ON SUCCESS THE SIGN-IN FIELDS ARE FILLED, NOT A SESSION OPENED *** - the password reset's
     // rule, for the same reason: accepting is not signing in, the server issues no session for it,

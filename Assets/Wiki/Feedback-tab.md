@@ -35,5 +35,5 @@ wrong place. Change it in CRT instead, so the actual data change is sent rather 
 of it: make the change in the [Contribute tab](Contribute-tab), which saves it to a local draft, and
 send it with **Submit** on the [Drafts tab](Drafts-tab).
 
-**A whole new board** - create it in CRT with **Add a new system** and send it from the
+**A whole new board** - create it in CRT with **Add a new board** and send it from the
 [Drafts tab](Drafts-tab). [Contribute data via CRT](Contribute-data-via-CRT) walks through both.

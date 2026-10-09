@@ -41,7 +41,7 @@ namespace CRT.Server.Handlers.Email
             this.thisMaxWidth = maxWidth;
         }
 
-        // A paragraph of runs - plain, bold, italic, a system's name, a link.
+        // A paragraph of runs - plain, bold, italic, a board's name, a link.
         public MailBody Paragraph(params MailText[] parts)
         {
             this.thisBlocks.Add(new Block(BlockKind.Paragraph, parts, string.Empty, []));
@@ -215,7 +215,7 @@ namespace CRT.Server.Handlers.Email
         Bold,
         Italic,
 
-        // A system's name: "[Commodore/C128/250477]", bold inside the brackets in the HTML (owner
+        // A board's name: "[Commodore/C128/250477]", bold inside the brackets in the HTML (owner
         // wording, 2026-10-03) - CRT's own way of setting off a value in running text.
         Named,
 
@@ -224,7 +224,7 @@ namespace CRT.Server.Handlers.Email
 
     // ###########################################################################################
     // One run of text in a mail. A plain string converts to one, so a template reads as the
-    // sentence it writes: Paragraph("Your contribution to ", MailText.Named(system), " was ...").
+    // sentence it writes: Paragraph("Your contribution to ", MailText.Named(board), " was ...").
     // ###########################################################################################
     public readonly record struct MailText(string Text, MailTextStyle Style = MailTextStyle.Plain, string? Href = null)
     {

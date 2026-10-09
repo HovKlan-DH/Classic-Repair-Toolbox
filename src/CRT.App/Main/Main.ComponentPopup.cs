@@ -177,8 +177,8 @@ namespace CRT
             // Component images and local files are resolved draft-first through the draft folder -
             // see DraftFileResolver. The VIEWED folder, so it is empty under "view boards as
             // officially published" and the popup then shows only published bytes.
-            string draftSystemFolder = this.GetCurrentBoardEntry() is { } currentEntry
-                ? DraftManager.GetViewedSystemFolder(currentEntry.ExcelDataFile)
+            string draftBoardFolder = this.GetCurrentBoardEntry() is { } currentEntry
+                ? DraftManager.GetViewedBoardFolder(currentEntry.ExcelDataFile)
                 : string.Empty;
 
             if (UserSettings.MultipleInstancesForComponentPopup)
@@ -205,7 +205,7 @@ namespace CRT
                     UserSettings.Region,
                     DataManager.DataRoot,
                     hasExplicitRegionComponents,
-                    draftSystemFolder);
+                    draftBoardFolder);
 
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -243,7 +243,7 @@ namespace CRT
                 UserSettings.Region,
                 DataManager.DataRoot,
                 hasExplicitRegionComponents,
-                draftSystemFolder);
+                draftBoardFolder);
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -658,7 +658,7 @@ namespace CRT
             // seen on the board, nor when the component was reopened for editing.
             //
             // ReloadCurrentBoardFromDisk is the SAME entry point the label editor's save uses - it
-            // clears the cache for both of a drafted system's workbook paths and reloads - so the two
+            // clears the cache for both of a drafted board's workbook paths and reloads - so the two
             // local-edit paths cannot drift apart.
             //
             // The current schematic is passed so the reload lands back on the view the contributor
@@ -670,7 +670,7 @@ namespace CRT
             // A save takes the contributor to the Drafts tab, where the next step is (owner
             // request, 2026-09-24). The window is maximized over this one, so it closes first -
             // switching the tab behind it would change nothing that can be seen. The refresh above
-            // has already shown the Drafts tab if this save created the system's first draft.
+            // has already shown the Drafts tab if this save created the board's first draft.
             window.SetAfterSaved(() =>
             {
                 window.Close();

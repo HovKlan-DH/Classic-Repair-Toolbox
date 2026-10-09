@@ -119,7 +119,7 @@ namespace Handlers.Online
                 }
                 catch (SubmissionNotFoundException)
                 {
-                    // The server does not know it any more - deleted with its system, for one. It
+                    // The server does not know it any more - deleted with its board, for one. It
                     // was asked about every minute for ever; now once a day (code review, 2026-10-04).
                     // The first time is a change: the row now says so, and must be drawn again.
                     if (receipt.NotFoundUtc is null)

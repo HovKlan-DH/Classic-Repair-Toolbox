@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// TabDrafts.RefreshDrafts - listing every system with a local draft (NewContributeStrategy.md
+// TabDrafts.RefreshDrafts - listing every board with a local draft (NewContributeStrategy.md
 // Phase 2, session 2b, task 7) and the empty-state fallback. Drives DraftManager's real static
 // state via LoadFrom (its own test seam), and TabDrafts.HardwareBoardsOverrideForTests to avoid
 // needing a real main Excel workbook loaded through DataManager - the same override-then-real
@@ -57,7 +57,7 @@ public sealed class TabDraftsTests : IDisposable
         string excelDataFile,
         int rowCount = 1,
         string baseRevision = "",
-        NewSystemRegistration? registration = null)
+        NewBoardRegistration? registration = null)
     {
         var board = new BoardData();
         for (int i = 0; i < rowCount; i++)
@@ -73,9 +73,9 @@ public sealed class TabDraftsTests : IDisposable
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
             new DraftMarker
             {
-                SystemKey = excelDataFile,
+                BoardKey = excelDataFile,
                 BaseRevision = baseRevision,
-                NewSystem = registration,
+                NewBoard = registration,
             });
     }
 
@@ -99,7 +99,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public void A_drafted_system_appears_in_the_list_and_the_empty_state_is_hidden()
+    public void A_drafted_board_appears_in_the_list_and_the_empty_state_is_hidden()
     {
         UiTest.Run(() =>
         {
@@ -122,7 +122,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public void A_system_with_no_draft_is_not_listed_alongside_one_that_has_one()
+    public void A_board_with_no_draft_is_not_listed_alongside_one_that_has_one()
     {
         UiTest.Run(() =>
         {
@@ -185,7 +185,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public void Multiple_drafted_systems_are_sorted_by_their_short_hardware_board_label()
+    public void Multiple_drafted_boards_are_sorted_by_their_short_hardware_board_label()
     {
         // ShortHardwareBoardLabel is "<segments[^3]>/<segments[^2]>" of ExcelDataFile - the
         // immediate two folders above the file itself (HardwareFolder/BoardFolder), NOT
@@ -195,16 +195,16 @@ public sealed class TabDraftsTests : IDisposable
         // proved nothing about sort order - the board FOLDER name is what has to differ.
         UiTest.Run(() =>
         {
-            string zSystem = "Commodore/Zeta board/rev1/Data.xlsx";
-            string aSystem = "Commodore/Alpha board/rev1/Data.xlsx";
-            WriteDraftWithChanges(zSystem);
-            WriteDraftWithChanges(aSystem);
+            string zBoard = "Commodore/Zeta board/rev1/Data.xlsx";
+            string aBoard = "Commodore/Alpha board/rev1/Data.xlsx";
+            WriteDraftWithChanges(zBoard);
+            WriteDraftWithChanges(aBoard);
 
             var tab = new TabDrafts();
             tab.HardwareBoardsOverrideForTests = new List<HardwareBoardEntry>
             {
-                BoardEntry("Commodore", "Zeta board", zSystem),
-                BoardEntry("Commodore", "Alpha board", aSystem)
+                BoardEntry("Commodore", "Zeta board", zBoard),
+                BoardEntry("Commodore", "Alpha board", aBoard)
             };
 
             tab.RefreshDrafts();
@@ -215,20 +215,20 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
-    // ------------------------------------ A system that exists only as a draft (task 9)
+    // ------------------------------------ A board that exists only as a draft (task 9)
 
-    private static NewSystemRegistration NewRegistration(string excelDataFile) => new()
+    private static NewBoardRegistration NewRegistration(string excelDataFile) => new()
     {
         HardwareName = "Commodore 64",
         BoardName = "MyBoard",
         ExcelDataFile = excelDataFile,
     };
 
-    // The IsEmpty fix proven at the UI layer: a system created through "Add a new system" has zero
+    // The IsEmpty fix proven at the UI layer: a board created through "Add a new board" has zero
     // rows in every section, and if it did not count as a draft it would never be listed here -
     // which is also the only place it could be discarded from.
     [Fact]
-    public void A_newly_created_system_with_no_rows_at_all_is_still_listed()
+    public void A_newly_created_board_with_no_rows_at_all_is_still_listed()
     {
         UiTest.Run(() =>
         {
@@ -248,10 +248,10 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
-    // "0 rows changed" would be actively misleading on a brand-new system: nothing was CHANGED
+    // "0 rows changed" would be actively misleading on a brand-new board: nothing was CHANGED
     // because the whole board is new, and the count says nothing about what was actually made.
     [Fact]
-    public void A_newly_created_system_is_described_as_new_rather_than_by_a_row_count()
+    public void A_newly_created_board_is_described_as_new_rather_than_by_a_row_count()
     {
         UiTest.Run(() =>
         {
@@ -266,13 +266,13 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            Assert.Equal("New system, nothing added yet", tab.Drafts[0].RowSummary);
+            Assert.Equal("New board, nothing added yet", tab.Drafts[0].RowSummary);
             Assert.DoesNotContain("changed", tab.Drafts[0].RowSummary);
         });
     }
 
     [Fact]
-    public void A_new_system_that_has_been_worked_on_says_how_much_is_in_it()
+    public void A_new_board_that_has_been_worked_on_says_how_much_is_in_it()
     {
         UiTest.Run(() =>
         {
@@ -290,11 +290,11 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            Assert.Equal("New system, 1 row so far", tab.Drafts[0].RowSummary);
+            Assert.Equal("New board, 1 row so far", tab.Drafts[0].RowSummary);
         });
     }
 
-    // An ordinary draft over a synced system keeps the original wording - what it lists really is
+    // An ordinary draft over a synced board keeps the original wording - what it lists really is
     // a set of changes to a board that already exists.
     [Fact]
     public void An_ordinary_draft_still_reads_as_rows_changed()
@@ -431,10 +431,10 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
-    // A system that exists only as a draft has no official counterpart at all, so drift is
+    // A board that exists only as a draft has no official counterpart at all, so drift is
     // meaningless for it - and its blank base revision is deliberate, not legacy.
     [Fact]
-    public void A_draft_only_system_is_never_flagged_as_drifted()
+    public void A_draft_only_board_is_never_flagged_as_drifted()
     {
         UiTest.Run(() =>
         {
@@ -462,16 +462,16 @@ public sealed class TabDraftsTests : IDisposable
     // The button has to be here as well as on the Contribute tab - this is where someone already
     // working on drafts looks for it.
     [Fact]
-    public void The_tab_offers_a_button_to_add_a_new_system()
+    public void The_tab_offers_a_button_to_add_a_new_board()
     {
         UiTest.Run(() =>
         {
             var tab = new TabDrafts();
 
-            var button = tab.GetControl<Button>("AddNewSystemButton");
+            var button = tab.GetControl<Button>("AddNewBoardButton");
 
             Assert.NotNull(button);
-            Assert.Equal("Add a new system", button.Content);
+            Assert.Equal("Add a new board", button.Content);
         });
     }
 
@@ -644,26 +644,26 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     // ###########################################################################################
-    // A system registered but not yet filled in is a REAL state, not a theoretical one: "Add a new
-    // system" creates the registration, and this tab lists it from that moment. Submitting it
-    // would put an empty system in front of a maintainer, so the button is disabled and says why.
+    // A board registered but not yet filled in is a REAL state, not a theoretical one: "Add a new
+    // board" creates the registration, and this tab lists it from that moment. Submitting it
+    // would put an empty board in front of a maintainer, so the button is disabled and says why.
     //
     // Disabled rather than hidden, deliberately - an action that disappears reads as the app
     // having lost it, and the tooltip is where the reason can actually be given.
     // ###########################################################################################
     [Fact]
-    public void A_brand_new_system_with_nothing_in_it_yet_cannot_be_submitted_and_says_why()
+    public void A_brand_new_board_with_nothing_in_it_yet_cannot_be_submitted_and_says_why()
     {
         UiTest.Run(() =>
         {
             string excelDataFile = "Commodore/C64/250407/Data C64 250407.xlsx";
 
-            // A draft is listed because the MARKER exists, so a brand-new system with nothing in
+            // A draft is listed because the MARKER exists, so a brand-new board with nothing in
             // it yet still gets a row - which is the only surface it can be discarded from.
             WriteDraftWithChanges(
                 excelDataFile,
                 rowCount: 0,
-                registration: new NewSystemRegistration
+                registration: new NewBoardRegistration
                 {
                     HardwareName = "C64",
                     BoardName = "250407",
@@ -737,7 +737,7 @@ public sealed class TabDraftsTests : IDisposable
             WriteDraftWithChanges(
                 empty,
                 rowCount: 0,
-                registration: new NewSystemRegistration
+                registration: new NewBoardRegistration
                 {
                     HardwareName = "VIC20",
                     BoardName = "250408",
@@ -764,10 +764,10 @@ public sealed class TabDraftsTests : IDisposable
                 .Where(button => (button.Content as string) == "Submit")
                 .ToList();
 
-            // One per drafted system, not one for the tab.
+            // One per drafted board, not one for the tab.
             Assert.Equal(2, submitButtons.Count);
 
-            // The row WITH rows is enabled; the empty new system is not. Asserted as a set rather
+            // The row WITH rows is enabled; the empty new board is not. Asserted as a set rather
             // than by index, since the list is ordered by label and that ordering is not this
             // test's subject.
             Assert.Contains(submitButtons, button => button.IsEnabled);
@@ -865,20 +865,20 @@ public sealed class TabDraftsTests : IDisposable
     // lost without the contributor saying so. The prompt is answered through
     // UnsavedTableEditsAnswerForTests - the real window would block on ShowDialog.
     // ###########################################################################################
-    private const string TableSystemA = "Commodore/C64/250407/Data.xlsx";
-    private const string TableSystemB = "Commodore/C64/250425/Data.xlsx";
+    private const string TableBoardA = "Commodore/C64/250407/Data.xlsx";
+    private const string TableBoardB = "Commodore/C64/250425/Data.xlsx";
 
     private static TabDrafts TabWithTwoDrafts()
     {
-        WriteDraftWithChanges(TabDraftsTests.TableSystemA);
-        WriteDraftWithChanges(TabDraftsTests.TableSystemB);
+        WriteDraftWithChanges(TabDraftsTests.TableBoardA);
+        WriteDraftWithChanges(TabDraftsTests.TableBoardB);
 
         var tab = new TabDrafts
         {
             HardwareBoardsOverrideForTests = new List<HardwareBoardEntry>
             {
-                BoardEntry("Commodore 64", "250407", TabDraftsTests.TableSystemA),
-                BoardEntry("Commodore 64", "250425", TabDraftsTests.TableSystemB),
+                BoardEntry("Commodore 64", "250407", TabDraftsTests.TableBoardA),
+                BoardEntry("Commodore 64", "250425", TabDraftsTests.TableBoardB),
             },
 
             // Nothing published to colour against - these tests are about the tab, not colours.
@@ -891,7 +891,7 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     private static HardwareBoardEntry EntryA(TabDrafts tab) =>
-        tab.HardwareBoardsOverrideForTests!.First(entry => entry.ExcelDataFile == TabDraftsTests.TableSystemA);
+        tab.HardwareBoardsOverrideForTests!.First(entry => entry.ExcelDataFile == TabDraftsTests.TableBoardA);
 
     // The draft rows the tab actually SHOWS: the list, or - in table mode - the open draft's row in
     // its own host, with the list hidden.
@@ -957,7 +957,7 @@ public sealed class TabDraftsTests : IDisposable
                 ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" }]
             };
 
-            CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableSystemA), board);
+            CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA), board);
 
             Assert.True(await tab.StopForErrorsAsync(EntryA(tab), board));
 
@@ -983,13 +983,13 @@ public sealed class TabDraftsTests : IDisposable
         {
             TabDrafts tab = TabWithTwoDrafts();
 
-            DraftListItem Row() => tab.Drafts.Single(row => row.ExcelDataFile == TabDraftsTests.TableSystemA);
+            DraftListItem Row() => tab.Drafts.Single(row => row.ExcelDataFile == TabDraftsTests.TableBoardA);
 
             Assert.False(Row().HasErrors);
             Assert.True(Row().HasWarnings);
             Assert.Equal("1 warning", Row().WarningsText);
 
-            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableSystemA);
+            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA);
             CachedWorkbooks.Write(workbook, new BoardData
             {
                 Components = [new ComponentEntry { BoardLabel = "U0" }],
@@ -1038,7 +1038,7 @@ public sealed class TabDraftsTests : IDisposable
             await tab.OpenTableAsync(EntryA(tab));
 
             DraftListItem shown = Assert.Single(ShownRows(tab));
-            Assert.Equal(TabDraftsTests.TableSystemA, shown.ExcelDataFile);
+            Assert.Equal(TabDraftsTests.TableBoardA, shown.ExcelDataFile);
             Assert.True(shown.IsTableOpen);
             Assert.Equal("Close table", shown.TableButtonText);
 
@@ -1049,6 +1049,38 @@ public sealed class TabDraftsTests : IDisposable
             // Drafts itself still lists BOTH - Main reads its count to decide whether this tab is
             // shown at all, and a table open on one draft must not hide the tab's reason to exist.
             Assert.Equal(2, tab.Drafts.Count);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE TABLE NAMES THE SOURCE THE PUBLISHED BOARD CAME FROM (owner request, 2026-10-05). ***
+    // "Published value" showing a value only the BETA source held yet was first taken for an
+    // error. The tab hands the table the source the Configuration tab picks, for the changed cell's
+    // tooltip and the file card alike - asserted through the real OpenTableAsync, since a document
+    // test cannot see the tab forgetting to pass it.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, "BETA source value: CPU", "BETA source")]
+    [InlineData(false, "Stable source value: CPU", "Stable source")]
+    public async Task The_tables_changed_cell_and_file_card_name_the_data_source(bool betaSource, string tooltip, string cardLabel)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            tab.BetaSourceOverrideForTests = betaSource;
+            tab.PublishedBoardOverrideForTests = _ => new BoardData
+            {
+                Components = [new ComponentEntry { BoardLabel = "U0", FriendlyName = "CPU" }]
+            };
+
+            await tab.OpenTableAsync(EntryA(tab));
+
+            BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
+            BoardTableSheet components = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            int friendlyName = components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName);
+
+            Assert.Equal(tooltip, components.Rows.Single(row => !row.IsDeleted).Cells[friendlyName].ToolTip);
+            Assert.Equal(cardLabel, editor.FileSource!.PublishedLabel);
         });
     }
 
@@ -1150,7 +1182,7 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(await tab.CloseTableAsync());
 
             Assert.False(tab.IsTableOpen);
-            Assert.NotEqual("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableSystemA));
+            Assert.NotEqual("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA));
         });
     }
 
@@ -1168,7 +1200,7 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(await tab.CloseTableAsync());
 
             Assert.False(tab.IsTableOpen);
-            Assert.Equal("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableSystemA));
+            Assert.Equal("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA));
         });
     }
 
@@ -1183,7 +1215,7 @@ public sealed class TabDraftsTests : IDisposable
             await tab.OpenTableAsync(EntryA(tab));
             MakeUnsavedEdit(tab);
 
-            WriteDraftWithChanges(TabDraftsTests.TableSystemA, rowCount: 3);
+            WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 3);
             tab.UnsavedTableEditsAnswerForTests = _ => UnsavedTableEditsChoice.Save;
 
             Assert.False(await tab.CloseTableAsync());
@@ -1212,7 +1244,7 @@ public sealed class TabDraftsTests : IDisposable
                 return UnsavedTableEditsChoice.Discard;
             };
 
-            WriteDraftWithChanges(TabDraftsTests.TableSystemA, rowCount: 3);
+            WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 3);
 
             Assert.True(await tab.CloseTableAsync());
 
@@ -1239,7 +1271,7 @@ public sealed class TabDraftsTests : IDisposable
                 return UnsavedTableEditsChoice.Cancel;
             };
 
-            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableSystemA);
+            string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA);
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(workbook)!, "~$" + Path.GetFileName(workbook)), "owner");
 
             using (new FileStream(workbook, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
@@ -1284,19 +1316,19 @@ public sealed class TabDraftsTests : IDisposable
         {
             TabDrafts tab = TabWithTwoDrafts();
 
-            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemA));
+            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
 
             await tab.OpenTableAsync(EntryA(tab));
-            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemA));
+            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
 
             MakeUnsavedEdit(tab);
-            Assert.True(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemA));
-            Assert.True(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemA.ToUpperInvariant()));
-            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemB));
+            Assert.True(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
+            Assert.True(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA.ToUpperInvariant()));
+            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardB));
             Assert.False(tab.HasUnsavedTableEditsFor(null));
 
             Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.Save());
-            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableSystemA));
+            Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
         });
     }
 
@@ -1310,12 +1342,12 @@ public sealed class TabDraftsTests : IDisposable
             TabDrafts tab = TabWithTwoDrafts();
             await tab.OpenTableAsync(EntryA(tab));
 
-            string before = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableSystemA).RowSummary;
+            string before = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableBoardA).RowSummary;
 
-            WriteDraftWithChanges(TabDraftsTests.TableSystemA, rowCount: 5);
+            WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 5);
             tab.TableEditor.CheckDraftFile();
 
-            string after = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableSystemA).RowSummary;
+            string after = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableBoardA).RowSummary;
             Assert.NotEqual(before, after);
             Assert.Equal("5 rows changed", after);
             Assert.True(tab.IsTableOpen);
@@ -1331,12 +1363,12 @@ public sealed class TabDraftsTests : IDisposable
             await tab.OpenTableAsync(EntryA(tab));
 
             // Discarded from elsewhere (or retired after publishing).
-            DraftManager.DiscardDraft(TabDraftsTests.TableSystemA);
+            DraftManager.DiscardDraft(TabDraftsTests.TableBoardA);
             tab.RefreshDrafts();
 
             Assert.False(tab.IsTableOpen);
             Assert.False(tab.GetControl<BoardTableEditor>("TableEditor").HasTable);
-            Assert.Equal(TabDraftsTests.TableSystemB, Assert.Single(ShownRows(tab)).ExcelDataFile);
+            Assert.Equal(TabDraftsTests.TableBoardB, Assert.Single(ShownRows(tab)).ExcelDataFile);
         });
     }
 
@@ -1403,14 +1435,14 @@ public sealed class TabDraftsTests : IDisposable
 
     // ###########################################################################################
     // *** THE SUBMISSION BADGE (owner request, 2026-09-27): "When I have submitted my submission to
-    // the server, then I need to see that somehow". *** A drafted system's row carries its latest
+    // the server, then I need to see that somehow". *** A drafted board's row carries its latest
     // submission's state, in the words and colour "My submissions" gives that state - read here off
     // the RENDERED row, not only the model, since a badge that exists but is not drawn helps nobody.
     // ###########################################################################################
-    private static SubmissionReceipt SentReceipt(long id, string systemId, string state, string sentUtc = "2026-09-27T10:46:11Z") => new()
+    private static SubmissionReceipt SentReceipt(long id, string boardId, string state, string sentUtc = "2026-09-27T10:46:11Z") => new()
     {
         SubmissionId = id,
-        SystemId = systemId,
+        BoardId = boardId,
         LastKnownState = state,
         SentUtc = DateTimeOffset.Parse(sentUtc, System.Globalization.CultureInfo.InvariantCulture),
     };
@@ -1435,7 +1467,7 @@ public sealed class TabDraftsTests : IDisposable
 
             string fingerprint = DraftFingerprint.Compute(
                 DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile),
-                DraftFolderLayout.GetSystemFolder(DraftManager.DraftsRoot, excelDataFile));
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, excelDataFile));
 
             var tab = new TabDrafts
             {
@@ -1528,7 +1560,7 @@ public sealed class TabDraftsTests : IDisposable
 
     // The badge moves with the review: the NEWEST submission's state, not the first one's.
     [Fact]
-    public void The_badge_follows_the_newest_submission_of_the_system()
+    public void The_badge_follows_the_newest_submission_of_the_board()
     {
         UiTest.Run(() =>
         {
@@ -1606,7 +1638,7 @@ public sealed class TabDraftsTests : IDisposable
                 {
                     SubmissionId = 9,
                     UploadToken = "tok",
-                    SystemId = "Commodore/C64/250407",
+                    BoardId = "Commodore/C64/250407",
                     SentUtc = DateTimeOffset.UtcNow,
                 });
 
@@ -1648,8 +1680,8 @@ public sealed class TabDraftsTests : IDisposable
                 const string excelDataFile = "Commodore/C128/310378/Data.xlsx";
                 WriteDraftWithChanges(excelDataFile);
 
-                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 9, UploadToken = "tok9", SystemId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "merged" });
-                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 8, UploadToken = "tok8", SystemId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "published" });
+                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 9, UploadToken = "tok9", BoardId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "merged" });
+                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 8, UploadToken = "tok8", BoardId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "published" });
 
                 HardwareBoardEntry entry = BoardEntry("Commodore 128", "310378", excelDataFile);
                 var sent = new List<(long Id, string Token)>();

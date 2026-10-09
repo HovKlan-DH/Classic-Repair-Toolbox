@@ -41,13 +41,21 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Opens the draft's table, or null when there is no readable draft. `published` is the
-        // board to colour differences against - null for a system with no published copy.
+        // board to colour differences against - null for a board with no published copy.
         //
         // `dataRoot` is the downloaded data, so the checks can tell whether a file a row names is
         // there - looked for as a submit looks for it, the draft's own copy first (DiskFileLookup).
         // Without one, files are not looked for.
+        //
+        // `baselineLabel` is what a changed cell's tooltip calls the published value - the source the
+        // data came from (BoardTableDocument.SourceBaselineLabel). Without one, the default.
         // ###########################################################################################
-        public static DraftTableSession? Open(string draftsRoot, string excelDataFile, BoardData? published, string? dataRoot = null)
+        public static DraftTableSession? Open(
+            string draftsRoot,
+            string excelDataFile,
+            BoardData? published,
+            string? dataRoot = null,
+            string? baselineLabel = null)
         {
             string fingerprint = DraftWorkbookStore.Fingerprint(draftsRoot, excelDataFile);
             if (fingerprint.Length == 0)
@@ -63,13 +71,13 @@ namespace Handlers.DataHandling
 
             IBoardFileLookup? files = string.IsNullOrWhiteSpace(dataRoot)
                 ? null
-                : new DiskFileLookup(dataRoot, DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile));
+                : new DiskFileLookup(dataRoot, DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile));
 
             return new DraftTableSession(
                 draftsRoot,
                 excelDataFile,
                 fingerprint,
-                BoardTableDocument.Create(published, draft, files: files));
+                BoardTableDocument.Create(published, draft, baselineLabel, files));
         }
 
         // ###########################################################################################

@@ -61,7 +61,7 @@ public sealed class ReviewImageComparisonTests
         // *** THE CASE MOST WORTH GETTING RIGHT. *** A deletion is the least recoverable thing a
         // submission can do, and it is invisible in a list of what was uploaded - there is no
         // blob for it, so anything driven purely off the manifest's file list misses it entirely.
-        // It is found by looking at what the published system HAS and the submission does not.
+        // It is found by looking at what the published board HAS and the submission does not.
         IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
             ReviewImageComparisonTests.Assets(),
             publishedImagePaths: ["Images/gone.png"]);
@@ -161,7 +161,7 @@ public sealed class ReviewImageComparisonTests
     }
 
     [Fact]
-    public void A_NEW_SYSTEM_publishes_nothing_before_so_every_image_is_an_addition()
+    public void A_NEW_BOARD_publishes_nothing_before_so_every_image_is_an_addition()
     {
         IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
             ReviewImageComparisonTests.Assets(

@@ -122,7 +122,7 @@ public sealed class ReviewContributorHistoryTests
             Assert.DoesNotMatch(@"(?i)\b(their|theirs|them|they)\b", line);
     }
 
-    // A row in CRT's own words: the Systems screen's and the contributor's Drafts tab's.
+    // A row in CRT's own words: the Boards screen's and the contributor's Drafts tab's.
     [Fact]
     public void A_row_says_what_it_was_where_how_it_went_and_what_they_were_told()
     {

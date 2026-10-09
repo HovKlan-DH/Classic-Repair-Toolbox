@@ -42,7 +42,7 @@ namespace Handlers.DataHandling
             return Task.Run(() => DraftRetirement.FindRetirableDrafts(receipts, resolveStatus));
         }
 
-        // The search the application runs - receipts matched to the boards it knows by system id.
+        // The search the application runs - receipts matched to the boards it knows by board id.
         // See DraftRetirement.FindRetirableDrafts.
         public static Task<IReadOnlyList<RetirableDraft>> FindAsync(
             IReadOnlyList<SubmissionReceipt> receipts,
@@ -59,10 +59,10 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Deletes each candidate that is still safe to delete, on the caller's (UI) thread.
         //
-        //   isInUse      - true when something holds unsaved edits for the system (the Drafts
+        //   isInUse      - true when something holds unsaved edits for the board (the Drafts
         //                  table); such a draft is kept, since those edits exist nowhere on disk.
         //   discard      - deletes the folder; false when it could not finish.
-        //   afterDiscard - runs for every system a delete was ATTEMPTED on, finished or not, since
+        //   afterDiscard - runs for every board a delete was ATTEMPTED on, finished or not, since
         //                  a partial delete still leaves the board cache describing files that
         //                  are gone. The caller clears its caches here.
         // ###########################################################################################
@@ -119,7 +119,7 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // What Retire did. Touched is every system whose folder a delete was attempted on - the ones
+    // What Retire did. Touched is every board whose folder a delete was attempted on - the ones
     // whose board, if on screen, has to be reloaded.
     // ###########################################################################################
     public sealed record DraftRetirementOutcome(IReadOnlyList<string> Retired, IReadOnlyList<string> Failed)

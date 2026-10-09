@@ -68,6 +68,34 @@ namespace CRT.Server.Handlers.Accounts
             return await MySqlAccountStore.ReadAccountAsync(command, cancellationToken);
         }
 
+        public async Task<IReadOnlyDictionary<long, AccountRecord>> FindByIdsAsync(IReadOnlyCollection<long> accountIds, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(accountIds);
+
+            List<long> wanted = accountIds.Distinct().ToList();
+
+            if (wanted.Count == 0)
+                return new Dictionary<long, AccountRecord>();
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            // One parameter per id - never the ids spliced into the text.
+            var names = new List<string>(wanted.Count);
+
+            for (int i = 0; i < wanted.Count; i++)
+            {
+                names.Add($"@a{i}");
+                command.Parameters.AddWithValue($"@a{i}", wanted[i]);
+            }
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts WHERE id IN ({string.Join(", ", names)});";
+
+            return (await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken))
+                .ToDictionary(account => account.Id);
+        }
+
         public async Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
@@ -562,12 +590,12 @@ namespace CRT.Server.Handlers.Accounts
         // Maintainer pools (Phase 6 roles). The `maintainers` table - `reviewers` between migrations 0006 and 0010.
         // -----------------------------------------------------------------------------------
 
-        public async Task<IReadOnlySet<string>> GetReviewedSystemIdsAsync(long accountId, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlySet<string>> GetReviewedBoardIdsAsync(long accountId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            command.CommandText = "SELECT system_id FROM maintainers WHERE account_id = @accountId;";
+            command.CommandText = "SELECT board_id FROM maintainers WHERE account_id = @accountId;";
             command.Parameters.AddWithValue("@accountId", accountId);
 
             var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -581,9 +609,9 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         private const string MaintainerColumns =
-            "r.system_id, r.account_id, a.display_name, a.email, a.is_administrator, a.is_verified, a.is_locked";
+            "r.board_id, r.account_id, a.display_name, a.email, a.is_administrator, a.is_verified, a.is_locked";
 
-        public async Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfSystemAsync(string systemId, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<MaintainerRecord>> GetMaintainersOfBoardAsync(string boardId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
@@ -591,8 +619,8 @@ namespace CRT.Server.Handlers.Accounts
             command.CommandText =
                 $"SELECT {MySqlAccountStore.MaintainerColumns} FROM maintainers r " +
                 "JOIN accounts a ON a.id = r.account_id " +
-                "WHERE r.system_id = @systemId ORDER BY a.display_name, a.id;";
-            command.Parameters.AddWithValue("@systemId", systemId);
+                "WHERE r.board_id = @boardId ORDER BY a.display_name, a.id;";
+            command.Parameters.AddWithValue("@boardId", boardId);
 
             return await MySqlAccountStore.ReadMaintainersAsync(command, cancellationToken);
         }
@@ -605,23 +633,23 @@ namespace CRT.Server.Handlers.Accounts
             command.CommandText =
                 $"SELECT {MySqlAccountStore.MaintainerColumns} FROM maintainers r " +
                 "JOIN accounts a ON a.id = r.account_id " +
-                "ORDER BY r.system_id, a.display_name, a.id;";
+                "ORDER BY r.board_id, a.display_name, a.id;";
 
             return await MySqlAccountStore.ReadMaintainersAsync(command, cancellationToken);
         }
 
-        public Task AddMaintainerAsync(string systemId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        public Task AddMaintainerAsync(string boardId, long accountId, long grantedByAccountId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
             // INSERT IGNORE: a second grant of the same pair keeps the FIRST grant's attribution
             // and date, which is the honest record of when this person became a maintainer.
             return this.ExecuteAsync(
                 """
-                INSERT IGNORE INTO maintainers (system_id, account_id, granted_by, granted_utc)
-                VALUES (@systemId, @accountId, @grantedBy, @when);
+                INSERT IGNORE INTO maintainers (board_id, account_id, granted_by, granted_utc)
+                VALUES (@boardId, @accountId, @grantedBy, @when);
                 """,
                 command =>
                 {
-                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@boardId", boardId);
                     command.Parameters.AddWithValue("@accountId", accountId);
                     command.Parameters.AddWithValue("@grantedBy", grantedByAccountId);
                     command.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
@@ -629,13 +657,13 @@ namespace CRT.Server.Handlers.Accounts
                 cancellationToken);
         }
 
-        public Task RemoveMaintainerAsync(string systemId, long accountId, CancellationToken cancellationToken = default)
+        public Task RemoveMaintainerAsync(string boardId, long accountId, CancellationToken cancellationToken = default)
         {
             return this.ExecuteAsync(
-                "DELETE FROM maintainers WHERE system_id = @systemId AND account_id = @accountId;",
+                "DELETE FROM maintainers WHERE board_id = @boardId AND account_id = @accountId;",
                 command =>
                 {
-                    command.Parameters.AddWithValue("@systemId", systemId);
+                    command.Parameters.AddWithValue("@boardId", boardId);
                     command.Parameters.AddWithValue("@accountId", accountId);
                 },
                 cancellationToken);
@@ -750,7 +778,7 @@ namespace CRT.Server.Handlers.Accounts
         // ---------------------------------------------------------------------------------------
 
         private const string InvitationColumns =
-            "id, system_id, email, email_normalised, invited_by, created_utc, expires_utc, accepted_utc, withdrawn_utc";
+            "id, board_id, email, email_normalised, invited_by, created_utc, expires_utc, accepted_utc, withdrawn_utc";
 
         public async Task<long> CreateInvitationAsync(NewMaintainerInvitation invitation, CancellationToken cancellationToken = default)
         {
@@ -761,12 +789,12 @@ namespace CRT.Server.Handlers.Accounts
 
             command.CommandText = """
                 INSERT INTO maintainer_invitations
-                    (system_id, email, email_normalised, token_hash, invited_by, created_utc, expires_utc)
-                VALUES (@systemId, @email, @normalised, @hash, @invitedBy, @created, @expires);
+                    (board_id, email, email_normalised, token_hash, invited_by, created_utc, expires_utc)
+                VALUES (@boardId, @email, @normalised, @hash, @invitedBy, @created, @expires);
                 SELECT LAST_INSERT_ID();
                 """;
 
-            command.Parameters.AddWithValue("@systemId", invitation.SystemId);
+            command.Parameters.AddWithValue("@boardId", invitation.BoardId);
             command.Parameters.AddWithValue("@email", invitation.Email);
             command.Parameters.AddWithValue("@normalised", invitation.NormalisedEmail);
             command.Parameters.AddWithValue("@hash", invitation.TokenHash);
@@ -813,7 +841,7 @@ namespace CRT.Server.Handlers.Accounts
             command.CommandText =
                 $"SELECT {MySqlAccountStore.InvitationColumns} FROM maintainer_invitations " +
                 "WHERE accepted_utc IS NULL AND withdrawn_utc IS NULL AND expires_utc > @now " +
-                "ORDER BY system_id, created_utc, id;";
+                "ORDER BY board_id, created_utc, id;";
             command.Parameters.AddWithValue("@now", nowUtc.UtcDateTime);
 
             return await MySqlAccountStore.ReadInvitationsAsync(command, cancellationToken);
@@ -882,8 +910,8 @@ namespace CRT.Server.Handlers.Accounts
             {
                 command.Transaction = transaction;
                 command.CommandText = """
-                    INSERT IGNORE INTO maintainers (system_id, account_id, granted_by, granted_utc)
-                    SELECT system_id, @accountId, invited_by, @when FROM maintainer_invitations
+                    INSERT IGNORE INTO maintainers (board_id, account_id, granted_by, granted_utc)
+                    SELECT board_id, @accountId, invited_by, @when FROM maintainer_invitations
                     WHERE email_normalised = @normalised
                       AND accepted_utc IS NULL AND withdrawn_utc IS NULL AND expires_utc > @when;
 

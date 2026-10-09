@@ -8,7 +8,7 @@ namespace Handlers.DataHandling
     //
     // *** THE EXTENSION IS CHOSEN BY THE CONTRIBUTOR; THE BYTES ARE WHAT GETS OPENED. *** Every
     // published file is synced to every user's disk, and CRT hands documents to the operating
-    // system to open. A ".png" that is really an executable, or a ".txt" that is really a
+    // board to open. A ".png" that is really an executable, or a ".txt" that is really a
     // script, only needs a user to open it. So the first bytes are checked against the format the
     // name claims, and a mismatch refuses the submission.
     //

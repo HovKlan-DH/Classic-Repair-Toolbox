@@ -4,7 +4,7 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // HOW BIG EACH FILE IN A FILE TREE IS (owner request, 2026-10-04: "Ideally the 'Files' actually
-    // also states its size (everywhere)") - for the Systems screen's Files view, a submission's
+    // also states its size (everywhere)") - for the Boards screen's Files view, a submission's
     // Files view and the production plan's tree.
     //
     // A file's size is the size of what OPENS from its row: BETA's or production's file on disk, or
@@ -41,16 +41,16 @@ namespace CRT.Server.Handlers.Submissions
         // Each entry's size, where its bytes are: BETA's tree, production's, or the submission's
         // upload (`submitted`, path -> bytes, from its manifest).
         // ###########################################################################################
-        public static IReadOnlyList<SystemFileEntry> Attach(
-            IReadOnlyList<SystemFileEntry> entries,
+        public static IReadOnlyList<BoardFileEntry> Attach(
+            IReadOnlyList<BoardFileEntry> entries,
             string betaRoot,
             string? productionRoot = null,
             IReadOnlyDictionary<string, long>? submitted = null) =>
-            SystemFileEntries.WithSizes(entries, entry => entry.OpenFrom switch
+            BoardFileEntries.WithSizes(entries, entry => entry.OpenFrom switch
             {
-                SystemFileSource.Beta => TreeFileSizes.Of(betaRoot, entry.Path),
-                SystemFileSource.Production => TreeFileSizes.Of(productionRoot, entry.Path),
-                SystemFileSource.Submission => submitted is not null && submitted.TryGetValue(entry.Path, out long size) ? size : null,
+                BoardFileSource.Beta => TreeFileSizes.Of(betaRoot, entry.Path),
+                BoardFileSource.Production => TreeFileSizes.Of(productionRoot, entry.Path),
+                BoardFileSource.Submission => submitted is not null && submitted.TryGetValue(entry.Path, out long size) ? size : null,
                 _ => null
             });
 

@@ -39,7 +39,7 @@ public sealed class DraftsTabBadgeTests : IDisposable
     {
         SubmissionId = id,
         UploadToken = "tok" + id,
-        SystemId = "Commodore/C64/250407/Data C64 250407.xlsx",
+        BoardId = "Commodore/C64/250407/Data C64 250407.xlsx",
         Summary = "Fixed U8 pinout",
         SentUtc = new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero),
         LastKnownState = state

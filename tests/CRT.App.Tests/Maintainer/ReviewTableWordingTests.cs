@@ -72,10 +72,12 @@ public sealed class ReviewTableWordingTests
     [Fact]
     public void The_table_says_what_it_is_coloured_against()
     {
-        Assert.StartsWith("Nothing of this system is published yet, so only a change you make here is marked.",
+        Assert.StartsWith("Nothing of this board is published yet, so only a change you make here is marked.",
             ReviewTableWording.OpenedMessage(new ReviewTableData(0, null, ReviewTableWordingTests.Submitted())));
 
-        Assert.StartsWith("Coloured against the published board",
+        // A board already published is the server's BETA tree - newer than the stable source, so
+        // it is named (owner request, 2026-10-05).
+        Assert.StartsWith("Coloured against the board in the BETA source.",
             ReviewTableWording.OpenedMessage(new ReviewTableData(0, ReviewTableWordingTests.Submitted(), ReviewTableWordingTests.Submitted())));
     }
 
@@ -151,7 +153,7 @@ public sealed class ReviewTableWordingTests
     {
         ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
             {"canPublish":true,
-             "submission":{"id":42,"systemId":"Commodore/C64/250407","state":"pending","summary":"x"},
+             "submission":{"id":42,"boardId":"Commodore/C64/250407","state":"pending","summary":"x"},
              "findings":[],
              "amendment":{"version":2,"by":"Anna (anna@example.com)","atUtc":"2026-09-25T12:00:00+00:00"}}
             """);

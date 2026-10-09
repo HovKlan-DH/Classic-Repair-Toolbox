@@ -24,7 +24,7 @@ namespace CRT.Data.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"
@@ -81,7 +81,7 @@ namespace CRT.Data.Tests
         // ###########################################################################################
         // *** THE BOARD'S OWN KiCad DATA IS THE ONE EXEMPTION FROM THE CITATION RULE. *** No row
         // cites it - CRT reads the folder by name - so before this, a submission could not carry it
-        // at all and a new system was published without its traces.
+        // at all and a new board was published without its traces.
         // ###########################################################################################
         [Fact]
         public void Own_KiCad_data_is_accepted_although_no_row_cites_it()
@@ -117,7 +117,7 @@ namespace CRT.Data.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"
@@ -135,7 +135,7 @@ namespace CRT.Data.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"
@@ -202,7 +202,7 @@ namespace CRT.Data.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407", Manufacturer = "Commodore", Hardware = "C64", Board = "250407",
+                BoardId = "Commodore/C64/250407", Manufacturer = "Commodore", Hardware = "C64", Board = "250407",
                 Rows = new SubmissionRows
                 {
                     Schematics = { new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = SubmissionFileRulesTests.Own + "s.png" } },
@@ -278,14 +278,14 @@ namespace CRT.Data.Tests
             Assert.Contains("path.case_collision_published", SubmissionFileRulesTests.Codes(manifest, tree));
         }
 
-        // The squat this closes: an anonymous "new system" whose folder is a case-variant of a real
+        // The squat this closes: an anonymous "new board" whose folder is a case-variant of a real
         // board, whose files would then replace the real board's on every Windows and macOS client.
         [Fact]
         public void A_board_whose_folder_is_a_case_variant_of_a_published_one_is_refused()
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "commodore/c64/250407",
+                BoardId = "commodore/c64/250407",
                 Manufacturer = "commodore",
                 Hardware = "c64",
                 Board = "250407"

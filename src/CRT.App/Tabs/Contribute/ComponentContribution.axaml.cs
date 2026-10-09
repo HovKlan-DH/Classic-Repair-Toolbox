@@ -785,22 +785,22 @@ namespace CRT
 
         // ###########################################################################################
         // Discovers every folder a file row can be placed in - the data tree's AND the drafts
-        // tree's, so a system that exists only as a draft offers its own folders too. See
+        // tree's, so a board that exists only as a draft offers its own folders too. See
         // ContributionFileLocations for why both, and why that needed nothing else to change.
         //
         // *** ONLY THIS BOARD'S FOLDERS AND THE SHARED ONES (owner request, 2026-09-25) - see
         // ContributionFileLocations.WritableBy. *** A row whose file already sits elsewhere keeps
         // its own folder in its list regardless (SetAvailableFileLocations adds it back).
         //
-        // Rebuilt on every open, so a system created a moment ago is already in the list. Needs
-        // thisBoardExcelFile, which names the system - ApplyBoardContext sets it first.
+        // Rebuilt on every open, so a board created a moment ago is already in the list. Needs
+        // thisBoardExcelFile, which names the board - ApplyBoardContext sets it first.
         // ###########################################################################################
         private void PopulateEndFolders(string dataRoot)
         {
             this.AvailableEndFolders.Clear();
 
             IEnumerable<string> writable = ContributionFileLocations.WritableBy(
-                SystemDescriptorRules.SystemIdFromExcelDataFile(this.thisBoardExcelFile),
+                BoardDescriptorRules.BoardIdFromExcelDataFile(this.thisBoardExcelFile),
                 ContributionFileLocations.FindEndFolders(dataRoot, DraftManager.DraftsRoot));
 
             foreach (string folder in writable)
@@ -1309,7 +1309,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Validates the edited rows and saves them into the current system's local draft
+        // Validates the edited rows and saves them into the current board's local draft
         // (NewContributeStrategy.md Phase 2, session 2c - this window used to zip its payload and
         // POST it to the contribution server; see ComponentDraftWriter's own header for why the
         // save target changed and the UI otherwise did not).
@@ -1360,7 +1360,7 @@ namespace CRT
 
             if (string.IsNullOrWhiteSpace(this.thisBoardExcelFile))
             {
-                this.ShowStatus("Could not resolve which system this draft belongs to.", true);
+                this.ShowStatus("Could not resolve which board this draft belongs to.", true);
                 return;
             }
 
@@ -1424,17 +1424,17 @@ namespace CRT
         // ###########################################################################################
         private async Task<bool> SaveComponentToDraftAsync()
         {
-            string draftFolder = DraftFolderLayout.GetSystemFolder(
+            string draftFolder = DraftFolderLayout.GetBoardFolder(
                 DraftManager.DraftsRoot,
                 this.thisBoardExcelFile);
 
             if (string.IsNullOrWhiteSpace(draftFolder))
             {
-                Logger.Warning("Component draft save failed - could not resolve the drafts folder for this system");
+                Logger.Warning("Component draft save failed - could not resolve the drafts folder for this board");
                 return false;
             }
 
-            // *** A SYSTEM WITH NO DRAFT IS SEEDED FIRST, as on every other save path. *** A draft
+            // *** A BOARD WITH NO DRAFT IS SEEDED FIRST, as on every other save path. *** A draft
             // is a complete copy of the published board; starting an empty one here would produce
             // a draft that reads as "every published row deleted". Copied from the published FILE
             // as it is now, never from the board cache - see DraftSeeder.SeedFromPublishedFile.
@@ -1928,7 +1928,7 @@ namespace CRT
         // ###########################################################################################
         private (Action Reveal, string Message)? ValidateNewFileLocations()
         {
-            string systemId = SystemDescriptorRules.SystemIdFromExcelDataFile(this.thisBoardExcelFile);
+            string boardId = BoardDescriptorRules.BoardIdFromExcelDataFile(this.thisBoardExcelFile);
             (Action Reveal, string Message)? firstProblem = null;
 
             void CheckSection(IReadOnlyList<IContributionFileRow> rows, string rowName, Expander section, ItemsControl list)
@@ -1936,7 +1936,7 @@ namespace CRT
                 for (int index = 0; index < rows.Count; index++)
                 {
                     IContributionFileRow row = rows[index];
-                    ContributionFileLocations.NewFileProblem problem = this.CheckNewFileLocation(systemId, row);
+                    ContributionFileLocations.NewFileProblem problem = this.CheckNewFileLocation(boardId, row);
                     bool noFolder = problem == ContributionFileLocations.NewFileProblem.NoFolder;
 
                     row.HasLocationError = problem != ContributionFileLocations.NewFileProblem.None;
@@ -1998,7 +1998,7 @@ namespace CRT
         // place": it IS the published copy, so citing it is fine even from another board's folder.
         // Compared exactly - a different capitalisation would name a different file on the server.
         // ###########################################################################################
-        private ContributionFileLocations.NewFileProblem CheckNewFileLocation(string systemId, IContributionFileRow row)
+        private ContributionFileLocations.NewFileProblem CheckNewFileLocation(string boardId, IContributionFileRow row)
         {
             if (string.IsNullOrWhiteSpace(row.File) ||
                 string.IsNullOrWhiteSpace(row.OriginalFilePath) ||
@@ -2016,7 +2016,7 @@ namespace CRT
             bool usedInPlace = !string.IsNullOrEmpty(pickedFrom) &&
                                string.Equals(pickedFrom, location, StringComparison.Ordinal);
 
-            return ContributionFileLocations.CheckNewFile(systemId, location, usedInPlace);
+            return ContributionFileLocations.CheckNewFile(boardId, location, usedInPlace);
         }
 
         // ###########################################################################################

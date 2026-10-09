@@ -149,7 +149,7 @@
 					<SolidColorBrush x:Key="Draft_Chip_Border">#C8960E</SolidColorBrush>
 					<Color x:Key="Draft_Highlight_Tint">#E0A800</Color>
 
-					<!-- One component reference in SystemFilesWindow's KiCad match report. A plain
+					<!-- One component reference in BoardFilesWindow's KiCad match report. A plain
 					     light grey, not the amber above: a reference there is a LIST ITEM, not a
 					     draft edit, and amber would mark every one of several hundred as "changed". -->
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#E6E6E6</SolidColorBrush>
@@ -194,6 +194,24 @@
 					<SolidColorBrush x:Key="Workbooks_SearchHit_Bg">#FFE58A</SolidColorBrush>
 					<SolidColorBrush x:Key="Workbooks_SearchHit_Fg">#1A1A1A</SolidColorBrush>
 
+					<!-- Light, the Maintainer tab's graph of views per day (BoardViewsChart, 2026-10-09). One
+					     blue, checked against this white for its lightness band and 3:1 contrast; the darker
+					     step marks the day pointed at. Grid and baseline one step off the ground, the dates
+					     and numbers in muted ink - never in the bar's colour. -->
+					<SolidColorBrush x:Key="Chart_Bar">#2A78D6</SolidColorBrush>
+					<SolidColorBrush x:Key="Chart_BarHover">#17549F</SolidColorBrush>
+					<SolidColorBrush x:Key="Chart_Grid">#E1E0D9</SolidColorBrush>
+					<SolidColorBrush x:Key="Chart_Baseline">#C3C2B7</SolidColorBrush>
+					<SolidColorBrush x:Key="Chart_Label">#6F6D67</SolidColorBrush>
+
+					<!-- Light, the Boards screen (2026-10-09): the stage where a board's newest work sits, and the
+					     panel saying why its BETA table cannot be changed - amber, the colour of waiting. -->
+					<SolidColorBrush x:Key="Stage_Current_Border">#2A78D6</SolidColorBrush>
+					<SolidColorBrush x:Key="Stage_Current_Bg">#EEF5FD</SolidColorBrush>
+					<SolidColorBrush x:Key="Notice_Bg">#FFF4DC</SolidColorBrush>
+					<SolidColorBrush x:Key="Notice_Border">#E8B866</SolidColorBrush>
+					<SolidColorBrush x:Key="Notice_Fg">#5C3A00</SolidColorBrush>
+
 					<!-- Light, Thumbnail -->
 					<SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
@@ -228,11 +246,11 @@
 					<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
 
 					<!-- Light, Maintainer tab (2026-09-29; the values CRT Maintainer's own theme carried): the
-					     queue's "New system" badge and the line between its boards, and the four screen
+					     queue's "New board" badge and the line between its boards, and the four screen
 					     buttons with their badges -->
-					<SolidColorBrush x:Key="Badge_NewSystem_Bg">#FFF1D6</SolidColorBrush>
-					<SolidColorBrush x:Key="Badge_NewSystem_Fg">#8A5200</SolidColorBrush>
-					<SolidColorBrush x:Key="Badge_NewSystem_Border">#E8B866</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_NewBoard_Bg">#FFF1D6</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_NewBoard_Fg">#8A5200</SolidColorBrush>
+					<SolidColorBrush x:Key="Badge_NewBoard_Border">#E8B866</SolidColorBrush>
 					<SolidColorBrush x:Key="Queue_Divider">#D0D0D0</SolidColorBrush>
 					<SolidColorBrush x:Key="Mode_Selected_Bg">#DCE7F3</SolidColorBrush>
 					<SolidColorBrush x:Key="Mode_Selected_Border">#4F7FBF</SolidColorBrush>
@@ -376,6 +394,21 @@
 				<SolidColorBrush x:Key="Workbooks_SearchHit_Bg">#B98A2E</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_SearchHit_Fg">#12100E</SolidColorBrush>
 
+				<!-- Dark, the graph of views per day: the dark step of the same blue, checked against this
+				     ground; the lighter step marks the day pointed at. -->
+				<SolidColorBrush x:Key="Chart_Bar">#3987E5</SolidColorBrush>
+				<SolidColorBrush x:Key="Chart_BarHover">#7CB1F0</SolidColorBrush>
+				<SolidColorBrush x:Key="Chart_Grid">#34302D</SolidColorBrush>
+				<SolidColorBrush x:Key="Chart_Baseline">#4A4542</SolidColorBrush>
+				<SolidColorBrush x:Key="Chart_Label">#A39C96</SolidColorBrush>
+
+				<!-- Dark, the Boards screen's current stage and its read-only notice. -->
+				<SolidColorBrush x:Key="Stage_Current_Border">#3987E5</SolidColorBrush>
+				<SolidColorBrush x:Key="Stage_Current_Bg">#1C2633</SolidColorBrush>
+				<SolidColorBrush x:Key="Notice_Bg">#33270F</SolidColorBrush>
+				<SolidColorBrush x:Key="Notice_Border">#7A5A1E</SolidColorBrush>
+				<SolidColorBrush x:Key="Notice_Fg">#F7D9A0</SolidColorBrush>
+
 				<!-- Dark, Thumbnail -->
 				<SolidColorBrush x:Key="Thumbnail_Border">LightGray</SolidColorBrush>
 				<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
@@ -410,9 +443,9 @@
 				<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
 
 				<!-- Dark, Maintainer tab (see the Light twin) -->
-				<SolidColorBrush x:Key="Badge_NewSystem_Bg">#3D2E10</SolidColorBrush>
-				<SolidColorBrush x:Key="Badge_NewSystem_Fg">#F7C873</SolidColorBrush>
-				<SolidColorBrush x:Key="Badge_NewSystem_Border">#7A5A1E</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_NewBoard_Bg">#3D2E10</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_NewBoard_Fg">#F7C873</SolidColorBrush>
+				<SolidColorBrush x:Key="Badge_NewBoard_Border">#7A5A1E</SolidColorBrush>
 				<SolidColorBrush x:Key="Queue_Divider">#4A4A4A</SolidColorBrush>
 				<SolidColorBrush x:Key="Mode_Selected_Bg">#27384D</SolidColorBrush>
 				<SolidColorBrush x:Key="Mode_Selected_Border">#6F9FD8</SolidColorBrush>

@@ -90,13 +90,13 @@ public sealed class DiscardDraftWindowTests
     }
 
     [Fact]
-    public void The_confirmation_names_the_system_being_discarded_on_its_own_bold_line()
+    public void The_confirmation_names_the_board_being_discarded_on_its_own_bold_line()
     {
         UiTest.Run(() =>
         {
             var window = BuildWindow();
 
-            var nameBlock = window.GetControl<TextBlock>("SystemNameText");
+            var nameBlock = window.GetControl<TextBlock>("BoardNameText");
 
             Assert.Equal("Commodore 64 - 250469 (short board)", nameBlock.Text);
             Assert.Equal(FontWeight.Bold, nameBlock.FontWeight);

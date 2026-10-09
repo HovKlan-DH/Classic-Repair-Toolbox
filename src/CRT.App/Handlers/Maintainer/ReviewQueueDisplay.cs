@@ -15,14 +15,14 @@ namespace Handlers.MaintainerHandling
     // which the project owner still found "quite hard to overview". Now one heading per board, and
     // two short lines per submission under it:
     //
-    //     Commodore / C64 / 250407             [New system]
+    //     Commodore / C64 / 250407             [New board]
     //        Corrected the pinout pictures for U8 and added U10.
     //        Waiting 10 hours - replaces a shared file
     //        Added the missing CIA pictures.
     //        Waiting 2 days - with the other approver             (dimmed)
     //
     // Submissions for one board are reviewed together, and the board is said once. Only what is
-    // UNUSUAL is marked: "New system" on the heading (a published system is the ordinary case), and
+    // UNUSUAL is marked: "New board" on the heading (a published board is the ordinary case), and
     // a submission that does NOT wait for this account is dimmed and says so - where "Awaiting your
     // review" used to sit on nearly every row. Both answers are the SERVER's (ReviewQueueEntry).
     //
@@ -36,7 +36,7 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public static class ReviewQueueDisplay
     {
-        public const string NewSystemBadge = "New system";
+        public const string NewBoardBadge = "New board";
 
         // ###########################################################################################
         // The queue as board groups: each board once, in the order its OLDEST submission waits
@@ -49,17 +49,17 @@ namespace Handlers.MaintainerHandling
             ArgumentNullException.ThrowIfNull(rows);
 
             var groups = new List<ReviewQueueGroup>();
-            var bySystem = new Dictionary<string, List<ReviewQueueRow>>(StringComparer.Ordinal);
+            var byBoard = new Dictionary<string, List<ReviewQueueRow>>(StringComparer.Ordinal);
 
             foreach (ReviewQueueRow row in rows)
             {
-                string system = row.SystemId ?? string.Empty;
+                string board = row.BoardId ?? string.Empty;
 
-                if (!bySystem.TryGetValue(system, out List<ReviewQueueRow>? members))
+                if (!byBoard.TryGetValue(board, out List<ReviewQueueRow>? members))
                 {
                     members = [];
-                    bySystem[system] = members;
-                    groups.Add(new ReviewQueueGroup(system, members));
+                    byBoard[board] = members;
+                    groups.Add(new ReviewQueueGroup(board, members));
                 }
 
                 members.Add(row);
@@ -70,24 +70,24 @@ namespace Handlers.MaintainerHandling
 
         // "Commodore / C64 / 250407" - or the id whole when it is not three parts, and a missing one
         // said to be missing rather than left as a gap that looks like a rendering fault.
-        public static string SystemHeading(string? systemId)
+        public static string BoardHeading(string? boardId)
         {
-            if (SystemParts(systemId) is { } parts)
+            if (BoardParts(boardId) is { } parts)
                 return $"{parts.Manufacturer} / {parts.Hardware} / {parts.Board}";
 
-            return string.IsNullOrWhiteSpace(systemId) ? "(unknown system)" : systemId;
+            return string.IsNullOrWhiteSpace(boardId) ? "(unknown board)" : boardId;
         }
 
         // ###########################################################################################
-        // The system's three parts, or null when the id is not a well-formed one - the row then
-        // shows the id whole (SystemWhole) rather than inventing parts.
+        // The board's three parts, or null when the id is not a well-formed one - the row then
+        // shows the id whole (BoardWhole) rather than inventing parts.
         // ###########################################################################################
-        public static (string Manufacturer, string Hardware, string Board)? SystemParts(string? systemId)
+        public static (string Manufacturer, string Hardware, string Board)? BoardParts(string? boardId)
         {
-            if (!SystemDescriptorRules.IsValidSystemId(systemId))
+            if (!BoardDescriptorRules.IsValidBoardId(boardId))
                 return null;
 
-            string[] parts = systemId!.Split('/');
+            string[] parts = boardId!.Split('/');
 
             return (parts[0], parts[1], parts[2]);
         }
@@ -105,12 +105,12 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // "New system" when the server says the system has no published board - the highest-risk
-        // submission there is. Nothing otherwise: a published system is the ordinary case, and
+        // "New board" when the server says the board has no published board - the highest-risk
+        // submission there is. Nothing otherwise: a published board is the ordinary case, and
         // marking it on every heading only drowned the one that matters.
         // ###########################################################################################
-        public static string? SystemBadge(bool? isNewSystem) =>
-            isNewSystem == true ? ReviewQueueDisplay.NewSystemBadge : null;
+        public static string? BoardBadge(bool? isNewBoard) =>
+            isNewBoard == true ? ReviewQueueDisplay.NewBoardBadge : null;
 
         // ###########################################################################################
         // Whether a submission OPENED waits for this account: it may decide it, and its approval is
@@ -195,10 +195,10 @@ namespace Handlers.MaintainerHandling
                 : $"waiting {count.ToString(CultureInfo.InvariantCulture)} {unit}s";
     }
 
-    // One board's submissions in the queue. IsNewSystem is the server's answer for the board -
-    // every submission to one system gets the same one.
-    public sealed record ReviewQueueGroup(string SystemId, IReadOnlyList<ReviewQueueRow> Rows)
+    // One board's submissions in the queue. IsNewBoard is the server's answer for the board -
+    // every submission to one board gets the same one.
+    public sealed record ReviewQueueGroup(string BoardId, IReadOnlyList<ReviewQueueRow> Rows)
     {
-        public bool? IsNewSystem => this.Rows.Select(row => row.IsNewSystem).FirstOrDefault(isNew => isNew is not null);
+        public bool? IsNewBoard => this.Rows.Select(row => row.IsNewBoard).FirstOrDefault(isNew => isNew is not null);
     }
 }

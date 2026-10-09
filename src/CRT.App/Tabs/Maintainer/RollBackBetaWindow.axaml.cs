@@ -13,7 +13,7 @@ namespace CRT
     // CONFIRMING A BETA ROLLBACK (owner decision, 2026-09-27) - the BETA screen's "push back
     // to queue".
     //
-    // *** THE POINT OF THE DIALOG IS THE NAMES. *** A rollback is per SYSTEM, so it takes back
+    // *** THE POINT OF THE DIALOG IS THE NAMES. *** A rollback is per BOARD, so it takes back
     // EVERY submission merged since the last promotion; one contributor's work cannot be picked
     // out (ProductionPromotionPlan's header explains why in the other direction). Listing them
     // here, before anything happens, is what stops a maintainer discarding two other people's
@@ -68,11 +68,9 @@ namespace CRT
 
             foreach (CarriedSubmission submission in plan.Returning)
             {
-                returning.Children.Add(new TextBlock
-                {
-                    Text = ProductionDisplay.CarryingLine(submission, now),
-                    TextWrapping = TextWrapping.Wrap
-                });
+                var carried = new TextBlock { TextWrapping = TextWrapping.Wrap };
+                TabMaintainer.ShowCounts(carried, ProductionDisplay.CarryingRuns(submission, now));
+                returning.Children.Add(carried);
             }
 
             returning.IsVisible = plan.Returning.Count > 0;

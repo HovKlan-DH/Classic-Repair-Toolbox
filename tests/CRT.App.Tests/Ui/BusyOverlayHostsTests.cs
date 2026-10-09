@@ -53,7 +53,7 @@ public sealed class BusyOverlayHostsTests : IDisposable
         UiTest.Run(() =>
         {
             Assert.NotNull(BusyOverlay.For(new MySubmissionsWindow()));
-            Assert.NotNull(BusyOverlay.For(new SystemFilesWindow()));
+            Assert.NotNull(BusyOverlay.For(new BoardFilesWindow()));
             Assert.NotNull(BusyOverlay.For(new ComponentContributionWindow()));
 
             // (The Maintainer tab's "Your account" window was here from 2026-10-03, with an overlay

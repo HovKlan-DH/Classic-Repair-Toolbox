@@ -27,7 +27,7 @@ public sealed class SubmitDraftWindowKiCadTests : System.IDisposable
 
     private static SubmissionIdentity Identity() => new()
     {
-        SystemId = "Manu1/Hardware1/Board1",
+        BoardId = "Manu1/Hardware1/Board1",
         Manufacturer = "Manu1",
         Hardware = "Hardware1",
         Board = "Board1"

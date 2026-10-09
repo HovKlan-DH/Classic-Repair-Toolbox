@@ -33,7 +33,7 @@ in another board's folder can be used too, but only exactly as it is.
 ### Your own work is a draft
 
 You never edit the data root itself - the online sync keeps it equal to the published data. Every
-board you change, and every board you add with **Add a new system**, is a **draft**: a folder of the
+board you change, and every board you add with **Add a new board**, is a **draft**: a folder of the
 same shape in your own drafts folder (see [Command-line parameters](Commandline-parameters) for where
 that is). The sync never touches it.
 
@@ -54,7 +54,7 @@ see [Contribute data via CRT](Contribute-data-via-CRT).
 
 | I want to | File |
 | --- | --- |
-| Add my board to the drop-downs | None - use **Add a new system** on the Contribute or Drafts tab. A maintainer adds it to the [Main Excel](Main-Excel) when it is published |
+| Add my board to the drop-downs | None - use **Add a new board** on the Contribute or Drafts tab. A maintainer adds it to the [Main Excel](Main-Excel) when it is published |
 | Say what a component is - name, value, part number, datasheet | [Board Excel](Board-Excel) |
 | Make a component light up on a schematic image | [Board JSON](Board-JSON) |
 | Make the copper traces clickable | [KiCad folder](KiCad-folder) |

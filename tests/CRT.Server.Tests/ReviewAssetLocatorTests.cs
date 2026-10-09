@@ -76,7 +76,7 @@ namespace CRT.Server.Tests
         {
             var manifest = new SubmissionManifest
             {
-                SystemId = "Commodore/C64/250407",
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407"
@@ -167,22 +167,22 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // The PUBLISHED side: addressed by path, contained to the system folder.
+        // The PUBLISHED side: addressed by path, contained to the board folder.
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** THE PATH IS RELATIVE TO THE DATA TREE ROOT, NOT THE SYSTEM FOLDER (corrected
+        // *** THE PATH IS RELATIVE TO THE DATA TREE ROOT, NOT THE BOARD FOLDER (corrected
         // 2026-09-23). ***
         //
-        // This test used to pass "Schematics/board.png" and expect it resolved under the system
+        // This test used to pass "Schematics/board.png" and expect it resolved under the board
         // folder. That was wrong about the real data: a board stores its references relative to
         // the DATA ROOT ("Commodore/C64/250407/Schematics/board.png"), which is how the desktop
-        // app resolves them. The old base doubled the system segments, so every published image
+        // app resolves them. The old base doubled the board segments, so every published image
         // answered 404 and the maintainer was told "No published file at this path" about files that
         // are in fact published.
         //
         // The expectation is corrected rather than the code bent to it - see the locator header
-        // for why the system folder could never have been right.
+        // for why the board folder could never have been right.
         // ###########################################################################################
         [Fact]
         public void A_published_file_is_found_by_its_DATA_TREE_relative_path()
@@ -201,15 +201,15 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** THE CASE THE OLD SYSTEM-FOLDER BASE COULD NEVER HAVE SERVED. ***
+        // *** THE CASE THE OLD BOARD-FOLDER BASE COULD NEVER HAVE SERVED. ***
         //
         // A shared component image is stored as "Commodore/Shared files/Component images/6526.png"
-        // - outside the system folder by design, and cited by boards across a manufacturer. Under
+        // - outside the board folder by design, and cited by boards across a manufacturer. Under
         // the old base this was unreachable, so an entire legitimate category of board reference
         // could not be shown to a maintainer at all.
         // ###########################################################################################
         [Fact]
-        public void A_SHARED_file_outside_the_system_folder_is_found()
+        public void A_SHARED_file_outside_the_board_folder_is_found()
         {
             const string Shared = "Commodore/Shared files/Component images/6526.png";
 
@@ -295,10 +295,10 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** THE SCOPE LIMIT THAT REPLACED THE SYSTEM FOLDER, and it is STRICTER. ***
+        // *** THE SCOPE LIMIT THAT REPLACED THE BOARD FOLDER, and it is STRICTER. ***
         //
-        // The old base confined reads to the system own folder. The new one confines them to the
-        // files the submission board actually NAMES - so a file sitting inside the system folder,
+        // The old base confined reads to the board own folder. The new one confines them to the
+        // files the submission board actually NAMES - so a file sitting inside the board folder,
         // which the old rule would have served, is refused unless the board references it.
         // ###########################################################################################
         // ###########################################################################################
@@ -336,7 +336,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_file_the_board_does_NOT_reference_is_refused_even_inside_the_system_folder()
+        public void A_file_the_board_does_NOT_reference_is_refused_even_inside_the_board_folder()
         {
             string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
             Directory.CreateDirectory(folder);
@@ -360,7 +360,7 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(secrets);
             File.WriteAllText(Path.Combine(secrets, "appsettings.Production.json"), "connection string");
 
-            // The system folder is <tree>/Commodore/C64/250407, so four levels up reaches thisRoot.
+            // The board folder is <tree>/Commodore/C64/250407, so four levels up reaches thisRoot.
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
                 ReviewAssetLocatorTests.Manifest(),
@@ -392,14 +392,14 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_file_in_ANOTHER_systems_folder_is_refused()
+        public void A_file_in_ANOTHER_boards_folder_is_refused()
         {
-            // Containment is to THIS system, not merely to the data tree. A maintainer opening a
+            // Containment is to THIS board, not merely to the data tree. A maintainer opening a
             // C64 submission has no business reading an Amstrad board's files through it, and
             // "inside the tree" would permit exactly that.
             string other = Path.Combine(this.thisDataTree, "Amstrad", "CPC464", "Z70200");
             Directory.CreateDirectory(other);
-            File.WriteAllText(Path.Combine(other, "board.png"), "other system");
+            File.WriteAllText(Path.Combine(other, "board.png"), "other board");
 
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
@@ -434,10 +434,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void An_UNSAFE_IDENTITY_in_the_manifest_cannot_relocate_the_system_folder()
+        public void An_UNSAFE_IDENTITY_in_the_manifest_cannot_relocate_the_board_folder()
         {
             // The identity is untrusted too - it arrives inside the submission. A manufacturer of
-            // ".." would move the system folder up the tree and make every subsequent containment
+            // ".." would move the board folder up the tree and make every subsequent containment
             // check contain the WRONG folder.
             string secrets = Path.Combine(this.thisRoot, "secrets");
             Directory.CreateDirectory(secrets);

@@ -8,14 +8,14 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers MaintainerAssignmentFlows and MaintainerAssignmentRules - the administrator putting
-    // people into and out of a system's pool (Phase 6 roles, 2026-09-25).
+    // people into and out of a board's pool (Phase 6 roles, 2026-09-25).
     //
     // THE PROPERTY THAT MATTERS MOST is the last one: removal takes effect on the very next
     // request with the SAME token, because authority is read from the pool per request and never
     // cached in a session. Phase 6's definition of done asks for exactly that test.
     //
     // No database, no filesystem: the tree listing is handed in as a list, the way the endpoint
-    // hands it in after PublishedSystemLister has read the real tree.
+    // hands it in after PublishedBoardLister has read the real tree.
     // ###########################################################################################
     public sealed class MaintainerAssignmentFlowsTests
     {
@@ -24,7 +24,7 @@ namespace CRT.Server.Tests
         private const string C64 = "Commodore/C64/250407";
         private const string C128 = "Commodore/C128/310378";
 
-        private static readonly IReadOnlyList<PublishedSystemLister.KnownSystem> Tree =
+        private static readonly IReadOnlyList<PublishedBoardLister.KnownBoard> Tree =
         [
             new(MaintainerAssignmentFlowsTests.C64, "Commodore", "C64", "250407"),
             new(MaintainerAssignmentFlowsTests.C128, "Commodore", "C128", "310378")
@@ -48,7 +48,7 @@ namespace CRT.Server.Tests
         private static ReviewAccess AccessFor(FakeAccountStore accounts, long accountId) =>
             ReviewAccess.For(
                 accounts.Accounts[accountId],
-                accounts.GetReviewedSystemIdsAsync(accountId).GetAwaiter().GetResult());
+                accounts.GetReviewedBoardIdsAsync(accountId).GetAwaiter().GetResult());
 
         // -----------------------------------------------------------------------------------
         // Adding
@@ -74,7 +74,7 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task Assigning_to_a_board_with_no_systems_row_yet_creates_the_row_as_SHIPPED()
+        public async Task Assigning_to_a_board_with_no_boards_row_yet_creates_the_row_as_SHIPPED()
         {
             // The pool table's foreign key needs the row, and a shipped board nobody has submitted
             // to has none. It is 'shipped' because it was in the tree before any submission.
@@ -85,16 +85,16 @@ namespace CRT.Server.Tests
                 admin, MaintainerAssignmentFlowsTests.C64, anna, MaintainerAssignmentFlowsTests.Tree,
                 accounts, submissions, MaintainerAssignmentFlowsTests.Now);
 
-            NewSubmission row = Assert.Single(submissions.Systems).Value;
+            NewSubmission row = Assert.Single(submissions.Boards).Value;
             Assert.Equal("Commodore", row.Manufacturer);
             Assert.Equal("C64", row.Hardware);
             Assert.Equal("250407", row.Board);
         }
 
         [Fact]
-        public async Task A_system_that_exists_NEITHER_in_the_database_NOR_in_the_tree_is_refused()
+        public async Task A_board_that_exists_NEITHER_in_the_database_NOR_in_the_tree_is_refused()
         {
-            // A pool row for a system that does not exist would grant authority over something
+            // A pool row for a board that does not exist would grant authority over something
             // that could only come into being through an unreviewed submission.
             (FakeAccountStore accounts, ReviewAccess admin, long anna) = await MaintainerAssignmentFlowsTests.SetUpAsync();
 
@@ -108,13 +108,13 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task A_system_known_only_from_the_DATABASE_can_be_assigned()
+        public async Task A_board_known_only_from_the_DATABASE_can_be_assigned()
         {
-            // A contributed system has a row and, until published, no folder in the tree.
+            // A contributed board has a row and, until published, no folder in the tree.
             (FakeAccountStore accounts, ReviewAccess admin, long anna) = await MaintainerAssignmentFlowsTests.SetUpAsync();
             var submissions = new FakeSubmissionStore();
 
-            await submissions.EnsureSystemAsync(
+            await submissions.EnsureBoardAsync(
                 "Amstrad/CPC/464", "Amstrad", "CPC", "464", "contributed", MaintainerAssignmentFlowsTests.Now);
 
             MaintainerAssignmentOutcome outcome = await MaintainerAssignmentFlows.AddAsync(
@@ -175,7 +175,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** AN ADMINISTRATOR CAN BE NAMED A SYSTEM'S MAINTAINER (owner request, 2026-10-05: "so
+        // *** AN ADMINISTRATOR CAN BE NAMED A BOARD'S MAINTAINER (owner request, 2026-10-05: "so
         // others can see that this is me maintaining these systems"). *** It was refused until then.
         // The row is in the pool like anybody's - and it still approves as the administrator.
         // ###########################################################################################
@@ -287,38 +287,38 @@ namespace CRT.Server.Tests
             (FakeAccountStore accounts, _, long anna) = await MaintainerAssignmentFlowsTests.SetUpAsync();
             var submissions = new FakeSubmissionStore();
 
-            // A contributed system with a row and no folder, and a shipped one with a folder and
+            // A contributed board with a row and no folder, and a shipped one with a folder and
             // no row - both must appear, once each.
-            await submissions.EnsureSystemAsync(
+            await submissions.EnsureBoardAsync(
                 "Amstrad/CPC/464", "Amstrad", "CPC", "464", "contributed", MaintainerAssignmentFlowsTests.Now);
             accounts.Maintainers.Add((MaintainerAssignmentFlowsTests.C64, anna));
 
-            IReadOnlyList<SystemWithMaintainers> systems = await MaintainerAssignmentFlows.ListSystemsAsync(
+            IReadOnlyList<BoardWithMaintainers> boards = await MaintainerAssignmentFlows.ListBoardsAsync(
                 MaintainerAssignmentFlowsTests.Tree, submissions, accounts);
 
             Assert.Equal(
                 ["Amstrad/CPC/464", MaintainerAssignmentFlowsTests.C128, MaintainerAssignmentFlowsTests.C64],
-                systems.Select(system => system.SystemId));
+                boards.Select(board => board.BoardId));
 
-            SystemWithMaintainers c64 = systems.Single(system => system.SystemId == MaintainerAssignmentFlowsTests.C64);
+            BoardWithMaintainers c64 = boards.Single(board => board.BoardId == MaintainerAssignmentFlowsTests.C64);
             Assert.Equal("Anna", Assert.Single(c64.Maintainers).DisplayName);
-            Assert.Empty(systems.Single(system => system.SystemId == MaintainerAssignmentFlowsTests.C128).Maintainers);
+            Assert.Empty(boards.Single(board => board.BoardId == MaintainerAssignmentFlowsTests.C128).Maintainers);
         }
 
         [Fact]
-        public async Task A_system_in_BOTH_places_is_listed_once_with_the_databases_revision()
+        public async Task A_board_in_BOTH_places_is_listed_once_with_the_databases_revision()
         {
             (FakeAccountStore accounts, _, _) = await MaintainerAssignmentFlowsTests.SetUpAsync();
             var submissions = new FakeSubmissionStore();
 
-            await submissions.EnsureSystemAsync(
+            await submissions.EnsureBoardAsync(
                 MaintainerAssignmentFlowsTests.C64, "Commodore", "C64", "250407", "shipped", MaintainerAssignmentFlowsTests.Now);
-            await submissions.SetSystemPublishedAsync(MaintainerAssignmentFlowsTests.C64, "2026-May-14", "hash", MaintainerAssignmentFlowsTests.Now);
+            await submissions.SetBoardPublishedAsync(MaintainerAssignmentFlowsTests.C64, "2026-May-14", "hash", MaintainerAssignmentFlowsTests.Now);
 
-            IReadOnlyList<SystemWithMaintainers> systems = await MaintainerAssignmentFlows.ListSystemsAsync(
+            IReadOnlyList<BoardWithMaintainers> boards = await MaintainerAssignmentFlows.ListBoardsAsync(
                 MaintainerAssignmentFlowsTests.Tree, submissions, accounts);
 
-            SystemWithMaintainers c64 = Assert.Single(systems, system => system.SystemId == MaintainerAssignmentFlowsTests.C64);
+            BoardWithMaintainers c64 = Assert.Single(boards, board => board.BoardId == MaintainerAssignmentFlowsTests.C64);
             Assert.Equal("2026-May-14", c64.CurrentRevision);
         }
 

@@ -76,7 +76,7 @@ namespace Handlers.DataHandling
 
             string directory = Path.GetDirectoryName(sidecarPath) ?? string.Empty;
 
-            // A brand-new system's folder does not exist before its first publish.
+            // A brand-new board's folder does not exist before its first publish.
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 

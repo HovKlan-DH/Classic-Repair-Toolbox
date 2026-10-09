@@ -10,7 +10,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 //
 // *** EVERY OTHER PROPERTY IS COPIED, CHECKED BY REFLECTION (2026-10-05). *** The copy was written
 // out field by field, so a field added to SubmissionIdentity reached the window and stopped there:
-// a new system's notes from "Create system" were filled in by TabDrafts and never left the
+// a new board's notes from "Create board" were filled in by TabDrafts and never left the
 // computer. Walking the properties makes the next new one fail here instead.
 //
 // A static method: no window is built, so this is not in the "HeadlessUi" collection.
@@ -61,12 +61,12 @@ public sealed class SubmitDraftWindowIdentityTests
         }
     }
 
-    // The case that found it: a new system's notes reach the identity the manifest is built from.
+    // The case that found it: a new board's notes reach the identity the manifest is built from.
     [Fact]
-    public void A_new_systems_notes_are_sent()
+    public void A_new_boards_notes_are_sent()
     {
         SubmissionIdentity sent = SubmitDraftWindow.IdentityToSend(
-            new SubmissionIdentity { SystemId = "Commodore/C128/310378 Open128", HardwareNotes = "Open-source replica." },
+            new SubmissionIdentity { BoardId = "Commodore/C128/310378 Open128", HardwareNotes = "Open-source replica." },
             "A new board.",
             SubmitDraftWindowIdentityTests.Sending);
 

@@ -85,7 +85,7 @@ namespace CRT
             StackPanel? content = FileTreeView.RowContentAt(e.Source);
 
             if (content?.DataContext is not FileTreeRowView { Node.IsFolder: false } row ||
-                row.Node.File!.OpenFrom == SystemFileSource.NotWrittenYet)
+                row.Node.File!.OpenFrom == BoardFileSource.NotWrittenYet)
             {
                 this.HideFilePreview();
                 return;
@@ -133,7 +133,7 @@ namespace CRT
         // ###########################################################################################
         internal CRT.BoardTableFilePreview? ShowFilePreview(FileTreeRowView row, Control anchor)
         {
-            if (this.Files is null || row.Node.File is not SystemFileEntry file || file.OpenFrom == SystemFileSource.NotWrittenYet)
+            if (this.Files is null || row.Node.File is not BoardFileEntry file || file.OpenFrom == BoardFileSource.NotWrittenYet)
             {
                 this.HideFilePreview();
                 return null;

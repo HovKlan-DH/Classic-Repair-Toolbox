@@ -34,7 +34,7 @@ namespace Handlers.DataHandling
     // duplicate of synced data and deleting it destroys nothing. If anything at all differs, the
     // draft stays and the contributor deals with it.
     //
-    // *** A NEW SYSTEM'S DRAFT IS RETIRED LIKE ANY OTHER, ONCE CRT CAN SHOW THE PUBLISHED ONE
+    // *** A NEW BOARD'S DRAFT IS RETIRED LIKE ANY OTHER, ONCE CRT CAN SHOW THE PUBLISHED ONE
     // (owner request, 2026-09-25): "People will either not know they can/should remove this
     // or they forget, so better clean-up when we can." *** It used to be refused outright. What
     // protects it is the published copy: until the system is published, listed in the master
@@ -93,7 +93,7 @@ namespace Handlers.DataHandling
         // Is this draft now a duplicate of the published board, and therefore safe to delete?
         //
         // Returns false for every uncertainty - no draft, no published workbook, an unreadable
-        // workbook on either side, or a draft-only system. Failing closed is the only acceptable
+        // workbook on either side, or a draft-only board. Failing closed is the only acceptable
         // direction: the cost of keeping a redundant folder is that the contributor sees a stale
         // row, and the cost of deleting a live one is work that exists nowhere else.
         //
@@ -116,7 +116,7 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            // A NEW system is not refused here any more (2026-09-25): until it is published and
+            // A NEW board is not refused here any more (2026-09-25): until it is published and
             // synced, the published-workbook check below keeps it, since there is nothing to
             // compare against. See the class header.
             if (string.IsNullOrWhiteSpace(status.WorkbookPath))
@@ -218,7 +218,7 @@ namespace Handlers.DataHandling
         // workbookIsGone: a draft whose workbook a stopped discard removed (see IsRetirable). Its
         // content was never compared, so a sidecar left behind is compared here, byte for byte
         // with the published board's own - found by the published WORKBOOK's name, which for a new
-        // system differs from the draft's.
+        // board differs from the draft's.
         // ###########################################################################################
         private static bool FilesMatchPublished(DraftStatus status, bool workbookIsGone)
         {
@@ -268,7 +268,7 @@ namespace Handlers.DataHandling
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // A file that cannot be read might hold anything. Keep the draft.
-                CrtLog.Warning($"Could not compare the draft files for [{status.SystemKey}] - [{ex.Message}]");
+                CrtLog.Warning($"Could not compare the draft files for [{status.BoardKey}] - [{ex.Message}]");
                 return false;
             }
         }
@@ -282,20 +282,20 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static string PublishedCounterpart(DraftStatus status, string publishedFolder, string relative)
         {
-            string[] system = status.SystemKey.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string[] board = status.BoardKey.Split('/', StringSplitOptions.RemoveEmptyEntries);
             string path = relative.Replace(Path.DirectorySeparatorChar, '/');
 
-            SubmissionFileScope scope = system.Length > 1
-                ? SubmissionFileScopes.Classify(system[0], hardware: null, board: null, path)
+            SubmissionFileScope scope = board.Length > 1
+                ? SubmissionFileScopes.Classify(board[0], hardware: null, board: null, path)
                 : SubmissionFileScope.Foreign;
 
             if (scope is not (SubmissionFileScope.ManufacturerShared or SubmissionFileScope.GenericShared))
                 return Path.Combine(publishedFolder, relative);
 
-            // The data root is the published folder minus the system's own folder segments.
+            // The data root is the published folder minus the board's own folder segments.
             string dataRoot = publishedFolder;
 
-            for (int i = 0; i < system.Length - 1; i++)
+            for (int i = 0; i < board.Length - 1; i++)
                 dataRoot = Path.GetDirectoryName(dataRoot) ?? dataRoot;
 
             return Path.Combine(dataRoot, relative);
@@ -398,17 +398,17 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The systems whose drafts have shipped and can now be removed.
+        // The boards whose drafts have shipped and can now be removed.
         //
         // Takes the receipts so the caller does not have to pair them with drafts itself, and
-        // returns system keys rather than performing the deletion, so the rule stays testable with
+        // returns board keys rather than performing the deletion, so the rule stays testable with
         // no filesystem writes.
         //
-        // A system is named at most ONCE even when several of its submissions are published, which
+        // A board is named at most ONCE even when several of its submissions are published, which
         // is ordinary: a contributor who submits, gets published, edits again and submits again
-        // has two published receipts for one system.
+        // has two published receipts for one board.
         // ###########################################################################################
-        public static IReadOnlyList<string> FindRetirableSystems(
+        public static IReadOnlyList<string> FindRetirableBoards(
             IEnumerable<SubmissionReceipt>? receipts,
             Func<string, DraftStatus?> resolveStatus) =>
             DraftRetirement.FindRetirableDrafts(receipts, resolveStatus)
@@ -416,9 +416,9 @@ namespace Handlers.DataHandling
                 .ToList();
 
         // ###########################################################################################
-        // THE SEARCH THE APPLICATION RUNS: receipts name their system by id, and each is matched
+        // THE SEARCH THE APPLICATION RUNS: receipts name their board by id, and each is matched
         // to its board's workbook among `excelDataFiles` (the boards the app knows) - see
-        // DraftStatusReader.ResolveForSystem. The caller passes values, so no key translation is
+        // DraftStatusReader.ResolveForBoard. The caller passes values, so no key translation is
         // left at the call site to get wrong; that translation being wrong is why no draft was ever
         // retired until 2026-09-25.
         // ###########################################################################################
@@ -432,7 +432,7 @@ namespace Handlers.DataHandling
 
             return DraftRetirement.FindRetirableDrafts(
                 receipts,
-                systemId => DraftStatusReader.ResolveForSystem(dataRoot, draftsRoot, systemId, known));
+                boardId => DraftStatusReader.ResolveForBoard(dataRoot, draftsRoot, boardId, known));
         }
 
         // ###########################################################################################
@@ -456,7 +456,7 @@ namespace Handlers.DataHandling
 
             foreach (SubmissionReceipt receipt in receipts)
             {
-                if (receipt is null || string.IsNullOrWhiteSpace(receipt.SystemId))
+                if (receipt is null || string.IsNullOrWhiteSpace(receipt.BoardId))
                 {
                     continue;
                 }
@@ -466,22 +466,22 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                if (!seen.Add(receipt.SystemId))
+                if (!seen.Add(receipt.BoardId))
                 {
                     continue;
                 }
 
-                DraftStatus? status = resolveStatus(receipt.SystemId);
+                DraftStatus? status = resolveStatus(receipt.BoardId);
                 string folder = Path.GetDirectoryName(status?.WorkbookPath ?? string.Empty) ?? string.Empty;
 
                 // BEFORE the comparison, so an edit made while it runs changes the stamp.
                 string stamp = DraftRetirement.FolderStamp(folder);
 
-                // Carries the draft's WORKBOOK key, not the receipt's system id: everything that
+                // Carries the draft's WORKBOOK key, not the receipt's board id: everything that
                 // follows - the unsaved-edits guard, the delete, the cache clear - is keyed by it.
                 if (DraftRetirement.IsRetirable(status))
                 {
-                    retirable.Add(new RetirableDraft(status!.SystemKey, folder, stamp));
+                    retirable.Add(new RetirableDraft(status!.BoardKey, folder, stamp));
                 }
             }
 

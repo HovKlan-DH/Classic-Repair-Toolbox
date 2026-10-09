@@ -24,10 +24,10 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public static class DraftDiscardWording
     {
-        // The BETA list row's mark - the row is a system, which may carry the work of more than one.
+        // The BETA list row's mark - the row is a board, which may carry the work of more than one.
         public const string ListMark = "Contributor discarded the draft";
 
-        // The short mark on a queue row and a Systems submission.
+        // The short mark on a queue row and a Boards submission.
         public static string Mark(DateTimeOffset discardedUtc) =>
             $"Contributor discarded the draft on {SubmissionReceiptPresenter.FormatDate(discardedUtc)}";
 
@@ -56,7 +56,7 @@ namespace Handlers.MaintainerHandling
                 "Consider pushing it back to the queue and checking with the contributor before publishing it to the stable source.";
         }
 
-        // The Systems screen's history line for the event.
+        // The Boards screen's history line for the event.
         public static string HistoryWhat(string submissionNumber) =>
             $"{submissionNumber} - the contributor discarded the draft";
 

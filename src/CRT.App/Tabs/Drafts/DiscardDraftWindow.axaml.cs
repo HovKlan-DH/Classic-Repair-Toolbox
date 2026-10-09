@@ -9,7 +9,7 @@ namespace CRT
 {
     // ###########################################################################################
     // Confirmation modal for "Discard draft" on the Drafts tab - discarding a draft removes every
-    // local, unpublished edit to a system permanently (see DraftManager.DiscardDraft), the same
+    // local, unpublished edit to a board permanently (see DraftManager.DiscardDraft), the same
     // shape and the same reasoning as DeleteWorkbookWindow. Returns true via ShowDialog when the
     // user confirms, or null when cancelled.
     // ###########################################################################################
@@ -27,16 +27,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Names the system being discarded, on its own bold line, so a user with several boards'
+        // Names the board being discarded, on its own bold line, so a user with several boards'
         // worth of drafts cannot mistake which one they are about to lose.
         //
         // `unfinished` are this board's submissions still with the maintainers
         // (DraftDiscardContract.WhichToReport). When there are any, the window says what discarding
         // means for them - see NoticeFor.
         // ###########################################################################################
-        public void Initialize(string systemDisplayName, IReadOnlyList<SubmissionReceipt>? unfinished = null)
+        public void Initialize(string boardDisplayName, IReadOnlyList<SubmissionReceipt>? unfinished = null)
         {
-            this.SystemNameText.Text = systemDisplayName;
+            this.BoardNameText.Text = boardDisplayName;
 
             string? notice = DiscardDraftWindow.NoticeFor(unfinished);
             this.SubmissionNoticeText.Text = notice ?? string.Empty;

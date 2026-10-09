@@ -6,13 +6,13 @@ namespace ClassicRepairToolbox.Tests.Maintainer;
 // ReviewApiParser's two admin lists (Phase 6 roles, 2026-09-25).
 //
 // The wording is tested rather than eyeballed because this screen is where publish rights are
-// handed out: a line that hid WHY an account cannot be granted, or a system whose empty pool read
+// handed out: a line that hid WHY an account cannot be granted, or a board whose empty pool read
 // as a blank, would each send the administrator down the wrong path.
 public sealed class MaintainerAssignmentDisplayTests
 {
     private static MaintainerRow Anna() => new(1, "Anna", "anna@example.com");
 
-    private static ReviewSystemRow System(params MaintainerRow[] maintainers) =>
+    private static ReviewBoardRow Board(params MaintainerRow[] maintainers) =>
         new("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-May-14", true, maintainers);
 
     private static ReviewAccountRow Account(
@@ -20,23 +20,23 @@ public sealed class MaintainerAssignmentDisplayTests
         new(7, "bob@example.com", "Bob", administrator, verified, locked);
 
     // -----------------------------------------------------------------------------------
-    // Systems
+    // Boards
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void A_system_line_names_the_board_in_words_and_counts_its_maintainers()
+    public void A_board_line_names_the_board_in_words_and_counts_its_maintainers()
     {
         Assert.Equal(
             "Commodore / C64 / 250407  -  1 maintainer",
-            MaintainerAssignmentDisplay.SystemLine(MaintainerAssignmentDisplayTests.System(MaintainerAssignmentDisplayTests.Anna())));
+            MaintainerAssignmentDisplay.BoardLine(MaintainerAssignmentDisplayTests.Board(MaintainerAssignmentDisplayTests.Anna())));
     }
 
     [Fact]
-    public void A_system_with_NOBODY_assigned_says_so_in_words()
+    public void A_board_with_NOBODY_assigned_says_so_in_words()
     {
         // An unassigned board is exactly what the administrator opens this screen to find, and
         // "0 maintainers" reads as a count while "nobody assigned" reads as a to-do.
-        Assert.EndsWith("nobody assigned", MaintainerAssignmentDisplay.SystemLine(MaintainerAssignmentDisplayTests.System()));
+        Assert.EndsWith("nobody assigned", MaintainerAssignmentDisplay.BoardLine(MaintainerAssignmentDisplayTests.Board()));
     }
 
     [Fact]
@@ -47,11 +47,11 @@ public sealed class MaintainerAssignmentDisplayTests
     }
 
     [Fact]
-    public void A_system_with_no_name_parts_falls_back_to_its_id()
+    public void A_board_with_no_name_parts_falls_back_to_its_id()
     {
-        var bare = new ReviewSystemRow("X/Y/Z", "", "", "", null, true, []);
+        var bare = new ReviewBoardRow("X/Y/Z", "", "", "", null, true, []);
 
-        Assert.StartsWith("X/Y/Z", MaintainerAssignmentDisplay.SystemLine(bare));
+        Assert.StartsWith("X/Y/Z", MaintainerAssignmentDisplay.BoardLine(bare));
     }
 
     // -----------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ public sealed class MaintainerAssignmentDisplayTests
         Assert.Contains("locked", MaintainerAssignmentDisplay.AccountChoice(MaintainerAssignmentDisplayTests.Account(locked: true)), StringComparison.Ordinal);
     }
 
-    // An administrator can be named a system's maintainer (owner request, 2026-10-05: "so others can
+    // An administrator can be named a board's maintainer (owner request, 2026-10-05: "so others can
     // see that this is me maintaining these systems") - listed plainly, as the server now grants it.
     [Fact]
     public void An_administrator_is_listed_as_grantable_like_anybody_else()
@@ -94,27 +94,27 @@ public sealed class MaintainerAssignmentDisplayTests
     // -----------------------------------------------------------------------------------
 
     [Fact]
-    public void The_systems_answer_yields_each_system_with_its_maintainers()
+    public void The_boards_answer_yields_each_board_with_its_maintainers()
     {
-        ReviewSystemsResponse? systems = ReviewApiParser.ParseSystems("""
-            {"systems":[
-              {"systemId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407",
+        ReviewBoardsResponse? boards = ReviewApiParser.ParseBoards("""
+            {"boards":[
+              {"boardId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407",
                "currentRevision":"2026-May-14","isAccepting":true,
                "maintainers":[{"accountId":1,"displayName":"Anna","email":"anna@example.com"}]},
-              {"systemId":"Amstrad/CPC/464","manufacturer":"Amstrad","hardware":"CPC","board":"464",
+              {"boardId":"Amstrad/CPC/464","manufacturer":"Amstrad","hardware":"CPC","board":"464",
                "currentRevision":null,"isAccepting":true,"maintainers":[]}]}
             """);
 
-        Assert.NotNull(systems);
-        Assert.Equal(2, systems!.Systems.Count);
+        Assert.NotNull(boards);
+        Assert.Equal(2, boards!.Boards.Count);
 
-        ReviewSystemRow c64 = systems.Systems[0];
-        Assert.Equal("Commodore/C64/250407", c64.SystemId);
+        ReviewBoardRow c64 = boards.Boards[0];
+        Assert.Equal("Commodore/C64/250407", c64.BoardId);
         Assert.Equal("2026-May-14", c64.CurrentRevision);
         Assert.Equal("Anna", Assert.Single(c64.Maintainers).DisplayName);
 
-        Assert.Empty(systems.Systems[1].Maintainers);
-        Assert.Null(systems.Systems[1].CurrentRevision);
+        Assert.Empty(boards.Boards[1].Maintainers);
+        Assert.Null(boards.Boards[1].CurrentRevision);
     }
 
     [Fact]
@@ -135,13 +135,13 @@ public sealed class MaintainerAssignmentDisplayTests
     [Fact]
     public void An_unreadable_answer_is_NULL_and_a_bad_row_is_skipped_rather_than_failing_the_list()
     {
-        Assert.Null(ReviewApiParser.ParseSystems("not json"));
+        Assert.Null(ReviewApiParser.ParseBoards("not json"));
         Assert.Null(ReviewApiParser.ParseAccounts("""{"nope":[]}"""));
 
-        ReviewSystemsResponse? systems = ReviewApiParser.ParseSystems("""
-            {"systems":[{"manufacturer":"no id"},{"systemId":"A/B/C"},"a string"]}
+        ReviewBoardsResponse? boards = ReviewApiParser.ParseBoards("""
+            {"boards":[{"manufacturer":"no id"},{"boardId":"A/B/C"},"a string"]}
             """);
 
-        Assert.Equal("A/B/C", Assert.Single(systems!.Systems).SystemId);
+        Assert.Equal("A/B/C", Assert.Single(boards!.Boards).BoardId);
     }
 }

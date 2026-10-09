@@ -28,6 +28,8 @@ namespace Handlers.DataHandling
 
         public const string OpeningTable = "Opening the table...";
 
+        public const string MakingDraft = "Making your draft of this board...";
+
         public const string ComparingWithOfficial = "Comparing your draft with the official data...";
 
         public const string AddingSchematics = "Adding the schematic images to your draft...";

@@ -36,7 +36,7 @@ public sealed class DraftDiscardReporterTests : IDisposable
     private static void Discarded(params long[] ids)
     {
         foreach (long id in ids)
-            SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = id, UploadToken = "tok" + id, SystemId = "Commodore/C128/310378", LastKnownState = "merged" });
+            SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = id, UploadToken = "tok" + id, BoardId = "Commodore/C128/310378", LastKnownState = "merged" });
 
         SubmissionReceiptStore.MarkDraftDiscarded(ids, new DateTimeOffset(2026, 9, 28, 9, 0, 0, TimeSpan.Zero));
     }

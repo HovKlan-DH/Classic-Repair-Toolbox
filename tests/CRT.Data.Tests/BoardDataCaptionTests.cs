@@ -6,8 +6,8 @@ namespace CRT.Data.Tests;
 // *** EVERY BOARD BUILT BY HAND NAMES ITS CAPTION. ***
 //
 // A BoardData is copied by listing its sections one by one, and the "# Hardware:" / "# Board:"
-// caption is the part those lists forget. It has been lost that way THREE times: a new system's
-// draft (DraftSeeder), the Schematic images window (SystemFilesWindow), and on 2026-09-28 the
+// caption is the part those lists forget. It has been lost that way THREE times: a new board's
+// draft (DraftSeeder), the Schematic images window (BoardFilesWindow), and on 2026-09-28 the
 // publish itself plus "Save to draft" and the label editor's save - every sheet of a workbook
 // approved into BETA came out with its first two lines empty (owner report).
 //

@@ -10,17 +10,17 @@ namespace CRT.Server.Handlers.Submissions
     // ProductionPromotionFlow and nothing else.
     //
     // Under "/api/review/production": the same people as the review queue - an administrator, or
-    // a maintainer of the system in question - with the same authentication, and every route asks
-    // about the system it names.
+    // a maintainer of the board in question - with the same authentication, and every route asks
+    // about the board it names.
     //
-    //   GET  /                 - the systems whose BETA state is ahead of production, that the
+    //   GET  /                 - the boards whose BETA state is ahead of production, that the
     //                            caller may publish.
-    //   POST /plan    {systemId}                           - what publishing it would copy.
-    //   POST /publish {systemId, expectedBetaContentHash}  - do it.
+    //   POST /plan    {boardId}                           - what publishing it would copy.
+    //   POST /publish {boardId, expectedBetaContentHash}  - do it.
     //
-    // POSTs with a body because a system id carries slashes.
+    // POSTs with a body because a board id carries slashes.
     //
-    // THE STATUS CODES: 401 / 403 as ReviewEndpoints; 404 no such system; 409 BETA changed since
+    // THE STATUS CODES: 401 / 403 as ReviewEndpoints; 404 no such board; 409 BETA changed since
     // it was checked, or production already has it; 400 the plan refuses; 503 publishing to
     // production is not switched on for this server - the one answer that is about the SERVER
     // rather than the request.
@@ -63,7 +63,7 @@ namespace CRT.Server.Handlers.Submissions
                 return refusal;
 
             // ProductionPromotionFlow.ListEntriesAsync - a fixed number of queries however many
-            // systems wait (code review, 2026-09-29).
+            // boards wait (code review, 2026-09-29).
             IReadOnlyList<ProductionListEntry> entries = options.IsProductionPublishingConfigured
                 ? await flow.ListEntriesAsync(access, options, DateTimeOffset.UtcNow, cancellationToken)
                 : [];
@@ -89,7 +89,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            PromotionPlanOutcome outcome = await flow.PlanAsync(access, request?.SystemId, options, cancellationToken);
+            PromotionPlanOutcome outcome = await flow.PlanAsync(access, request?.BoardId, options, cancellationToken);
 
             if (outcome.IsNotConfigured)
                 return Results.Json(new { error = outcome.Refusal }, statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -100,23 +100,23 @@ namespace CRT.Server.Handlers.Submissions
             if (outcome.IsNotFound)
                 return Results.NotFound(new { error = outcome.Refusal });
 
-            SystemRecord system = outcome.System!;
+            BoardRecord board = outcome.Board!;
             ProductionPromotionResult plan = outcome.Plan!;
 
             return Results.Ok(new ProductionPlanAnswer(
-                system.SystemId,
-                system.CurrentRevision,
+                board.BoardId,
+                board.CurrentRevision,
 
                 // What the publish request must send back - see ProductionPromotionFlow step 4.
-                system.ContentHash,
-                ProductionPromotionRules.IsAwaitingProduction(system),
+                board.ContentHash,
+                ProductionPromotionRules.IsAwaitingProduction(board),
                 plan.TouchesSharedFiles,
 
                 // The one answer the button follows, so the app cannot enable something the
                 // publish step then refuses: nothing refused, something waiting, and this account
                 // still able to add its approval.
                 CanPublish: outcome.Refusal is null &&
-                    ProductionPromotionRules.IsAwaitingProduction(system) &&
+                    ProductionPromotionRules.IsAwaitingProduction(board) &&
                     outcome.Approval!.CanApprove,
                 Refusal: outcome.Refusal,
 
@@ -143,7 +143,7 @@ namespace CRT.Server.Handlers.Submissions
                 // up to now. Null previous means the first promotion, which carries everything.
                 // ###########################################################################################
                 Carrying: await ProductionEndpoints.CarriedByAsync(
-                    submissions, accounts, system, cancellationToken),
+                    submissions, accounts, board, cancellationToken),
 
                 // The file tree's other half and where to open a file from (owner request,
                 // 2026-09-28) - see the record.
@@ -172,14 +172,14 @@ namespace CRT.Server.Handlers.Submissions
         private static async Task<IReadOnlyList<CarriedSubmission>> CarriedByAsync(
             ISubmissionStore submissions,
             IAccountStore accounts,
-            SystemRecord system,
+            BoardRecord board,
             CancellationToken cancellationToken)
         {
             try
             {
                 IReadOnlyList<SubmissionRecord> merged = await submissions.GetMergedSubmissionsAsync(
-                    system.SystemId,
-                    system.ProductionPublishedUtc,
+                    board.BoardId,
+                    board.ProductionPublishedUtc,
                     DateTimeOffset.UtcNow,
                     cancellationToken);
 
@@ -216,7 +216,7 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            BetaRollbackOutcome outcome = await flow.PlanAsync(access, request?.SystemId, options, cancellationToken);
+            BetaRollbackOutcome outcome = await flow.PlanAsync(access, request?.BoardId, options, cancellationToken);
 
             if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
                 return problem;
@@ -224,7 +224,7 @@ namespace CRT.Server.Handlers.Submissions
             BetaRollbackPlanResult plan = outcome.Plan!;
 
             return Results.Ok(new BetaRollbackPlanAnswer(
-                outcome.System!.SystemId,
+                outcome.Board!.BoardId,
                 ProductionEndpoints.KindOf(plan.Kind),
                 plan.Restored,
                 plan.Removed,
@@ -256,7 +256,7 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
             BetaRollbackOutcome outcome = await flow.RollBackAsync(
-                access, request?.SystemId, request?.Comment, options, now, cancellationToken, reject: request?.Reject == true);
+                access, request?.BoardId, request?.Comment, options, now, cancellationToken, reject: request?.Reject == true);
 
             if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
                 return problem;
@@ -284,7 +284,7 @@ namespace CRT.Server.Handlers.Submissions
 
                     await notifier.NotifyTakenOutOfBetaAsync(
                         submission.ContactEmail,
-                        outcome.System!.SystemId,
+                        outcome.Board!.BoardId,
                         request!.Comment,
                         outcome.Rejected,
                         cancellationToken,
@@ -295,13 +295,13 @@ namespace CRT.Server.Handlers.Submissions
             {
                 logger.LogError(
                     ex,
-                    "{SystemId} WAS rolled back and its submissions recorded (returned to the queue, or rejected), but the contributors " +
+                    "{BoardId} WAS rolled back and its submissions recorded (returned to the queue, or rejected), but the contributors " +
                     "could not all be told.",
-                    outcome.System!.SystemId);
+                    outcome.Board!.BoardId);
             }
 
             return Results.Ok(new BetaRollbackAnswer(
-                outcome.System!.SystemId,
+                outcome.Board!.BoardId,
                 ProductionEndpoints.KindOf(plan.Kind),
                 outcome.FilesRestored,
                 outcome.FilesRemoved,
@@ -351,7 +351,7 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
             PromotionOutcome outcome = await flow.PromoteAsync(
-                access, request?.SystemId, request?.ExpectedBetaContentHash, options, now, request?.ExpectedRemovals, cancellationToken);
+                access, request?.BoardId, request?.ExpectedBetaContentHash, options, now, request?.ExpectedRemovals, cancellationToken);
 
             // The first of two approvals: recorded, nothing copied, the other side told.
             if (outcome.IsAwaitingApproval)
@@ -359,11 +359,11 @@ namespace CRT.Server.Handlers.Submissions
                 try
                 {
                     IReadOnlyList<MailRecipient> recipients = await SubmissionRouting.RecipientsForRolesAsync(
-                        outcome.WaitingFor, outcome.System!.SystemId, accounts, cancellationToken);
+                        outcome.WaitingFor, outcome.Board!.BoardId, accounts, cancellationToken);
 
                     await notifier.NotifyApprovalNeededAsync(
                         recipients,
-                        outcome.System.SystemId,
+                        outcome.Board.BoardId,
                         "publishing the board to the stable source",
                         ApprovePublishFlow.Label(access!),
                         cancellationToken);
@@ -374,7 +374,7 @@ namespace CRT.Server.Handlers.Submissions
                 }
 
                 return Results.Ok(new ProductionPublishAnswer(
-                    outcome.System!.SystemId,
+                    outcome.Board!.BoardId,
                     "awaiting",
                     WaitingFor: outcome.WaitingFor));
             }
@@ -410,15 +410,15 @@ namespace CRT.Server.Handlers.Submissions
             {
                 logger.LogError(
                     ex,
-                    "{SystemId} WAS published to production, but the follow-up work failed. The data is correct; " +
+                    "{BoardId} WAS published to production, but the follow-up work failed. The data is correct; " +
                     "the production checksum manifest or the notification mails may not be.",
-                    outcome.System!.SystemId);
+                    outcome.Board!.BoardId);
             }
 
             return Results.Ok(new ProductionPublishAnswer(
-                outcome.System!.SystemId,
+                outcome.Board!.BoardId,
                 "published",
-                Revision: outcome.System.CurrentRevision,
+                Revision: outcome.Board.CurrentRevision,
                 FilesCopied: outcome.FilesCopied,
                 RemovedFiles: outcome.RemovedFiles));
         }
@@ -443,7 +443,7 @@ namespace CRT.Server.Handlers.Submissions
             ILogger logger,
             CancellationToken cancellationToken)
         {
-            SystemRecord system = outcome.System!;
+            BoardRecord board = outcome.Board!;
 
             int written = DataChecksumManifest.Write(
                 options.ProductionDataTreeRoot ?? string.Empty,
@@ -453,13 +453,13 @@ namespace CRT.Server.Handlers.Submissions
             if (written < 0)
             {
                 logger.LogWarning(
-                    "{SystemId} was published to production but the production checksum manifest at [{Path}] " +
+                    "{BoardId} was published to production but the production checksum manifest at [{Path}] " +
                     "could not be regenerated - clients will not see it until it is rebuilt.",
-                    system.SystemId, options.ProductionManifestPath);
+                    board.BoardId, options.ProductionManifestPath);
             }
 
             IReadOnlyList<SubmissionRecord> carried = await submissions.GetMergedSubmissionsAsync(
-                system.SystemId, outcome.PreviousProductionPublishedUtc, now, cancellationToken);
+                board.BoardId, outcome.PreviousProductionPublishedUtc, now, cancellationToken);
 
             // The account's address for a signed-in contributor (2026-09-29) - the contact address
             // alone is empty for them, and they were never told.
@@ -472,7 +472,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 await notifier.NotifyDecisionAsync(
                     recipient.Email,
-                    submission.SystemId,
+                    submission.BoardId,
                     ProductionPromotionRules.PublishedState,
                     maintainerComment: null,
                     cancellationToken: cancellationToken,
@@ -485,9 +485,9 @@ namespace CRT.Server.Handlers.Submissions
 
                 await notifier.NotifyProductionPublishAsync(
                     administrators.Where(admin => admin.IsVerified && !admin.IsLocked).Select(admin => new MailRecipient(admin.Email, admin.DisplayName)),
-                    system.SystemId,
+                    board.BoardId,
                     $"{access.Account.DisplayName} ({access.Account.Email})",
-                    system.CurrentRevision,
+                    board.CurrentRevision,
                     outcome.FilesCopied,
                     cancellationToken);
             }

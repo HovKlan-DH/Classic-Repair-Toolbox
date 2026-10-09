@@ -26,8 +26,8 @@ namespace CRT.Data.Tests
             return new SubmissionManifest
             {
                 // Required now, and must agree with Manufacturer/Hardware/Board below - the
-                // validator checks both. See SystemDescriptorRules.BuildSystemId.
-                SystemId = "Commodore/C64/250407",
+                // validator checks both. See BoardDescriptorRules.BuildBoardId.
+                BoardId = "Commodore/C64/250407",
                 Manufacturer = "Commodore",
                 Hardware = "C64",
                 Board = "250407",
@@ -650,28 +650,28 @@ namespace CRT.Data.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // The SystemId (Phase 4, task 7).
+        // The BoardId (Phase 4, task 7).
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // THE ID IS REQUIRED - including for a brand-new system.
+        // THE ID IS REQUIRED - including for a brand-new board.
         //
         // It is "Manufacturer/Hardware/Board", which the client can always compute from what the
-        // contributor typed, so there is no chicken-and-egg where a new system has no identity
-        // until the server grants one. What makes a submission NEW is that no `systems` row holds
+        // contributor typed, so there is no chicken-and-egg where a new board has no identity
+        // until the server grants one. What makes a submission NEW is that no `boards` row holds
         // that id yet - a lookup the server does, never a flag the client sets.
         // ###########################################################################################
         [Theory]
         [InlineData("")]
         [InlineData("   ")]
-        public void A_submission_with_no_system_id_is_refused(string systemId)
+        public void A_submission_with_no_board_id_is_refused(string boardId)
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.SystemId = systemId;
+            manifest.BoardId = boardId;
 
             IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
 
-            Assert.Contains(findings, f => f.Code == "identity.system_id_malformed");
+            Assert.Contains(findings, f => f.Code == "identity.board_id_malformed");
             Assert.False(SubmissionValidator.CanBeQueued(findings));
         }
 
@@ -689,14 +689,14 @@ namespace CRT.Data.Tests
         [InlineData("Commodore/C64/../etc")]             // traversal
         [InlineData("Commodore/CON/250407")]             // reserved device name
         [InlineData("1; DROP TABLE submissions")]
-        public void A_submission_claiming_a_malformed_system_id_is_refused(string systemId)
+        public void A_submission_claiming_a_malformed_board_id_is_refused(string boardId)
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.SystemId = systemId;
+            manifest.BoardId = boardId;
 
             IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
 
-            Assert.Contains(findings, f => f.Code == "identity.system_id_malformed");
+            Assert.Contains(findings, f => f.Code == "identity.board_id_malformed");
             Assert.False(SubmissionValidator.CanBeQueued(findings));
         }
 
@@ -709,21 +709,21 @@ namespace CRT.Data.Tests
         // being folded into "malformed": the shape is fine, the content is not.
         // ###########################################################################################
         [Fact]
-        public void A_system_id_disagreeing_with_the_names_it_carries_is_refused()
+        public void A_board_id_disagreeing_with_the_names_it_carries_is_refused()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.SystemId = "Commodore/VIC20/250408";
+            manifest.BoardId = "Commodore/VIC20/250408";
 
             IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
 
-            Assert.Contains(findings, f => f.Code == "identity.system_id_mismatch");
+            Assert.Contains(findings, f => f.Code == "identity.board_id_mismatch");
             Assert.False(SubmissionValidator.CanBeQueued(findings));
         }
 
         // ###########################################################################################
         // *** THE PARTS MUST ALREADY BE CANONICAL (security review, 2026-09-25). ***
         //
-        // BuildSystemId trims before joining, so "Commodore" plus a thousand spaces made a VALID,
+        // BuildBoardId trims before joining, so "Commodore" plus a thousand spaces made a VALID,
         // MATCHING id - and the raw part then went into a VARCHAR(100) column and failed the insert
         // with a 500. The client builds the parts from folder names, which are canonical already.
         // ###########################################################################################
@@ -737,7 +737,7 @@ namespace CRT.Data.Tests
             manifest.Manufacturer = manufacturer;
             manifest.Hardware = hardware;
             manifest.Board = board;
-            manifest.SystemId = SystemDescriptorRules.BuildSystemId(manufacturer, hardware, board);
+            manifest.BoardId = BoardDescriptorRules.BuildBoardId(manufacturer, hardware, board);
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -749,7 +749,7 @@ namespace CRT.Data.Tests
         //
         // *** EITHER NAME IN EITHER POSITION (code review, 2026-09-25). *** Only "Generic shared
         // files" as manufacturer and "Shared files" as hardware used to be refused, while
-        // DataTreeUsage and PublishedSystemLister skip BOTH names in BOTH positions. A board
+        // DataTreeUsage and PublishedBoardLister skip BOTH names in BOTH positions. A board
         // published as "Shared files/<hw>/<board>" was then never listed for maintainers, and its
         // workbook and every file it cites were reported as unused - and removable.
         [Theory]
@@ -764,7 +764,7 @@ namespace CRT.Data.Tests
             manifest.Manufacturer = manufacturer;
             manifest.Hardware = hardware;
             manifest.Board = board;
-            manifest.SystemId = $"{manufacturer}/{hardware}/{board}";
+            manifest.BoardId = $"{manufacturer}/{hardware}/{board}";
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -800,7 +800,7 @@ namespace CRT.Data.Tests
             Assert.Contains(SubmissionValidatorTests.Validate(baseRevision), finding => finding.Code == "revision.too_long");
         }
 
-        // A new system's notes go into the main Excel data file's notes column (owner request,
+        // A new board's notes go into the main Excel data file's notes column (owner request,
         // 2026-10-05), so they are held to what it holds - here, rather than when the maintainer
         // saves the placement they start.
         [Fact]
@@ -832,14 +832,14 @@ namespace CRT.Data.Tests
 
             IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
 
-            Assert.DoesNotContain(findings, f => f.Code.StartsWith("identity.system_id", StringComparison.Ordinal));
+            Assert.DoesNotContain(findings, f => f.Code.StartsWith("identity.board_id", StringComparison.Ordinal));
             Assert.True(SubmissionValidator.CanBeQueued(findings));
         }
 
         // ###########################################################################################
         // THE REAL FAILURE FROM THE FIRST LIVE SUBMISSION (2026-09-21).
         //
-        // The client sent a manifest with blank Hardware and Board but a correct SystemId, because
+        // The client sent a manifest with blank Hardware and Board but a correct BoardId, because
         // it built the identity from a STALE board entry rather than from the draft's own
         // registration. The server answered with three findings, and this pins the whole set:
         // the two "missing" errors AND the mismatch, which is a CONSEQUENCE of them - an id built
@@ -853,7 +853,7 @@ namespace CRT.Data.Tests
         public void A_manifest_with_blank_names_but_a_real_id_reports_all_three_problems()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.SystemId = "Commodore/C64/250407";
+            manifest.BoardId = "Commodore/C64/250407";
             manifest.Hardware = string.Empty;
             manifest.Board = string.Empty;
 
@@ -861,7 +861,7 @@ namespace CRT.Data.Tests
 
             Assert.Contains(findings, f => f.Code == "identity.hardware_missing");
             Assert.Contains(findings, f => f.Code == "identity.board_missing");
-            Assert.Contains(findings, f => f.Code == "identity.system_id_mismatch");
+            Assert.Contains(findings, f => f.Code == "identity.board_id_mismatch");
 
             Assert.False(SubmissionValidator.CanBeQueued(findings));
         }
@@ -872,11 +872,11 @@ namespace CRT.Data.Tests
         public void The_malformed_id_message_says_it_is_the_applications_fault_not_the_data()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.SystemId = "nope";
+            manifest.BoardId = "nope";
 
             ValidationFinding finding = Assert.Single(
                 SubmissionValidatorTests.Validate(manifest),
-                f => f.Code == "identity.system_id_malformed");
+                f => f.Code == "identity.board_id_malformed");
 
             Assert.Contains("application", finding.Message);
         }

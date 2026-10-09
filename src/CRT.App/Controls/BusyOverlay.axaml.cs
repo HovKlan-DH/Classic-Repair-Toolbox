@@ -16,7 +16,7 @@ namespace CRT
 {
     // ###########################################################################################
     // "PLEASE WAIT" OVER A WHOLE WINDOW - the one way CRT shows that the user has
-    // to wait (owner decisions: 2026-09-27 for pushing a system back from BETA, "please dim
+    // to wait (owner decisions: 2026-09-27 for pushing a board back from BETA, "please dim
     // everything or alike, so it is visible for the user he should wait until it finishes"; and
     // 2026-09-28, "I want this method everywhere in the entire project where there is a Wait").
     //

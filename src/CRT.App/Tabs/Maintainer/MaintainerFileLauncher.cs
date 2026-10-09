@@ -9,7 +9,7 @@ namespace CRT
 {
     // ###########################################################################################
     // Hands a file the Maintainer tab saved for viewing to the operating system - a PDF opens in the
-    // PDF viewer. ONE copy for the submission table's file card, the system table's and the file
+    // PDF viewer. ONE copy for the submission table's file card, the board table's and the file
     // tree's (code review, 2026-10-04: there were three identical ones), so a change to how such
     // files are opened is made once.
     //

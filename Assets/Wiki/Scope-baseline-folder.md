@@ -17,9 +17,9 @@ Data/Commodore/C64/250407/
 
 The images are named `<component>_<pin>_<region>.png`, so `U19_1_PAL.png` is pin 1 of U19 on a PAL board. That is a convention to follow, not something CRT reads.
 
-The text file describes the exact system the measurements were taken on - board revision, PSU, region, oscilloscope model and what the machine was doing at the time. Worth reading before you conclude your own reading is wrong.
+The text file describes the exact board the measurements were taken on - board revision, PSU, region, oscilloscope model and what the machine was doing at the time. Worth reading before you conclude your own reading is wrong.
 
-A new system made with **Add a new system** gets an empty `Scope baseline` folder in its draft, ready for your first image.
+A new board made with **Add a new board** gets an empty `Scope baseline` folder in its draft, ready for your first image.
 
 ## Getting them into the application
 

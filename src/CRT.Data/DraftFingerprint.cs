@@ -49,7 +49,7 @@ namespace Handlers.DataHandling
 
         private static readonly ConcurrentDictionary<string, CachedHash> WorkbookHashes = new(StringComparer.OrdinalIgnoreCase);
 
-        public static string Compute(string workbookPath, string draftSystemFolder)
+        public static string Compute(string workbookPath, string draftBoardFolder)
         {
             try
             {
@@ -69,7 +69,7 @@ namespace Handlers.DataHandling
                 DraftFingerprint.Add(hash, "sidecar");
                 DraftFingerprint.Add(hash, File.Exists(sidecar) ? DraftFingerprint.FileHash(sidecar) : string.Empty);
 
-                foreach ((string relative, string full) in DraftFingerprint.OwnFiles(draftSystemFolder, workbookPath, sidecar))
+                foreach ((string relative, string full) in DraftFingerprint.OwnFiles(draftBoardFolder, workbookPath, sidecar))
                 {
                     DraftFingerprint.Add(hash, relative);
                     DraftFingerprint.Add(hash, DraftFingerprint.FileHash(full));

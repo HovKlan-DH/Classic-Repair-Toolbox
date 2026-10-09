@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.PublishBoardChangeWindow"
+        Width="600" SizeToContent="Height"
+        CanResize="False"
+        CanMinimize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+    THE REASON FOR A CHANGE MADE ON THE BOARDS SCREEN (owner request, 2026-10-03: "do ask for a
+    change reason when clicking the 'Save changes' button, so this can go along with the change, just
+    like any normal contribution"). It replaced a description box above the table.
+
+    The change goes STRAIGHT TO BETA once this is confirmed, so the dialog says that, and names the
+    files the publish would remove when there are any - the maintainer sees them before anything is
+    written, as before an approval. The reason is REQUIRED: the button stays off until something is
+    typed, and the server refuses a blank one regardless.
+
+    Words: BoardSections. Behaviour: PublishBoardChangeWindow.axaml.cs.
+    -->
+    <StackPanel Margin="16" Spacing="12">
+
+        <TextBlock x:Name="HeadlineText"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+
+        <TextBlock x:Name="ExplanationText"
+                   TextWrapping="Wrap" />
+
+        <!-- The files the publish removes, one per line. Hidden when it removes none. -->
+        <StackPanel x:Name="RemovalsPanel"
+                    Spacing="2"
+                    IsVisible="False" />
+
+        <StackPanel Spacing="4">
+            <TextBlock x:Name="ReasonLabelText"
+                       FontWeight="SemiBold" />
+
+            <!-- 500: the server's SubmissionFormat.MaximumSummaryLength - the reason IS the description. -->
+            <TextBox x:Name="ReasonTextBox"
+                     MaxLength="500"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="70"
+                     TextChanged="OnReasonChanged" />
+
+            <TextBlock x:Name="ReasonNoteText"
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Opacity="0.75" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Click="OnCancelClick" />
+
+            <Button x:Name="PublishButton"
+                    Foreground="{DynamicResource Button_Ok_Fg}"
+                    Background="{DynamicResource Button_Ok_Bg}"
+                    BorderBrush="{DynamicResource Button_Ok_Border}"
+                    IsEnabled="False"
+                    Click="OnPublishClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

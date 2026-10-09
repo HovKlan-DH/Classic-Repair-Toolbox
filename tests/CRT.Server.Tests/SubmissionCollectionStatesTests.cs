@@ -83,21 +83,42 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** THE SYSTEM ID IS BYTE-FOR-BYTE IN EVERY TABLE THAT HOLDS IT. *** With a case-folding
+        // *** THE BOARD ID IS BYTE-FOR-BYTE IN EVERY TABLE THAT HOLDS IT. *** With a case-folding
         // key, an anonymous submission for "commodore/c64/250425" created the row every later real
         // submission for that board attached to - and was then rejected. All three columns must
         // change together, because MariaDB requires a foreign key and its target to share a
-        // collation.
+        // collation. Migration 0005 did it under the names the schema had then.
         // ###########################################################################################
         [Theory]
         [InlineData("systems")]
         [InlineData("submissions")]
         [InlineData("maintainers")]
-        public void The_system_id_is_binary_collated_in(string table)
+        public void The_board_id_was_made_binary_collated_in(string table)
         {
             Assert.Matches(
                 new Regex(
                     $@"ALTER\s+TABLE\s+{table}\s+MODIFY\s+system_id\s+VARCHAR\(255\)\s+NOT\s+NULL\s+COLLATE\s+utf8mb4_bin",
+                    RegexOptions.IgnoreCase),
+                SubmissionCollectionStatesTests.MigrationsText());
+        }
+
+        // ###########################################################################################
+        // Migration 0020 renamed system_id to board_id (owner decision, 2026-10-09: "system" became
+        // "board" everywhere). CHANGE COLUMN restates the whole column, so a rename that left the
+        // collation out would quietly undo 0005 - every table holding the id must keep it, the two
+        // that came after 0005 included.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("boards")]
+        [InlineData("submissions")]
+        [InlineData("maintainers")]
+        [InlineData("production_approvals")]
+        [InlineData("maintainer_invitations")]
+        public void The_rename_to_board_id_keeps_it_binary_collated_in(string table)
+        {
+            Assert.Matches(
+                new Regex(
+                    $@"ALTER\s+TABLE\s+{table}\s+CHANGE\s+COLUMN\s+system_id\s+board_id\s+VARCHAR\(255\)\s+NOT\s+NULL\s+COLLATE\s+utf8mb4_bin",
                     RegexOptions.IgnoreCase),
                 SubmissionCollectionStatesTests.MigrationsText());
         }

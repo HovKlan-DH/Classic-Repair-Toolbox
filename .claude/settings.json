@@ -23,6 +23,12 @@
           },
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/api-version-report.sh\"",
+            "timeout": 20,
+            "statusMessage": "Reporting the API version if the API changed..."
+          },
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/wiki-sync-status.sh\"",
             "timeout": 30,
             "statusMessage": "Refreshing the Wiki sync status..."

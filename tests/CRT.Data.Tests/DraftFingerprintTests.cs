@@ -23,7 +23,7 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class DraftFingerprintTests : IDisposable
 {
-    private const string SystemKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
 
     private readonly TempWorkspace thisWorkspace = new();
 
@@ -31,9 +31,9 @@ public sealed class DraftFingerprintTests : IDisposable
 
     private string DataRoot => Path.Combine(this.thisWorkspace.Root, "Data");
 
-    private string Workbook => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, SystemKey);
+    private string Workbook => DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, BoardKey);
 
-    private string Folder => DraftFolderLayout.GetSystemFolder(this.DraftsRoot, SystemKey);
+    private string Folder => DraftFolderLayout.GetBoardFolder(this.DraftsRoot, BoardKey);
 
     public void Dispose() => this.thisWorkspace.Dispose();
 

@@ -135,7 +135,7 @@ account's email address. To sign out, turn the tab on and sign out there.
 
 **Hide the Maintainer tab while no work is waiting for me** - with this on, the Maintainer tab only
 appears while its badge shows a number, which is exactly when there is something for you to do: a
-contribution to review, or a system waiting to go from BETA to stable. The tab you are already on
+contribution to review, or a board waiting to go from BETA to stable. The tab you are already on
 is never taken away under you - it goes once you move to another tab - and neither is a tab
 holding table changes you have not saved. Greyed out unless the Maintainer tab is enabled, which it
 narrows rather than replaces. A tab that is not signed in stays visible, so you can always get back

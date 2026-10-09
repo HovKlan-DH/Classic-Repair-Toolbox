@@ -5,12 +5,12 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     // A SUBMISSION'S FILE TREE: the BETA data after approving it, against BETA now (owner request,
     // 2026-09-28) - GET /api/review/submissions/{id}/files. The rule for what each file becomes is
-    // CRT.Data's SystemFileEntries.ForApproval; this gathers what only the server can see:
+    // CRT.Data's BoardFileEntries.ForApproval; this gathers what only the server can see:
     //
     //   - what the submission carries, against BETA's bytes at each path (SubmittedFileFacts, the
     //     same facts the submission detail sends);
     //   - what the approval removes (the same FileRemovalPreview the approval is sent back);
-    //   - every file in the system's own BETA folder now, so the tree is the WHOLE system and not
+    //   - every file in the board's own BETA folder now, so the tree is the WHOLE board and not
     //     only what moves - an older generation's workbook, KiCad data, anything else there;
     //   - the two files the approval writes from the table: the workbook, which always changes (it
     //     carries the publish date), and the highlight file, which changes only when its content
@@ -23,7 +23,7 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class SubmissionFileTreeFlow
     {
-        public static async Task<IReadOnlyList<SystemFileEntry>> BuildAsync(
+        public static async Task<IReadOnlyList<BoardFileEntry>> BuildAsync(
             string dataTreeRoot,
             SubmissionManifest manifest,
             PublishedBoardReader publishedBoards,
@@ -69,7 +69,7 @@ namespace CRT.Server.Handlers.Submissions
                         detail.WorkbookPath, board.ComponentHighlights, PublishMerge.CalibrationsOf(manifest)));
             }
 
-            IReadOnlyList<SystemFileEntry> entries = SystemFileEntries.ForApproval(
+            IReadOnlyList<BoardFileEntry> entries = BoardFileEntries.ForApproval(
                 SubmittedFileFacts.Build(manifest, hashes),
                 removals.Files,
                 SubmissionFileTreeFlow.OwnFiles(root, manifest),
@@ -80,8 +80,8 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Every file in the system's own BETA folder, data-root-relative with forward slashes. None
-        // for a new system. Hidden paths (a publish's temporaries, anything dot-named) and the
+        // Every file in the board's own BETA folder, data-root-relative with forward slashes. None
+        // for a new board. Hidden paths (a publish's temporaries, anything dot-named) and the
         // retired system.json are left out, as the production plan leaves them out - neither is
         // ever published.
         // ###########################################################################################
@@ -90,20 +90,20 @@ namespace CRT.Server.Handlers.Submissions
             PublishedBoardLocation location = PublishedBoardLocator.Locate(root, manifest);
 
             string folder = location.Exists
-                ? location.SystemFolder
+                ? location.BoardFolder
                 : Path.Combine(root, manifest.Manufacturer.Trim(), manifest.Hardware.Trim(), manifest.Board.Trim());
 
             return SubmissionFileTreeFlow.FilesIn(root, folder);
         }
 
-        // Every file in a system's folder, by the rule above - also the Systems screen's Files view
-        // (SystemFilesFlow, 2026-10-03), so the two trees cannot list one folder differently.
+        // Every file in a board's folder, by the rule above - also the Boards screen's Files view
+        // (BoardFilesFlow, 2026-10-03), so the two trees cannot list one folder differently.
         internal static IReadOnlyList<string> FilesIn(string root, string folder)
         {
             if (!Directory.Exists(folder))
                 return [];
 
-            string retired = SubmissionFileTreeFlow.Relative(root, Path.Combine(folder, SystemDescriptorStore.FileName));
+            string retired = SubmissionFileTreeFlow.Relative(root, Path.Combine(folder, BoardDescriptorStore.FileName));
 
             return Directory
                 .EnumerateFiles(folder, "*", SearchOption.AllDirectories)

@@ -23,10 +23,10 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     // The administrator's lists (Phase 6 roles). View types, like everything else in this file.
     // ###########################################################################################
-    public sealed record ReviewSystemsResponse(IReadOnlyList<ReviewSystemRow> Systems);
+    public sealed record ReviewBoardsResponse(IReadOnlyList<ReviewBoardRow> Boards);
 
-    public sealed record ReviewSystemRow(
-        string SystemId,
+    public sealed record ReviewBoardRow(
+        string BoardId,
         string Manufacturer,
         string Hardware,
         string Board,
@@ -41,10 +41,10 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     // BETA to production (2026-09-25). View types, apart from the files, which are CRT.Data's own.
     // ###########################################################################################
-    public sealed record ProductionListResponse(bool Configured, IReadOnlyList<ProductionSystemRow> Systems);
+    public sealed record ProductionListResponse(bool Configured, IReadOnlyList<ProductionBoardRow> Boards);
 
-    public sealed record ProductionSystemRow(
-        string SystemId,
+    public sealed record ProductionBoardRow(
+        string BoardId,
         string Manufacturer,
         string Hardware,
         string Board,
@@ -66,7 +66,7 @@ namespace Handlers.MaintainerHandling
         bool? WaitsForAdministrator = null);
 
     public sealed record ProductionPlanView(
-        string SystemId,
+        string BoardId,
         string? BetaRevision,
 
         // Sent back with the publish request: the server refuses if BETA moved since.
@@ -109,7 +109,7 @@ namespace Handlers.MaintainerHandling
     // names them. Empty from a server that does not send them. A rollback never removes a shared
     // file, so there is nothing else to name.
     public sealed record BetaRollbackPlanView(
-        string SystemId,
+        string BoardId,
         BetaRollbackKind Kind,
         IReadOnlyList<string> Restored,
         IReadOnlyList<string> Removed,
@@ -119,7 +119,7 @@ namespace Handlers.MaintainerHandling
     // Rejected (2026-09-28): the submissions were rejected rather than returned to the queue - false
     // from a server older than Beta > Prod's "Reject", which pushes back instead.
     public sealed record BetaRollbackResult(
-        string SystemId,
+        string BoardId,
         BetaRollbackKind Kind,
         int FilesRestored,
         int FilesRemoved,
@@ -127,7 +127,7 @@ namespace Handlers.MaintainerHandling
         bool Rejected = false);
 
     public sealed record ProductionPublishResult(
-        string SystemId,
+        string BoardId,
         string? Revision,
         int FilesCopied,
         string State = "published",
@@ -209,12 +209,12 @@ namespace Handlers.MaintainerHandling
     public sealed record ReviewAmendResult(int Version, IReadOnlyList<ReviewFindingView> Warnings);
 
     // ###########################################################################################
-    // What sending a change from a system's table answered (2026-10-03): the submission it became,
+    // What sending a change from a board's table answered (2026-10-03): the submission it became,
     // and any warnings its content raised. `Published`: it is in BETA at `Revision`, `RemovedFiles`
     // gone. Otherwise it was made but not published - `NotPublishedReason` says why - and waits under
     // Contributor Submissions.
     // ###########################################################################################
-    public sealed record SystemEditResult(
+    public sealed record BoardEditResult(
         long SubmissionId,
         IReadOnlyList<ReviewFindingView> Warnings,
         bool Published = false,
@@ -242,7 +242,7 @@ namespace Handlers.MaintainerHandling
         string Message);
 
     public sealed record ReviewChangeSummaryView(
-        bool IsNewSystem,
+        bool IsNewBoard,
         IReadOnlyList<ReviewSectionView> Sections)
     {
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
@@ -266,7 +266,7 @@ namespace Handlers.MaintainerHandling
 
     // ###########################################################################################
     // What a decision produced. Revision is empty for anything but an approval - only publishing
-    // moves a system's revision.
+    // moves a board's revision.
     // ###########################################################################################
     // WaitingFor is filled when an approval was recorded but did not publish - the first of the
     // two a shared-file change needs (2026-09-25).
@@ -304,7 +304,7 @@ namespace Handlers.MaintainerHandling
     // ###########################################################################################
     public sealed record ReviewQueueRow(
         long Id,
-        string SystemId,
+        string BoardId,
         string State,
         string Summary,
         string ContactEmail,
@@ -314,9 +314,9 @@ namespace Handlers.MaintainerHandling
         // queue rather than a maintainer's. Trailing with a default for an older server.
         bool TouchesSharedFiles = false,
 
-        // Whether its system has no published board yet, and whether it waits for THIS account's
+        // Whether its board has no published board yet, and whether it waits for THIS account's
         // approval - CRT.Data's ReviewQueueEntry. Null when the server did not say.
-        bool? IsNewSystem = null,
+        bool? IsNewBoard = null,
         bool? AwaitsYou = null,
 
         // When the contributor discarded their own draft of this board in CRT after sending it

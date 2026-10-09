@@ -645,7 +645,7 @@
 						<local:TabContribute x:Name="TabContribute" />
 					</TabItem>
 
-					<!-- Hidden until at least one drafted system exists (NewContributeStrategy.md
+					<!-- Hidden until at least one drafted board exists (NewContributeStrategy.md
 					     Phase 2, session 2b) - IsVisible starts False so a launch with no drafts
 					     never flashes an empty tab; ApplyDraftsTabVisibility sets the real value at
 					     startup and after every board load, the same pattern WorkbooksTabItem uses. -->

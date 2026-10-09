@@ -70,23 +70,23 @@ namespace Handlers.MaintainerHandling
         // own text is written from (ApprovalWording.ApproveButton). *** The first of two approvals
         // publishes nothing, and "Publishing to BETA" over it would promise what is not happening.
         // ###########################################################################################
-        public static string Waiting(ReviewDecisionKind kind, ApprovalStatus? approval, string? systemId)
+        public static string Waiting(ReviewDecisionKind kind, ApprovalStatus? approval, string? boardId)
         {
-            string system = string.IsNullOrWhiteSpace(systemId) ? "this system" : systemId;
+            string board = string.IsNullOrWhiteSpace(boardId) ? "this board" : boardId;
 
             return kind switch
             {
                 ReviewDecisionKind.Approve when approval is null || approval.ApprovalPublishes =>
-                    $"Publishing {system} to BETA. The submission is being written into the BETA data - please wait until it is done.",
+                    $"Publishing {board} to BETA. The submission is being written into the BETA data - please wait until it is done.",
 
                 ReviewDecisionKind.Approve =>
-                    $"Recording your approval of this submission to {system} - please wait until it is done.",
+                    $"Recording your approval of this submission to {board} - please wait until it is done.",
 
                 ReviewDecisionKind.Reject =>
-                    $"Rejecting this submission to {system} and telling the contributor why - please wait until it is done.",
+                    $"Rejecting this submission to {board} and telling the contributor why - please wait until it is done.",
 
                 _ =>
-                    $"Sending your request for changes on {system} to the contributor - please wait until it is done."
+                    $"Sending your request for changes on {board} to the contributor - please wait until it is done."
             };
         }
 

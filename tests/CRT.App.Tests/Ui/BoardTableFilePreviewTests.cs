@@ -193,7 +193,7 @@ public sealed class BoardTableFilePreviewTests
 
     // ###########################################################################################
     // *** A HOST CAN LEAVE "UNCHANGED" UNSAID (owner request, 2026-09-26). *** The maintainer
-    // application does for a new system, whose two sides are both the submission: the picture
+    // application does for a new board, whose two sides are both the submission: the picture
     // alone, no headline. Anything else keeps its headline.
     // ###########################################################################################
     [Fact]

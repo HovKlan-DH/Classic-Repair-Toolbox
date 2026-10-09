@@ -34,8 +34,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Compares the published board against the submitted one.
         //
-        // published may be null: that is a NEW SYSTEM, where every row is an addition. It is a
-        // real and important case - a new system is the highest-risk submission there is (Phase 6
+        // published may be null: that is a NEW BOARD, where every row is an addition. It is a
+        // real and important case - a new board is the highest-risk submission there is (Phase 6
         // task 3) - so it must produce a summary rather than an error.
         // ###########################################################################################
         public static ReviewChangeSummary Compare(
@@ -74,10 +74,10 @@ namespace Handlers.DataHandling
             sections.Add(ReviewSummary.CompareCalibrations(
                 publishedCalibrations, submittedCalibrations, renames));
 
-            bool isNewSystem = published == null;
+            bool isNewBoard = published == null;
 
             return new ReviewChangeSummary(
-                isNewSystem,
+                isNewBoard,
                 ReviewSummary.RevisionDateChange(before, submitted),
                 sections);
         }
@@ -579,7 +579,7 @@ namespace Handlers.DataHandling
     // opening line must be the changes and nothing else.
     // ###########################################################################################
     public sealed record ReviewChangeSummary(
-        bool IsNewSystem,
+        bool IsNewBoard,
         ReviewFieldChange? RevisionDate,
         IReadOnlyList<ReviewSectionChange> Sections)
     {
@@ -594,15 +594,15 @@ namespace Handlers.DataHandling
         // The one-line summary task 3 asks for: "3 components changed, 1 added, 2 images added".
         //
         // Written for a human at a glance, so it names the SECTION and the verb and nothing else -
-        // the keys are in the drill-down. A new system says so instead of listing every row as an
+        // the keys are in the drill-down. A new board says so instead of listing every row as an
         // addition, which would be a true but useless sentence hundreds of items long.
         // ###########################################################################################
         public string Describe()
         {
-            if (this.IsNewSystem)
+            if (this.IsNewBoard)
             {
                 int rows = this.Sections.Sum(section => section.Added.Count);
-                return $"New system, {rows} {ReviewChangeSummary.Plural(rows, "row", "rows")}";
+                return $"New board, {rows} {ReviewChangeSummary.Plural(rows, "row", "rows")}";
             }
 
             if (!this.HasChanges)

@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // Removing one imported KiCad file from a draft's "KiCad data" folder (owner request,
-    // 2026-09-24) - the per-file "Remove" in SystemFilesWindow, the KiCad twin of removing a
+    // 2026-09-24) - the per-file "Remove" in BoardFilesWindow, the KiCad twin of removing a
     // schematic image.
     //
     // *** UNLIKE A SCHEMATIC, THE FILE ITSELF IS DELETED. *** Removing a schematic drops its

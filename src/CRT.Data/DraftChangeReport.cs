@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT THE "WHAT CHANGED" WINDOW SHOWS for one drafted system
+    // WHAT THE "WHAT CHANGED" WINDOW SHOWS for one drafted board
     // (NewContributeStrategy.md Phase 6 - owner request, 2026-09-23).
     //
     // *** THIS REPLACES DraftDriftReport, AND IT ANSWERS A NARROWER QUESTION. *** The old report

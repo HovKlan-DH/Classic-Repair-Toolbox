@@ -431,7 +431,7 @@ namespace CRT.Server.Tests
             EmailTemplates.SubmissionReturnedToQueue("a@b.com", EmailTemplatesTests.C64, "Needs a check."),
             EmailTemplates.ApprovalNeeded("a@b.com", EmailTemplatesTests.C64, "submission #18", "Anna"),
             EmailTemplates.PublishedToProduction("a@b.com", EmailTemplatesTests.C64, "Anna (anna@example.com)", null, 3),
-            EmailTemplates.SystemDeleted("a@b.com", EmailTemplatesTests.C64, "It was a test system."),
+            EmailTemplates.BoardDeleted("a@b.com", EmailTemplatesTests.C64, "It was a test board."),
         ];
 
         // ###########################################################################################
@@ -471,10 +471,10 @@ namespace CRT.Server.Tests
             Assert.Contains("<script>alert(1)</script> & <b>bold</b>", message.Body, StringComparison.Ordinal);
         }
 
-        // The system in bold inside brackets, as the project owner wrote it; the other person's
+        // The board in bold inside brackets, as the project owner wrote it; the other person's
         // words in italics.
         [Fact]
-        public void The_system_is_bold_inside_brackets_and_the_maintainers_words_are_in_italics()
+        public void The_board_is_bold_inside_brackets_and_the_maintainers_words_are_in_italics()
         {
             EmailMessage message = EmailTemplates.SubmissionChangesRequested("c@example.com", EmailTemplatesTests.C64, "Please view the duplicate rows.");
 
@@ -495,40 +495,40 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // A deleted system's open submission (owner decision, 2026-10-03: "Delete them and mail the
+        // A deleted board's open submission (owner decision, 2026-10-03: "Delete them and mail the
         // contributors"). CRT's "My submissions" keeps the submission's last state, so this mail is
         // where the contributor learns it is gone - it says so, quotes the reason, and says the draft
         // on their own computer is untouched. Greeted by name like every contributor mail.
         // ###########################################################################################
         [Fact]
-        public void The_system_deleted_mail_says_the_submission_is_gone_quotes_the_reason_and_keeps_the_draft()
+        public void The_board_deleted_mail_says_the_submission_is_gone_quotes_the_reason_and_keeps_the_draft()
         {
-            EmailMessage message = EmailTemplates.SystemDeleted("c@example.com", "Commodore/C64/999999", "It was a test system.", "Anna");
+            EmailMessage message = EmailTemplates.BoardDeleted("c@example.com", "Commodore/C64/999999", "It was a test board.", "Anna");
 
             Assert.Equal("c@example.com", message.ToAddress);
-            Assert.Equal("A system you contributed to was removed from CRT", message.Subject);
+            Assert.Equal("A board you contributed to was removed from CRT", message.Subject);
             Assert.StartsWith("Hi Anna,", message.Body, StringComparison.Ordinal);
             Assert.Contains("Commodore/C64/999999", message.Body, StringComparison.Ordinal);
             Assert.Contains("your contribution to it was removed along with it", message.Body, StringComparison.Ordinal);
-            Assert.Contains("It was a test system.", message.Body, StringComparison.Ordinal);
+            Assert.Contains("It was a test board.", message.Body, StringComparison.Ordinal);
             Assert.Contains("Your draft is still on your own computer", message.Body, StringComparison.Ordinal);
 
             // A reason somebody typed is never markup in the mail.
-            EmailMessage hostile = EmailTemplates.SystemDeleted("c@example.com", "Commodore/C64/999999", "<b>gone</b>");
+            EmailMessage hostile = EmailTemplates.BoardDeleted("c@example.com", "Commodore/C64/999999", "<b>gone</b>");
             Assert.DoesNotContain("<b>gone</b>", hostile.HtmlBody, StringComparison.Ordinal);
         }
 
-        // An update and a completely new system are told apart (owner request, 2026-10-03).
+        // An update and a completely new board are told apart (owner request, 2026-10-03).
         [Fact]
-        public void The_waiting_mail_tells_a_new_system_from_an_update()
+        public void The_waiting_mail_tells_a_new_board_from_an_update()
         {
             EmailMessage update = EmailTemplates.SubmissionWaiting("anna@example.com", EmailTemplatesTests.C64, 18, "Fixed R12.");
-            EmailMessage newSystem = EmailTemplates.SubmissionWaiting("anna@example.com", EmailTemplatesTests.C64, 18, "A new board.", isNewSystem: true);
+            EmailMessage newBoard = EmailTemplates.SubmissionWaiting("anna@example.com", EmailTemplatesTests.C64, 18, "A new board.", isNewBoard: true);
 
-            Assert.Contains("an update for an existing system, [Commodore/C64/250407]", update.Body, StringComparison.Ordinal);
+            Assert.Contains("an update for an existing board, [Commodore/C64/250407]", update.Body, StringComparison.Ordinal);
             Assert.Contains("The contributor describes the changes like this:", update.Body, StringComparison.Ordinal);
-            Assert.Contains("a completely new system, [Commodore/C64/250407]", newSystem.Body, StringComparison.Ordinal);
-            Assert.Contains("The contributor describes the new system like this:", newSystem.Body, StringComparison.Ordinal);
+            Assert.Contains("a completely new board, [Commodore/C64/250407]", newBoard.Body, StringComparison.Ordinal);
+            Assert.Contains("The contributor describes the new board like this:", newBoard.Body, StringComparison.Ordinal);
             Assert.Equal("A CRT contribution is waiting for your review", update.Subject);
         }
 

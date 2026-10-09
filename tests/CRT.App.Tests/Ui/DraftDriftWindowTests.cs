@@ -274,7 +274,7 @@ public sealed class DraftDriftWindowTests : IDisposable
 
             DraftMarkerStore.Save(
                 DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile),
-                new DraftMarker { SystemKey = ExcelDataFile, BaseRevision = "2026-May-12" });
+                new DraftMarker { BoardKey = ExcelDataFile, BaseRevision = "2026-May-12" });
 
             var window = WindowFor(Report(rows: new[] { Row("U8") }));
 
@@ -307,7 +307,7 @@ public sealed class DraftDriftWindowTests : IDisposable
 
             DraftMarkerStore.Save(
                 DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile),
-                new DraftMarker { SystemKey = ExcelDataFile, BaseRevision = "2026-May-12" });
+                new DraftMarker { BoardKey = ExcelDataFile, BaseRevision = "2026-May-12" });
 
             var window = WindowFor(Report());
             window.RaiseRebaseForTests();

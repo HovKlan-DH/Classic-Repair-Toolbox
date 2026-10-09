@@ -4,7 +4,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // Characterisation tests for DraftManager - resolving the "Drafts/" root (NewContributeStrategy.md
-// Phase 2, session 2a) and mapping a system's ExcelDataFile to its folder under it. Mirrors
+// Phase 2, session 2a) and mapping a board's ExcelDataFile to its folder under it. Mirrors
 // WorklogManagerTests' own coverage of WorklogManager.ResolveExplicitWorkbookRoot and
 // DataManagerTests' coverage of DataManager.ResolveDataRoot - same switch-parsing rules, so the
 // same cases: the argument itself, quote-stripping, case-insensitivity, first-match-wins,
@@ -102,51 +102,51 @@ public sealed class DraftManagerTests : IDisposable
         Assert.Equal(string.Empty, DraftManager.DraftsRoot);
     }
 
-    // ------------------------------------------------------------------------ GetSystemFolder
+    // ------------------------------------------------------------------------ GetBoardFolder
 
     [Fact]
-    public void GetSystemFolder_maps_an_ExcelDataFile_to_its_manufacturer_hardware_board_folder()
+    public void GetBoardFolder_maps_an_ExcelDataFile_to_its_manufacturer_hardware_board_folder()
     {
         string root = Path.Combine(this.thisWorkspace.Root, "Drafts");
         DraftManager.LoadFrom(root);
 
-        string folder = DraftManager.GetSystemFolder("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx");
+        string folder = DraftManager.GetBoardFolder("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx");
 
         Assert.Equal(Path.Combine(root, "Commodore", "C64", "250407"), folder);
     }
 
     [Fact]
-    public void GetSystemFolder_returns_empty_when_the_root_has_not_loaded()
+    public void GetBoardFolder_returns_empty_when_the_root_has_not_loaded()
     {
         // DraftManager is a static singleton, so an earlier test in this collection may already
         // have loaded a real root - reset to the unloaded state explicitly first (LoadFrom(""))
         // rather than relying on run order.
         DraftManager.LoadFrom(string.Empty);
 
-        Assert.Equal(string.Empty, DraftManager.GetSystemFolder("Commodore/C64/250407/Data.xlsx"));
+        Assert.Equal(string.Empty, DraftManager.GetBoardFolder("Commodore/C64/250407/Data.xlsx"));
     }
 
     [Fact]
-    public void GetSystemFolder_returns_empty_for_a_blank_excel_data_file()
+    public void GetBoardFolder_returns_empty_for_a_blank_excel_data_file()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
 
-        Assert.Equal(string.Empty, DraftManager.GetSystemFolder(string.Empty));
+        Assert.Equal(string.Empty, DraftManager.GetBoardFolder(string.Empty));
     }
 
     [Fact]
-    public void GetSystemFolder_returns_empty_for_a_path_with_no_folder_segments_to_take()
+    public void GetBoardFolder_returns_empty_for_a_path_with_no_folder_segments_to_take()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
 
         // Just a bare file name, no "manufacturer/hardware/board/" prefix to build a folder from.
-        Assert.Equal(string.Empty, DraftManager.GetSystemFolder("Data.xlsx"));
+        Assert.Equal(string.Empty, DraftManager.GetBoardFolder("Data.xlsx"));
     }
 
     // ###########################################################################################
     // *** THE LoadDraftFor TESTS ARE GONE WITH THE METHOD (Phase 6, 2026-09-23). ***
     //
-    // They pinned reading one system's draft.json - null when there was none, the saved draft
+    // They pinned reading one board's draft.json - null when there was none, the saved draft
     // when there was, null when the drafts root had not loaded. A draft is now a board folder,
     // so there is no draft.json and nothing to read back; the equivalent questions are answered
     // by DraftBoardSource.HasDraft and DraftStatusReader.Resolve, which have their own tests.
@@ -155,29 +155,29 @@ public sealed class DraftManagerTests : IDisposable
     // note is here so their absence reads as a decision.
     // ###########################################################################################
 
-    // ------------------------------------------------------------------------ EnumerateDraftedSystems
+    // ------------------------------------------------------------------------ EnumerateDraftedBoards
 
     private static HardwareBoardEntry BoardEntry(string excelDataFile) => new() { ExcelDataFile = excelDataFile };
 
     // ###########################################################################################
-    // *** A DRAFT IS A MARKER NOW (Phase 6, 2026-09-23). *** EnumerateDraftedSystems asks whether
+    // *** A DRAFT IS A MARKER NOW (Phase 6, 2026-09-23). *** EnumerateDraftedBoards asks whether
     // one exists, not whether a BoardDraft holds rows - see its own header for why the "is it
     // empty" test could not survive the new model.
     // ###########################################################################################
     private static void WriteDraftMarker(string excelDataFile) =>
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
-            new DraftMarker { SystemKey = excelDataFile });
+            new DraftMarker { BoardKey = excelDataFile });
 
     [Fact]
-    public void EnumerateDraftedSystems_returns_only_systems_with_a_saved_draft()
+    public void EnumerateDraftedBoards_returns_only_boards_with_a_saved_draft()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string withDraft = "Commodore/C64/250407/Data.xlsx";
         string withoutDraft = "Commodore/C64/250425/Data.xlsx";
         WriteDraftMarker(withDraft);
 
-        var result = DraftManager.EnumerateDraftedSystems(new[] { BoardEntry(withDraft), BoardEntry(withoutDraft) });
+        var result = DraftManager.EnumerateDraftedBoards(new[] { BoardEntry(withDraft), BoardEntry(withoutDraft) });
 
         Assert.Single(result);
         Assert.Equal(withDraft, result[0].ExcelDataFile);
@@ -187,11 +187,11 @@ public sealed class DraftManagerTests : IDisposable
     // *** THIS ASSERTION WAS INVERTED DELIBERATELY (Phase 6, 2026-09-23). ***
     //
     // It used to assert that a draft holding NO rows was excluded - "an empty BoardDraft is not a
-    // system with local changes". That test cannot survive the new model, and the behaviour it
+    // board with local changes". That test cannot survive the new model, and the behaviour it
     // described is one we no longer want:
     //
     //   - a draft workbook is a full copy of the published board, so it is never empty;
-    //   - asking whether it DIFFERS would mean parsing two workbooks per system just to decide
+    //   - asking whether it DIFFERS would mean parsing two workbooks per board just to decide
     //     whether to list a row;
     //   - and the answer would be wrong for the case that matters most - a contributor who has
     //     seeded a draft and not yet edited it still HAS one, and hiding it would leave them no
@@ -201,27 +201,27 @@ public sealed class DraftManagerTests : IDisposable
     // own summary to answer.
     // ###########################################################################################
     [Fact]
-    public void EnumerateDraftedSystems_lists_a_draft_that_has_not_been_edited_yet()
+    public void EnumerateDraftedBoards_lists_a_draft_that_has_not_been_edited_yet()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
         WriteDraftMarker(excelDataFile);
 
-        var result = DraftManager.EnumerateDraftedSystems(new[] { BoardEntry(excelDataFile) });
+        var result = DraftManager.EnumerateDraftedBoards(new[] { BoardEntry(excelDataFile) });
 
         Assert.Single(result);
     }
 
     [Fact]
-    public void EnumerateDraftedSystems_returns_empty_for_an_empty_candidate_list()
+    public void EnumerateDraftedBoards_returns_empty_for_an_empty_candidate_list()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
 
-        Assert.Empty(DraftManager.EnumerateDraftedSystems(Array.Empty<HardwareBoardEntry>()));
+        Assert.Empty(DraftManager.EnumerateDraftedBoards(Array.Empty<HardwareBoardEntry>()));
     }
 
     [Fact]
-    public void EnumerateDraftedSystems_returns_every_drafted_system_when_several_have_drafts()
+    public void EnumerateDraftedBoards_returns_every_drafted_board_when_several_have_drafts()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string first = "Commodore/C64/250407/Data.xlsx";
@@ -229,7 +229,7 @@ public sealed class DraftManagerTests : IDisposable
         WriteDraftMarker(first);
         WriteDraftMarker(second);
 
-        var result = DraftManager.EnumerateDraftedSystems(new[] { BoardEntry(first), BoardEntry(second) });
+        var result = DraftManager.EnumerateDraftedBoards(new[] { BoardEntry(first), BoardEntry(second) });
 
         Assert.Equal(2, result.Count);
         Assert.Contains(result, e => e.ExcelDataFile == first);
@@ -239,11 +239,11 @@ public sealed class DraftManagerTests : IDisposable
     // ------------------------------------------------------------------------ DiscardDraft
 
     [Fact]
-    public void DiscardDraft_removes_the_whole_system_folder()
+    public void DiscardDraft_removes_the_whole_board_folder()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
-        string folder = DraftManager.GetSystemFolder(excelDataFile);
+        string folder = DraftManager.GetBoardFolder(excelDataFile);
         WriteDraftMarker(excelDataFile);
         Assert.True(Directory.Exists(folder));
 
@@ -260,7 +260,7 @@ public sealed class DraftManagerTests : IDisposable
         // behind with nothing pointing at them. "One folder is the whole draft."
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
-        string folder = DraftManager.GetSystemFolder(excelDataFile);
+        string folder = DraftManager.GetBoardFolder(excelDataFile);
         WriteDraftMarker(excelDataFile);
         string otherFile = Path.Combine(folder, "imported-schematic.png");
         File.WriteAllBytes(otherFile, new byte[] { 1, 2, 3 });
@@ -271,7 +271,7 @@ public sealed class DraftManagerTests : IDisposable
     }
 
     [Fact]
-    public void DiscardDraft_on_a_system_with_no_draft_is_harmless()
+    public void DiscardDraft_on_a_board_with_no_draft_is_harmless()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
 
@@ -307,7 +307,7 @@ public sealed class DraftManagerTests : IDisposable
 
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
-        string folder = DraftManager.GetSystemFolder(excelDataFile);
+        string folder = DraftManager.GetBoardFolder(excelDataFile);
         WriteDraftMarker(excelDataFile);
 
         string lockedFile = Path.Combine(folder, "Data.xlsx");
@@ -332,20 +332,20 @@ public sealed class DraftManagerTests : IDisposable
         DraftManager.DiscardDraft("Commodore/C64/250407/Data.xlsx");
     }
 
-    // ------------------------------------------------- EnumerateDraftOnlySystems (task 9)
+    // ------------------------------------------------- EnumerateDraftOnlyBoards (task 9)
 
     // The one place in the app that walks Drafts/ BACKWARDS - every other path maps a known
-    // ExcelDataFile to its folder. It has to, because a brand-new system's identity exists nowhere
+    // ExcelDataFile to its folder. It has to, because a brand-new board's identity exists nowhere
     // else yet, and it is what makes a separate registry file unnecessary.
-    // A system that exists ONLY as a draft. Since Phase 6 its registration lives in the MARKER,
+    // A board that exists ONLY as a draft. Since Phase 6 its registration lives in the MARKER,
     // which is also the file that makes the folder a draft at all.
-    private static void WriteNewSystemMarker(string hardware, string board, string excelDataFile) =>
+    private static void WriteNewBoardMarker(string hardware, string board, string excelDataFile) =>
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
             new DraftMarker
             {
-                SystemKey = excelDataFile,
-                NewSystem = new NewSystemRegistration
+                BoardKey = excelDataFile,
+                NewBoard = new NewBoardRegistration
                 {
                     HardwareName = hardware,
                     BoardName = board,
@@ -355,15 +355,15 @@ public sealed class DraftManagerTests : IDisposable
             });
 
     [Fact]
-    public void EnumerateDraftOnlySystems_finds_a_registered_system_and_rebuilds_its_entry()
+    public void EnumerateDraftOnlyBoards_finds_a_registered_board_and_rebuilds_its_entry()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/MyBoard/Data C64 MyBoard.xlsx";
-        WriteNewSystemMarker("Commodore 64", "MyBoard", excelDataFile);
+        WriteNewBoardMarker("Commodore 64", "MyBoard", excelDataFile);
 
-        var systems = DraftManager.EnumerateDraftOnlySystems();
+        var boards = DraftManager.EnumerateDraftOnlyBoards();
 
-        var entry = Assert.Single(systems);
+        var entry = Assert.Single(boards);
         Assert.Equal("Commodore 64", entry.HardwareName);
         Assert.Equal("MyBoard", entry.BoardName);
         Assert.Equal(excelDataFile, entry.ExcelDataFile);
@@ -373,71 +373,71 @@ public sealed class DraftManagerTests : IDisposable
     // The flag every consumer branches on - DataManager's sync bookkeeping and DataValidator both
     // have to skip these, since their ExcelDataFile names a file that is never on disk.
     [Fact]
-    public void EnumerateDraftOnlySystems_marks_what_it_finds_as_draft_only()
+    public void EnumerateDraftOnlyBoards_marks_what_it_finds_as_draft_only()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/MyBoard/Data C64 MyBoard.xlsx";
-        WriteNewSystemMarker("Commodore 64", "MyBoard", excelDataFile);
+        WriteNewBoardMarker("Commodore 64", "MyBoard", excelDataFile);
 
-        Assert.True(Assert.Single(DraftManager.EnumerateDraftOnlySystems()).IsDraftOnly);
+        Assert.True(Assert.Single(DraftManager.EnumerateDraftOnlyBoards()).IsDraftOnly);
     }
 
-    // An ordinary draft over an already-synced system carries no registration and must NOT produce
-    // a drop-down entry - DataManager already lists that system from the main workbook, and a
+    // An ordinary draft over an already-synced board carries no registration and must NOT produce
+    // a drop-down entry - DataManager already lists that board from the main workbook, and a
     // second entry would be a duplicate of it.
     [Fact]
-    public void EnumerateDraftOnlySystems_ignores_an_ordinary_draft_with_no_registration()
+    public void EnumerateDraftOnlyBoards_ignores_an_ordinary_draft_with_no_registration()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
-        // An ordinary draft over an already-known system: a marker with NO registration.
+        // An ordinary draft over an already-known board: a marker with NO registration.
         WriteDraftMarker(excelDataFile);
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 
     [Fact]
-    public void EnumerateDraftOnlySystems_ignores_a_folder_with_no_draft_file_at_all()
+    public void EnumerateDraftOnlyBoards_ignores_a_folder_with_no_draft_file_at_all()
     {
         string draftsRoot = Path.Combine(this.thisWorkspace.Root, "Drafts");
         DraftManager.LoadFrom(draftsRoot);
         Directory.CreateDirectory(Path.Combine(draftsRoot, "Commodore", "C64", "250407"));
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 
     [Fact]
-    public void EnumerateDraftOnlySystems_finds_several_systems_across_different_manufacturers()
+    public void EnumerateDraftOnlyBoards_finds_several_boards_across_different_manufacturers()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
 
         string first = "Commodore/C64/MyBoard/Data C64 MyBoard.xlsx";
         string second = "Amstrad/CPC464/MyOther/Data CPC464 MyOther.xlsx";
-        WriteNewSystemMarker("Commodore 64", "MyBoard", first);
-        WriteNewSystemMarker("Amstrad CPC464", "MyOther", second);
+        WriteNewBoardMarker("Commodore 64", "MyBoard", first);
+        WriteNewBoardMarker("Amstrad CPC464", "MyOther", second);
 
-        var systems = DraftManager.EnumerateDraftOnlySystems();
+        var boards = DraftManager.EnumerateDraftOnlyBoards();
 
-        Assert.Equal(2, systems.Count);
-        Assert.Contains(systems, s => s.BoardName == "MyBoard");
-        Assert.Contains(systems, s => s.BoardName == "MyOther");
+        Assert.Equal(2, boards.Count);
+        Assert.Contains(boards, s => s.BoardName == "MyBoard");
+        Assert.Contains(boards, s => s.BoardName == "MyOther");
     }
 
     [Fact]
-    public void EnumerateDraftOnlySystems_is_empty_with_no_root_loaded()
+    public void EnumerateDraftOnlyBoards_is_empty_with_no_root_loaded()
     {
         DraftManager.LoadFrom(string.Empty);
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 
     [Fact]
-    public void EnumerateDraftOnlySystems_is_empty_when_the_drafts_root_does_not_exist_yet()
+    public void EnumerateDraftOnlyBoards_is_empty_when_the_drafts_root_does_not_exist_yet()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         Directory.Delete(Path.Combine(this.thisWorkspace.Root, "Drafts"), recursive: true);
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 
     // THE decisive property behind storing the registration inside draft.json rather than in a
@@ -445,36 +445,36 @@ public sealed class DraftManagerTests : IDisposable
     // with it and nothing has to be kept in step. A registry file would have been left pointing at
     // a folder that no longer exists.
     [Fact]
-    public void A_discarded_new_system_stops_being_enumerated_with_no_second_file_to_update()
+    public void A_discarded_new_board_stops_being_enumerated_with_no_second_file_to_update()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/MyBoard/Data C64 MyBoard.xlsx";
-        WriteNewSystemMarker("Commodore 64", "MyBoard", excelDataFile);
-        Assert.Single(DraftManager.EnumerateDraftOnlySystems());
+        WriteNewBoardMarker("Commodore 64", "MyBoard", excelDataFile);
+        Assert.Single(DraftManager.EnumerateDraftOnlyBoards());
 
         DraftManager.DiscardDraft(excelDataFile);
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 
     // A registration with no identity key could not be mapped back to its own folder, so it would
     // be an entry pointing at nothing - skipped rather than surfaced as a broken drop-down row.
     [Fact]
-    public void EnumerateDraftOnlySystems_skips_a_registration_with_no_identity_key()
+    public void EnumerateDraftOnlyBoards_skips_a_registration_with_no_identity_key()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
         string excelDataFile = "Commodore/C64/MyBoard/Data C64 MyBoard.xlsx";
-        // A registration with no ExcelDataFile names no system, so there is nothing to add to
+        // A registration with no ExcelDataFile names no board, so there is nothing to add to
         // the hardware/board lists - skipped rather than producing an entry that resolves to
         // nothing.
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
             new DraftMarker
             {
-                SystemKey = excelDataFile,
-                NewSystem = new NewSystemRegistration { HardwareName = "Commodore 64", BoardName = "MyBoard" },
+                BoardKey = excelDataFile,
+                NewBoard = new NewBoardRegistration { HardwareName = "Commodore 64", BoardName = "MyBoard" },
             });
 
-        Assert.Empty(DraftManager.EnumerateDraftOnlySystems());
+        Assert.Empty(DraftManager.EnumerateDraftOnlyBoards());
     }
 }

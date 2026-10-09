@@ -126,16 +126,16 @@ public sealed class UnusedFilesDisplayTests
     // about a change - opened from the tree it was found in, with its size.
     // ###########################################################################################
     [Theory]
-    [InlineData("beta", SystemFileSource.Beta)]
-    [InlineData("production", SystemFileSource.Production)]
-    public void The_list_becomes_the_trees_entries_opened_from_where_it_was_read(string tree, SystemFileSource from)
+    [InlineData("beta", BoardFileSource.Beta)]
+    [InlineData("production", BoardFileSource.Production)]
+    public void The_list_becomes_the_trees_entries_opened_from_where_it_was_read(string tree, BoardFileSource from)
     {
-        IReadOnlyList<SystemFileEntry> entries = UnusedFilesDisplay.TreeEntries(
+        IReadOnlyList<BoardFileEntry> entries = UnusedFilesDisplay.TreeEntries(
             new UnusedFileListing(tree, true, [], 2, 22, 900, [new UnusedFileEntry("Commodore/Shared files/6510.jpg", 46_182)]));
 
-        SystemFileEntry entry = Assert.Single(entries);
+        BoardFileEntry entry = Assert.Single(entries);
         Assert.Equal("Commodore/Shared files/6510.jpg", entry.Path);
-        Assert.Equal(SystemFileChange.Unchanged, entry.Change);
+        Assert.Equal(BoardFileChange.Unchanged, entry.Change);
         Assert.Equal(from, entry.OpenFrom);
         Assert.Equal(46_182, entry.SizeBytes);
     }

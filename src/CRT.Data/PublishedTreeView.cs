@@ -23,7 +23,7 @@ namespace Handlers.DataHandling
     // *** WHY CASE VARIANTS MATTER ENOUGH TO LOOK FOR. *** The server's filesystem is Linux, where
     // "commodore/C64/250407" and "Commodore/C64/250407" are two folders. Every Windows and macOS
     // client folds them into ONE, so whichever manifest entry syncs last overwrites the other - a
-    // submission to a case-variant "new system" would replace a real board's images on every
+    // submission to a case-variant "new board" would replace a real board's images on every
     // client without the real board's files on the server ever being touched.
     // ###########################################################################################
     public sealed class PublishedTreeView

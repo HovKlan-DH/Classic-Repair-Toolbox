@@ -4,16 +4,16 @@ using Microsoft.Extensions.Logging;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // Reads the board a system is PUBLISHED at, so a submission can be compared against it
+    // Reads the board a board is PUBLISHED at, so a submission can be compared against it
     // (NewContributeStrategy.md Phase 5, task 3).
     //
-    // *** A MISSING BOARD IS AN ANSWER, NOT AN ERROR. *** It means the system has never been
-    // published - a NEW SYSTEM - which is the highest-risk submission there is (Phase 6 task 3)
+    // *** A MISSING BOARD IS AN ANSWER, NOT AN ERROR. *** It means the board has never been
+    // published - a NEW BOARD - which is the highest-risk submission there is (Phase 6 task 3)
     // and must reach a maintainer rather than failing to open. `ReviewSummary.Compare` takes a null
-    // published board and reports "New system, N rows" for exactly this case, so the null travels
+    // published board and reports "New board, N rows" for exactly this case, so the null travels
     // all the way through rather than being turned into an empty board here. An empty board would
     // report every row as an addition, which is the same information stripped of the one fact
-    // that matters: that nobody has ever vetted this system.
+    // that matters: that nobody has ever vetted this board.
     //
     // *** IT READS THE NEWEST GENERATION, using the same rule publishing writes with. *** If this
     // read an older, frozen generation the maintainer would be shown a diff against a board no
@@ -37,13 +37,13 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The published board for a system, or null when it has never been published.
+        // The published board for a board, or null when it has never been published.
         //
         // *** THE CACHE IS DELIBERATELY BYPASSED, AND THIS WAS A REAL BUG. *** BoardDataReader
         // keeps a static cache keyed by whatever string the caller supplies, and the first version
         // here passed the workbook's own PATH - which looks like the obviously right key and is
         // exactly wrong for this caller. The file at that path is REWRITTEN by every publish, so
-        // after a merge the next maintainer to open a submission for that system would be served the
+        // after a merge the next maintainer to open a submission for that board would be served the
         // PRE-PUBLISH board out of cache and shown a diff against data that no longer exists. In
         // the app the same key is safe because CRT never rewrites a published board; on the server
         // it is the one thing that does.
@@ -64,34 +64,34 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
-            return await this.ReadAsync(PublishedBoardLocator.Locate(dataTreeRoot, manifest), manifest.SystemId, cancellationToken)
+            return await this.ReadAsync(PublishedBoardLocator.Locate(dataTreeRoot, manifest), manifest.BoardId, cancellationToken)
                 .ConfigureAwait(false);
         }
 
         // ###########################################################################################
-        // The same, for a system named by its id rather than by a submission - the Systems screen's
-        // Board data and Files views (2026-10-03). Located by PublishedBoardLocator.LocateSystem, the
-        // rule the review queue tells a new system by.
+        // The same, for a board named by its id rather than by a submission - the Boards screen's
+        // Board data and Files views (2026-10-03). Located by PublishedBoardLocator.LocateBoard, the
+        // rule the review queue tells a new board by.
         // ###########################################################################################
-        public Task<BoardData?> TryReadSystemAsync(
+        public Task<BoardData?> TryReadBoardAsync(
             string dataTreeRoot,
-            string systemId,
+            string boardId,
             CancellationToken cancellationToken = default) =>
-            this.ReadAsync(PublishedBoardLocator.LocateSystem(dataTreeRoot, systemId), systemId, cancellationToken);
+            this.ReadAsync(PublishedBoardLocator.LocateBoard(dataTreeRoot, boardId), boardId, cancellationToken);
 
         private async Task<BoardData?> ReadAsync(
             PublishedBoardLocation location,
-            string? systemId,
+            string? boardId,
             CancellationToken cancellationToken)
         {
             if (!location.Exists)
             {
-                // Logged at INFORMATION rather than WARNING: a new system is an ordinary and
+                // Logged at INFORMATION rather than WARNING: a new board is an ordinary and
                 // expected state, not a fault, and logging it as one trains people to ignore
                 // warnings.
                 this.thisLogger.LogInformation(
-                    "No published board for {SystemId}; treating as a new system.",
-                    systemId);
+                    "No published board for {BoardId}; treating as a new board.",
+                    boardId);
 
                 return null;
             }
@@ -110,12 +110,12 @@ namespace CRT.Server.Handlers.Submissions
             {
                 // A board that cannot be READ is NOT the same as one that does not exist, and the
                 // difference is the whole point: returning null here would tell the maintainer this
-                // is a brand-new system, and they would approve it on that basis while a
+                // is a brand-new board, and they would approve it on that basis while a
                 // published board sat on disk unreadable. So this fails loudly instead.
                 this.thisLogger.LogError(
                     exception,
-                    "The published board for {SystemId} at {Path} could not be read.",
-                    systemId,
+                    "The published board for {BoardId} at {Path} could not be read.",
+                    boardId,
                     location.WorkbookPath);
 
                 throw;

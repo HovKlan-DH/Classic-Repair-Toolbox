@@ -1,0 +1,160 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
+             x:Class="CRT.BoardOrderView">
+
+    <!--
+    THE ORDER OF CRT's DROP-DOWN LISTS, ON THE ACCOUNT SCREEN (the Admin screen until 2026-10-04; owner request, 2026-10-04: "In the
+    'Admin' top menu I would like a possibility to be able to sort the list of boards, which then
+    gets saved to both sources (BETA + stable) after my save"). ADMINISTRATOR ONLY - the server
+    refuses everybody else regardless.
+
+    BETA's list in CRT's order, every row a panel that can be dragged up or down - the same dashed
+    placeholder and the same code as placing a new board (Controls/ListRowDrag) - then Save, which
+    sends the whole order (CRT.Server's BoardOrderFlow writes it into BETA's and the stable
+    source's main Excel data file). Nothing is written before Save; "Cancel" (it read "Put back as saved" until 2026-10-04, owner request) drops the
+    moves. BoardOrderDisplay words it all.
+    -->
+    <UserControl.Styles>
+        <Style Selector="Grid.OrderDragHandle">
+            <Setter Property="Cursor" Value="SizeNorthSouth" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeadingText"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="ExplanationText"
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12" />
+
+        <!-- The message and the two buttons, under the list. -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0">
+            <TextBlock Grid.Column="0"
+                       x:Name="MessageText"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       Margin="0,0,12,0"
+                       IsVisible="False" />
+
+            <Button Grid.Column="1"
+                    x:Name="UndoButton"
+                    Margin="0,0,8,0"
+                    IsEnabled="False"
+                    Click="OnUndoClick" />
+
+            <Button Grid.Column="2"
+                    x:Name="SaveButton"
+                    Foreground="{DynamicResource Button_Ok_Fg}"
+                    Background="{DynamicResource Button_Ok_Bg}"
+                    BorderBrush="{DynamicResource Button_Ok_Border}"
+                    IsEnabled="False"
+                    Click="OnSaveClick" />
+        </Grid>
+
+        <!-- The whole list, with its own scroll bar, so the drag can scroll it (holding a panel near
+             the top or bottom edge). -->
+        <Border BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="1">
+          <DockPanel>
+
+            <!-- The headings over the two names (owner request, 2026-10-09), on the rows' own columns:
+                 the list's 4px margin, a row's 1px border and 4px padding, then the grip's 24px. -->
+            <Border DockPanel.Dock="Top"
+                    BorderBrush="{DynamicResource Table_BorderRowLine}"
+                    BorderThickness="0,0,0,1"
+                    Padding="9,6,9,6">
+                <Grid x:Name="OrderHeadings" ColumnDefinitions="24,200,*">
+                    <TextBlock Grid.Column="1"
+                               x:Name="HardwareHeadingText"
+                               FontSize="12"
+                               FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="2"
+                               x:Name="BoardHeadingText"
+                               FontSize="12"
+                               FontWeight="SemiBold" />
+                </Grid>
+            </Border>
+
+            <ScrollViewer x:Name="OrderScrollViewer"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+
+                <!-- Spaced by the PANEL rather than a margin per row, so a row's container is exactly
+                     the row and the placeholder takes its height - see ListRowDrag. -->
+                <ItemsControl x:Name="OrderItemsControl" Margin="4">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="local:OrderListRow">
+                            <Grid>
+
+                                <!-- Where a drop will land, while a panel is dragged. -->
+                                <Panel IsVisible="{Binding IsDropPlaceholder}"
+                                       Height="{Binding PlaceholderHeight}">
+                                    <Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+                                               StrokeThickness="2"
+                                               StrokeDashArray="4,3"
+                                               RadiusX="3"
+                                               RadiusY="3"
+                                               Fill="{DynamicResource Bg}" />
+                                    <TextBlock Text="Release the mouse button to place it here"
+                                               FontSize="11"
+                                               Opacity="0.7"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Panel>
+
+                                <!-- A board: its two names as the lists carry them. The whole panel is
+                                     the handle; Background set, or its blank space is not hit-testable. -->
+                                <Border IsVisible="{Binding ShowsRow}"
+                                        BorderBrush="{DynamicResource Table_BorderRowLine}"
+                                        BorderThickness="1"
+                                        CornerRadius="3"
+                                        Padding="4,4">
+                                    <Grid Classes="OrderDragHandle"
+                                          ColumnDefinitions="24,200,*"
+                                          Background="Transparent"
+                                          PointerPressed="OnRowPointerPressed">
+
+                                        <!-- Font Awesome "grip-vertical", as on the placement panel. -->
+                                        <TextBlock Grid.Column="0"
+                                                   Text="&#xf58e;"
+                                                   FontFamily="{DynamicResource FontAwesomeSolid}"
+                                                   FontSize="13"
+                                                   Opacity="0.6"
+                                                   Margin="2,0,0,0"
+                                                   HorizontalAlignment="Left"
+                                                   VerticalAlignment="Center" />
+
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding HardwareName}"
+                                                   FontSize="12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding BoardName}"
+                                                   FontSize="12"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
+    </DockPanel>
+</UserControl>

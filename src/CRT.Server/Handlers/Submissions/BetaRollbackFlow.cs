@@ -13,8 +13,8 @@ namespace CRT.Server.Handlers.Submissions
     // same authority, refusals cheapest first:
     //
     //   1. CONFIGURED - production publishing switched on? (a restore reads production's tree)
-    //   2. AUTHORITY  - may this account decide this system?
-    //   3. EXISTENCE  - is there such a system, and is its BETA state actually ahead?
+    //   2. AUTHORITY  - may this account decide this board?
+    //   3. EXISTENCE  - is there such a board, and is its BETA state actually ahead?
     //   4. PLAN       - what would be written, and what returns to the queue?
     //   5. WRITE the tree, then the BETA checksum manifest, then the bookkeeping.
     //
@@ -25,7 +25,7 @@ namespace CRT.Server.Handlers.Submissions
     // data is still there". Production also holds a COMPLETE board, so overwriting BETA from it is
     // a defined restore rather than a guess. BetaRollbackPlan's header records both.
     //
-    // *** PER SYSTEM, NEVER PER SUBMISSION - and that shapes the whole feature. ***
+    // *** PER BOARD, NEVER PER SUBMISSION - and that shapes the whole feature. ***
     // ProductionPromotionPlan says it in the other direction: "two submissions merged into one
     // board cannot be promoted separately, because the board's workbook already holds both". So a
     // rollback reverts EVERY submission merged since the last promotion, and all of them go back to
@@ -48,16 +48,16 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public sealed class BetaRollbackFlow
     {
-        public const string RolledBackAction = SystemHistoryEvents.PushedBack;
+        public const string RolledBackAction = BoardHistoryEvents.PushedBack;
 
-        public const string RejectedAction = SystemHistoryEvents.RejectedFromBeta;
+        public const string RejectedAction = BoardHistoryEvents.RejectedFromBeta;
 
         public const string NothingToRollBackMessage =
-            "This system's BETA data is the same as the stable source's, so there is nothing to roll back.";
+            "This board's BETA data is the same as the stable source's, so there is nothing to roll back.";
 
-        // A promoted system whose production folder lists nothing (BetaRollbackPlan's header).
+        // A promoted board whose production folder lists nothing (BetaRollbackPlan's header).
         public const string ProductionUnreadableMessage =
-            "This system was published to the stable source, but its folder there cannot be read - it is missing, renamed, " +
+            "This board was published to the stable source, but its folder there cannot be read - it is missing, renamed, " +
             "or the stable data folder is not reachable. Nothing was changed: pushing back now would take the " +
             "board out of BETA as if it had never been in the stable source. Check the stable data folder, then try again.";
 
@@ -89,22 +89,22 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public async Task<BetaRollbackOutcome> PlanAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             ServerOptions options,
             CancellationToken cancellationToken = default)
         {
-            (BetaRollbackOutcome? refusal, SystemRecord? system) =
-                await this.CheckAsync(access, systemId, options, cancellationToken);
+            (BetaRollbackOutcome? refusal, BoardRecord? board) =
+                await this.CheckAsync(access, boardId, options, cancellationToken);
 
             if (refusal is not null)
                 return refusal;
 
-            BetaRollbackFilePlan plan = await this.BuildPlanAsync(system!, options, cancellationToken);
+            BetaRollbackFilePlan plan = await this.BuildPlanAsync(board!, options, cancellationToken);
 
             if (plan.Plan.Kind == BetaRollbackKind.ProductionUnreadable)
                 return BetaRollbackOutcome.Conflict(BetaRollbackFlow.ProductionUnreadableMessage);
 
-            return BetaRollbackOutcome.Planned(system!, plan.Plan);
+            return BetaRollbackOutcome.Planned(board!, plan.Plan);
         }
 
         // ###########################################################################################
@@ -114,15 +114,15 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         public async Task<BetaRollbackOutcome> RollBackAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             string? comment,
             ServerOptions options,
             DateTimeOffset nowUtc,
             CancellationToken cancellationToken = default,
             bool reject = false)
         {
-            (BetaRollbackOutcome? refusal, SystemRecord? system) =
-                await this.CheckAsync(access, systemId, options, cancellationToken);
+            (BetaRollbackOutcome? refusal, BoardRecord? board) =
+                await this.CheckAsync(access, boardId, options, cancellationToken);
 
             if (refusal is not null)
                 return refusal;
@@ -144,11 +144,11 @@ namespace CRT.Server.Handlers.Submissions
 
             using IDisposable held = await this.thisLock.EnterAsync(cancellationToken);
 
-            // Re-read inside the lock: the system may have been promoted or published meanwhile.
-            SystemRecord? current = await this.thisStore.FindSystemAsync(system!.SystemId, cancellationToken);
+            // Re-read inside the lock: the board may have been promoted or published meanwhile.
+            BoardRecord? current = await this.thisStore.FindBoardAsync(board!.BoardId, cancellationToken);
 
             if (current is null)
-                return BetaRollbackOutcome.NotFound($"There is no system [{system.SystemId}].");
+                return BetaRollbackOutcome.NotFound($"There is no board [{board.BoardId}].");
 
             if (!ProductionPromotionRules.IsAwaitingProduction(current))
                 return BetaRollbackOutcome.Conflict(BetaRollbackFlow.NothingToRollBackMessage);
@@ -180,21 +180,21 @@ namespace CRT.Server.Handlers.Submissions
             // part-way, since some files may already have moved: the manifest has to describe the
             // tree whatever happens next.
             // ###########################################################################################
-            // A system that was never in production leaves BETA entirely - and with it, its row in
+            // A board that was never in production leaves BETA entirely - and with it, its row in
             // BETA's drop-down lists (2026-09-27), or every BETA user would be offered a board that
             // is not there. Only when the files went; its stored placement is kept, so the next
             // publish puts it back in the same place. Never fails the rollback - the tree has moved.
             if (written.IsDone && plan.Kind == BetaRollbackKind.RemoveFromBeta)
-                this.RemoveFromBetaList(options, current.SystemId);
+                this.RemoveFromBetaList(options, current.BoardId);
 
-            this.RegenerateBetaManifest(options, current.SystemId);
+            this.RegenerateBetaManifest(options, current.BoardId);
 
             if (!written.IsDone)
                 return BetaRollbackOutcome.Refused(written.Error ?? "The rollback did not complete.");
 
             // ###########################################################################################
             // *** ONE TRANSACTION, CAUGHT (code review, 2026-09-27). *** The submissions back to
-            // pending, their approvals cleared, the system's BETA state following the tree - all or
+            // pending, their approvals cleared, the board's BETA state following the tree - all or
             // nothing. A failure is answered as what it is rather than escaping as a 500 that reads
             // "it did not happen": the tree HAS been rolled back, and pushing back again finds it
             // already level with production, changes no file, and records it.
@@ -202,12 +202,12 @@ namespace CRT.Server.Handlers.Submissions
             // AFTER the tree, deliberately: a submission moved back to `pending` while its data is
             // still in BETA would put a board in the queue that is already live.
             //
-            // A restored system is level with production; a removed one has no BETA state at all.
+            // A restored board is level with production; a removed one has no BETA state at all.
             // ###########################################################################################
             try
             {
                 await this.thisStore.RecordRollbackAsync(
-                    current.SystemId,
+                    current.BoardId,
                     plan.Returning.Select(submission => submission.Id).ToList(),
                     access!.Account.Id,
                     reason,
@@ -221,8 +221,8 @@ namespace CRT.Server.Handlers.Submissions
             {
                 this.thisLogger.LogError(
                     ex,
-                    "{SystemId} WAS rolled back in BETA, but recording it failed - its submissions are still merged.",
-                    current.SystemId);
+                    "{BoardId} WAS rolled back in BETA, but recording it failed - its submissions are still merged.",
+                    current.BoardId);
 
                 return BetaRollbackOutcome.Refused(BetaRollbackFlow.NotRecordedMessage);
             }
@@ -232,25 +232,25 @@ namespace CRT.Server.Handlers.Submissions
                     access!.Account.Id,
                     access.Account.Email,
                     reject ? BetaRollbackFlow.RejectedAction : BetaRollbackFlow.RolledBackAction,
-                    current.SystemId,
+                    current.BoardId,
                     $"{plan.Kind}; {written.Restored} file(s) restored, {written.Removed} removed; " +
                     $"{plan.Returning.Count} submission(s) {(reject ? "rejected" : "returned to the queue")}; {reason}",
                     nowUtc),
                 cancellationToken);
 
             this.thisLogger.LogInformation(
-                "{Account} rolled {SystemId} back from BETA ({Kind}): {Restored} restored, {Removed} removed, " +
+                "{Account} rolled {BoardId} back from BETA ({Kind}): {Restored} restored, {Removed} removed, " +
                 "{Returned} submission(s) {What}.",
-                access.Account.Email, current.SystemId, plan.Kind, written.Restored, written.Removed, plan.Returning.Count,
+                access.Account.Email, current.BoardId, plan.Kind, written.Restored, written.Removed, plan.Returning.Count,
                 reject ? "rejected" : "returned to the queue");
 
             return BetaRollbackOutcome.RolledBack(current, plan, written, reject);
         }
 
         // The checks both entry points share, cheapest first.
-        private async Task<(BetaRollbackOutcome? Refusal, SystemRecord? System)> CheckAsync(
+        private async Task<(BetaRollbackOutcome? Refusal, BoardRecord? Board)> CheckAsync(
             ReviewAccess? access,
-            string? systemId,
+            string? boardId,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
@@ -259,32 +259,32 @@ namespace CRT.Server.Handlers.Submissions
             if (!options.IsProductionPublishingConfigured)
                 return (BetaRollbackOutcome.NotConfigured(ProductionPromotionFlow.NotConfiguredMessage), null);
 
-            if (string.IsNullOrWhiteSpace(systemId))
-                return (BetaRollbackOutcome.NotFound("No system was named."), null);
+            if (string.IsNullOrWhiteSpace(boardId))
+                return (BetaRollbackOutcome.NotFound("No board was named."), null);
 
-            SystemRecord? system = await this.thisStore.FindSystemAsync(systemId, cancellationToken);
+            BoardRecord? board = await this.thisStore.FindBoardAsync(boardId, cancellationToken);
 
-            if (system is null)
-                return (BetaRollbackOutcome.NotFound($"There is no system [{systemId}]."), null);
+            if (board is null)
+                return (BetaRollbackOutcome.NotFound($"There is no board [{boardId}]."), null);
 
             // The same authority a promotion needs: an administrator, or a maintainer of this board.
-            if (!ReviewAuthority.CanPublish(access, system.SystemId))
-                return (BetaRollbackOutcome.Forbidden("You do not maintain this system."), null);
+            if (!ReviewAuthority.CanPublish(access, board.BoardId))
+                return (BetaRollbackOutcome.Forbidden("You do not maintain this board."), null);
 
-            if (!ProductionPromotionRules.IsAwaitingProduction(system))
+            if (!ProductionPromotionRules.IsAwaitingProduction(board))
                 return (BetaRollbackOutcome.Conflict(BetaRollbackFlow.NothingToRollBackMessage), null);
 
-            return (null, system);
+            return (null, board);
         }
 
         private async Task<BetaRollbackFilePlan> BuildPlanAsync(
-            SystemRecord system,
+            BoardRecord board,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
             IReadOnlyList<SubmissionRecord> merged = await this.thisStore.GetMergedSubmissionsAsync(
-                system.SystemId,
-                system.ProductionPublishedUtc,
+                board.BoardId,
+                board.ProductionPublishedUtc,
                 DateTimeOffset.UtcNow,
                 cancellationToken);
 
@@ -303,36 +303,36 @@ namespace CRT.Server.Handlers.Submissions
             return await BetaRollbackFiles.PlanAsync(
                 options.DataTreeRoot!,
                 options.ProductionDataTreeRoot!,
-                system,
+                board,
                 ProductionPromotionRules.Carrying(merged, addresses: addresses),
                 files,
                 cancellationToken);
         }
 
-        private void RemoveFromBetaList(ServerOptions options, string systemId)
+        private void RemoveFromBetaList(ServerOptions options, string boardId)
         {
             string? master = MasterListing.NewestMasterPath(options.DataTreeRoot);
 
             if (master is null)
                 return;
 
-            MasterListingEdit edit = MasterListing.Remove(master, systemId);
+            MasterListingEdit edit = MasterListing.Remove(master, boardId);
 
             if (!edit.IsDone)
             {
                 this.thisLogger.LogError(
-                    "{SystemId} was removed from BETA, but its row could not be taken out of [{Master}]: {Failure} - " +
+                    "{BoardId} was removed from BETA, but its row could not be taken out of [{Master}]: {Failure} - " +
                     "BETA users are offered a board that is not there until it is.",
-                    systemId, master, edit.Failure);
+                    boardId, master, edit.Failure);
             }
             else if (edit.Changed)
             {
-                this.thisLogger.LogInformation("{SystemId} was taken out of BETA's drop-down lists.", systemId);
+                this.thisLogger.LogInformation("{BoardId} was taken out of BETA's drop-down lists.", boardId);
             }
         }
 
         // Never fails the rollback: a failed rebuild leaves the previous manifest, and is logged.
-        private void RegenerateBetaManifest(ServerOptions options, string systemId)
+        private void RegenerateBetaManifest(ServerOptions options, string boardId)
         {
             int written;
 
@@ -345,16 +345,16 @@ namespace CRT.Server.Handlers.Submissions
             }
             catch (Exception ex)
             {
-                this.thisLogger.LogWarning(ex, "The BETA checksum manifest could not be rebuilt after rolling back {SystemId}.", systemId);
+                this.thisLogger.LogWarning(ex, "The BETA checksum manifest could not be rebuilt after rolling back {BoardId}.", boardId);
                 return;
             }
 
             if (written < 0)
             {
                 this.thisLogger.LogWarning(
-                    "{SystemId} was rolled back in BETA but the checksum manifest at [{ManifestPath}] could not be " +
+                    "{BoardId} was rolled back in BETA but the checksum manifest at [{ManifestPath}] could not be " +
                     "rebuilt - clients will not see the rollback until it is.",
-                    systemId, options.ManifestPath);
+                    boardId, options.ManifestPath);
             }
         }
     }
@@ -364,7 +364,7 @@ namespace CRT.Server.Handlers.Submissions
     // it onto status codes the same way.
     // ###########################################################################################
     public sealed record BetaRollbackOutcome(
-        SystemRecord? System,
+        BoardRecord? Board,
         BetaRollbackPlanResult? Plan,
         string? Error = null,
         bool IsNotConfigured = false,
@@ -378,15 +378,15 @@ namespace CRT.Server.Handlers.Submissions
     {
         public bool IsPlanned => this.Plan is not null && this.Error is null;
 
-        public static BetaRollbackOutcome Planned(SystemRecord system, BetaRollbackPlanResult plan) =>
-            new(system, plan);
+        public static BetaRollbackOutcome Planned(BoardRecord board, BetaRollbackPlanResult plan) =>
+            new(board, plan);
 
         public static BetaRollbackOutcome RolledBack(
-            SystemRecord system,
+            BoardRecord board,
             BetaRollbackPlanResult plan,
             BetaRollbackWriteOutcome written,
             bool rejected = false) =>
-            new(system, plan, IsDone: true, FilesRestored: written.Restored, FilesRemoved: written.Removed, Rejected: rejected);
+            new(board, plan, IsDone: true, FilesRestored: written.Restored, FilesRemoved: written.Removed, Rejected: rejected);
 
         public static BetaRollbackOutcome NotConfigured(string error) => new(null, null, error, IsNotConfigured: true);
 

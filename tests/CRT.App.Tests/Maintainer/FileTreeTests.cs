@@ -4,23 +4,23 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Maintainer;
 
 // ###########################################################################################
-// Covers FileTree and FileTreeWording - a system's files as a folder tree, with what the next step
+// Covers FileTree and FileTreeWording - a board's files as a folder tree, with what the next step
 // does to each (owner request, 2026-09-28: "a file-structure for all existing files ... a
 // highlighting of files changed ... 'show only changed files' ... including their parent
 // folder").
 // ###########################################################################################
 public sealed class FileTreeTests
 {
-    private static SystemFileEntry E(string path, SystemFileChange change = SystemFileChange.Unchanged) =>
-        new(path, change, SystemFileSource.Beta);
+    private static BoardFileEntry E(string path, BoardFileChange change = BoardFileChange.Unchanged) =>
+        new(path, change, BoardFileSource.Beta);
 
     private static FileTreeNode Sample() => FileTree.Build(
     [
         FileTreeTests.E("Commodore/C128/310378/Images/C10.png"),
-        FileTreeTests.E("Commodore/C128/310378/Images/C2.png", SystemFileChange.Changed),
-        FileTreeTests.E("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed),
+        FileTreeTests.E("Commodore/C128/310378/Images/C2.png", BoardFileChange.Changed),
+        FileTreeTests.E("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed),
         FileTreeTests.E("Commodore/C128/310378/Manuals/a.pdf"),
-        FileTreeTests.E("Commodore/Shared files/manual.pdf", SystemFileChange.Added),
+        FileTreeTests.E("Commodore/Shared files/manual.pdf", BoardFileChange.Added),
         FileTreeTests.E("Generic shared files/7400.pdf")
     ]);
 
@@ -59,7 +59,7 @@ public sealed class FileTreeTests
     {
         FileTreeNode root = FileTree.Build(
         [
-            FileTreeTests.E("Commodore/C128/310378/Data.xlsx", SystemFileChange.Changed),
+            FileTreeTests.E("Commodore/C128/310378/Data.xlsx", BoardFileChange.Changed),
             FileTreeTests.E("Commodore/C128/310378/Sheet1.png")
         ]);
 
@@ -171,16 +171,16 @@ public sealed class FileTreeTests
     [Fact]
     public void The_summary_names_the_files_written_from_the_table_instead_of_counting_them()
     {
-        static SystemFileEntry Written(string path, SystemFileChange change) =>
-            new(path, change, SystemFileSource.Beta, WrittenOnApproval: true);
+        static BoardFileEntry Written(string path, BoardFileChange change) =>
+            new(path, change, BoardFileSource.Beta, WrittenOnApproval: true);
 
         FileTreeNode tree = FileTree.Build(
         [
-            FileTreeTests.E("Commodore/C128/310378/manual.pdf", SystemFileChange.Changed),
-            FileTreeTests.E("Commodore/C128/310378/extra.png", SystemFileChange.Added),
+            FileTreeTests.E("Commodore/C128/310378/manual.pdf", BoardFileChange.Changed),
+            FileTreeTests.E("Commodore/C128/310378/extra.png", BoardFileChange.Added),
             FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
-            Written("Commodore/C128/310378/Board.xlsx", SystemFileChange.Changed),
-            Written("Commodore/C128/310378/Board.json", SystemFileChange.Added)
+            Written("Commodore/C128/310378/Board.xlsx", BoardFileChange.Changed),
+            Written("Commodore/C128/310378/Board.json", BoardFileChange.Added)
         ]);
 
         Assert.Equal(
@@ -193,8 +193,8 @@ public sealed class FileTreeTests
             FileTreeWording.Summary(FileTree.Build(
             [
                 FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
-                Written("Commodore/C128/310378/Board.xlsx", SystemFileChange.Changed),
-                Written("Commodore/C128/310378/Board.json", SystemFileChange.Unchanged)
+                Written("Commodore/C128/310378/Board.xlsx", BoardFileChange.Changed),
+                Written("Commodore/C128/310378/Board.json", BoardFileChange.Unchanged)
             ])));
     }
 
@@ -202,43 +202,43 @@ public sealed class FileTreeTests
     // *** THE CARD SAYS NOTHING ABOUT THE CHANGE - only what opens, when it is not the file as it
     // will be (owner request, 2026-09-28). *** The workbook and the highlight file are written
     // from the table on approval, so before then only BETA's current copy opens - or nothing, for a
-    // new system. Everything else says nothing beside its path.
+    // new board. Everything else says nothing beside its path.
     // ###########################################################################################
     [Fact]
     public void Only_a_file_the_approval_writes_says_what_opens()
     {
         Assert.Contains("BETA's copy as it is now",
-            FileTreeWording.Note(new SystemFileEntry("a/Data.xlsx", SystemFileChange.Changed, SystemFileSource.Beta, WrittenOnApproval: true)),
+            FileTreeWording.Note(new BoardFileEntry("a/Data.xlsx", BoardFileChange.Changed, BoardFileSource.Beta, WrittenOnApproval: true)),
             StringComparison.Ordinal);
 
         Assert.Contains("nothing to open yet",
-            FileTreeWording.Note(new SystemFileEntry("a/Data.xlsx", SystemFileChange.Added, SystemFileSource.NotWrittenYet, WrittenOnApproval: true)),
+            FileTreeWording.Note(new BoardFileEntry("a/Data.xlsx", BoardFileChange.Added, BoardFileSource.NotWrittenYet, WrittenOnApproval: true)),
             StringComparison.Ordinal);
 
         // Kept as it is, it IS the file: nothing to say.
-        Assert.Null(FileTreeWording.Note(new SystemFileEntry("a/Data.json", SystemFileChange.Unchanged, SystemFileSource.Beta, WrittenOnApproval: true)));
-        Assert.Null(FileTreeWording.Note(new SystemFileEntry("a/b.png", SystemFileChange.Added, SystemFileSource.Submission, "h")));
-        Assert.Null(FileTreeWording.Note(new SystemFileEntry("a/b.png", SystemFileChange.Removed, SystemFileSource.Production)));
-        Assert.Null(FileTreeWording.Note(new SystemFileEntry("a/b.png", SystemFileChange.Changed, SystemFileSource.Beta)));
+        Assert.Null(FileTreeWording.Note(new BoardFileEntry("a/Data.json", BoardFileChange.Unchanged, BoardFileSource.Beta, WrittenOnApproval: true)));
+        Assert.Null(FileTreeWording.Note(new BoardFileEntry("a/b.png", BoardFileChange.Added, BoardFileSource.Submission, "h")));
+        Assert.Null(FileTreeWording.Note(new BoardFileEntry("a/b.png", BoardFileChange.Removed, BoardFileSource.Production)));
+        Assert.Null(FileTreeWording.Note(new BoardFileEntry("a/b.png", BoardFileChange.Changed, BoardFileSource.Beta)));
     }
 
     [Fact]
     public void A_file_row_says_new_changed_or_removed_and_nothing_when_it_stays()
     {
-        Assert.Equal("new", FileTreeWording.ChangeWord(SystemFileChange.Added));
-        Assert.Equal("changed", FileTreeWording.ChangeWord(SystemFileChange.Changed));
-        Assert.Equal("removed", FileTreeWording.ChangeWord(SystemFileChange.Removed));
-        Assert.Equal(string.Empty, FileTreeWording.ChangeWord(SystemFileChange.Unchanged));
+        Assert.Equal("new", FileTreeWording.ChangeWord(BoardFileChange.Added));
+        Assert.Equal("changed", FileTreeWording.ChangeWord(BoardFileChange.Changed));
+        Assert.Equal("removed", FileTreeWording.ChangeWord(BoardFileChange.Removed));
+        Assert.Equal(string.Empty, FileTreeWording.ChangeWord(BoardFileChange.Unchanged));
     }
 
     // -----------------------------------------------------------------------------------
-    // A LISTING (the Systems screen's Files view, 2026-10-03: "just list all files")
+    // A LISTING (the Boards screen's Files view, 2026-10-03: "just list all files")
     // -----------------------------------------------------------------------------------
 
-    // There is no change to open on, so it opens down to the system's own folder - and nothing else,
+    // There is no change to open on, so it opens down to the board's own folder - and nothing else,
     // so the shared folders around it start closed.
     [Fact]
-    public void A_listing_opens_every_folder_down_to_the_systems_own_and_no_other()
+    public void A_listing_opens_every_folder_down_to_the_boards_own_and_no_other()
     {
         FileTreeNode root = FileTreeTests.Sample();
 

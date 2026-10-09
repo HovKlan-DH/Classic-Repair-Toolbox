@@ -16,7 +16,7 @@ namespace Handlers.DataHandling
     {
         public bool Created { get; init; }
 
-        public string SystemFolder { get; init; } = string.Empty;
+        public string BoardFolder { get; init; } = string.Empty;
 
         public string WorkbookPath { get; init; } = string.Empty;
 
@@ -82,7 +82,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Seeds the draft folder for a system that IS published, by copying it.
+        // Seeds the draft folder for a board that IS published, by copying it.
         //
         // REFUSES TO OVERWRITE AN EXISTING DRAFT. Re-seeding would silently discard whatever the
         // contributor had already changed, which is the single most destructive thing this class
@@ -100,7 +100,7 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(publishedBoard);
 
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
             if (folder.Length == 0)
             {
                 return new DraftSeedResult { Reason = "The draft location could not be resolved." };
@@ -111,8 +111,8 @@ namespace Handlers.DataHandling
             {
                 return new DraftSeedResult
                 {
-                    SystemFolder = folder,
-                    Reason = "A draft of this system already exists.",
+                    BoardFolder = folder,
+                    Reason = "A draft of this board already exists.",
                 };
             }
 
@@ -143,7 +143,7 @@ namespace Handlers.DataHandling
 
                 DraftMarkerStore.Save(markerPath, new DraftMarker
                 {
-                    SystemKey = excelDataFile,
+                    BoardKey = excelDataFile,
                     BaseRevision = publishedBoard.RevisionDate ?? string.Empty,
                     CreatedUtc = DateTimeOffset.UtcNow.ToString("o"),
                 });
@@ -155,7 +155,7 @@ namespace Handlers.DataHandling
                 return new DraftSeedResult
                 {
                     Created = true,
-                    SystemFolder = folder,
+                    BoardFolder = folder,
                     WorkbookPath = workbookPath,
                     FilesCopied = copied,
                     FilesMissing = missing,
@@ -168,14 +168,14 @@ namespace Handlers.DataHandling
 
                 return new DraftSeedResult
                 {
-                    SystemFolder = folder,
+                    BoardFolder = folder,
                     Reason = $"The draft could not be created: {ex.Message}",
                 };
             }
         }
 
         // ###########################################################################################
-        // Creates the folder for a system that exists ONLY as a draft - "Add a new system".
+        // Creates the folder for a board that exists ONLY as a draft - "Add a new board".
         //
         // There is nothing to copy, so this writes an EMPTY board workbook (headers and sheet names
         // only) plus the marker carrying the registration.
@@ -184,22 +184,22 @@ namespace Handlers.DataHandling
         // reasoning was sound at the time: an .xlsx sitting ALONGSIDE draft.json would have been a
         // second mechanism for one job, with two places to look for the same rows. That is not this.
         // The workbook REPLACES draft.json as the single source, so there is exactly one mechanism -
-        // and a new system with no workbook could not be opened in Excel at all, which is the whole
+        // and a new board with no workbook could not be opened in Excel at all, which is the whole
         // point of the change.
         //
-        // BaseRevision stays EMPTY: this system has no published counterpart, so there is no
+        // BaseRevision stays EMPTY: this board has no published counterpart, so there is no
         // revision it is based on and inventing one would make a later drift check compare against
         // something that never existed.
         // ###########################################################################################
-        public static DraftSeedResult CreateNewSystem(
+        public static DraftSeedResult CreateNewBoard(
             string draftsRoot,
-            NewSystemRegistration registration)
+            NewBoardRegistration registration)
         {
             ArgumentNullException.ThrowIfNull(registration);
 
             string excelDataFile = registration.ExcelDataFile ?? string.Empty;
 
-            string folder = DraftFolderLayout.GetSystemFolder(draftsRoot, excelDataFile);
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
             if (folder.Length == 0)
             {
                 return new DraftSeedResult { Reason = "The draft location could not be resolved." };
@@ -210,8 +210,8 @@ namespace Handlers.DataHandling
             {
                 return new DraftSeedResult
                 {
-                    SystemFolder = folder,
-                    Reason = "A draft of this system already exists.",
+                    BoardFolder = folder,
+                    Reason = "A draft of this board already exists.",
                 };
             }
 
@@ -225,10 +225,10 @@ namespace Handlers.DataHandling
                 // *** AND AN EMPTY "Scope baseline" FOLDER BESIDE THE WORKBOOK (owner request,
                 // 2026-09-24). ***
                 //
-                // A new system has no baseline images yet, so there was no such folder - and a
+                // A new board has no baseline images yet, so there was no such folder - and a
                 // contributor referencing their first capture had to create it by hand, with the
                 // exact name published boards use, before they could pick it. Now it is simply there
-                // to choose. Only for a NEW system: a seeded draft gets the folder from the published
+                // to choose. Only for a NEW board: a seeded draft gets the folder from the published
                 // board's own files when it has any.
                 //
                 // An empty folder is inert everywhere else - submissions are built from the rows,
@@ -242,10 +242,10 @@ namespace Handlers.DataHandling
                 // BoardWorkbookWriter writes each sheet with its header row and preamble, which is
                 // what makes the file hand-editable from the moment it is created - and the
                 // preamble's first two lines are "# Hardware:" and "# Board:". Passing a bare
-                // `new BoardData()` left both blank, so a brand-new system opened in Excel with no
+                // `new BoardData()` left both blank, so a brand-new board opened in Excel with no
                 // caption at all while every published board had one. Reported with a screenshot.
                 //
-                // The registration is the only place those names exist for a system that has never
+                // The registration is the only place those names exist for a board that has never
                 // been published, which is exactly why it is the thing being written here.
                 // ###########################################################################################
                 BoardWorkbookWriter.Write(workbookPath, new BoardData
@@ -256,28 +256,28 @@ namespace Handlers.DataHandling
 
                 DraftMarkerStore.Save(markerPath, new DraftMarker
                 {
-                    SystemKey = excelDataFile,
+                    BoardKey = excelDataFile,
                     BaseRevision = string.Empty,
-                    NewSystem = registration,
+                    NewBoard = registration,
                     CreatedUtc = DateTimeOffset.UtcNow.ToString("o"),
                 });
 
-                CrtLog.Info($"Created draft-only system [{excelDataFile}] at [{folder}]");
+                CrtLog.Info($"Created draft-only board [{excelDataFile}] at [{folder}]");
 
                 return new DraftSeedResult
                 {
                     Created = true,
-                    SystemFolder = folder,
+                    BoardFolder = folder,
                     WorkbookPath = workbookPath,
                 };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                CrtLog.Warning($"Could not create draft-only system [{excelDataFile}] - [{ex.Message}]");
+                CrtLog.Warning($"Could not create draft-only board [{excelDataFile}] - [{ex.Message}]");
 
                 return new DraftSeedResult
                 {
-                    SystemFolder = folder,
+                    BoardFolder = folder,
                     Reason = $"The draft could not be created: {ex.Message}",
                 };
             }
@@ -321,7 +321,7 @@ namespace Handlers.DataHandling
         // Copies every file the board's rows reference into the draft folder.
         //
         // Three outcomes per file, all of them normal:
-        //   - copied: it belongs to this system and the published tree holds it;
+        //   - copied: it belongs to this board and the published tree holds it;
         //   - shared: it belongs to another board (a manufacturer "Shared files" image), so it is
         //     left alone and keeps resolving against Data/ - see DraftFolderLayout;
         //   - missing: the row names a file the published tree does not have. Reported, not fatal;

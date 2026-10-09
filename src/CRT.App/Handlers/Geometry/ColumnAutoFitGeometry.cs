@@ -63,6 +63,20 @@ namespace Handlers.Geometry
         }
 
         // ###########################################################################################
+        // The width a heading needs for its name on one line: the name, with as much room after it as
+        // the heading has before it (owner report, 2026-10-09: a column fitted to its heading had a
+        // wide empty band after the name), plus the slack that keeps it off a second line. Nothing
+        // for a heading with no name.
+        // ###########################################################################################
+        public static double HeadingWidth(double spaceBefore, double nameWidth)
+        {
+            double space = double.IsNaN(spaceBefore) ? 0 : Math.Max(0, spaceBefore);
+            double name = double.IsNaN(nameWidth) ? 0 : Math.Max(0, nameWidth);
+
+            return name <= 0 ? 0 : space + name + space + ColumnAutoFitGeometry.RoundingSlack;
+        }
+
+        // ###########################################################################################
         // The width that shows the heading and every text on one line - each text plus the cell's
         // own margins and lines (cellChrome) - within minWidth and maxWidth, in whole pixels. A
         // maxWidth below minWidth gives minWidth: the column's own minimum always wins.

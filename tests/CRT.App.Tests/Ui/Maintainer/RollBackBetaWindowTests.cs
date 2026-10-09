@@ -11,7 +11,7 @@ namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 // ###########################################################################################
 // The confirmation for pushing a BETA board back to the queue (owner decision, 2026-09-27).
 //
-// *** THE POINT OF THE DIALOG IS THE NAMES. *** A rollback is per SYSTEM, so it takes back EVERY
+// *** THE POINT OF THE DIALOG IS THE NAMES. *** A rollback is per BOARD, so it takes back EVERY
 // submission merged since the last promotion; one contributor's work cannot be picked out. The
 // dialog exists so a maintainer sees whose work that is before deciding, rather than discovering
 // afterwards that two other people's accepted contributions went with it.
@@ -76,7 +76,7 @@ public sealed class RollBackBetaWindowTests
 
             List<string> lines = window.FindControl<StackPanel>("ReturningPanel")!
                 .Children.OfType<TextBlock>()
-                .Select(block => block.Text ?? string.Empty)
+                .Select(TabMaintainer.TextOf)
                 .ToList();
 
             Assert.Equal(3, lines.Count);
@@ -226,7 +226,7 @@ public sealed class RollBackBetaWindowTests
                 RollBackBetaWindowTests.Plan() with { SharedRestored = ["Commodore/Shared files/6526.png"] });
 
             StackPanel shared = window.FindControl<StackPanel>("SharedPanel")!;
-            List<string> lines = shared.Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
+            List<string> lines = shared.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf).ToList();
 
             Assert.True(shared.IsVisible);
             Assert.StartsWith("Shared files, used by every board that cites them", lines[0], StringComparison.Ordinal);
@@ -249,9 +249,9 @@ public sealed class RollBackBetaWindowTests
         });
     }
 
-    // A system never promoted says it leaves BETA, rather than describing a restore.
+    // A board never promoted says it leaves BETA, rather than describing a restore.
     [Fact]
-    public void A_system_never_promoted_says_it_leaves_beta()
+    public void A_board_never_promoted_says_it_leaves_beta()
     {
         UiTest.Run(() =>
         {

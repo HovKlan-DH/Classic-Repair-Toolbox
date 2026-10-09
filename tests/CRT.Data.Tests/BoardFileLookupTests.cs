@@ -36,7 +36,7 @@ public sealed class BoardFileLookupTests
         using var workspace = new TempWorkspace();
         workspace.WriteFile($"Data/{Board}/U8.png", "x");
 
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
 
         Assert.Equal(BoardFileState.Found, lookup.Check($"{Board}/U8.png").State);
         Assert.Equal(BoardFileState.Missing, lookup.Check($"{Board}/U9.png").State);
@@ -66,7 +66,7 @@ public sealed class BoardFileLookupTests
         using var workspace = new TempWorkspace();
         workspace.WriteFile($"Data/{Board}/U8.png", "x");
 
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
         BoardFileLookupResult result = lookup.Check($"{Board}/u8.png");
 
         Assert.Equal(BoardFileState.CaseDiffers, result.State);
@@ -85,7 +85,7 @@ public sealed class BoardFileLookupTests
     {
         using var workspace = new TempWorkspace();
         workspace.WriteFile($"Data/{Board}/U8.png", "x");
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
 
         Assert.Equal(BoardFileState.Missing, lookup.Check($"{Board}/late.png").State);
 
@@ -119,7 +119,7 @@ public sealed class BoardFileLookupTests
     {
         using var workspace = new TempWorkspace();
         string wrong = workspace.WriteFile($"Data/{Board}/u8.png", "x");
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
 
         Assert.Equal(BoardFileState.CaseDiffers, lookup.Check($"{Board}/U8.png").State);
 
@@ -150,7 +150,7 @@ public sealed class BoardFileLookupTests
         using var workspace = new TempWorkspace();
         string wrong = workspace.WriteFile($"Data/{Board}/u8.png", "x");
         string folder = Path.GetDirectoryName(wrong)!;
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
 
         DateTime writtenWhenRead = DateTime.UtcNow.AddMinutes(1);
         Directory.SetLastWriteTimeUtc(folder, writtenWhenRead);
@@ -172,7 +172,7 @@ public sealed class BoardFileLookupTests
     {
         using var workspace = new TempWorkspace();
         string file = workspace.WriteFile($"Data/{Board}/U8.png", "x");
-        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftSystemFolder: string.Empty);
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
 
         Assert.Equal(BoardFileState.Found, lookup.Check($"{Board}/U8.png").State);
 

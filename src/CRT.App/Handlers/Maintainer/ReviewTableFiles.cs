@@ -35,9 +35,9 @@ namespace Handlers.MaintainerHandling
         // The submitted file's hash one side of the hover card reads, or null to read the PUBLISHED
         // file at the path instead.
         //
-        // *** A NEW SYSTEM'S "PUBLISHED" SIDE IS THE SUBMISSION TOO. *** Its table is compared with
+        // *** A NEW BOARD'S "PUBLISHED" SIDE IS THE SUBMISSION TOO. *** Its table is compared with
         // the submission itself as it was opened (TabMaintainer.Table.cs), and the published tree
-        // holds nothing of it. Read from the tree, every picture of a new system was shown beside
+        // holds nothing of it. Read from the tree, every picture of a new board was shown beside
         // "There is no file at this path" under "Before (published)" - reported, 2026-09-26: "this
         // makes no sense at all". Read from the submission, both sides are the same file, and the
         // card shows it once.
@@ -52,14 +52,15 @@ namespace Handlers.MaintainerHandling
                 : null;
 
         // ###########################################################################################
-        // What the two sides are called when the card shows both. For a new system the older side
+        // What the two sides are called when the card shows both. For a new board the older side
         // is the submission as it came in and the newer one the maintainer's own change - it is
-        // only ever beside another when the maintainer has named another file.
+        // only ever beside another when the maintainer has named another file. For a published
+        // board the older side is the server's BETA tree, and says so (owner request, 2026-10-05).
         // ###########################################################################################
         public static (string Published, string Current) SideLabels(bool nothingPublished) =>
             nothingPublished
                 ? ("As submitted", "Your change")
-                : ("Before (published)", "After (submitted)");
+                : ("Before (BETA source)", "After (submitted)");
 
         // ###########################################################################################
         // How long a file opened from the table is left in the temp folder (code review,

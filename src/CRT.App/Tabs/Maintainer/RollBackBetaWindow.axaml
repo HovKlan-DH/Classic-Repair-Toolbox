@@ -10,7 +10,7 @@
     <!--
     CONFIRMING A ROLLBACK (owner decision, 2026-09-27).
 
-    A rollback is per SYSTEM, so it takes back EVERY submission merged since the last promotion -
+    A rollback is per BOARD, so it takes back EVERY submission merged since the last promotion -
     not just the one that is wrong. That is the whole reason this dialog exists rather than the
     button acting straight away: the contributors it affects are NAMED here, before anything
     happens, so nobody's accepted work is discarded out of sight.

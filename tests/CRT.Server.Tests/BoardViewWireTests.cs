@@ -69,8 +69,33 @@ namespace CRT.Server.Tests
                 root.EnumerateObject().Select(property => property.Name));
 
             Assert.Equal(
-                ["systemId", "viewedUtc", "fromBeta"],
+                ["boardId", "viewedUtc", "fromBeta"],
                 root.GetProperty("views")[0].EnumerateObject().Select(property => property.Name));
+        }
+
+        // ###########################################################################################
+        // *** A VIEW FROM A CRT BUILT BEFORE THE RENAME STILL COUNTS (owner decision, 2026-10-09). ***
+        // Until "system" became "board", CRT named a view's board "systemId" - the 3.0.0 pre-releases
+        // already installed still do, and the board-view route turns no CRT away. The server reads
+        // the board from whichever name came (BoardView.IdOf).
+        // ###########################################################################################
+        [Fact]
+        public void A_view_an_older_CRT_sends_as_systemId_is_read_with_its_board()
+        {
+            BoardViewReport? read = JsonSerializer.Deserialize<BoardViewReport>(
+                """{"batchId":"0f8fad5bd9cb469fa16570867728950e","views":[{"systemId":"Commodore/C64/250407","viewedUtc":"2026-09-27T11:58:03+00:00","fromBeta":false}]}""",
+                BoardViewWireTests.ServerSettings());
+
+            BoardView view = Assert.Single(read!.Views!);
+            Assert.Null(view.BoardId);
+            Assert.Equal("Commodore/C64/250407", BoardView.IdOf(view));
+        }
+
+        // A new CRT never sends the old name.
+        [Fact]
+        public void The_old_systemId_name_is_never_sent()
+        {
+            Assert.DoesNotContain("systemId", BoardViewContract.ToJson(BoardViewWireTests.Sent), StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -81,7 +106,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void The_fullest_report_fits_the_routes_body_limit()
         {
-            var view = new BoardView(new string('B', BoardViewRules.SystemIdLength), DateTimeOffset.UtcNow, true);
+            var view = new BoardView(new string('B', BoardViewRules.BoardIdLength), DateTimeOffset.UtcNow, true);
 
             var fullest = new BoardViewReport(
                 Guid.NewGuid().ToString("N"),

@@ -13,7 +13,7 @@ namespace Handlers.DataHandling
     // lets the UI say "uploading 3 of 12 - U8-pin3.png" rather than a bar that may or may not be
     // moving.
     //
-    // THE PHASES MATTER TOO. Hashing a 76 MB system takes seconds during which nothing is sent,
+    // THE PHASES MATTER TOO. Hashing a 76 MB board takes seconds during which nothing is sent,
     // and a progress bar that sits at zero looks broken. Naming the phase makes the wait
     // explicable.
     // ###########################################################################################
@@ -111,7 +111,7 @@ namespace Handlers.DataHandling
         // The dialog's heading for this phase (owner report, 2026-09-28).
         //
         // *** "SENDING" ONLY ONCE SOMETHING IS BEING SENT. *** The heading read "Sending
-        // contribution" from the first moment, while the dialog spent most of a large system's wait
+        // contribution" from the first moment, while the dialog spent most of a large board's wait
         // reading files on this machine with nothing leaving it - so the heading and the line under
         // it described two different things. Before the upload it is "Preparing".
         // ###########################################################################################
